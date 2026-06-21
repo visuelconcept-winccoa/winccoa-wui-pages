@@ -123,6 +123,12 @@ function build(spec) {
   // 7. canonical installer
   copyFileSync(join(HERE, 'install.template.mjs'), join(PKG, 'install.mjs'));
 
+  // 8. hand-authored docs (README/INTEGRATION/NOTES) from docs/wui-<page>/
+  const docsDir = join(ROOT, 'docs', `wui-${page}`);
+  if (existsSync(docsDir)) {
+    for (const f of readdirSync(docsDir)) if (f.endsWith('.md')) copyFileSync(join(docsDir, f), join(PKG, f));
+  }
+
   console.log(`✓ ${spec.name}  npmDeps=${Object.keys(npmDeps).join(',') || 'none'}  backend=${backend ? spec.backend.mount : 'no'}  managers=${(managers || []).map((x) => x.name).join(',') || 'none'}`);
 }
 

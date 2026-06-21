@@ -14,9 +14,12 @@ backend/
   managers/  Managers JavaScript WinCC OA (sans node_modules/.env) :
              machineSim, kpiCalc, aiAssistant, mcpServer, productInfo,
              productionOrdersKpi, rtspProxy, vncProxy
+webserver/   @visuelconcept/wui-webserver — prérequis backend (source, maintenu à la main)
+docs/        docs par page (README/INTEGRATION/NOTES) — recopiées dans les packages au build
 tools/       Pipeline de build déterministe (chemins repo-relatifs)
-packages/    Packages distribuables GÉNÉRÉS (1 dossier par page, autonome)
-             + wui-webserver (prérequis backend) + README (guide d'install)
+packages/    Packages distribuables — GÉNÉRÉS, git-ignorés
+             (rebuild: node tools/build-package.mjs tools/specs.json)
+INSTALL.md   chaîne de prérequis [0]→[3] + commandes d'install
 ```
 
 ## Développer une page
@@ -36,8 +39,9 @@ module backend + descripteur, manager(s), `module.json`, `install.mjs`.
 Les `README.md`/`INTEGRATION.md` de chaque package sont écrits à la main (non régénérés).
 
 ## Installer une page dans un projet cible
-Voir **[packages/README.md](packages/README.md)** (chaîne de prérequis [0]→[3]).
-En bref, par page :
+Voir **[INSTALL.md](INSTALL.md)** (chaîne de prérequis [0]→[3]). `packages/` étant
+généré, lance d'abord `node tools/build-package.mjs tools/specs.json` (ou récupère le
+`.tgz` d'une Release). En bref, par page :
 ```bash
 node packages/wui-<page>/install.mjs --workspace <runtime-workspace> --project <projet-winccoa> [--register-pmon]
 ```

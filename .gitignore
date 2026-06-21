@@ -8,6 +8,9 @@ dist/
 out-tsc/
 **/*.tsbuildinfo
 
+# Generated packages — rebuild with: node tools/build-package.mjs tools/specs.json
+/packages/
+
 # Secrets / env
 .env
 .env.*

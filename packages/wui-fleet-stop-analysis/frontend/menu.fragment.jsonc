@@ -1,4 +1,0 @@
-// Menu fragment for @visuelconcept/wui-fleet-stop-analysis (reached from the fleet overview; hidden).
-[
-  { "title": { "en_US": "Stop-Cause Analysis", "fr": "Analyse des causes d'arrêts" }, "path": "/fleet-stops", "module": "/data/dashboard-wc/pages/fleet-stop-analysis.js", "routeId": "fleet-stops", "component": "wui-fleet-stop-analysis", "hidden": true }
-]

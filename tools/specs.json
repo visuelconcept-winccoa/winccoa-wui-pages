@@ -1,5 +1,22 @@
 [
   {
+    "page": "para",
+    "name": "@visuelconcept/wui-para",
+    "title": "Parametrization (PARA)",
+    "tier": 1,
+    "description": "PARA datapoint-parametrization page (/para): type→DP→element tree, edit/create/rename/delete via the /api/para engineering API.",
+    "backend": { "mount": "/api/para", "routeClass": "ParaRoute", "routeFile": "paraRoute", "srcFiles": ["paraController.ts", "paraRoute.ts", "paraTypeNode.ts"] }
+  },
+  {
+    "page": "camera-streams",
+    "name": "@visuelconcept/wui-camera-streams",
+    "title": "Camera Streams (RTSP)",
+    "tier": 3,
+    "description": "View RTSP IP cameras in-browser (JSMpeg) over a same-origin ws relay to the rtspProxy manager (ffmpeg pulls each stream once and fans MPEG1-TS out to N clients).",
+    "backend": { "mount": "/api/rtsp", "routeClass": "RtspRoute", "routeFile": "rtspRoute", "relayFn": "registerRtspRelay", "relayFile": "rtspRelay", "srcFiles": ["rtspController.ts", "rtspRoute.ts", "rtspRelay.ts"] },
+    "managers": ["rtspProxy"]
+  },
+  {
     "page": "msp",
     "name": "@visuelconcept/wui-msp",
     "title": "MSP",
