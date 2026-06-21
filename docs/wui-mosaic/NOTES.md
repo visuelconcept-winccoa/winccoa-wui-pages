@@ -1,91 +1,91 @@
-# wui-mosaic — notes métier & architecture
+# wui-mosaic — business & architecture notes
 
-## Domaine / objet
+## Domain / purpose
 
-Page autonome **Mosaïque** (`/mosaic`, custom element `wui-mosaic`, classe `WuiMosaic`, préfixe des sous-composants `mo-`). C'est un **mur d'affichage** (display wall) configurable : chaque mosaïque est un canvas de *tuiles* (tiles), chaque tuile embarque une source dans un `<iframe>`.
+Standalone **Mosaic** page (`/mosaic`, custom element `wui-mosaic`, class `WuiMosaic`, sub-component prefix `mo-`). It is a configurable **display wall**: each mosaic is a canvas of *tiles*, each tile embeds a source in an `<iframe>`.
 
-- **Plusieurs mosaïques**, 1 DP chacune + une liste d'aperçu (pattern routeur du shell, comme machine-fleet-3d / remote-vnc).
-- **Layout libre** : tuiles flottantes positionnées/dimensionnées librement (pas une grille fixe), avec drag + resize.
-- **Lecture seule par défaut** : un mur d'affichage ne transmet pas les événements pointeur/clavier sauf si une tuile est explicitement marquée interactive.
+- **Multiple mosaics**, 1 DP each + a preview list (shell router pattern, like machine-fleet-3d / remote-vnc).
+- **Free-form layout**: floating tiles positioned/sized freely (not a fixed grid), with drag + resize.
+- **Read-only by default**: a display wall does not forward pointer/keyboard events unless a tile is explicitly marked interactive.
 
-**Types de source** (`TileKind`, ensemble ouvert) :
-- `fleet-3d` — id d'atelier (`''` = vue overview).
-- `remote-vnc` — id de connexion VNC, **toujours forcé en lecture seule** (toggle interactif désactivé/forcé-off dans le dialogue).
-- `camera` — id de flux RTSP (embarque `/camera-streams/<id>`), DP type `RtspCamera_Stream` / préfixe `RtspCamera_`, sélection forcée depuis le catalogue comme VNC, **forcé en lecture seule**.
-- `url` — **même origine uniquement** (URL externe refusée).
+**Source types** (`TileKind`, open set):
+- `fleet-3d` — workshop id (`''` = overview view).
+- `remote-vnc` — VNC connection id, **always forced read-only** (interactive toggle disabled/forced-off in the dialog).
+- `camera` — RTSP stream id (embeds `/camera-streams/<id>`), DP type `RtspCamera_Stream` / prefix `RtspCamera_`, selection forced from the catalog like VNC, **forced read-only**.
+- `url` — **same origin only** (external URL refused).
 
-VNC et caméra sont **toujours** `!isInteractive` (exclus par `isInteractive`) → leurs barres d'outils sont masquées par l'injection lecture seule.
+VNC and camera are **always** `!isInteractive` (excluded by `isInteractive`) → their toolbars are hidden by the read-only injection.
 
-**Ajouter un nouveau type "choisi dans un catalogue, lecture seule"** = ajouter à `TileKind` + `KIND_LABELS` + `tileSrc` + `isInteractive`, plus un `SourceCatalog.listX()` et une liste `@property` propagée mosaic.ts → mo-tile-dialog (`renderPickSource` est générique sur options/label/pageName).
+**Adding a new "picked from a catalog, read-only" type** = add to `TileKind` + `KIND_LABELS` + `tileSrc` + `isInteractive`, plus a `SourceCatalog.listX()` and a list `@property` propagated mosaic.ts → mo-tile-dialog (`renderPickSource` is generic over options/label/pageName).
 
-## Modèle de données (DPs)
+## Data model (DPs)
 
-- **1 DP par mosaïque**, type **`Mosaic_Board`** (Struct : String `name` + String `json`), préfixe `Mosaic_`.
-- Le store (`data/mosaic-store.ts`) est une **copie exacte du pattern ConnectionStore de remote-vnc** :
-  - PARA REST : `/api/para/dptype/create`, `/dp/create`, `/dp/set`, `DELETE /dp/:name`.
-  - Liste via `WuiDpeService.listDatapoints`.
-  - Lecture via `OaRxJsApi.dpGet` (`extractJsonString` fouille raw / array / `{value}`).
-  - **Fallback offline en mémoire**, amorcé par `DEMO_MOSAICS`.
-- `persist()` estampille `updatedAt` ; les mutations persistent immédiatement.
+- **1 DP per mosaic**, type **`Mosaic_Board`** (Struct: String `name` + String `json`), prefix `Mosaic_`.
+- The store (`data/mosaic-store.ts`) is an **exact copy of the remote-vnc ConnectionStore pattern**:
+  - PARA REST: `/api/para/dptype/create`, `/dp/create`, `/dp/set`, `DELETE /dp/:name`.
+  - List via `WuiDpeService.listDatapoints`.
+  - Read via `OaRxJsApi.dpGet` (`extractJsonString` digs through raw / array / `{value}`).
+  - **In-memory offline fallback**, seeded by `DEMO_MOSAICS`.
+- `persist()` stamps `updatedAt`; mutations persist immediately.
 
-**Modèle objet** (`types.ts`) :
-- `Tile` : kind / title / ref / url + **x/y/w/h en pourcentages du canvas (0–100)** + interactive / refresh.
-- `Mosaic` : id / dp / name / description / tiles / updatedAt.
-- Helpers : `blankTile`, `blankMosaic`, `tileSrc`, `isInteractive`, `tileKindLabel`, constantes MIN/DEFAULT de taille de tuile, `APP_SHELL`.
+**Object model** (`types.ts`):
+- `Tile`: kind / title / ref / url + **x/y/w/h as percentages of the canvas (0–100)** + interactive / refresh.
+- `Mosaic`: id / dp / name / description / tiles / updatedAt.
+- Helpers: `blankTile`, `blankMosaic`, `tileSrc`, `isInteractive`, `tileKindLabel`, tile size MIN/DEFAULT constants, `APP_SHELL`.
 
-**Catalogue de sources** (`data/source-catalog.ts`) — helper de sélection lecture seule : liste les ateliers (`MachineFleet3D_Config`, on retire le préfixe `MachineFleet3D_`) et les connexions VNC (`RemoteVnc_Connection`, on retire `RemoteVnc_`) par `.name`. Best-effort : `[]` si offline → le dialogue retombe sur un champ id manuel.
+**Source catalog** (`data/source-catalog.ts`) — read-only selection helper: lists workshops (`MachineFleet3D_Config`, stripping the `MachineFleet3D_` prefix) and VNC connections (`RemoteVnc_Connection`, stripping `RemoteVnc_`) by `.name`. Best-effort: `[]` if offline → the dialog falls back to a manual id field.
 
-## Algorithmes / mécanismes clés
+## Key algorithms / mechanisms
 
-### URL d'embarquement (hash routing)
-Le SPA dashboard utilise le **hash routing** : le bootstrap déployé redirige `/` → `/data/dashboard-wc/index.html` **en préservant `location.hash`**. Toute vue interne s'embarque donc en `…/index.html#/<route>`.
+### Embed URL (hash routing)
+The dashboard SPA uses **hash routing**: the deployed bootstrap redirects `/` → `/data/dashboard-wc/index.html` **while preserving `location.hash`**. Any internal view is therefore embedded as `…/index.html#/<route>`.
 
-`tileSrc()` (dans `types.ts`) construit l'URL via `embeddedViewUrl(route)` = `` `${APP_SHELL}${EMBED_QUERY}#${route}` `` avec `APP_SHELL='/data/dashboard-wc/index.html'` et `EMBED_QUERY='?embed=1'` :
+`tileSrc()` (in `types.ts`) builds the URL via `embeddedViewUrl(route)` = `` `${APP_SHELL}${EMBED_QUERY}#${route}` `` with `APP_SHELL='/data/dashboard-wc/index.html'` and `EMBED_QUERY='?embed=1'`:
 - `?embed=1#/fleet-3d/<id|>`
 - `?embed=1#/remote-vnc/<id>`
 - `?embed=1#/camera-streams/<id>`
-- l'URL brute telle quelle pour le type `url`.
+- the raw URL as-is for the `url` type.
 
-### Mode chromeless / embed — réparti sur DEUX couches
-Contrainte utilisateur : « ne change pas le code source du WebUI Runtime, seulement des options pour ma page ».
-1. **Menu/header masqués par UN flag de shell** (une ligne) dans le fichier d'override du projet `webui-app-ix.ts` (compilé dans `entry/wui.js`) : `isEmbedded()` = `new URLSearchParams(location.search).has('embed')` ; `renderTemplate()` ne retourne qu'un `<div id="outlet" class="embed-outlet">` quand embarqué (pas de `wui-ix-template` / header / menu / `ix-application`). Robuste car l'outlet Vaadin n'a besoin que d'un élément `id="outlet"`. Rétrocompatible (pas de `?embed` → chrome complet).
-2. **Tout le reste côté page** dans `mo-canvas.ts` (aucun autre changement runtime), via manipulation de l'iframe **même origine** sur `@load` + un poll borné (`FRAME_POLL_MS` / `MAX`, car la page routée et ses composants imbriqués rendent en async) :
-   - **thème** : le chromeless perd le contrôleur de thème (il vivait dans `wui-ix-template`), donc `syncTheme()` copie tous les attributs `data-ix*` du `<html>` hôte vers le `<html>` de l'iframe + injecte `customstyles.css` ; un `MutationObserver` sur le `<html>` hôte re-propage au basculement de thème.
-   - **masquer le nom de page** : `injectHideStyles()` crée une `CSSStyleSheet` **dans le realm de l'iframe** (`doc.defaultView.CSSStyleSheet` — les feuilles cross-realm sont rejetées) et l'**adopte récursivement** dans le document + chaque shadow root ouvert (`adoptInto`), règle `wui-content-header,wui-context-generator{display:none}`.
-   - **lecture seule** : la même feuille masque aussi `.toolbar{display:none}` (attrape rv-viewer + mf-atelier-view + barres de page à travers les shadow roots imbriqués).
-   - Les frames cross-origin lèvent une exception sur l'accès `contentDocument` → ignorées. Pas besoin de paramètre `ro` dans l'URL : la lecture seule est décidée côté page depuis `isInteractive(tile)`.
+### Chromeless / embed mode — split across TWO layers
+User constraint: "don't change the WebUI Runtime source code, only options for my page".
+1. **Menu/header hidden by ONE shell flag** (one line) in the project's override file `webui-app-ix.ts` (compiled into `entry/wui.js`): `isEmbedded()` = `new URLSearchParams(location.search).has('embed')`; `renderTemplate()` returns only a `<div id="outlet" class="embed-outlet">` when embedded (no `wui-ix-template` / header / menu / `ix-application`). Robust because the Vaadin outlet only needs an element with `id="outlet"`. Backward compatible (no `?embed` → full chrome).
+2. **Everything else on the page side** in `mo-canvas.ts` (no other runtime change), via **same-origin** iframe manipulation on `@load` + a bounded poll (`FRAME_POLL_MS` / `MAX`, since the routed page and its nested components render async):
+   - **theme**: the chromeless loses the theme controller (it lived in `wui-ix-template`), so `syncTheme()` copies all `data-ix*` attributes from the host `<html>` to the iframe's `<html>` + injects `customstyles.css`; a `MutationObserver` on the host `<html>` re-propagates on theme switch.
+   - **hide the page name**: `injectHideStyles()` creates a `CSSStyleSheet` **in the iframe's realm** (`doc.defaultView.CSSStyleSheet` — cross-realm sheets are rejected) and **adopts it recursively** into the document + each open shadow root (`adoptInto`), rule `wui-content-header,wui-context-generator{display:none}`.
+   - **read-only**: the same sheet also hides `.toolbar{display:none}` (catches rv-viewer + mf-atelier-view + page bars through the nested shadow roots).
+   - Cross-origin frames throw on `contentDocument` access → ignored. No need for an `ro` parameter in the URL: read-only is decided on the page side from `isInteractive(tile)`.
 
-### Garantie lecture seule
-`isInteractive(tile)` = `tile.interactive && kind !== 'remote-vnc'` → VNC n'est **jamais** interactif. Appliqué purement au niveau du mur via `pointer-events` de l'iframe : `none` sauf si interactif ; toujours `none` en mode édition ; `.canvas.dragging iframe{pointer-events:none!important}` pendant le drag. Ne touche **pas** la page remote-vnc ni son `viewOnly`.
+### Read-only guarantee
+`isInteractive(tile)` = `tile.interactive && kind !== 'remote-vnc'` → VNC is **never** interactive. Applied purely at the wall level via the iframe's `pointer-events`: `none` unless interactive; always `none` in edit mode; `.canvas.dragging iframe{pointer-events:none!important}` during drag. Does **not** touch the remote-vnc page or its `viewOnly`.
 
-### Snap sur grille (48×48)
-- `GRID_DIVISIONS=48`, `GRID_PCT=100/48≈2.08%`. 48 se divise par 2/3/4/6/8/12/16/24 → demis/tiers/quarts/sixièmes/huitièmes snappent proprement. Pour retuner : changer la seule constante `GRID_DIVISIONS`.
-- **Un seul `snapToGrid(v)=round(v/GRID_PCT)*GRID_PCT`** snappe à la fois positions de bord ET tailles sur les **lignes** de grille (live dans `computeBox` avant clamp ; committé dans `onUp` sans arrondi pour garder un pavage exact).
-- Défauts exprimés en cellules pour que les tailles physiques survivent à un changement de `GRID_DIVISIONS` : `DEFAULT_CELLS=12` → 50%, `MIN_CELLS=4` → ≈16.7%. `blankTile` x/y=0 ; offset de cascade `=(n%6)*GRID_PCT`.
-- **Grille visible = lignes fines très claires** (en mode `.canvas.editing` uniquement) : deux `linear-gradient` 1px (vertical + horizontal) avec `background-size:${GRID_PCT}%` inline, `background-position:0 0` (pas d'offset → évite la formule de % de background-position). Couleur `--mo-grid = color-mix(... soft-text 28%, transparent)`.
+### Grid snap (48×48)
+- `GRID_DIVISIONS=48`, `GRID_PCT=100/48≈2.08%`. 48 divides by 2/3/4/6/8/12/16/24 → halves/thirds/quarters/sixths/eighths snap cleanly. To retune: change the single `GRID_DIVISIONS` constant.
+- **A single `snapToGrid(v)=round(v/GRID_PCT)*GRID_PCT`** snaps both edge positions AND sizes onto the grid **lines** (live in `computeBox` before clamp; committed in `onUp` without rounding to keep an exact tiling).
+- Defaults expressed in cells so physical sizes survive a `GRID_DIVISIONS` change: `DEFAULT_CELLS=12` → 50%, `MIN_CELLS=4` → ≈16.7%. `blankTile` x/y=0; cascade offset `=(n%6)*GRID_PCT`.
+- **Visible grid = very light thin lines** (in `.canvas.editing` mode only): two 1px `linear-gradient`s (vertical + horizontal) with `background-size:${GRID_PCT}%` inline, `background-position:0 0` (no offset → avoids the background-position % formula). Color `--mo-grid = color-mix(... soft-text 28%, transparent)`.
 
-### Validation URL même origine
-`isInternalUrl()` (`types.ts`) = `new URL(u, location.origin).origin === location.origin` : accepte relatif (`/…`, `#/…`, `page.html`) + absolu même-origine ; rejette host externe, `//host`, `data:` / `javascript:`. Appliqué dans le dialogue de tuile (erreur inline + save désactivé) ET dans `tileSrc` (externe → src vide → la tuile affiche « URL externe refusée »).
+### Same-origin URL validation
+`isInternalUrl()` (`types.ts`) = `new URL(u, location.origin).origin === location.origin`: accepts relative (`/…`, `#/…`, `page.html`) + same-origin absolute; rejects external host, `//host`, `data:` / `javascript:`. Applied in the tile dialog (inline error + save disabled) AND in `tileSrc` (external → empty src → the tile shows "URL externe refusée").
 
 ### Import / export
-`mosaic/data/io.ts` (copie du pattern remote-vnc) : `exportJson(all)` / `exportMosaic(one)` téléchargent l'enveloppe `{kind:'mosaic-boards',version:1,mosaics:[…]}`. **`parseMosaics(text)` accepte un tableau nu, l'enveloppe, OU un objet mosaïque unique** (import d'une ou plusieurs), en coerçant chaque mosaïque et ses tuiles contre les défauts blank (valide `kind` contre un Set, ré-attribue un id `t-<i>` aux tuiles sans id). Import : si l'id existe → update, sinon `createMosaic`.
+`mosaic/data/io.ts` (copy of the remote-vnc pattern): `exportJson(all)` / `exportMosaic(one)` download the envelope `{kind:'mosaic-boards',version:1,mosaics:[…]}`. **`parseMosaics(text)` accepts a bare array, the envelope, OR a single mosaic object** (import of one or several), coercing each mosaic and its tiles against the blank defaults (validates `kind` against a Set, reassigns a `t-<i>` id to tiles without an id). Import: if the id exists → update, otherwise `createMosaic`.
 
-## Composants / fichiers
+## Components / files
 
-`standalone-pages/mosaic.ts` + dossier `mosaic/` :
-- `types.ts` — modèle + helpers (voir ci-dessus).
-- `data/mosaic-store.ts`, `data/demo-mosaics.ts` (2 murs de démo), `data/source-catalog.ts`, `data/io.ts`.
-- `ui/` : `dialog-styles.ts` (overlay/panneau partagé), `mo-confirm-dialog`, `mo-mosaic-table` (liste d'aperçu : name / chips de sources / nb de tuiles / updated ; open/rename/delete), `mo-mosaic-dialog` (name + description), `mo-tile-dialog` (select de kind + dropdown catalogue OU id manuel + url + interactive/refresh ; toggle VNC désactivé), **`mo-canvas`** (le cœur : tuiles `%` absolues, drag par pointer-capture sur le header + resize par gripper bas-droite, commit du layout arrondi via `wui:layout` ; auto-reload par tuile via `setInterval` → `iframe.src=iframe.src`).
+`standalone-pages/mosaic.ts` + `mosaic/` folder:
+- `types.ts` — model + helpers (see above).
+- `data/mosaic-store.ts`, `data/demo-mosaics.ts` (2 demo walls), `data/source-catalog.ts`, `data/io.ts`.
+- `ui/`: `dialog-styles.ts` (shared overlay/panel), `mo-confirm-dialog`, `mo-mosaic-table` (preview list: name / source chips / tile count / updated; open/rename/delete), `mo-mosaic-dialog` (name + description), `mo-tile-dialog` (kind select + catalog dropdown OR manual id + url + interactive/refresh; VNC toggle disabled), **`mo-canvas`** (the core: absolute `%` tiles, drag via pointer-capture on the header + resize via bottom-right gripper, commit of the rounded layout via `wui:layout`; per-tile auto-reload via `setInterval` → `iframe.src=iframe.src`).
 
-**Routage / shell** : `/mosaic` = overview (`mo-mosaic-table`) ; **`/mosaic/:mosaicid`** = affichage d'une mosaïque (`hidden:true` dans menuconfig, param → attribut `mosaicid` → `@property({attribute:'mosaicid'})`), avec un toggle d'édition en place **Modifier / Terminer**. Navigation via `RouterEvent` (`@wincc-oa/wui-models/events/router-event.js`). Menuconfig : icône `tiles`, permission `connected`.
+**Routing / shell**: `/mosaic` = overview (`mo-mosaic-table`); **`/mosaic/:mosaicid`** = display of one mosaic (`hidden:true` in menuconfig, param → `mosaicid` attribute → `@property({attribute:'mosaicid'})`), with an in-place edit toggle **Modifier / Terminer**. Navigation via `RouterEvent` (`@wincc-oa/wui-models/events/router-event.js`). Menuconfig: icon `tiles`, permission `connected`.
 
-## Pièges / à savoir
+## Pitfalls / things to know
 
-- **Tier 1, aucun backend ni manager** (cf. `module.json`) : toute la logique est côté frontend. Aucun module `/api`, aucun relais ws, aucun manager propre à cette page. (Les sources embarquées — VNC, RTSP — ont leurs propres backends, mais ils appartiennent à leurs pages respectives.)
-- **CSP / iframes d'URL externe** : ce n'est PAS une limite de mosaic. Le `WuiCspService` (dans `wui.js`) injecte un `<meta>` CSP restrictif (`default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:`, sans `frame-src`) quand la option WebUI `allowExternalResources` est false (lue depuis `/WebUI_Settings` ; aussi forcée si le header CSP du serveur est restrictif). **Correctif** = mettre `allowExternalResources` dans la config serveur WebUI (`config/config`), puis redémarrer — c'est une option serveur, pas du code. **Caveat dur** : les sites publics (google) envoient leur propre `X-Frame-Options` / `frame-ancestors` → refusent l'embarquement quoi qu'il arrive ; seuls les sites intranet/propres sans ces headers s'embarquent (attention au cert auto-signé et au mixed-content). Les tuiles internes (même origine) ne sont jamais bloquées. Un reverse-proxy webserver (même origine + strip X-Frame-Options, avec allow-list anti-SSRF) reste un follow-up possible mais ne fera pas marcher les gros sites publics.
-- **CSSStyleSheet cross-realm rejetée** : créer la feuille de style dans le realm de l'iframe (`doc.defaultView.CSSStyleSheet`), jamais depuis le document hôte.
-- **Hide / read-only doivent traverser les shadow roots** : `adoptInto` adopte la feuille récursivement dans chaque shadow root ouvert (sinon les composants imbriqués gardent leur header/toolbar visibles).
-- **Rendu async des pages routées** : utiliser un poll borné (`FRAME_POLL_MS`/`MAX`) après `@load`, pas une seule passe.
-- **Le mode chromeless touche le bundle partagé** (`webui-app-ix.ts` → `entry/wui.js`) : tout changement de ce flag impose un rebuild app+SW cohérent et un **hard-refresh (Ctrl+F5) / clear du service worker** côté client après déploiement, car `entry/wui.js` a changé.
-- **Edge auth** : un iframe embarqué non authentifié afficherait le login dans la tuile, puis `handleLogin` peut rediriger vers `POST_LOGIN_HOME` en perdant le deep-link. OK pour le cas normal connecté.
-- **Règles de lint du repo** (mêmes que machine-fleet-3d) : noms de CustomEvent en littéraux string `^wui:[a-z]{3,}$` (donc `emitEdit`/`emitRemove` séparés, pas de nom d'event variable) ; `disconnectedCallback` public avant `updated` protégé (member-ordering) ; éviter le spread `[...map.keys()]` (delete pendant itération de Map est sûr) ; extraire les chaînes dupliquées en consts (`KIND_FLEET`/`KIND_VNC`/`KIND_URL`).
+- **Tier 1, no backend or manager** (cf. `module.json`): all the logic is on the frontend side. No `/api` module, no ws relay, no manager specific to this page. (The embedded sources — VNC, RTSP — have their own backends, but they belong to their respective pages.)
+- **CSP / external URL iframes**: this is NOT a mosaic limitation. The `WuiCspService` (in `wui.js`) injects a restrictive `<meta>` CSP (`default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:`, without `frame-src`) when the WebUI option `allowExternalResources` is false (read from `/WebUI_Settings`; also forced if the server's CSP header is restrictive). **Fix** = set `allowExternalResources` in the WebUI server config (`config/config`), then restart — it's a server option, not code. **Hard caveat**: public sites (google) send their own `X-Frame-Options` / `frame-ancestors` → refuse embedding no matter what; only intranet/own sites without these headers embed (watch out for the self-signed cert and mixed-content). Internal (same-origin) tiles are never blocked. A webserver reverse-proxy (same origin + strip X-Frame-Options, with an anti-SSRF allow-list) remains a possible follow-up but won't make the big public sites work.
+- **Cross-realm CSSStyleSheet rejected**: create the stylesheet in the iframe's realm (`doc.defaultView.CSSStyleSheet`), never from the host document.
+- **Hide / read-only must traverse shadow roots**: `adoptInto` adopts the sheet recursively into every open shadow root (otherwise nested components keep their header/toolbar visible).
+- **Async render of routed pages**: use a bounded poll (`FRAME_POLL_MS`/`MAX`) after `@load`, not a single pass.
+- **Chromeless mode touches the shared bundle** (`webui-app-ix.ts` → `entry/wui.js`): any change to this flag requires a coherent app+SW rebuild and a **hard-refresh (Ctrl+F5) / service worker clear** on the client side after deployment, since `entry/wui.js` has changed.
+- **Edge auth**: an unauthenticated embedded iframe would show the login inside the tile, then `handleLogin` may redirect to `POST_LOGIN_HOME`, losing the deep-link. OK for the normal logged-in case.
+- **Repo lint rules** (same as machine-fleet-3d): CustomEvent names as string literals `^wui:[a-z]{3,}$` (so separate `emitEdit`/`emitRemove`, no variable event name); public `disconnectedCallback` before protected `updated` (member-ordering); avoid the `[...map.keys()]` spread (delete during Map iteration is safe); extract duplicated strings into consts (`KIND_FLEET`/`KIND_VNC`/`KIND_URL`).

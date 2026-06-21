@@ -1,41 +1,41 @@
-# Intégrer la page Mosaïque (`@visuelconcept/wui-mosaic`) — mode source, Tier 1
+# Integrate the Mosaic page (`@visuelconcept/wui-mosaic`) — source mode, Tier 1
 
-Page **standalone WinCC OA WebUI** : un **mur d'affichage** libre (drag/resize)
-qui embarque d'autres vues du dashboard en **iframes same-origin chromeless**.
-C'est un **Tier 1 frontend-only** (pas de module backend, pas de manager).
-Chaque mur est stocké dans un DP (`Mosaic_Board`) + une liste d'aperçu.
-Distribution **source auto-contenue** : le kit partagé est **vendorisé** sous
-`_vendor/` (pas de prérequis `@visuelconcept/wui-kit`), et la page est
-**compilée sur le workspace runtime de la cible** (bundle = bonne version).
+**Standalone WinCC OA WebUI page**: a free-form **display wall** (drag/resize)
+that embeds other dashboard views as **same-origin chromeless iframes**.
+This is a **Tier 1 frontend-only** page (no backend module, no manager).
+Each wall is stored in a DP (`Mosaic_Board`) + a preview list.
+**Self-contained source** distribution: the shared kit is **vendored** under
+`_vendor/` (no `@visuelconcept/wui-kit` prerequisite), and the page is
+**compiled against the target's runtime workspace** (bundle = correct version).
 
-## Pré-requis
-1. Un **workspace WebUI Runtime** (`@wincc-oa/webui-runtime`) — le `--workspace`.
-2. Aucun prérequis backend (page frontend-only). `module.json.frontend.npmDeps` est vide → l'installeur n'ajoute aucun package npm au workspace.
+## Prerequisites
+1. A **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) — the `--workspace`.
+2. No backend prerequisite (frontend-only page). `module.json.frontend.npmDeps` is empty → the installer adds no npm package to the workspace.
 
-## Installer (une commande)
+## Install (one command)
 ```bash
 node install.mjs --workspace <workspace-runtime> --project <racine-projet>
 ```
-Exemple (WebDemo2) :
+Example (WebDemo2):
 ```bash
 node install.mjs --workspace D:\WinCC_OA_Proj_321\WebDemo2\webui-workspace --project D:\WinCC_OA_Proj_321\WebDemo2
 ```
-L'installeur :
-1. copie la **source** (kit vendorisé sous `_vendor/`) → `<workspace>/…/standalone-pages/` ;
-2. insère les **entrées de menu** → `menuconfig.jsonc` du workspace (idempotent) ;
-3. lance **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
+The installer:
+1. copies the **source** (kit vendored under `_vendor/`) → `<workspace>/…/standalone-pages/`;
+2. inserts the **menu entries** → the workspace's `menuconfig.jsonc` (idempotent);
+3. runs **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
 
-## Après l'install (obligatoire)
-1. **Navigateur** : DevTools → Application → Storage → **`Clear site data`**, recharger (**connecté**).
-   ⚠️ Le SW cache `menuconfig.json` → **`Ctrl+Shift+R` ne suffit pas** ; seul `Clear site data` le purge.
+## After install (mandatory)
+1. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).
+   ⚠️ The SW caches `menuconfig.json` → **`Ctrl+Shift+R` is not enough**; only `Clear site data` purges it.
 
-Pas de webserver à recompiler ni de manager à démarrer (page frontend-only).
+No webserver to recompile and no manager to start (frontend-only page).
 
-## Vérifier
-1. Connecté → l'entrée **« Mosaïque »** apparaît dans le menu, `/mosaic` charge la liste des murs.
-2. Créer un mur (crée un DP `Mosaic_Board`), ajouter des tuiles → les vues embarquées s'affichent en iframes same-origin chromeless.
+## Verify
+1. Logged in → the **"Mosaic"** entry appears in the menu, `/mosaic` loads the list of walls.
+2. Create a wall (creates a `Mosaic_Board` DP), add tiles → the embedded views display as same-origin chromeless iframes.
 
-## Notes / sécurité
-- Page **frontend-only** : aucune route `/api/*`, aucun manager — rien à durcir côté backend.
-- Les iframes sont **same-origin** uniquement (vues du même dashboard, chromeless) : pas d'URL externe arbitraire embarquée.
-- Rien ne stocke de secret côté page : les murs ne contiennent que des références aux vues internes (DP `Mosaic_Board`).
+## Notes / security
+- **Frontend-only** page: no `/api/*` route, no manager — nothing to harden on the backend side.
+- The iframes are **same-origin** only (views of the same dashboard, chromeless): no arbitrary external URL embedded.
+- Nothing stores a secret on the page side: walls only contain references to internal views (DP `Mosaic_Board`).

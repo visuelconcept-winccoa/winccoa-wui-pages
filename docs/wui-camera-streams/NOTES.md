@@ -1,25 +1,25 @@
-# wui-camera-streams — notes métier & architecture
+# wui-camera-streams — business & architecture notes
 
-Page WebUI autonome **Flux caméras (RTSP)** (`/camera-streams`, entry `wui-camera-streams`, classe `WuiCameraStreams`, préfixe de sous-composants `cs-`). Tier **3** (frontend + module backend `/api/rtsp` + manager dédié `rtspProxy`). Modelée sur la page **remote-vnc** (même structure store / table / dialog / viewer / io).
+Standalone WebUI page **Flux caméras (RTSP)** (`/camera-streams`, entry `wui-camera-streams`, class `WuiCameraStreams`, sub-component prefix `cs-`). Tier **3** (frontend + backend module `/api/rtsp` + dedicated manager `rtspProxy`). Modeled on the **remote-vnc** page (same store / table / dialog / viewer / io structure).
 
-## Domaine / objet
+## Domain / purpose
 
-Gérer un catalogue de caméras IP **RTSP** et visualiser un flux **directement dans le navigateur** via le lecteur **JSMpeg** embarqué.
+Manage a catalog of **RTSP** IP cameras and view a stream **directly in the browser** via the embedded **JSMpeg** player.
 
-Le point clé métier : **un navigateur ne sait pas lire du RTSP** (contrairement au VNC, qui est du RFB bout-à-bout sur un simple tunnel TCP). Il faut donc un **transcodage côté serveur**. La solution retenue : un manager JS dédié qui s'appuie sur la lib npm `rtsp-relay` + `ffmpeg`, et un client **JSMpeg** (flux MPEG1-TS).
+The key business point: **a browser cannot read RTSP** (unlike VNC, which is end-to-end RFB over a simple TCP tunnel). A **server-side transcode** is therefore required. The chosen solution: a dedicated JS manager built on the npm lib `rtsp-relay` + `ffmpeg`, and a **JSMpeg** client (MPEG1-TS stream).
 
-Deux entrées de menu : la liste, et une entrée masquée `/camera-streams/:streamid` (attribut `streamid`). Icône menuconfig `video-camera`, permission `connected`.
+Two menu entries: the list, and a hidden entry `/camera-streams/:streamid` (attribute `streamid`). menuconfig icon `video-camera`, permission `connected`.
 
-## Modèle de données (DPs)
+## Data model (DPs)
 
-- **Type DP** `RtspCamera_Stream` (Struct : `name` + `json`), préfixe d'instances `RtspCamera_`. Une caméra = un DP (`RtspCamera_<id>.json`). Création/lecture via l'API REST PARA, avec un repli **DEMO** hors-ligne (`DEMO_STREAMS`).
-- **Modèle `CameraStream`** : `name`, `group`, `description`, `url`, `username`, `password`, `transport` (`'tcp'` | `'udp'`), `audio`, `maxWidth`, `frameRate`, `videoBitrate`, `autoReconnect`, `reconnectDelaySec`, `favorite`, `lastViewedAt`.
-- Le store est une copie exacte du `ConnectionStore` de remote-vnc.
-- **Les identifiants (username/password) sont stockés en clair dans le DP** (avertissement affiché dans le dialog). Ils ne sont jamais exposés au navigateur : c'est le manager qui les injecte dans l'URL RTSP côté serveur.
+- **DP type** `RtspCamera_Stream` (Struct: `name` + `json`), instance prefix `RtspCamera_`. One camera = one DP (`RtspCamera_<id>.json`). Creation/reading via the PARA REST API, with an offline **DEMO** fallback (`DEMO_STREAMS`).
+- **`CameraStream` model**: `name`, `group`, `description`, `url`, `username`, `password`, `transport` (`'tcp'` | `'udp'`), `audio`, `maxWidth`, `frameRate`, `videoBitrate`, `autoReconnect`, `reconnectDelaySec`, `favorite`, `lastViewedAt`.
+- The store is an exact copy of the remote-vnc `ConnectionStore`.
+- **Credentials (username/password) are stored in clear text in the DP** (warning shown in the dialog). They are never exposed to the browser: the manager injects them into the RTSP URL server-side.
 
-## Architecture 3 niveaux, MÊME ORIGINE
+## 3-tier architecture, SAME ORIGIN
 
-Tout passe par le webserver du dashboard pour éliminer le problème de **mixed-content** HTTPS (pas de port/certificat supplémentaire, héritage du TLS + auth du dashboard) :
+Everything goes through the dashboard webserver to eliminate the HTTPS **mixed-content** problem (no extra port/certificate, inherits the dashboard's TLS + auth):
 
 ```
 Navigateur (JSMpeg)
@@ -30,38 +30,38 @@ Navigateur (JSMpeg)
   → source RTSP
 ```
 
-- Le manager **possède l'allow-list** (résolution `id → URL RTSP` à partir du DP) : pas de SSRF, le client n'envoie qu'un `id`.
-- Le manager **bind 127.0.0.1 uniquement** : injoignable depuis le réseau, accessible seulement par le webserver.
-- URL côté frontend : `streamWsUrl()` construit l'URL même-origine `${ws|wss}://${location.host}/api/rtsp/ws?id=`. `streamHost()` extrait l'hôte de l'URL par regex.
+- The manager **owns the allow-list** (resolves `id → RTSP URL` from the DP): no SSRF, the client only sends an `id`.
+- The manager **binds 127.0.0.1 only**: unreachable from the network, accessible only by the webserver.
+- Frontend-side URL: `streamWsUrl()` builds the same-origin URL `${ws|wss}://${location.host}/api/rtsp/ws?id=`. `streamHost()` extracts the host from the URL by regex.
 
-## Algorithmes / mécanismes clés
+## Key algorithms / mechanisms
 
-- **Un seul pull RTSP, diffusé à N clients** : `rtsp-relay` indexe les flux entrants **par URL** → un seul ffmpeg par URL, **compté par référence** (démarrage paresseux au 1er client, `SIGTERM` au dernier). C'est ce qui réalise « une seule connexion RTSP éclatée vers N clients » et « démarrage du flux au premier consommateur ». Vérifié E2E : 2 clients → toujours 1 seul ffmpeg.
-- **Mapping options → flags ffmpeg** (`buildFlags`) : `-r` (frameRate), `-vf scale='min(w,iw)':-2` (maxWidth), `-b:v` (videoBitrate), audio `mp2` ou `-an`. Injection des identifiants dans l'URL par regex (`withCredentials`).
-- **Compteur de clients connectés en direct** : le relais du webserver étant le point d'entrée même-origine de chaque viewer, il compte là (`Map<id,count>`, incrément après validation d'URL dans `startRelay`, décrément dans le `close` uWS, garde `counted`). Exposé via `GET /api/rtsp/clients` → `{ "<id>": <n> }`. La page le sonde toutes les 4 s et l'affiche dans une colonne « Clients » (point vert pulsant + compte si >0). Dégrade à « 0 » si l'endpoint répond 404.
-- **Voyant de joignabilité (« État »)** : le manager exécute une **sonde ffmpeg cyclique** indépendante des clients (`-rtsp_transport <t> -i <url> -t 1 -an -f null -`, kill 8 s, cycle 25 s, concurrence 6) sur **toutes** les caméras (`dpNames('*','RtspCamera_Stream')`). Mesure la vraie joignabilité du flux, pas juste le port. Résultat dans `statusById`, exposé par `GET /api/rtsp/status` (manager) ; le webserver le relaie. La page le replie dans le même rafraîchissement 4 s ; `cs-stream-table` affiche une LED « État » (🟢/🔴/⚪ + tooltip).
-- **Machine à états du viewer** (`cs-viewer`) : `new JSMpeg.Player(streamWsUrl(c), {...})` ; états idle/connecting/connected/reconnecting/disconnected/error pilotés par un **timer de vivacité sur les frames décodées** (JSMpeg n'a pas d'événement « connect » natif) + un timeout de connexion. Barre d'outils : retour / plein écran / stop / relancer.
+- **A single RTSP pull, broadcast to N clients**: `rtsp-relay` indexes incoming streams **by URL** → a single ffmpeg per URL, **reference-counted** (lazy start on the 1st client, `SIGTERM` on the last). This is what realizes "a single RTSP connection fanned out to N clients" and "stream start on the first consumer". Verified E2E: 2 clients → still a single ffmpeg.
+- **Options → ffmpeg flags mapping** (`buildFlags`): `-r` (frameRate), `-vf scale='min(w,iw)':-2` (maxWidth), `-b:v` (videoBitrate), audio `mp2` or `-an`. Credentials injected into the URL by regex (`withCredentials`).
+- **Live connected-client counter**: since the webserver relay is the same-origin entry point for each viewer, it counts there (`Map<id,count>`, increment after URL validation in `startRelay`, decrement in the uWS `close`, `counted` guard). Exposed via `GET /api/rtsp/clients` → `{ "<id>": <n> }`. The page polls it every 4 s and shows it in a "Clients" column (pulsing green dot + count if >0). Degrades to "0" if the endpoint replies 404.
+- **Reachability indicator ("State")**: the manager runs a **cyclic ffmpeg probe** independent of clients (`-rtsp_transport <t> -i <url> -t 1 -an -f null -`, kill 8 s, cycle 25 s, concurrency 6) on **all** cameras (`dpNames('*','RtspCamera_Stream')`). Measures the real reachability of the stream, not just the port. Result in `statusById`, exposed by `GET /api/rtsp/status` (manager); the webserver relays it. The page folds it into the same 4 s refresh; `cs-stream-table` shows a "State" LED (🟢/🔴/⚪ + tooltip).
+- **Viewer state machine** (`cs-viewer`): `new JSMpeg.Player(streamWsUrl(c), {...})`; idle/connecting/connected/reconnecting/disconnected/error states driven by a **liveness timer on decoded frames** (JSMpeg has no native "connect" event) + a connection timeout. Toolbar: back / fullscreen / stop / restart.
 
 ## Backend / managers
 
-**Manager `rtspProxy`** (`manager/rtspProxy/`, pmon `node | always`) :
-- A son **propre `package.json` + `node_modules` local** : `express`, `express-ws`, **`rtsp-relay@1.9.0`** (qui embarque **`ffmpeg-static`** → ffmpeg.exe, **aucun ffmpeg système requis**). `winccoa-manager` est résolu via le `NODE_PATH` de WinCC OA (pas de copie locale).
+**Manager `rtspProxy`** (`manager/rtspProxy/`, pmon `node | always`):
+- Has its **own `package.json` + local `node_modules`**: `express`, `express-ws`, **`rtsp-relay@1.9.0`** (which bundles **`ffmpeg-static`** → ffmpeg.exe, **no system ffmpeg required**). `winccoa-manager` is resolved via WinCC OA's `NODE_PATH` (no local copy).
 - `require('rtsp-relay')(app)` → `proxy({url,transport,additionalFlags})(ws)`.
-- Lit `RtspCamera_<id>.json`, injecte les creds, mappe les options vers les flags ffmpeg.
-- Variables d'env : `RTSP_PROXY_PORT` (9999), `RTSP_PROXY_HOST` (127.0.0.1).
+- Reads `RtspCamera_<id>.json`, injects the creds, maps the options to ffmpeg flags.
+- Env variables: `RTSP_PROXY_PORT` (9999), `RTSP_PROXY_HOST` (127.0.0.1).
 
-**Module backend `/api/rtsp`** (hébergé par `@visuelconcept/wui-webserver`, TS, uWS) :
-- Relais **`rtspRelay.ts`** : `registerRtspRelay(app)` → `app.uwsApp.ws('/api/rtsp/ws', behavior)`. Comme `vncRelay.ts` de remote-vnc mais en **ws↔ws** (et non ws↔TCP) : ouvre un client `ws` amont vers le manager, pipe dans les deux sens, gère la backpressure (pause de `_socket` amont selon `getBufferedAmount` uWS). Nécessite la dép `ws`.
-- `rtspController.ts` : construit l'URL `127.0.0.1:9999` (garde regex sur l'`id`), `health`, compteur de clients (`incrClient`/`decrClient`/`getClientCounts`), `fetchManagerStatus` (proxie `GET /status` du manager via `http.get`).
-- `rtspRoute.ts` : `GET /health`, `GET /api/rtsp/clients`, `GET /api/rtsp/status`.
+**Backend module `/api/rtsp`** (hosted by `@visuelconcept/wui-webserver`, TS, uWS):
+- Relay **`rtspRelay.ts`**: `registerRtspRelay(app)` → `app.uwsApp.ws('/api/rtsp/ws', behavior)`. Like remote-vnc's `vncRelay.ts` but **ws↔ws** (not ws↔TCP): opens an upstream `ws` client to the manager, pipes both ways, handles backpressure (pauses the upstream `_socket` based on uWS `getBufferedAmount`). Requires the `ws` dep.
+- `rtspController.ts`: builds the `127.0.0.1:9999` URL (regex guard on the `id`), `health`, client counter (`incrClient`/`decrClient`/`getClientCounts`), `fetchManagerStatus` (proxies the manager's `GET /status` via `http.get`).
+- `rtspRoute.ts`: `GET /health`, `GET /api/rtsp/clients`, `GET /api/rtsp/status`.
 
-## Pièges / à savoir
+## Pitfalls / things to know
 
-- **Ne PAS passer `-rw_timeout` avant `-i`** pour une entrée RTSP → ffmpeg « Error opening input files: Option not found ». S'appuyer sur le timeout de kill du process à la place.
-- **Quirk JSMpeg + rtsp-relay** : rtsp-relay envoie un en-tête `jsmp` de 8 octets avant le mpegts ; les JSMpeg modernes le sautent. Un `ETIMEDOUT` transitoire sur une 1ère connexion peut survenir sous cycles de test rapides (ffmpeg résiduel) — l'auto-reconnexion du viewer couvre ça.
-- **Player JSMpeg** : `@cycjimmy/jsmpeg-player` v6 ne fournit pas de types → décl. ambiante `jsmpeg.d.ts` (export par défaut `JSMpeg` avec `.Player` / `.VideoElement`).
-- **Sonde keyframe** : avec un GOP de 50 à 25 fps (keyframe toutes les 2 s), un test ffmpeg `-t 1` montre 0 frame ; utiliser `-t 3`.
-- **Limite connue** : si le manager garde la ws ouverte après l'arrêt de ffmpeg (perte de source), le viewer reste bloqué en « reconnecting » sans fermeture WS → pas de reconnexion JSMpeg. Piste : que le manager ferme la ws client à la sortie de ffmpeg.
-- **Vérif liveness sous Windows/Git Bash** : `tasklist` renvoie par intermittence des comptes de process à 0 erronés — utiliser `netstat -ano | grep LISTENING` et les logs comme source de vérité.
-- **ACL** : les routes `/api/rtsp/*` sont actuellement en `fullAccess` comme les autres ponts (à resserrer).
-- **Source de test locale** : MediaMTX (`bluenviron/mediamtx`) en RTSP-seul (`rtspTransports:[tcp]`, `:8554`, `paths: { all_others: }`, `user: any`) + publication d'une mire via le ffmpeg embarqué (`testsrc2 ... -c:v libx264 -tune zerolatency -g 50 -f rtsp`). Le flux public BigBuckBunny de streamlock est **mort** (ffmpeg lit 0 octet).
+- **Do NOT pass `-rw_timeout` before `-i`** for an RTSP input → ffmpeg "Error opening input files: Option not found". Rely on the process kill timeout instead.
+- **JSMpeg + rtsp-relay quirk**: rtsp-relay sends an 8-byte `jsmp` header before the mpegts; modern JSMpeg skips it. A transient `ETIMEDOUT` on a 1st connection can occur under fast test cycles (residual ffmpeg) — the viewer's auto-reconnect covers it.
+- **JSMpeg player**: `@cycjimmy/jsmpeg-player` v6 ships no types → ambient decl. `jsmpeg.d.ts` (default export `JSMpeg` with `.Player` / `.VideoElement`).
+- **Keyframe probe**: with a GOP of 50 at 25 fps (keyframe every 2 s), an ffmpeg `-t 1` test shows 0 frames; use `-t 3`.
+- **Known limitation**: if the manager keeps the ws open after ffmpeg stops (source loss), the viewer stays stuck in "reconnecting" with no WS close → no JSMpeg reconnection. Lead: have the manager close the client ws when ffmpeg exits.
+- **Liveness check under Windows/Git Bash**: `tasklist` intermittently returns bogus process counts of 0 — use `netstat -ano | grep LISTENING` and the logs as the source of truth.
+- **ACL**: the `/api/rtsp/*` routes are currently `fullAccess` like the other bridges (to be tightened).
+- **Local test source**: MediaMTX (`bluenviron/mediamtx`) in RTSP-only mode (`rtspTransports:[tcp]`, `:8554`, `paths: { all_others: }`, `user: any`) + publishing a test pattern via the embedded ffmpeg (`testsrc2 ... -c:v libx264 -tune zerolatency -g 50 -f rtsp`). The public streamlock BigBuckBunny stream is **dead** (ffmpeg reads 0 bytes).

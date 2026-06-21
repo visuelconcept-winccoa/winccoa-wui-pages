@@ -1,93 +1,93 @@
-# wui-report-builder — notes métier & architecture
+# wui-report-builder — business & architecture notes
 
-Version générique et configurable de la page thermal-reports (TTD), dont elle reprend les
-mécanismes (persistance 1-DP, lecture d'archives côté client, impression). Tier 1 : pas de
-backend ni de manager dédié (cf. `module.json`). Dép. npm : `@siemens/ix-echarts`.
-Préfixe des sous-composants : `rb-`.
+Generic, configurable version of the thermal-reports (TTD) page, whose mechanisms it
+reuses (1-DP persistence, client-side archive reading, printing). Tier 1: no
+dedicated backend or manager (see `module.json`). npm dep: `@siemens/ix-echarts`.
+Sub-component prefix: `rb-`.
 
-## Domaine / objet
+## Domain / object
 
-Construire des rapports configurables à partir de **modèles** (templates) paramétrables, puis
-remplir des **rapports** (instances) avec un workflow de **signatures multi-niveaux** verrouillé
-par checklist.
+Build configurable reports from parameterizable **templates**, then
+fill in **reports** (instances) with a **multi-level signature** workflow locked
+by a checklist.
 
-**Deux pages routées indépendantes** (séparées volontairement, voir Pièges) :
-- **Reports** — entrée `report-builder.ts`, élément `wui-report-builder`, classe `WuiReportBuilder`.
-  Routes `/report-builder` (liste) + `/report-builder/:reportid` (détail). **Chaque rapport a sa
-  propre URL** : `@property({attribute:'reportid'}) reportId` pilote `selectedReport()` ; ouvrir un
-  rapport émet `RouterEvent('/report-builder/<id>')`, retour = `RouterEvent('/report-builder')`,
-  création → navigation vers le nouvel id (même pattern routé que la page remote-vnc / `connectionid`).
-  Lit les modèles en lecture seule pour la boîte de création.
-- **Templates** — entrée `report-templates.ts`, élément `wui-report-templates`, classe
-  `WuiReportTemplates`. Route `/report-templates`. Liste + modale `rb-template-editor` (édition gated
-  par `canPublish`).
-- Menu : deux entrées (Reports `/report-builder` icône `document` ; Report Templates
-  `/report-templates` icône `list`) + route cachée `/report-builder/:reportid`. Liens croisés entre
-  les deux pages via boutons `RouterEvent` en barre d'outils.
+**Two independent routed pages** (deliberately separated, see Pitfalls):
+- **Reports** — entry `report-builder.ts`, element `wui-report-builder`, class `WuiReportBuilder`.
+  Routes `/report-builder` (list) + `/report-builder/:reportid` (detail). **Each report has its
+  own URL**: `@property({attribute:'reportid'}) reportId` drives `selectedReport()`; opening a
+  report emits `RouterEvent('/report-builder/<id>')`, back = `RouterEvent('/report-builder')`,
+  creation → navigation to the new id (same routed pattern as the remote-vnc / `connectionid`
+  page). Reads templates read-only for the creation dialog.
+- **Templates** — entry `report-templates.ts`, element `wui-report-templates`, class
+  `WuiReportTemplates`. Route `/report-templates`. List + `rb-template-editor` modal (editing gated
+  by `canPublish`).
+- Menu: two entries (Reports `/report-builder` icon `document`; Report Templates
+  `/report-templates` icon `list`) + hidden route `/report-builder/:reportid`. Cross-links between
+  the two pages via `RouterEvent` toolbar buttons.
 
-**Genres de sections** (`TemplateSection.kind`, union discriminée) :
-- `text` — texte libre.
-- `comment` — commentaire.
-- `fields` — couples clé/valeur (`FieldDef`) avec min/max numérique optionnel → `fieldConform`
-  renvoie une puce OK / Hors-tolérance.
-- `table` — colonnes configurables (`ColumnDef`), lignes saisies par l'opérateur.
-- `dataset` — `DatasetDef = dp + ops[]` ; bouton **Actualiser** lit les archives sur `report.period`
-  et fige les agrégations ; graphe ligne echarts optionnel `rb-dataset-chart` (autonome, expose
-  `getImageDataUrl()` pour l'impression).
-- `checklist` — items ; les items `required` conditionnent la signature.
+**Section kinds** (`TemplateSection.kind`, discriminated union):
+- `text` — free text.
+- `comment` — comment.
+- `fields` — key/value pairs (`FieldDef`) with optional numeric min/max → `fieldConform`
+  returns an OK / Out-of-tolerance chip.
+- `table` — configurable columns (`ColumnDef`), rows entered by the operator.
+- `dataset` — `DatasetDef = dp + ops[]`; the **Actualiser** button reads the archives over `report.period`
+  and freezes the aggregations; optional echarts line chart `rb-dataset-chart` (self-contained, exposes
+  `getImageDataUrl()` for printing).
+- `checklist` — items; `required` items gate the signature.
 
-## Modèle de données (DPs)
+## Data model (DPs)
 
-**Deux entités persistées**, chacune 1 DP (Struct `name` + `json`, PARA-REST + fallback offline —
-mécanisme identique à thermal-reports).
+**Two persisted entities**, each 1 DP (Struct `name` + `json`, PARA-REST + offline fallback —
+mechanism identical to thermal-reports).
 
-- **`ReportTemplate`** — type DP `ReportBuilder_Template`, préfixe `ReportBuilder_Template_`.
-  Réutilisable : `sections: TemplateSection[]` + `workflow: WorkflowState[]`.
-- **`Report`** — type DP `ReportBuilder_Report`, préfixe `ReportBuilder_Report_`. Une instance.
-  **Fige (snapshot)** les `sections` + `workflow` du modèle à la création (`instantiateReport`), si
-  bien que les éditions ultérieures du modèle n'altèrent jamais un rapport signé. Contient
+- **`ReportTemplate`** — DP type `ReportBuilder_Template`, prefix `ReportBuilder_Template_`.
+  Reusable: `sections: TemplateSection[]` + `workflow: WorkflowState[]`.
+- **`Report`** — DP type `ReportBuilder_Report`, prefix `ReportBuilder_Report_`. An instance.
+  **Snapshots** the template's `sections` + `workflow` at creation (`instantiateReport`), so that
+  later edits to the template never alter a signed report. Contains
   `data: Record<sectionId, SectionData>`, `currentStateId`, `signatures: SignatureRecord[]`, `period`.
 
-Stockage générique : `data/dp-json-store.ts` = base `DpJsonStore<T extends {id;dp}>` ;
-`template-store.ts` / `report-store.ts` = sous-classes fines ; `io.ts` = import/export JSON ± CSV.
+Generic storage: `data/dp-json-store.ts` = base `DpJsonStore<T extends {id;dp}>`;
+`template-store.ts` / `report-store.ts` = thin subclasses; `io.ts` = JSON ± CSV import/export.
 
-## Algorithmes / formules clés
+## Key algorithms / formulas
 
-- **Agrégation dataset** (`engine.ts > computeDataset`) : `readSeries` lit l'archive via
-  `dpGetPeriod(... ':_original.._value')` sur la `period` du rapport, puis agrège par boucle :
-  `avg` / `min` / `max` / `sum` / `last` / `count` / `stddev`. **Côté client**, depuis les archives
-  (comme TTD) — aucune agrégation serveur.
-- **Conformité champ** : `fieldConform(value, min, max)` → OK / Hors-tolérance.
-- **Workflow + signatures multi-niveaux** (le cœur de la demande) : `WorkflowState[]` ordonné ;
-  chaque état non final définit un niveau de signature via
+- **Dataset aggregation** (`engine.ts > computeDataset`): `readSeries` reads the archive via
+  `dpGetPeriod(... ':_original.._value')` over the report's `period`, then aggregates in a loop:
+  `avg` / `min` / `max` / `sum` / `last` / `count` / `stddev`. **Client-side**, from the archives
+  (like TTD) — no server-side aggregation.
+- **Field conformity**: `fieldConform(value, min, max)` → OK / Out-of-tolerance.
+- **Multi-level workflow + signatures** (the core of the requirement): ordered `WorkflowState[]`;
+  each non-final state defines a signature level via
   `advance: SignOff {toStateId, actionLabel, roleLabel, level, requirePermission, requireChecklist}`
-  → nombre de niveaux arbitraire. Workflow par défaut :
+  → arbitrary number of levels. Default workflow:
   Brouillon →[L1 Opérateur]→ Vérifié →[L2 Responsable, `requireChecklist`]→ Approuvé, + Rejeté.
-  Helpers : `currentState` / `isLocked` / `checklistComplete` / `canAdvance` / `applySignature` /
-  `applyReject`. `canAdvance` est gated par `canPublish` (+ checklist) ; `applySignature` enregistre
-  **l'utilisateur connecté** (`WuiUserService.name`/`id`) + horodatage ISO + commentaire (via
-  `rb-signature-dialog`) puis avance. **État final ⇒ `isLocked` ⇒ rapport en lecture seule.**
+  Helpers: `currentState` / `isLocked` / `checklistComplete` / `canAdvance` / `applySignature` /
+  `applyReject`. `canAdvance` is gated by `canPublish` (+ checklist); `applySignature` records
+  **the logged-in user** (`WuiUserService.name`/`id`) + ISO timestamp + comment (via
+  `rb-signature-dialog`) then advances. **Final state ⇒ `isLocked` ⇒ read-only report.**
 
-## Pièges / à savoir
+## Pitfalls / good to know
 
-- **Deux composants séparés, pas un toggle.** L'ancienne page unique avec un toggle segmenté
-  Rapports|Modèles partageait un seul état `deleting`, ce qui produisait un parasite
-  « supprimer le modèle undefined » au changement de vue. La séparation en deux composants ayant
-  chacun leur `deletingId: string | null` a corrigé le bug.
-- **Actions de ligne révélées au survol.** Les icônes par ligne (edit/duplicate/trash) vivent dans
-  `.actions-col` masquée par défaut (`opacity:0; pointer-events:none`) et rendue visible/cliquable
-  uniquement sur `tr:hover` / `:focus-within` (`table-styles.ts`). Sans ça, un clic sur la partie
-  droite d'une ligne (pour l'ouvrir) pouvait tomber sur la corbeille toujours visible et déclencher
-  une suppression accidentelle. Désormais ces clics retombent sur « ouvrir ».
-- **Snapshot à la création.** Un rapport fige `sections` + `workflow` du modèle ; ne jamais supposer
-  qu'un rapport reflète l'état courant du modèle.
-- **Utilisateur / permission** résolus depuis `WuiUserService` (`.name` / `.id` / `.canPublish`,
-  abonnement `user$`) — même mécanisme que ai-assistant / permissions fleet. L'édition des modèles et
-  l'avancement du workflow sont gated par `canPublish`.
-- **Impression** (`print.ts`) : HTML par genre + bloc signatures + PNG des graphes ; réutilise le
-  correctif `PRINT_SCRIPT` de TTD (imprimer **après** décodage des images).
-- **`mf-dp-input` réutilisé** depuis machine-fleet-3d pour la saisie du DP de dataset (pattern
-  `move()` / patch-par-index dans `rb-template-editor`).
-- **Pas (encore) fait** : i18n des libellés FR ; agrégation planifiée côté serveur ; PDF / email ;
-  signature électronique cryptographique (les signatures = nom + horodatage + permission, sans preuve
-  cryptographique).
+- **Two separate components, not a toggle.** The former single page with a segmented
+  Reports|Templates toggle shared a single `deleting` state, which produced a spurious
+  "delete template undefined" on view switch. Splitting into two components, each with
+  its own `deletingId: string | null`, fixed the bug.
+- **Row actions revealed on hover.** The per-row icons (edit/duplicate/trash) live in
+  `.actions-col`, hidden by default (`opacity:0; pointer-events:none`) and made visible/clickable
+  only on `tr:hover` / `:focus-within` (`table-styles.ts`). Without this, a click on the right part
+  of a row (to open it) could land on the always-visible trash and trigger an accidental
+  deletion. Now those clicks fall through to "open".
+- **Snapshot at creation.** A report freezes the template's `sections` + `workflow`; never assume
+  a report reflects the template's current state.
+- **User / permission** resolved from `WuiUserService` (`.name` / `.id` / `.canPublish`,
+  `user$` subscription) — same mechanism as ai-assistant / fleet permissions. Template editing and
+  workflow advancement are gated by `canPublish`.
+- **Printing** (`print.ts`): HTML per kind + signatures block + chart PNGs; reuses TTD's
+  `PRINT_SCRIPT` fix (print **after** images have decoded).
+- **`mf-dp-input` reused** from machine-fleet-3d for dataset DP entry (`move()` /
+  patch-by-index pattern in `rb-template-editor`).
+- **Not (yet) done**: i18n of the FR labels; scheduled server-side aggregation; PDF / email;
+  cryptographic electronic signature (signatures = name + timestamp + permission, with no
+  cryptographic proof).

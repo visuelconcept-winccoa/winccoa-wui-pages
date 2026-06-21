@@ -1,27 +1,27 @@
-# wui-remote-vnc — notes métier & architecture
+# wui-remote-vnc — business & architecture notes
 
-Page WebUI autonome **Connexions VNC distantes** (`/remote-vnc`, entry `wui-remote-vnc`, classe `WuiRemoteVnc`, préfixe des sous-composants `rv-`). Module **Tier 3** : frontend + module backend `/api/vnc` + manager `vncProxy`.
+Standalone WebUI page **Connexions VNC distantes** (`/remote-vnc`, entry `wui-remote-vnc`, class `WuiRemoteVnc`, sub-component prefix `rv-`). **Tier 3** module: frontend + backend module `/api/vnc` + manager `vncProxy`.
 
-## Domaine / objet
+## Domain / purpose
 
-Gérer un **catalogue de points d'accès VNC** et ouvrir une session VNC **directement dans le navigateur** grâce au client **noVNC** embarqué. Choix de conception retenus : noVNC in-browser + 1 DP par connexion + mot de passe stocké + statut « dernière connexion » (pas de lien flotte, pas de groupes/recherche au départ).
+Manage a **catalog of VNC access points** and open a VNC session **directly in the browser** thanks to the embedded **noVNC** client. Design choices made: in-browser noVNC + 1 DP per connection + stored password + "last connection" status (no fleet link, no groups/search to start with).
 
-Navigation **maître/détail pilotée par le routeur shell** (même principe que `/fleet-3d/:atelier`) :
-- `/remote-vnc` = la **liste** (table : étoile favori, endpoint, mode, dernière connexion, colonne LED « État » ; actions connecter/éditer/supprimer).
-- `/remote-vnc/:connectionid` = le **visualiseur** `rv-viewer` (noVNC) de cette connexion — route deep-linkable par connexion, marquée `hidden:true` dans le menu (les deux routes pointent sur `wui-remote-vnc`).
+**Master/detail navigation driven by the shell router** (same principle as `/fleet-3d/:atelier`):
+- `/remote-vnc` = the **list** (table: favorite star, endpoint, mode, last connection, "State" LED column; connect/edit/delete actions).
+- `/remote-vnc/:connectionid` = the `rv-viewer` (noVNC) **viewer** for that connection — per-connection deep-linkable route, marked `hidden:true` in the menu (both routes point to `wui-remote-vnc`).
 
-Le paramètre arrive via l'attribut `connectionid` → `@property({attribute:'connectionid'}) connectionId` ; `selectedConnection()` se déduit de `connectionId` + `connections` (pas d'état « id sélectionné » interne). Connecter → `dispatchEvent(new RouterEvent('/remote-vnc/<id>'))` ; retour / suppression de la courante → `RouterEvent('/remote-vnc')`. L'ouverture (clic ou deep-link) horodate `lastConnectedAt` côté client via le store.
+The parameter arrives via the `connectionid` attribute → `@property({attribute:'connectionid'}) connectionId`; `selectedConnection()` is derived from `connectionId` + `connections` (no internal "selected id" state). Connect → `dispatchEvent(new RouterEvent('/remote-vnc/<id>'))`; back / deletion of the current one → `RouterEvent('/remote-vnc')`. Opening (click or deep-link) timestamps `lastConnectedAt` client-side via the store.
 
-## Modèle de données (DPs)
+## Data model (DPs)
 
-- **1 DP par connexion**, type `RemoteVnc_Connection` (Struct : `name` + `json`). Nom de DP `RemoteVnc_<id>` sur `System1`.
-- Pattern de store identique à AssetStore (asset-lifecycle / thermal-reports) : auto-création via PARA REST + fallback hors-ligne amorcé avec `DEMO_CONNECTIONS`.
-- Modèle `VncConnection` (`types.ts`) : `name`/`host`/`port`/`password`/`description`/`group`/`viewOnly`/`shared`/`favorite`/`lastConnectedAt`, plus les paramètres de timeout/reconnexion : `connectTimeoutSec`/`autoReconnect`/`reconnectDelaySec`/`maxReconnectAttempts` (défauts **15 s / true / 5 s / 3** ; `maxReconnectAttempts:0` = illimité). `blankConnection()` fournit les valeurs par défaut.
-- **Import / export** (`data/io.ts`) : enveloppe commune `{kind:'remote-vnc-connections',version,connections}` pour le catalogue complet et pour une connexion seule. `parseConnections` accepte un tableau nu, l'enveloppe ou un objet connexion unique ; l'import fusionne par `id` (mise à jour si existant, sinon création). `io.normalize` complète les défauts des anciens enregistrements.
+- **1 DP per connection**, type `RemoteVnc_Connection` (Struct: `name` + `json`). DP name `RemoteVnc_<id>` on `System1`.
+- Store pattern identical to AssetStore (asset-lifecycle / thermal-reports): auto-creation via PARA REST + offline fallback seeded with `DEMO_CONNECTIONS`.
+- `VncConnection` model (`types.ts`): `name`/`host`/`port`/`password`/`description`/`group`/`viewOnly`/`shared`/`favorite`/`lastConnectedAt`, plus the timeout/reconnect parameters: `connectTimeoutSec`/`autoReconnect`/`reconnectDelaySec`/`maxReconnectAttempts` (defaults **15 s / true / 5 s / 3**; `maxReconnectAttempts:0` = unlimited). `blankConnection()` supplies the default values.
+- **Import / export** (`data/io.ts`): common envelope `{kind:'remote-vnc-connections',version,connections}` for both the full catalog and a single connection. `parseConnections` accepts a bare array, the envelope, or a single connection object; import merges by `id` (update if existing, otherwise create). `io.normalize` fills in the defaults of old records.
 
-## Architecture 3-tier (relais binaire brut)
+## 3-tier architecture (raw binary relay)
 
-Chaîne de bout en bout :
+End-to-end chain:
 ```
 noVNC RFB (navigateur)
   → WebSocket wss://<dashboard>/api/vnc/ws?id=<connId>   (même origine)
@@ -29,39 +29,39 @@ noVNC RFB (navigateur)
   → résout id → host:port via le manager VncProxy (vRPC)
   → socket TCP vers le serveur VNC, octets relayés dans les deux sens
 ```
-Le protocole **RFB et l'auth VNC sont de bout en bout** : le relais n'est qu'un tuyau d'octets, et le **mot de passe est envoyé côté client par noVNC** (lu depuis le DP). Garder la résolution `id → host:port` côté serveur fait que le navigateur ne peut atteindre que des connexions **connues** (pas de proxy ouvert / SSRF).
+The **RFB protocol and VNC auth are end-to-end**: the relay is just a byte pipe, and the **password is sent client-side by noVNC** (read from the DP). Keeping the `id → host:port` resolution server-side means the browser can only reach **known** connections (no open proxy / SSRF).
 
 ## Backend / manager (Tier 3)
 
-**Manager `vncProxy`** (`manager/vncProxy`, pmon `node | always`, idx 19 dans WebDemo1) — service vRPC **`VncProxy`** basé sur `winccoa-manager` Vrpc (`ServiceBase` + `registerFunction`, `ServiceContainer.startAllServices`, même moule que le manager productInfo). Deux méthodes :
-- **`Resolve(id)`** → JSON `{ok,host,port,name}` : valide `id` (`^[A-Za-z0-9_-]{1,64}$`), lit `System1:RemoteVnc_<id>.json`, renvoie host/port (port 1..65535).
-- **`Status()`** → JSON `{id:{reachable,checkedAt,detail}}` : expose le cache du **test de joignabilité TCP cyclique** (voir ci-dessous).
+**Manager `vncProxy`** (`manager/vncProxy`, pmon `node | always`, idx 19 in WebDemo1) — vRPC service **`VncProxy`** based on `winccoa-manager` Vrpc (`ServiceBase` + `registerFunction`, `ServiceContainer.startAllServices`, same mold as the productInfo manager). Two methods:
+- **`Resolve(id)`** → JSON `{ok,host,port,name}`: validates `id` (`^[A-Za-z0-9_-]{1,64}$`), reads `System1:RemoteVnc_<id>.json`, returns host/port (port 1..65535).
+- **`Status()`** → JSON `{id:{reachable,checkedAt,detail}}`: exposes the cache of the **cyclic TCP reachability test** (see below).
 
-**Test de joignabilité** (dans le manager, indépendant des sessions ouvertes) : `net.connect host:port` (timeout 4 s, cycle 25 s, concurrence 8) sur **toutes** les connexions énumérées par `winccoa.dpNames('*','RemoteVnc_Connection')`. Répond seulement à « le socket configuré répond-il ? » — **pas de handshake RFB**. Résultat caché dans `statusById`.
+**Reachability test** (in the manager, independent of open sessions): `net.connect host:port` (timeout 4 s, cycle 25 s, concurrency 8) on **all** connections enumerated by `winccoa.dpNames('*','RemoteVnc_Connection')`. Only answers "does the configured socket respond?" — **no RFB handshake**. Result cached in `statusById`.
 
-**Module webserver `/api/vnc`** (module backend `remote-vnc`, hébergé par le webserver client, idx 13 dans WebDemo1) :
-- `vncController` : `resolveVncTarget(id)` (stub vRPC vers `VncProxy.Resolve`, stub caché recréé en cas d'erreur) + `fetchVncStatus()` (vers `Status()`) + diagnostics `health`/`resolve`.
-- `vncRoute` : `GET /health`, `GET /resolve?id=`, `GET /status`.
-- **`vncRelay` = le websockify** : `registerVncRelay(app)` appelle `app.uwsApp.ws('/api/vnc/ws', behavior)`. UltimateExpress (sur uWebSockets.js) expose l'app uWS brute via **`app.uwsApp`** → WS binaire natif uWS, même port/TLS, **aucune dépendance `ws` npm**. Cycle : `upgrade` stocke `{id}` en userData ; `open` résout + `net.connect` + vide les octets client mis en file ; `message` **copie** l'ArrayBuffer (`Buffer.from(new Uint8Array(message))` — le message uWS n'est valide que pendant le callback) puis `tcp.write` ; `data` TCP → `ws.send(buf,true)` avec gestion du backpressure (`getBufferedAmount` > 8 Mo → `sock.pause()`, reprise sur `drain`) ; `close`/erreurs démontent tout. **`registerVncRelay` doit être appelé avant `listen`** (dans `defineRoutes()`).
+**Webserver module `/api/vnc`** (`remote-vnc` backend module, hosted by the customer webserver, idx 13 in WebDemo1):
+- `vncController`: `resolveVncTarget(id)` (vRPC stub to `VncProxy.Resolve`, hidden stub recreated on error) + `fetchVncStatus()` (to `Status()`) + `health`/`resolve` diagnostics.
+- `vncRoute`: `GET /health`, `GET /resolve?id=`, `GET /status`.
+- **`vncRelay` = the websockify**: `registerVncRelay(app)` calls `app.uwsApp.ws('/api/vnc/ws', behavior)`. UltimateExpress (on uWebSockets.js) exposes the raw uWS app via **`app.uwsApp`** → native uWS binary WS, same port/TLS, **no `ws` npm dependency**. Cycle: `upgrade` stores `{id}` in userData; `open` resolves + `net.connect` + flushes queued client bytes; `message` **copies** the ArrayBuffer (`Buffer.from(new Uint8Array(message))` — the uWS message is only valid during the callback) then `tcp.write`; TCP `data` → `ws.send(buf,true)` with backpressure handling (`getBufferedAmount` > 8 MB → `sock.pause()`, resume on `drain`); `close`/errors tear everything down. **`registerVncRelay` must be called before `listen`** (in `defineRoutes()`).
 
 ## Frontend
 
-`novnc.d.ts` = module ambiant `declare module '@novnc/novnc/core/rfb.js'` (noVNC ne livre pas de types). **rv-viewer** construit l'URL ws (`wss:`/`ws:` selon `location.protocol`), `new RFB(div, url, {shared, credentials:{password}})`, gère `viewOnly`/`scaleViewport` et les événements connect/disconnect/credentialsrequired/securityfailure ; barre d'outils = Ctrl+Alt+Suppr / plein écran / déconnecter / reconnecter.
+`novnc.d.ts` = ambient module `declare module '@novnc/novnc/core/rfb.js'` (noVNC ships no types). **rv-viewer** builds the ws URL (`wss:`/`ws:` depending on `location.protocol`), `new RFB(div, url, {shared, credentials:{password}})`, handles `viewOnly`/`scaleViewport` and the connect/disconnect/credentialsrequired/securityfailure events; toolbar = Ctrl+Alt+Delete / fullscreen / disconnect / reconnect.
 
-**Machine à états reconnexion** : un `connectTimer` avorte une connexion bloquée → `scheduleReconnect` ; événement `disconnect` avec `clean===false` → reconnexion, `clean===true` / manuel / échec d'auth → arrêt. **Garde anti-rfb-périmé** : comparer le `rfb` capturé dans l'événement à `this.rfb` (le démontage met `this.rfb` à null d'abord pour ignorer son propre `disconnect`). La barre montre « Déconnecter » pendant l'activité (connecting/connected/reconnecting), sinon « Reconnecter » ; le bandeau affiche le compte à rebours de retry.
+**Reconnect state machine**: a `connectTimer` aborts a stuck connection → `scheduleReconnect`; `disconnect` event with `clean===false` → reconnect, `clean===true` / manual / auth failure → stop. **Stale-rfb guard**: compare the `rfb` captured in the event against `this.rfb` (teardown sets `this.rfb` to null first to ignore its own `disconnect`). The bar shows "Disconnect" during activity (connecting/connected/reconnecting), otherwise "Reconnect"; the banner shows the retry countdown.
 
-**Polling État** : `WuiRemoteVnc` interroge `GET /api/vnc/status` toutes les 5 s (connected/disconnectedCallback, `refreshStatus`) ; `rv-connection-table` affiche une colonne LED « État » (🟢 ok / 🔴 ko / ⚪ inconnu + tooltip raison + heure).
+**State polling**: `WuiRemoteVnc` queries `GET /api/vnc/status` every 5 s (connected/disconnectedCallback, `refreshStatus`); `rv-connection-table` shows a "State" LED column (🟢 ok / 🔴 ko / ⚪ unknown + reason tooltip + time).
 
-## Pièges / à savoir
+## Pitfalls / things to know
 
-- **noVNC épinglé à 1.4.0** (npmDep `@novnc/novnc: 1.4.0`, bundlé dans `remote-vnc.js`) — NE PAS monter en 1.7.0 :
-  1. 1.7.0 utilise un **top-level await** (détection WebCodecs H264) que la cible vite des pages (es2020 / chrome87) rejette → build cassé ; 1.4.0 n'a pas de TLA.
-  2. **Chemin d'import dépendant de la version** : 1.7.0 a `exports:"./core/rfb.js"` (bare `@novnc/novnc`) ; **1.4.0 n'a NI `exports` NI `main`** → importer le fichier directement `@novnc/novnc/core/rfb.js` (le nom du module dans le `.d.ts` doit correspondre).
-- **Le message uWS n'est valide que pendant le callback** : toujours copier (`Buffer.from(new Uint8Array(message))`) avant tout usage asynchrone (`tcp.write`).
-- **Backpressure obligatoire** sur le relais : surveiller `ws.getBufferedAmount()`, pauser le socket TCP au-delà du seuil (8 Mo), reprendre sur `drain` — sinon explosion mémoire sur les sessions denses.
-- **`registerVncRelay` avant `listen`** ; l'interaction uWS (`app.uwsApp.ws`) vs UltimateExpress (`any('/*')`) est un risque à vérifier en priorité lors d'une nouvelle intégration.
-- **Sécurité** : `/api/vnc/*` est non authentifié (`fullAccess`) comme les autres bridges, et l'upgrade WS contourne de toute façon l'ACL Express → à durcir avant production. Le **mot de passe est stocké en clair** dans le DP (et **exporté en clair** dans les fichiers d'import/export) — averti dans le dialogue.
-- Le test de joignabilité ne valide **que le socket TCP**, pas l'auth ni le handshake RFB : un 🟢 ne garantit pas qu'une session aboutira.
-- Helpers de paramètres résolus = **méthodes privées, pas des getters** (typescript-eslint member-ordering interdit les accesseurs privés après des méthodes publiques).
-- Le `willUpdate` du dialogue rétro-remplit les défauts des anciens enregistrements via `{...blankConnection(), ...clone}`.
-- Après modification du manager : redémarrer `vncProxy`. Pour activer ou rafraîchir `/api/vnc/*` (relais, `/health`, `/status`) : le webserver client doit être redémarré (le module backend ne sert ses routes qu'après redémarrage).
+- **noVNC pinned to 1.4.0** (npmDep `@novnc/novnc: 1.4.0`, bundled in `remote-vnc.js`) — DO NOT bump to 1.7.0:
+  1. 1.7.0 uses a **top-level await** (WebCodecs H264 detection) that the pages vite target (es2020 / chrome87) rejects → broken build; 1.4.0 has no TLA.
+  2. **Version-dependent import path**: 1.7.0 has `exports:"./core/rfb.js"` (bare `@novnc/novnc`); **1.4.0 has NEITHER `exports` NOR `main`** → import the file directly `@novnc/novnc/core/rfb.js` (the module name in the `.d.ts` must match).
+- **The uWS message is only valid during the callback**: always copy (`Buffer.from(new Uint8Array(message))`) before any async use (`tcp.write`).
+- **Backpressure mandatory** on the relay: watch `ws.getBufferedAmount()`, pause the TCP socket above the threshold (8 MB), resume on `drain` — otherwise memory blowup on dense sessions.
+- **`registerVncRelay` before `listen`**; the uWS interaction (`app.uwsApp.ws`) vs UltimateExpress (`any('/*')`) is a risk to verify first when doing a new integration.
+- **Security**: `/api/vnc/*` is unauthenticated (`fullAccess`) like the other bridges, and the WS upgrade bypasses the Express ACL anyway → to be hardened before production. The **password is stored in clear text** in the DP (and **exported in clear text** in import/export files) — warned in the dialog.
+- The reachability test validates **only the TCP socket**, not the auth or the RFB handshake: a 🟢 does not guarantee a session will succeed.
+- Resolved-parameter helpers = **private methods, not getters** (typescript-eslint member-ordering forbids private accessors after public methods).
+- The dialog's `willUpdate` back-fills the defaults of old records via `{...blankConnection(), ...clone}`.
+- After modifying the manager: restart `vncProxy`. To activate or refresh `/api/vnc/*` (relay, `/health`, `/status`): the customer webserver must be restarted (the backend module only serves its routes after a restart).

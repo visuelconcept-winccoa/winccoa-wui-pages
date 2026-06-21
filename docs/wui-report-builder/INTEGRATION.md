@@ -1,45 +1,44 @@
-# Intégrer la page Report Builder (`@visuelconcept/wui-report-builder`) — mode source, Tier 1
+# Integrate the Report Builder page (`@visuelconcept/wui-report-builder`) — source mode, Tier 1
 
-Page **standalone WinCC OA WebUI** pour construire des **rapports à partir de
-modèles** : pages `/report-builder` (liste) + `/report-builder/:reportid` (détail).
-On remplit les données, on **recalcule les agrégations de datasets depuis les
-archives**, on signe selon un **workflow multi-niveaux conditionné par une
-checklist**, puis on verrouille + imprime. Chaque rapport est stocké dans un DP
-`ReportBuilder_Report`. C'est un **Tier 1** : **frontend uniquement** (pas de
-module backend, pas de manager). Distribution **source auto-contenue** : le kit
-partagé est **vendorisé** sous `report-builder/_vendor/` (pas de prérequis
-`@visuelconcept/wui-kit`), et la page est **compilée sur le workspace runtime de
-la cible** (bundle = bonne version).
+**Standalone WinCC OA WebUI page** for building **reports from templates**:
+pages `/report-builder` (list) + `/report-builder/:reportid` (detail).
+You fill in the data, **recompute dataset aggregations from the archives**,
+sign according to a **multi-level workflow gated by a checklist**, then lock +
+print. Each report is stored in a `ReportBuilder_Report` DP. This is a **Tier 1**:
+**frontend only** (no backend module, no manager). **Self-contained source**
+distribution: the shared kit is **vendored** under `report-builder/_vendor/` (no
+`@visuelconcept/wui-kit` prerequisite), and the page is **compiled against the
+target's runtime workspace** (bundle = correct version).
 
-## Pré-requis
-1. Un **workspace WebUI Runtime** (`@wincc-oa/webui-runtime`) — le `--workspace`.
-2. Aucun backend ni manager requis. La dépendance npm `@siemens/ix-echarts` (`~3.0.0`)
-   déclarée dans `module.json` est **installée automatiquement dans le workspace**
-   par l'installeur (pour que `build:pages` la bundle).
+## Prerequisites
+1. A **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) — the `--workspace`.
+2. No backend or manager required. The npm dependency `@siemens/ix-echarts` (`~3.0.0`)
+   declared in `module.json` is **installed automatically into the workspace**
+   by the installer (so that `build:pages` bundles it).
 
-## Installer (une commande)
+## Install (one command)
 ```bash
 node install.mjs --workspace <workspace-runtime> --project <racine-projet>
 ```
-Exemple (WebDemo2) :
+Example (WebDemo2):
 ```bash
 node install.mjs --workspace D:\WinCC_OA_Proj_321\WebDemo2\webui-workspace --project D:\WinCC_OA_Proj_321\WebDemo2
 ```
-L'installeur :
-1. copie la **source** (kit vendorisé) → `<workspace>/…/standalone-pages/` ;
-2. insère les **2 entrées de menu** → `menuconfig.jsonc` du workspace (idempotent par `routeId`) ;
-3. installe **`@siemens/ix-echarts`** dans le workspace (pour que `build:pages` le bundle) ;
-4. lance **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
+The installer:
+1. copies the **source** (vendored kit) → `<workspace>/…/standalone-pages/`;
+2. inserts the **2 menu entries** → the workspace's `menuconfig.jsonc` (idempotent by `routeId`);
+3. installs **`@siemens/ix-echarts`** into the workspace (so that `build:pages` bundles it);
+4. runs **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
 
-## Après l'install (obligatoire)
-1. **Navigateur** : DevTools → Application → Storage → **`Clear site data`**, recharger (**connecté**).
-   ⚠️ Le SW cache `menuconfig.json` → **`Ctrl+Shift+R` ne suffit pas** ; seul `Clear site data` le purge.
+## After install (mandatory)
+1. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).
+   ⚠️ The SW caches `menuconfig.json` → **`Ctrl+Shift+R` is not enough**; only `Clear site data` purges it.
 
-## Vérifier
-1. Connecté → l'entrée **« Rapports »** apparaît dans le menu, `/report-builder` charge la liste des rapports.
-2. Ouvrir/créer un rapport → `/report-builder/:reportid` charge le détail (remplissage, recalcul des datasets depuis les archives, signature multi-niveaux, verrouillage, impression).
+## Verify
+1. Logged in → the **"Rapports"** entry appears in the menu, `/report-builder` loads the report list.
+2. Open/create a report → `/report-builder/:reportid` loads the detail (data entry, dataset recompute from the archives, multi-level signature, lock, print).
 
-## Notes / sécurité
-- Page **frontend pure** : pas de route `/api/*` ni de manager exposé → pas de surface réseau ajoutée par ce module.
-- Les rapports sont persistés en DP **`ReportBuilder_Report`** (un DP par rapport) ; les droits de lecture/écriture suivent donc les ACL WinCC OA habituelles sur ces DP.
-- La signature multi-niveaux est conditionnée par la checklist côté UI ; le verrouillage final fige le rapport. À renforcer côté projet si une garantie serveur est requise (pas de manager de validation côté backend dans ce module).
+## Notes / security
+- **Pure frontend** page: no `/api/*` route nor exposed manager → no network surface added by this module.
+- Reports are persisted in **`ReportBuilder_Report`** DPs (one DP per report); read/write rights therefore follow the usual WinCC OA ACLs on these DPs.
+- The multi-level signature is gated by the checklist on the UI side; the final lock freezes the report. To be hardened on the project side if a server-side guarantee is required (no backend validation manager in this module).

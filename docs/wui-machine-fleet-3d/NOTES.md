@@ -1,214 +1,214 @@
-# wui-machine-fleet-3d — notes métier & architecture
+# wui-machine-fleet-3d — business & architecture notes
 
-Page WebUI standalone **Machine Fleet 3D** : jumeau numérique 3D (Three.js) d'un parc
-multi-machines / multi-ateliers, avec bulles d'état et de KPI par machine, catalogue de
-causes d'arrêt, tableau de bord machine contextualisé (Gantt + Pareto) et assistant IA.
+Standalone **Machine Fleet 3D** WebUI page: a 3D digital twin (Three.js) of a
+multi-machine / multi-workshop fleet, with per-machine status and KPI bubbles, a stop-cause
+catalog, a contextualized machine dashboard (Gantt + Pareto) and an AI assistant.
 
-Tier : **hub** (page centrale du parc, point d'entrée par défaut au login). `three`
-(`^0.169.0`) est une vraie dépendance npm bundlée dans la page (aucun CDN).
+Tier: **hub** (central fleet page, default entry point at login). `three`
+(`^0.169.0`) is a real npm dependency bundled into the page (no CDN).
 
-## Domaine / objet
+## Domain / object
 
-- **Shell routeur** :
-  - `/machine-fleet-3d` (`/fleet-3d`) = **overview** (`mf-atelier-overview`, grille de
-    cartes d'ateliers + mini-plan SVG).
-  - `/machine-fleet-3d/:atelier` = **vue 3D** d'un atelier (`mf-atelier-view`).
-  - Le param de route `:atelier` arrive en **attribut** `atelier` ; navigation via
-    `RouterEvent` (`@wincc-oa/wui-models/events/router-event.js`, accepte une string ;
-    event `bubbles`+`composed` donc il s'échappe du shadow DOM des overlays).
-- **Page d'accueil au login** : redirection `/` → `/fleet-3d` (atterrissage post-login forcé
-  sur la vue parc sauf deep-link explicite).
-- **Modèle machine** :
-  - **Familles de procédé** `MachineProcess` = `generic | usinage | soudage`
-    (`MachineDef.process?`). `resolveProcess(m)` = `process` explicite, sinon dérivé du
-    `type` (tour/fraiseuse/brocheuse/scie → `usinage`, sinon `generic`). La famille pilote
-    les paramètres domaine simulés et bindés.
-  - **Types de rendu** : machines « géométriques » (furnace, robot, tour, basculeur,
-    `portique-table` = portique + table rotative avec `tableDiameter`…), objets **GLB**
-    (`type:'glb'`, réf `glbUrl`) et **billboards** (`type:'billboard'`, réf `billboardUrl`,
-    plan texturé aligné écran).
-- **États** : mapping d'état par machine (`StateMapping`) avec couleurs configurables
-  (`StateMapping.colors`, `StateColorKey` = état | `disconnected`). Défauts :
-  warn=rouge `#ef4444`, stop=jaune `#f59e0b`, maint=bleu, disconnected=violet.
+- **Router shell**:
+  - `/machine-fleet-3d` (`/fleet-3d`) = **overview** (`mf-atelier-overview`, grid of
+    workshop cards + SVG mini-plan).
+  - `/machine-fleet-3d/:atelier` = **3D view** of a workshop (`mf-atelier-view`).
+  - The route param `:atelier` arrives as the `atelier` **attribute**; navigation via
+    `RouterEvent` (`@wincc-oa/wui-models/events/router-event.js`, accepts a string;
+    event is `bubbles`+`composed` so it escapes the shadow DOM of the overlays).
+- **Landing page at login**: redirect `/` → `/fleet-3d` (post-login landing forced
+  onto the fleet view unless there is an explicit deep-link).
+- **Machine model**:
+  - **Process families** `MachineProcess` = `generic | usinage | soudage`
+    (`MachineDef.process?`). `resolveProcess(m)` = explicit `process`, otherwise derived from
+    the `type` (tour/fraiseuse/brocheuse/scie → `usinage`, otherwise `generic`). The family drives
+    the simulated and bound domain parameters.
+  - **Render types**: "geometric" machines (furnace, robot, tour, basculeur,
+    `portique-table` = gantry + rotary table with `tableDiameter`…), **GLB** objects
+    (`type:'glb'`, ref `glbUrl`) and **billboards** (`type:'billboard'`, ref `billboardUrl`,
+    screen-aligned textured plane).
+- **States**: per-machine state mapping (`StateMapping`) with configurable colors
+  (`StateMapping.colors`, `StateColorKey` = state | `disconnected`). Defaults:
+  warn=red `#ef4444`, stop=yellow `#f59e0b`, maint=blue, disconnected=purple.
 
-## Modèle de données (DPs)
+## Data model (DPs)
 
-Provisioning/CRUD des DPs et types via l'**API REST PARA** du backend (voir Backend), car
-`OaRxJsApi` ne sait **que lire/écrire des valeurs** (pas créer DP/type). `FleetStore`
-(`data/fleet-store.ts`) centralise tout, avec **mode mémoire (offline)** seedé par
-`DEMO_ATELIER` si le backend/les droits manquent (bandeau d'avertissement).
+DP and type provisioning/CRUD via the backend's **PARA REST API** (see Backend), because
+`OaRxJsApi` can **only read/write values** (it cannot create DP/type). `FleetStore`
+(`data/fleet-store.ts`) centralizes everything, with an **in-memory (offline) mode** seeded by
+`DEMO_ATELIER` if the backend/rights are missing (warning banner).
 
-| Type DP | Forme | Contenu |
+| DP type | Shape | Content |
 |---|---|---|
-| `MachineFleet3D_Config` | Struct (`name` String, `json` String) | 1 atelier par DP ; `json` = l'`Atelier` sérialisé (machines, mappings, KPIs, display…). |
-| `MachineFleet3D_StopCauses` | 1 DP JSON | Catalogue de causes d'arrêt (tableau sérialisé). |
-| `MachineFleet3D_Glb` | Struct (`name` String, `data` String base64) | 1 objet 3D GLB importé. Réf `dp:<dpName>`. |
-| `MachineFleet3D_Billboard` | Struct (`name` String, `data` String base64) | 1 image billboard importée. Réf `dp:<dpName>`. |
-| `MachineFleet3D_Closures` | 1 DP JSON | Jours non travaillés / fermetures (consommés par kpiCalc). |
-| `MachineFleet3D_Kpi` | Voir kpiCalc | DP par KPI calculé (1 par machine×KPI). |
-| `MachineSim` (1 par machine) | Voir machineSim | DPs de simulation (état + cause + paramètres). |
-| `AI_Assistant_Config` | Struct String (`provider`, `model`, `token`, `mcpServers` JSON) | Config assistant IA (token stocké ici, jamais livré). |
+| `MachineFleet3D_Config` | Struct (`name` String, `json` String) | 1 workshop per DP; `json` = the serialized `Atelier` (machines, mappings, KPIs, display…). |
+| `MachineFleet3D_StopCauses` | 1 JSON DP | Stop-cause catalog (serialized array). |
+| `MachineFleet3D_Glb` | Struct (`name` String, `data` String base64) | 1 imported GLB 3D object. Ref `dp:<dpName>`. |
+| `MachineFleet3D_Billboard` | Struct (`name` String, `data` String base64) | 1 imported billboard image. Ref `dp:<dpName>`. |
+| `MachineFleet3D_Closures` | 1 JSON DP | Non-working days / closures (consumed by kpiCalc). |
+| `MachineFleet3D_Kpi` | See kpiCalc | One DP per computed KPI (1 per machine×KPI). |
+| `MachineSim` (1 per machine) | See machineSim | Simulation DPs (state + cause + parameters). |
+| `AI_Assistant_Config` | Struct String (`provider`, `model`, `token`, `mcpServers` JSON) | AI assistant config (token stored here, never shipped). |
 
-- **Persistance atelier** : sauvegarde **debouncée** (`wui:save`) depuis la vue 3D. Écritures
-  de valeurs DP via **REST `/api/para/dp/set`** (le `dpSet` WebSocket d'`OaRxJsApi` est en
-  lecture seule).
-- **Ressources graphiques** : API générique `listResources(kind)`,
+- **Workshop persistence**: **debounced** save (`wui:save`) from the 3D view. DP value
+  writes via **REST `/api/para/dp/set`** (the WebSocket `dpSet` of `OaRxJsApi` is
+  read-only).
+- **Graphic resources**: generic API `listResources(kind)`,
   `importResource(kind,name,dataUrl)`, `deleteResource(kind,ref)`, `readResourceDataUrl(ref)`
-  (`kind` = `glb | billboard`, modèle identique). Le scene-controller a un unique résolveur
-  (`setResourceResolver`) ; GLB → `GLTFLoader.parse(ArrayBuffer)` (jamais `.load()` sur un
-  `data:`), billboard → `applyBillboardTexture` (SVG **et** raster). **Fallback** : si un
-  `dp:` ne résout plus, l'objet est remplacé par un cabinet 3D (`swapToFallback`).
-- **Affichage unifié** : source de vérité unique `MachineDef.display?: DisplayEntry[]`
-  (`{ref, inBubble, inPopup}`, l'ordre = index). `ref` ∈ `state | stopCause | workOrder |
-  operation | param:<key> | kpi:<id>`. `resolveDisplaySlots(m)` construit le catalogue
-  ordonné ; les items absents de `display` sont auto-ajoutés (nouveaux params/KPI
-  apparaissent seuls). Les anciens toggles de visibilité dispersés ont été supprimés.
+  (`kind` = `glb | billboard`, identical model). The scene-controller has a single resolver
+  (`setResourceResolver`); GLB → `GLTFLoader.parse(ArrayBuffer)` (never `.load()` on a
+  `data:`), billboard → `applyBillboardTexture` (SVG **and** raster). **Fallback**: if a
+  `dp:` no longer resolves, the object is replaced by a 3D cabinet (`swapToFallback`).
+- **Unified display**: single source of truth `MachineDef.display?: DisplayEntry[]`
+  (`{ref, inBubble, inPopup}`, order = index). `ref` ∈ `state | stopCause | workOrder |
+  operation | param:<key> | kpi:<id>`. `resolveDisplaySlots(m)` builds the ordered
+  catalog; items missing from `display` are auto-added (new params/KPIs
+  appear on their own). The old scattered visibility toggles have been removed.
 
-## Algorithmes / formules clés
+## Key algorithms / formulas
 
-### KPI temps réel (manager kpiCalc) — TRS / MTBF / MTTR
-Calcul **côté serveur** sur fenêtre glissante, DPs archivés pour le trending, valeur
-poussée dans la bulle 3D. `KpiType = 'TRS'|'MTBF'|'MTTR'` (TRS en `%`, MTBF/MTTR en `min`).
+### Real-time KPI (kpiCalc manager) — TRS / MTBF / MTTR
+Computed **server-side** over a sliding window, DPs archived for trending, value
+pushed into the 3D bubble. `KpiType = 'TRS'|'MTBF'|'MTTR'` (TRS in `%`, MTBF/MTTR in `min`).
 
-- Requis = ouverture − arrêts planifiés.
-- **TRS** = (requis − non planifié) / requis × 100.
-- **MTBF/MTTR sur le temps NON PLANIFIÉ uniquement** (les arrêts planifiés comptent comme
-  temps de fonctionnement et ne réduisent PAS les métriques) :
-  - MTBF = (ouverture − non planifié) / N_pannes
-  - MTTR = non planifié / N_pannes
-  - une « panne » = un arrêt comportant du temps non planifié.
-- **Catégorisation temporelle** : honore les **fermetures** (`MachineFleet3D_Closures`,
-  soustraites de chaque intervalle) ET l'**affectation de cause** : le début sans cause d'un
-  arrêt est rétro-rempli vers la 1ʳᵉ cause affectée puis reporté (`partitionByCause` /
-  `causeBoundaries`). Tant qu'aucune cause n'est affectée le temps compte **non planifié** ;
-  une fois affectée, l'arrêt entier est reclassé planifié/non planifié depuis son début.
-  `classify(code)` : ''/null → non planifié, sinon `causeClass[code] || __default || unplanned` ;
-  seul `planned` est soustrait du requis.
+- Required = opening − planned stops.
+- **TRS** = (required − unplanned) / required × 100.
+- **MTBF/MTTR on UNPLANNED time only** (planned stops count as
+  operating time and do NOT reduce the metrics):
+  - MTBF = (opening − unplanned) / N_failures
+  - MTTR = unplanned / N_failures
+  - a "failure" = a stop that contains unplanned time.
+- **Temporal categorization**: honors **closures** (`MachineFleet3D_Closures`,
+  subtracted from each interval) AND the **cause assignment**: the start of a stop with no cause is
+  back-filled to the 1st assigned cause then carried forward (`partitionByCause` /
+  `causeBoundaries`). As long as no cause is assigned the time counts as **unplanned**;
+  once assigned, the whole stop is reclassified as planned/unplanned from its start.
+  `classify(code)`: ''/null → unplanned, otherwise `causeClass[code] || __default || unplanned`;
+  only `planned` is subtracted from required.
 
-### Causes d'arrêt (catalogue + fallback)
-- `StopCause` = `code` / `description` / `classification` / `isDefault?` (toggle « Défaut »
-  radio : une seule par défaut, `setDefault`). Persistance JSON intégrale → tout nouveau champ
-  persiste automatiquement.
-- `formatStopCause(catalog, code)` → `"code — description"` pour un code connu ; pour un code
-  **inconnu**, repli sur l'entrée `isDefault` (catalogue de démo : `{code:"NC",
-  description:"Non catégorisé / hors catalogue", isDefault:true}`), sinon le code brut. Utilisé
-  par la bulle, le popup machine et le moteur d'analyse d'arrêts.
+### Stop causes (catalog + fallback)
+- `StopCause` = `code` / `description` / `classification` / `isDefault?` ("Default" toggle,
+  radio: only one default, `setDefault`). Full JSON persistence → any new field
+  persists automatically.
+- `formatStopCause(catalog, code)` → `"code — description"` for a known code; for an
+  **unknown** code, falls back to the `isDefault` entry (demo catalog: `{code:"NC",
+  description:"Non catégorisé / hors catalogue", isDefault:true}`), otherwise the raw code. Used
+  by the bubble, the machine popup and the stop-analysis engine.
 
-### Tableau de bord machine contextualisé (intégré, sans echarts)
-- Overlay plein écran `mf-machine-dashboard` : Paramètres process · barre de période ·
-  Suivi alarmes (placeholder) · KPI = **Gantt état** + **Pareto arrêts non planifiés**
-  (SVG/DOM, pas d'echarts).
-- **Temps réel = `dpConnect`** (pas de polling) ; un changement du DP d'état recharge
-  (debouncé) l'historique archivé pour garder le Gantt live.
-- Gantt : segments depuis l'historique archivé du DP d'état (`resolveState` + `STATE_COLORS`),
-  chaque segment porte sa cause (via l'historique du DP cause + `causeAt` + `formatStopCause`)
-  et une bulle au survol.
-- Pareto : `analyseStopCauses` (mono-machine) → non planifié → tri par downtime/fréquence,
-  Top 5/10/Tous, métrique cumul/fréquence, classe planifié/non planifié, export CSV (`;`+BOM),
-  CSS d'impression. Bouton « Analyser » → ouvre `/fleet-stops` (nouvel onglet) avec le filtre
-  atelier+machine dans le **hash d'URL** (`#/fleet-stops?atelier=&machine=`).
-- Choix du dashboard : `MachineDef.dashboardMode?: 'default'|'oa'` (`resolveDashboardMode` :
-  explicite, sinon `oa` si `dashboardId` présent, sinon `default`). `mode=oa` →
-  `RouterEvent('/dashboard/<id>')`, sinon l'overlay intégré.
-- Liens custom : `MachineDef.dashboardLinks?` (`{label,icon,url}`, max 3) → boutons
-  supplémentaires dans le popup, ouverts en nouvel onglet (`noopener,noreferrer`).
+### Contextualized machine dashboard (built-in, no echarts)
+- Full-screen overlay `mf-machine-dashboard`: Process parameters · period bar ·
+  Alarm tracking (placeholder) · KPI = **state Gantt** + **unplanned-stop Pareto**
+  (SVG/DOM, no echarts).
+- **Real-time = `dpConnect`** (no polling); a change of the state DP reloads
+  (debounced) the archived history to keep the Gantt live.
+- Gantt: segments from the state DP's archived history (`resolveState` + `STATE_COLORS`),
+  each segment carries its cause (via the cause DP's history + `causeAt` + `formatStopCause`)
+  and a bubble on hover.
+- Pareto: `analyseStopCauses` (single-machine) → unplanned → sort by downtime/frequency,
+  Top 5/10/All, cumulative/frequency metric, planned/unplanned class, CSV export (`;`+BOM),
+  print CSS. "Analyze" button → opens `/fleet-stops` (new tab) with the
+  workshop+machine filter in the **URL hash** (`#/fleet-stops?atelier=&machine=`).
+- Dashboard choice: `MachineDef.dashboardMode?: 'default'|'oa'` (`resolveDashboardMode`:
+  explicit, otherwise `oa` if `dashboardId` is present, otherwise `default`). `mode=oa` →
+  `RouterEvent('/dashboard/<id>')`, otherwise the built-in overlay.
+- Custom links: `MachineDef.dashboardLinks?` (`{label,icon,url}`, max 3) → extra
+  buttons in the popup, opened in a new tab (`noopener,noreferrer`).
 
-### Layout des bulles 3D
-Callout à gouttières : `setBuildingBounds` pousse l'empreinte du bâtiment ;
-chaque frame `projectBuildingRect` projette les 8 coins → AABB écran, et `placeBubbles`
-repousse chaque bulle dans la gouttière gauche/droite **au-delà** du bâtiment (selon le côté
-de la machine), empilée verticalement, avec leader du dot vers le bord interne. Repli
-`placeBubblesAbove` si pas de bornes. KPI multiples empilés un par ligne.
+### 3D bubble layout
+Gutter callout: `setBuildingBounds` pushes the building footprint;
+each frame `projectBuildingRect` projects the 8 corners → screen AABB, and `placeBubbles`
+pushes each bubble into the left/right gutter **beyond** the building (depending on the side
+of the machine), stacked vertically, with a leader from the dot to the inner edge. Fallback
+`placeBubblesAbove` if there are no bounds. Multiple KPIs stacked one per row.
 
 ## Backend / manager
 
-Page **Tier hub** : backend module `backend/modules/machine-fleet-3d` + **4 managers**.
+**Tier hub** page: backend module `backend/modules/machine-fleet-3d` + **4 managers**.
 
-- **Module backend `/api/para`** (REST PARA) : seul moyen de **créer DP/type** et d'**écrire
-  des valeurs** (`POST /api/para/dptype/create`, `/api/para/dp/create`, `/api/para/dp/set`,
-  `DELETE /api/para/dp/:name?dpType=`). La route `/api/para/dp/set` doit accepter de gros
-  corps (objets GLB/billboard base64) : `json({limit:'8mb'})` — la limite par défaut ~100 Ko
-  casserait l'import. La lecture passe par `OaRxJsApi.dpGet/dpNames` et `dpConnect`.
-- **machineSim** (manager WCCOAjavascript, `always`) : simulateur de parc. Crée les DPs
-  `MachineSim`, fait l'**AUTO_MAP non destructif** (ne mappe que les machines sans `stateDp`,
-  n'écrase jamais une config utilisateur) et écrit état/cause/paramètres par intervalles.
-  - `cause` est une **String** (et non Int) pour émettre n'importe quel code catalogue ; il
-    **recharge le catalogue avant chaque tick d'état** ; `pickCause()` émet un code valide
-    ~90% du temps et un code **hors-catalogue (erroné)** ~10% (`ERRONEOUS_CAUSE_PROB`).
-  - `PARAM_SETS` par famille : generic `[cadence,temperature,vitesse,charge]`, usinage
-    `[programme,outil,broche,avance]`, soudage `[tension,intensite,vitesseSoudage]` ; **toute**
-    machine simule `ALL_PARAMS` (union) pour qu'un binding KPI résolve toujours. Discrets
-    (`programme`/`outil`) = String, analogiques = Float. `avance = broche × feedPerRev`.
-    `basculeur.angle` = triangle 0→90° en 30 s, sa KPI `vitesse` = vitesse angulaire °/s.
-- **kpiCalc** (manager, `always`) : crée le type `MachineFleet3D_Kpi` (`value` Float
-  **archivé** + Strings `kpiType,machineId,machineName,window,unit,updatedAt`) ; un DP par KPI
-  nommé `MachineFleet3D_Kpi_<sanitize(machineId)>_<sanitize(kpiId)>` (sanitize :
-  `[^A-Za-z0-9_]→_`). Archivage NGA par KPI piloté par `MachineKpi.archive`/`archiveGroup`
-  (`disableArchived` / `ensureArchived`). Relit config+fermetures+KPIs toutes les 60 s,
-  tick de base 15 s. Bulle 3D abonnée à `…_<kpiId>.value` via `DpTarget` kind `kpiCalc`.
-- **aiAssistant** (manager, `always`) : héberge le **service vRPC `AiAssistant`** (fonction
-  `Chat`). Architecture 3 tiers : WebUI `mf-ai-prompt` → `POST /api/ai/chat` (webserver,
-  même origine) → stub vRPC → service `AiAssistant` → provider via `fetch`. Le runtime WebUI
-  n'a aucun client MSA/vRPC, d'où le pont HTTP obligatoire. Providers raw fetch (Anthropic
-  `/v1/messages`, OpenAI/Mistral `/v1/chat/completions`, Gemini `:generateContent`) ;
-  **aucun paramètre de sampling** envoyé (opus-4-x renvoie 400 sur temperature/top_p) ;
-  `max_tokens` Anthropic requis (réglé à 8192). Boucle d'outils **MCP locale** : le manager est
-  lui-même le client MCP (`gatherMcpTools` + exécution locale via `mcp.callTool`), donc le
-  provider cloud n'atteint jamais le serveur MCP → `localhost` fonctionne.
-- **mcpServer** (manager, `always`) : serveur MCP WinCC OA (Streamable-HTTP) consommé par
-  aiAssistant (URL/token par défaut dans `mcpServers` de `AI_Assistant_Config`).
+- **Backend module `/api/para`** (REST PARA): the only way to **create DP/type** and to **write
+  values** (`POST /api/para/dptype/create`, `/api/para/dp/create`, `/api/para/dp/set`,
+  `DELETE /api/para/dp/:name?dpType=`). The `/api/para/dp/set` route must accept large
+  bodies (base64 GLB/billboard objects): `json({limit:'8mb'})` — the default limit ~100 KB
+  would break the import. Reading goes through `OaRxJsApi.dpGet/dpNames` and `dpConnect`.
+- **machineSim** (WCCOAjavascript manager, `always`): fleet simulator. Creates the
+  `MachineSim` DPs, does the **non-destructive AUTO_MAP** (only maps machines without `stateDp`,
+  never overwrites a user config) and writes state/cause/parameters at intervals.
+  - `cause` is a **String** (not Int) so any catalog code can be emitted; it
+    **reloads the catalog before each state tick**; `pickCause()` emits a valid code
+    ~90% of the time and an **out-of-catalog (erroneous) code** ~10% (`ERRONEOUS_CAUSE_PROB`).
+  - `PARAM_SETS` per family: generic `[cadence,temperature,vitesse,charge]`, usinage
+    `[programme,outil,broche,avance]`, soudage `[tension,intensite,vitesseSoudage]`; **every**
+    machine simulates `ALL_PARAMS` (union) so that a KPI binding always resolves. Discrete
+    (`programme`/`outil`) = String, analog = Float. `avance = broche × feedPerRev`.
+    `basculeur.angle` = triangle 0→90° in 30 s, its `vitesse` KPI = angular velocity °/s.
+- **kpiCalc** (manager, `always`): creates the `MachineFleet3D_Kpi` type (`value` Float
+  **archived** + Strings `kpiType,machineId,machineName,window,unit,updatedAt`); one DP per KPI
+  named `MachineFleet3D_Kpi_<sanitize(machineId)>_<sanitize(kpiId)>` (sanitize:
+  `[^A-Za-z0-9_]→_`). Per-KPI NGA archiving driven by `MachineKpi.archive`/`archiveGroup`
+  (`disableArchived` / `ensureArchived`). Re-reads config+closures+KPIs every 60 s,
+  base tick 15 s. 3D bubble subscribed to `…_<kpiId>.value` via `DpTarget` kind `kpiCalc`.
+- **aiAssistant** (manager, `always`): hosts the **vRPC service `AiAssistant`** (`Chat`
+  function). 3-tier architecture: WebUI `mf-ai-prompt` → `POST /api/ai/chat` (webserver,
+  same origin) → vRPC stub → `AiAssistant` service → provider via `fetch`. The WebUI runtime
+  has no MSA/vRPC client, hence the mandatory HTTP bridge. Raw fetch providers (Anthropic
+  `/v1/messages`, OpenAI/Mistral `/v1/chat/completions`, Gemini `:generateContent`);
+  **no sampling parameter** sent (opus-4-x returns 400 on temperature/top_p);
+  `max_tokens` required by Anthropic (set to 8192). **Local MCP** tool loop: the manager is
+  itself the MCP client (`gatherMcpTools` + local execution via `mcp.callTool`), so the
+  cloud provider never reaches the MCP server → `localhost` works.
+- **mcpServer** (manager, `always`): WinCC OA MCP server (Streamable-HTTP) consumed by
+  aiAssistant (default URL/token in the `mcpServers` of `AI_Assistant_Config`).
 
-**Sécurité** : les tokens des providers IA sont lus depuis `AI_Assistant_Config` — **aucun
-n'est livré**.
+**Security**: the AI provider tokens are read from `AI_Assistant_Config` — **none
+are shipped**.
 
-## Pièges / à savoir
+## Pitfalls / things to know
 
-- **OaRxJsApi (lecture/binding)** :
-  - `dpGet` renvoie la **valeur brute** (`unknown | unknown[]`), PAS `{ value: [] }` — ne pas
-    lire `.value[0]` aveuglément, extraire récursivement.
-  - Lister les DP d'un type via `WuiDpeService.listDatapoints(typeName)` (commande
-    `etm.model.type.listDps`), **pas** `dpNames('*', type)` (ne filtre pas comme attendu).
-  - `dpConnect(dps,true)` émet `{ dp, value }` mais les noms `dp` sont **normalisés serveur**
-    (préfixe `System1:`, suffixe `:_original.._value`, point final) → mapper les cibles par un
-    nom **normalisé** (`normDp`), sinon le lookup rate et l'état/KPI ne se met jamais à jour.
-  - `resolveState` : prévoir un fallback sur le 1ᵉʳ mapping si la machine n'a pas de
+- **OaRxJsApi (read/binding)**:
+  - `dpGet` returns the **raw value** (`unknown | unknown[]`), NOT `{ value: [] }` — do not
+    read `.value[0]` blindly, extract recursively.
+  - List a type's DPs via `WuiDpeService.listDatapoints(typeName)` (command
+    `etm.model.type.listDps`), **not** `dpNames('*', type)` (it does not filter as expected).
+  - `dpConnect(dps,true)` emits `{ dp, value }` but the `dp` names are **server-normalized**
+    (`System1:` prefix, `:_original.._value` suffix, trailing dot) → map the targets by a
+    **normalized** name (`normDp`), otherwise the lookup fails and the state/KPI never updates.
+  - `resolveState`: provide a fallback to the 1st mapping if the machine has no
     `stateMappingId`.
-  - `OaRxJsApi` ne crée pas de DP/type → passer par l'API PARA REST.
-- **Écriture** : `dpSet` WebSocket = lecture seule → toute écriture de valeur passe par
+  - `OaRxJsApi` does not create DP/type → go through the PARA REST API.
+- **Writing**: WebSocket `dpSet` = read-only → any value write goes through
   **REST `/api/para/dp/set`**.
-- **Permissions** : `data/permissions.ts` (`canEditFleet()`/`canEditFleet$()`) repose sur
-  `WuiUserService.canPublish` (résolu via tsyringe ; `@wincc-oa/wui-iam-data` externalisé donc
-  singleton runtime résolu ; `canPublish` est **async** → s'abonner à l'Observable). En
-  view-only : bouton modifier → œil, toutes les mutations (renommer/supprimer/déplacer/import/
-  save-view/GLB) masquées.
-- **Archivage** : sur ce projet le DPE `MachineSim.state` **est** archivé NGA mais `.cause`
-  **ne l'est PAS** (le `dpTypeChange` Int→String a probablement perdu sa config d'archive) →
-  pas d'historique de cause tant que l'archivage de `.cause` n'est pas réactivé.
-  `FleetStore.listArchiveGroups()` ne renvoie que les groupes `_NGA_Group` **actifs**
+- **Permissions**: `data/permissions.ts` (`canEditFleet()`/`canEditFleet$()`) relies on
+  `WuiUserService.canPublish` (resolved via tsyringe; `@wincc-oa/wui-iam-data` externalized so
+  the runtime singleton is resolved; `canPublish` is **async** → subscribe to the Observable). In
+  view-only: edit button → eye, all mutations (rename/delete/move/import/
+  save-view/GLB) hidden.
+- **Archiving**: on this project the `MachineSim.state` DPE **is** NGA-archived but `.cause`
+  **is NOT** (the `dpTypeChange` Int→String probably lost its archive config) →
+  no cause history until `.cause` archiving is re-enabled.
+  `FleetStore.listArchiveGroups()` only returns the **active** `_NGA_Group` groups
   (`.active === true`).
-- **Causes héritées « 0–5 »** : d'anciennes données de l'ère Int (codes 1–5 + ''→0) peuvent
-  rester ; le simulateur actuel n'émet plus de codes numériques fictifs (`causeCodes` part
-  **vide** → émet `''` si le catalogue ne charge pas ; les entrées `isDefault` sont **exclues**
-  de l'ensemble émettable — le défaut est un bucket de repli, pas une cause active).
-- **iX icônes dynamiques dans un bouton** : un `<ix-icon slot="icon" name=${dynamique}>`
-  **ne s'affiche pas** (les ix-icons déployés lisent `name` une seule fois). Utiliser
-  l'attribut/propriété **`icon=${x}`** sur `ix-button`/`ix-icon-button`. Les noms statiques
-  slottés (`name="ontology"`) fonctionnent. Noms d'icônes valides :
-  `node_modules/@siemens/ix-icons/dist/ix-icons/svg/` (nom inconnu → « rectangle barré »).
-  Liste d'icônes de liens sûres au déploiement : `DASHBOARD_LINK_ICONS`.
-- **iX shell** : composants enregistrés globalement par le shell → tags nus, ne pas
-  réimporter `@siemens/ix`.
-- **Lint strict (eslint)** : littéraux hex en `0xRR_GG_BB` ; ordre des membres de classe
-  (public < protected < private ; les arrow-function fields comptent comme private → en
-  dernier) ; noms de `CustomEvent` = littéraux string `^wui:[a-z]{3,}$` (pas de tiret) ;
-  éviter une méthode nommée `flat` (collision `no-magic-array-flat-depth`).
-  `no-magic-numbers` = warning seulement (OK pour le code 3D).
-- **Redémarrage managers** : après édition d'un manager (machineSim / kpiCalc / aiAssistant /
-  mcpServer) ou du backend webserver, **redémarrer le manager concerné** pour appliquer (mode
-  `always` → pmon le relance ; un `start-manager` manuel juste après un stop renvoie souvent
-  « START not possible » mais pmon le ramène en ~1 s). Aucun KPI n'est configuré par défaut →
-  kpiCalc tourne à vide tant qu'un KPI n'est pas ajouté dans le dialogue machine.
-- **Service worker** : le bundle de page a un nom stable → recharge forcée
-  (Ctrl+Shift+R / Ctrl+F5) souvent nécessaire après redéploiement. Un déploiement pages-seul
-  peut laisser le SW Siemens servir un snapshot périmé → échecs intermittents de résolution de
-  module/route (page blanche) ; correctif fiable = un build complet qui régénère le SW.
+- **Legacy "0–5" causes**: old data from the Int era (codes 1–5 + ''→0) may
+  remain; the current simulator no longer emits fictitious numeric codes (`causeCodes` starts
+  **empty** → emits `''` if the catalog does not load; `isDefault` entries are **excluded**
+  from the emittable set — the default is a fallback bucket, not an active cause).
+- **Dynamic iX icons in a button**: an `<ix-icon slot="icon" name=${dynamique}>`
+  **does not render** (the deployed ix-icons read `name` only once). Use
+  the **`icon=${x}`** attribute/property on `ix-button`/`ix-icon-button`. Static slotted
+  names (`name="ontology"`) work. Valid icon names:
+  `node_modules/@siemens/ix-icons/dist/ix-icons/svg/` (unknown name → "crossed-out rectangle").
+  Deployment-safe list of link icons: `DASHBOARD_LINK_ICONS`.
+- **iX shell**: components registered globally by the shell → bare tags, do not
+  re-import `@siemens/ix`.
+- **Strict lint (eslint)**: hex literals as `0xRR_GG_BB`; class member order
+  (public < protected < private; arrow-function fields count as private → last);
+  `CustomEvent` names = string literals `^wui:[a-z]{3,}$` (no hyphen); avoid
+  a method named `flat` (collision `no-magic-array-flat-depth`).
+  `no-magic-numbers` = warning only (OK for the 3D code).
+- **Manager restart**: after editing a manager (machineSim / kpiCalc / aiAssistant /
+  mcpServer) or the webserver backend, **restart the affected manager** to apply (mode
+  `always` → pmon relaunches it; a manual `start-manager` right after a stop often returns
+  "START not possible" but pmon brings it back in ~1 s). No KPI is configured by default →
+  kpiCalc runs idle until a KPI is added in the machine dialog.
+- **Service worker**: the page bundle has a stable name → a forced reload
+  (Ctrl+Shift+R / Ctrl+F5) is often needed after redeployment. A pages-only deployment
+  may leave the Siemens SW serving a stale snapshot → intermittent module/route resolution
+  failures (blank page); the reliable fix = a full build that regenerates the SW.

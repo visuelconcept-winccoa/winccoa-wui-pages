@@ -1,46 +1,46 @@
-# Intégrer la page Production Orders (`@visuelconcept/wui-production-orders`) — mode source, Tier 3
+# Integrate the Production Orders page (`@visuelconcept/wui-production-orders`) — source mode, Tier 3
 
-Page **standalone WinCC OA WebUI** pour gérer les **ordres de production (OF)**
-sur **`/production-orders`** : les OF sont stockés dans un **unique DP liste JSON**
-(`ProductionOrders_List`), avec CRUD + workflow de statut + un **Gantt echarts** et
-un lien vers la flotte. Les KPI du haut de page sont calculés **côté serveur** par le
-manager **`productionOrdersKpi`** (DP `ProductionOrders_Kpi`). C'est un **Tier 3**
-sans backend HTTP : frontend + un **manager Node**. Distribution **source
-auto-contenue** : le kit partagé / fleet-core est **vendorisé** sous `_vendor/`
-(pas de prérequis `@visuelconcept/wui-kit`), et la page est **compilée sur le
-workspace runtime de la cible** (bundle = bonne version).
+**Standalone WinCC OA WebUI** page to manage **production orders (OF)**
+on **`/production-orders`**: the orders are stored in a **single JSON list DP**
+(`ProductionOrders_List`), with CRUD + status workflow + an **echarts Gantt** and
+a link to the fleet. The KPIs at the top of the page are computed **server-side** by the
+**`productionOrdersKpi`** manager (DP `ProductionOrders_Kpi`). It is a **Tier 3** page
+with no HTTP backend: frontend + one **Node manager**. **Self-contained source**
+distribution: the shared kit / fleet-core is **vendored** under `_vendor/`
+(no `@visuelconcept/wui-kit` prerequisite), and the page is **compiled against the
+target's runtime workspace** (bundle = correct version).
 
-## Pré-requis
-1. Un **workspace WebUI Runtime** (`@wincc-oa/webui-runtime`) — le `--workspace`.
-2. Pas de `@visuelconcept/wui-webserver` requis : **aucun module backend** (pas de route `/api`).
-3. Les deps npm de `module.json` (`@siemens/ix-echarts`, `three`) sont **installées automatiquement** dans le workspace par l'installeur.
+## Prerequisites
+1. A **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) — the `--workspace`.
+2. No `@visuelconcept/wui-webserver` required: **no backend module** (no `/api` route).
+3. The npm deps from `module.json` (`@siemens/ix-echarts`, `three`) are **installed automatically** into the workspace by the installer.
 
-## Installer (une commande)
+## Install (one command)
 ```bash
 node install.mjs --workspace <workspace-runtime> --project <racine-projet> --register-pmon
 ```
-Exemple (WebDemo2) :
+Example (WebDemo2):
 ```bash
 node install.mjs --workspace D:\WinCC_OA_Proj_321\WebDemo2\webui-workspace --project D:\WinCC_OA_Proj_321\WebDemo2 --register-pmon
 ```
-L'installeur :
-1. copie la **source** (kit vendorisé) → `<workspace>/…/standalone-pages/` ;
-2. insère l'**entrée de menu** → `menuconfig.jsonc` du workspace (idempotent) ;
-3. installe **`@siemens/ix-echarts`** et **`three`** dans le workspace (pour que `build:pages` les bundle) ;
-4. déploie le **manager `productionOrdersKpi`** → `<projet>/javascript/productionOrdersKpi/` + `npm install` ; avec `--register-pmon`, ajoute la ligne à `config/progs` ;
-5. lance **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
+The installer:
+1. copies the **source** (vendored kit) → `<workspace>/…/standalone-pages/`;
+2. inserts the **menu entry** → the workspace's `menuconfig.jsonc` (idempotent);
+3. installs **`@siemens/ix-echarts`** and **`three`** into the workspace (so `build:pages` bundles them);
+4. deploys the **`productionOrdersKpi`** manager → `<projet>/javascript/productionOrdersKpi/` + `npm install`; with `--register-pmon`, adds the line to `config/progs`;
+5. runs **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
 
-## Après l'install (obligatoire)
-1. **Manager** : démarrer **`productionOrdersKpi`** dans la console WinCC OA (il `dpConnect` la liste des OF et recalcule le DP `ProductionOrders_Kpi`). Vérifier l'ordre/numéro du manager si pmon a été édité.
-2. **Navigateur** : DevTools → Application → Storage → **`Clear site data`**, recharger (**connecté**).
-   ⚠️ Le SW cache `menuconfig.json` → **`Ctrl+Shift+R` ne suffit pas** ; seul `Clear site data` le purge.
+## After install (mandatory)
+1. **Manager**: start **`productionOrdersKpi`** in the WinCC OA console (it `dpConnect`s the order list and recomputes the `ProductionOrders_Kpi` DP). Check the manager order/number if pmon was edited.
+2. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).
+   ⚠️ The SW caches `menuconfig.json` → **`Ctrl+Shift+R` is not enough**; only `Clear site data` purges it.
 
-## Vérifier
-1. Connecté → entrée **« Ordres de production »**, `/production-orders` charge la liste des OF.
-2. Créer / modifier un OF (persiste dans `ProductionOrders_List`), faire avancer le statut → le **Gantt** se met à jour.
-3. Manager `productionOrdersKpi` démarré → les **KPI du haut de page** (DP `ProductionOrders_Kpi`) se renseignent et se rafraîchissent.
+## Verify
+1. Logged in → **"Ordres de production"** entry, `/production-orders` loads the order list.
+2. Create / edit an order (persists in `ProductionOrders_List`), advance the status → the **Gantt** updates.
+3. With the `productionOrdersKpi` manager started → the **top-of-page KPIs** (DP `ProductionOrders_Kpi`) populate and refresh.
 
-## Notes / sécurité
-- Pas de module backend ni de route `/api` : aucune surface HTTP à durcir côté webserver pour cette page.
-- Le manager **`productionOrdersKpi`** a besoin de **`winccoa-manager`**, fourni par le runtime WinCC OA (pas dans le `package.json` du manager).
-- Le manager lit/écrit uniquement les DP `ProductionOrders_List` / `ProductionOrders_Kpi` du projet ; aucun secret ni token n'est embarqué.
+## Notes / security
+- No backend module and no `/api` route: no HTTP surface to harden on the webserver side for this page.
+- The **`productionOrdersKpi`** manager needs **`winccoa-manager`**, provided by the WinCC OA runtime (not in the manager's `package.json`).
+- The manager reads/writes only the project's `ProductionOrders_List` / `ProductionOrders_Kpi` DPs; no secret or token is embedded.

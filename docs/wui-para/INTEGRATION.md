@@ -1,40 +1,40 @@
-# Intégrer la page PARA (`@visuelconcept/wui-para`) — mode source
+# Integrate the PARA page (`@visuelconcept/wui-para`) — source mode
 
-Page **standalone WinCC OA WebUI** (arbre Type→DP→élément + édition/création/
-renommage/suppression). Distribuée en **source** : elle est **compilée sur le
-workspace runtime de la cible**, donc le bundle matche toujours la version du
-runtime (un bundle de page est couplé à la carte d'imports du shell — c'est le
-piège qu'on a rencontré : un `.js` pré-buildé d'une autre version ne va pas).
+**Standalone WinCC OA WebUI page** (Type→DP→element tree + edit/create/
+rename/delete). Distributed as **source**: it is **compiled against the target's
+runtime workspace**, so the bundle always matches the runtime version (a page
+bundle is coupled to the shell's import map — that's the pitfall we hit: a
+pre-built `.js` from another version won't work).
 
-## Pré-requis
-1. La cible a un **workspace WebUI Runtime** (`@wincc-oa/webui-runtime`) qui build son dashboard — c'est le `--workspace`. (cf. process officiel, `dist-packages/README.md`.)
-2. **`@visuelconcept/wui-webserver`** est installé dans le projet (fournit `/api/para` via l'auto-découverte de modules backend).
+## Prerequisites
+1. The target has a **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) that builds its dashboard — that's the `--workspace`. (cf. the official process, `dist-packages/README.md`.)
+2. **`@visuelconcept/wui-webserver`** is installed in the project (provides `/api/para` via backend module auto-discovery).
 
-## Installer (une commande)
+## Install (one command)
 ```bash
 node install.mjs --workspace <workspace-runtime> --project <racine-projet-winccoa>
 ```
-Exemple (cas WebDemo2) :
+Example (WebDemo2 case):
 ```bash
 node install.mjs --workspace D:\WinCC_OA_Proj_321\WebDemo2\webui-workspace --project D:\WinCC_OA_Proj_321\WebDemo2
 ```
-L'installeur :
-1. copie la **source** de la page → `<workspace>/libs/default-components/src/lib/standalone-pages/` ;
-2. insère l'entrée de menu → `<workspace>/apps/dashboard-wc/config/menuconfig.jsonc` (idempotent) ;
-3. copie le **module backend** → `<projet>/javascript/customer-webserver/src/modules/para/` ;
-4. lance **`build:pages`** dans le workspace avec `OUT_DIR=<projet>/data/dashboard-wc` → `para.js` compilé **contre le bon runtime** + `menuconfig.json` redéployé.
+The installer:
+1. copies the page's **source** → `<workspace>/libs/default-components/src/lib/standalone-pages/`;
+2. inserts the menu entry → `<workspace>/apps/dashboard-wc/config/menuconfig.jsonc` (idempotent);
+3. copies the **backend module** → `<projet>/javascript/customer-webserver/src/modules/para/`;
+4. runs **`build:pages`** in the workspace with `OUT_DIR=<projet>/data/dashboard-wc` → `para.js` compiled **against the correct runtime** + `menuconfig.json` redeployed.
 
-## Après l'install (obligatoire)
-1. **Backend** : `cd <projet>/javascript/customer-webserver && npm run build`, puis **redémarrer** le manager webserver (il compile et auto-monte le module `/api/para`).
-2. **Navigateur** : DevTools → Application → Storage → **`Clear site data`**, puis recharger (**connecté**).
-   ⚠️ Le service-worker met `menuconfig.json` en cache → **`Ctrl+Shift+R` ne suffit PAS**, seul `Clear site data` purge. (C'est ce qui nous a bloqués.)
+## After install (mandatory)
+1. **Backend**: `cd <projet>/javascript/customer-webserver && npm run build`, then **restart** the webserver manager (it compiles and auto-mounts the `/api/para` module).
+2. **Browser**: DevTools → Application → Storage → **`Clear site data`**, then reload (**logged in**).
+   ⚠️ The service worker caches `menuconfig.json` → **`Ctrl+Shift+R` is NOT enough**, only `Clear site data` purges it. (This is what blocked us.)
 
-## Vérifier
-1. Connecté → l'entrée **« Paramétrage »** apparaît, `/para` charge l'arbre des types.
+## Verify
+1. Logged in → the **"Paramétrage"** entry appears, `/para` loads the type tree.
 2. `GET https://<dashboard>/api/para/health` → `{ ok, service:"para" }`.
-3. Éditer une valeur / créer un DP → `POST /api/para/dp/set` (ou `/dp/create`) 200.
+3. Edit a value / create a DP → `POST /api/para/dp/set` (or `/dp/create`) 200.
 
-## Sécurité
-Le module monte `/api/para/*` en `fullAccess` (démo). Avant prod, restreindre l'`acl`
-dans `backend/modules/para/index.ts` (ex. `{ allowUsers: ['root','engineer'] }`).
-La page est `permission: ["connected"]` (réservée aux utilisateurs connectés).
+## Security
+The module mounts `/api/para/*` as `fullAccess` (demo). Before prod, restrict the `acl`
+in `backend/modules/para/index.ts` (e.g. `{ allowUsers: ['root','engineer'] }`).
+The page is `permission: ["connected"]` (reserved for logged-in users).

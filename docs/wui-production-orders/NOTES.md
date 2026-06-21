@@ -1,56 +1,56 @@
-# wui-production-orders — notes métier & architecture
+# wui-production-orders — business & architecture notes
 
-Page WebUI standalone **Production Orders** (`/production-orders`, custom element `wui-production-orders`, classe `WuiProductionOrders`). Tier 3 (frontend + manager backend). Préfixe page `wui-`, préfixe sous-composants `po-`. Permission menu `connected`, icône `capacity`.
+Standalone **Production Orders** WebUI page (`/production-orders`, custom element `wui-production-orders`, class `WuiProductionOrders`). Tier 3 (frontend + backend manager). Page prefix `wui-`, sub-component prefix `po-`. Menu permission `connected`, icon `capacity`.
 
-## Domaine / objet
+## Domain / object
 
-Gestion des **ordres de fabrication (OF)** : table CRUD triable, workflow de statut, barre d'indicateurs (KPI), vue Planning Gantt et lien avec la flotte machines 3D.
+Management of **production orders (OF)**: sortable CRUD table, status workflow, indicator bar (KPIs), Gantt planning view and a link to the 3D machine fleet.
 
-Modèle `ProductionOrder` (`types.ts`) :
-- **Identité / produit** : `orderNo`, `product`, `article`, `qtyOrdered` / `qtyProduced`.
-- **Affectation** : `atelierId/Name`, `machineId/Name`.
-- **Planning** : `planned`/`actual` start/end, stockés en chaînes locales `YYYY-MM-DDTHH:mm`.
-- **Statut** : `planned | running | paused | done | cancelled`.
-- **Autres** : `priority`, `progress`, `notes`.
-- Les maps libellé+couleur de statut et de priorité vivent dans `types.ts`.
+`ProductionOrder` model (`types.ts`):
+- **Identity / product**: `orderNo`, `product`, `article`, `qtyOrdered` / `qtyProduced`.
+- **Assignment**: `atelierId/Name`, `machineId/Name`.
+- **Planning**: `planned`/`actual` start/end, stored as local `YYYY-MM-DDTHH:mm` strings.
+- **Status**: `planned | running | paused | done | cancelled`.
+- **Other**: `priority`, `progress`, `notes`.
+- The status and priority label+color maps live in `types.ts`.
 
-Fonctionnalités : table (`po-order-table`) avec boutons de workflow + edit/delete + barre de progression ; barre KPI (total / à venir / en cours / terminés / en retard) ; dialog create/edit (`po-order-dialog`, `<input type=datetime-local>` pour les dates) ; export JSON+CSV / import JSON (`data/io.ts`, enveloppe `{kind:'production-orders', version, orders}`) ; bascule de vue Table / Planning.
+Features: table (`po-order-table`) with workflow buttons + edit/delete + progress bar; KPI bar (total / upcoming / running / done / late); create/edit dialog (`po-order-dialog`, `<input type=datetime-local>` for dates); JSON+CSV export / JSON import (`data/io.ts`, envelope `{kind:'production-orders', version, orders}`); Table / Planning view toggle.
 
-## Modèle de données (DPs)
+## Data model (DPs)
 
-**Persistance différente des autres pages** : la **liste entière est UN seul DP** (choix métier explicite « 1 seul DP = liste JSON »), et NON un DP par enregistrement.
+**Persistence differs from the other pages**: the **entire list is ONE single DP** (explicit business choice "1 single DP = JSON list"), and NOT one DP per record.
 
-- Type `ProductionOrders_List` : Struct avec un unique élément String `json` ; instance unique `ProductionOrders_List`.
-- `OrderStore.load()` lit `<DP>.json` (helper `extractJsonString` qui repère une chaîne commençant par `[`) ; `saveAll(orders)` réécrit tout le tableau via PARA REST `/api/para/dp/set`.
-- Auto-création type+DP via `/api/para/dptype/create` + `/api/para/dp/create` ; fallback transparent en mémoire en mode offline.
+- Type `ProductionOrders_List`: Struct with a single String element `json`; single instance `ProductionOrders_List`.
+- `OrderStore.load()` reads `<DP>.json` (helper `extractJsonString` that spots a string starting with `[`); `saveAll(orders)` rewrites the whole array via PARA REST `/api/para/dp/set`.
+- Auto-creates type+DP via `/api/para/dptype/create` + `/api/para/dp/create`; transparent in-memory fallback in offline mode.
 
-DP KPI (calculé côté serveur, voir Backend) :
-- Type `ProductionOrders_Kpi` : Struct, Float `total / planned / running / paused / done / cancelled / late / avgProgress` + String `updatedAt` ; instance unique.
+KPI DP (computed server-side, see Backend):
+- Type `ProductionOrders_Kpi`: Struct, Float `total / planned / running / paused / done / cancelled / late / avgProgress` + String `updatedAt`; single instance.
 
-## Algorithmes / formules clés
+## Key algorithms / formulas
 
-- **Workflow de statut** (`workflow.ts`) : `actionsFor(status)` renvoie les transitions autorisées avec leur icône (play/pause/check/cancel). `applyTransition` estampille `actualStart`/`actualEnd` + ajuste `progress`. Les boutons-icônes inline de la table émettent `wui:status {id, target}`.
-- **Gantt Planning** (`po-gantt.ts`) : echarts custom-series, une ligne par OF, axe x temporel, barre colorée selon le statut. echarts externalisé via l'import-map du shared-bundle (même schéma que fleet-stop-analysis).
-- **KPI** : comptages par statut + `late` (planned-end dépassé) + `avgProgress`, calculés côté manager (voir ci-dessous).
+- **Status workflow** (`workflow.ts`): `actionsFor(status)` returns the allowed transitions with their icon (play/pause/check/cancel). `applyTransition` stamps `actualStart`/`actualEnd` + adjusts `progress`. The table's inline icon-buttons emit `wui:status {id, target}`.
+- **Gantt planning** (`po-gantt.ts`): echarts custom-series, one row per order, time x-axis, bar colored by status. echarts externalized via the shared-bundle import-map (same scheme as fleet-stop-analysis).
+- **KPI**: counts by status + `late` (planned-end exceeded) + `avgProgress`, computed manager-side (see below).
 
 ## Backend / manager
 
-Manager WinCC OA `productionOrdersKpi` (`manager/productionOrdersKpi/index.js`, JS pur, winccoa-manager). La barre d'indicateurs en haut de page **n'est PAS calculée dans le navigateur** : le manager en est propriétaire.
+WinCC OA manager `productionOrdersKpi` (`manager/productionOrdersKpi/index.js`, plain JS, winccoa-manager). The indicator bar at the top of the page is **NOT computed in the browser**: the manager owns it.
 
-- Au démarrage il `dpTypeCreate` le type `ProductionOrders_Kpi` + son DP, puis **poll** `ProductionOrders_List.json` toutes les ~5 s (poll volontaire, et non `dpConnect`, pour que le compteur `late` se rafraîchisse au fil du passage des planned-ends), calcule les comptages et `dpSet` les champs — **gardé par une signature JSON** pour n'écrire que sur changement.
-- Côté front, `po-kpi-bar.ts` résout `OaRxJsApi` (tsyringe) et `dpConnect` les DPE `ProductionOrders_Kpi.<champ>` en live ; il conserve le calcul en mémoire depuis `.orders` comme **fallback** (`live === null` → local) pour garder des chiffres en mode offline.
-- pmon : `node | always | 30 | 3 | 1 | productionOrdersKpi/index.js`.
+- At startup it `dpTypeCreate`s the `ProductionOrders_Kpi` type + its DP, then **polls** `ProductionOrders_List.json` every ~5 s (deliberate polling, not `dpConnect`, so that the `late` counter refreshes as planned-ends go by), computes the counts and `dpSet`s the fields — **guarded by a JSON signature** to write only on change.
+- On the front side, `po-kpi-bar.ts` resolves `OaRxJsApi` (tsyringe) and `dpConnect`s the `ProductionOrders_Kpi.<field>` DPEs live; it keeps the in-memory computation from `.orders` as a **fallback** (`live === null` → local) to keep numbers in offline mode.
+- pmon: `node | always | 30 | 3 | 1 | productionOrdersKpi/index.js`.
 
-## Lien flotte (Machine Fleet 3D)
+## Fleet link (Machine Fleet 3D)
 
-- La page instancie le `FleetStore` de Machine Fleet 3D (`./machine-fleet-3d/data/fleet-store.js`) pour peupler les selects cascade atelier→machine du dialog et pour seeder les OF de démo sur la **vraie** flotte (`data/demo-orders.ts buildDemoOrders(ateliers)`).
-- Sur statut → `running`, push best-effort de `orderNo`/`product` vers les champs `workOrderDp`/`operationDp` de la machine affectée (ces champs MachineDef pilotent l'affichage OF/Op de la bulle 3D) ; nettoyés sur `done`/`cancelled` (`data/fleet-link.ts`, REST `/api/para/dp/set`, tout en try/catch silencieux).
-- Partage le chunk rollup `chunks/fleet-store.js` avec les autres pages flotte.
+- The page instantiates Machine Fleet 3D's `FleetStore` (`./machine-fleet-3d/data/fleet-store.js`) to populate the dialog's cascading atelier→machine selects and to seed the demo orders against the **real** fleet (`data/demo-orders.ts buildDemoOrders(ateliers)`).
+- On status → `running`, best-effort push of `orderNo`/`product` to the assigned machine's `workOrderDp`/`operationDp` fields (these MachineDef fields drive the OF/Op display of the 3D bubble); cleared on `done`/`cancelled` (`data/fleet-link.ts`, REST `/api/para/dp/set`, all in silent try/catch).
+- Shares the rollup chunk `chunks/fleet-store.js` with the other fleet pages.
 
-## Pièges / à savoir
+## Pitfalls / things to know
 
-- **Extraction de champ DPE côté `po-kpi-bar`** : depuis l'émission dp normalisée via un `fieldOf` local (retirer `System1:`, `:_online.._value` et le point final, prendre la partie après le dernier `.`).
-- **Icônes ix** : `play`/`pause`/`check`/`cancel` existent ; `floppy-disk`/`chart-bar`/`save` n'existent PAS → utiliser `check`/`barchart-horizontal`/`table`.
-- **Lint** : `no-magic-numbers` non bloquant ; `unicorn/consistent-function-scoping` signale les arrows internes `pad`/`fmt` → les hisser au scope module.
-- **Labels** : actuellement hard-codés en FR dans les composants (pas d'i18n FR/DE encore).
-- **Non encore fait** : import d'OF depuis ERP/MES, archivage de l'historique des OF (le DP Kpi pourrait être archivé NGA pour du trending), binding live de `qtyProduced` depuis les compteurs machine.
+- **DPE field extraction in `po-kpi-bar`**: from the normalized dp emission via a local `fieldOf` (strip `System1:`, `:_online.._value` and the trailing dot, take the part after the last `.`).
+- **ix icons**: `play`/`pause`/`check`/`cancel` exist; `floppy-disk`/`chart-bar`/`save` do NOT → use `check`/`barchart-horizontal`/`table`.
+- **Lint**: `no-magic-numbers` non-blocking; `unicorn/consistent-function-scoping` flags the internal `pad`/`fmt` arrows → hoist them to module scope.
+- **Labels**: currently hard-coded in FR in the components (no FR/DE i18n yet).
+- **Not done yet**: order import from ERP/MES, archiving of the order history (the Kpi DP could be NGA-archived for trending), live binding of `qtyProduced` from the machine counters.

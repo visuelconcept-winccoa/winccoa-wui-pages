@@ -1,59 +1,59 @@
-# Intégrer la page Fleet KPI Analysis (`@visuelconcept/wui-fleet-kpi-analysis`) — mode source, Tier 3
+# Integrate the Fleet KPI Analysis page (`@visuelconcept/wui-fleet-kpi-analysis`) — source mode, Tier 3
 
-Page **standalone WinCC OA WebUI** d'**analyse des KPI de parc** (`/fleet-kpi`) :
-**disponibilité / TRS par machine** calculé sur le temps d'ouverture moins les
-jours non travaillés (closures), restitué en **echarts**. Le TRS temps réel par
-machine est produit par le **manager Node `kpiCalc`** ; la page le lit et
-l'affiche. C'est un Tier 3 **sans module backend** : frontend + manager seulement.
-Distribution **source auto-contenue** : le kit partagé (kit / fleet-core / ai-kit)
-est **vendorisé** sous `_vendor/` (pas de prérequis `@visuelconcept/wui-kit`), et
-la page est **compilée sur le workspace runtime de la cible** (bundle = bonne
+**Standalone WinCC OA WebUI page** for **fleet KPI analysis** (`/fleet-kpi`):
+**availability / OEE per machine** computed over operating time minus
+non-working days (closures), rendered with **echarts**. The real-time OEE per
+machine is produced by the **Node manager `kpiCalc`**; the page reads and
+displays it. This is a Tier 3 **with no backend module**: frontend + manager only.
+**Self-contained source** distribution: the shared kit (kit / fleet-core / ai-kit)
+is **vendored** under `_vendor/` (no `@visuelconcept/wui-kit` prerequisite), and
+the page is **compiled against the target's runtime workspace** (bundle = correct
 version).
 
-## Pré-requis
-1. Un **workspace WebUI Runtime** (`@wincc-oa/webui-runtime`) — le `--workspace`.
-2. **Pas de module backend** : la page passe par le runtime WebUI standard pour
-   dialoguer avec WinCC OA, donc **`@visuelconcept/wui-webserver` n'est pas
-   requis** par cette page.
-3. Les **dépendances npm frontend** (`@siemens/ix-echarts`, `three`) déclarées
-   dans `module.json` sont **installées automatiquement** dans le workspace par
-   l'installeur.
+## Prerequisites
+1. A **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) — the `--workspace`.
+2. **No backend module**: the page goes through the standard WebUI runtime to
+   talk to WinCC OA, so **`@visuelconcept/wui-webserver` is not required** by this
+   page.
+3. The **frontend npm dependencies** (`@siemens/ix-echarts`, `three`) declared
+   in `module.json` are **installed automatically** into the workspace by the
+   installer.
 
-## Installer (une commande)
+## Install (one command)
 ```bash
 node install.mjs --workspace <workspace-runtime> --project <racine-projet> --register-pmon
 ```
-Exemple (WebDemo2) :
+Example (WebDemo2):
 ```bash
 node install.mjs --workspace D:\WinCC_OA_Proj_321\WebDemo2\webui-workspace --project D:\WinCC_OA_Proj_321\WebDemo2 --register-pmon
 ```
-L'installeur :
-1. copie la **source** (kit vendorisé sous `_vendor/`) → `<workspace>/…/standalone-pages/` ;
-2. insère l'**entrée de menu** (`/fleet-kpi`, masquée) → `menuconfig.jsonc` du workspace (idempotent par `routeId`) ;
-3. installe **`@siemens/ix-echarts`** et **`three`** dans le workspace (pour que `build:pages` les bundle) ;
-4. déploie le **manager `kpiCalc`** → `<projet>/javascript/kpiCalc/` (+ `npm install` si un `package.json` est livré) ; avec `--register-pmon`, ajoute la ligne à `config/progs` ;
-5. lance **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
+The installer:
+1. copies the **source** (kit vendored under `_vendor/`) → `<workspace>/…/standalone-pages/`;
+2. inserts the **menu entry** (`/fleet-kpi`, hidden) → the workspace's `menuconfig.jsonc` (idempotent by `routeId`);
+3. installs **`@siemens/ix-echarts`** and **`three`** into the workspace (so `build:pages` bundles them);
+4. deploys the **`kpiCalc` manager** → `<projet>/javascript/kpiCalc/` (+ `npm install` if a `package.json` is shipped); with `--register-pmon`, adds the line to `config/progs`;
+5. runs **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
 
-## Après l'install (obligatoire)
-1. **Manager** : démarrer **`kpiCalc`** dans la console WinCC OA (il calcule le TRS
-   temps réel par machine que la page lit). Vérifier l'ordre/numéro du manager si
-   pmon a été édité.
-2. **Navigateur** : DevTools → Application → Storage → **`Clear site data`**,
-   recharger (**connecté**).
-   ⚠️ Le SW cache `menuconfig.json` → **`Ctrl+Shift+R` ne suffit pas** ; seul
-   `Clear site data` le purge.
+## After install (mandatory)
+1. **Manager**: start **`kpiCalc`** in the WinCC OA console (it computes the
+   real-time OEE per machine that the page reads). Check the manager
+   order/number if pmon was edited.
+2. **Browser**: DevTools → Application → Storage → **`Clear site data`**,
+   reload (**logged in**).
+   ⚠️ The SW caches `menuconfig.json` → **`Ctrl+Shift+R` is not enough**; only
+   `Clear site data` purges it.
 
-## Vérifier
-1. Connecté → la page **« Analyse des KPI »** (`/fleet-kpi`) charge (atteinte
-   depuis la vue d'ensemble du parc — l'entrée de menu est masquée).
-2. Le manager **`kpiCalc`** tourne dans la console WinCC OA et alimente les DP de
-   KPI ; les courbes de disponibilité / TRS par machine s'affichent (echarts).
+## Verify
+1. Logged in → the **"Analyse des KPI"** page (`/fleet-kpi`) loads (reached
+   from the fleet overview — the menu entry is hidden).
+2. The **`kpiCalc`** manager is running in the WinCC OA console and feeds the
+   KPI DPs; the availability / OEE per machine curves are shown (echarts).
 
-## Notes / sécurité
-- Cette page **ne monte aucune route `/api/*`** : pas de surface backend à
-  durcir côté webserver.
-- Le manager **`kpiCalc`** a besoin de **`winccoa-manager`**, **fourni par le
-  runtime WinCC OA** (pas dans le `package.json` du manager).
-- Le calcul du TRS dépend du temps d'ouverture et des **jours non travaillés
-  (closures)** ainsi que des catégories de temps de cause : ces données doivent
-  être présentes dans le projet pour que les KPI soient pertinents.
+## Notes / security
+- This page **mounts no `/api/*` route**: no backend surface to harden on the
+  webserver side.
+- The **`kpiCalc`** manager needs **`winccoa-manager`**, **provided by the
+  WinCC OA runtime** (not in the manager's `package.json`).
+- The OEE calculation depends on operating time and **non-working days
+  (closures)** as well as the cause time categories: these data must be
+  present in the project for the KPIs to be meaningful.

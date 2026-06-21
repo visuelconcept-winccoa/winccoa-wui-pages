@@ -1,44 +1,44 @@
-# wui-audit-trail — notes métier & architecture
+# wui-audit-trail — business & architecture notes
 
-Module Tier 1 (front-end pur, aucun backend ni manager, `npmDeps` vide). Route `/audit-trail`, élément `wui-audit-trail`, visible dans le menu.
+Tier 1 module (pure front-end, no backend or manager, empty `npmDeps`). Route `/audit-trail`, element `wui-audit-trail`, visible in the menu.
 
-## Domaine / objet
+## Domain / purpose
 
-Page autonome **Audit Trail** : visualise l'historique archivé (NGA) d'un datapoint sous forme de **table pivot large**.
+Standalone **Audit Trail** page: visualizes the archived (NGA) history of a datapoint as a **wide pivot table**.
 
-- Colonnes = les éléments de structure (leaves) du DP cible.
-- Lignes = timestamps de changement (ordre décroissant).
-- Chaque ligne porte la valeur de **toutes** les colonnes par report (carry-forward) : à un instant `t`, on affiche pour chaque colonne la dernière valeur archivée ≤ `t`.
+- Columns = the structure elements (leaves) of the target DP.
+- Rows = change timestamps (descending order).
+- Each row carries the value of **all** columns by carry-forward: at a given instant `t`, for each column the last archived value ≤ `t` is displayed.
 
-Configuration via un popup (bouton engrenage « Configurer ») : choix du DP cible, de la période, des colonnes/éléments affichés et du rafraîchissement auto.
+Configuration via a popup (gear button "Configure"): choice of target DP, period, displayed columns/elements and auto refresh.
 
-## Modèle de données (DPs)
+## Data model (DPs)
 
-- **Persistance config** : un unique DP `AuditTrail_Config` (Struct, champ String `json`) contenant l'`AuditConfig` sérialisé. Type + DP déjà créés dans le projet.
-- Accès via `AuditConfigStore` (calqué sur l'`OrderStore` de production-orders) :
-  - création paresseuse type/DP par REST `/api/para/dptype|dp/create`,
-  - écriture par `/api/para/dp/set`,
-  - lecture par `OaRxJsApi.dpGet`,
-  - fallback hors-ligne.
-- Le **DP audité** n'est pas créé par la page : il doit déjà exister et être **archivé NGA** (sinon « Aucune donnée d'historique »).
+- **Config persistence**: a single DP `AuditTrail_Config` (Struct, String field `json`) holding the serialized `AuditConfig`. Type + DP already created in the project.
+- Access via `AuditConfigStore` (modeled on the `OrderStore` of production-orders):
+  - lazy type/DP creation via REST `/api/para/dptype|dp/create`,
+  - writes via `/api/para/dp/set`,
+  - reads via `OaRxJsApi.dpGet`,
+  - offline fallback.
+- The **audited DP** is not created by the page: it must already exist and be **NGA archived** (otherwise "No history data").
 
-`AuditConfig` retient : DP cible, période (today / 24h / 7d / 30d / custom), `maxRows` (200 / 500 / 1000 / 5000), liste des éléments cochés, toggle rafraîchissement auto.
+`AuditConfig` holds: target DP, period (today / 24h / 7d / 30d / custom), `maxRows` (200 / 500 / 1000 / 5000), list of checked elements, auto refresh toggle.
 
-## Algorithmes / formules clés
+## Key algorithms / formulas
 
-Moteur pur dans `engine.ts` : `structLeaves`, `queryHistory`, `buildPivot`.
+Pure engine in `engine.ts`: `structLeaves`, `queryHistory`, `buildPivot`.
 
-- **Énumération des éléments** (`fetchElements`, point critique de faisabilité) :
-  - `WuiDpeService.getDatapointTypes(name)` appelle `etm.model.type.get` qui attend un nom de **TYPE** → échoue généralement pour un **DP** choisi par l'utilisateur.
-  - **Fallback** : `OaRxJsApi.dpNames('<dp>.*', '')` (type-agnostique), renvoie directement les DPE éléments — idéal pour les DP plats (ex. MachineSim).
-  - Parcours des feuilles : `structLeaves`, où une feuille = `typeof value === 'string'` (motif para-nav).
-- **Historique** : par colonne, `queryHistory(api, dpe, start, end)` = `api.dpGetPeriod(start, end, 0, dpe + ':_original.._value')` (même approche que le moteur fleet-stop). Parse `{data, dataTime}` → échantillons.
-- **Pivot** (`buildPivot`) : union de tous les timestamps de changement (tri décroissant, plafonné à `maxRows`) ; chaque cellule = dernière valeur ≤ `t` par **recherche dichotomique** dans les échantillons de la colonne.
+- **Element enumeration** (`fetchElements`, critical feasibility point):
+  - `WuiDpeService.getDatapointTypes(name)` calls `etm.model.type.get` which expects a **TYPE** name → generally fails for a **DP** chosen by the user.
+  - **Fallback**: `OaRxJsApi.dpNames('<dp>.*', '')` (type-agnostic), returns the DPE elements directly — ideal for flat DPs (e.g. MachineSim).
+  - Leaf traversal: `structLeaves`, where a leaf = `typeof value === 'string'` (para-nav pattern).
+- **History**: per column, `queryHistory(api, dpe, start, end)` = `api.dpGetPeriod(start, end, 0, dpe + ':_original.._value')` (same approach as the fleet-stop engine). Parses `{data, dataTime}` → samples.
+- **Pivot** (`buildPivot`): union of all change timestamps (descending sort, capped at `maxRows`); each cell = last value ≤ `t` via **binary search** in the column's samples.
 
-## Pièges / à savoir
+## Pitfalls / things to know
 
-- `getDatapointTypes` attend un **type**, pas un DP : ne pas compter dessus pour énumérer les éléments d'un DP arbitraire → utiliser le fallback `dpNames('<dp>.*','')`.
-- Le DP audité **doit être archivé NGA** ; sans archivage, aucune donnée d'historique n'est retournée.
-- **Live** : `dpConnect` sur les DPE affichés déclenche une re-query débouncée (motif vue 3D / dashboard), conditionnée par le toggle de rafraîchissement.
-- Une feuille de structure est détectée par `typeof value === 'string'` (motif para-nav) — les éléments non-string peuvent être ignorés par ce critère.
-- Bundle auto-découvert (`.ts` de premier niveau dans standalone-pages) et **self-contained** (pas de chunk partagé).
+- `getDatapointTypes` expects a **type**, not a DP: don't rely on it to enumerate the elements of an arbitrary DP → use the `dpNames('<dp>.*','')` fallback.
+- The audited DP **must be NGA archived**; without archiving, no history data is returned.
+- **Live**: `dpConnect` on the displayed DPEs triggers a debounced re-query (3D view / dashboard pattern), gated by the refresh toggle.
+- A structure leaf is detected by `typeof value === 'string'` (para-nav pattern) — non-string elements may be ignored by this criterion.
+- Auto-discovered bundle (top-level `.ts` in standalone-pages) and **self-contained** (no shared chunk).

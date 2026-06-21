@@ -1,55 +1,55 @@
-# wui-fleet-closures — notes métier & architecture
+# wui-fleet-closures — business & architecture notes
 
-Module de page WebUI WinCC OA, **Tier 1** (frontend pur, sans backend ni manager). Route `/fleet-closures`, composant `wui-fleet-closures`.
+WinCC OA WebUI page module, **Tier 1** (pure frontend, no backend or manager). Route `/fleet-closures`, component `wui-fleet-closures`.
 
-## Domaine / objet
+## Domain / purpose
 
-Gestion des **jours non travaillés** (périodes de fermeture / *closures*) de la flotte de machines. Une période de fermeture est un intervalle [début, fin] rattaché à un **scope** : soit un atelier entier, soit une machine précise.
+Management of the machine fleet's **non-working days** (closure periods / *closures*). A closure period is an interval [start, end] attached to a **scope**: either a whole workshop, or a specific machine.
 
-La page est une **page standalone à part entière** (et non plus un dialogue). Elle est atteinte depuis un bouton de l'en-tête de la vue d'ensemble Machine Fleet 3D. Historiquement, cette fonction vivait dans un dialogue `mf-kpi-closures-dialog` ouvert depuis la page KPI ; ce dialogue a été retiré. La page KPI (`fleet-kpi-analysis`) continue toutefois de **charger** les closures, car elles servent de base au **dénominateur du calcul TRS** (temps d'ouverture).
+The page is a **fully standalone page** (no longer a dialog). It is reached from a button in the header of the Machine Fleet 3D overview. Historically this function lived in a `mf-kpi-closures-dialog` dialog opened from the KPI page; that dialog has been removed. The KPI page (`fleet-kpi-analysis`) still **loads** the closures, however, because they serve as the basis for the **denominator of the OEE calculation** (operating time).
 
-Interface : un tableau éditable unique avec une ligne par période :
-- **scope** : `ix-select` dont la valeur est `a:<atelierId>` (atelier) ou `m:<machineId>` (machine)
-- **début** (date + heure), **fin** (date + heure), **durée** (calculée), bouton de suppression
-- bouton d'ajout de période dans le `tfoot`, avec un select de scope
+Interface: a single editable table with one row per period:
+- **scope**: an `ix-select` whose value is `a:<atelierId>` (workshop) or `m:<machineId>` (machine)
+- **start** (date + time), **end** (date + time), **duration** (computed), delete button
+- add-period button in the `tfoot`, with a scope select
 
-Barre d'outils : Retour, filtre **Année** (par défaut année courante ; `ALL_YEARS = 0` = toutes), multi-select **Ateliers** + **Machines**, **Importer / Exporter** (JSON), **Enregistrer** (activé uniquement si `dirty`).
+Toolbar: Back, **Year** filter (default: current year; `ALL_YEARS = 0` = all), **Workshops** + **Machines** multi-select, **Import / Export** (JSON), **Save** (enabled only if `dirty`).
 
-L'édition se fait sur une **copie de travail** `working: ClosureConfig` ; la persistance passe par `store.saveClosures`.
+Editing happens on a **working copy** `working: ClosureConfig`; persistence goes through `store.saveClosures`.
 
-## Modèle de données
+## Data model
 
-Les closures sont portées par un objet `ClosureConfig` chargé/sauvegardé via le store de la flotte (`store.saveClosures`). Le scope d'une période est encodé en chaîne : préfixe `a:` pour un atelier, `m:` pour une machine, suivi de l'identifiant.
+Closures are carried by a `ClosureConfig` object loaded/saved via the fleet store (`store.saveClosures`). A period's scope is encoded as a string: prefix `a:` for a workshop, `m:` for a machine, followed by the identifier.
 
-Format d'import/export : **JSON** (union de périodes).
+Import/export format: **JSON** (union of periods).
 
-## Algorithmes / gestion des chevauchements
+## Algorithms / overlap handling
 
-La logique de chevauchement est centralisée dans `fleet-kpi-analysis/closures.ts` :
-- `rangesOverlap(...)` — test de chevauchement de deux intervalles
-- `hasOverlap(existing, incoming)` — vrai si l'import recoupe l'existant
-- `mergeClosures(existing, incoming, mode)` avec `mode` ∈ `'replace' | 'ignore'` :
-  - `replace` — l'entrant l'emporte (les périodes importées écrasent celles qui se chevauchent)
-  - `ignore` — on conserve l'existant et on n'ajoute que les périodes entrantes **sans chevauchement**
+The overlap logic is centralized in `fleet-kpi-analysis/closures.ts`:
+- `rangesOverlap(...)` — overlap test for two intervals
+- `hasOverlap(existing, incoming)` — true if the import overlaps the existing data
+- `mergeClosures(existing, incoming, mode)` with `mode` ∈ `'replace' | 'ignore'`:
+  - `replace` — the incoming data wins (imported periods overwrite overlapping ones)
+  - `ignore` — keep the existing data and add only the incoming periods **without overlap**
 
-Comportement à l'import :
-- si `hasOverlap` → dialogue de conflit proposant **Remplacer / Ignorer / Annuler**
-- sinon → union silencieuse via `mergeClosures(..., 'ignore')`
+Behavior on import:
+- if `hasOverlap` → conflict dialog offering **Replace / Ignore / Cancel**
+- otherwise → silent union via `mergeClosures(..., 'ignore')`
 
-## Architecture / intégration
+## Architecture / integration
 
-- La page réutilise `pageStyles()` de `fleet-stop-analysis/styles.js`, complété par un `extraStyles()` local.
-- La vue d'ensemble émet l'évènement `wui:closures` ; le shell (`machine-fleet-3d.ts`) déclenche `RouterEvent('/fleet-closures')`. C'est le même schéma que `wui:analyze` → `/fleet-stops` et `wui:kpi` → `/fleet-kpi`.
-- Découverte automatique : les pages standalone sont auto-enregistrées par scan de répertoire (`discoverStandalonePages` dans la config de build). Déposer un `*.ts` dans `standalone-pages/` suffit à créer l'entrée de page ; aucune inscription manuelle dans le build.
-- Route déclarée en `hidden: true` dans la config de menu.
-- Dépendance npm déclarée dans `module.json` : `three` (^0.169.0).
+- The page reuses `pageStyles()` from `fleet-stop-analysis/styles.js`, supplemented by a local `extraStyles()`.
+- The overview emits the `wui:closures` event; the shell (`machine-fleet-3d.ts`) triggers `RouterEvent('/fleet-closures')`. This is the same scheme as `wui:analyze` → `/fleet-stops` and `wui:kpi` → `/fleet-kpi`.
+- Automatic discovery: standalone pages are auto-registered by directory scan (`discoverStandalonePages` in the build config). Dropping a `*.ts` into `standalone-pages/` is enough to create the page entry; no manual registration in the build.
+- Route declared as `hidden: true` in the menu config.
+- npm dependency declared in `module.json`: `three` (^0.169.0).
 
-## Pièges / à savoir
+## Pitfalls / things to know
 
-- **Page, pas dialogue** : ne pas confondre avec l'ancien `mf-kpi-closures-dialog`. La page KPI ne fait plus qu'utiliser les closures (dénominateur TRS), elle ne les édite plus.
-- **Bouton Enregistrer gated sur `dirty`** : tant qu'aucune modification n'a été faite sur la copie `working`, l'enregistrement reste inactif.
-- **Encodage du scope** en chaîne `a:`/`m:` : bien préserver le préfixe lors de la lecture/écriture des sélecteurs.
-- **Pièges de lint rencontrés** :
-  - `member-ordering` : `render` (public) doit précéder `firstUpdated` (protected)
-  - `sonarjs/prefer-single-boolean-return` : combiner les gardes de filtre en un seul `return` booléen
-  - `unicorn/no-array-for-each` : préférer un `for...of` sur `.entries()` (avec index) plutôt que `.forEach`
+- **Page, not dialog**: do not confuse it with the old `mf-kpi-closures-dialog`. The KPI page now only uses the closures (OEE denominator), it no longer edits them.
+- **Save button gated on `dirty`**: as long as no change has been made to the `working` copy, save stays inactive.
+- **Scope encoding** as an `a:`/`m:` string: be sure to preserve the prefix when reading/writing the selectors.
+- **Lint pitfalls encountered**:
+  - `member-ordering`: `render` (public) must come before `firstUpdated` (protected)
+  - `sonarjs/prefer-single-boolean-return`: combine the filter guards into a single boolean `return`
+  - `unicorn/no-array-for-each`: prefer a `for...of` over `.entries()` (with index) rather than `.forEach`

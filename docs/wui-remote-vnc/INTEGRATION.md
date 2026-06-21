@@ -1,47 +1,47 @@
-# Intégrer la page Remote VNC (`@visuelconcept/wui-remote-vnc`) — mode source, Tier 3
+# Integrate the Remote VNC page (`@visuelconcept/wui-remote-vnc`) — source mode, Tier 3
 
-Page **standalone WinCC OA WebUI** pour gérer des **connexions VNC** (1 DP chacune)
-et les ouvrir **dans le navigateur avec noVNC embarqué** (sans plugin). C'est un
-**Tier 3 complet** : frontend + module backend `/api/vnc` (HTTP **+ relais
-WebSocket↔TCP** `/api/vnc/ws` via `registerRaw`) + un **manager Node `vncProxy`**
-(service vRPC qui résout un *id* de connexion → `host:port` depuis les DP
-`RemoteVnc_`). Distribution **source auto-contenue** : le kit partagé est
-**vendorisé** sous `_vendor/` (pas de prérequis `@visuelconcept/wui-kit`), et la
-page est **compilée sur le workspace runtime de la cible** (bundle = bonne version).
+**Standalone WinCC OA WebUI page** to manage **VNC connections** (1 DP each)
+and open them **in the browser with embedded noVNC** (no plugin). This is a
+**complete Tier 3**: frontend + backend module `/api/vnc` (HTTP **+ WebSocket↔TCP
+relay** `/api/vnc/ws` via `registerRaw`) + a **Node manager `vncProxy`**
+(vRPC service that resolves a connection *id* → `host:port` from the `RemoteVnc_`
+DPs). **Self-contained source** distribution: the shared kit is
+**vendored** under `_vendor/` (no `@visuelconcept/wui-kit` prerequisite), and the
+page is **built against the target's runtime workspace** (bundle = correct version).
 
-## Pré-requis
-1. Un **workspace WebUI Runtime** (`@wincc-oa/webui-runtime`) — le `--workspace`.
-2. **`@visuelconcept/wui-webserver`** installé dans le projet : il héberge la route `/api/vnc` ET le **relais ws brut** sur l'app uWebSockets (il fournit aussi `ws`). Son loader monte automatiquement `routes` **et** `registerRaw`.
-3. Le dep npm `@novnc/novnc@1.4.0` (déclaré dans `module.json`) est **installé automatiquement** dans le workspace par l'installeur.
+## Prerequisites
+1. A **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) — the `--workspace`.
+2. **`@visuelconcept/wui-webserver`** installed in the project: it hosts the `/api/vnc` route AND the **raw ws relay** on the uWebSockets app (it also provides `ws`). Its loader automatically mounts `routes` **and** `registerRaw`.
+3. The npm dep `@novnc/novnc@1.4.0` (declared in `module.json`) is **installed automatically** in the workspace by the installer.
 
-## Installer (une commande)
+## Install (one command)
 ```bash
 node install.mjs --workspace <workspace-runtime> --project <racine-projet> --register-pmon
 ```
-Exemple (WebDemo2) :
+Example (WebDemo2):
 ```bash
 node install.mjs --workspace D:\WinCC_OA_Proj_321\WebDemo2\webui-workspace --project D:\WinCC_OA_Proj_321\WebDemo2 --register-pmon
 ```
-L'installeur :
-1. copie la **source** (kit vendorisé sous `_vendor/`) → `<workspace>/…/standalone-pages/` ;
-2. insère les **2 entrées de menu** (liste + détail `/:connectionid` masqué) → `menuconfig.jsonc` du workspace (idempotent par `routeId`) ;
-3. installe **`@novnc/novnc@1.4.0`** dans le workspace (pour que `build:pages` le bundle) ;
-4. dépose le **module backend** → `customer-webserver/src/modules/remote-vnc/` ;
-5. déploie le **manager `vncProxy`** → `<projet>/javascript/vncProxy/` + `npm install` ; avec `--register-pmon`, ajoute la ligne à `config/progs` ;
-6. lance **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
+The installer:
+1. copies the **source** (vendored kit under `_vendor/`) → `<workspace>/…/standalone-pages/`;
+2. inserts the **2 menu entries** (list + hidden detail `/:connectionid`) → the workspace's `menuconfig.jsonc` (idempotent by `routeId`);
+3. installs **`@novnc/novnc@1.4.0`** in the workspace (so that `build:pages` bundles it);
+4. drops the **backend module** → `customer-webserver/src/modules/remote-vnc/`;
+5. deploys the **`vncProxy` manager** → `<projet>/javascript/vncProxy/` + `npm install`; with `--register-pmon`, adds the line to `config/progs`;
+6. runs **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
 
-## Après l'install (obligatoire)
-1. **Webserver** : `cd <projet>/javascript/customer-webserver && npm run build`, puis **redémarrer** le manager webserver (il auto-monte `/api/vnc` + le relais `/api/vnc/ws`).
-2. **Manager** : démarrer **`vncProxy`** dans la console WinCC OA (service vRPC qui résout id → host:port). Vérifier l'ordre/numéro du manager si pmon a été édité.
-3. **Navigateur** : DevTools → Application → Storage → **`Clear site data`**, recharger (**connecté**).
-   ⚠️ Le SW cache `menuconfig.json` → **`Ctrl+Shift+R` ne suffit pas**.
+## After install (mandatory)
+1. **Webserver**: `cd <projet>/javascript/customer-webserver && npm run build`, then **restart** the webserver manager (it auto-mounts `/api/vnc` + the `/api/vnc/ws` relay).
+2. **Manager**: start **`vncProxy`** in the WinCC OA console (vRPC service that resolves id → host:port). Check the manager order/number if pmon was edited.
+3. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).
+   ⚠️ The SW caches `menuconfig.json` → **`Ctrl+Shift+R` is not enough**.
 
-## Vérifier
-1. Connecté → entrée **« Connexions VNC distantes »**, `/remote-vnc` charge la liste.
+## Verify
+1. Logged in → **"Connexions VNC distantes"** entry, `/remote-vnc` loads the list.
 2. `GET https://<dashboard>/api/vnc/health` → `{ ok, service:"vnc", … }`.
-3. Ajouter une connexion (crée `RemoteVnc_<id>`, type `RemoteVnc_Connection`), l'ouvrir → noVNC se connecte via `/api/vnc/ws?id=<id>` (le relais ouvre le TCP vers le `host:port` résolu par `vncProxy`).
+3. Add a connection (creates `RemoteVnc_<id>`, type `RemoteVnc_Connection`), open it → noVNC connects via `/api/vnc/ws?id=<id>` (the relay opens the TCP to the `host:port` resolved by `vncProxy`).
 
-## Notes / sécurité
-- Le navigateur ne nomme qu'un **id connu** ; c'est `vncProxy` qui détient le mapping id → `host:port` (pas d'URL/socket brute côté client → pas de SSRF / proxy ouvert).
-- Le module monte `/api/vnc/*` en `fullAccess` (démo) → restreindre l'`acl` dans `backend/modules/remote-vnc/index.ts` avant prod.
-- `winccoa-manager` est fourni par le runtime WinCC OA (pas dans le `package.json` du manager).
+## Notes / security
+- The browser names only a **known id**; `vncProxy` holds the id → `host:port` mapping (no raw URL/socket on the client side → no SSRF / open proxy).
+- The module mounts `/api/vnc/*` as `fullAccess` (demo) → restrict the `acl` in `backend/modules/remote-vnc/index.ts` before production.
+- `winccoa-manager` is provided by the WinCC OA runtime (not in the manager's `package.json`).

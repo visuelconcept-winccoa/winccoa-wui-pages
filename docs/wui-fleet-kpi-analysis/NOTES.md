@@ -1,57 +1,57 @@
-# wui-fleet-kpi-analysis — notes métier & architecture
+# wui-fleet-kpi-analysis — business & architecture notes
 
-Page WebUI standalone **Analyse des KPI** (route `/fleet-kpi`, masquée dans le menu). Tier 3 : front + manager serveur `kpiCalc`, pas de module `/api` ni de relais ws.
+Standalone WebUI page **KPI Analysis** (route `/fleet-kpi`, hidden in the menu). Tier 3: frontend + server manager `kpiCalc`, no `/api` module and no ws relay.
 
-## Domaine / objet
+## Domain / purpose
 
-Calcul d'indicateurs de performance par machine (TRS basé sur la disponibilité, et côté manager MTBF/MTTR), sur une fenêtre de temps, à partir des historiques d'archives NGA. Deux usages :
+Computation of per-machine performance indicators (OEE based on availability, and on the manager side MTBF/MTTR), over a time window, from NGA archive history. Two uses:
 
-- **La page `/fleet-kpi`** : analyse a posteriori sur une période choisie. Accès via le bouton « Analyse des KPI » de la vue 3D (`mf-atelier-overview` → événement `wui:kpi` → `RouterEvent('/fleet-kpi')` côté shell). Filtres date début/fin (défaut : mois dernier) + multi-select atelier/machine, bouton « Jours non travaillés ». Onglets **Tableau** (1 ligne/machine : barre TRS colorée par seuil, arrêt non planifié, arrêt planifié ; pied = TRS flotte pondéré) et **Graphique** (echarts : 1 barre/machine). Les machines sans historique archivé affichent « — » (`hasData=false`), jamais un 100 % trompeur.
-- **Le TRS/KPI live par machine dans la vue 3D** : calculé en continu côté serveur par le manager `kpiCalc`, archivé pour le trending, affiché dans la bulle. (Note : ceci a **remplacé** l'ancien TRS live calculé côté client ; ne pas réintroduire `showTrs`/`trsWindow`/`refreshTrs`.)
+- **The `/fleet-kpi` page**: after-the-fact analysis over a chosen period. Access via the "Analyse des KPI" button of the 3D view (`mf-atelier-overview` → `wui:kpi` event → `RouterEvent('/fleet-kpi')` on the shell side). Start/end date filters (default: last month) + workshop/machine multi-select, "Jours non travaillés" button. **Table** tab (1 row/machine: OEE bar colored by threshold, unplanned stop, planned stop; footer = weighted fleet OEE) and **Chart** tab (echarts: 1 bar/machine). Machines with no archived history show "—" (`hasData=false`), never a misleading 100%.
+- **The live OEE/KPI per machine in the 3D view**: computed continuously on the server side by the `kpiCalc` manager, archived for trending, shown in the bubble. (Note: this **replaced** the old client-side live OEE; do not reintroduce `showTrs`/`trsWindow`/`refreshTrs`.)
 
-La page partage l'**unique source de vérité** algorithmique avec la page d'analyse d'arrêts : elle réutilise `fleet-stop-analysis/engine.ts` (`queryHistory`, `nonProductionIntervals`, `partitionByCause`, `resolveGroup`) et les styles `fleet-stop-analysis/styles`.
+The page shares the algorithmic **single source of truth** with the stop-analysis page: it reuses `fleet-stop-analysis/engine.ts` (`queryHistory`, `nonProductionIntervals`, `partitionByCause`, `resolveGroup`) and the `fleet-stop-analysis/styles`.
 
-## Modèle de données (DPs)
+## Data model (DPs)
 
-- **`MachineFleet3D_Closures`** — un seul DP JSON contenant les jours/périodes non travaillés (temps d'ouverture). Forme : `ClosureConfig { ateliers: {atelierId: Range[]}, machines: {machineId: Range[]} }`, `Range {start, end}` en datetime locale `yyyy-MM-ddTHH:mm`. L'ensemble effectif pour une machine = ranges de son atelier ∪ ranges machine (le niveau atelier s'applique à toutes ses machines). Le `FleetStore` le manipule comme un blob opaque (`unknown`) ; la page possède la forme via `closures.ts` (`normaliseClosures`). Édité dans `mf-kpi-closures-dialog`.
-- **`MachineFleet3D_Kpi`** — type de DP créé par le manager `kpiCalc` (`dpTypeCreate` au démarrage). Éléments : `value` (Float, archivé NGA) + Strings `kpiType, machineId, machineName, window, unit, updatedAt`. Une instance par KPI configuré, nommée `MachineFleet3D_Kpi_<sanitize(machineId)>_<sanitize(kpiId)>` (sanitize = `[^A-Za-z0-9_] → _`).
-- **Modèle de config KPI** (côté `MachineDef.kpiCalcs?: MachineKpi[]`) : `KpiType = 'TRS'|'MTBF'|'MTTR'` ; `MachineKpi {id, type, window, refreshMin, label?, showInBubble?, thresholdId?, archive?, archiveGroup?}`. Archivage par KPI : toggle `archive` (défaut true) + groupe NGA `archiveGroup`. Pas de KPI configuré par défaut → le manager reste inactif et la bulle n'affiche rien tant qu'un utilisateur n'a pas ajouté de KPI dans le dialogue machine.
+- **`MachineFleet3D_Closures`** — a single JSON DP holding the non-working days/periods (operating time). Shape: `ClosureConfig { ateliers: {atelierId: Range[]}, machines: {machineId: Range[]} }`, `Range {start, end}` as local datetime `yyyy-MM-ddTHH:mm`. The effective set for a machine = its workshop's ranges ∪ machine ranges (the workshop level applies to all its machines). The `FleetStore` handles it as an opaque blob (`unknown`); the page owns the shape via `closures.ts` (`normaliseClosures`). Edited in `mf-kpi-closures-dialog`.
+- **`MachineFleet3D_Kpi`** — DP type created by the `kpiCalc` manager (`dpTypeCreate` at startup). Elements: `value` (Float, NGA-archived) + Strings `kpiType, machineId, machineName, window, unit, updatedAt`. One instance per configured KPI, named `MachineFleet3D_Kpi_<sanitize(machineId)>_<sanitize(kpiId)>` (sanitize = `[^A-Za-z0-9_] → _`).
+- **KPI config model** (on the `MachineDef.kpiCalcs?: MachineKpi[]` side): `KpiType = 'TRS'|'MTBF'|'MTTR'`; `MachineKpi {id, type, window, refreshMin, label?, showInBubble?, thresholdId?, archive?, archiveGroup?}`. Per-KPI archiving: `archive` toggle (default true) + NGA group `archiveGroup`. No KPI configured by default → the manager stays idle and the bubble shows nothing until a user adds a KPI in the machine dialog.
 
-## Algorithmes / formules clés
+## Algorithms / key formulas
 
-**TRS (page, disponibilité uniquement)** :
-- temps d'ouverture = fenêtre − périodes non travaillées (closures)
-- temps requis = ouverture − arrêts planifiés
-- **Disponibilité = (requis − non planifiés) / requis** ; performance et qualité fixées à 100 %.
+**OEE (page, availability only)**:
+- operating time = window − non-working periods (closures)
+- required time = operating − planned stops
+- **Availability = (required − unplanned) / required**; performance and quality fixed at 100%.
 
-Classification de chaque sous-segment d'arrêt via le catalogue de causes (`resolveGroup().classification`) : `planned` → seau planifié, `production` → considéré disponible (ignoré), tout le reste (`unplanned` / cause inconnue / sans cause) → non planifié. **Un arrêt qui chevauche une période non travaillée n'est PAS compté.**
+Classification of each stop sub-segment via the cause catalog (`resolveGroup().classification`): `planned` → planned bucket, `production` → considered available (ignored), everything else (`unplanned` / unknown cause / no cause) → unplanned. **A stop that overlaps a non-working period is NOT counted.**
 
-**MTBF / MTTR (manager, en minutes)** — calculés sur le **temps non planifié uniquement** ; les arrêts planifiés sont ignorés (comptés comme temps de fonctionnement, ne dégradent pas la métrique) :
-- MTBF = (ouverture − non planifié) / N_pannes
-- MTTR = non planifié / N_pannes
-- une « panne » = un arrêt comportant au moins du temps non planifié.
+**MTBF / MTTR (manager, in minutes)** — computed over **unplanned time only**; planned stops are ignored (counted as running time, do not degrade the metric):
+- MTBF = (operating − unplanned) / N_failures
+- MTTR = unplanned / N_failures
+- a "failure" = a stop containing at least some unplanned time.
 
-**Affectation des causes dans le temps** (`partitionByCause` / `causeBoundaries`) : le segment initial sans cause d'un arrêt est rétro-rempli jusqu'à la première cause affectée, puis report-avant. Tant qu'aucune cause n'est affectée le temps compte **non planifié** ; dès qu'une cause est affectée, tout l'arrêt est reclassé planifié/non planifié depuis son début. `classify(code)` : `''`/null → unplanned, sinon `causeClass[code] || __default || unplanned`. Seul `planned` est soustrait du temps requis.
+**Assignment of causes over time** (`partitionByCause` / `causeBoundaries`): a stop's initial segment with no cause is back-filled up to the first assigned cause, then carried forward. As long as no cause is assigned the time counts as **unplanned**; as soon as a cause is assigned, the whole stop is reclassified planned/unplanned from its start. `classify(code)`: `''`/null → unplanned, otherwise `causeClass[code] || __default || unplanned`. Only `planned` is subtracted from the required time.
 
-Seuils de couleur TRS : ≥ 90 % vert, ≥ 75 % ambre, sinon rouge (config atelier `trsThresholds` / `resolveTrsColor`, conservée comme référence par le KPI TRS).
+OEE color thresholds: ≥ 90% green, ≥ 75% amber, otherwise red (workshop config `trsThresholds` / `resolveTrsColor`, kept as reference by the OEE KPI).
 
 ## Backend / manager (`kpiCalc`)
 
-Manager `manager/kpiCalc` (`kpiCalc/index.js`, JS pur, winccoa-manager ; pmon `node | always | 30 | 3 | 1`).
+Manager `manager/kpiCalc` (`kpiCalc/index.js`, plain JS, winccoa-manager; pmon `node | always | 30 | 3 | 1`).
 
-- Au démarrage : `dpTypeCreate` de `MachineFleet3D_Kpi`.
-- Par KPI configuré : assure un DP `MachineFleet3D_Kpi_<machineId>_<kpiId>`, active l'archivage NGA sur `.value` (`_archive.._type=45`, `.1._type=15`, `.1._class=<groupe NGA>`, `.._archive=true`), calcule sur la fenêtre glissante du KPI, écrit valeur + métadonnées, le tout gated par `refreshMin`.
-- Honore le toggle d'archivage par KPI : `archive===false` → `disableArchived` (pose `_archive.._archive=false`) ; sinon `ensureArchived(valueDpe, archiveGroup || <premier découvert>)`. Le Set `archived` est clé `"<dpe>|<group>"` / `"<dpe>|off"` pour ré-appliquer au toggle.
-- Honore **closures** (`MachineFleet3D_Closures`, soustraites de chaque intervalle) ET l'affectation de causes (logique `partitionByCause` portée de la page d'analyse d'arrêts).
-- Cadence : relit catalogue config + closures + liste KPI toutes les 60 s ; tick de base 15 s.
+- At startup: `dpTypeCreate` of `MachineFleet3D_Kpi`.
+- Per configured KPI: ensures a DP `MachineFleet3D_Kpi_<machineId>_<kpiId>`, enables NGA archiving on `.value` (`_archive.._type=45`, `.1._type=15`, `.1._class=<groupe NGA>`, `.._archive=true`), computes over the KPI's sliding window, writes value + metadata, all gated by `refreshMin`.
+- Honors the per-KPI archiving toggle: `archive===false` → `disableArchived` (sets `_archive.._archive=false`); otherwise `ensureArchived(valueDpe, archiveGroup || <premier découvert>)`. The `archived` Set is keyed `"<dpe>|<group>"` / `"<dpe>|off"` to re-apply on toggle.
+- Honors **closures** (`MachineFleet3D_Closures`, subtracted from each interval) AND cause assignment (`partitionByCause` logic ported from the stop-analysis page).
+- Cadence: re-reads config catalog + closures + KPI list every 60 s; base tick 15 s.
 
-**Groupes d'archive = ACTIFS uniquement** : `FleetStore.listArchiveGroups()` ne retourne que les DPs `_NGA_Group` dont `.active === true`. Utilisé par l'onglet Archivage et par le sélecteur de groupe d'archive par KPI.
+**Archive groups = ACTIVE only**: `FleetStore.listArchiveGroups()` returns only the `_NGA_Group` DPs whose `.active === true`. Used by the Archiving tab and by the per-KPI archive group selector.
 
-**Câblage bulle 3D** : la page s'abonne au DP `…_<kpiId>.value` de chaque KPI (kind `DpTarget` `'kpiCalc'`) ; `applyDpValue` stocke dans `machine.kpiCalcValues` et pousse via `updateMachineLive`. `label-manager.kpiCalcLines()` rend les KPI `showInBubble`. Le préfixe `KPI_CALC_PREFIX` / `sanitizeKpiId` côté vue **doit refléter exactement** le nommage de DP du manager.
+**3D bubble wiring**: the page subscribes to each KPI's `…_<kpiId>.value` DP (kind `DpTarget` `'kpiCalc'`); `applyDpValue` stores into `machine.kpiCalcValues` and pushes via `updateMachineLive`. `label-manager.kpiCalcLines()` renders the `showInBubble` KPIs. The view-side `KPI_CALC_PREFIX` / `sanitizeKpiId` **must exactly mirror** the manager's DP naming.
 
-## Pièges / à savoir
+## Pitfalls / things to know
 
-- **Prérequis runtime** : nécessite les historiques NGA `.state` (arrêts) et `.cause` (split planifié/non planifié). Sur ce projet `.cause` n'est actuellement PAS archivé → tout l'arrêt compte comme non planifié et planifié = 0.
-- **Onglet « Affichage » unifié** (dialogue machine) : source de vérité unique `MachineDef.display?: DisplayEntry[]` (`{ref, inBubble, inPopup}`, ordre = index). `ref` = `state | stopCause | workOrder | operation | param:<key> | kpi:<id>`. `resolveDisplaySlots(m)` construit le catalogue ordonné ; les items absents de `display` sont ajoutés en fin (nouveaux params/KPIs apparaissent automatiquement). Les anciens toggles de visibilité par onglet ont été SUPPRIMÉS.
-- **Closures opaques côté store** : le `FleetStore` garde `MachineFleet3D_Closures` comme blob `unknown` pour éviter une dépendance retour vers la page ; toute évolution de forme se fait dans `closures.ts`, pas dans le store.
-- **Machines sans données** : afficher « — » (`hasData=false`), jamais 100 %.
+- **Runtime prerequisite**: requires the NGA history `.state` (stops) and `.cause` (planned/unplanned split). On this project `.cause` is currently NOT archived → the whole stop counts as unplanned and planned = 0.
+- **Unified "Display" tab** (machine dialog): single source of truth `MachineDef.display?: DisplayEntry[]` (`{ref, inBubble, inPopup}`, order = index). `ref` = `state | stopCause | workOrder | operation | param:<key> | kpi:<id>`. `resolveDisplaySlots(m)` builds the ordered catalog; items absent from `display` are appended at the end (new params/KPIs appear automatically). The old per-tab visibility toggles have been REMOVED.
+- **Opaque closures on the store side**: the `FleetStore` keeps `MachineFleet3D_Closures` as an `unknown` blob to avoid a back-dependency on the page; any shape change happens in `closures.ts`, not in the store.
+- **Machines with no data**: show "—" (`hasData=false`), never 100%.

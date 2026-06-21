@@ -1,41 +1,41 @@
-# Intégrer la page Report Templates (`@visuelconcept/wui-report-templates`) — mode source, Tier 1
+# Integrate the Report Templates page (`@visuelconcept/wui-report-templates`) — source mode, Tier 1
 
-Page **standalone WinCC OA WebUI** (`/report-templates`) pour créer des **modèles
-de rapports configurables** : sections paramétrables (texte / commentaire /
-champs / tableau / dataset DP + agrégation / checklist) avec un **workflow de
-signature multi-niveaux**. Les modèles sont stockés en DP `ReportBuilder_Template`.
-C'est un **Tier 1** (frontend pur, sans backend ni manager). Distribution **source
-auto-contenue** : le code report-builder partagé réutilisé est **vendorisé** sous
-`_vendor/` (pas de prérequis `@visuelconcept/wui-kit`), et la page est **compilée
-sur le workspace runtime de la cible** (bundle = bonne version).
+**Standalone WinCC OA WebUI page** (`/report-templates`) for creating **configurable
+report templates**: parameterizable sections (text / comment / fields / table /
+DP dataset + aggregation / checklist) with a **multi-level signature workflow**.
+Templates are stored in `ReportBuilder_Template` DPs. This is a **Tier 1** (pure
+frontend, no backend or manager). **Self-contained source** distribution: the
+reused shared report-builder code is **vendored** under `_vendor/` (no
+`@visuelconcept/wui-kit` prerequisite), and the page is **compiled against the
+target's runtime workspace** (bundle = correct version).
 
-## Pré-requis
-1. Un **workspace WebUI Runtime** (`@wincc-oa/webui-runtime`) — le `--workspace`.
-2. Aucun module backend ni manager requis : la page communique avec WinCC OA via le runtime. `@visuelconcept/wui-webserver` n'est **pas** nécessaire pour ce module.
+## Prerequisites
+1. A **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) — the `--workspace`.
+2. No backend module or manager required: the page communicates with WinCC OA via the runtime. `@visuelconcept/wui-webserver` is **not** needed for this module.
 
-## Installer (une commande)
+## Install (one command)
 ```bash
 node install.mjs --workspace <workspace-runtime> --project <racine-projet>
 ```
-Exemple (WebDemo2) :
+Example (WebDemo2):
 ```bash
 node install.mjs --workspace D:\WinCC_OA_Proj_321\WebDemo2\webui-workspace --project D:\WinCC_OA_Proj_321\WebDemo2
 ```
-L'installeur :
-1. copie la **source** (kit vendorisé sous `_vendor/`) → `<workspace>/…/standalone-pages/` ;
-2. insère l'**entrée de menu** → `menuconfig.jsonc` du workspace (idempotent) ;
-3. lance **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
+The installer:
+1. copies the **source** (vendored kit under `_vendor/`) → `<workspace>/…/standalone-pages/`;
+2. inserts the **menu entry** → the workspace's `menuconfig.jsonc` (idempotent);
+3. runs **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
 
-## Après l'install (obligatoire)
-1. **Navigateur** : DevTools → Application → Storage → **`Clear site data`**, recharger (**connecté**).
-   ⚠️ Le SW cache `menuconfig.json` → **`Ctrl+Shift+R` ne suffit pas** ; seul `Clear site data` le purge.
+## After install (mandatory)
+1. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).
+   ⚠️ The SW caches `menuconfig.json` → **`Ctrl+Shift+R` is not enough**; only `Clear site data` purges it.
 
-## Vérifier
-1. Connecté → l'entrée **« Modèles de rapports »** apparaît dans le menu.
-2. `/report-templates` charge et affiche la liste des modèles (`ReportBuilder_Template`).
-3. Créer / éditer un modèle (sections paramétrables + workflow de signature) → l'enregistrement crée/maj un DP `ReportBuilder_Template`.
+## Verify
+1. Logged in → the **"Modèles de rapports"** entry appears in the menu.
+2. `/report-templates` loads and displays the template list (`ReportBuilder_Template`).
+3. Create / edit a template (parameterizable sections + signature workflow) → saving creates/updates a `ReportBuilder_Template` DP.
 
-## Notes / sécurité
-- Module **frontend pur** : aucun endpoint `/api/*` exposé, aucun manager Node à démarrer — rien à durcir côté ACL/réseau pour ce package.
-- La persistance passe par les DP `ReportBuilder_Template` (base générique `DpJsonStore`) ; les droits d'accès reposent sur les ACL WinCC OA / WebUI existantes du projet.
-- L'entrée de menu est en permission `connected` ; restreindre la permission dans `menu.fragment.jsonc` si l'accès doit être limité.
+## Notes / security
+- **Pure frontend** module: no `/api/*` endpoint exposed, no Node manager to start — nothing to harden on the ACL/network side for this package.
+- Persistence goes through `ReportBuilder_Template` DPs (generic `DpJsonStore` base); access rights rely on the project's existing WinCC OA / WebUI ACLs.
+- The menu entry is at `connected` permission; restrict the permission in `menu.fragment.jsonc` if access must be limited.

@@ -1,48 +1,48 @@
-# Intégrer la page Machine Fleet 3D (`@visuelconcept/wui-machine-fleet-3d`) — mode source, Tier hub
+# Integrate the Machine Fleet 3D page (`@visuelconcept/wui-machine-fleet-3d`) — source mode, Tier hub
 
-Page **standalone WinCC OA WebUI** : vue **3D three.js** du parc machines (`/fleet-3d`)
-avec **bulles d'état/KPI** par machine, **catalogue des causes d'arrêt**, dashboard
-machine contextuel (**Gantt + Pareto**) et un **assistant IA** (pont `/api/ai`).
-C'est un **hub complet** : frontend + module backend `/api/ai` + **quatre managers
-Node** (`machineSim`, `kpiCalc`, `aiAssistant`, `mcpServer`). Distribution **source
-auto-contenue** : le kit partagé est **vendorisé** sous `machine-fleet-3d/_vendor/`
-(`wui-kit`, `wui-fleet-core`, `wui-ai-kit` — pas de prérequis `@visuelconcept/*`),
-et la page est **compilée sur le workspace runtime de la cible** (bundle = bonne version).
+**Standalone WinCC OA WebUI** page: a **three.js 3D view** of the machine fleet (`/fleet-3d`)
+with per-machine **status/KPI bubbles**, a **stop-cause catalog**, a contextual machine
+dashboard (**Gantt + Pareto**) and an **AI assistant** (`/api/ai` bridge).
+It is a **complete hub**: frontend + `/api/ai` backend module + **four Node
+managers** (`machineSim`, `kpiCalc`, `aiAssistant`, `mcpServer`). **Self-contained source**
+distribution: the shared kit is **vendored** under `machine-fleet-3d/_vendor/`
+(`wui-kit`, `wui-fleet-core`, `wui-ai-kit` — no `@visuelconcept/*` prerequisites),
+and the page is **compiled against the target's runtime workspace** (bundle = correct version).
 
-## Pré-requis
-1. Un **workspace WebUI Runtime** (`@wincc-oa/webui-runtime`) — le `--workspace`.
-2. **`@visuelconcept/wui-webserver`** installé dans le projet : il héberge la route `/api/ai` (auto-découverte des modules backend).
-3. La dépendance npm de `module.json.frontend.npmDeps` (**`three`**) est installée automatiquement dans le workspace par l'installeur.
+## Prerequisites
+1. A **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) — the `--workspace`.
+2. **`@visuelconcept/wui-webserver`** installed in the project: it hosts the `/api/ai` route (auto-discovery of backend modules).
+3. The npm dependency from `module.json.frontend.npmDeps` (**`three`**) is installed automatically into the workspace by the installer.
 
-## Installer (une commande)
+## Install (one command)
 ```bash
 node install.mjs --workspace <workspace-runtime> --project <racine-projet> --register-pmon
 ```
-Exemple (WebDemo2) :
+Example (WebDemo2):
 ```bash
 node install.mjs --workspace D:\WinCC_OA_Proj_321\WebDemo2\webui-workspace --project D:\WinCC_OA_Proj_321\WebDemo2 --register-pmon
 ```
-L'installeur :
-1. copie la **source** (kit vendorisé sous `_vendor/`) → `<workspace>/…/standalone-pages/` ;
-2. insère les **2 entrées de menu** → `menuconfig.jsonc` du workspace (idempotent : `/fleet-3d` + `/fleet-3d/:atelier`) ;
-3. installe **`three`** dans le workspace (pour que `build:pages` le bundle) ;
-4. dépose le **module backend** `/api/ai` → `customer-webserver/src/modules/machine-fleet-3d/` ;
-5. déploie les **4 managers** → `<projet>/javascript/{machineSim,kpiCalc,aiAssistant,mcpServer}/` + `npm install` ; avec `--register-pmon`, ajoute leurs lignes à `config/progs` ;
-6. lance **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
+The installer:
+1. copies the **source** (kit vendored under `_vendor/`) → `<workspace>/…/standalone-pages/`;
+2. inserts the **2 menu entries** → the workspace's `menuconfig.jsonc` (idempotent: `/fleet-3d` + `/fleet-3d/:atelier`);
+3. installs **`three`** into the workspace (so `build:pages` bundles it);
+4. drops the **backend module** `/api/ai` → `customer-webserver/src/modules/machine-fleet-3d/`;
+5. deploys the **4 managers** → `<projet>/javascript/{machineSim,kpiCalc,aiAssistant,mcpServer}/` + `npm install`; with `--register-pmon`, adds their lines to `config/progs`;
+6. runs **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
 
-## Après l'install (obligatoire)
-1. **Webserver** : `cd <projet>/javascript/customer-webserver && npm run build`, puis **redémarrer** le manager webserver (il auto-monte `/api/ai`).
-2. **Managers** : démarrer **`machineSim`**, **`kpiCalc`**, **`aiAssistant`**, **`mcpServer`** dans la console WinCC OA. Vérifier l'ordre/numéro des managers si pmon a été édité.
-3. **Navigateur** : DevTools → Application → Storage → **`Clear site data`**, recharger (**connecté**).
-   ⚠️ Le SW cache `menuconfig.json` → **`Ctrl+Shift+R` ne suffit pas**.
+## After install (mandatory)
+1. **Webserver**: `cd <projet>/javascript/customer-webserver && npm run build`, then **restart** the webserver manager (it auto-mounts `/api/ai`).
+2. **Managers**: start **`machineSim`**, **`kpiCalc`**, **`aiAssistant`**, **`mcpServer`** in the WinCC OA console. Check the manager order/number if pmon was edited.
+3. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).
+   ⚠️ The SW caches `menuconfig.json` → **`Ctrl+Shift+R` is not enough**.
 
-## Vérifier
-1. Connecté → entrée **« Parc machines 3D »**, `/fleet-3d` charge la vue 3D (bulles d'état/KPI par machine).
-2. `GET https://<dashboard>/api/ai/health` → réponse `ok` (le pont IA est monté).
-3. Les bulles KPI se mettent à jour (managers `machineSim` + `kpiCalc` actifs) ; l'assistant IA répond via `aiAssistant`/`mcpServer`.
+## Verify
+1. Logged in → **"Parc machines 3D"** entry, `/fleet-3d` loads the 3D view (per-machine status/KPI bubbles).
+2. `GET https://<dashboard>/api/ai/health` → `ok` response (the AI bridge is mounted).
+3. The KPI bubbles update (`machineSim` + `kpiCalc` managers active); the AI assistant responds via `aiAssistant`/`mcpServer`.
 
-## Notes / sécurité
-- Le module monte `/api/ai/*` en **`fullAccess`** (démo) → restreindre l'`acl` dans `backend/modules/machine-fleet-3d/index.ts` avant prod.
-- Les **4 managers** ont besoin de `winccoa-manager`, **fourni par le runtime WinCC OA** (pas dans le `package.json` du manager).
-- **Tokens IA** : les jetons des providers sont lus depuis le DP **`AI_Assistant_Config`** (ou variable d'environnement) — **AUCUN n'est livré**. À renseigner avant que l'assistant fonctionne.
-- **`mcpServer`** nécessite son **propre `npm install`** (fait par l'installeur) et un **token** — **AUCUN n'est livré**.
+## Notes / security
+- The module mounts `/api/ai/*` as **`fullAccess`** (demo) → restrict the `acl` in `backend/modules/machine-fleet-3d/index.ts` before production.
+- The **4 managers** need `winccoa-manager`, **provided by the WinCC OA runtime** (not in the manager's `package.json`).
+- **AI tokens**: provider tokens are read from the **`AI_Assistant_Config`** DP (or an environment variable) — **none are shipped**. Fill them in before the assistant will work.
+- **`mcpServer`** requires its **own `npm install`** (done by the installer) and a **token** — **none is shipped**.

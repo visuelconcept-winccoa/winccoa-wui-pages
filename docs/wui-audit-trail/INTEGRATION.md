@@ -1,41 +1,41 @@
-# Intégrer la page Audit Trail (`@visuelconcept/wui-audit-trail`) — mode source, Tier 1
+# Integrate the Audit Trail page (`@visuelconcept/wui-audit-trail`) — source mode, Tier 1
 
-Page **standalone WinCC OA WebUI** affichant un **tableau croisé (pivot) de
-l'historique des éléments archivés NGA** d'un datapoint, piloté par un **popup de
-configuration** (DP / période / colonnes / rafraîchissement) persisté dans un DP
-**`AuditTrail_Config`**. C'est un **Tier 1** : **frontend uniquement** (pas de
-module backend, pas de manager). Distribution **source auto-contenue** : le kit
-partagé est **vendorisé** sous `audit-trail/_vendor/` (pas de prérequis
-`@visuelconcept/wui-kit`), et la page est **compilée sur le workspace runtime de
-la cible** (bundle = bonne version).
+**Standalone WinCC OA WebUI page** displaying a **pivot (cross-tab) table of the
+NGA archived history of elements** of a datapoint, driven by a **configuration
+popup** (DP / period / columns / refresh) persisted in a DP
+**`AuditTrail_Config`**. This is a **Tier 1**: **frontend only** (no backend
+module, no manager). **Self-contained source** distribution: the shared kit is
+**vendored** under `audit-trail/_vendor/` (no `@visuelconcept/wui-kit`
+prerequisite), and the page is **compiled against the target's runtime
+workspace** (bundle = correct version).
 
-## Pré-requis
-1. Un **workspace WebUI Runtime** (`@wincc-oa/webui-runtime`) — le `--workspace`.
-2. Aucun backend ni manager requis. `module.json.frontend.npmDeps` est vide : l'installeur n'ajoute aucune dépendance npm au workspace.
+## Prerequisites
+1. A **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) — the `--workspace`.
+2. No backend or manager required. `module.json.frontend.npmDeps` is empty: the installer adds no npm dependency to the workspace.
 
-## Installer (une commande)
+## Install (one command)
 ```bash
 node install.mjs --workspace <workspace-runtime> --project <racine-projet>
 ```
-Exemple (WebDemo2) :
+Example (WebDemo2):
 ```bash
 node install.mjs --workspace D:\WinCC_OA_Proj_321\WebDemo2\webui-workspace --project D:\WinCC_OA_Proj_321\WebDemo2
 ```
-L'installeur :
-1. copie la **source** (kit vendorisé) → `<workspace>/…/standalone-pages/` ;
-2. insère l'**entrée de menu** → `menuconfig.jsonc` du workspace (idempotent par `routeId`) ;
-3. lance **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
+The installer:
+1. copies the **source** (vendored kit) → `<workspace>/…/standalone-pages/`;
+2. inserts the **menu entry** → the workspace's `menuconfig.jsonc` (idempotent by `routeId`);
+3. runs **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
 
-## Après l'install (obligatoire)
-1. **Navigateur** : DevTools → Application → Storage → **`Clear site data`**, recharger (**connecté**).
-   ⚠️ Le SW cache `menuconfig.json` → **`Ctrl+Shift+R` ne suffit pas** ; seul `Clear site data` le purge.
+## After install (mandatory)
+1. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).
+   ⚠️ The SW caches `menuconfig.json` → **`Ctrl+Shift+R` is not enough**; only `Clear site data` purges it.
 
-## Vérifier
-1. Connecté → l'entrée **« Audit Trail »** apparaît dans le menu, `/audit-trail` charge la page.
-2. Ouvrir le **popup de config** : choisir un DP archivé NGA, une période et des colonnes → le tableau pivot se remplit avec l'historique des éléments.
-3. La config est persistée dans le DP **`AuditTrail_Config`** (rechargée au prochain affichage).
+## Verify
+1. Logged in → the **"Audit Trail"** entry appears in the menu, `/audit-trail` loads the page.
+2. Open the **config popup**: pick an NGA archived DP, a period and columns → the pivot table fills with the element history.
+3. The config is persisted in the DP **`AuditTrail_Config`** (reloaded on next display).
 
-## Notes / sécurité
-- Page **frontend uniquement** : aucune route `/api/*` exposée, aucun manager à démarrer.
-- L'entrée de menu est en `permission: ["connected"]` → visible pour tout utilisateur connecté ; restreindre via la `permission` du fragment de menu si besoin.
-- La page lit l'historique via les archives **NGA** du DP ciblé : s'assurer que l'archivage NGA est actif sur les éléments à auditer.
+## Notes / security
+- **Frontend-only** page: no `/api/*` route exposed, no manager to start.
+- The menu entry is `permission: ["connected"]` → visible to any logged-in user; restrict via the menu fragment's `permission` if needed.
+- The page reads the history via the **NGA** archives of the targeted DP: make sure NGA archiving is active on the elements to be audited.

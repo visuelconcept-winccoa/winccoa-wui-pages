@@ -1,56 +1,56 @@
-# wui-thermal-reports — notes métier & architecture
+# wui-thermal-reports — business & architecture notes
 
-Page WebUI autonome **Rapports de traitement thermique (TTD)** (`/thermal-reports`).
-Custom element d'entrée `wui-thermal-reports` (classe `WuiThermalReports`), préfixe des sous-composants `tt-`. Permission requise : `connected`. Tier 1 (front pur, aucun backend ni manager dédié).
+Standalone WebUI page **Thermal Treatment Reports (TTD)** (`/thermal-reports`).
+Entry custom element `wui-thermal-reports` (class `WuiThermalReports`), sub-component prefix `tt-`. Required permission: `connected`. Tier 1 (pure frontend, no dedicated backend or manager).
 
-## Domaine / objet
+## Domain / object
 
-Rapports de cycle de traitement thermique **par charge** (four). Chaque rapport documente :
+Thermal treatment cycle reports **per load** (furnace). Each report documents:
 
-- **Identité** : reportNo / charge / orderNo (OF) / pièce / matière / quantité.
-- **Traitement** : `TreatmentType` (cementation, carbonitruration, nitruration, trempe, revenu, recuit, detente, normalisation, autre) + `QuenchMedium` (média de trempe) + `atmosphere` (texte libre).
-- **Recette** : `steps: ThermalStep[]`, chaque palier = consigne (`setpoint` °C) / `durationMin` / tolérances `tolMinus`/`tolPlus` / `atmosphere` / `label`.
-- **Lien four** : atelierId/Name, machineId/Name + `tempDp` (DPE de température) + fenêtre de cycle `startTime`/`endTime` (format `YYYY-MM-DDTHH:mm`).
-- **Qualité** : `results: QualityResult[]` (label/value/unit/min/max), `conformity` (pending / conform / nonconform).
-- **Cycle de vie** : `status` (draft / running / completed / validated / rejected) + operator / validatedBy / validatedAt / notes.
+- **Identity**: reportNo / load / orderNo (work order) / part / material / quantity.
+- **Treatment**: `TreatmentType` (cementation, carbonitruration, nitruration, trempe, revenu, recuit, detente, normalisation, autre) + `QuenchMedium` (quench medium) + `atmosphere` (free text).
+- **Recipe**: `steps: ThermalStep[]`, each step = setpoint (`setpoint` °C) / `durationMin` / tolerances `tolMinus`/`tolPlus` / `atmosphere` / `label`.
+- **Furnace link**: atelierId/Name, machineId/Name + `tempDp` (temperature DPE) + cycle window `startTime`/`endTime` (format `YYYY-MM-DDTHH:mm`).
+- **Quality**: `results: QualityResult[]` (label/value/unit/min/max), `conformity` (pending / conform / nonconform).
+- **Lifecycle**: `status` (draft / running / completed / validated / rejected) + operator / validatedBy / validatedAt / notes.
 
-Modèle dans `types.ts` : maps libellés+couleurs, helpers `blankReport` / `blankStep` / `blankResult`, `resultConform`, `sanitizeId`, `tempDpForMachine`.
+Model in `types.ts`: label+color maps, helpers `blankReport` / `blankStep` / `blankResult`, `resultConform`, `sanitizeId`, `tempDpForMachine`.
 
-Vue **maître/détail** : l'entrée bascule entre la liste (`tt-report-table` + `tt-kpi-bar` + toolbar) et la vue détail via `selectedId`. La barre KPI est calculée **localement dans le navigateur** (pas de manager serveur).
+**Master/detail** view: the entry switches between the list (`tt-report-table` + `tt-kpi-bar` + toolbar) and the detail view via `selectedId`. The KPI bar is computed **locally in the browser** (no server manager).
 
-## Modèle de données (DPs)
+## Data model (DPs)
 
-**1 DP par rapport** (choix assumé), type **`ThermalReport_Report`** (Struct : String `name` + String `json`), préfixe `ThermalReport_`.
+**1 DP per report** (assumed choice), type **`ThermalReport_Report`** (Struct: String `name` + String `json`), prefix `ThermalReport_`.
 
-- Auto-création du type et des DP via PARA REST (`/api/para/dptype|dp/create`, `/api/para/dp/set`, `DELETE /api/para/dp/:name?dpType=`) — copie exacte de l'`AssetStore` de la page asset-lifecycle. Le type **n'est pas pré-créé via MCP** : l'auto-création au premier chargement suffit.
-- Lecture via `WuiDpeService.listDatapoints` + `OaRxJsApi.dpGet`.
-- **Fallback offline transparent** (`mem()`) : amorce `buildDemoReports([])` → 4 rapports de démo hors-ligne.
-- Persistance dans `data/report-store.ts` ; export/import JSON (enveloppe `{kind:'thermal-reports', version, reports}`) + export CSV dans `data/io.ts`.
+- Auto-creation of the type and the DPs via PARA REST (`/api/para/dptype|dp/create`, `/api/para/dp/set`, `DELETE /api/para/dp/:name?dpType=`) — exact copy of the asset-lifecycle page's `AssetStore`. The type is **not pre-created via MCP**: auto-creation on first load is enough.
+- Reading via `WuiDpeService.listDatapoints` + `OaRxJsApi.dpGet`.
+- **Transparent offline fallback** (`mem()`): seeds `buildDemoReports([])` → 4 offline demo reports.
+- Persistence in `data/report-store.ts`; JSON export/import (envelope `{kind:'thermal-reports', version, reports}`) + CSV export in `data/io.ts`.
 
-## Algorithmes / formules clés
+## Key algorithms / formulas
 
-Cœur dans `engine.ts` :
+Core in `engine.ts`:
 
-- **Source de données = archives du four** (choix explicite). Le rapport lit la **courbe de température réelle** depuis le DPE archivé du four sur `[startTime, endTime]` :
-  `readActualCurve` = `api.dpGetPeriod(start, end, 0, tempDp + ':_original.._value')` (même mécanisme que la page audit-trail / l'engine fleet).
-- **DPE de température par défaut** auto-rempli dans le dialogue depuis le four sélectionné = **`MachineSim_<sanitize(machineId)>.temperature`** (le manager machineSim simule la température du four sous `MachineSim_<id>.temperature`).
-- `synthesizeActual` : quand aucune donnée archivée n'est trouvée (offline / DPE non archivé), construit une courbe plausible **déterministe** (retard 1er ordre vers l'escalier de consignes + oscillation sinusoïdale, **pas de RNG**) ; le détail affiche alors « courbe simulée ».
-- `buildProfile` : escalier des consignes + bande de tolérance (2 points/palier, `step:'end'`).
-- `evaluateCycle` : → `inBandPct` / `maxDeviation` / min-max.
+- **Data source = furnace archives** (explicit choice). The report reads the **actual temperature curve** from the furnace's archived DPE over `[startTime, endTime]`:
+  `readActualCurve` = `api.dpGetPeriod(start, end, 0, tempDp + ':_original.._value')` (same mechanism as the audit-trail page / the fleet engine).
+- **Default temperature DPE** auto-filled in the dialog from the selected furnace = **`MachineSim_<sanitize(machineId)>.temperature`** (the machineSim manager simulates the furnace temperature under `MachineSim_<id>.temperature`).
+- `synthesizeActual`: when no archived data is found (offline / non-archived DPE), it builds a plausible **deterministic** curve (first-order lag toward the setpoint staircase + sinusoidal oscillation, **no RNG**); the detail then shows "simulated curve".
+- `buildProfile`: setpoint staircase + tolerance band (2 points/step, `step:'end'`).
+- `evaluateCycle`: → `inBandPct` / `maxDeviation` / min-max.
 
-**Graphique** (`tt-temp-chart.ts`, echarts) : ligne réelle (smooth) + consigne en escalier pointillé + bande de tolérance via le **trick de bande de confiance empilée** (série basse invisible `bandBase` empilée sous une série d'épaisseur remplie `Tolérance`). `getImageDataUrl()` expose un PNG pour l'impression.
+**Chart** (`tt-temp-chart.ts`, echarts): actual line (smooth) + dashed setpoint staircase + tolerance band via the **stacked confidence-band trick** (invisible low series `bandBase` stacked under a filled-thickness series `Tolérance`). `getImageDataUrl()` exposes a PNG for printing.
 
-## Pièges / à savoir
+## Pitfalls / good to know
 
-- **Impression — courbe blanche (corrigé 2026-06-20)** : `win.print()` était appelé **de façon synchrone** juste après `document.write`, en concurrence avec le décodage du data-URL `<img>` du PNG. Correctif : `print.ts` injecte un `PRINT_SCRIPT` qui n'appelle `window.print()` **qu'après chargement de toutes les `document.images`** ; `tt-report-detail.print()` ne fait plus que `document.write` + `close`. Ceinture+bretelles dans `tt-temp-chart.ts` : `getImageDataUrl()` fait `chart.resize()` avant `getDataURL` (élimine la taille écran périmée — la raison pour laquelle le zoom « aidait parfois »), et l'option chart fixe `animation: false` (jamais de capture mi-dessinée).
-- **echarts** : importé en `import * as echarts` (externalisé via l'import-map du shared-bundle, comme po-gantt / fleet-stop) — ce n'est PAS un chunk.
-- **Validation/refus** : les boutons émettent `wui:status` ; `applyStatus` (dans l'entrée) estampille `validatedBy`/`validatedAt` et dérive la conformité depuis `pending`.
-- **Impression** = `print.ts buildPrintHtml` (pur, embarque le PNG du chart) → document HTML autonome dans une nouvelle fenêtre.
-- **Démo** (`data/demo-reports.ts`) : `buildDemoReports(ateliers)` bâtit 4 rapports (cémentation / nitruration / trempe / détensionnement, statuts+conformités mixtes) sur de vrais fours de la flotte (type `four`) ; fabrique 2 fours placeholder si la flotte n'en a aucun. Utilisé par le bouton empty-state ET l'amorce offline.
+- **Printing — white curve (fixed 2026-06-20)**: `win.print()` was called **synchronously** right after `document.write`, racing the decode of the PNG's data-URL `<img>`. Fix: `print.ts` injects a `PRINT_SCRIPT` that calls `window.print()` **only after all `document.images` have loaded**; `tt-report-detail.print()` now only does `document.write` + `close`. Belt-and-braces in `tt-temp-chart.ts`: `getImageDataUrl()` runs `chart.resize()` before `getDataURL` (eliminates the stale screen size — the reason zoom "sometimes helped"), and the chart option pins `animation: false` (never a mid-draw capture).
+- **echarts**: imported as `import * as echarts` (externalized via the shared-bundle import-map, like po-gantt / fleet-stop) — it is NOT a chunk.
+- **Validation/rejection**: the buttons emit `wui:status`; `applyStatus` (in the entry) stamps `validatedBy`/`validatedAt` and derives conformity from `pending`.
+- **Printing** = `print.ts buildPrintHtml` (pure, embeds the chart PNG) → self-contained HTML document in a new window.
+- **Demo** (`data/demo-reports.ts`): `buildDemoReports(ateliers)` builds 4 reports (cementation / nitriding / quenching / stress relief, mixed statuses+conformities) on real furnaces from the fleet (type `four`); fabricates 2 placeholder furnaces if the fleet has none. Used by the empty-state button AND the offline seed.
 
-## Non fait / pistes
+## Not done / leads
 
-- Rafraîchissement **live `dpConnect`** de la courbe pendant qu'une charge tourne (actuellement lecture one-shot à l'ouverture/édition).
-- i18n DE/EN des libellés FR in-component.
-- Dérivation auto plus riche de la conformité (aujourd'hui champ manuel + indicateurs calculés).
-- Archivage NGA des DP de rapport pour le trending.
+- **Live `dpConnect`** refresh of the curve while a load is running (currently a one-shot read on open/edit).
+- DE/EN i18n of the in-component FR labels.
+- Richer auto-derivation of conformity (today a manual field + computed indicators).
+- NGA archiving of report DPs for trending.

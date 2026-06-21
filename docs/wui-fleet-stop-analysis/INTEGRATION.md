@@ -1,39 +1,39 @@
-# Intégrer la page Fleet Stop-Cause Analysis (`@visuelconcept/wui-fleet-stop-analysis`) — mode source, Tier 1
+# Integrate the Fleet Stop-Cause Analysis page (`@visuelconcept/wui-fleet-stop-analysis`) — source mode, Tier 1
 
-Page **standalone WinCC OA WebUI** d'**analyse des causes d'arrêts** (`/fleet-stops`) :
-décomposition du temps d'arrêt (`dpGetPeriod` + algorithme par intervalles) ventilée
-**par cause**, en onglets **table + ECharts**. C'est un **Tier 1** : **frontend
-uniquement** (pas de module backend, pas de manager). Distribution **source
-auto-contenue** : le kit partagé (`wui-kit`, `wui-fleet-core`) est **vendorisé** sous
-`fleet-stop-analysis/_vendor/` (pas de prérequis `@visuelconcept/wui-kit`), et la page
-est **compilée sur le workspace runtime de la cible** (bundle = bonne version).
+**Standalone WinCC OA WebUI page** for **stop-cause analysis** (`/fleet-stops`):
+breakdown of stop time (`dpGetPeriod` + interval algorithm) split
+**by cause**, in **table + ECharts** tabs. This is a **Tier 1**: **frontend
+only** (no backend module, no manager). **Self-contained source**
+distribution: the shared kit (`wui-kit`, `wui-fleet-core`) is **vendored** under
+`fleet-stop-analysis/_vendor/` (no `@visuelconcept/wui-kit` prerequisite), and the page
+is **compiled against the target's runtime workspace** (bundle = correct version).
 
-## Pré-requis
-1. Un **workspace WebUI Runtime** (`@wincc-oa/webui-runtime`) — le `--workspace`.
-2. **Aucun** module backend ni manager. Les deps npm front (`@siemens/ix-echarts`, `three`) sont **installées automatiquement dans le workspace** par l'installeur.
+## Prerequisites
+1. A **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) — the `--workspace`.
+2. **No** backend module or manager. The frontend npm deps (`@siemens/ix-echarts`, `three`) are **installed automatically into the workspace** by the installer.
 
-## Installer (une commande)
+## Install (one command)
 ```bash
 node install.mjs --workspace <workspace-runtime> --project <racine-projet>
 ```
-Exemple (WebDemo2) :
+Example (WebDemo2):
 ```bash
 node install.mjs --workspace D:\WinCC_OA_Proj_321\WebDemo2\webui-workspace --project D:\WinCC_OA_Proj_321\WebDemo2
 ```
-L'installeur :
-1. copie la **source** (kit vendorisé) → `<workspace>/…/standalone-pages/` ;
-2. insère l'**entrée de menu** → `menuconfig.jsonc` du workspace (idempotent par `routeId`) ;
-3. installe les **deps npm front** (`@siemens/ix-echarts`, `three`) dans le workspace (pour que `build:pages` les bundle) ;
-4. lance **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
+The installer:
+1. copies the **source** (vendored kit) → `<workspace>/…/standalone-pages/`;
+2. inserts the **menu entry** → the workspace's `menuconfig.jsonc` (idempotent by `routeId`);
+3. installs the **frontend npm deps** (`@siemens/ix-echarts`, `three`) into the workspace (so `build:pages` bundles them);
+4. runs **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
 
-## Après l'install (obligatoire)
-1. **Navigateur** : DevTools → Application → Storage → **`Clear site data`**, recharger (**connecté**).
-   ⚠️ Le SW cache `menuconfig.json` → **`Ctrl+Shift+R` ne suffit pas** ; seul `Clear site data` le purge.
+## After install (mandatory)
+1. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).
+   ⚠️ The SW caches `menuconfig.json` → **`Ctrl+Shift+R` is not enough**; only `Clear site data` purges it.
 
-## Vérifier
-1. Connecté → la page **`/fleet-stops`** charge (entrée « Analyse des causes d'arrêts », normalement atteinte depuis la vue d'ensemble du parc — l'entrée de menu est `hidden`).
-2. Sélectionner une période → la décomposition par cause s'affiche dans l'onglet **table** et le graphe **ECharts**.
+## Verify
+1. Logged in → the **`/fleet-stops`** page loads (entry "Analyse des causes d'arrêts", normally reached from the fleet overview — the menu entry is `hidden`).
+2. Select a period → the per-cause breakdown shows in the **table** tab and the **ECharts** chart.
 
-## Notes / sécurité
-- Page **frontend uniquement** : pas de route `/api/*` exposée, pas de manager à démarrer. Les données sont lues via la connexion WinCC OA existante du dashboard.
-- L'entrée de menu est `hidden` (atteinte depuis la vue d'ensemble du parc) ; changer ce flag dans `frontend/menu.fragment.jsonc` si vous voulez l'exposer directement.
+## Notes / security
+- **Frontend-only** page: no `/api/*` route exposed, no manager to start. Data is read through the dashboard's existing WinCC OA connection.
+- The menu entry is `hidden` (reached from the fleet overview); change this flag in `frontend/menu.fragment.jsonc` if you want to expose it directly.

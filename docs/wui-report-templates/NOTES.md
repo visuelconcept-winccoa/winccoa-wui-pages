@@ -1,46 +1,46 @@
-# wui-report-templates — notes métier & architecture
+# wui-report-templates — business & architecture notes
 
-## Domaine / objet
+## Domain / object
 
-Page autonome **Report Templates** (route `/report-templates`) : éditeur de **modèles de rapports** réutilisables et configurables. C'est la version *générique et paramétrable* de la page TTD codée en dur (thermal-reports).
+Standalone **Report Templates** page (route `/report-templates`): editor for reusable, configurable **report templates**. It is the *generic, parameterizable* version of the hardcoded TTD page (thermal-reports).
 
-- Élément `wui-report-templates`, classe `WuiReportTemplates`, entrée `report-templates.ts`. Préfixe des sous-composants : `rb-`.
-- Affiche une liste de modèles + un éditeur modal en place `rb-template-editor`. L'édition est conditionnée par `canPublish`.
-- Un modèle décrit la structure d'un rapport : une suite de **sections paramétrées** + un **workflow de signatures multi-niveaux**. Il ne contient aucune donnée d'exploitation : ce sont les *instances* `Report` (page Reports `/report-builder`, package séparé) qui figent (snapshot) `sections`+`workflow` du modèle à leur création et portent les données saisies.
-- Séparation Reports / Templates en **deux pages indépendantes** : historiquement un seul composant avec bascule segmentée Rapports|Modèles partageait un état `deleting` unique → bug fantôme « supprimer le modèle undefined » au changement de vue. Chaque composant a désormais son propre `deletingId: string|null`.
+- Element `wui-report-templates`, class `WuiReportTemplates`, entry `report-templates.ts`. Sub-component prefix: `rb-`.
+- Displays a template list + an in-place modal editor `rb-template-editor`. Editing is gated by `canPublish`.
+- A template describes the structure of a report: a sequence of **parameterized sections** + a **multi-level signature workflow**. It holds no operational data: it is the `Report` *instances* (Reports page `/report-builder`, separate package) that snapshot the template's `sections`+`workflow` at their creation and carry the entered data.
+- Reports / Templates split into **two independent pages**: historically a single component with a segmented Reports|Templates switch shared a single `deleting` state → phantom "delete template undefined" bug on view switch. Each component now has its own `deletingId: string|null`.
 
-## Modèle de données (DPs)
+## Data model (DPs)
 
-Tier 1 : persistance frontend uniquement (PARA-REST + repli offline), **pas de manager backend**. 1 DP par entité, Struct `name`+`json`.
+Tier 1: frontend-only persistence (PARA-REST + offline fallback), **no backend manager**. 1 DP per entity, Struct `name`+`json`.
 
-- **`ReportTemplate`** — type DP `ReportBuilder_Template`, préfixe `ReportBuilder_Template_`. Entité réutilisable, contient :
+- **`ReportTemplate`** — DP type `ReportBuilder_Template`, prefix `ReportBuilder_Template_`. Reusable entity, contains:
   - `sections: TemplateSection[]`
   - `workflow: WorkflowState[]`
-- (Pour mémoire, entité gérée par la page Reports, hors de ce package : **`Report`** = type `ReportBuilder_Report`, qui *snapshote* `sections`+`workflow` du modèle à la création.)
+- (For reference, an entity managed by the Reports page, outside this package: **`Report`** = type `ReportBuilder_Report`, which *snapshots* the template's `sections`+`workflow` at creation.)
 
-Côté code partagé : base générique `DpJsonStore<T extends {id; dp}>` (`data/dp-json-store.ts`) ; `template-store.ts` en est une sous-classe mince. Helpers modèle dans `types.ts` (factories de structures vierges, `instantiateReport`, `fieldConform`, `uid`, `nowLocal`).
+On the shared-code side: generic base `DpJsonStore<T extends {id; dp}>` (`data/dp-json-store.ts`); `template-store.ts` is a thin subclass of it. Template helpers in `types.ts` (blank-structure factories, `instantiateReport`, `fieldConform`, `uid`, `nowLocal`).
 
-### Types de sections (`TemplateSection.kind`, union discriminée)
+### Section types (`TemplateSection.kind`, discriminated union)
 
-- `text` — bloc texte.
-- `comment` — commentaire libre.
-- `fields` — paires clé/valeur (`FieldDef`) avec `min`/`max` numériques optionnels → `fieldConform` produit une puce OK / Hors-tolérance.
-- `table` — colonnes configurables (`ColumnDef`), lignes saisies par l'opérateur dans l'instance.
-- `dataset` — `DatasetDef` = un DP + une liste d'opérations d'agrégation `ops[]`. Dans l'instance, « Actualiser » lit les archives sur la période du rapport et fige les agrégations ; graphe optionnel `rb-dataset-chart` (echarts ligne, autonome, `getImageDataUrl()` pour l'impression).
-- `checklist` — items ; ceux marqués `required` conditionnent la signature.
+- `text` — text block.
+- `comment` — free comment.
+- `fields` — key/value pairs (`FieldDef`) with optional numeric `min`/`max` → `fieldConform` produces an OK / Out-of-tolerance chip.
+- `table` — configurable columns (`ColumnDef`), rows entered by the operator in the instance.
+- `dataset` — `DatasetDef` = a DP + a list of aggregation operations `ops[]`. In the instance, "Refresh" reads the archives over the report's period and freezes the aggregations; optional chart `rb-dataset-chart` (echarts line, self-contained, `getImageDataUrl()` for printing).
+- `checklist` — items; those marked `required` gate the signature.
 
-## Algorithmes / formules clés
+## Key algorithms / formulas
 
-- **Conformité champ** : `fieldConform` → OK si `min ≤ valeur ≤ max` (bornes optionnelles), sinon Hors-tolérance.
-- **Workflow multi-niveaux** (le cœur de la fonctionnalité) : `WorkflowState[]` ordonnés. Chaque état non final porte `advance: SignOff { toStateId, actionLabel, roleLabel, level, requirePermission, requireChecklist }` → un niveau de signature, nombre de niveaux arbitraire.
-  - Workflow par défaut : `Brouillon →[L1 Opérateur]→ Vérifié →[L2 Responsable, requireChecklist]→ Approuvé`, plus un état `Rejeté`.
-  - Helpers (`engine.ts`, partagé) : `currentState`, `isLocked`, `checklistComplete`, `canAdvance`, `applySignature`, `applyReject`. `canAdvance` est conditionné par `canPublish` (+ checklist si `requireChecklist`). L'état final ⇒ `isLocked` ⇒ rapport en lecture seule.
-- **Agrégation dataset** (côté instance, partagé) : `computeDataset` → `readSeries` via `dpGetPeriod(... ':_original.._value')` puis agrégat en boucle : avg / min / max / sum / last / count / stddev. Calcul **client-side** depuis les archives (comme TTD), pas de tâche serveur.
+- **Field conformity**: `fieldConform` → OK if `min ≤ value ≤ max` (optional bounds), otherwise Out-of-tolerance.
+- **Multi-level workflow** (the core feature): ordered `WorkflowState[]`. Each non-final state carries `advance: SignOff { toStateId, actionLabel, roleLabel, level, requirePermission, requireChecklist }` → one signature level, arbitrary number of levels.
+  - Default workflow: `Draft →[L1 Operator]→ Verified →[L2 Manager, requireChecklist]→ Approved`, plus a `Rejected` state.
+  - Helpers (`engine.ts`, shared): `currentState`, `isLocked`, `checklistComplete`, `canAdvance`, `applySignature`, `applyReject`. `canAdvance` is gated by `canPublish` (+ checklist if `requireChecklist`). The final state ⇒ `isLocked` ⇒ read-only report.
+- **Dataset aggregation** (instance side, shared): `computeDataset` → `readSeries` via `dpGetPeriod(... ':_original.._value')` then aggregate in a loop: avg / min / max / sum / last / count / stddev. Computed **client-side** from the archives (like TTD), no server task.
 
-## Pièges / à savoir
+## Pitfalls / good to know
 
-- **Édition gated par `canPublish`** : l'utilisateur connecté et ses droits viennent de `WuiUserService` (`.name` / `.id` / `.canPublish`, souscription `user$`) — même mécanisme que les permissions fleet / ai-assistant. Les signatures = nom + timestamp ISO + permission (pas de signature cryptographique).
-- **Colonne d'actions révélée au survol** : dans `rb-template-table`, les icônes par ligne (éditer / dupliquer / corbeille) sont dans `.actions-col` masquée par défaut (`opacity:0; pointer-events:none`), visible et cliquable seulement sur `tr:hover` / `:focus-within` (`table-styles.ts`). Correctif anti-suppression accidentelle : avant, cliquer à droite d'une ligne pour l'ouvrir pouvait tomber sur la corbeille toujours visible et déclencher la confirmation de suppression ; désormais ces clics « tombent » sur l'action ouvrir.
-- **Snapshot à la création de rapport** : les modifications ultérieures d'un modèle n'altèrent jamais un rapport déjà créé/signé (l'instance fige `sections`+`workflow`). À garder à l'esprit pour toute évolution du modèle de données.
-- **Composants partagés réutilisés** : `rb-template-editor` est onglé (Sections | Workflow), réutilise `mf-dp-input` (depuis machine-fleet-3d) pour saisir le DP d'un dataset, et un pattern `move()` / patch-par-index pour ajout/suppression/réordonnancement. Styles partagés `dialog-styles.ts` / `table-styles.ts`.
-- **Non réalisé / limites connues** : i18n des libellés FR ; agrégation planifiée côté serveur ; export PDF / email ; signature électronique cryptographique.
+- **Editing gated by `canPublish`**: the logged-in user and their rights come from `WuiUserService` (`.name` / `.id` / `.canPublish`, `user$` subscription) — same mechanism as fleet / ai-assistant permissions. Signatures = name + ISO timestamp + permission (no cryptographic signature).
+- **Action column revealed on hover**: in `rb-template-table`, the per-row icons (edit / duplicate / trash) are in `.actions-col`, hidden by default (`opacity:0; pointer-events:none`), visible and clickable only on `tr:hover` / `:focus-within` (`table-styles.ts`). Accidental-deletion fix: previously, clicking to the right of a row to open it could land on the always-visible trash and trigger the delete confirmation; now those clicks "fall through" to the open action.
+- **Snapshot at report creation**: later edits to a template never alter an already-created/signed report (the instance freezes `sections`+`workflow`). Keep this in mind for any evolution of the data model.
+- **Reused shared components**: `rb-template-editor` is tabbed (Sections | Workflow), reuses `mf-dp-input` (from machine-fleet-3d) to enter a dataset's DP, and a `move()` / patch-by-index pattern for add/remove/reorder. Shared styles `dialog-styles.ts` / `table-styles.ts`.
+- **Not done / known limits**: i18n of the FR labels; scheduled server-side aggregation; PDF / email export; cryptographic electronic signature.

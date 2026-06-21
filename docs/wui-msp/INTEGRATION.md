@@ -1,37 +1,37 @@
-# Intégrer la page MSP (`@visuelconcept/wui-msp`) — mode source, Tier 1
+# Integrate the MSP page (`@visuelconcept/wui-msp`) — source mode, Tier 1
 
-Page **standalone WinCC OA WebUI** « MSP » (coquille / shell) enregistrée sous
-`/msp`. C'est un **Tier 1** : **frontend uniquement** — pas de module backend,
-pas de manager. Distribution **source auto-contenue** : le kit partagé est
-**vendorisé** sous `_vendor/` (pas de prérequis `@visuelconcept/wui-kit`), et la
-page est **compilée sur le workspace runtime de la cible** (le bundle correspond
-à la bonne version du runtime).
+**Standalone WinCC OA WebUI page** "MSP" (shell) registered under
+`/msp`. This is a **Tier 1**: **frontend only** — no backend module,
+no manager. **Self-contained source** distribution: the shared kit is
+**vendored** under `_vendor/` (no `@visuelconcept/wui-kit` prerequisite), and the
+page is **compiled against the target's runtime workspace** (the bundle matches
+the correct runtime version).
 
-## Pré-requis
-1. Un **workspace WebUI Runtime** (`@wincc-oa/webui-runtime`) — le `--workspace`.
-2. Aucun backend ni manager requis ; aucune dépendance npm supplémentaire (`module.json` `frontend.npmDeps` est vide).
+## Prerequisites
+1. A **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) — the `--workspace`.
+2. No backend or manager required; no additional npm dependency (`module.json` `frontend.npmDeps` is empty).
 
-## Installer (une commande)
+## Install (one command)
 ```bash
 node install.mjs --workspace <workspace-runtime> --project <racine-projet>
 ```
-Exemple (WebDemo2) :
+Example (WebDemo2):
 ```bash
 node install.mjs --workspace D:\WinCC_OA_Proj_321\WebDemo2\webui-workspace --project D:\WinCC_OA_Proj_321\WebDemo2
 ```
-L'installeur :
-1. copie la **source** (kit vendorisé) → `<workspace>/…/standalone-pages/` ;
-2. insère l'**entrée de menu** (`/msp`) → `menuconfig.jsonc` du workspace (idempotent par `routeId`) ;
-3. lance **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
+The installer:
+1. copies the **source** (vendored kit) → `<workspace>/…/standalone-pages/`;
+2. inserts the **menu entry** (`/msp`) → the workspace's `menuconfig.jsonc` (idempotent by `routeId`);
+3. runs **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
 
-## Après l'install (obligatoire)
-1. **Navigateur** : DevTools → Application → Storage → **`Clear site data`**, recharger (**connecté**).
-   ⚠️ Le SW cache `menuconfig.json` → **`Ctrl+Shift+R` ne suffit pas** ; seul `Clear site data` le purge.
+## After install (mandatory)
+1. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).
+   ⚠️ The SW caches `menuconfig.json` → **`Ctrl+Shift+R` is not enough**; only `Clear site data` purges it.
 
-## Vérifier
-1. Connecté → l'entrée **« MSP »** apparaît dans le menu.
-2. `/msp` charge la page (coquille).
+## Verify
+1. Logged in → the **"MSP"** entry appears in the menu.
+2. `/msp` loads the page (shell).
 
-## Notes / sécurité
-- Page **frontend uniquement** : aucune route `/api/*` exposée, aucun manager à démarrer ni à enregistrer dans pmon.
-- La permission de l'entrée de menu est `connected` (tout utilisateur authentifié) — restreindre dans `frontend/menu.fragment.jsonc` si besoin avant prod.
+## Notes / security
+- **Frontend-only** page: no `/api/*` route exposed, no manager to start or register in pmon.
+- The menu entry's permission is `connected` (any authenticated user) — restrict in `frontend/menu.fragment.jsonc` if needed before prod.

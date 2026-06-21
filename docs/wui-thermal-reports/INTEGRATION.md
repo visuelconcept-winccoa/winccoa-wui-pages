@@ -1,43 +1,42 @@
-# Intégrer la page Thermal Treatment Reports (`@visuelconcept/wui-thermal-reports`) — mode source, Tier 1
+# Integrate the Thermal Treatment Reports page (`@visuelconcept/wui-thermal-reports`) — source mode, Tier 1
 
-Page **standalone WinCC OA WebUI** de **rapports de traitement thermique**
-(`/thermal-reports`) : un rapport par charge, avec paliers de recette + bande de
-tolérance superposée à la **courbe réelle de température du four** (`dpGetPeriod`),
-évaluation qualité/conformité, graphique echarts (bande) et impression. Stockage
-**1 DP par rapport**. C'est un **Tier 1** : **frontend uniquement** (pas de module
-backend, pas de manager Node). Distribution **source auto-contenue** : le kit
-partagé est **vendorisé** sous `_vendor/` (pas de prérequis
-`@visuelconcept/wui-kit`), et la page est **compilée sur le workspace runtime de
-la cible** (bundle = bonne version).
+**Standalone WinCC OA WebUI page** for **thermal treatment reports**
+(`/thermal-reports`): one report per load, with recipe steps + a tolerance band
+overlaid on the **actual furnace temperature curve** (`dpGetPeriod`),
+quality/conformity evaluation, echarts chart (band) and printing. Storage:
+**1 DP per report**. This is a **Tier 1**: **frontend only** (no backend module,
+no Node manager). **Self-contained source** distribution: the shared kit is
+**vendored** under `_vendor/` (no `@visuelconcept/wui-kit` prerequisite), and the
+page is **compiled against the target's runtime workspace** (bundle = correct version).
 
-## Pré-requis
-1. Un **workspace WebUI Runtime** (`@wincc-oa/webui-runtime`) — le `--workspace`.
-2. Les deps npm frontend déclarées dans `module.json` (`@siemens/ix-echarts ~3.0.0`, `three ^0.169.0`) sont **installées automatiquement** dans le workspace par l'installeur — rien à ajouter à la main.
+## Prerequisites
+1. A **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) — the `--workspace`.
+2. The frontend npm deps declared in `module.json` (`@siemens/ix-echarts ~3.0.0`, `three ^0.169.0`) are **installed automatically** into the workspace by the installer — nothing to add by hand.
 
-## Installer (une commande)
+## Install (one command)
 ```bash
 node install.mjs --workspace <workspace-runtime> --project <racine-projet>
 ```
-Exemple (WebDemo2) :
+Example (WebDemo2):
 ```bash
 node install.mjs --workspace D:\WinCC_OA_Proj_321\WebDemo2\webui-workspace --project D:\WinCC_OA_Proj_321\WebDemo2
 ```
-L'installeur :
-1. copie la **source** (kit vendorisé sous `_vendor/`) → `<workspace>/libs/default-components/src/lib/standalone-pages/` ;
-2. insère l'**entrée de menu** → `menuconfig.jsonc` du workspace (idempotent) ;
-3. installe les **deps npm frontend** (`@siemens/ix-echarts`, `three`) dans le workspace (pour que `build:pages` les bundle) ;
-4. lance **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
+The installer:
+1. copies the **source** (vendored kit under `_vendor/`) → `<workspace>/libs/default-components/src/lib/standalone-pages/`;
+2. inserts the **menu entry** → the workspace's `menuconfig.jsonc` (idempotent);
+3. installs the **frontend npm deps** (`@siemens/ix-echarts`, `three`) into the workspace (so that `build:pages` bundles them);
+4. runs **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
 
-## Après l'install (obligatoire)
-1. **Navigateur** : DevTools → Application → Storage → **`Clear site data`**, recharger (**connecté**).
-   ⚠️ Le SW cache `menuconfig.json` → **`Ctrl+Shift+R` ne suffit pas** ; seul `Clear site data` le purge.
+## After install (mandatory)
+1. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).
+   ⚠️ The SW caches `menuconfig.json` → **`Ctrl+Shift+R` is not enough**; only `Clear site data` purges it.
 
-Aucun webserver à recompiler ni manager à démarrer : ce module est **frontend uniquement**.
+No webserver to recompile and no manager to start: this module is **frontend only**.
 
-## Vérifier
-1. Connecté → l'entrée **« Rapports traitement thermique »** apparaît dans le menu.
-2. `/thermal-reports` charge la liste des rapports ; ouvrir/créer un rapport affiche la courbe réelle du four (lue via `dpGetPeriod`) superposée à la bande de tolérance de la recette, avec le verdict qualité/conformité et l'impression.
+## Verify
+1. Logged in → the **"Rapports traitement thermique"** entry appears in the menu.
+2. `/thermal-reports` loads the report list; opening/creating a report shows the actual furnace curve (read via `dpGetPeriod`) overlaid on the recipe's tolerance band, with the quality/conformity verdict and printing.
 
-## Notes / sécurité
-- Module **frontend pur** : pas de surface réseau ajoutée (pas de route `/api/*`, pas de manager exposé). Rien à durcir côté backend.
-- La page lit/écrit des DP via le canal WebUI standard (un DP par rapport) ; les droits sont ceux de l'utilisateur connecté du dashboard.
+## Notes / security
+- **Pure frontend** module: no network surface added (no `/api/*` route, no exposed manager). Nothing to harden on the backend side.
+- The page reads/writes DPs via the standard WebUI channel (one DP per report); the rights are those of the dashboard's logged-in user.

@@ -1,39 +1,39 @@
-# Intégrer la page Fleet Closures (`@visuelconcept/wui-fleet-closures`) — mode source, Tier 1
+# Integrate the Fleet Closures page (`@visuelconcept/wui-fleet-closures`) — source mode, Tier 1
 
-Page **standalone WinCC OA WebUI** pour gérer les **jours non travaillés** de la
-flotte sur **`/fleet-closures`** : filtres année / atelier / machine, import-export
-JSON, et gestion des chevauchements (remplacer / ignorer / annuler). C'est un
-**Tier 1** : **frontend uniquement** (aucun module backend, aucun manager).
-Distribution **source auto-contenue** : le kit partagé (kit / fleet-core / ai-kit)
-est **vendorisé** sous `_vendor/` (pas de prérequis `@visuelconcept/wui-kit`), et la
-page est **compilée sur le workspace runtime de la cible** (bundle = bonne version).
+**Standalone WinCC OA WebUI page** for managing the fleet's **non-working days**
+on **`/fleet-closures`**: year / workshop / machine filters, JSON import-export,
+and overlap handling (replace / ignore / cancel). This is a **Tier 1**:
+**frontend only** (no backend module, no manager).
+**Self-contained source** distribution: the shared kit (kit / fleet-core / ai-kit)
+is **vendored** under `_vendor/` (no `@visuelconcept/wui-kit` prerequisite), and the
+page is **compiled against the target's runtime workspace** (bundle = correct version).
 
-## Pré-requis
-1. Un **workspace WebUI Runtime** (`@wincc-oa/webui-runtime`) — le `--workspace`.
-2. Aucun prérequis webserver / backend (page frontend uniquement).
+## Prerequisites
+1. A **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) — the `--workspace`.
+2. No webserver / backend prerequisite (frontend-only page).
 
-## Installer (une commande)
+## Install (one command)
 ```bash
 node install.mjs --workspace <workspace-runtime> --project <racine-projet>
 ```
-Exemple (WebDemo2) :
+Example (WebDemo2):
 ```bash
 node install.mjs --workspace D:\WinCC_OA_Proj_321\WebDemo2\webui-workspace --project D:\WinCC_OA_Proj_321\WebDemo2
 ```
-L'installeur :
-1. copie la **source** (kit vendorisé sous `_vendor/`) → `<workspace>/…/standalone-pages/` ;
-2. insère l'**entrée de menu** → `menuconfig.jsonc` du workspace (idempotent) ;
-3. installe les **dépendances npm** de la page (`three`) dans le workspace (pour que `build:pages` les bundle) ;
-4. lance **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
+The installer:
+1. copies the **source** (kit vendored under `_vendor/`) → `<workspace>/…/standalone-pages/`;
+2. inserts the **menu entry** → the workspace's `menuconfig.jsonc` (idempotent);
+3. installs the page's **npm dependencies** (`three`) into the workspace (so `build:pages` bundles them);
+4. runs **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
 
-## Après l'install (obligatoire)
-1. **Navigateur** : DevTools → Application → Storage → **`Clear site data`**, recharger (**connecté**).
-   ⚠️ Le SW cache `menuconfig.json` → **`Ctrl+Shift+R` ne suffit pas** ; seul `Clear site data` le purge.
+## After install (mandatory)
+1. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).
+   ⚠️ The SW caches `menuconfig.json` → **`Ctrl+Shift+R` is not enough**; only `Clear site data` purges it.
 
-## Vérifier
-1. Connecté → la page **`/fleet-closures`** charge (l'entrée « Jours non travaillés » est `hidden`, atteinte depuis l'aperçu flotte).
-2. Les filtres année / atelier / machine fonctionnent, et l'import-export JSON s'ouvre.
+## Verify
+1. Logged in → the **`/fleet-closures`** page loads (the "Jours non travaillés" entry is `hidden`, reached from the fleet overview).
+2. The year / workshop / machine filters work, and JSON import-export opens.
 
-## Notes / sécurité
-- **Aucun module backend ni manager** : rien à monter, rien à démarrer, pas d'`acl` à durcir.
-- L'entrée de menu est `hidden` (navigation depuis l'aperçu flotte) — pas une régression, c'est volontaire.
+## Notes / security
+- **No backend module or manager**: nothing to deploy, nothing to start, no `acl` to harden.
+- The menu entry is `hidden` (navigation from the fleet overview) — not a regression, it is intentional.
