@@ -1,0 +1,22 @@
+{
+  "name": "@visuelconcept/wui-webserver",
+  "version": "0.1.0",
+  "description": "Prerequisite WinCC OA dashboard webserver (customer-webserver base) with backend-module auto-discovery: drop a module under src/modules/<name>/ and it is mounted automatically — no per-module code edit.",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w"
+  },
+  "dependencies": {
+    "@winccoa/backend": "file:C:/Siemens/Automation/WinCC_OA/3.21/javascript/webserver-js",
+    "ultimate-express": "^2.0.17",
+    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.52.0",
+    "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.1",
+    "@types/winccoa-manager": "file:C:/Siemens/Automation/WinCC_OA/3.21/javascript/@types/winccoa-manager",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.9.2"
+  }
+}

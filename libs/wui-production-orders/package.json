@@ -1,0 +1,35 @@
+{
+  "name": "@visuelconcept/wui-production-orders",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Production Orders — standalone WinCC OA WebUI page: manage production orders (OF) as a single JSON-list datapoint, with status workflow, KPI strip, echarts Gantt and a fleet link pushing the active OF onto the assigned machine.",
+  "author": { "name": "Visuel Concept" },
+  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page"],
+  "license": "MIT",
+  "dependencies": {
+    "@visuelconcept/wui-kit": "*",
+    "@visuelconcept/wui-fleet-core": "*"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "tsyringe": "*",
+    "echarts": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-data-selector-data": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-oarxjs-context": "*"
+  },
+  "exports": { "./*": { "types": "./types/*", "import": "./*" } },
+  "wuiPage": {
+    "route": "/production-orders",
+    "routeId": "production-orders",
+    "component": "wui-production-orders",
+    "module": "/data/dashboard-wc/pages/production-orders.js",
+    "icon": "capacity",
+    "permission": ["connected"],
+    "tier": 1,
+    "backend": { "managers": ["productionOrdersKpi (optional, server-computed KPI strip)"] }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "name": "@visuelconcept/wui-fleet-kpi-analysis",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Fleet KPI Analysis — standalone WinCC OA WebUI page: per-machine availability-TRS over a period from archived histories, with closures (opening-time) handling and table + bar views.",
+  "author": { "name": "Visuel Concept" },
+  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page"],
+  "license": "MIT",
+  "dependencies": {
+    "@visuelconcept/wui-kit": "*",
+    "@visuelconcept/wui-fleet-core": "*"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "tsyringe": "*",
+    "echarts": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-data-selector-data": "*",
+    "@wincc-oa/wui-models": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-oarxjs-context": "*"
+  },
+  "exports": { "./*": { "types": "./types/*", "import": "./*" } },
+  "wuiPage": {
+    "route": "/fleet-kpi",
+    "routeId": "fleet-kpi",
+    "component": "wui-fleet-kpi-analysis",
+    "module": "/data/dashboard-wc/pages/fleet-kpi-analysis.js",
+    "hidden": true,
+    "tier": 1,
+    "backend": { "managers": ["kpiCalc (optional, server-computed TRS)"] }
+  }
+}

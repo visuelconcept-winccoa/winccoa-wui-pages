@@ -1,0 +1,39 @@
+{
+  "name": "@visuelconcept/wui-mosaic",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Mosaic — standalone WinCC OA WebUI page: a configurable display wall of tiles, each embedding another dashboard view as a chromeless iframe. One Mosaic_Board datapoint per board; self-provisioning via PARA REST with offline fallback.",
+  "author": { "name": "Visuel Concept" },
+  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page"],
+  "license": "MIT",
+  "dependencies": {
+    "@visuelconcept/wui-kit": "*"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "tsyringe": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-data-selector-data": "*",
+    "@wincc-oa/wui-models": "*"
+  },
+  "exports": {
+    "./*": {
+      "types": "./types/*",
+      "import": "./*"
+    }
+  },
+  "wuiPage": {
+    "route": "/mosaic",
+    "routes": ["/mosaic", "/mosaic/:mosaicid"],
+    "routeId": "mosaic",
+    "component": "wui-mosaic",
+    "module": "/data/dashboard-wc/pages/mosaic.js",
+    "icon": "tiles",
+    "permission": ["connected"],
+    "tier": 1
+  }
+}

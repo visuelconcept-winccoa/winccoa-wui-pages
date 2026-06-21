@@ -1,0 +1,4 @@
+// Menu fragment for @visuelconcept/wui-production-orders.
+[
+  { "title": { "en_US": "Production Orders", "fr": "Ordres de production", "de_AT": "Fertigungsaufträge" }, "icon": "capacity", "path": "/production-orders", "module": "/data/dashboard-wc/pages/production-orders.js", "routeId": "production-orders", "component": "wui-production-orders", "permission": ["connected"] }
+]

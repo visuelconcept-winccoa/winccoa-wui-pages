@@ -1,0 +1,31 @@
+{
+  "name": "@visuelconcept/wui-kit",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Shared kit for WinCC OA WebUI standalone pages: generic datapoint JSON stores (DpJsonStore / DpSingleJsonStore), shared dialog styles, a neutral confirm dialog, a datapoint-name input and a publish-permission gate.",
+  "author": {
+    "name": "Visuel Concept"
+  },
+  "keywords": [
+    "OpenArchitecture",
+    "WinCCOA",
+    "dashboard",
+    "webcomponents"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "tsyringe": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-data-selector-data": "*",
+    "@wincc-oa/wui-iam-data": "*"
+  },
+  "exports": {
+    "./*": {
+      "types": "./types/*",
+      "import": "./*"
+    }
+  }
+}

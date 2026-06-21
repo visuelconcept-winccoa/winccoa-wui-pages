@@ -1,0 +1,12 @@
+{
+  "name": "wui-fleet-core",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/wui-fleet-core/src",
+  "projectType": "library",
+  "tags": ["package"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  }
+}

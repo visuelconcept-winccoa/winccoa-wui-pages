@@ -1,0 +1,22 @@
+// Menu fragment for @visuelconcept/wui-mosaic.
+// Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
+// The second (hidden) entry is the detail route: its :mosaicid becomes the `mosaicid` attribute.
+[
+  {
+    "title": { "en_US": "Mosaic", "fr": "Mosaïque", "de_AT": "Mosaik" },
+    "icon": "tiles",
+    "path": "/mosaic",
+    "module": "/data/dashboard-wc/pages/mosaic.js",
+    "routeId": "mosaic",
+    "component": "wui-mosaic",
+    "permission": ["connected"]
+  },
+  {
+    "path": "/mosaic/:mosaicid",
+    "module": "/data/dashboard-wc/pages/mosaic.js",
+    "routeId": "mosaic-board",
+    "component": "wui-mosaic",
+    "permission": ["connected"],
+    "hidden": true
+  }
+]

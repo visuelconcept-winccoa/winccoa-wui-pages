@@ -1,0 +1,4 @@
+// Menu fragment for @visuelconcept/wui-fleet-kpi-analysis (reached from the fleet overview; hidden).
+[
+  { "title": { "en_US": "KPI Analysis", "fr": "Analyse des KPI" }, "path": "/fleet-kpi", "module": "/data/dashboard-wc/pages/fleet-kpi-analysis.js", "routeId": "fleet-kpi", "component": "wui-fleet-kpi-analysis", "hidden": true }
+]

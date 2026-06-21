@@ -1,0 +1,22 @@
+// Menu fragment for @visuelconcept/wui-remote-vnc.
+// Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
+// Tier 3: requires the vncProxy manager + /api/vnc/* route (incl. the /api/vnc/ws relay) — see installer spec.
+[
+  {
+    "title": { "en_US": "Remote VNC", "fr": "Connexions VNC distantes", "de_AT": "Remote-VNC" },
+    "icon": "monitor",
+    "path": "/remote-vnc",
+    "module": "/data/dashboard-wc/pages/remote-vnc.js",
+    "routeId": "remote-vnc",
+    "component": "wui-remote-vnc",
+    "permission": ["connected"]
+  },
+  {
+    "path": "/remote-vnc/:connectionid",
+    "module": "/data/dashboard-wc/pages/remote-vnc.js",
+    "routeId": "remote-vnc-connection",
+    "component": "wui-remote-vnc",
+    "permission": ["connected"],
+    "hidden": true
+  }
+]

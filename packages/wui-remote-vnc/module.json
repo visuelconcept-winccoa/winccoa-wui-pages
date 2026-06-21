@@ -1,0 +1,28 @@
+{
+  "name": "@visuelconcept/wui-remote-vnc",
+  "version": "0.1.0",
+  "mode": "source",
+  "tier": 3,
+  "description": "Remote VNC page (/remote-vnc) — manage VNC connections (1 DP each) and open them in-browser with bundled noVNC over a same-origin /api/vnc/ws WebSocket↔TCP relay to the vncProxy manager (resolves id → host:port from RemoteVnc_ DPs).",
+  "requires": [
+    "a WebUI Runtime workspace (@wincc-oa/webui-runtime)",
+    "@visuelconcept/wui-webserver (hosts the backend module)"
+  ],
+  "frontend": {
+    "standalonePagesDir": "frontend/standalone-pages",
+    "menuFragment": "frontend/menu.fragment.jsonc",
+    "npmDeps": {
+      "@novnc/novnc": "1.4.0"
+    }
+  },
+  "backend": {
+    "module": "backend/modules/remote-vnc"
+  },
+  "managers": [
+    {
+      "dir": "manager/vncProxy",
+      "name": "vncProxy",
+      "pmon": "node | always | 30 | 3 | 1 |vncProxy/index.js"
+    }
+  ]
+}

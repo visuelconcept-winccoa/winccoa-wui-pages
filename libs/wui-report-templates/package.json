@@ -1,0 +1,35 @@
+{
+  "name": "@visuelconcept/wui-report-templates",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Report Templates — standalone WinCC OA WebUI page: author reusable report templates (sections + multi-level signature workflow) consumed by the Report Builder. Depends on @visuelconcept/wui-report-builder for the shared template engine/components.",
+  "author": { "name": "Visuel Concept" },
+  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page"],
+  "license": "MIT",
+  "dependencies": {
+    "@visuelconcept/wui-kit": "*",
+    "@visuelconcept/wui-report-builder": "*"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "tsyringe": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-data-selector-data": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-iam-data": "*",
+    "@wincc-oa/wui-models": "*"
+  },
+  "exports": { "./*": { "types": "./types/*", "import": "./*" } },
+  "wuiPage": {
+    "route": "/report-templates",
+    "routeId": "report-templates",
+    "component": "wui-report-templates",
+    "module": "/data/dashboard-wc/pages/report-templates.js",
+    "icon": "list",
+    "permission": ["connected"],
+    "tier": 1
+  }
+}

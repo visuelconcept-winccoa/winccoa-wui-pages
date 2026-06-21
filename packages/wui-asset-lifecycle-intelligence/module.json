@@ -1,0 +1,26 @@
+{
+  "name": "@visuelconcept/wui-asset-lifecycle-intelligence",
+  "version": "0.1.0",
+  "mode": "source",
+  "tier": 3,
+  "description": "Asset Lifecycle Intelligence page (/asset-lifecycle) — asset domain model + composite risk-scoring engine, DP persistence; product obsolescence/delivery lookup via /api/product-info bridged to the productInfo MSA manager (Siemens Product Information Hub).",
+  "requires": [
+    "a WebUI Runtime workspace (@wincc-oa/webui-runtime)",
+    "@visuelconcept/wui-webserver (hosts the backend module)"
+  ],
+  "frontend": {
+    "standalonePagesDir": "frontend/standalone-pages",
+    "menuFragment": "frontend/menu.fragment.jsonc",
+    "npmDeps": {}
+  },
+  "backend": {
+    "module": "backend/modules/asset-lifecycle-intelligence"
+  },
+  "managers": [
+    {
+      "dir": "manager/productInfo",
+      "name": "productInfo",
+      "pmon": "node | always | 30 | 3 | 1 |productInfo/index.js"
+    }
+  ]
+}

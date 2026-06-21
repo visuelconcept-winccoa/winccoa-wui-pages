@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build artifacts (regenerable)
+*.tgz
+*.tar.gz
+dist/
+out-tsc/
+**/*.tsbuildinfo
+
+# Secrets / env
+.env
+.env.*
+!.env.example
+
+# Tooling caches
+.nx/cache
+.nx/workspace-data
+coverage/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vs/

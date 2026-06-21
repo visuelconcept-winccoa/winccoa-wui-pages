@@ -1,0 +1,14 @@
+// Menu fragment for @visuelconcept/wui-para.
+// Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
+// Tier 3: requires the /api/para engineering route in the host webserver (see installer spec).
+[
+  {
+    "title": { "en_US": "Parametrization", "de_AT": "Parametrierung", "fr": "Paramétrage" },
+    "icon": "hierarchy",
+    "path": "/para",
+    "module": "/data/dashboard-wc/pages/para.js",
+    "routeId": "para",
+    "component": "wui-para",
+    "permission": ["connected"]
+  }
+]

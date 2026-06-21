@@ -1,0 +1,4 @@
+// Menu fragment for @visuelconcept/wui-fleet-closures (reached from the fleet overview; hidden).
+[
+  { "title": { "en_US": "Non-Worked Periods", "fr": "Jours non travaillés" }, "path": "/fleet-closures", "module": "/data/dashboard-wc/pages/fleet-closures.js", "routeId": "fleet-closures", "component": "wui-fleet-closures", "hidden": true }
+]

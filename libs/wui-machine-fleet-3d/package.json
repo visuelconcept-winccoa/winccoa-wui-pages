@@ -1,0 +1,43 @@
+{
+  "name": "@visuelconcept/wui-machine-fleet-3d",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Machine Fleet 3D — standalone WinCC OA WebUI page: multi-atelier 3D digital twin (Three.js) with live DP-bound machine state/KPIs, config UI, GLB/billboard library and dashboard export. Hub page; depends on the fleet-core + ai-kit domain kits.",
+  "author": { "name": "Visuel Concept" },
+  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page"],
+  "license": "MIT",
+  "dependencies": {
+    "@visuelconcept/wui-kit": "*",
+    "@visuelconcept/wui-fleet-core": "*",
+    "@visuelconcept/wui-ai-kit": "*"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "tsyringe": "*",
+    "three": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-data-selector-data": "*",
+    "@wincc-oa/wui-models": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-dashboard-data": "*",
+    "@wincc-oa/wui-iam-data": "*"
+  },
+  "exports": { "./*": { "types": "./types/*", "import": "./*" } },
+  "wuiPage": {
+    "route": "/fleet-3d",
+    "routes": ["/fleet-3d", "/fleet-3d/:atelier"],
+    "routeId": "fleet-3d",
+    "component": "wui-machine-fleet-3d",
+    "module": "/data/dashboard-wc/pages/machine-fleet-3d.js",
+    "icon": "capacity",
+    "tier": 2,
+    "assets": ["data/dashboard-wc/semifab-icons/** (billboard textures)"],
+    "backend": {
+      "managers": ["machineSim (optional, simulation)", "kpiCalc (optional, real-time TRS/MTBF/MTTR)"],
+      "routes": ["/api/ai/chat (optional, AI assistant via wui-ai-kit)"]
+    }
+  }
+}

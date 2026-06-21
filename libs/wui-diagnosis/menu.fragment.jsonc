@@ -1,0 +1,12 @@
+// Menu fragment for @visuelconcept/wui-diagnosis.
+// Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
+[
+  {
+    "title": "WUI_General.App.Diagnosis.Overview.Headline",
+    "icon": "maintenance-info-filled",
+    "path": "/status",
+    "module": "/data/dashboard-wc/pages/diagnosis.js",
+    "routeId": "status",
+    "component": "wui-diagnosis"
+  }
+]

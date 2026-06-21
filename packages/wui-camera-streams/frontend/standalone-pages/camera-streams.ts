@@ -1,0 +1,434 @@
+/**
+ * Camera Streams (RTSP) — Standalone page (WinCC OA WebUI Runtime).
+ *
+ * Manages a catalogue of RTSP IP cameras (CRUD, 1 datapoint per camera of type
+ * `RtspCamera_Stream`, with the usual stream options and optional stored
+ * credentials) and views a stream **in the browser** with the bundled JSMpeg
+ * player. JSMpeg connects over a WebSocket to the dedicated `rtspProxy`
+ * JavaScript manager (`ws://<host>:<port>/api/rtsp/stream/<id>`), which resolves
+ * the id → rtsp URL server-side, pulls the stream once with ffmpeg, transcodes
+ * it to MPEG1-TS and fans it out to every connected client (one RTSP connection
+ * shared across all WebUI clients).
+ *
+ * The page is a master/detail: a sortable CRUD table, and the JSMpeg viewer when
+ * a camera is opened. Built as a separate entry point (auto-discovered by
+ * build:pages) and loaded at runtime via dynamic import.
+ */
+import '@wincc-oa/wui-ix-wrappers/wui-content-header/wui-content-header.js';
+import '@wincc-oa/wui-oarxjs-context/components/wui-context-generator/wui-context-generator.js';
+import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
+import { RouterEvent } from '@wincc-oa/wui-models/events/router-event.js';
+import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
+import { property, query, state } from 'lit/decorators.js';
+import { StreamStore } from './camera-streams/data/stream-store.js';
+import { DEMO_STREAMS } from './camera-streams/data/demo-streams.js';
+import { exportJson, exportStream, parseStreams } from './camera-streams/data/io.js';
+import type { CameraStatus, CameraStream } from './camera-streams/types.js';
+import './camera-streams/_kit/ui/wui-confirm-dialog.js';
+import './camera-streams/ui/cs-stream-dialog.js';
+import './camera-streams/ui/cs-stream-table.js';
+import './camera-streams/ui/cs-viewer.js';
+
+const PAD_LEN = 2;
+/** How often to refresh the per-camera connected-client counts. */
+const CLIENTS_POLL_MS = 4000;
+
+function pad(n: number): string {
+  return String(n).padStart(PAD_LEN, '0');
+}
+
+/** Local-datetime string (`YYYY-MM-DDTHH:mm`) for "now". */
+function nowLocal(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+export class WuiCameraStreams extends LitElement {
+  static override readonly styles = [IXCoreStyles, pageStyles()];
+
+  /** Route param `/camera-streams/:streamid` → open camera id (list when absent). */
+  @property({ attribute: 'streamid' }) streamId = '';
+
+  @state() private streams: CameraStream[] = [];
+  @state() private loading = true;
+  @state() private offline = false;
+  /** Editor target: an existing camera, `null` for "new", or undefined = closed. */
+  @state() private editing: CameraStream | null | undefined = undefined;
+  @state() private deletingId: string | null = null;
+  @state() private importError = '';
+  /** Live connected-client count per camera id (polled from /api/rtsp/clients). */
+  @state() private clientsById: Record<string, number> = {};
+  /** Live RTSP reachability per camera id (polled from /api/rtsp/status). */
+  @state() private statusById: Record<string, CameraStatus> = {};
+
+  @query('.import-input') private importInput!: HTMLInputElement;
+
+  private readonly store = new StreamStore();
+  private clientsTimer = 0;
+
+  override render(): TemplateResult {
+    return html`
+      <div class="page">
+        <wui-context-generator
+          .config=${{
+            headerTitle: {
+              context: 'translate',
+              config: {
+                'en_US.utf8': 'Camera Streams (RTSP)',
+                fr: 'Flux caméras (RTSP)',
+                'de_AT.utf8': 'Kamera-Streams (RTSP)'
+              }
+            }
+          }}
+        >
+          <wui-content-header></wui-content-header>
+        </wui-context-generator>
+
+        <div class="body">
+          ${this.importError
+            ? html`<div class="notice error"><ix-icon name="warning"></ix-icon>${this.importError}</div>`
+            : nothing}
+          ${this.offline
+            ? html`<div class="notice">
+                <ix-icon name="info"></ix-icon>Mode hors-ligne : modifications non persistées dans les
+                datapoints (backend indisponible ou droits d'écriture manquants).
+              </div>`
+            : nothing}
+          ${this.renderBody()}
+        </div>
+      </div>
+
+      ${this.editing === undefined
+        ? nothing
+        : html`<cs-stream-dialog
+            .stream=${this.editing}
+            @wui:save=${this.onSave}
+            @wui:cancel=${this.closeDialog}
+          ></cs-stream-dialog>`}
+      ${this.deletingId
+        ? html`<wui-confirm-dialog
+            message=${`Supprimer la caméra « ${this.camName(this.deletingId)} » ?`}
+            @wui:confirm=${this.onDeleteConfirm}
+            @wui:cancel=${() => (this.deletingId = null)}
+          ></wui-confirm-dialog>`
+        : nothing}
+    `;
+  }
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    void this.refreshLive();
+    this.clientsTimer = window.setInterval(() => void this.refreshLive(), CLIENTS_POLL_MS);
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    if (this.clientsTimer) {
+      window.clearInterval(this.clientsTimer);
+      this.clientsTimer = 0;
+    }
+  }
+
+  protected override firstUpdated(_changed: PropertyValues): void {
+    void this.refresh();
+  }
+
+  private renderBody(): TemplateResult {
+    if (this.loading) return html`<div class="center"><ix-spinner></ix-spinner></div>`;
+    const selected = this.selectedStream();
+    if (selected) {
+      return html`<cs-viewer .stream=${selected} @wui:back=${this.goToList}></cs-viewer>`;
+    }
+    return html`
+      <div class="toolbar">
+        <span class="count">${this.streams.length} caméra(s)</span>
+        <span class="grow"></span>
+        <ix-button variant="secondary" @click=${this.triggerImport}>
+          <ix-icon name="upload" slot="icon"></ix-icon>Importer
+        </ix-button>
+        <ix-button variant="secondary" ?disabled=${this.streams.length === 0} @click=${this.onExportAll}>
+          <ix-icon name="download" slot="icon"></ix-icon>Exporter tout
+        </ix-button>
+        <ix-button @click=${this.openCreate}>
+          <ix-icon name="plus" slot="icon"></ix-icon>Nouvelle caméra
+        </ix-button>
+      </div>
+      <input
+        class="import-input"
+        type="file"
+        accept="application/json,.json"
+        hidden
+        @change=${this.onImportFile}
+      />
+      ${this.renderList()}
+    `;
+  }
+
+  private renderList(): TemplateResult {
+    if (this.streams.length === 0) {
+      return html`
+        <div class="center empty">
+          <ix-typography>Aucune caméra RTSP enregistrée.</ix-typography>
+          <ix-button variant="secondary" @click=${this.generateDemo}>
+            <ix-icon name="add" slot="icon"></ix-icon>Générer des caméras de démonstration
+          </ix-button>
+        </div>
+      `;
+    }
+    return html`
+      <cs-stream-table
+        .streams=${this.streams}
+        .clientsById=${this.clientsById}
+        .statusById=${this.statusById}
+        @wui:open=${(e: CustomEvent<{ id: string }>) => this.onOpen(e.detail.id)}
+        @wui:edit=${(e: CustomEvent<{ id: string }>) => this.openEdit(e.detail.id)}
+        @wui:delete=${(e: CustomEvent<{ id: string }>) => (this.deletingId = e.detail.id)}
+        @wui:export=${(e: CustomEvent<{ id: string }>) => this.onExportOne(e.detail.id)}
+        @wui:fav=${(e: CustomEvent<{ id: string }>) => this.onToggleFav(e.detail.id)}
+      ></cs-stream-table>
+    `;
+  }
+
+  // --- data flow -------------------------------------------------------------
+
+  private async refresh(): Promise<void> {
+    this.loading = true;
+    this.streams = await this.store.listStreams();
+    this.offline = this.store.offline;
+    this.loading = false;
+    // Deep-link: arriving directly on /camera-streams/<id> records the view.
+    if (this.streamId) void this.stamp(this.streamId);
+  }
+
+  /** Poll the same-origin proxy for live client counts + RTSP reachability. */
+  private async refreshLive(): Promise<void> {
+    await Promise.all([this.refreshClients(), this.refreshStatus()]);
+  }
+
+  /** Poll the same-origin proxy for the live connected-client count per camera. */
+  private async refreshClients(): Promise<void> {
+    try {
+      const res = await fetch('/api/rtsp/clients');
+      if (!res.ok) return;
+      this.clientsById = (await res.json()) as Record<string, number>;
+    } catch {
+      // Endpoint unavailable (offline / webserver bridge down) — leave counts as-is.
+    }
+  }
+
+  /** Poll the cyclic server-side RTSP reachability probe (independent of clients). */
+  private async refreshStatus(): Promise<void> {
+    try {
+      const res = await fetch('/api/rtsp/status');
+      if (!res.ok) return;
+      this.statusById = (await res.json()) as Record<string, CameraStatus>;
+    } catch {
+      // Endpoint unavailable — leave reachability indicators as-is.
+    }
+  }
+
+  private selectedStream(): CameraStream | undefined {
+    return this.streamId ? this.streams.find((c) => c.id === this.streamId) : undefined;
+  }
+
+  /** Open a camera → navigate to its own route `/camera-streams/<id>`. */
+  private onOpen(id: string): void {
+    this.navigate(id);
+    void this.stamp(id);
+  }
+
+  private navigate(id: string): void {
+    this.dispatchEvent(new RouterEvent(`/camera-streams/${id}`));
+  }
+
+  private goToList(): void {
+    this.dispatchEvent(new RouterEvent('/camera-streams'));
+  }
+
+  /** Record the last-viewed timestamp on a camera (best-effort). */
+  private async stamp(id: string): Promise<void> {
+    const cam = this.streams.find((c) => c.id === id);
+    if (!cam) return;
+    const stamped: CameraStream = { ...cam, lastViewedAt: nowLocal() };
+    this.streams = this.streams.map((c) => (c.id === id ? stamped : c));
+    await this.store.saveStream(stamped);
+    this.offline = this.store.offline;
+  }
+
+  private openCreate(): void {
+    this.editing = null;
+  }
+
+  private openEdit(id: string): void {
+    this.editing = this.streams.find((c) => c.id === id) ?? null;
+  }
+
+  private closeDialog(): void {
+    this.editing = undefined;
+  }
+
+  private async onSave(event: CustomEvent<CameraStream>): Promise<void> {
+    const cam = event.detail;
+    if (this.editing) {
+      await this.store.saveStream(cam);
+      this.streams = this.streams.map((c) => (c.id === cam.id ? cam : c));
+    } else {
+      const created = await this.store.createStream(cam);
+      this.streams = [...this.streams, created];
+    }
+    this.editing = undefined;
+    this.offline = this.store.offline;
+  }
+
+  private async onToggleFav(id: string): Promise<void> {
+    const cam = this.streams.find((c) => c.id === id);
+    if (!cam) return;
+    const next: CameraStream = { ...cam, favorite: !cam.favorite };
+    this.streams = this.streams.map((c) => (c.id === id ? next : c));
+    await this.store.saveStream(next);
+    this.offline = this.store.offline;
+  }
+
+  private async onDeleteConfirm(): Promise<void> {
+    const id = this.deletingId;
+    if (!id) return;
+    await this.store.deleteStream(id);
+    this.streams = this.streams.filter((c) => c.id !== id);
+    this.deletingId = null;
+    this.offline = this.store.offline;
+    if (this.streamId === id) this.goToList();
+  }
+
+  private async generateDemo(): Promise<void> {
+    this.loading = true;
+    const created = await this.store.importDemo(DEMO_STREAMS);
+    this.streams = this.offline ? await this.store.listStreams() : [...this.streams, ...created];
+    this.offline = this.store.offline;
+    this.loading = false;
+  }
+
+  // --- import / export -------------------------------------------------------
+
+  private onExportAll(): void {
+    exportJson(this.streams);
+  }
+
+  private onExportOne(id: string): void {
+    const cam = this.streams.find((c) => c.id === id);
+    if (cam) exportStream(cam);
+  }
+
+  private triggerImport(): void {
+    this.importError = '';
+    this.importInput.value = '';
+    this.importInput.click();
+  }
+
+  private async onImportFile(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    let parsed: CameraStream[];
+    try {
+      parsed = parseStreams(await file.text());
+    } catch (error) {
+      this.importError = error instanceof Error ? error.message : 'Import échoué.';
+      return;
+    }
+    this.importError = '';
+    const byId = new Map(this.streams.map((c) => [c.id, c]));
+    for (const incoming of parsed) {
+      if (incoming.id && byId.has(incoming.id)) {
+        await this.store.saveStream(incoming);
+        byId.set(incoming.id, incoming);
+      } else {
+        const created = await this.store.createStream(incoming);
+        byId.set(created.id, created);
+      }
+    }
+    this.streams = [...byId.values()];
+    this.offline = this.store.offline;
+  }
+
+  private camName(id: string): string {
+    const cam = this.streams.find((c) => c.id === id);
+    return cam ? cam.name : id;
+  }
+}
+
+if (!customElements.get('wui-camera-streams')) {
+  customElements.define('wui-camera-streams', WuiCameraStreams);
+}
+
+// eslint-disable-next-line max-lines-per-function -- single stylesheet literal
+function pageStyles(): ReturnType<typeof css> {
+  return css`
+    :host {
+      display: block;
+      height: 100%;
+    }
+    .page {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      min-height: 0;
+    }
+    .body {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      padding: 0 1rem 1rem;
+      overflow: hidden;
+    }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem 0;
+    }
+    .toolbar .grow {
+      flex: 1;
+    }
+    .count {
+      color: var(--theme-color-soft-text);
+      font-size: 0.9rem;
+    }
+    cs-stream-table {
+      flex: 1;
+      min-height: 0;
+    }
+    cs-viewer {
+      flex: 1;
+      min-height: 0;
+    }
+    .notice {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 0.75rem;
+      margin-bottom: 0.5rem;
+      border: 1px solid var(--theme-color-warning);
+      border-radius: var(--theme-default-border-radius);
+      color: var(--theme-color-warning);
+      background: color-mix(in srgb, var(--theme-color-warning) 12%, transparent);
+    }
+    .notice.error {
+      border-color: var(--theme-color-alarm);
+      color: var(--theme-color-alarm);
+      background: color-mix(in srgb, var(--theme-color-alarm) 12%, transparent);
+    }
+    .center {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+    }
+    .empty {
+      color: var(--theme-color-soft-text);
+    }
+  `;
+}

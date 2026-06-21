@@ -1,0 +1,27 @@
+{
+  "name": "@visuelconcept/wui-fleet-core",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Shared fleet domain for the Machine Fleet pages: the atelier/machine/stop-cause domain model (types), the FleetStore persistence + offline fallback, the stop-cause analysis engine, closures (opening-time) model, the stop-cause catalog editor and the shared page styles.",
+  "author": { "name": "Visuel Concept" },
+  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents"],
+  "license": "MIT",
+  "dependencies": {
+    "@visuelconcept/wui-kit": "*"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "tsyringe": "*",
+    "three": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-data-selector-data": "*"
+  },
+  "exports": {
+    "./*": {
+      "types": "./types/*",
+      "import": "./*"
+    }
+  }
+}

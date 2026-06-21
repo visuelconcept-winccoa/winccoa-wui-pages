@@ -1,0 +1,14 @@
+// Menu fragment for @visuelconcept/wui-msp.
+// Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
+// NOTE: also deploy the static asset bundle to data/dashboard-wc/msp/ (see package.json wuiPage.assets).
+[
+  {
+    "title": { "en_US": "MSP", "fr": "MSP", "de_AT": "MSP" },
+    "icon": "cogwheel",
+    "path": "/msp",
+    "module": "/data/dashboard-wc/pages/msp.js",
+    "routeId": "msp",
+    "component": "wui-msp",
+    "permission": ["connected"]
+  }
+]

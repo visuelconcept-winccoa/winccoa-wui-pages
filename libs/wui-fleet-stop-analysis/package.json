@@ -1,0 +1,35 @@
+{
+  "name": "@visuelconcept/wui-fleet-stop-analysis",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Fleet Stop-Cause Analysis — standalone WinCC OA WebUI page: decomposes machine downtime by stop cause over a period from archived state + cause histories, with table / stacked-bar / raw views.",
+  "author": { "name": "Visuel Concept" },
+  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page"],
+  "license": "MIT",
+  "dependencies": {
+    "@visuelconcept/wui-kit": "*",
+    "@visuelconcept/wui-fleet-core": "*"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "tsyringe": "*",
+    "echarts": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-data-selector-data": "*",
+    "@wincc-oa/wui-models": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-iam-data": "*"
+  },
+  "exports": { "./*": { "types": "./types/*", "import": "./*" } },
+  "wuiPage": {
+    "route": "/fleet-stops",
+    "routeId": "fleet-stops",
+    "component": "wui-fleet-stop-analysis",
+    "module": "/data/dashboard-wc/pages/fleet-stop-analysis.js",
+    "hidden": true,
+    "tier": 1
+  }
+}

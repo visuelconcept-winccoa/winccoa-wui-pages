@@ -1,0 +1,12 @@
+{
+  "name": "wui-machine-fleet-3d",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/wui-machine-fleet-3d/src",
+  "projectType": "library",
+  "tags": ["package", "standalone-page"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  }
+}

@@ -1,0 +1,4 @@
+// Menu fragment for @visuelconcept/wui-report-templates.
+[
+  { "title": { "en_US": "Report Templates", "fr": "Modèles de rapports", "de_AT": "Berichtsvorlagen" }, "icon": "list", "path": "/report-templates", "module": "/data/dashboard-wc/pages/report-templates.js", "routeId": "report-templates", "component": "wui-report-templates", "permission": ["connected"] }
+]

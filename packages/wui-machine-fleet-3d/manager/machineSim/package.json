@@ -1,0 +1,7 @@
+{
+  "name": "machine-fleet-sim",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Production simulator (WinCC OA JavaScript Manager) for the Machine Fleet 3D page.",
+  "main": "index.js"
+}

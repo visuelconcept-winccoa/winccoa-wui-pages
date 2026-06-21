@@ -1,0 +1,5 @@
+// Menu fragment for @visuelconcept/wui-report-builder.
+[
+  { "title": { "en_US": "Reports", "fr": "Rapports", "de_AT": "Berichte" }, "icon": "document", "path": "/report-builder", "module": "/data/dashboard-wc/pages/report-builder.js", "routeId": "report-builder", "component": "wui-report-builder", "permission": ["connected"] },
+  { "path": "/report-builder/:reportid", "module": "/data/dashboard-wc/pages/report-builder.js", "routeId": "report-builder-detail", "component": "wui-report-builder", "permission": ["connected"], "hidden": true }
+]

@@ -1,0 +1,44 @@
+{
+  "name": "@visuelconcept/wui-audit-trail",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Audit Trail — standalone WinCC OA WebUI page: pivot table of a datapoint's NGA-archived element history, with a config popup persisted in an AuditTrail_Config datapoint. Self-provisioning via the PARA REST API; offline fallback.",
+  "author": {
+    "name": "Visuel Concept"
+  },
+  "keywords": [
+    "OpenArchitecture",
+    "WinCCOA",
+    "dashboard",
+    "webcomponents",
+    "standalone-page"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@visuelconcept/wui-kit": "*"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "tsyringe": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-data-selector-data": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-oarxjs-context": "*"
+  },
+  "exports": {
+    "./*": {
+      "types": "./types/*",
+      "import": "./*"
+    }
+  },
+  "wuiPage": {
+    "route": "/audit-trail",
+    "component": "wui-audit-trail",
+    "module": "/data/dashboard-wc/pages/audit-trail.js",
+    "permission": ["connected"],
+    "icon": "document",
+    "tier": 1
+  }
+}

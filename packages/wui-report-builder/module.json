@@ -1,0 +1,17 @@
+{
+  "name": "@visuelconcept/wui-report-builder",
+  "version": "0.1.0",
+  "mode": "source",
+  "tier": 1,
+  "description": "Report Builder pages (/report-builder + /report-builder/:reportid) — report instances from templates: fill data, recompute dataset aggregations from archives, checklist-gated multi-level signing, lock + print. Stored as ReportBuilder_Report DPs.",
+  "requires": [
+    "a WebUI Runtime workspace (@wincc-oa/webui-runtime)"
+  ],
+  "frontend": {
+    "standalonePagesDir": "frontend/standalone-pages",
+    "menuFragment": "frontend/menu.fragment.jsonc",
+    "npmDeps": {
+      "@siemens/ix-echarts": "~3.0.0"
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "name": "@visuelconcept/wui-para",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "PARA — standalone WinCC OA WebUI page: master-detail datapoint parametrization (lazy type/DP/element tree + live value & config-attribute editor; create/rename/delete DPs and types). Requires the PARA REST route to mutate.",
+  "author": { "name": "Visuel Concept" },
+  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page"],
+  "license": "MIT",
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "tsyringe": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-data-selector-data": "*"
+  },
+  "exports": {
+    "./*": {
+      "types": "./types/*",
+      "import": "./*"
+    }
+  },
+  "wuiPage": {
+    "route": "/para",
+    "routeId": "para",
+    "component": "wui-para",
+    "module": "/data/dashboard-wc/pages/para.js",
+    "icon": "hierarchy",
+    "permission": ["connected"],
+    "tier": 3,
+    "backend": {
+      "routes": ["/api/para/* (datapoint/type engineering — ParaRoute; required for any mutation, no offline fallback)"]
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "wui-audit-trail",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/wui-audit-trail/src",
+  "projectType": "library",
+  "tags": ["package", "standalone-page"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  }
+}

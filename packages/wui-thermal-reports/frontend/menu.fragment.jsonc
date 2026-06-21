@@ -1,0 +1,4 @@
+// Menu fragment for @visuelconcept/wui-thermal-reports.
+[
+  { "title": { "en_US": "Thermal Treatment Reports", "fr": "Rapports traitement thermique", "de_AT": "Wärmebehandlungsberichte" }, "icon": "thermometer", "path": "/thermal-reports", "module": "/data/dashboard-wc/pages/thermal-reports.js", "routeId": "thermal-reports", "component": "wui-thermal-reports", "permission": ["connected"] }
+]

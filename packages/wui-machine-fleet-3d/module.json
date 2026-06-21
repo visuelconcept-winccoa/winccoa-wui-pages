@@ -1,0 +1,43 @@
+{
+  "name": "@visuelconcept/wui-machine-fleet-3d",
+  "version": "0.1.0",
+  "mode": "source",
+  "tier": "hub",
+  "description": "Machine Fleet 3D hub page (/machine-fleet-3d) — three.js 3D fleet view with per-machine state/KPI bubbles, stop-cause catalog, contextual machine dashboard (Gantt + Pareto), and an AI assistant. Managers: machineSim (fleet simulation), kpiCalc (live KPIs), aiAssistant + mcpServer (the AI assistant, via the /api/ai bridge). AI provider tokens are read from the AI_Assistant_Config DP — NONE are shipped.",
+  "requires": [
+    "a WebUI Runtime workspace (@wincc-oa/webui-runtime)",
+    "@visuelconcept/wui-webserver (hosts the backend module)"
+  ],
+  "frontend": {
+    "standalonePagesDir": "frontend/standalone-pages",
+    "menuFragment": "frontend/menu.fragment.jsonc",
+    "npmDeps": {
+      "three": "^0.169.0"
+    }
+  },
+  "backend": {
+    "module": "backend/modules/machine-fleet-3d"
+  },
+  "managers": [
+    {
+      "dir": "manager/machineSim",
+      "name": "machineSim",
+      "pmon": "node | always | 30 | 3 | 1 |machineSim/index.js"
+    },
+    {
+      "dir": "manager/kpiCalc",
+      "name": "kpiCalc",
+      "pmon": "node | always | 30 | 3 | 1 |kpiCalc/index.js"
+    },
+    {
+      "dir": "manager/aiAssistant",
+      "name": "aiAssistant",
+      "pmon": "node | always | 30 | 3 | 1 |aiAssistant/index.js"
+    },
+    {
+      "dir": "manager/mcpServer",
+      "name": "mcpServer",
+      "pmon": "node | always | 30 | 3 | 1 |mcpServer/index.js"
+    }
+  ]
+}

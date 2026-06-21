@@ -1,0 +1,33 @@
+{
+  "name": "@visuelconcept/wui-fleet-closures",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Fleet Closures — standalone WinCC OA WebUI page: manage non-worked periods (jours non travaillés) per atelier/machine, used as the TRS opening-time denominator by the KPI page. One app-level JSON datapoint.",
+  "author": { "name": "Visuel Concept" },
+  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page"],
+  "license": "MIT",
+  "dependencies": {
+    "@visuelconcept/wui-kit": "*",
+    "@visuelconcept/wui-fleet-core": "*"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "tsyringe": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-data-selector-data": "*",
+    "@wincc-oa/wui-models": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-oarxjs-context": "*"
+  },
+  "exports": { "./*": { "types": "./types/*", "import": "./*" } },
+  "wuiPage": {
+    "route": "/fleet-closures",
+    "routeId": "fleet-closures",
+    "component": "wui-fleet-closures",
+    "module": "/data/dashboard-wc/pages/fleet-closures.js",
+    "hidden": true,
+    "tier": 1
+  }
+}

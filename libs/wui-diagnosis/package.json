@@ -1,0 +1,29 @@
+{
+  "name": "@visuelconcept/wui-diagnosis",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Diagnosis — standalone WinCC OA WebUI page: read-only system health (time, licenses, OA version, API/heartbeat, browser, service-worker, memory/disk) via context generators. Pure client, no backend beyond the standard WebUI connection.",
+  "author": { "name": "Visuel Concept" },
+  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page"],
+  "license": "MIT",
+  "peerDependencies": {
+    "lit": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-widgets": "*"
+  },
+  "exports": {
+    "./*": {
+      "types": "./types/*",
+      "import": "./*"
+    }
+  },
+  "wuiPage": {
+    "route": "/status",
+    "routeId": "status",
+    "component": "wui-diagnosis",
+    "module": "/data/dashboard-wc/pages/diagnosis.js",
+    "icon": "maintenance-info-filled",
+    "tier": 1
+  }
+}

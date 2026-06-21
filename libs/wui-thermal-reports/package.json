@@ -1,0 +1,35 @@
+{
+  "name": "@visuelconcept/wui-thermal-reports",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Thermal Treatment Reports (TTD) — standalone WinCC OA WebUI page: per-charge heat-treatment reports with actual-vs-setpoint temperature curve from furnace archives, conformity workflow and printable HTML. One datapoint per report.",
+  "author": { "name": "Visuel Concept" },
+  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page"],
+  "license": "MIT",
+  "dependencies": {
+    "@visuelconcept/wui-kit": "*",
+    "@visuelconcept/wui-fleet-core": "*"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "tsyringe": "*",
+    "echarts": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-data-selector-data": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-oarxjs-context": "*"
+  },
+  "exports": { "./*": { "types": "./types/*", "import": "./*" } },
+  "wuiPage": {
+    "route": "/thermal-reports",
+    "routeId": "thermal-reports",
+    "component": "wui-thermal-reports",
+    "module": "/data/dashboard-wc/pages/thermal-reports.js",
+    "icon": "thermometer",
+    "permission": ["connected"],
+    "tier": 1,
+    "backend": { "managers": ["machineSim (optional, supplies the archived furnace temperature curve)"] }
+  }
+}

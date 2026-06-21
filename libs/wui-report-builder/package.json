@@ -1,0 +1,36 @@
+{
+  "name": "@visuelconcept/wui-report-builder",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Report Builder — standalone WinCC OA WebUI page: create and fill report instances from reusable templates (parameterised sections + dataset aggregation from archives + multi-level signature workflow), with print. Also exposes its template engine to the companion Report Templates page.",
+  "author": { "name": "Visuel Concept" },
+  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page"],
+  "license": "MIT",
+  "dependencies": {
+    "@visuelconcept/wui-kit": "*"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "tsyringe": "*",
+    "echarts": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-data-selector-data": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-iam-data": "*",
+    "@wincc-oa/wui-models": "*"
+  },
+  "exports": { "./*": { "types": "./types/*", "import": "./*" } },
+  "wuiPage": {
+    "route": "/report-builder",
+    "routes": ["/report-builder", "/report-builder/:reportid"],
+    "routeId": "report-builder",
+    "component": "wui-report-builder",
+    "module": "/data/dashboard-wc/pages/report-builder.js",
+    "icon": "document",
+    "permission": ["connected"],
+    "tier": 1
+  }
+}

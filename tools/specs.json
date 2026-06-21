@@ -1,0 +1,101 @@
+[
+  {
+    "page": "msp",
+    "name": "@visuelconcept/wui-msp",
+    "title": "MSP",
+    "tier": 1,
+    "description": "MSP standalone page (shell)."
+  },
+  {
+    "page": "audit-trail",
+    "name": "@visuelconcept/wui-audit-trail",
+    "title": "Audit Trail",
+    "tier": 1,
+    "description": "Audit Trail page — pivot table of a datapoint's NGA-archived element history, with a config popup (DP/period/columns/refresh) persisted to an AuditTrail_Config DP."
+  },
+  {
+    "page": "mosaic",
+    "name": "@visuelconcept/wui-mosaic",
+    "title": "Mosaic",
+    "tier": 1,
+    "description": "Mosaic page — free drag/resize display wall embedding other dashboard views as chromeless same-origin iframes; 1 DP per board (Mosaic_Board) + an overview list."
+  },
+  {
+    "page": "report-builder",
+    "name": "@visuelconcept/wui-report-builder",
+    "title": "Report Builder",
+    "tier": 1,
+    "description": "Report Builder pages (/report-builder + /report-builder/:reportid) — report instances from templates: fill data, recompute dataset aggregations from archives, checklist-gated multi-level signing, lock + print. Stored as ReportBuilder_Report DPs."
+  },
+  {
+    "page": "report-templates",
+    "name": "@visuelconcept/wui-report-templates",
+    "title": "Report Templates",
+    "tier": 1,
+    "description": "Report Templates page (/report-templates) — configurable templates (parameterised sections: text/comment/fields/table/DP-dataset+aggregation/checklist + multi-level signature workflow). Stored as ReportBuilder_Template DPs. Bundles the shared report-builder code it reuses."
+  },
+  {
+    "page": "fleet-closures",
+    "name": "@visuelconcept/wui-fleet-closures",
+    "title": "Fleet Closures",
+    "tier": 1,
+    "description": "Fleet Closures page (/fleet-closures) — manage non-working days (year/atelier/machine filters, JSON import-export, overlap replace/ignore/cancel)."
+  },
+  {
+    "page": "fleet-stop-analysis",
+    "name": "@visuelconcept/wui-fleet-stop-analysis",
+    "title": "Fleet Stop-Cause Analysis",
+    "tier": 1,
+    "description": "Fleet Stop-Cause Analysis page (/fleet-stops) — downtime decomposition (dpGetPeriod + interval algorithm), table + echarts tabs."
+  },
+  {
+    "page": "thermal-reports",
+    "name": "@visuelconcept/wui-thermal-reports",
+    "title": "Thermal Treatment Reports",
+    "tier": 1,
+    "description": "Thermal Treatment Reports page (/thermal-reports) — per-charge heat-treatment reports, recipe paliers + tolerance band vs actual furnace temp curve (dpGetPeriod), quality/conformity, echarts band chart + print. 1 DP per report."
+  },
+  {
+    "page": "fleet-kpi-analysis",
+    "name": "@visuelconcept/wui-fleet-kpi-analysis",
+    "title": "Fleet KPI Analysis",
+    "tier": 3,
+    "description": "Fleet KPI Analysis page (/fleet-kpi) — availability/TRS per machine over opening time minus closures, echarts; live per-machine TRS computed by the kpiCalc manager.",
+    "managers": ["kpiCalc"]
+  },
+  {
+    "page": "production-orders",
+    "name": "@visuelconcept/wui-production-orders",
+    "title": "Production Orders",
+    "tier": 3,
+    "description": "Production Orders page (/production-orders) — manage OF stored as a single JSON-list DP (ProductionOrders_List), CRUD + status workflow + echarts Gantt + fleet link; top-page KPIs computed server-side by the productionOrdersKpi manager (ProductionOrders_Kpi DP).",
+    "managers": ["productionOrdersKpi"]
+  },
+  {
+    "page": "remote-vnc",
+    "name": "@visuelconcept/wui-remote-vnc",
+    "title": "Remote VNC",
+    "tier": 3,
+    "description": "Remote VNC page (/remote-vnc) — manage VNC connections (1 DP each) and open them in-browser with bundled noVNC over a same-origin /api/vnc/ws WebSocket↔TCP relay to the vncProxy manager (resolves id → host:port from RemoteVnc_ DPs).",
+    "backend": { "mount": "/api/vnc", "routeClass": "VncRoute", "routeFile": "vncRoute", "relayFn": "registerVncRelay", "relayFile": "vncRelay", "srcFiles": ["vncController.ts", "vncRoute.ts", "vncRelay.ts"] },
+    "managers": ["vncProxy"]
+  },
+  {
+    "page": "asset-lifecycle-intelligence",
+    "name": "@visuelconcept/wui-asset-lifecycle-intelligence",
+    "title": "Asset Lifecycle Intelligence",
+    "tier": 3,
+    "description": "Asset Lifecycle Intelligence page (/asset-lifecycle) — asset domain model + composite risk-scoring engine, DP persistence; product obsolescence/delivery lookup via /api/product-info bridged to the productInfo MSA manager (Siemens Product Information Hub).",
+    "backend": { "mount": "/api/product-info", "routeClass": "ProductInfoRoute", "routeFile": "productInfoRoute", "srcFiles": ["productInfoController.ts", "productInfoRoute.ts"] },
+    "managers": ["productInfo"]
+  },
+  {
+    "page": "machine-fleet-3d",
+    "name": "@visuelconcept/wui-machine-fleet-3d",
+    "title": "Machine Fleet 3D",
+    "tier": "hub",
+    "description": "Machine Fleet 3D hub page (/machine-fleet-3d) — three.js 3D fleet view with per-machine state/KPI bubbles, stop-cause catalog, contextual machine dashboard (Gantt + Pareto), and an AI assistant. Managers: machineSim (fleet simulation), kpiCalc (live KPIs), aiAssistant + mcpServer (the AI assistant, via the /api/ai bridge). AI provider tokens are read from the AI_Assistant_Config DP — NONE are shipped.",
+    "backend": { "mount": "/api/ai", "routeClass": "AiRoute", "routeFile": "aiRoute", "srcFiles": ["aiController.ts", "aiRoute.ts"] },
+    "managers": ["machineSim", "kpiCalc", "aiAssistant", "mcpServer"]
+  }
+]

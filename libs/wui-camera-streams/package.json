@@ -1,0 +1,44 @@
+{
+  "name": "@visuelconcept/wui-camera-streams",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Camera Streams (RTSP) — standalone WinCC OA WebUI page: manage RTSP IP cameras (one RtspCamera_Stream datapoint each) and view a stream in-browser via bundled JSMpeg over a same-origin /api/rtsp/ws relay to a shared ffmpeg pull.",
+  "author": { "name": "Visuel Concept" },
+  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page"],
+  "license": "MIT",
+  "dependencies": {
+    "@visuelconcept/wui-kit": "*"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "tsyringe": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-models": "*",
+    "@wincc-oa/wui-data-selector-data": "*",
+    "@cycjimmy/jsmpeg-player": "*"
+  },
+  "exports": {
+    "./*": {
+      "types": "./types/*",
+      "import": "./*"
+    }
+  },
+  "wuiPage": {
+    "route": "/camera-streams",
+    "routes": ["/camera-streams", "/camera-streams/:streamid"],
+    "routeId": "camera-streams",
+    "component": "wui-camera-streams",
+    "module": "/data/dashboard-wc/pages/camera-streams.js",
+    "icon": "video-camera",
+    "permission": ["connected"],
+    "tier": 3,
+    "backend": {
+      "managers": ["rtspProxy (rtsp-relay + ffmpeg-static: resolves id -> rtsp URL from RtspCamera_ DPs, one shared pull fanned out)"],
+      "routes": ["/api/rtsp/* + the /api/rtsp/ws raw ws<->ws relay (same-origin)"]
+    }
+  }
+}

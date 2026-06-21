@@ -1,0 +1,15 @@
+{
+  "name": "@visuelconcept/wui-msp",
+  "version": "0.1.0",
+  "mode": "source",
+  "tier": 1,
+  "description": "MSP standalone page (shell).",
+  "requires": [
+    "a WebUI Runtime workspace (@wincc-oa/webui-runtime)"
+  ],
+  "frontend": {
+    "standalonePagesDir": "frontend/standalone-pages",
+    "menuFragment": "frontend/menu.fragment.jsonc",
+    "npmDeps": {}
+  }
+}
