@@ -17,9 +17,11 @@
 // What it does (all idempotent — safe to re-run after every re-scaffold):
 //   1. deploy tools/dev-wiring/{discover-page-libs,page-menu-merge-plugin}.mjs
 //      -> <workspace>/apps/dashboard-wc/scripts/
-//   2. patch apps/dashboard-wc/vite.shared.ts  (merge discoverPageLibs() into standalonePages)
-//   3. patch apps/dashboard-wc/vite.config.ts  (add pageMenuMergePlugin before copyConfigFilesPlugin)
-//   4. patch tsconfig.base.json                (paths @visuelconcept/wui-*/* -> libs/wui-*/src/*)
+//   2. patch apps/dashboard-wc/vite.shared.ts       (merge discoverPageLibs() into standalonePages)
+//   3. patch apps/dashboard-wc/vite.config.ts       (add pageMenuMergePlugin before copyConfigFilesPlugin)
+//   4. patch apps/dashboard-wc/vite.config.pages.ts (add pageMenuMergePlugin for the build:pages menu merge)
+//   5. patch tsconfig.base.json                     (paths @visuelconcept/wui-*/* -> libs/wui-*/src/*)
+//   6. patch libs/default-components/src/lib/webui-app-ix.ts (honor ?embed → chromeless shell for Mosaïque tiles)
 //
 // An anchor that cannot be found (and isn't already wired) is a hard error: the
 // runtime version probably moved it — patch by hand per DEVELOPMENT.md.
@@ -178,7 +180,40 @@ function patchViteConfig() {
   );
 }
 
-// --- 4. tsconfig.base.json ----------------------------------------------------
+// --- 4. vite.config.pages.ts --------------------------------------------------
+// The pages-only build (build:pages) uses this config and copies menuconfig.json
+// via copyConfigFilesPlugin WITHOUT the page fragments. Add pageMenuMergePlugin
+// so its build hook (closeBundle) merges libs/wui-<page>/menu.fragment.jsonc into
+// the emitted menuconfig.json — the build counterpart of the dev middleware.
+function patchViteConfigPages() {
+  patchFile(
+    'apps/dashboard-wc/vite.config.pages.ts',
+    (c) => c.includes('page-menu-merge-plugin.mjs'),
+    (c) => {
+      let out = replaceAnchor(
+        c,
+        `import { createLicensePlugin } from './scripts/license-plugin-config.mjs';`,
+        `import { createLicensePlugin } from './scripts/license-plugin-config.mjs';\nimport { pageMenuMergePlugin } from './scripts/page-menu-merge-plugin.mjs';`,
+        'vite.config.pages.ts (import)'
+      );
+      out = replaceAnchor(
+        out,
+        `  plugins: [nxViteTsPaths(), copyConfigFilesPlugin()],`,
+        `  plugins: [\n` +
+          `    nxViteTsPaths(),\n` +
+          `    copyConfigFilesPlugin(),\n` +
+          `    // Merge libs/wui-<page>/menu.fragment.jsonc into the built menuconfig.json\n` +
+          `    // (build counterpart of the dev middleware; idempotent by routeId).\n` +
+          `    pageMenuMergePlugin({ publicUrlPrefix: '${PUBLIC_URL_PREFIX}' })\n` +
+          `  ],`,
+        'vite.config.pages.ts (plugins)'
+      );
+      return out;
+    }
+  );
+}
+
+// --- 5. tsconfig.base.json ----------------------------------------------------
 /** Build `@visuelconcept/wui-*\/*` -> `libs/wui-*\/src/*` from the libs dir. */
 function visuelconceptPaths() {
   const libsDirectory = path.join(workspace, 'libs');
@@ -242,6 +277,54 @@ function patchTsconfigPaths() {
   changed += 1;
 }
 
+// --- 6. webui-app-ix.ts (chromeless ?embed mode for Mosaïque tiles) -----------
+// The Mosaïque page embeds internal dashboard views as iframes in chromeless mode
+// (…/index.html?embed=1#/route). The shell must honor ?embed by rendering only the
+// routed outlet — no header, no menu. Without this, embedded tiles (e.g. a fleet-3d
+// atelier) show the full app chrome. default-components is scaffolded by
+// webui-runtime-init, so this is re-applied after every re-scaffold, like the vite
+// patches above.
+function patchWebuiAppEmbed() {
+  patchFile(
+    'libs/default-components/src/lib/webui-app-ix.ts',
+    (c) => c.includes('function isEmbedded('),
+    (c) => {
+      let out = replaceAnchor(
+        c,
+        `addIcons({ 'rotate-180': iconRotate180 });`,
+        `addIcons({ 'rotate-180': iconRotate180 });\n\n` +
+          `/**\n` +
+          ` * "Chromeless" / embedded mode: when the app is loaded with \`?embed\` in the\n` +
+          ` * query string (e.g. inside a Mosaïque tile via \`…/index.html?embed=1#/route\`),\n` +
+          ` * the shell renders only the routed page content — no application header, no\n` +
+          ` * navigation menu — so an embedded view shows just its own page. The flag is on\n` +
+          ` * \`location.search\`, which is stable regardless of the hash-based routing.\n` +
+          ` */\n` +
+          `function isEmbedded(): boolean {\n` +
+          `  try {\n` +
+          `    return new URLSearchParams(globalThis.location.search).has('embed');\n` +
+          `  } catch {\n` +
+          `    return false;\n` +
+          `  }\n` +
+          `}`,
+        'webui-app-ix.ts (isEmbedded helper)'
+      );
+      out = replaceAnchor(
+        out,
+        `  protected override renderTemplate(): TemplateResult {\n    return html\`<wui-ix-template>`,
+        `  protected override renderTemplate(): TemplateResult {\n` +
+          `    // Embedded mode: only the routed page content (no header / menu chrome).\n` +
+          `    if (isEmbedded()) {\n` +
+          `      return html\`<div id="outlet" class="embed-outlet"></div>\`;\n` +
+          `    }\n` +
+          `    return html\`<wui-ix-template>`,
+        'webui-app-ix.ts (renderTemplate)'
+      );
+      return out;
+    }
+  );
+}
+
 // --- run ----------------------------------------------------------------------
 console.log(
   `Wiring dev workspace (${checkOnly ? 'check' : 'apply'}): ${workspace}`
@@ -250,7 +333,9 @@ try {
   deployHelpers();
   patchViteShared();
   patchViteConfig();
+  patchViteConfigPages();
   patchTsconfigPaths();
+  patchWebuiAppEmbed();
 } catch (error) {
   console.error(`\n✗ ${error.message}`);
   process.exit(1);

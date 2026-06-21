@@ -1,25 +1,32 @@
 /**
- * Dev-only menu aggregation for the `libs/wui-*` page libs.
+ * Menu aggregation for the `libs/wui-*` page libs — dev (serve) AND build.
  *
- * In dev, the dashboard nav is driven by config/menuconfig.jsonc, served as
- * `<prefix>/menuconfig.json` by copyConfigFilesPlugin. That file only lists the
- * pages baked into the host shell, so freshly-developed page libs never show up
- * in the nav even though discoverPageLibs() makes their bundles serveable.
- * Result: the page loads if you hit its route directly, but there is no menu
- * entry to click.
+ * The dashboard nav is driven by config/menuconfig.jsonc, emitted as
+ * `<prefix>/menuconfig.json` by copyConfigFilesPlugin. That committed file only
+ * lists the pages baked into the host shell, so freshly-developed page libs never
+ * show up in the nav even though discoverPageLibs() makes their bundles serveable.
+ * Result without this plugin: the page loads if you hit its route directly, but
+ * there is no menu entry to click — and an OUT_DIR build deploys a menu missing
+ * the pages.
  *
- * This plugin merges every `libs/wui-<page>/menu.fragment.jsonc` into the served
- * menuconfig.json at request time — the same idempotent-by-`routeId` merge the
- * packaging installer (tools/install.template.mjs) performs against a target
- * workspace. Nothing on disk is mutated; the committed menuconfig.jsonc stays
- * the host default. The service worker is disabled in dev (VitePWA
- * devOptions.enabled = false), so the "SW caches menuconfig.json" caveat from
- * DEVELOPMENT.md does not apply here.
+ * This plugin merges every `libs/wui-<page>/menu.fragment.jsonc` into
+ * menuconfig.json, idempotent by `routeId` — the same merge the packaging
+ * installer (tools/install.template.mjs) performs against a target workspace:
  *
- * Ordering: list this plugin BEFORE copyConfigFilesPlugin in the plugins array
- * so its middleware handles `<prefix>/menuconfig.json` first (both register a
- * `configureServer` middleware, applied in plugin order). All other config JSON
- * falls through to copyConfigFilesPlugin via next().
+ *   - serve (dev): merged in memory at request time. Nothing on disk is mutated;
+ *     the committed menuconfig.jsonc stays the host default. The service worker is
+ *     disabled in dev (VitePWA devOptions.enabled = false), so the "SW caches
+ *     menuconfig.json" caveat from DEVELOPMENT.md does not apply here.
+ *   - build: after copyConfigFilesPlugin has emitted <outDir>/menuconfig.json,
+ *     it is rewritten with the fragments merged in, so an `OUT_DIR=… npm run build`
+ *     (or build:pages) deploys a menu that includes the dev pages — again without
+ *     touching the committed menuconfig.jsonc.
+ *
+ * Ordering: in dev, list this plugin BEFORE copyConfigFilesPlugin so its
+ * middleware handles `<prefix>/menuconfig.json` first (both register a
+ * `configureServer` middleware, applied in plugin order). The build path uses
+ * `closeBundle`, which runs after every plugin's `writeBundle` regardless of
+ * plugin order, so the merged file always wins.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -72,8 +79,35 @@ function collectMenuFragments() {
 }
 
 /**
- * Vite plugin: serve the host menuconfig.json with all wui-* page menu
- * fragments merged in (dev only).
+ * Append every wui-* page fragment to `menu.entries`, idempotent by `routeId`
+ * (entries already present win). Mutates `menu` in place; returns how many were
+ * added.
+ */
+function mergeFragments(menu) {
+  const entries = Array.isArray(menu.entries) ? menu.entries : [];
+  const seenRouteIds = new Set(
+    entries.map((entry) => entry.routeId).filter(Boolean)
+  );
+
+  let added = 0;
+  for (const entry of collectMenuFragments()) {
+    if (entry.routeId && seenRouteIds.has(entry.routeId)) {
+      continue;
+    }
+    if (entry.routeId) {
+      seenRouteIds.add(entry.routeId);
+    }
+    entries.push(entry);
+    added += 1;
+  }
+
+  menu.entries = entries;
+  return added;
+}
+
+/**
+ * Vite plugin: serve (dev) and emit (build) a menuconfig.json with all wui-*
+ * page menu fragments merged in.
  *
  * @param {{ publicUrlPrefix: string, configDirectory?: string }} options
  */
@@ -87,10 +121,12 @@ export function pageMenuMergePlugin({
 
   const menuUrl = `${publicUrlPrefix}/menuconfig.json`;
   let menuJsoncPath;
+  let outDirectory;
+  let isBuild = false;
+  let logger = console;
 
   return {
     name: 'page-menu-merge',
-    apply: 'serve',
 
     configResolved(config) {
       menuJsoncPath = path.resolve(
@@ -98,8 +134,14 @@ export function pageMenuMergePlugin({
         configDirectory,
         'menuconfig.jsonc'
       );
+      // Vite resolves build.outDir relative to root; path.resolve is a no-op when
+      // it is already absolute (e.g. an absolute OUT_DIR).
+      outDirectory = path.resolve(config.root, config.build?.outDir ?? 'dist');
+      isBuild = config.command === 'build';
+      logger = config.logger ?? console;
     },
 
+    // --- dev: merge in memory at request time -------------------------------
     configureServer(server) {
       server.middlewares.use((request, response, next) => {
         if (request.method !== 'GET' || !request.url) {
@@ -115,38 +157,57 @@ export function pageMenuMergePlugin({
         try {
           menu = readJsonc(menuJsoncPath);
         } catch (error) {
-          console.warn(
+          logger.warn(
             `[page-menu-merge] cannot parse menuconfig.jsonc: ${error.message}`
           );
           return next();
         }
 
-        const entries = Array.isArray(menu.entries) ? menu.entries : [];
-        const seenRouteIds = new Set(
-          entries.map((entry) => entry.routeId).filter(Boolean)
-        );
-
-        let added = 0;
-        for (const entry of collectMenuFragments()) {
-          if (entry.routeId && seenRouteIds.has(entry.routeId)) {
-            continue;
-          }
-          if (entry.routeId) {
-            seenRouteIds.add(entry.routeId);
-          }
-          entries.push(entry);
-          added += 1;
-        }
-
-        menu.entries = entries;
+        const added = mergeFragments(menu);
         response.setHeader('Content-Type', 'application/json');
         response.setHeader('Cache-Control', 'no-cache');
         response.end(JSON.stringify(menu));
 
-        server.config.logger.info(
+        logger.info(
           `[page-menu-merge] menuconfig.json served with +${added} page menu entr${added === 1 ? 'y' : 'ies'}`
         );
       });
+    },
+
+    // --- build: rewrite the emitted menuconfig.json with fragments merged in --
+    // Runs once after the bundle (and copyConfigFilesPlugin's writeBundle) is
+    // written, so the merged file is the final one on disk. Not called in dev.
+    closeBundle() {
+      // Vite also fires closeBundle on dev-server shutdown; only act on real
+      // builds so a dev session never writes to disk (see configureServer above).
+      if (!isBuild) return;
+      if (!fs.existsSync(menuJsoncPath)) {
+        return;
+      }
+
+      let menu;
+      try {
+        menu = readJsonc(menuJsoncPath);
+      } catch (error) {
+        logger.warn(
+          `[page-menu-merge] cannot parse menuconfig.jsonc: ${error.message}`
+        );
+        return;
+      }
+
+      const added = mergeFragments(menu);
+      const target = path.join(outDirectory, 'menuconfig.json');
+      try {
+        fs.mkdirSync(outDirectory, { recursive: true });
+        fs.writeFileSync(target, JSON.stringify(menu, null, 2));
+      } catch (error) {
+        logger.warn(`[page-menu-merge] cannot write ${target}: ${error.message}`);
+        return;
+      }
+
+      logger.info(
+        `[page-menu-merge] ${target} written with +${added} page menu entr${added === 1 ? 'y' : 'ies'}`
+      );
     }
   };
 }
