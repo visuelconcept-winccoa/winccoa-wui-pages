@@ -13,16 +13,71 @@ npx webui-runtime-init
 npm install --save-dev --no-audit --no-fund
 npm run init:oa-data
 ```
-Puis brancher ce repo dans le workspace :
-1. Déposer/symlinker `libs/wui-*` → `<workspace>/libs/`.
-2. Dans `<workspace>/apps/dashboard-wc/vite.shared.ts`, ajouter le plugin
-   `discoverPageLibs()` (scanne `libs/wui-<page>/src/<page>.ts`) à `standalonePages`.
-3. Dans `<workspace>/tsconfig.base.json`, ajouter les `paths`
-   `@visuelconcept/wui-*` → `libs/wui-*/src/*` (kit/fleet-core/ai-kit), pour que
-   les pages résolvent les kits **en dev** (en packaging ils sont vendorisés).
+Puis **brancher ce repo + installer les deps des pages, deux commandes** :
+```bash
+npm run wire:dev        # = node tools/wire-workspace.mjs            (idempotent)
+npm run install:deps    # = node tools/install-page-dependencies.mjs (idempotent)
+```
+`install:deps` installe les paquets tiers que les pages tirent **au-delà** de ce
+que le runtime fournit déjà (`three`, `@novnc/novnc`, `@cycjimmy/jsmpeg-player`, …)
+— sinon le dev server échoue à résoudre l'import d'une page (ex.
+`@cycjimmy/jsmpeg-player not found`). Il lit les `dependencies` de chaque
+`libs/wui-*/package.json` (les paquets) + [`tools/external-dependencies.mjs`](tools/external-dependencies.mjs)
+(les versions, car les libs épinglent `*`), saute ce que le workspace fournit déjà,
+et **épingle exactement** les versions sans préfixe (ex. `@novnc/novnc@1.4.0`, via
+`--save-exact`). `npm run install:deps -- --check` pour un dry-run.
+
+`wire:dev` patche le scaffold `webui-runtime-init` (non versionné) pour que le dev
+server découvre/serve/menu-lie chaque `libs/wui-<page>`. Il est **idempotent** —
+relance-le après chaque re-scaffold (ou `npm run wire:dev -- --check` pour voir
+sans écrire). Ce qu'il câble :
+
+1. **Pages** — déploie [`tools/dev-wiring/discover-page-libs.mjs`](tools/dev-wiring/discover-page-libs.mjs)
+   dans `apps/dashboard-wc/scripts/` et le fusionne (`discoverPageLibs()`, scan de
+   `libs/wui-<page>/src/<page>.ts`) dans `standalonePages` de
+   [`apps/dashboard-wc/vite.shared.ts`](apps/dashboard-wc/vite.shared.ts). Le dev
+   server sert alors chaque page sur `/data/dashboard-wc/pages/<page>.js` (proxy
+   `/data` → source `.ts`, HMR).
+2. **Menu** — déploie [`tools/dev-wiring/page-menu-merge-plugin.mjs`](tools/dev-wiring/page-menu-merge-plugin.mjs)
+   et le branche dans [`apps/dashboard-wc/vite.config.ts`](apps/dashboard-wc/vite.config.ts)
+   **avant** `copyConfigFilesPlugin` : il fusionne chaque
+   `libs/wui-<page>/menu.fragment.jsonc` dans le `menuconfig.json` servi en dev
+   (idempotent par `routeId`, sans toucher au `menuconfig.jsonc` committé).
+   Équivalent dev de ce que fait `tools/install.template.mjs` au packaging.
+3. **Kits** — régénère dans [`tsconfig.base.json`](tsconfig.base.json) les `paths`
+   `@visuelconcept/wui-*/*` → `libs/wui-*/src/*` (un par dossier `libs/wui-*`), pour
+   que les pages résolvent les kits (`wui-kit`, `wui-fleet-core`, `wui-ai-kit`, …)
+   **en dev** (en packaging ils sont vendorisés).
+
+> Les sources de vérité du câblage (`tools/wire-workspace.mjs` + `tools/dev-wiring/`)
+> sont **versionnées** ; les fichiers patchés (`apps/`, `tsconfig.base.json`) viennent
+> de `webui-runtime-init` et ne le sont pas. Si une ancre est introuvable (version de
+> runtime différente), le tool s'arrête en erreur explicite → patch manuel.
 
 > En production, le shell est servi par `webserver.js` / `@visuelconcept/wui-webserver`
 > contre le `data/dashboard-wc/` buildé. Le dev server ci-dessous ne sert que la frontend.
+
+### Ajouter une nouvelle page (convention)
+Tout est piloté par la convention `wui-<page>` — aucun fichier de config à éditer :
+1. Crée `libs/wui-<page>/` avec l'entrée **`src/<page>.ts`** (le nom du fichier =
+   nom du dossier sans le préfixe `wui-`). Ce fichier `@customElement('wui-<page>')`
+   est le point d'entrée standalone → découvert automatiquement par
+   `discoverPageLibs()`.
+2. Ajoute `libs/wui-<page>/menu.fragment.jsonc` : un tableau d'entrées de menu avec
+   `routeId`, `path`, `title`, `icon`, `component: "wui-<page>"`,
+   `module: "/data/dashboard-wc/pages/<page>.js"` → fusionné automatiquement dans la
+   nav dev.
+3. Si la page tire un **nouveau paquet npm tiers**, déclare-le dans les
+   `dependencies` de `libs/wui-<page>/package.json` (version `*`) **et** ajoute sa
+   version épinglée à [`tools/external-dependencies.mjs`](tools/external-dependencies.mjs),
+   puis `npm run install:deps`.
+4. `npm start` → la page est servie et apparaît dans le menu (la découverte
+   pages/menu scanne `libs/` **au démarrage** du dev server, donc aucun re-câblage
+   n'est requis). Relance `npm run wire:dev` uniquement pour **régénérer le `paths`
+   tsconfig** si cette nouvelle lib doit être importée par une autre (cas d'un kit).
+   (Une lib **kit** comme `wui-kit`/`wui-fleet-core`/`wui-ai-kit` n'a **pas** de
+   `src/<page>.ts` homonyme du dossier : elle est donc ignorée comme page, mais reste
+   importable via les `paths` `@visuelconcept/wui-*`.)
 
 ## 2. Développer (HMR)
 Le dev server Vite sert la frontend en HMR ; **toutes les données live viennent
@@ -52,10 +107,15 @@ descripteur, manager(s), `module.json`, `install.mjs`). Installation : voir
 [packages/README.md](packages/README.md).
 
 ## Pièges à connaître
-- **`Clear site data`** au navigateur après tout ajout/modif de page ou de menu : le
-  service-worker met `menuconfig.json` en cache → **`Ctrl+Shift+R` ne suffit pas**.
+- **`Clear site data`** au navigateur après tout ajout/modif de page ou de menu
+  **sur une cible déployée** : le service-worker met `menuconfig.json` en cache →
+  **`Ctrl+Shift+R` ne suffit pas**. _En dev_ le SW est désactivé et
+  `pageMenuMergePlugin` re-fusionne les fragments à chaque requête → un simple
+  rechargement (F5) suffit à voir une nouvelle page/menu.
 - **`@novnc/novnc` épinglé `1.4.0`** (remote-vnc) : `^1.4.0` flotte vers 1.7.0 dont les
-  `exports` interdisent le deep-import `@novnc/novnc/core/rfb.js`.
-- **`three`** est tiré par `wui-fleet-core/types.ts` → requis au build de toute page fleet.
+  `exports` interdisent le deep-import `@novnc/novnc/core/rfb.js`. `npm run install:deps`
+  l'installe **exact** (`--save-exact`) ; n'écris jamais `^1.4.0` à la main dans `package.json`.
+- **`three`** est tiré par `wui-fleet-core/types.ts` → requis au build de toute page fleet
+  (installé par `npm run install:deps`).
 - **Aucun secret dans le repo** : clé PIH (`ProductInfo_Config` DP / `PRODUCT_INFO_API_KEY`),
   tokens LLM (`AI_Assistant_Config` DP) → fournis sur la cible, jamais committés.

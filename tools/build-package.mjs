@@ -15,6 +15,7 @@ import { cpSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync,
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
+import { EXTERNAL_DEPENDENCIES as REGISTRY } from './external-dependencies.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));   // <repo>/tools
 const ROOT = dirname(HERE);                             // <repo>
@@ -22,14 +23,6 @@ const DIST = join(ROOT, 'packages');                    // generated, self-conta
 const LIBS = join(ROOT, 'libs');                        // page + shared lib SOURCE
 const WS_SRC = join(ROOT, 'backend', 'routes');         // backend route module SOURCE (flat)
 const MGR_SRC = join(ROOT, 'backend', 'managers');      // JS managers (node_modules-free)
-
-const REGISTRY = {
-  echarts: ['@siemens/ix-echarts', '~3.0.0'],
-  '@siemens/ix-echarts': ['@siemens/ix-echarts', '~3.0.0'],
-  three: ['three', '^0.169.0'],
-  '@novnc/novnc': ['@novnc/novnc', '1.4.0'],
-  '@cycjimmy/jsmpeg-player': ['@cycjimmy/jsmpeg-player', '^6.1.2']
-};
 
 function walk(d) {
   const o = [];
