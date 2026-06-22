@@ -15,7 +15,7 @@
  */
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
-import { customElement, property, query, state } from 'lit/decorators.js';
+import { property, query, state } from 'lit/decorators.js';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { Subscription } from 'rxjs';
 import { askAi, type ToolCall } from '../data/ai-store.js';
@@ -33,7 +33,6 @@ interface ChatMessage {
   tools?: ToolCall[];
 }
 
-@customElement('mf-ai-prompt')
 export class MfAiPrompt extends LitElement {
   static override readonly styles = [IXCoreStyles, promptStyles()];
 
@@ -448,4 +447,11 @@ function promptStyles(): ReturnType<typeof css> {
       flex: 0 0 auto;
     }
   `;
+}
+
+// Guarded registration: vendored into several self-contained page bundles that
+// share one CustomElementRegistry per SPA session — an unguarded `define` would
+// throw on the second AI page that loads.
+if (!customElements.get('mf-ai-prompt')) {
+  customElements.define('mf-ai-prompt', MfAiPrompt);
 }

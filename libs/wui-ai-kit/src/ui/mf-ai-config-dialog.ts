@@ -6,7 +6,7 @@
  */
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type TemplateResult } from 'lit';
-import { customElement, state } from 'lit/decorators.js';
+import { state } from 'lit/decorators.js';
 import {
   AI_PROVIDERS,
   DEFAULT_MCP_SERVER,
@@ -16,7 +16,6 @@ import {
   type McpServer
 } from '../data/ai-store.js';
 
-@customElement('mf-ai-config-dialog')
 export class MfAiConfigDialog extends LitElement {
   static override readonly styles = [IXCoreStyles, dialogStyles()];
 
@@ -302,4 +301,11 @@ function dialogStyles(): ReturnType<typeof css> {
       border-top: 1px solid var(--theme-color-soft-bdr);
     }
   `;
+}
+
+// Guarded registration: this component is vendored into several self-contained
+// page bundles (para, machine-fleet-3d, …). They share ONE CustomElementRegistry
+// per SPA session, so an unguarded `define` throws on the second page that loads.
+if (!customElements.get('mf-ai-config-dialog')) {
+  customElements.define('mf-ai-config-dialog', MfAiConfigDialog);
 }

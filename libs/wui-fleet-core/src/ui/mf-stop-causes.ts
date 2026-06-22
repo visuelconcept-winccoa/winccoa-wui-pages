@@ -5,7 +5,7 @@
  */
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
-import { customElement, property, query, state } from 'lit/decorators.js';
+import { property, query, state } from 'lit/decorators.js';
 import type { FleetStore } from '../data/fleet-store.js';
 import {
   STOP_CLASSIFICATION_LABELS,
@@ -24,7 +24,6 @@ interface IxCheckedEvent {
 
 const CLASSIFICATIONS: StopClassification[] = ['unplanned', 'planned', 'production'];
 
-@customElement('mf-stop-causes')
 export class MfStopCauses extends LitElement {
   static override readonly styles = [IXCoreStyles, dialogStyles(), extraStyles()];
 
@@ -263,4 +262,12 @@ function extraStyles(): ReturnType<typeof css> {
       display: none;
     }
   `;
+}
+
+// Guarded registration: vendored into several self-contained page bundles
+// (fleet-stop-analysis, asset-lifecycle-intelligence, machine-fleet-3d, …) that
+// share one CustomElementRegistry per SPA session — an unguarded `define` would
+// throw on the second page that loads.
+if (!customElements.get('mf-stop-causes')) {
+  customElements.define('mf-stop-causes', MfStopCauses);
 }
