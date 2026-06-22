@@ -456,20 +456,30 @@ export class WuiParaNav extends LitElement {
     this.loading = true;
     this.error = '';
     const pattern = this.pattern.trim() === '' ? DEFAULT_PATTERN : this.pattern.trim();
+    // excludeEmpty:false so DP-types with NO instance are listed too — needed to
+    // create the first datapoint of a type from its "+" action. (WuiDpeService.listTypes
+    // hardcodes excludeEmpty:true, which would hide instance-less types.)
     this.subs.add(
-      this.dpeService.listTypes({ internal: this.showInternal, pattern }).subscribe({
-        next: (types) => {
-          this.roots = [...types]
-            .sort((a, b) => a.localeCompare(b))
-            .map((name) => this.makeTypeNode(name));
-          this.loading = false;
-        },
-        error: (err: unknown) => {
-          this.error = `Could not load datapoint types: ${String(err)}`;
-          this.roots = [];
-          this.loading = false;
-        }
-      })
+      this.api
+        .customCommand<string[]>('etm.model.type.list', {
+          pattern,
+          internal: this.showInternal,
+          typeMatchSubTree: false,
+          excludeEmpty: false
+        })
+        .subscribe({
+          next: (types) => {
+            this.roots = [...(types ?? [])]
+              .sort((a, b) => a.localeCompare(b))
+              .map((name) => this.makeTypeNode(name));
+            this.loading = false;
+          },
+          error: (err: unknown) => {
+            this.error = `Could not load datapoint types: ${String(err)}`;
+            this.roots = [];
+            this.loading = false;
+          }
+        })
     );
   }
 

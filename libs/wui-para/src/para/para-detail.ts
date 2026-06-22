@@ -39,6 +39,14 @@ const DESCRIPTION_MODE = 2;
 /** Upper bound on value rows rendered/subscribed at once (esp. type view). */
 const MAX_VALUE_ELEMENTS = 500;
 
+/**
+ * dpConnect is issued in chunks of this many DPEs. A single dpConnect over the
+ * hundreds of DPEs of a whole-type view (many instances × elements) is rejected
+ * by the webserver ("Invalid argument in dpConnectUserData"), and one bad DPE
+ * would otherwise fail the entire batch. Chunking keeps the table usable.
+ */
+const LIVE_CONNECT_CHUNK = 80;
+
 /** Metadata describing one editable/displayable datapoint element. */
 interface ElementMeta {
   /** Element name, e.g. `System1:Pump1.state`. */
@@ -199,6 +207,8 @@ export class WuiParaDetail extends LitElement {
   @state() private status = '';
   @state() private statusOk = false;
   @state() private truncated = false;
+  /** Non-fatal notice when some live values couldn't be connected (table still shown). */
+  @state() private liveWarning = '';
   /** Live value per element value-path. */
   @state() private liveValues = new Map<string, unknown>();
   /** Pending edits per element value-path (string-encoded). */
@@ -253,6 +263,7 @@ export class WuiParaDetail extends LitElement {
       ${this.truncated
         ? html`<div class="status error">Showing the first ${MAX_VALUE_ELEMENTS} values; narrow the selection to see more.</div>`
         : nothing}
+      ${this.liveWarning === '' ? nothing : html`<div class="status error">${this.liveWarning}</div>`}
       <div class="scroll">
         <table>
           <thead>
@@ -435,6 +446,7 @@ export class WuiParaDetail extends LitElement {
     this.status = '';
     this.error = '';
     this.truncated = false;
+    this.liveWarning = '';
 
     if (this.dpType != null && this.dpType !== '') {
       this.loadTypeView(this.dpType);
@@ -618,22 +630,27 @@ export class WuiParaDetail extends LitElement {
     if (elements.length === 0) {
       return;
     }
-    // Connect both the value and the source-time of every element.
+    // Connect both the value and the source-time of every element, in chunks
+    // (see LIVE_CONNECT_CHUNK). A chunk failure is non-fatal: the table stays
+    // visible and the other chunks still stream their values.
     const paths = [...elements.map((el) => el.valuePath), ...elements.map((el) => el.stimePath)];
-    this.detailSubs.add(
-      this.api.dpConnect(paths, true).subscribe({
-        next: (data) => {
-          const next = new Map(this.liveValues);
-          for (const [index, path] of data.dp.entries()) {
-            next.set(path, data.value[index]);
+    for (let start = 0; start < paths.length; start += LIVE_CONNECT_CHUNK) {
+      const chunk = paths.slice(start, start + LIVE_CONNECT_CHUNK);
+      this.detailSubs.add(
+        this.api.dpConnect(chunk, true).subscribe({
+          next: (data) => {
+            const next = new Map(this.liveValues);
+            for (const [index, path] of data.dp.entries()) {
+              next.set(path, data.value[index]);
+            }
+            this.liveValues = next;
+          },
+          error: () => {
+            this.liveWarning = 'Certaines valeurs en direct sont indisponibles.';
           }
-          this.liveValues = next;
-        },
-        error: (err: unknown) => {
-          this.error = `Live connection failed: ${String(err)}`;
-        }
-      })
-    );
+        })
+      );
+    }
   }
 
   private async writeValue(el: ElementMeta): Promise<void> {
