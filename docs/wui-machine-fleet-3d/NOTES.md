@@ -161,6 +161,34 @@ of the machine), stacked vertically, with a leader from the dot to the inner edg
 **Security**: the AI provider tokens are read from `AI_Assistant_Config` — **none
 are shipped**.
 
+## Audit trail (GxP) — `AuditTrail_Fleet`
+
+Every user edit across the fleet feature (this page + the KPI and stop-cause
+sub-pages + closures) is traced into one shared `_AuditTrail` DP
+**`AuditTrail_Fleet`**, via the shared-kit `AuditTrailWriter`
+(`@visuelconcept/wui-kit/data/audit-trail.ts`). The `item` (Élément) column is the
+**impacted DPE**; the `itemtype` distinguishes the entity kind. Two integration points:
+
+- **Atelier CRUD** is traced in the **page shell** (`machine-fleet-3d.ts`
+  `onCreate`/`onSave`/`onRemoveActive`, itemType `Atelier`). The UPDATE diff runs on a
+  `projectAtelier()` **projection** that strips live machine fields driven by
+  `dpConnect` (`state`, `connected`, `stopCause`, `stopCauseLabel`, `workOrder`,
+  `operation`, `tiltAngle`, `kpiCalcValues`, `kpiCalcColors`, and `kpis[].value`) and
+  excludes camera viewpoints — so live-value churn or a viewpoint bookmark never logs a
+  phantom config change. `before` is read from `this.ateliers` **before** the `map()`
+  reassignment; the `if (diff)` guard suppresses no-op saves.
+- **App-level edits** are traced in the shared **`FleetStore`** (`wui-fleet-core`,
+  reached from every fleet page): stop-cause catalog (`StopCauseCatalog`), KPI
+  opening-time closures (`Closures`), graphics resources (`GraphicResource`,
+  import/delete — the base64 `.data` blob is **never** logged), and NGA value-archive
+  config (`ArchiveConfig`). `importResource`/`deleteResource` call a no-audit
+  `writeResourceLibrary` so the nested library write doesn't emit a second row.
+
+All writes are best-effort (never throw into the edit), no-op when the store is offline
+(in-memory demo), and write all `_AuditTrail` leaves in one `dp/set` (one viewer row).
+`fleet-kpi-analysis` is read-only and contributes no writes. WinCC OA dashboards
+(DashboardService) and the AI-assistant config are separate subsystems, not traced here.
+
 ## Pitfalls / things to know
 
 - **OaRxJsApi (read/binding)**:

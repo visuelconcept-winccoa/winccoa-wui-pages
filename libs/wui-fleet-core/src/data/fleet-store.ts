@@ -14,6 +14,7 @@
  */
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { WuiDpeService } from '@wincc-oa/wui-data-selector-data/wui-dpe/wui-dpe.service.js';
+import { AuditTrailWriter, type AuditRecord } from '@visuelconcept/wui-kit/data/audit-trail.js';
 import { firstValueFrom } from 'rxjs';
 import { container } from 'tsyringe';
 import {
@@ -36,6 +37,8 @@ const RESOURCE_TYPES: Record<GraphicKind, { type: string; prefix: string }> = {
 };
 const STOPCAUSE_TYPE = 'MachineFleet3D_StopCauses';
 const STOPCAUSE_DP = 'MachineFleet3D_StopCauses';
+/** Shared GxP audit DP for the whole fleet feature (atelier CRUD + the KPI / stop-cause sub-pages). */
+const AUDIT_DP = 'AuditTrail_Fleet';
 const CLOSURES_TYPE = 'MachineFleet3D_Closures';
 const CLOSURES_DP = 'MachineFleet3D_Closures';
 /** Side-table mapping a resource id → its library name (avoids schema change). */
@@ -90,6 +93,14 @@ export class FleetStore {
   private memory: Atelier[] | null = null;
   private typeReady = false;
   private readonly resourceReady = new Map<GraphicKind, boolean>();
+  /**
+   * Shared GxP audit-trail writer (one `AuditTrail_Fleet` DP). Traces the
+   * app-level edits that funnel through this store from every fleet page —
+   * stop-cause catalog, KPI opening-time closures, graphics resources and NGA
+   * archive config. Atelier CRUD is traced by the machine-fleet-3d page shell
+   * (it holds the previous atelier in memory for a clean old→new diff).
+   */
+  private readonly audit = new AuditTrailWriter({ dpName: AUDIT_DP, itemType: 'Fleet' });
 
   async ensureConfigType(): Promise<void> {
     if (this.typeReady || this.offline) return;
@@ -242,7 +253,15 @@ export class FleetStore {
       await this.send(DP_SET_URL, jsonPost({ dpeName: `${dpName}.name`, value: name }));
       // The /api/para/dp/set route accepts large bodies (the base64 blob).
       await this.send(DP_SET_URL, jsonPost({ dpeName: `${dpName}.data`, value: dataUrl }));
-      if (library) await this.setResourceLibrary(dpName, library);
+      // Internal (no-audit) write: the import is logged as one CREATE below.
+      if (library) await this.writeResourceLibrary(dpName, library);
+      // Never log the multi-MB base64 `.data` blob — only the resource metadata.
+      this.trace({
+        action: 'CREATE',
+        item: dpName,
+        itemType: 'GraphicResource',
+        newval: JSON.stringify({ kind, name, ref: REF_SCHEME + dpName, library })
+      });
       return { id: dpName, name, ref: REF_SCHEME + dpName, library };
     } catch {
       return undefined;
@@ -254,21 +273,23 @@ export class FleetStore {
     const bare = dpName.includes(':') ? dpName.slice(dpName.indexOf(':') + 1) : dpName;
     const url = `${DELETE_DP_BASE}/${encodeURIComponent(bare)}?dpType=${encodeURIComponent(RESOURCE_TYPES[kind].type)}`;
     await this.send(url, { method: 'DELETE' });
-    await this.setResourceLibrary(bare, ''); // drop the orphan library mapping
+    await this.writeResourceLibrary(bare, ''); // drop the orphan library mapping (no separate audit row)
+    this.trace({ action: 'DELETE', item: bare, itemType: 'GraphicResource', oldval: JSON.stringify({ kind, ref }) });
   }
 
   /** Assign (or clear, when empty) the library of a resource by its bare id. */
   async setResourceLibrary(id: string, library: string): Promise<void> {
-    const libs = await this.readResourceLibraries();
-    if (library) libs[id] = library;
-    else delete libs[id];
-    const ok = await this.ensureType(RESLIB_TYPE, [{ name: 'json', type: 'String', refName: '' }]);
-    if (!ok) return;
-    try {
-      await this.ensureDp(RESLIB_DP, RESLIB_TYPE);
-      await this.send(DP_SET_URL, jsonPost({ dpeName: `${RESLIB_DP}.json`, value: JSON.stringify(libs) }));
-    } catch {
-      // ignore — library is non-critical metadata
+    const current = await this.readResourceLibraries();
+    const before = current[id] ?? '';
+    await this.writeResourceLibrary(id, library);
+    if (before !== library) {
+      this.trace({
+        action: 'UPDATE',
+        item: id,
+        itemType: 'GraphicResource',
+        oldval: `library=${before}`,
+        newval: `library=${library}`
+      });
     }
   }
 
@@ -290,9 +311,11 @@ export class FleetStore {
   async saveStopCauses(causes: StopCause[]): Promise<boolean> {
     const ok = await this.ensureType(STOPCAUSE_TYPE, [{ name: 'json', type: 'String', refName: '' }]);
     if (!ok) return false;
+    const before = this.offline ? null : await this.listStopCauses();
     try {
       await this.ensureDp(STOPCAUSE_DP, STOPCAUSE_TYPE);
       await this.send(DP_SET_URL, jsonPost({ dpeName: `${STOPCAUSE_DP}.json`, value: JSON.stringify(causes) }));
+      this.traceBlob('StopCauseCatalog', STOPCAUSE_DP, before, causes);
       return true;
     } catch {
       return false;
@@ -318,9 +341,11 @@ export class FleetStore {
   async saveClosures(config: unknown): Promise<boolean> {
     const ok = await this.ensureType(CLOSURES_TYPE, [{ name: 'json', type: 'String', refName: '' }]);
     if (!ok) return false;
+    const before = this.offline ? null : await this.listClosures();
     try {
       await this.ensureDp(CLOSURES_DP, CLOSURES_TYPE);
       await this.send(DP_SET_URL, jsonPost({ dpeName: `${CLOSURES_DP}.json`, value: JSON.stringify(config) }));
+      this.traceBlob('Closures', CLOSURES_DP, before, config);
       return true;
     } catch {
       return false;
@@ -378,6 +403,7 @@ export class FleetStore {
    * `group` (a `_NGA_Group` name, e.g. `_NGA_G_EVENT`).
    */
   async setArchive(dpe: string, enabled: boolean, group: string): Promise<boolean> {
+    const before = this.offline ? null : await this.readArchiveStatus(dpe);
     try {
       if (enabled) {
         await this.send(DP_SET_URL, jsonPost({ dpeName: `${dpe}:_archive.._type`, value: ARCHIVE_INFO }));
@@ -387,10 +413,49 @@ export class FleetStore {
       } else {
         await this.send(DP_SET_URL, jsonPost({ dpeName: `${dpe}:_archive.._archive`, value: false }));
       }
+      const after = { enabled, group: enabled ? group : (before?.group ?? '') };
+      if (!before || before.enabled !== after.enabled || before.group !== after.group) {
+        this.trace({
+          action: 'UPDATE',
+          item: dpe,
+          itemType: 'ArchiveConfig',
+          oldval: before ? JSON.stringify(before) : '',
+          newval: JSON.stringify(after)
+        });
+      }
       return true;
     } catch {
       return false;
     }
+  }
+
+  /** Persist a library assignment WITHOUT auditing (used internally by import/delete). */
+  private async writeResourceLibrary(id: string, library: string): Promise<void> {
+    const libs = await this.readResourceLibraries();
+    if (library) libs[id] = library;
+    else delete libs[id];
+    const ok = await this.ensureType(RESLIB_TYPE, [{ name: 'json', type: 'String', refName: '' }]);
+    if (!ok) return;
+    try {
+      await this.ensureDp(RESLIB_DP, RESLIB_TYPE);
+      await this.send(DP_SET_URL, jsonPost({ dpeName: `${RESLIB_DP}.json`, value: JSON.stringify(libs) }));
+    } catch {
+      // ignore — library is non-critical metadata
+    }
+  }
+
+  /** Write one audit record (best-effort, never throws); no-op in the in-memory/offline fallback. */
+  private trace(record: AuditRecord): void {
+    if (this.offline) return;
+    void this.audit.write(record);
+  }
+
+  /** Trace a single-blob config DP edit (stop causes / closures): UPDATE only when it actually changed. */
+  private traceBlob(itemType: string, item: string, before: unknown, after: unknown): void {
+    const oldval = JSON.stringify(before ?? null);
+    const newval = JSON.stringify(after ?? null);
+    if (oldval === newval) return;
+    this.trace({ action: 'UPDATE', item, itemType, oldval, newval });
   }
 
   private async readResourceLibraries(): Promise<Record<string, string>> {

@@ -24,6 +24,12 @@ import { StreamStore } from './camera-streams/data/stream-store.js';
 import { DEMO_STREAMS } from './camera-streams/data/demo-streams.js';
 import { exportJson, exportStream, parseStreams } from './camera-streams/data/io.js';
 import type { CameraStatus, CameraStream } from './camera-streams/types.js';
+import {
+  AuditTrailWriter,
+  auditDiff,
+  auditSnapshot,
+  type AuditRecord
+} from '@visuelconcept/wui-kit/data/audit-trail.js';
 import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
 import './camera-streams/ui/cs-stream-dialog.js';
 import './camera-streams/ui/cs-stream-table.js';
@@ -32,6 +38,28 @@ import './camera-streams/ui/cs-viewer.js';
 const PAD_LEN = 2;
 /** How often to refresh the per-camera connected-client counts. */
 const CLIENTS_POLL_MS = 4000;
+
+/** Dedicated `_AuditTrail` datapoint that traces every camera edit (GxP). */
+const AUDIT_DP = 'AuditTrail_CameraStreams';
+/** Camera fields traced in the audit trail (old → new); volatile id/dp/lastViewedAt excluded. */
+const AUDITED_FIELDS = [
+  'name',
+  'group',
+  'description',
+  'url',
+  'username',
+  'password',
+  'transport',
+  'audio',
+  'maxWidth',
+  'frameRate',
+  'videoBitrate',
+  'autoReconnect',
+  'reconnectDelaySec',
+  'favorite'
+] as const satisfies readonly (keyof CameraStream)[];
+/** Fields masked in the audit trail — secrets are never written to the log in clear text. */
+const REDACTED_FIELDS = ['password'] as const satisfies readonly (keyof CameraStream)[];
 
 function pad(n: number): string {
   return String(n).padStart(PAD_LEN, '0');
@@ -64,6 +92,8 @@ export class WuiCameraStreams extends LitElement {
   @query('.import-input') private importInput!: HTMLInputElement;
 
   private readonly store = new StreamStore();
+  /** Traces every camera edit into a dedicated `_AuditTrail` DP (auto-provisioned). */
+  private readonly audit = new AuditTrailWriter({ dpName: AUDIT_DP, itemType: 'RtspCamera' });
   private clientsTimer = 0;
 
   override render(): TemplateResult {
@@ -196,8 +226,24 @@ export class WuiCameraStreams extends LitElement {
     this.streams = await this.store.listStreams();
     this.offline = this.store.offline;
     this.loading = false;
+    // Provision the audit-trail DP early (best-effort), but only with a real backend.
+    if (!this.offline) void this.audit.ensure();
     // Deep-link: arriving directly on /camera-streams/<id> records the view.
     if (this.streamId) void this.stamp(this.streamId);
+  }
+
+  /**
+   * Trace one camera edit into the audit trail (best-effort, fire-and-forget).
+   * No-ops in offline mode (in-memory demo) where nothing is persisted anyway.
+   */
+  private trace(record: AuditRecord): void {
+    if (this.offline) return;
+    void this.audit.write(record);
+  }
+
+  /** Backing datapoint of a camera — the DPE impacted by the edit (audit "Élément"). */
+  private dpeOf(cam: CameraStream): string {
+    return cam.dp ?? `RtspCamera_${cam.id}`;
   }
 
   /** Poll the same-origin proxy for live client counts + RTSP reachability. */
@@ -269,15 +315,24 @@ export class WuiCameraStreams extends LitElement {
 
   private async onSave(event: CustomEvent<CameraStream>): Promise<void> {
     const cam = event.detail;
-    if (this.editing) {
+    const before = this.editing;
+    if (before) {
       await this.store.saveStream(cam);
       this.streams = this.streams.map((c) => (c.id === cam.id ? cam : c));
+      this.offline = this.store.offline;
+      const diff = auditDiff(before, cam, AUDITED_FIELDS, { redact: REDACTED_FIELDS });
+      if (diff) this.trace({ action: 'UPDATE', item: this.dpeOf(before), oldval: diff.old, newval: diff.new });
     } else {
       const created = await this.store.createStream(cam);
       this.streams = [...this.streams, created];
+      this.offline = this.store.offline;
+      this.trace({
+        action: 'CREATE',
+        item: this.dpeOf(created),
+        newval: auditSnapshot(created, AUDITED_FIELDS, { redact: REDACTED_FIELDS })
+      });
     }
     this.editing = undefined;
-    this.offline = this.store.offline;
   }
 
   private async onToggleFav(id: string): Promise<void> {
@@ -287,15 +342,30 @@ export class WuiCameraStreams extends LitElement {
     this.streams = this.streams.map((c) => (c.id === id ? next : c));
     await this.store.saveStream(next);
     this.offline = this.store.offline;
+    this.trace({
+      action: 'UPDATE',
+      item: this.dpeOf(next),
+      reason: 'Bascule favori',
+      oldval: `favorite=${cam.favorite}`,
+      newval: `favorite=${next.favorite}`
+    });
   }
 
   private async onDeleteConfirm(): Promise<void> {
     const id = this.deletingId;
     if (!id) return;
+    const removed = this.streams.find((c) => c.id === id);
     await this.store.deleteStream(id);
     this.streams = this.streams.filter((c) => c.id !== id);
     this.deletingId = null;
     this.offline = this.store.offline;
+    if (removed) {
+      this.trace({
+        action: 'DELETE',
+        item: this.dpeOf(removed),
+        oldval: auditSnapshot(removed, AUDITED_FIELDS, { redact: REDACTED_FIELDS })
+      });
+    }
     if (this.streamId === id) this.goToList();
   }
 
@@ -305,6 +375,14 @@ export class WuiCameraStreams extends LitElement {
     this.streams = this.offline ? await this.store.listStreams() : [...this.streams, ...created];
     this.offline = this.store.offline;
     this.loading = false;
+    for (const cam of created) {
+      this.trace({
+        action: 'CREATE',
+        item: this.dpeOf(cam),
+        reason: 'Génération démo',
+        newval: auditSnapshot(cam, AUDITED_FIELDS, { redact: REDACTED_FIELDS })
+      });
+    }
   }
 
   // --- import / export -------------------------------------------------------
@@ -339,12 +417,29 @@ export class WuiCameraStreams extends LitElement {
     this.importError = '';
     const byId = new Map(this.streams.map((c) => [c.id, c]));
     for (const incoming of parsed) {
-      if (incoming.id && byId.has(incoming.id)) {
+      const previous = incoming.id ? byId.get(incoming.id) : undefined;
+      if (previous) {
         await this.store.saveStream(incoming);
         byId.set(incoming.id, incoming);
+        this.offline = this.store.offline;
+        const diff = auditDiff(previous, incoming, AUDITED_FIELDS, { redact: REDACTED_FIELDS });
+        this.trace({
+          action: 'IMPORT',
+          item: this.dpeOf(previous),
+          reason: 'Import fichier',
+          oldval: diff?.old,
+          newval: diff?.new ?? auditSnapshot(incoming, AUDITED_FIELDS, { redact: REDACTED_FIELDS })
+        });
       } else {
         const created = await this.store.createStream(incoming);
         byId.set(created.id, created);
+        this.offline = this.store.offline;
+        this.trace({
+          action: 'IMPORT',
+          item: this.dpeOf(created),
+          reason: 'Import fichier',
+          newval: auditSnapshot(created, AUDITED_FIELDS, { redact: REDACTED_FIELDS })
+        });
       }
     }
     this.streams = [...byId.values()];

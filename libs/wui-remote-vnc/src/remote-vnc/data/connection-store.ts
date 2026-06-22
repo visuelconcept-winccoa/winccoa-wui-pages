@@ -19,7 +19,16 @@ export class ConnectionStore extends DpJsonStore<VncConnection> {
       'RemoteVnc_',
       (conn) => conn.name,
       () => DEMO_CONNECTIONS.map((c) => structuredClone(c)),
-      { slugFallback: 'vnc', slugSource: (c) => c.name || c.host }
+      {
+        slugFallback: 'vnc',
+        slugSource: (c) => c.name || c.host,
+        audit: {
+          dpName: 'AuditTrail_RemoteVnc',
+          itemType: 'VncConnection',
+          exclude: ['lastConnectedAt'],
+          redact: ['password']
+        }
+      }
     );
   }
 

@@ -55,6 +55,32 @@ Navigateur (JSMpeg)
 - `rtspController.ts`: builds the `127.0.0.1:9999` URL (regex guard on the `id`), `health`, client counter (`incrClient`/`decrClient`/`getClientCounts`), `fetchManagerStatus` (proxies the manager's `GET /status` via `http.get`).
 - `rtspRoute.ts`: `GET /health`, `GET /api/rtsp/clients`, `GET /api/rtsp/status`.
 
+## Audit trail (GxP) — `AuditTrailWriter`
+
+Every camera **edit** is traced into a dedicated `_AuditTrail` datapoint
+**`AuditTrail_CameraStreams`**, following the DP model of the Audit-trail page
+(`@visuelconcept/wui-audit-trail`). The reusable primitive lives in the **shared
+kit** (`@visuelconcept/wui-kit/data/audit-trail.ts` → `AuditTrailWriter` +
+`auditSnapshot`/`auditDiff`) so other modules can trace their own edits the same
+way (each module owns one `AuditTrail_<Module>` DP).
+
+- **Auto-provisioning**: the DP is created of type `_AuditTrail` on first use via
+  PARA REST (`/api/para/dp/create`). NGA value-archiving is enabled best-effort on
+  every leaf when an **active, non-alert** `_NGA_Group` exists; when none does (or
+  the Audit-trail page / PARA backend isn't installed) the DP is **still
+  provisioned, just unarchived** — by design.
+- **Traced operations** (`camera-streams.ts` → `trace()`): CREATE, UPDATE (incl.
+  favourite toggle), DELETE, IMPORT (per camera) and demo generation. The
+  passive **last-viewed** stamp is *not* audited (it's a view side-effect, not an
+  edit). Writes are gated on `!offline` (no audit in the in-memory demo fallback).
+- **Record** = the fixed `_AuditTrail` leaves written atomically in one
+  `dp/set` (one source timestamp → one viewer row): `time` (epoch ms), `username`
+  + `uinum` (from `WuiUserService`), `host` (`location.hostname`), **`item` = the
+  impacted DPE** (the camera's backing DP `RtspCamera_<id>`, via `dpeOf()`),
+  `itemtype` (`RtspCamera`), `action`, `oldval`→`newval`, `reason`.
+- **Secrets**: the camera `password` is **redacted** (`••••`) in old/new
+  snapshots — never written to the audit log in clear text (`REDACTED_FIELDS`).
+
 ## Pitfalls / things to know
 
 - **Do NOT pass `-rw_timeout` before `-i`** for an RTSP input → ffmpeg "Error opening input files: Option not found". Rely on the process kill timeout instead.
@@ -64,4 +90,5 @@ Navigateur (JSMpeg)
 - **Known limitation**: if the manager keeps the ws open after ffmpeg stops (source loss), the viewer stays stuck in "reconnecting" with no WS close → no JSMpeg reconnection. Lead: have the manager close the client ws when ffmpeg exits.
 - **Liveness check under Windows/Git Bash**: `tasklist` intermittently returns bogus process counts of 0 — use `netstat -ano | grep LISTENING` and the logs as the source of truth.
 - **ACL**: the `/api/rtsp/*` routes are currently `fullAccess` like the other bridges (to be tightened).
+- **Audit trail unarchived on WebDemo2**: that project's only `_NGA_Group` is `_NGA_G_ALERT` (`isAlert` set), so there's no usable value-archive group → `AuditTrail_CameraStreams` is provisioned **unarchived**. Records are written as live values but **won't appear in the Audit-trail page's history table** until value archiving is enabled (the table reads NGA history via `dpGetPeriod`). Create a non-alert NGA group and re-enable archiving on the DP to capture history.
 - **Local test source**: MediaMTX (`bluenviron/mediamtx`) in RTSP-only mode (`rtspTransports:[tcp]`, `:8554`, `paths: { all_others: }`, `user: any`) + publishing a test pattern via the embedded ffmpeg (`testsrc2 ... -c:v libx264 -tune zerolatency -g 50 -f rtsp`). The public streamlock BigBuckBunny stream is **dead** (ffmpeg reads 0 bytes).

@@ -5,11 +5,8 @@ import { DpJsonStore } from './dp-json-store.js';
 
 export class ReportStore extends DpJsonStore<Report> {
   constructor() {
-    super(
-      'ReportBuilder_Report',
-      'ReportBuilder_Report_',
-      (r) => r.reportNo || r.title || 'rapport',
-      buildDemoReports
-    );
+    super('ReportBuilder_Report', 'ReportBuilder_Report_', (r) => r.reportNo || r.title || 'rapport', buildDemoReports, {
+      audit: { dpName: 'AuditTrail_ReportBuilder', itemType: 'Report', exclude: ['createdAt', 'updatedAt'] }
+    });
   }
 }

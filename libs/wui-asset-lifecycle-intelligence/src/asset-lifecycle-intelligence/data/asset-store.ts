@@ -23,7 +23,8 @@ export class AssetStore extends DpJsonStore<Asset> {
         afterRead: (a) => {
           a.phase = normalizePhase(a.phase); // migrate legacy PM100/PM200
           return a;
-        }
+        },
+        audit: { dpName: 'AuditTrail_AssetLifecycle', itemType: 'Asset' }
       }
     );
   }

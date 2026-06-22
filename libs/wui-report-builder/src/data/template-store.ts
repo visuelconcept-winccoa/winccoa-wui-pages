@@ -5,6 +5,8 @@ import { DpJsonStore } from './dp-json-store.js';
 
 export class TemplateStore extends DpJsonStore<ReportTemplate> {
   constructor() {
-    super('ReportBuilder_Template', 'ReportBuilder_Template_', (t) => t.name || 'modèle', buildDemoTemplates);
+    super('ReportBuilder_Template', 'ReportBuilder_Template_', (t) => t.name || 'modèle', buildDemoTemplates, {
+      audit: { dpName: 'AuditTrail_ReportTemplates', itemType: 'ReportTemplate', exclude: ['updatedAt'] }
+    });
   }
 }

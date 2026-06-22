@@ -22,7 +22,8 @@ export class MosaicStore extends DpJsonStore<Mosaic> {
         afterRead: (m) => {
           m.tiles = m.tiles ?? [];
           return m;
-        }
+        },
+        audit: { dpName: 'AuditTrail_Mosaic', itemType: 'Mosaic', exclude: ['updatedAt'] }
       }
     );
   }

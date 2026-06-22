@@ -19,7 +19,11 @@ export class ReportStore extends DpJsonStore<ThermalReport> {
       'ThermalReport_',
       (report) => report.reportNo,
       () => buildDemoReports([]),
-      { slugFallback: 'ttd', slugSource: (r) => r.reportNo || r.charge }
+      {
+        slugFallback: 'ttd',
+        slugSource: (r) => r.reportNo || r.charge,
+        audit: { dpName: 'AuditTrail_ThermalReports', itemType: 'ThermalReport' }
+      }
     );
   }
 

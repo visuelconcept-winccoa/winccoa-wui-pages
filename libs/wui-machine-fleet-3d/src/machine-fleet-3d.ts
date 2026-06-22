@@ -25,13 +25,76 @@ import { container } from 'tsyringe';
 import { templateSeed } from './machine-fleet-3d/data/atelier-templates.js';
 import { normDp, toNumber } from './machine-fleet-3d/data/dp-utils.js';
 import { FleetStore } from '@visuelconcept/wui-fleet-core/data/fleet-store.js';
-import { DEFAULT_STATE_MAPPINGS, resolveState, type Atelier } from '@visuelconcept/wui-fleet-core/types.js';
+import {
+  DEFAULT_STATE_MAPPINGS,
+  resolveState,
+  type Atelier,
+  type MachineDef
+} from '@visuelconcept/wui-fleet-core/types.js';
+import {
+  AuditTrailWriter,
+  auditDiff,
+  auditSnapshot,
+  type AuditRecord
+} from '@visuelconcept/wui-kit/data/audit-trail.js';
 import './machine-fleet-3d/ui/mf-atelier-overview.js';
 import './machine-fleet-3d/ui/mf-atelier-view.js';
 
 interface DpEmission {
   dp: string[];
   value: unknown[];
+}
+
+/** Shared GxP audit DP for the whole fleet feature (atelier CRUD + the KPI / stop-cause sub-pages). */
+const AUDIT_DP = 'AuditTrail_Fleet';
+/**
+ * Machine fields driven live by `dpConnect` (not by a user edit) — stripped before
+ * auditing so live-value churn never produces a spurious atelier UPDATE row.
+ */
+const MACHINE_LIVE_FIELDS = new Set<string>([
+  'state',
+  'connected',
+  'stopCause',
+  'stopCauseLabel',
+  'workOrder',
+  'operation',
+  'tiltAngle',
+  // Server-computed KPI values pushed live by the editor's dpConnect (not config).
+  'kpiCalcValues',
+  'kpiCalcColors'
+]);
+/** Atelier config fields traced in the audit trail (old → new); camera viewpoints + live state excluded. */
+const ATELIER_AUDIT_FIELDS = ['name', 'building', 'display', 'mappings', 'trsThresholds', 'machines'] as const;
+
+/** Project an atelier to its stable, auditable config (drops live machine state + camera viewpoints). */
+function projectAtelier(a: Atelier): Record<string, unknown> {
+  return {
+    name: a.name,
+    building: a.building,
+    display: a.display,
+    mappings: a.mappings,
+    trsThresholds: a.trsThresholds ?? [],
+    machines: a.machines.map((m) => projectMachine(m))
+  };
+}
+
+/** A machine's config-only view (live runtime fields removed). */
+function projectMachine(m: MachineDef): Record<string, unknown> {
+  const config: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(m)) {
+    if (MACHINE_LIVE_FIELDS.has(key)) continue;
+    // A KPI parameter's `value` is pushed live (its key/label/dp/unit are config).
+    config[key] = key === 'kpis' && Array.isArray(value) ? value.map((k) => stripKpiValue(k)) : value;
+  }
+  return config;
+}
+
+/** Drop a KPI parameter's live `value`, keeping only its configuration. */
+function stripKpiValue(kpi: unknown): unknown {
+  if (!kpi || typeof kpi !== 'object') return kpi;
+  const config: Record<string, unknown> = { ...(kpi as Record<string, unknown>) };
+  delete config.value;
+  return config;
 }
 
 @customElement('wui-machine-fleet-3d')
@@ -47,6 +110,8 @@ export class WuiMachineFleet3d extends LitElement {
   @state() private offline = false;
 
   private readonly store = new FleetStore();
+  /** Traces atelier create/update/delete into the shared `AuditTrail_Fleet` DP. */
+  private readonly audit = new AuditTrailWriter({ dpName: AUDIT_DP, itemType: 'Atelier' });
   private readonly api = this.resolveApi();
   private overviewSub = new Subscription();
   /** normalized stateDp → machines (across ateliers) it drives, for the overview. */
@@ -116,12 +181,25 @@ export class WuiMachineFleet3d extends LitElement {
     this.loading = true;
     this.ateliers = await this.store.listAteliers();
     this.offline = this.store.offline;
+    // Provision the audit-trail DP early (best-effort), but only with a real backend.
+    if (!this.offline) void this.audit.ensure();
     if (this.atelierId) {
       this.active = this.ateliers.find((a) => a.id === this.atelierId) ?? null;
     } else {
       this.subscribeOverview();
     }
     this.loading = false;
+  }
+
+  /** Trace one atelier edit (best-effort, fire-and-forget); no-op in the offline demo. */
+  private trace(record: AuditRecord): void {
+    if (this.offline) return;
+    void this.audit.write(record);
+  }
+
+  /** Backing datapoint of an atelier — the DPE impacted by the edit (audit "Élément"). */
+  private dpeOf(a: Atelier): string {
+    return a.dp ?? `MachineFleet3D_${a.id}`;
   }
 
   private resolveApi(): OaRxJsApi | null {
@@ -186,6 +264,12 @@ export class WuiMachineFleet3d extends LitElement {
       detail.id
     );
     this.ateliers = [...this.ateliers, atelier];
+    this.offline = this.store.offline;
+    this.trace({
+      action: 'CREATE',
+      item: this.dpeOf(atelier),
+      newval: auditSnapshot(projectAtelier(atelier), ATELIER_AUDIT_FIELDS)
+    });
     this.navigate(atelier.id);
   }
 
@@ -194,12 +278,32 @@ export class WuiMachineFleet3d extends LitElement {
     if (!active) return;
     await this.store.deleteAtelier(active.id);
     this.ateliers = this.ateliers.filter((a) => a.id !== active.id);
+    this.offline = this.store.offline;
+    this.trace({
+      action: 'DELETE',
+      item: this.dpeOf(active),
+      oldval: auditSnapshot(projectAtelier(active), ATELIER_AUDIT_FIELDS)
+    });
     this.back();
   }
 
   private async onSave(atelier: Atelier): Promise<void> {
+    // Capture the previous persisted atelier BEFORE the map() reassignment overwrites it.
+    const before = this.ateliers.find((a) => a.id === atelier.id);
     await this.store.saveAtelier(atelier);
     this.ateliers = this.ateliers.map((a) => (a.id === atelier.id ? atelier : a));
+    this.offline = this.store.offline;
+    if (!before) {
+      this.trace({
+        action: 'UPDATE',
+        item: this.dpeOf(atelier),
+        newval: auditSnapshot(projectAtelier(atelier), ATELIER_AUDIT_FIELDS)
+      });
+      return;
+    }
+    // Diff the projected config so live-state churn and camera viewpoints don't log spurious rows.
+    const diff = auditDiff(projectAtelier(before), projectAtelier(atelier), ATELIER_AUDIT_FIELDS);
+    if (diff) this.trace({ action: 'UPDATE', item: this.dpeOf(atelier), oldval: diff.old, newval: diff.new });
   }
 
   private navigate(id: string): void {

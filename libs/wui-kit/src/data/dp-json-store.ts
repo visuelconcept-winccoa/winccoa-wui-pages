@@ -12,11 +12,14 @@
  * - `slugFallback` — the word used when an entity label has no slug-able chars.
  * - `slugSource`   — derive the id slug from a field other than the `.name` label.
  * - `afterRead`    — post-parse migration hook (e.g. backfill a defaulted field).
+ * - `audit`        — opt-in GxP audit tracing of create/update/delete into a
+ *                    dedicated `_AuditTrail` DP (see `data/audit-trail.ts`).
  */
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { WuiDpeService } from '@wincc-oa/wui-data-selector-data/wui-dpe/wui-dpe.service.js';
 import { firstValueFrom } from 'rxjs';
 import { container } from 'tsyringe';
+import { AuditTrailWriter, auditDiff, auditSnapshot } from './audit-trail.js';
 
 const CREATE_TYPE_URL = '/api/para/dptype/create';
 const CREATE_DP_URL = '/api/para/dp/create';
@@ -45,6 +48,27 @@ export interface DpJsonStoreOptions<T> {
   slugFallback?: string;
   slugSource?: (item: T) => string;
   afterRead?: (item: T) => T;
+  audit?: DpJsonStoreAuditOptions<T>;
+}
+
+/**
+ * Opt-in audit-trail tracing for a store: every create/update/delete is written
+ * as a GxP record into a dedicated `_AuditTrail` DP, with the impacted datapoint
+ * as the "Élément" (item) column. See `data/audit-trail.ts` for the writer.
+ */
+export interface DpJsonStoreAuditOptions<T> {
+  /** Bare audit DP name (auto-created of type `_AuditTrail`), e.g. 'AuditTrail_Mosaic'. */
+  dpName: string;
+  /** `itemtype` written with each record (the kind of entity), e.g. 'Mosaic'. */
+  itemType: string;
+  /**
+   * Volatile fields ignored in diffs/snapshots (e.g. 'updatedAt', 'lastConnectedAt').
+   * Keeps incidental "stamp" saves — which only bump such a field — from logging a
+   * spurious UPDATE: the diff over the remaining fields is then empty.
+   */
+  exclude?: readonly (keyof T)[];
+  /** Secret fields masked (`••••`) in snapshots, e.g. 'password'. */
+  redact?: readonly (keyof T)[];
 }
 
 export class DpJsonStore<T extends DpEntity> {
@@ -53,6 +77,8 @@ export class DpJsonStore<T extends DpEntity> {
 
   private readonly api = this.resolveApi();
   private readonly dpe = this.resolveDpe();
+  /** GxP audit-trail writer, created only when the `audit` option is provided. */
+  private readonly audit = this.resolveAudit();
   private memory: T[] | null = null;
   private typeReady = false;
 
@@ -93,7 +119,8 @@ export class DpJsonStore<T extends DpEntity> {
       return created;
     }
     await this.send(CREATE_DP_URL, jsonPost({ dpName: created.dp, dpType: this.typeName }));
-    await this.save(created);
+    await this.writeValues(created);
+    this.traceCreate(created);
     return created;
   }
 
@@ -105,9 +132,10 @@ export class DpJsonStore<T extends DpEntity> {
       else list[i] = item;
       return;
     }
-    const dp = this.prefix + item.id;
-    await this.send(DP_SET_URL, jsonPost({ dpeName: `${dp}.name`, value: this.labelOf(item) }));
-    await this.send(DP_SET_URL, jsonPost({ dpeName: `${dp}.json`, value: JSON.stringify(item) }));
+    // Capture the previous state for the audit diff before overwriting it.
+    const previous = this.audit ? await this.read(this.prefix + item.id) : undefined;
+    await this.writeValues(item);
+    this.traceUpdate(previous, item);
   }
 
   async remove(id: string): Promise<void> {
@@ -115,8 +143,10 @@ export class DpJsonStore<T extends DpEntity> {
       this.memory = this.mem().filter((x) => x.id !== id);
       return;
     }
+    const removed = this.audit ? await this.read(this.prefix + id) : undefined;
     const url = `${DELETE_DP_BASE}/${encodeURIComponent(this.prefix + id)}?dpType=${encodeURIComponent(this.typeName)}`;
     await this.send(url, { method: 'DELETE' });
+    this.traceDelete(id, removed);
   }
 
   /** Persist many entities (used for demo seeding / import). */
@@ -127,6 +157,13 @@ export class DpJsonStore<T extends DpEntity> {
   }
 
   // --- internals -------------------------------------------------------------
+
+  /** Write the two String leaves (`name` + `json`) of an entity's backing DP. */
+  private async writeValues(item: T): Promise<void> {
+    const dp = this.prefix + item.id;
+    await this.send(DP_SET_URL, jsonPost({ dpeName: `${dp}.name`, value: this.labelOf(item) }));
+    await this.send(DP_SET_URL, jsonPost({ dpeName: `${dp}.json`, value: JSON.stringify(item) }));
+  }
 
   private async ensureType(): Promise<void> {
     if (this.typeReady || this.offline) return;
@@ -219,6 +256,49 @@ export class DpJsonStore<T extends DpEntity> {
     } catch {
       return null;
     }
+  }
+
+  private resolveAudit(): AuditTrailWriter | null {
+    const cfg = this.opts.audit;
+    return cfg ? new AuditTrailWriter({ dpName: cfg.dpName, itemType: cfg.itemType }) : null;
+  }
+
+  /** Traced fields of an entity: all keys minus `dp` and the configured volatile ones. */
+  private auditFieldsOf(item: T): (keyof T)[] {
+    const exclude = new Set<keyof T>([...(this.opts.audit?.exclude ?? []), 'dp' as keyof T]);
+    return (Object.keys(item) as (keyof T)[]).filter((k) => !exclude.has(k));
+  }
+
+  private traceCreate(item: T): void {
+    if (!this.audit) return;
+    void this.audit.write({
+      action: 'CREATE',
+      item: item.dp ?? this.prefix + item.id,
+      newval: auditSnapshot(item, this.auditFieldsOf(item), { redact: this.opts.audit?.redact })
+    });
+  }
+
+  private traceUpdate(previous: T | undefined, item: T): void {
+    if (!this.audit) return;
+    const redact = this.opts.audit?.redact;
+    const fields = this.auditFieldsOf(item);
+    const dp = item.dp ?? this.prefix + item.id;
+    if (previous) {
+      // Only a real change logs a row; a stamp-only save diffs to nothing (excluded field).
+      const diff = auditDiff(previous, item, fields, { redact });
+      if (diff) void this.audit.write({ action: 'UPDATE', item: dp, oldval: diff.old, newval: diff.new });
+      return;
+    }
+    void this.audit.write({ action: 'UPDATE', item: dp, newval: auditSnapshot(item, fields, { redact }) });
+  }
+
+  private traceDelete(id: string, removed: T | undefined): void {
+    if (!this.audit) return;
+    void this.audit.write({
+      action: 'DELETE',
+      item: removed?.dp ?? this.prefix + id,
+      oldval: removed ? auditSnapshot(removed, this.auditFieldsOf(removed), { redact: this.opts.audit?.redact }) : ''
+    });
   }
 
   private mem(): T[] {
