@@ -1,7 +1,7 @@
 /**
- * Audit-trail engine: enumerate a DP's archived leaf elements, read each one's
- * value history (NGA), and pivot them into a time × element table where every
- * archived change is a row showing the carried-forward value of each column.
+ * Audit-trail engine: read the NGA value history of the fixed `_AuditTrail` leaf
+ * elements over a period and pivot them into a time × element table where every
+ * archived record is a row showing the carried-forward value of each column.
  */
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { firstValueFrom } from 'rxjs';
@@ -15,22 +15,6 @@ const ALL_VALUES = 0;
 interface Sample {
   t: number;
   v: unknown;
-}
-
-/**
- * Walk a DP type structure (from `WuiDpeService.getDatapointTypes`) into the
- * full leaf-element DPE paths. A scalar DP (struct is the type-name string) has
- * a single "leaf" — the DP itself.
- */
-export function structLeaves(struct: unknown, prefix: string): string[] {
-  if (struct == null || typeof struct === 'string') return [prefix];
-  const out: string[] = [];
-  for (const [key, value] of Object.entries(struct as Record<string, unknown>)) {
-    const path = `${prefix}.${key}`;
-    if (value !== null && typeof value === 'object') out.push(...structLeaves(value, path));
-    else out.push(path);
-  }
-  return out;
 }
 
 function toMs(t: unknown): number {

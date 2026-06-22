@@ -1,13 +1,16 @@
 # Integrate the Audit Trail page (`@visuelconcept/wui-audit-trail`) — source mode, Tier 1
 
-**Standalone WinCC OA WebUI page** displaying a **pivot (cross-tab) table of the
-NGA archived history of elements** of a datapoint, driven by a **configuration
-popup** (DP / period / columns / refresh) persisted in a DP
-**`AuditTrail_Config`**. This is a **Tier 1**: **frontend only** (no backend
-module, no manager). **Self-contained source** distribution: the shared kit is
-**vendored** under `audit-trail/_vendor/` (no `@visuelconcept/wui-kit`
-prerequisite), and the page is **compiled against the target's runtime
-workspace** (bundle = correct version).
+**Standalone WinCC OA WebUI page**: a **GxP audit-trail viewer + manager** over
+the **fixed `_AuditTrail` datapoint type**. It lists the project's `_AuditTrail`
+datapoints, shows the selected one's **NGA-archived history as a log table**
+(default rolling **last 24 h live**, plus a **start/end datetime** range), and
+**exports CSV / JSON + prints**. It also **creates** `_AuditTrail` datapoints
+(always NGA-archived, archive group like Para), reassigns their group and
+deletes them — all via the existing **PARA REST** endpoints. View state is
+persisted in a DP **`AuditTrail_Config`**. This is a **Tier 1**: **frontend
+only** (no backend module, no manager). **Self-contained source** distribution:
+the shared kit is **vendored** under `audit-trail/_vendor/`, and the page is
+**compiled against the target's runtime workspace** (bundle = correct version).
 
 ## Prerequisites
 1. A **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) — the `--workspace`.
@@ -32,10 +35,11 @@ The installer:
 
 ## Verify
 1. Logged in → the **"Audit Trail"** entry appears in the menu, `/audit-trail` loads the page.
-2. Open the **config popup**: pick an NGA archived DP, a period and columns → the pivot table fills with the element history.
-3. The config is persisted in the DP **`AuditTrail_Config`** (reloaded on next display).
+2. Click **"Gérer"** → create a DP (e.g. `AuditTrail_Production`) with an **active archive group**. It is created of type `_AuditTrail` and archiving is enabled on every element.
+3. Select the DP in the toolbar. Default view = **last 24 h live**; toggle live off to pick a **start/end** interval. Once audit records exist (written by OA's audit mechanism), they appear as table rows.
+4. **CSV / JSON / Imprimer** export/print the displayed log; the view config is persisted in the DP **`AuditTrail_Config`**.
 
 ## Notes / security
-- **Frontend-only** page: no `/api/*` route exposed, no manager to start.
+- **Frontend-only** page: no `/api/*` route of its own; it reuses the **PARA REST** endpoints (`/api/para/dp/*`) — these must be mounted (the `wui-para` backend / webserver), otherwise create/archive/delete fall back to read-only.
 - The menu entry is `permission: ["connected"]` → visible to any logged-in user; restrict via the menu fragment's `permission` if needed.
-- The page reads the history via the **NGA** archives of the targeted DP: make sure NGA archiving is active on the elements to be audited.
+- Creating a DP requires at least one **active `_NGA_Group`** archive group. Audit **records** are written by WinCC OA's audit subsystem / panels / scripts, not by this page.

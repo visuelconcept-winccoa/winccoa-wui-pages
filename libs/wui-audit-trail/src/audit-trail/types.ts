@@ -1,50 +1,72 @@
-/** Types for the Audit-trail standalone page. */
+/** Types for the Audit-trail standalone page (fixed `_AuditTrail` GxP structure). */
 
-export type AuditPeriod = 'today' | '24h' | '7d' | '30d' | 'custom';
+/** WinCC OA DP type holding GxP audit records (system type, fixed structure). */
+export const AUDIT_DP_TYPE = '_AuditTrail';
 
-export const AUDIT_PERIOD_LABEL: Record<AuditPeriod, string> = {
-  today: "Aujourd'hui",
-  '24h': '24 heures',
-  '7d': '7 jours',
-  '30d': '30 jours',
-  custom: 'Personnalisé…'
-};
+/** Prefix applied to user-created audit-trail DPs (the system DP stays `_AuditTrail`). */
+export const AUDIT_DP_PREFIX = 'AuditTrail_';
+
+/** Rolling live window: last 24 hours. */
+export const LIVE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** One fixed column of the `_AuditTrail` structure. */
+export interface AuditField {
+  /** Element name under the DP (e.g. `username`). */
+  key: string;
+  /** Header label shown in the table / exports. */
+  label: string;
+  /** `time` is rendered as a formatted date; everything else as text. */
+  kind?: 'time';
+}
+
+/**
+ * Display order of the `_AuditTrail` elements, GxP-readable (who / what / when /
+ * why / old → new). The order also drives the queried columns and the exports.
+ */
+export const AUDIT_FIELDS: readonly AuditField[] = [
+  { key: 'time', label: 'Horodatage', kind: 'time' },
+  { key: 'username', label: 'Utilisateur' },
+  { key: 'action', label: 'Action' },
+  { key: 'item', label: 'Élément' },
+  { key: 'itemtype', label: 'Type' },
+  { key: 'oldval', label: 'Ancienne valeur' },
+  { key: 'newval', label: 'Nouvelle valeur' },
+  { key: 'reason', label: 'Raison' },
+  { key: 'batchid', label: 'Batch' },
+  { key: 'uinum', label: 'UI' },
+  { key: 'host', label: 'Hôte' }
+];
 
 /** A displayable column = one archived leaf element of the target DP. */
 export interface AuditColumn {
-  /** Full DPE path, e.g. `System1:MachineSim_x.state`. */
+  /** Full DPE path, e.g. `AuditTrail_Production.username`. */
   dpe: string;
-  /** Short label shown in the header (path relative to the DP). */
+  /** Short label shown in the header. */
   label: string;
 }
 
-/** Persisted page configuration (one config DP). */
+/** Persisted per-user view configuration (one `AuditTrail_Config` DP). */
 export interface AuditConfig {
-  /** Target datapoint whose archived structure is shown. */
+  /** Selected `_AuditTrail` datapoint shown in the viewer. */
   dpName: string;
-  period: AuditPeriod;
-  /** yyyy-MM-dd bounds for `period === 'custom'`. */
-  customStart: string;
-  customEnd: string;
-  /** Selected element DPE paths (subset of the DP's leaves); empty = all. */
-  columns: string[];
-  /** Live refresh (dpConnect-driven re-query). */
-  refresh: boolean;
+  /** Live mode: rolling last-24h window with auto-refresh. */
+  live: boolean;
+  /** `datetime-local` bounds for the custom interval (used when `live === false`). */
+  rangeStart: string;
+  rangeEnd: string;
   /** Max rows rendered (most recent); guards huge histories. */
   maxRows: number;
 }
 
 export const DEFAULT_AUDIT_CONFIG: AuditConfig = {
   dpName: '',
-  period: '24h',
-  customStart: '',
-  customEnd: '',
-  columns: [],
-  refresh: true,
-  maxRows: 500
+  live: true,
+  rangeStart: '',
+  rangeEnd: '',
+  maxRows: 1000
 };
 
-/** One pivot row: a timestamp + the (carried-forward) value per column. */
+/** One pivot row: a timestamp + the value of every fixed column at that instant. */
 export interface AuditRow {
   t: number;
   values: (string | number | null)[];
