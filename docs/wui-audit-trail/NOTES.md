@@ -24,6 +24,12 @@ Configuration via a popup (gear button "Configure"): choice of target DP, period
 
 `AuditConfig` holds: target DP, period (today / 24h / 7d / 30d / custom), `maxRows` (200 / 500 / 1000 / 5000), list of checked elements, auto refresh toggle.
 
+### Target DP selector (search)
+
+- The config popup picks the DP with the shared **`wui-dp-input`** (`@visuelconcept/wui-kit/ui/wui-dp-input.js`) — live `dpNames` autocomplete + magnifier, the same search field used by machine-fleet-3d / report-builder — instead of a plain text input.
+- That component **appends a trailing dot** to a committed top-level DP (`MachineSim_machine_1.`). The page normalises it with `stripDpDot()` before the `dpNames('<dp>.*','')` query and before persisting `dpName` (so the toolbar/label and config stay clean).
+- Committing a DP from the suggestions (value ends with `.`) **auto-loads its elements** and resets the column selection to the new DP; `lastLoadedDp` (seeded in `openConfig`) guards against a no-op re-commit on blur wiping the selection. The "Charger les éléments" button remains as a manual fallback for typed names.
+
 ## Key algorithms / formulas
 
 Pure engine in `engine.ts`: `structLeaves`, `queryHistory`, `buildPivot`.

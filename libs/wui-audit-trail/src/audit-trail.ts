@@ -12,6 +12,7 @@
  */
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { WuiDpeService } from '@wincc-oa/wui-data-selector-data/wui-dpe/wui-dpe.service.js';
+import '@visuelconcept/wui-kit/ui/wui-dp-input.js';
 import '@wincc-oa/wui-ix-wrappers/wui-content-header/wui-content-header.js';
 import '@wincc-oa/wui-oarxjs-context/components/wui-context-generator/wui-context-generator.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
@@ -55,6 +56,12 @@ function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
+/** A top-level DP picked from the search ends with a trailing dot
+ * (`MachineSim_machine_1.`); drop it for element queries and persistence. */
+function stripDpDot(dp: string): string {
+  return dp.endsWith('.') ? dp.slice(0, -1) : dp;
+}
+
 function formatDateTime(ms: number): string {
   return new Date(ms).toLocaleString('fr-FR', {
     day: '2-digit',
@@ -87,6 +94,8 @@ export class WuiAuditTrail extends LitElement {
   private readonly dpe = this.resolveDpe();
   private dpSub = new Subscription();
   private refreshDebounce = 0;
+  /** Last DP whose elements were auto-loaded (guards against repeat loads). */
+  private lastLoadedDp = '';
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
@@ -212,12 +221,12 @@ export class WuiAuditTrail extends LitElement {
           <div class="panel-body">
             <div class="subhead">Datapoint cible</div>
             <div class="dp-row">
-              <ix-input
+              <wui-dp-input
                 class="dp-input"
-                placeholder="Nom du datapoint (ex. MachineSim_machine_…)"
+                placeholder="Rechercher un datapoint (ex. MachineSim_machine_…)"
                 .value=${d.dpName}
-                @valueChange=${(e: CustomEvent<string>) => (this.draft = { ...this.draft, dpName: String(e.detail) })}
-              ></ix-input>
+                @wui:change=${(e: CustomEvent<{ value: string }>) => this.onDpChange(e.detail.value)}
+              ></wui-dp-input>
               <ix-button
                 variant="secondary"
                 ?disabled=${this.elementsLoading || d.dpName.trim() === ''}
@@ -326,7 +335,7 @@ export class WuiAuditTrail extends LitElement {
    * (handles nested structs), then falls back to enumerating element DPEs
    * directly via `dpNames` (type-agnostic — works when only a DP name is known). */
   private async fetchElements(dpName: string): Promise<AuditColumn[]> {
-    const name = dpName.trim();
+    const name = stripDpDot(dpName.trim());
     if (!name) return [];
     if (this.dpe) {
       try {
@@ -444,6 +453,9 @@ export class WuiAuditTrail extends LitElement {
   private openConfig(): void {
     this.draft = structuredClone(this.config);
     this.draftAvailable = [...this.available];
+    // Seed the auto-load guard so re-committing the same DP (e.g. on blur, which
+    // re-appends the trailing dot) doesn't wipe the existing column selection.
+    this.lastLoadedDp = stripDpDot(this.config.dpName.trim());
     this.configOpen = true;
   }
 
@@ -463,7 +475,20 @@ export class WuiAuditTrail extends LitElement {
     this.draft = { ...this.draft, ...patch };
   }
 
+  /** Search-input change. When a DP is committed from the suggestions the search
+   * component appends a trailing dot — that's our cue to auto-load its elements
+   * (resetting the column selection to the freshly chosen DP). */
+  private onDpChange(value: string): void {
+    this.draft = { ...this.draft, dpName: value };
+    const base = stripDpDot(value.trim());
+    if (value.trim().endsWith('.') && base !== '' && base !== this.lastLoadedDp) {
+      this.draft = { ...this.draft, columns: [] };
+      void this.loadElements();
+    }
+  }
+
   private async loadElements(): Promise<void> {
+    this.lastLoadedDp = stripDpDot(this.draft.dpName.trim());
     this.elementsLoading = true;
     this.draftAvailable = await this.fetchElements(this.draft.dpName);
     // Default to all columns when none are selected yet for this DP.
@@ -495,7 +520,7 @@ export class WuiAuditTrail extends LitElement {
   private async applyConfig(): Promise<void> {
     // Normalise the "none" sentinel back to an empty visible set.
     const columns = this.draft.columns.includes('__none__') ? [] : this.draft.columns;
-    this.config = { ...this.draft, dpName: this.draft.dpName.trim(), columns };
+    this.config = { ...this.draft, dpName: stripDpDot(this.draft.dpName.trim()), columns };
     this.available = this.draftAvailable.length > 0 ? [...this.draftAvailable] : this.available;
     if (this.available.length === 0 && this.config.dpName) {
       this.available = await this.fetchElements(this.config.dpName);
