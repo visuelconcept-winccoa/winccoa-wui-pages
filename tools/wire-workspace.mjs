@@ -21,7 +21,13 @@
 //   3. patch apps/dashboard-wc/vite.config.ts       (add pageMenuMergePlugin before copyConfigFilesPlugin)
 //   4. patch apps/dashboard-wc/vite.config.pages.ts (add pageMenuMergePlugin for the build:pages menu merge)
 //   5. patch tsconfig.base.json                     (paths @visuelconcept/wui-*/* -> libs/wui-*/src/*)
-//   6. patch libs/default-components/src/lib/webui-app-ix.ts (honor ?embed → chromeless shell for Mosaïque tiles)
+//   6. patch libs/default-components/src/lib/webui-app-ix.ts (honor ?embed → chromeless shell for Mosaïque tiles; embed flag latched at module load so the router can't strip it)
+//   7. patch libs/default-components/src/lib/route-generators/route-generator-utils.ts (loadModuleWithFallback: always try import(), only /error on real failure — fixes blank page on first nav)
+//   8. patch libs/default-components/src/lib/services/webui-ix-routes.service.ts (route action honors the loader's redirect instead of rendering a blank element)
+//
+// Patches 6-8 are SHELL customizations re-integrated into the runtime scaffold
+// after each re-scaffold (same model as the menu fragments) — keep them here,
+// never hand-edit the scaffolded default-components.
 //
 // An anchor that cannot be found (and isn't already wired) is a hard error: the
 // runtime version probably moved it — patch by hand per DEVELOPMENT.md.
@@ -287,25 +293,31 @@ function patchTsconfigPaths() {
 function patchWebuiAppEmbed() {
   patchFile(
     'libs/default-components/src/lib/webui-app-ix.ts',
-    (c) => c.includes('function isEmbedded('),
+    (c) => c.includes('const EMBEDDED'),
     (c) => {
       let out = replaceAnchor(
         c,
         `addIcons({ 'rotate-180': iconRotate180 });`,
         `addIcons({ 'rotate-180': iconRotate180 });\n\n` +
           `/**\n` +
-          ` * "Chromeless" / embedded mode: when the app is loaded with \`?embed\` in the\n` +
-          ` * query string (e.g. inside a Mosaïque tile via \`…/index.html?embed=1#/route\`),\n` +
-          ` * the shell renders only the routed page content — no application header, no\n` +
-          ` * navigation menu — so an embedded view shows just its own page. The flag is on\n` +
-          ` * \`location.search\`, which is stable regardless of the hash-based routing.\n` +
+          ` * "Chromeless" / embedded mode: latched ONCE at module load. When the app is\n` +
+          ` * loaded with \`?embed\` in the query string (e.g. inside a Mosaïque tile via\n` +
+          ` * \`…/index.html?embed=1#/route\`), the shell renders only the routed page content\n` +
+          ` * — no application header, no navigation menu. The flag is read here, before the\n` +
+          ` * SPA router runs: \`updateBrowserHistory\` rebuilds the URL as \`pathname+hash+search\`\n` +
+          ` * and \`replaceState\`s it, dropping the pre-hash \`?embed\` from \`location.search\` —\n` +
+          ` * so reading it lazily (per render) would flip back to chrome. Latching keeps the\n` +
+          ` * embedded mode stable for the whole iframe session.\n` +
           ` */\n` +
-          `function isEmbedded(): boolean {\n` +
+          `const EMBEDDED: boolean = (() => {\n` +
           `  try {\n` +
           `    return new URLSearchParams(globalThis.location.search).has('embed');\n` +
           `  } catch {\n` +
           `    return false;\n` +
           `  }\n` +
+          `})();\n\n` +
+          `function isEmbedded(): boolean {\n` +
+          `  return EMBEDDED;\n` +
           `}`,
         'webui-app-ix.ts (isEmbedded helper)'
       );
@@ -325,6 +337,55 @@ function patchWebuiAppEmbed() {
   );
 }
 
+// --- 7. route-generator-utils.ts (robust page-module loading) -----------------
+// The scaffolded loadModuleWithFallback gated the dynamic import() behind a
+// /WebUI_Settings probe + a service-worker cache lookup; right after a
+// "Clear site data" (empty SW cache) a transient probe failure made it SKIP the
+// import and return a redirect — which the route action (step 8) ignored,
+// rendering a blank page that only loaded on a 2nd visit. Replace it with:
+// always attempt the import (the import is the real connectivity test), redirect
+// to /error only on a genuine failure. Also drop the now-unused cache helpers.
+function patchRouteModuleLoader() {
+  patchFile(
+    'libs/default-components/src/lib/route-generators/route-generator-utils.ts',
+    (c) => c.includes('Failed to load route module'),
+    (c) => {
+      let out = replaceAnchor(
+        c,
+        `/** Cached modules to avoid redundant fetch checks */\nconst moduleMap = new Set<string>();\n\n/** HTTP status codes at or above this threshold indicate an error */\nconst HTTP_ERROR_THRESHOLD = 400;\n\n/**\n * Check if a module is cached in the service worker scripts cache.\n * @param moduleName - Module name to search for in cache\n * @returns Cached response if found, null otherwise\n */\nasync function getMatchedResponse(moduleName: string) {\n  const cache = await caches.open('scripts');\n  const keys = await cache.keys();\n\n  for (const request of keys) {\n    if (request.url.includes(moduleName)) {\n      return await cache.match(request);\n    }\n  }\n  return null;\n}\n\n`,
+        ``,
+        'route-generator-utils.ts (drop SW cache/probe helpers)'
+      );
+      out = replaceAnchor(
+        out,
+        `/**\n * Custom import with error page handler, redirect, and cache check.\n * Handles offline scenarios by checking service worker cache.\n *\n * @param commands - Vaadin Router commands for redirect\n * @param moduleName - Module path for cache lookup and tracking\n * @param moduleLoader - Async function that performs the actual import\n * @returns Redirect result on error, undefined on success\n */\nexport async function loadModuleWithFallback(\n  commands: Commands,\n  moduleName: string,\n  moduleLoader: () => Promise<unknown>\n) {\n  const isLoaded = moduleMap.has(moduleName)\n    ? { status: 200 }\n    : await fetch('/WebUI_Settings').catch((error) => {\n        return { status: error.status };\n      });\n\n  const regModuleName = moduleName.split('/').pop() || ' ';\n  const cachedModule = await getMatchedResponse(regModuleName);\n\n  const tryLoadModule = async () => {\n    return await moduleLoader()\n      .then(() => {\n        moduleMap.add(moduleName);\n      })\n      .catch(() => {\n        return commands.redirect('/error');\n      });\n  };\n\n  if (cachedModule || isLoaded.status < HTTP_ERROR_THRESHOLD) {\n    return tryLoadModule();\n  }\n\n  return commands.redirect('/error');\n}`,
+        `/**\n * Import a route's page module, redirecting to the error page only if the\n * import actually fails. The scaffolded version gated the import behind a\n * /WebUI_Settings probe + service-worker cache lookup; right after a\n * "Clear site data" (empty SW cache) a transient probe failure made it SKIP the\n * import and return a redirect that callers ignored -> blank page. The dynamic\n * import() is itself the connectivity test: attempt it, fall back to /error\n * only on a genuine load failure.\n */\nexport async function loadModuleWithFallback(\n  commands: Commands,\n  moduleName: string,\n  moduleLoader: () => Promise<unknown>\n) {\n  try {\n    await moduleLoader();\n    return undefined;\n  } catch (error) {\n    console.warn("Failed to load route module '" + moduleName + "':", error);\n    return commands.redirect('/error');\n  }\n}`,
+        'route-generator-utils.ts (loadModuleWithFallback)'
+      );
+      return out;
+    }
+  );
+}
+
+// --- 8. webui-ix-routes.service.ts (honor the loader's redirect) --------------
+// The page route action awaited loadModuleWithFallback but DISCARDED its return
+// value, then created the element regardless — so when the loader returned a
+// redirect (failed/skipped import) the action rendered an undefined element
+// (blank). Capture and return the redirect instead.
+function patchRouteActionRedirect() {
+  patchFile(
+    'libs/default-components/src/lib/services/webui-ix-routes.service.ts',
+    (c) => c.includes('if (redirect) return redirect'),
+    (c) =>
+      replaceAnchor(
+        c,
+        `        // Only import if module path is provided\n        if (modulePath) {\n          await loadModuleWithFallback(\n            commands,\n            modulePath,\n            () => import(/* @vite-ignore */ modulePath)\n          );\n        }`,
+        `        // Only import if module path is provided\n        if (modulePath) {\n          const redirect = await loadModuleWithFallback(\n            commands,\n            modulePath,\n            () => import(/* @vite-ignore */ modulePath)\n          );\n          // Honor the loader's redirect (don't fall through to a blank element).\n          if (redirect) return redirect;\n        }`,
+        'webui-ix-routes.service.ts (honor loader redirect)'
+      )
+  );
+}
+
 // --- run ----------------------------------------------------------------------
 console.log(
   `Wiring dev workspace (${checkOnly ? 'check' : 'apply'}): ${workspace}`
@@ -336,6 +397,8 @@ try {
   patchViteConfigPages();
   patchTsconfigPaths();
   patchWebuiAppEmbed();
+  patchRouteModuleLoader();
+  patchRouteActionRedirect();
 } catch (error) {
   console.error(`\n✗ ${error.message}`);
   process.exit(1);
