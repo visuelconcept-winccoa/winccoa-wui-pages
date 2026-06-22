@@ -74,7 +74,7 @@ function jsonPost(body: object): RequestInit {
 /** Read the AI config from the datapoint. */
 export async function loadAiConfig(): Promise<AiConfig> {
   const api = resolveApi();
-  const fallback: AiConfig = { provider: 'anthropic', model: AI_PROVIDERS.anthropic.models[0], token: '', mcpServers: [DEFAULT_MCP_SERVER] };
+  const fallback: AiConfig = { provider: 'anthropic', model: AI_PROVIDERS['anthropic'].models[0], token: '', mcpServers: [DEFAULT_MCP_SERVER] };
   if (!api) return fallback;
   try {
     const raw = await firstValueFrom(
@@ -150,6 +150,12 @@ export interface AskAiOptions {
   system?: string;
   provider?: string;
   model?: string;
+  /**
+   * Per-call MCP server override. Pass `[]` to run the prompt with NO tools, so
+   * the assistant can only answer/propose and never mutate the project. When
+   * omitted, the AiAssistant manager uses its configured servers.
+   */
+  mcpServers?: McpServer[];
 }
 
 export async function askAi(prompt: string, options: AskAiOptions = {}): Promise<AiAnswer> {
@@ -157,6 +163,7 @@ export async function askAi(prompt: string, options: AskAiOptions = {}): Promise
   if (options.system) body.system = options.system;
   if (options.provider) body.provider = options.provider;
   if (options.model) body.model = options.model;
+  if (options.mcpServers) body.mcpServers = options.mcpServers;
   const res = await fetch(CHAT_URL, jsonPost(body));
   let data: { ok?: boolean; text?: string; error?: string; toolCalls?: ToolCall[] };
   try {

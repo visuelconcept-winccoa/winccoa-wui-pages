@@ -70,7 +70,10 @@ export class ParaController {
    * GET a type, edit the structure, and POST it back to /dptype/change.
    */
   public getDpType = (req: Request, res: Response): void => {
-    const name = req.params['name'];
+    // Decode the URL path param: ultimate-express leaves %3A (the encoded ':'
+    // of a DP name like System1:Foo) un-decoded, which would otherwise fail the
+    // existence check ("data point '...%3A...' does not exist").
+    const name = decodeURIComponent(req.params['name']);
     try {
       // dpTypeGet is synchronous and throws a WinccoaError if the type is unknown.
       const root = WsjServerGlobal.winccoa.dpTypeGet(name);
@@ -287,7 +290,10 @@ export class ParaController {
    * a data point *type*.
    */
   public deleteDp = async (req: Request, res: Response): Promise<void> => {
-    const name = req.params['name'];
+    // Decode the URL path param: ultimate-express leaves %3A (the encoded ':'
+    // of a DP name like System1:Foo) un-decoded, which would otherwise fail the
+    // existence check ("data point '...%3A...' does not exist").
+    const name = decodeURIComponent(req.params['name']);
     const expectedType = req.query['dpType'] as string | undefined;
     try {
       if (!this.dpInstanceExists(name)) {
@@ -313,7 +319,10 @@ export class ParaController {
 
   /** DELETE /api/para/dptype/:name. */
   public deleteDpType = async (req: Request, res: Response): Promise<void> => {
-    const name = req.params['name'];
+    // Decode the URL path param: ultimate-express leaves %3A (the encoded ':'
+    // of a DP name like System1:Foo) un-decoded, which would otherwise fail the
+    // existence check ("data point '...%3A...' does not exist").
+    const name = decodeURIComponent(req.params['name']);
     try {
       const deleted = await WsjServerGlobal.winccoa.dpTypeDelete(name);
       res.status(deleted ? 200 : 500).json({ ok: Boolean(deleted), typeName: name });

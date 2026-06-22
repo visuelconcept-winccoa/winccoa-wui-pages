@@ -2,7 +2,7 @@
   "name": "@visuelconcept/wui-para",
   "type": "module",
   "version": "0.1.0",
-  "description": "PARA — standalone WinCC OA WebUI page: master-detail datapoint parametrization (lazy type/DP/element tree + live value & config-attribute editor; create/rename/delete DPs and types). Requires the PARA REST route to mutate.",
+  "description": "PARA — standalone WinCC OA WebUI page: two tabs — a nested DP-type model editor (create/change-in-place/delete types) and an instances/values browser (live values + config attributes, create/rename/delete DPs). Embeds a proposal-only AI assistant (via /api/ai) and DPL ASCII import/export (multi-select DP/DPT) via the dplAscii MSA manager. Requires the PARA REST route to mutate.",
   "author": { "name": "Visuel Concept" },
   "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page"],
   "license": "MIT",
@@ -11,6 +11,7 @@
     "rxjs": "*",
     "tsyringe": "*",
     "@etm-professional-control/oa-rx-js-api": "*",
+    "@visuelconcept/wui-ai-kit": "*",
     "@wincc-oa/wui-ix-wrappers": "*",
     "@wincc-oa/wui-oarxjs-context": "*",
     "@wincc-oa/wui-shared": "*",
@@ -31,7 +32,12 @@
     "permission": ["connected"],
     "tier": 3,
     "backend": {
-      "routes": ["/api/para/* (datapoint/type engineering — ParaRoute; required for any mutation, no offline fallback)"]
+      "routes": [
+        "/api/para/* (datapoint/type engineering — ParaRoute; required for any mutation, no offline fallback)",
+        "/api/para/dpl/* (DPL ASCII import/export — bridges to the dplAscii MSA manager / WCCOAasciiSQLite)"
+      ],
+      "managers": ["dplAscii (MSA service DplAscii — DPL export/import via WCCOAasciiSQLite)"],
+      "dependsOn": ["/api/ai bridge + aiAssistant manager (proposal-only AI assistant)"]
     }
   }
 }

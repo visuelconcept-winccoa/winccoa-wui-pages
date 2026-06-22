@@ -6,8 +6,9 @@
  *   Level 1: datapoints of a type   (listDatapoints, lazy on expand)
  *   Level 2+: element branches      (getDatapointTypes nested structure)
  *
- * Emits `wui:select` with the chosen datapoint / element path, and `wui:create`
- * when the user requests the "create type" dialog.
+ * Emits `wui:select` with the chosen datapoint / element path and `wui:dpaction`
+ * for datapoint create/rename/delete. (Datapoint *type* creation lives in the
+ * "Modèle" tab's wui-para-type-editor, not here.)
  */
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { WuiDpeService } from '@wincc-oa/wui-data-selector-data/wui-dpe/wui-dpe.service.js';
@@ -192,6 +193,25 @@ export class WuiParaNav extends LitElement {
       .error {
         color: var(--theme-color-alarm);
       }
+      .dpl-sel {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.375rem;
+        font-size: 0.75rem;
+        color: var(--theme-color-soft-text);
+      }
+      .export-cb {
+        flex-shrink: 0;
+        margin: 0 0.125rem 0 0;
+        cursor: pointer;
+        accent-color: var(--theme-color-primary);
+      }
+      .export-cb-spacer {
+        display: inline-block;
+        width: 0.95rem;
+        flex-shrink: 0;
+      }
     `
   ];
 
@@ -199,6 +219,8 @@ export class WuiParaNav extends LitElement {
   @property({ type: String }) selected: string | null = null;
   /** Bump this (from the parent) to force a reload, e.g. after creating a type. */
   @property({ type: Number }) reloadToken = 0;
+  /** Show the DPL export checkboxes/selection (instances tab); off for archive/alarm tabs. */
+  @property({ type: Boolean }) showExport = true;
 
   @state() private pattern = DEFAULT_PATTERN;
   @state() private filter = '';
@@ -206,6 +228,8 @@ export class WuiParaNav extends LitElement {
   @state() private roots: TreeNode[] = [];
   @state() private loading = false;
   @state() private error = '';
+  /** Keys (`type:<name>` / `dp:<name>`) checked for DPL export. */
+  @state() private exportSel = new Set<string>();
 
   private readonly dpeService = container.resolve<WuiDpeService>(WuiDpeService);
   private readonly api = container.resolve<OaRxJsApi>(OaRxJsApi);
@@ -233,7 +257,6 @@ export class WuiParaNav extends LitElement {
             @keydown=${(e: KeyboardEvent) => e.key === 'Enter' && this.loadTypes()}
           ></ix-input>
           <ix-icon-button icon="refresh" variant="secondary" title="Reload" @click=${this.loadTypes}></ix-icon-button>
-          <ix-icon-button icon="plus" variant="primary" title="Create datapoint type" @click=${this.requestCreate}></ix-icon-button>
         </div>
         <ix-input
           .value=${this.filter}
@@ -249,6 +272,12 @@ export class WuiParaNav extends LitElement {
             Show internal datapoints
           </label>
         </div>
+        ${this.showExport && this.exportSel.size > 0
+          ? html`<div class="dpl-sel">
+              <span>${this.exportSel.size} sélectionné(s) pour l'export DPL</span>
+              <ix-icon-button ghost size="16" icon="close" title="Tout décocher" @click=${this.clearExport}></ix-icon-button>
+            </div>`
+          : ''}
       </div>
       <div class="list">${this.renderTree()}</div>
     `;
@@ -288,6 +317,16 @@ export class WuiParaNav extends LitElement {
     const isSelected = this.nodeKey(node) === this.selected;
     return html`
       <div class="node-row ${isSelected ? 'selected' : ''}" style="padding-left: ${BASE_INDENT_REM + node.level}rem">
+        ${this.showExport && (node.kind === 'type' || node.kind === 'dp')
+          ? html`<input
+              type="checkbox"
+              class="export-cb"
+              .checked=${this.exportSel.has(this.exportKey(node))}
+              title="Select for DPL export"
+              @click=${(e: Event) => e.stopPropagation()}
+              @change=${() => this.toggleExport(node)}
+            />`
+          : html`<span class="export-cb-spacer"></span>`}
         <button class="node" title="${node.dp ?? node.label}" @click=${() => this.onRowClick(node)}>
           <span class="twisty">${this.renderTwisty(node)}</span>
           <span class="label ${node.kind === 'type' ? 'type-name' : ''}">${node.label}</span>
@@ -375,8 +414,42 @@ export class WuiParaNav extends LitElement {
     this.loadTypes();
   }
 
-  private requestCreate(): void {
-    this.dispatchEvent(new CustomEvent('wui:create', { bubbles: true, composed: true }));
+  /** Export-selection key for a checkable node (`type:<name>` / `dp:<name>`). */
+  private exportKey(node: TreeNode): string {
+    return node.kind === 'type' ? `type:${node.typeName ?? ''}` : `dp:${node.dp ?? ''}`;
+  }
+
+  private toggleExport(node: TreeNode): void {
+    const key = this.exportKey(node);
+    const next = new Set(this.exportSel);
+    if (next.has(key)) {
+      next.delete(key);
+    } else {
+      next.add(key);
+    }
+    this.exportSel = next;
+    this.emitExportSelection();
+  }
+
+  private clearExport(): void {
+    this.exportSel = new Set();
+    this.emitExportSelection();
+  }
+
+  /** Report the export selection ({dpts, dps}) to the page — the DPL Import/Export buttons live in the header. */
+  private emitExportSelection(): void {
+    const dps: string[] = [];
+    const dpts: string[] = [];
+    for (const key of this.exportSel) {
+      if (key.startsWith('type:')) {
+        dpts.push(key.slice('type:'.length));
+      } else if (key.startsWith('dp:')) {
+        dps.push(key.slice('dp:'.length));
+      }
+    }
+    this.dispatchEvent(
+      new CustomEvent('wui:exportselection', { detail: { dpts, dps }, bubbles: true, composed: true })
+    );
   }
 
   private loadTypes(): void {
@@ -419,7 +492,11 @@ export class WuiParaNav extends LitElement {
     const path = node.kind === 'type' ? node.typeName : node.dp;
     if (path != null) {
       this.dispatchEvent(
-        new CustomEvent('wui:select', { detail: { kind: node.kind, path }, bubbles: true, composed: true })
+        new CustomEvent('wui:select', {
+          detail: { kind: node.kind, path, type: node.typeName ?? '' },
+          bubbles: true,
+          composed: true
+        })
       );
     }
     if (node.expandable) {
@@ -520,7 +597,7 @@ export class WuiParaNav extends LitElement {
     return [...filtered]
       .sort((a, b) => a.localeCompare(b))
       .map((dp) => {
-        const elements = this.buildElementNodes(typeNode.struct, dp, ELEMENT_BASE_LEVEL);
+        const elements = this.buildElementNodes(typeNode.struct, dp, ELEMENT_BASE_LEVEL, typeNode.typeName);
         return {
           id: `dp:${dp}`,
           label: this.shortName(dp),
@@ -538,13 +615,18 @@ export class WuiParaNav extends LitElement {
       });
   }
 
-  private buildElementNodes(struct: DpStruct | undefined, parentPath: string, level: number): TreeNode[] {
+  private buildElementNodes(
+    struct: DpStruct | undefined,
+    parentPath: string,
+    level: number,
+    typeName: string | undefined
+  ): TreeNode[] {
     if (struct == null || typeof struct === 'string') {
       return [];
     }
     return Object.entries(struct).map(([key, value]) => {
       const path = `${parentPath}.${key}`;
-      const children = this.buildElementNodes(value, path, level + 1);
+      const children = this.buildElementNodes(value, path, level + 1, typeName);
       const isLeaf = typeof value === 'string';
       return {
         id: `el:${path}`,
@@ -557,6 +639,7 @@ export class WuiParaNav extends LitElement {
         loaded: true,
         children,
         dp: path,
+        typeName,
         dataType: isLeaf ? value : 'struct'
       };
     });

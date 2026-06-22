@@ -43,6 +43,12 @@ interface ChatBody {
   provider?: string;
   model?: string;
   system?: string;
+  /**
+   * Optional per-call MCP server override forwarded to the AiAssistant manager.
+   * Pass `[]` to run the prompt with NO tools (the assistant can then only
+   * answer/propose, never mutate). Omitted -> the manager uses its config DP.
+   */
+  mcpServers?: { name: string; url: string; token?: string }[];
 }
 
 /**
@@ -61,7 +67,7 @@ export class AiController {
       res.status(503).json({ ok: false, error: 'MSA vRPC indisponible (winccoa-manager)' });
       return;
     }
-    const { prompt, provider, model, system } = (req.body ?? {}) as ChatBody;
+    const { prompt, provider, model, system, mcpServers } = (req.body ?? {}) as ChatBody;
     if (!prompt || typeof prompt !== 'string') {
       res.status(400).json({ ok: false, error: 'prompt (string) requis' });
       return;
@@ -69,7 +75,11 @@ export class AiController {
     try {
       const stub = await getStub();
       const ctx = new Vrpc.ClientContext();
-      const payload = Vrpc.Variant.createString(JSON.stringify({ prompt, provider, model, system }));
+      // Only forward mcpServers when the caller set it (incl. [] to disable
+      // tools); otherwise let the manager fall back to its config DP.
+      const request: ChatBody = { prompt, provider, model, system };
+      if (Array.isArray(mcpServers)) request.mcpServers = mcpServers;
+      const payload = Vrpc.Variant.createString(JSON.stringify(request));
       const resp = await stub.callFunction('Chat', payload, ctx);
       if (resp.status.statusCode !== Vrpc.StatusCode.OK) {
         res.status(502).json({ ok: false, error: String(resp.status.text ?? resp.status) });

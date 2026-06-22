@@ -58,3 +58,34 @@ node install.mjs --project <root> --webserver <root>/javascript/<name>/src
 > **Module system:** the loader uses CommonJS `require()` + `__dirname`
 > (standard WinCC OA JS-manager output). For ESM output, swap to a cached
 > dynamic `import()`.
+
+## Redeploy page backends from this repo (dev) — `deploy:backend`
+
+During development the backend sources live in this repo under `backend/routes/`
+(HTTP controllers/routes) and `backend/managers/` (JS managers); the page→module
+and page→manager mapping is declared in `tools/specs.json`. To push them into an
+already-installed project webserver, use the specs-driven deployer instead of
+copying files by hand (the manual `Copy-Item` approach is error-prone — an unset
+shell variable silently copies nothing, which then 404s the new routes):
+
+```bash
+# all pages:
+npm run deploy:backend -- --project "D:/WinCC_OA_Proj_321/WebDemo2"
+# one or more pages, leaving managers/progs untouched (srcFiles only):
+npm run deploy:backend -- --project "D:/WinCC_OA_Proj_321/WebDemo2" --only para,machine-fleet-3d --no-managers
+# preview without changing anything:
+npm run deploy:backend -- --project "D:/..." --dry-run
+```
+
+It copies each selected page's `backend.srcFiles` into
+`<project>/javascript/<name>/src/modules/<page>/` (never the module `index.ts`,
+which each page's own installer creates once), copies its managers into
+`<project>/javascript/<m>/`, idempotently appends any missing manager line to
+`config/progs`, then runs the webserver `npm run build` (tsc). Options:
+`--name <dir>` (webserver folder, default `customer-webserver`), `--only`,
+`--no-managers`, `--no-progs`, `--no-build`, `--dry-run`.
+
+> ⚠️ It does **not** restart managers (a live-system action). After it finishes,
+> in the WinCC OA console (pmon): **restart the webserver manager** so the rebuilt
+> modules load, and **start any newly-added managers**. Verify a new route with
+> `curl -k https://<host>:<httpsPort>/api/para/dpl/health`.

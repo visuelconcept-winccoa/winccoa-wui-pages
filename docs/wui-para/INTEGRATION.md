@@ -9,6 +9,8 @@ pre-built `.js` from another version won't work).
 ## Prerequisites
 1. The target has a **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) that builds its dashboard — that's the `--workspace`. (cf. the official process, `dist-packages/README.md`.)
 2. **`@visuelconcept/wui-webserver`** is installed in the project (provides `/api/para` via backend module auto-discovery).
+3. For **DPL import/export**: the **`dplAscii`** JS manager (`backend/managers/dplAscii/index.js`) deployed to the project's `javascript/` and registered in `config/progs`, plus `WCCOAasciiSQLite` on PATH (standard install).
+4. For the **AI assistant**: the `/api/ai` bridge + the **`aiAssistant`** manager (as used by the Machine-Fleet pages). The assistant is proposal-only and never uses MCP.
 
 ## Install (one command)
 ```bash
@@ -25,8 +27,10 @@ The installer:
 4. runs **`build:pages`** in the workspace with `OUT_DIR=<projet>/data/dashboard-wc` → `para.js` compiled **against the correct runtime** + `menuconfig.json` redeployed.
 
 ## After install (mandatory)
-1. **Backend**: `cd <projet>/javascript/customer-webserver && npm run build`, then **restart** the webserver manager (it compiles and auto-mounts the `/api/para` module).
-2. **Browser**: DevTools → Application → Storage → **`Clear site data`**, then reload (**logged in**).
+0. **Dev backend redeploy** (when iterating on the backend in this repo): `npm run deploy:backend -- --project <projet> --only para,machine-fleet-3d` copies the para srcFiles (incl. `dplController.ts`) + the machine-fleet-3d `aiController.ts` into the project webserver and rebuilds it (see `webserver/SETUP.md`). It does NOT restart managers.
+1. **Backend**: `cd <projet>/javascript/customer-webserver && npm run build`, then **restart** the webserver manager (it compiles and auto-mounts the `/api/para` module, incl. the `/api/para/dpl/*` bridge). ⚠️ A successful build alone is not enough — the running webserver keeps the old code in memory until it is **restarted**, so a missed restart leaves `/api/para/dpl/*` returning 404.
+2. **DPL manager**: register `dplAscii` in `config/progs` (e.g. `node | always | 30 | 2 | 2 |dplAscii/index.js`) and (re)start it. Required for DPL import/export; the rest of the page works without it.
+3. **Browser**: DevTools → Application → Storage → **`Clear site data`**, then reload (**logged in**).
    ⚠️ The service worker caches `menuconfig.json` → **`Ctrl+Shift+R` is NOT enough**, only `Clear site data` purges it. (This is what blocked us.)
 
 ## Verify

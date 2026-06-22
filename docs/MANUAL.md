@@ -180,7 +180,31 @@ Opening a wall lays its tiles out side by side; each embeds another view chromel
 ![Parametrization](images/manual/para.png)
 
 A datapoint **parametrization** page, backed by its own webserver module
-(`/api/para`).
+(`/api/para`). Four tabs:
+
+- **Modèle (Types)** — an ergonomic, nested tree editor to define datapoint
+  **types**: add elements and sub-structures, rename, change element type, set a
+  `Typeref` target, choose a **scalar or Struct root**, delete. Empty types
+  (no instances) are listed too. New types are created and existing ones updated
+  **in place** (`dptype/change`, which preserves the datapoints already created).
+- **Instances & valeurs** — the master-detail browser: a Type→DP→element tree
+  with live values and config attributes (inline edit), plus datapoint
+  create/rename/delete.
+- **Archivage** — per DP/DPE, enable NGA value archiving and pick an archive
+  group (`_NGA_Group` instances).
+- **Alarming** — per DP/DPE, configure `_alert_hdl`: binary alerts for BOOL
+  elements, analog threshold alerts for numeric elements, with an alarm class
+  chosen from the `_AlertClass` instances.
+
+A header **AI assistant** helps model the data. It is *proposal-only* (it runs
+with no MCP tools and never mutates the project): it suggests datapoint-type
+models and can load a proposal straight into the model editor, where **you
+review and save** it.
+
+**DPL (ASCII) import/export.** From the *Instances & valeurs* tab you can tick
+several DPs and/or DP-types and **export** them to a WinCC OA `.dpl` file, or
+**import** a `.dpl`. The export/import is run server-side by the `dplAscii` MSA
+manager (which drives `WCCOAasciiSQLite`).
 
 ---
 

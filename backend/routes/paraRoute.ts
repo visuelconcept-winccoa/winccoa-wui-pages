@@ -13,6 +13,7 @@
 
 import { Router, json } from 'ultimate-express';
 
+import { DplController } from './dplController';
 import { ParaController } from './paraController';
 
 /**
@@ -28,13 +29,19 @@ import { ParaController } from './paraController';
  *   POST   /dp/rename       body { oldName, newName, expectedType? }
  *   DELETE /dp/:name        optional ?dpType= guard
  *   DELETE /dptype/:name
+ *   GET    /dpl/health
+ *   POST   /dpl/export      body { dps?: string[], dpts?: string[] } -> { contentBase64, … }
+ *   POST   /dpl/import      body { fileName, contentBase64 }
+ *
+ * The /dpl/* routes bridge to the "DplAscii" MSA manager (WCCOAasciiSQLite).
  */
 export class ParaRoute {
   static routes(): Router {
     const router = Router();
     const controller = new ParaController();
+    const dpl = new DplController();
 
-    router.use(json({ limit: '10mb' }));
+    router.use(json({ limit: '25mb' }));
 
     router.get('/health', controller.health);
     router.get('/dptype/:name', controller.getDpType);
@@ -45,6 +52,10 @@ export class ParaRoute {
     router.post('/dp/rename', controller.renameDp);
     router.delete('/dp/:name', controller.deleteDp);
     router.delete('/dptype/:name', controller.deleteDpType);
+
+    router.get('/dpl/health', dpl.health);
+    router.post('/dpl/export', dpl.export);
+    router.post('/dpl/import', dpl.import);
 
     return router;
   }

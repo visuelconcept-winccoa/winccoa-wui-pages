@@ -6,13 +6,23 @@
  * units and descriptions, and lets the user write new values back (dpSet).
  */
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
+import { WuiDpeService } from '@wincc-oa/wui-data-selector-data/wui-dpe/wui-dpe.service.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
-import { type Observable, Subscription, catchError, forkJoin, map, of, switchMap } from 'rxjs';
+import { Subscription, catchError, forkJoin, map, of } from 'rxjs';
 import { container } from 'tsyringe';
 import './para-config-detail.js';
 import { NUMERIC_TYPES, convertDynList, convertItem, formatDynItem, formatStime, isEditableType } from './para-value.js';
+
+/** A datapoint-type structure: a scalar type name, or a struct of children. */
+type DpStruct = string | { [element: string]: DpStruct };
+
+/** One value element to display: its full DPE name + its WinCC OA scalar type. */
+interface ValueEntry {
+  name: string;
+  type: string;
+}
 
 /** Config attribute that holds the online value of a datapoint element. */
 const VALUE_ATTR = ':_original.._value';
@@ -28,9 +38,6 @@ const DESCRIPTION_MODE = 2;
 
 /** Upper bound on value rows rendered/subscribed at once (esp. type view). */
 const MAX_VALUE_ELEMENTS = 500;
-
-/** Safety bound on how deep the element tree is walked level by level. */
-const MAX_TREE_DEPTH = 12;
 
 /** Metadata describing one editable/displayable datapoint element. */
 interface ElementMeta {
@@ -53,14 +60,6 @@ interface ElementMeta {
   numeric: boolean;
   isBool: boolean;
   editable: boolean;
-}
-
-/** Shape returned by dpElementType/dpGetUnit/dpGetDescription per element. */
-interface ElementMetaResult {
-  names: string[];
-  types: unknown;
-  units: unknown;
-  descriptions: unknown;
 }
 
 function toArray<T>(value: T | T[]): T[] {
@@ -191,6 +190,8 @@ export class WuiParaDetail extends LitElement {
   @property({ type: String }) dp: string | null = null;
   /** Selected datapoint type (flat view of every value of every DP of the type). */
   @property({ type: String }) dpType: string | null = null;
+  /** Owning DP-type of `dp` — required to enumerate its elements from the structure. */
+  @property({ type: String }) ownerType: string | null = null;
 
   @state() private elements: ElementMeta[] = [];
   @state() private loading = false;
@@ -206,6 +207,7 @@ export class WuiParaDetail extends LitElement {
   @state() private expanded = new Set<string>();
 
   private readonly api = container.resolve<OaRxJsApi>(OaRxJsApi);
+  private readonly dpeService = container.resolve<WuiDpeService>(WuiDpeService);
   private detailSubs = new Subscription();
   /** Path prefix stripped from element names for display ('' in type view). */
   private displayBase = '';
@@ -232,7 +234,7 @@ export class WuiParaDetail extends LitElement {
   }
 
   protected override willUpdate(changed: Map<string, unknown>): void {
-    if (changed.has('dp') || changed.has('dpType')) {
+    if (changed.has('dp') || changed.has('dpType') || changed.has('ownerType')) {
       this.loadSelection();
     }
   }
@@ -434,124 +436,157 @@ export class WuiParaDetail extends LitElement {
     this.error = '';
     this.truncated = false;
 
-    const candidates$ = this.dpType != null && this.dpType !== ''
-      ? this.typeCandidates(this.dpType)
-      : this.dpCandidates(this.dp);
-    if (candidates$ == null) {
-      return;
+    if (this.dpType != null && this.dpType !== '') {
+      this.loadTypeView(this.dpType);
+    } else if (this.dp != null && this.dp !== '') {
+      this.loadDpView(this.dp, this.ownerType);
     }
+  }
+
+  /**
+   * Values of every datapoint of a type. Leaf elements are enumerated from the
+   * type STRUCTURE (reliable for nested structs — unlike walking `dpNames('*')`,
+   * which missed struct branches and produced invalid config paths), then every
+   * DP instance is crossed with every leaf.
+   */
+  private loadTypeView(typeName: string): void {
+    this.displayBase = '';
     this.loading = true;
     this.detailSubs.add(
-      candidates$.pipe(switchMap((names) => this.fetchMeta(this.prepareNames(names)))).subscribe({
-        next: (result) => this.buildElements(result),
-        error: (err: unknown) => {
-          this.error = `Could not load values: ${String(err)}`;
-          this.loading = false;
-        }
+      forkJoin({
+        struct: this.dpeService.getDatapointTypes(typeName).pipe(catchError(() => of('' as DpStruct))),
+        dps: this.dpeService.listDatapoints(typeName).pipe(catchError(() => of([] as string[])))
       })
+        .pipe(
+          map(({ struct, dps }) => {
+            const leaves = this.collectLeaves(struct as DpStruct, '');
+            const entries: ValueEntry[] = [];
+            for (const root of dps as string[]) {
+              for (const leaf of leaves) {
+                entries.push({ name: this.makeName(root, leaf.relPath), type: leaf.type });
+              }
+            }
+            return entries;
+          })
+        )
+        .subscribe({
+          next: (entries) => this.fetchAndBuild(entries),
+          error: (err: unknown) => this.failLoad(err)
+        })
     );
   }
 
-  /** Candidate element names for a single datapoint / element path. */
-  private dpCandidates(dp: string | null): Observable<string[]> | null {
-    if (dp == null || dp === '') {
-      return null;
+  /**
+   * Values of one datapoint (or one of its sub-element branches). The owning
+   * type yields the structure; we keep the leaves under the selected sub-path.
+   */
+  private loadDpView(dp: string, ownerType: string | null): void {
+    if (ownerType == null || ownerType === '') {
+      this.error = "Type du datapoint inconnu — re-sélectionnez l'élément dans l'arbre.";
+      return;
     }
+    const { root, relPath } = this.splitDpPath(dp);
     this.displayBase = this.stripSystem(dp);
-    return this.descendantNames(dp);
-  }
-
-  /** Value-element names under a datapoint / element, with the scalar fallback. */
-  private descendantNames(dp: string): Observable<string[]> {
-    const base = dp.endsWith('.') ? dp : `${dp}.`;
-    return this.collectDescendants(base, 0).pipe(
-      map((names) => {
-        const list = [...new Set(names)].filter((name) => name !== '');
-        if (list.length > 0) {
-          return list;
-        }
-        // No descendants: the node is itself a value element. A DP root without
-        // an element part must be addressed with a trailing dot (e.g. `Counter.`).
-        return [this.stripSystem(dp).includes('.') ? dp : base];
-      })
+    this.loading = true;
+    this.detailSubs.add(
+      this.dpeService
+        .getDatapointTypes(ownerType)
+        .pipe(
+          map((struct) =>
+            this.leavesUnder(struct as DpStruct, relPath).map((leaf) => ({
+              name: this.makeName(root, leaf.relPath),
+              type: leaf.type
+            }))
+          )
+        )
+        .subscribe({
+          next: (entries) => this.fetchAndBuild(entries),
+          error: (err: unknown) => this.failLoad(err)
+        })
     );
   }
 
-  /**
-   * Recursively list every element below `prefix` (which ends with '.').
-   * `dpNames(<prefix>*)` returns one element level; we recurse into each child
-   * until the leaves, so full depth is reached without relying on '**'. If a
-   * single query already returns deeper paths, it is taken as-is.
-   */
-  private collectDescendants(prefix: string, depth: number): Observable<string[]> {
-    if (depth > MAX_TREE_DEPTH) {
-      return of([]);
+  private failLoad(err: unknown): void {
+    this.error = `Could not load values: ${String(err)}`;
+    this.loading = false;
+  }
+
+  /** Full DPE name for a leaf: scalar root -> `<dp>.`, else `<dp>.<relPath>`. */
+  private makeName(root: string, relPath: string): string {
+    return relPath === '' ? `${root}.` : `${root}.${relPath}`;
+  }
+
+  /** Split a selection path into DP root + element sub-path (a DP name has no '.'). */
+  private splitDpPath(dp: string): { root: string; relPath: string } {
+    const dot = dp.indexOf('.');
+    return dot === -1 ? { root: dp, relPath: '' } : { root: dp.slice(0, dot), relPath: dp.slice(dot + 1) };
+  }
+
+  /** Flatten a type structure to its scalar leaves (relative path + WinCC OA type). */
+  private collectLeaves(struct: DpStruct, base: string): { relPath: string; type: string }[] {
+    if (typeof struct === 'string') {
+      return struct === '' ? [] : [{ relPath: base, type: struct }];
     }
-    return this.api.dpNames(`${prefix}*`, '').pipe(
-      catchError(() => of([])),
-      switchMap((names) => {
-        const children = (names as string[]).filter((name) => name !== '' && name.startsWith(prefix) && name !== prefix);
-        if (children.length === 0) {
-          return of([] as string[]);
-        }
-        // If the query already returned deeper paths, '*' matched the whole subtree.
-        if (children.some((child) => child.slice(prefix.length).includes('.'))) {
-          return of(children);
-        }
-        return forkJoin(children.map((child) => this.collectDescendants(`${child}.`, depth + 1))).pipe(
-          map((sub) => [...children, ...sub.flat()])
-        );
-      })
-    );
+    const out: { relPath: string; type: string }[] = [];
+    for (const [key, value] of Object.entries(struct)) {
+      const rel = base === '' ? key : `${base}.${key}`;
+      if (typeof value === 'string') {
+        out.push({ relPath: rel, type: value });
+      } else {
+        out.push(...this.collectLeaves(value, rel));
+      }
+    }
+    return out;
   }
 
-  /**
-   * Candidate element names across every datapoint of a type: each DP root and
-   * all of its descendant elements (flat view of the whole type).
-   */
-  private typeCandidates(typeName: string): Observable<string[]> {
-    this.displayBase = '';
-    return this.api.dpNames('*', typeName).pipe(
-      catchError(() => of([])),
-      switchMap((names) => {
-        // Keep DP roots only (no element part), then expand each one fully.
-        const roots = (names as string[]).filter((name) => name !== '' && !this.stripSystem(name).includes('.'));
-        if (roots.length === 0) {
-          return of([] as string[]);
-        }
-        return forkJoin(roots.map((root) => this.descendantNames(root)));
-      }),
-      map((perRoot) => (perRoot as string[][]).flat())
-    );
+  /** Leaves under a relative sub-path (relPath '' -> all leaves). */
+  private leavesUnder(struct: DpStruct, relPath: string): { relPath: string; type: string }[] {
+    const all = this.collectLeaves(struct, '');
+    if (relPath === '') {
+      return all;
+    }
+    return all.filter((leaf) => leaf.relPath === relPath || leaf.relPath.startsWith(`${relPath}.`));
   }
 
-  /** De-duplicate, sort and cap the candidate names. */
-  private prepareNames(names: string[]): string[] {
-    const unique = [...new Set(names.filter((name) => name !== ''))].sort((a, b) => a.localeCompare(b));
-    if (unique.length > MAX_VALUE_ELEMENTS) {
+  /** De-dup + cap entries, read units/descriptions, then build the rows. */
+  private fetchAndBuild(entries: ValueEntry[]): void {
+    const seen = new Set<string>();
+    const unique: ValueEntry[] = [];
+    for (const entry of entries) {
+      if (entry.name === '' || seen.has(entry.name)) {
+        continue;
+      }
+      seen.add(entry.name);
+      unique.push(entry);
+    }
+    unique.sort((a, b) => a.name.localeCompare(b.name));
+    let list = unique;
+    if (list.length > MAX_VALUE_ELEMENTS) {
       this.truncated = true;
-      return unique.slice(0, MAX_VALUE_ELEMENTS);
+      list = list.slice(0, MAX_VALUE_ELEMENTS);
     }
-    return unique;
+    if (list.length === 0) {
+      this.elements = [];
+      this.loading = false;
+      return;
+    }
+    const names = list.map((entry) => entry.name);
+    this.detailSubs.add(
+      forkJoin({
+        units: this.api.dpGetUnit(names).pipe(catchError(() => of([]))),
+        descriptions: this.api.dpGetDescription(names, DESCRIPTION_MODE).pipe(catchError(() => of([])))
+      }).subscribe({
+        next: (meta) => this.buildElements(list, toArray(meta.units), toArray(meta.descriptions)),
+        error: (err: unknown) => this.failLoad(err)
+      })
+    );
   }
 
-  private fetchMeta(names: string[]) {
-    return forkJoin({
-      types: this.api.dpElementType(names).pipe(catchError(() => of([]))),
-      units: this.api.dpGetUnit(names).pipe(catchError(() => of([]))),
-      descriptions: this.api.dpGetDescription(names, DESCRIPTION_MODE).pipe(catchError(() => of([])))
-    }).pipe(switchMap((meta) => of({ names, ...meta } satisfies ElementMetaResult)));
-  }
-
-  private buildElements(result: ElementMetaResult): void {
-    const types = toArray(result.types);
-    const units = toArray(result.units);
-    const descriptions = toArray(result.descriptions);
-
+  private buildElements(list: ValueEntry[], units: unknown[], descriptions: unknown[]): void {
     const elements: ElementMeta[] = [];
-    for (const [index, name] of result.names.entries()) {
-      const type = String(types[index] ?? '');
-      if (type === '') {
+    for (const [index, entry] of list.entries()) {
+      const type = entry.type;
+      if (type === '' || type === 'struct') {
         continue; // structural node without a scalar type
       }
       const isDyn = type.startsWith('dyn_');
@@ -560,10 +595,10 @@ export class WuiParaDetail extends LitElement {
       const isBool = baseType === 'bool';
       const editable = isEditableType(baseType);
       elements.push({
-        name,
-        display: this.displayName(name),
-        valuePath: `${name}${VALUE_ATTR}`,
-        stimePath: `${name}${STIME_ATTR}`,
+        name: entry.name,
+        display: this.displayName(entry.name),
+        valuePath: `${entry.name}${VALUE_ATTR}`,
+        stimePath: `${entry.name}${STIME_ATTR}`,
         type,
         unit: String(units[index] ?? ''),
         description: String(descriptions[index] ?? ''),
@@ -574,7 +609,6 @@ export class WuiParaDetail extends LitElement {
         editable
       });
     }
-
     this.elements = elements;
     this.loading = false;
     this.connectLive(elements);

@@ -4,8 +4,9 @@
     "name": "@visuelconcept/wui-para",
     "title": "Parametrization (PARA)",
     "tier": 1,
-    "description": "PARA datapoint-parametrization page (/para): type→DP→element tree, edit/create/rename/delete via the /api/para engineering API.",
-    "backend": { "mount": "/api/para", "routeClass": "ParaRoute", "routeFile": "paraRoute", "srcFiles": ["paraController.ts", "paraRoute.ts", "paraTypeNode.ts"] }
+    "description": "PARA datapoint-parametrization page (/para): two tabs — a nested DP-type model editor (create/change/delete types in place) and an instances/values browser (live values + config attributes). Embeds a proposal-only AI assistant (via the /api/ai bridge) and DPL ASCII import/export (multi-select DP/DPT) through the dplAscii MSA manager (WCCOAasciiSQLite). Engineering ops via the /api/para API.",
+    "backend": { "mount": "/api/para", "routeClass": "ParaRoute", "routeFile": "paraRoute", "srcFiles": ["paraController.ts", "paraRoute.ts", "paraTypeNode.ts", "dplController.ts"] },
+    "managers": ["dplAscii"]
   },
   {
     "page": "camera-streams",

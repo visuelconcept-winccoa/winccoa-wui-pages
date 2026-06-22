@@ -343,9 +343,13 @@ export class FleetStore {
         .filter((n) => n !== '' && !n.endsWith('_2'))
         .sort((a, b) => a.localeCompare(b));
       if (groups.length === 0) return [];
-      const raw = await firstValueFrom(api.dpGet(groups.map((g) => `${g}.active`)));
-      const flags = Array.isArray(raw) ? raw : [raw];
-      return groups.filter((_, i) => archiveFlag(flags[i]));
+      // Keep only ACTIVE groups that are NOT specialized for alerts (`isAlert`):
+      // the `_NGA_G_ALERT` group archives alarms, not process values.
+      const activeRaw = await firstValueFrom(api.dpGet(groups.map((g) => `${g}.active`)));
+      const alertRaw = await firstValueFrom(api.dpGet(groups.map((g) => `${g}.isAlert`)));
+      const actives = Array.isArray(activeRaw) ? activeRaw : [activeRaw];
+      const alerts = Array.isArray(alertRaw) ? alertRaw : [alertRaw];
+      return groups.filter((_, i) => archiveFlag(actives[i]) && !archiveFlag(alerts[i]));
     } catch {
       return [];
     }
