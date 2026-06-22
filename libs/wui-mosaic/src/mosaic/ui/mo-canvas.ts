@@ -353,7 +353,13 @@ export class MoCanvas extends LitElement {
     if (!win) return;
     let sheet = this.frameSheets.get(doc);
     if (!sheet) {
-      const css = `wui-content-header,wui-context-generator{display:none!important}${
+      // Hide the embedded page's own chrome: the standard page header
+      // (wui-content-header/wui-context-generator) AND a page-level top bar
+      // (`.topbar` — e.g. the Machine-Fleet atelier bar, which holds the atelier
+      // title AND its toolbar). The tile already shows the title in its own header,
+      // so the in-page title/toolbar would be redundant. `.toolbar` is additionally
+      // hidden for read-only tiles (standalone page toolbars not nested in a topbar).
+      const css = `wui-content-header,wui-context-generator,.topbar{display:none!important}${
         readonly ? '.toolbar{display:none!important}' : ''
       }`;
       sheet = new win.CSSStyleSheet();
