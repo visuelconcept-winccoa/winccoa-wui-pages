@@ -1,0 +1,34 @@
+{
+  "name": "@visuelconcept/wui-process-monitor",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Process Monitor — standalone WinCC OA WebUI page: pmon manager console (status + start/stop/restart + restart-all) and project ZIP upload/deploy (optional folder purge, 7-Zip extraction, config.env, optional restart) with GxP audit-trail tracing. DPL import is handled elsewhere.",
+  "author": { "name": "Visuel Concept" },
+  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page"],
+  "license": "MIT",
+  "dependencies": {
+    "@visuelconcept/wui-kit": "*"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-oarxjs-context": "*"
+  },
+  "exports": { "./*": { "types": "./types/*", "import": "./*" } },
+  "wuiPage": {
+    "route": "/process-monitor",
+    "routeId": "process-monitor",
+    "component": "wui-process-monitor",
+    "module": "/data/dashboard-wc/pages/process-monitor.js",
+    "icon": "monitor",
+    "permission": ["connected"],
+    "tier": 3,
+    "backend": {
+      "managers": ["processMonitor"],
+      "routes": ["/api/process-monitor/*"]
+    }
+  }
+}

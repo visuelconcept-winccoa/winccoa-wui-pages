@@ -1,0 +1,348 @@
+/**
+ * Process Monitor — standalone WinCC OA WebUI page.
+ *
+ * Operator features, modelled on the `winccoa_projectmanager` HTML app
+ * (`proj.html`) but rebuilt natively (Lit + iX):
+ *  - **Console**: live pmon manager list with start/stop/restart + restart-all,
+ *    with **one tab per connected server** (distributed/redundant systems) —
+ *    sourced from the per-system `ProcessMonitor_Node` datapoints.
+ *  - **Project upload**: deploy a ZIP into the project across ALL connected
+ *    servers (optional folder purge, 7-Zip extraction into non-protected folders,
+ *    config.env, optional restart) — DPL import is NOT here.
+ * Plus a **History** tab. Every project import and manager restart is traced to a
+ * GxP `_AuditTrail` datapoint (`AuditTrail_ProcessMonitor`, with the session user)
+ * and an operations-log datapoint, both ensured at page init.
+ *
+ * Backend: `/api/process-monitor` (customer-webserver) → MSA vRPC → the
+ * `processMonitor` JS manager (per-system agent + aggregator) → pmon.
+ */
+import '@wincc-oa/wui-ix-wrappers/wui-content-header/wui-content-header.js';
+import '@wincc-oa/wui-oarxjs-context/components/wui-context-generator/wui-context-generator.js';
+import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
+import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
+import { state } from 'lit/decorators.js';
+import { Subscription } from 'rxjs';
+import { canEditFleet, canEditFleet$ } from '@visuelconcept/wui-kit/data/permissions.js';
+import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
+import { MSG, confirmControlMsg, localize, localizeDir, serverLabel } from './process-monitor/i18n.js';
+import { controlManager, listInstances, restartAll } from './process-monitor/data/api.js';
+import { ensureStores, loadHistory, traceOperation } from './process-monitor/data/stores.js';
+import type { DeployResult, HistoryEntry, Instance } from './process-monitor/types.js';
+import './process-monitor/ui/pm-console.js';
+import './process-monitor/ui/pm-upload.js';
+import './process-monitor/ui/pm-history.js';
+
+type Tab = 'console' | 'upload' | 'history';
+type ControlIntent = { action: 'start' | 'stop' | 'restart'; index: number; name: string };
+const REFRESH_MS = 5000;
+
+export class WuiProcessMonitor extends LitElement {
+  static override readonly styles = [IXCoreStyles, pageStyles()];
+
+  @state() private tab: Tab = 'console';
+  @state() private instances: Instance[] = [];
+  @state() private activeSystem = '';
+  @state() private history: HistoryEntry[] = [];
+  @state() private lastUpdate = '';
+  @state() private canEdit = canEditFleet();
+  @state() private restartAllPending = false;
+  @state() private controlPending: ControlIntent | null = null;
+
+  private permSub = new Subscription();
+  private timer: ReturnType<typeof globalThis.setInterval> | undefined;
+
+  /** The instance whose tab is active (defaults to the first server). */
+  private get active(): Instance | undefined {
+    return this.instances.find((i) => i.system === this.activeSystem) ?? this.instances[0];
+  }
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    this.permSub = canEditFleet$().subscribe((allowed) => (this.canEdit = allowed));
+    void ensureStores();
+    void this.refreshInstances();
+    void this.refreshHistory();
+    this.timer = globalThis.setInterval(() => {
+      if (this.tab === 'console') void this.refreshInstances();
+    }, REFRESH_MS);
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.permSub.unsubscribe();
+    globalThis.clearInterval(this.timer);
+  }
+
+  override render(): TemplateResult {
+    return html`
+      <div class="page">
+        <wui-context-generator
+          .config=${{
+            headerTitle: {
+              context: 'translate',
+              config: { 'en_US.utf8': 'Process Monitor', fr: 'Moniteur de processus', 'de_AT.utf8': 'Prozessmonitor' }
+            }
+          }}
+        >
+          <wui-content-header></wui-content-header>
+        </wui-context-generator>
+
+        <div class="body">
+          <div class="tabs">
+            ${this.tabBtn('console', MSG.tabs.console)}
+            ${this.tabBtn('upload', MSG.tabs.upload)}
+            ${this.tabBtn('history', MSG.tabs.history)}
+          </div>
+
+          ${this.tab === 'console' ? this.renderConsole() : nothing}
+          ${this.tab === 'upload'
+            ? html`<pm-upload
+                .canEdit=${this.canEdit}
+                .servers=${this.instances.map((i) => ({ system: i.system, hostname: i.hostname }))}
+                @wui:deployed=${(e: CustomEvent<DeployDetail>) => void this.onDeployed(e.detail)}
+              ></pm-upload>`
+            : nothing}
+          ${this.tab === 'history'
+            ? html`<pm-history .entries=${this.history} @wui:refreshhistory=${() => void this.refreshHistory()}></pm-history>`
+            : nothing}
+        </div>
+      </div>
+      ${this.renderDialogs()}
+    `;
+  }
+
+  private renderConsole(): TemplateResult {
+    const active = this.active;
+    return html`
+      ${this.instances.length > 1 ? this.renderServerTabs() : nothing}
+      <pm-console
+        .managers=${active?.managers ?? []}
+        .canEdit=${this.canEdit}
+        .lastUpdate=${this.lastUpdate}
+        @wui:refresh=${() => void this.refreshInstances()}
+        @wui:restartall=${() => (this.restartAllPending = true)}
+        @wui:control=${(e: CustomEvent<ControlIntent>) => (this.controlPending = e.detail)}
+      ></pm-console>
+    `;
+  }
+
+  private renderServerTabs(): TemplateResult {
+    const current = this.active?.system ?? '';
+    return html`<div class="server-tabs">
+      ${this.instances.map(
+        (i) => html`<button
+          class="server-tab ${i.system === current ? 'active' : ''}"
+          @click=${() => (this.activeSystem = i.system)}
+        >
+          <ix-icon name="host" size="16"></ix-icon>${serverLabel(i)}
+          <span class="count">${i.managers.length}</span>
+        </button>`
+      )}
+    </div>`;
+  }
+
+  private renderDialogs(): TemplateResult {
+    return html`
+      ${this.restartAllPending
+        ? html`<wui-confirm-dialog
+            message=${localize(MSG.console.confirmRestartAll)}
+            @wui:confirm=${() => void this.onRestartAll()}
+            @wui:cancel=${() => (this.restartAllPending = false)}
+          ></wui-confirm-dialog>`
+        : nothing}
+      ${this.controlPending
+        ? html`<wui-confirm-dialog
+            message=${confirmControlMsg(this.controlPending.action, this.controlPending.name)}
+            @wui:confirm=${() => void this.onControlConfirm()}
+            @wui:cancel=${() => (this.controlPending = null)}
+          ></wui-confirm-dialog>`
+        : nothing}
+    `;
+  }
+
+  private tabBtn(tab: Tab, label: typeof MSG.tabs.console): TemplateResult {
+    return html`<ix-button variant=${this.tab === tab ? 'primary' : 'secondary'} @click=${() => (this.tab = tab)}>
+      ${localizeDir(label)}
+    </ix-button>`;
+  }
+
+  private async refreshInstances(): Promise<void> {
+    try {
+      this.instances = await listInstances();
+      if (!this.instances.some((i) => i.system === this.activeSystem)) {
+        this.activeSystem = this.instances[0]?.system ?? '';
+      }
+      this.lastUpdate = new Date().toLocaleTimeString();
+    } catch {
+      // leave the previous list; transient pmon/webserver hiccup
+    }
+  }
+
+  private async refreshHistory(): Promise<void> {
+    try {
+      this.history = await loadHistory();
+    } catch {
+      this.history = [];
+    }
+  }
+
+  private async onControlConfirm(): Promise<void> {
+    const d = this.controlPending;
+    this.controlPending = null;
+    if (d) await this.onControl(d);
+  }
+
+  private async onControl(d: ControlIntent): Promise<void> {
+    const system = this.active?.system ?? '';
+    let ok = false;
+    try {
+      const res = await controlManager(system, d.action, d.index);
+      ok = res.ok !== false;
+    } catch {
+      ok = false;
+    }
+    await traceOperation(
+      {
+        time: new Date().toISOString(),
+        action: 'manager',
+        detail: `${d.name} — ${d.action}`,
+        status: ok ? 'success' : 'failed',
+        host: hostName(),
+        system: cleanSystem(system)
+      },
+      { action: d.action.toUpperCase(), item: d.name, newval: d.action, reason: cleanSystem(system) }
+    );
+    await this.refreshInstances();
+    void this.refreshHistory();
+  }
+
+  private async onRestartAll(): Promise<void> {
+    this.restartAllPending = false;
+    const system = this.active?.system ?? '';
+    let ok = false;
+    try {
+      const res = await restartAll(system);
+      ok = res.ok !== false;
+    } catch {
+      ok = false;
+    }
+    await traceOperation(
+      {
+        time: new Date().toISOString(),
+        action: 'restart-all',
+        detail: 'all managers',
+        status: ok ? 'success' : 'failed',
+        host: hostName(),
+        system: cleanSystem(system)
+      },
+      { action: 'RESTART_ALL', item: 'project', reason: cleanSystem(system) }
+    );
+    await this.refreshInstances();
+    void this.refreshHistory();
+  }
+
+  private async onDeployed(d: DeployDetail): Promise<void> {
+    const cleared = d.clearFolders.length > 0 ? ` [cleared: ${d.clearFolders.join(', ')}]` : '';
+    const servers = (d.result.results ?? []).map((r) => `${r.hostname || r.system || 'local'}${r.ok ? '' : ' (FAILED)'}`).join(', ');
+    const skipped = [...new Set((d.result.results ?? []).flatMap((r) => r.skipped ?? []))];
+    const skippedNote = skipped.length > 0 ? ` [skipped: ${skipped.join(', ')}]` : '';
+    const restartNote = d.restart ? ' [restart]' : '';
+    const serversNote = servers ? ` → ${servers}` : '';
+    await traceOperation(
+      {
+        time: new Date().toISOString(),
+        action: 'deploy',
+        detail: `${d.fileName}${cleared}${skippedNote}${restartNote}${serversNote}`,
+        status: d.result.ok ? 'success' : 'failed',
+        host: hostName(),
+        system: servers
+      },
+      {
+        action: 'IMPORT',
+        item: d.fileName,
+        newval: JSON.stringify({ clearFolders: d.clearFolders, restart: d.restart, ok: d.result.ok, results: d.result.results })
+      }
+    );
+    await this.refreshInstances();
+    void this.refreshHistory();
+  }
+}
+
+interface DeployDetail {
+  fileName: string;
+  clearFolders: string[];
+  restart: boolean;
+  result: DeployResult;
+}
+
+function hostName(): string {
+  return globalThis.location?.hostname ?? '';
+}
+
+/** Strip the trailing ':' from a WinCC OA system name for display/logging. */
+function cleanSystem(system: string): string {
+  return system.endsWith(':') ? system.slice(0, -1) : system;
+}
+
+// eslint-disable-next-line max-lines-per-function -- single stylesheet literal
+function pageStyles(): ReturnType<typeof css> {
+  return css`
+    :host {
+      display: block;
+      height: 100%;
+    }
+    .page {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      min-height: 0;
+    }
+    .body {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      padding: 0 1rem 1rem;
+      overflow: auto;
+    }
+    .tabs {
+      display: flex;
+      gap: 0.4rem;
+      padding: 0.5rem 0;
+    }
+    .server-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      padding-bottom: 0.6rem;
+    }
+    .server-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.3rem 0.7rem;
+      border: 1px solid var(--theme-color-soft-bdr);
+      border-radius: 999px;
+      background: var(--theme-color-1);
+      color: var(--theme-color-text);
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .server-tab.active {
+      background: var(--theme-color-primary, #00b3b3);
+      border-color: var(--theme-color-primary, #00b3b3);
+      color: var(--theme-color-primary-contrast, #fff);
+    }
+    .server-tab .count {
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 0.02rem 0.4rem;
+      border-radius: 999px;
+      background: rgba(127, 127, 127, 0.25);
+    }
+  `;
+}
+
+if (!customElements.get('wui-process-monitor')) {
+  customElements.define('wui-process-monitor', WuiProcessMonitor);
+}

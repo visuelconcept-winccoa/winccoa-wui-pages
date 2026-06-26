@@ -1,0 +1,12 @@
+// Menu fragment for @visuelconcept/wui-process-monitor.
+[
+  {
+    "title": { "en_US": "Process Monitor", "fr": "Moniteur de processus", "de_AT": "Prozessmonitor" },
+    "icon": "monitor",
+    "path": "/process-monitor",
+    "module": "/data/dashboard-wc/pages/process-monitor.js",
+    "routeId": "process-monitor",
+    "component": "wui-process-monitor",
+    "permission": ["connected"]
+  }
+]

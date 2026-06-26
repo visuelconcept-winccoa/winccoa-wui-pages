@@ -27,7 +27,7 @@
  */
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { WuiUserService } from '@wincc-oa/wui-iam-data/user-service.js';
-import { firstValueFrom } from 'rxjs';
+import { catchError, filter, firstValueFrom, of, timeout } from 'rxjs';
 import { container } from 'tsyringe';
 
 const DP_CREATE_URL = '/api/para/dp/create';
@@ -116,7 +116,7 @@ export class AuditTrailWriter {
    */
   async write(record: AuditRecord): Promise<void> {
     if (!(await this.ensure())) return;
-    const user = resolveUser();
+    const user = await resolveUserLoaded();
     const values: (string | number)[] = [
       Date.now(), // time (epoch ms; OA stores it as a time value)
       user?.name ?? '', // username
@@ -220,6 +220,16 @@ export function auditSnapshot<T extends object>(
 }
 
 /**
+ * The connected user's display name and numeric id, ensuring the settings are
+ * loaded first (see {@link AuditTrailWriter}). Returns empty/0 when unavailable.
+ * Handy for stamping a non-GxP operations log with the same actor as the audit DP.
+ */
+export async function currentAuditUser(): Promise<{ name: string; id: number }> {
+  const svc = await resolveUserLoaded();
+  return { name: svc?.name ?? '', id: svc?.id ?? 0 };
+}
+
+/**
  * Field-level diff of two snapshots over `fields`. Returns `{ old, new }` JSON of
  * only the changed fields (redacted as configured), or `null` when nothing changed.
  */
@@ -295,6 +305,31 @@ function resolveUser(): WuiUserService | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Resolve the user service AND make sure the connected user's settings are
+ * loaded, so the audit row carries a real `username`/`uinum`. The settings load
+ * lazily (via `etm.user.settings.get`); on pages opened before the shell has
+ * finished — or embedded ones — `name` would otherwise be empty. When not yet
+ * loaded we trigger the fetch and wait briefly (bounded), then fall back to
+ * whatever is available. Best-effort: never throws.
+ */
+async function resolveUserLoaded(): Promise<WuiUserService | null> {
+  const svc = resolveUser();
+  if (!svc || svc.name) return svc;
+  try {
+    await firstValueFrom(
+      svc.getOaUser().pipe(
+        filter(() => svc.name != null),
+        timeout({ first: 4000 }),
+        catchError(() => of(null))
+      )
+    );
+  } catch {
+    // best-effort — write whatever username we have (possibly empty)
+  }
+  return svc;
 }
 
 function bareName(name: string): string {

@@ -115,5 +115,14 @@
     "description": "Machine Fleet 3D hub page (/machine-fleet-3d) — three.js 3D fleet view with per-machine state/KPI bubbles, stop-cause catalog, contextual machine dashboard (Gantt + Pareto), and an AI assistant. Managers: machineSim (fleet simulation), kpiCalc (live KPIs), aiAssistant + mcpServer (the AI assistant, via the /api/ai bridge). AI provider tokens are read from the AI_Assistant_Config DP — NONE are shipped.",
     "backend": { "mount": "/api/ai", "routeClass": "AiRoute", "routeFile": "aiRoute", "srcFiles": ["aiController.ts", "aiRoute.ts"] },
     "managers": ["machineSim", "kpiCalc", "aiAssistant", "mcpServer"]
+  },
+  {
+    "page": "process-monitor",
+    "name": "@visuelconcept/wui-process-monitor",
+    "title": "Process Monitor",
+    "tier": 3,
+    "description": "Process Monitor page (/process-monitor) — pmon manager console with one tab per connected server (distributed via per-system ProcessMonitor_Node DPs): status + start/stop/restart + restart-all, plus project ZIP upload/deploy across all servers (optional folder purge, 7-Zip extraction into non-protected folders, config.env, optional restart) with GxP audit-trail tracing (session user). Bridged via /api/process-monitor to the processMonitor MSA manager (per-system agent + aggregator). DPL import handled elsewhere.",
+    "backend": { "mount": "/api/process-monitor", "routeClass": "ProcessMonitorRoute", "routeFile": "processMonitorRoute", "srcFiles": ["processMonitorController.ts", "processMonitorRoute.ts"] },
+    "managers": ["processMonitor"]
   }
 ]
