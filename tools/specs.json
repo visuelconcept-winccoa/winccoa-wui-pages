@@ -105,7 +105,7 @@
     "tier": 3,
     "description": "Asset Lifecycle Intelligence page (/asset-lifecycle) — asset domain model + composite risk-scoring engine, DP persistence; product obsolescence/delivery lookup via /api/product-info bridged to the productInfo MSA manager (Siemens Product Information Hub).",
     "backend": { "mount": "/api/product-info", "routeClass": "ProductInfoRoute", "routeFile": "productInfoRoute", "srcFiles": ["productInfoController.ts", "productInfoRoute.ts"] },
-    "managers": ["productInfo"]
+    "managers": ["productInfo", "aliMcp"]
   },
   {
     "page": "machine-fleet-3d",

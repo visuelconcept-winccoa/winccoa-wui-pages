@@ -9,6 +9,8 @@
  *
  * Overall = Σ (componentScore × weight), weights summing to 1.
  */
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
+import { ml } from './i18n.js';
 import type { Asset, RiskLevel } from './types.js';
 
 const SCORE_MAX = 100;
@@ -145,8 +147,8 @@ export interface RiskBand {
   min: number;
   /** Inclusive upper bound of the band. */
   max: number;
-  label: string;
-  action: string;
+  label: MultiLangString;
+  action: MultiLangString;
   review: string;
   alarm: string;
   /** CSS colour (theme token or hex) for badges/bars. */
@@ -158,8 +160,8 @@ export const RISK_BANDS: RiskBand[] = [
     level: 'low',
     min: 0,
     max: 25,
-    label: 'Faible',
-    action: 'Aucune action requise',
+    label: ml('Low', 'Faible', 'Niedrig'),
+    action: ml('No action required', 'Aucune action requise', 'Keine Maßnahme erforderlich'),
     review: 'Revue annuelle',
     alarm: 'Information',
     color: '#10b981'
@@ -168,8 +170,8 @@ export const RISK_BANDS: RiskBand[] = [
     level: 'moderate',
     min: 26,
     max: 50,
-    label: 'Modéré',
-    action: 'À planifier au prochain arrêt',
+    label: ml('Moderate', 'Modéré', 'Mäßig'),
+    action: ml('Plan at next shutdown', 'À planifier au prochain arrêt', 'Beim nächsten Stillstand einplanen'),
     review: 'Revue trimestrielle',
     alarm: 'Avertissement',
     color: '#f59e0b'
@@ -178,8 +180,8 @@ export const RISK_BANDS: RiskBand[] = [
     level: 'high',
     min: 51,
     max: 75,
-    label: 'Élevé',
-    action: 'À planifier sous 3 mois',
+    label: ml('High', 'Élevé', 'Hoch'),
+    action: ml('Plan within 3 months', 'À planifier sous 3 mois', 'Innerhalb von 3 Monaten einplanen'),
     review: 'Revue mensuelle',
     alarm: 'Alarme haute',
     color: '#f97316'
@@ -188,8 +190,8 @@ export const RISK_BANDS: RiskBand[] = [
     level: 'critical',
     min: 76,
     max: 100,
-    label: 'Critique',
-    action: 'Action immédiate requise',
+    label: ml('Critical', 'Critique', 'Kritisch'),
+    action: ml('Immediate action required', 'Action immédiate requise', 'Sofortmaßnahme erforderlich'),
     review: 'Suivi hebdomadaire',
     alarm: 'Alarme critique',
     color: '#ef4444'

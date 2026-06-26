@@ -7,7 +7,7 @@
  * migrates legacy phase codes (PM100/PM200) via {@link normalizePhase}.
  */
 import { DpJsonStore } from '@visuelconcept/wui-kit/data/dp-json-store.js';
-import { DEMO_ASSETS } from './demo-assets.js';
+import { DEMO_ASSETS, DEMO_SETS, type DemoDomain } from './demo-assets.js';
 import { normalizePhase, type Asset } from '../types.js';
 
 export class AssetStore extends DpJsonStore<Asset> {
@@ -45,8 +45,15 @@ export class AssetStore extends DpJsonStore<Asset> {
     return this.remove(id);
   }
 
-  /** Seed the backend with the demo assets (no-op for ones already present). */
-  importDemo(): Promise<Asset[]> {
-    return this.importMany(DEMO_ASSETS);
+  /** Seed the backend with a demo fleet for the chosen domain (no-op for ones already present). */
+  importDemo(domain: DemoDomain = 'semicon'): Promise<Asset[]> {
+    return this.importMany(DEMO_SETS[domain]);
+  }
+
+  /** Delete every managed asset. Returns the number removed. */
+  async deleteAll(): Promise<number> {
+    const all = await this.list();
+    for (const asset of all) await this.remove(asset.id);
+    return all.length;
   }
 }

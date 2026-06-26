@@ -4,13 +4,30 @@
  * sorted by risk score descending by default. Emits `wui:edit` / `wui:delete`
  * with the asset id.
  */
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
-import { LitElement, css, html, type TemplateResult } from 'lit';
+import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { MSG, localize, localizeDir } from '../i18n.js';
 import { bandForLevel, computeRisk, type RiskResult } from '../risk.js';
-import { PHASE_LABELS, SOURCE_COLORS, SOURCE_LABELS, type Asset } from '../types.js';
+import { deriveSupportUrl } from '../data/product-info.js';
+import { PHASE_LABELS, SOURCE_COLORS, SOURCE_LABELS, type Asset, type RiskLevel } from '../types.js';
 
-type SortKey = 'name' | 'area' | 'phase' | 'score';
+type SortKey = 'name' | 'mlfb' | 'station' | 'area' | 'assetGroup' | 'source' | 'phase' | 'score' | 'level';
+
+/** Optional (toggleable) columns — name + score + actions are always shown. */
+export const TABLE_COLUMNS: { key: string; label: MultiLangString }[] = [
+  { key: 'mlfb', label: MSG.table.mlfb },
+  { key: 'station', label: MSG.table.station },
+  { key: 'area', label: MSG.table.area },
+  { key: 'assetGroup', label: MSG.table.assetGroup },
+  { key: 'source', label: MSG.table.source },
+  { key: 'phase', label: MSG.table.phase },
+  { key: 'level', label: MSG.table.level },
+  { key: 'action', label: MSG.table.action }
+];
+
+const LEVEL_RANK: Record<RiskLevel, number> = { low: 0, moderate: 1, high: 2, critical: 3 };
 
 interface Row {
   asset: Asset;
@@ -22,6 +39,8 @@ export class AliAssetTable extends LitElement {
   static override readonly styles = [IXCoreStyles, tableStyles()];
 
   @property({ attribute: false }) assets: Asset[] = [];
+  /** Visible optional-column keys; when undefined, every column is shown. */
+  @property({ attribute: false }) visibleColumns?: string[];
 
   @state() private sortKey: SortKey = 'score';
   @state() private sortAsc = false;
@@ -32,15 +51,16 @@ export class AliAssetTable extends LitElement {
       <table>
         <thead>
           <tr>
-            ${this.header('Désignation', 'name')}
-            <th>MLFB</th>
-            <th>Station</th>
-            ${this.header('Atelier', 'area')}
-            <th>Source</th>
-            ${this.header('Phase', 'phase')}
-            ${this.header('Score', 'score')}
-            <th>Niveau</th>
-            <th>Action recommandée</th>
+            ${this.header(MSG.table.name, 'name')}
+            ${this.col('mlfb', () => this.header(MSG.table.mlfb, 'mlfb'))}
+            ${this.col('station', () => this.header(MSG.table.station, 'station'))}
+            ${this.col('area', () => this.header(MSG.table.area, 'area'))}
+            ${this.col('assetGroup', () => this.header(MSG.table.assetGroup, 'assetGroup'))}
+            ${this.col('source', () => this.header(MSG.table.source, 'source'))}
+            ${this.col('phase', () => this.header(MSG.table.phase, 'phase'))}
+            ${this.header(MSG.table.score, 'score')}
+            ${this.col('level', () => this.header(MSG.table.level, 'level'))}
+            ${this.col('action', () => html`<th>${localizeDir(MSG.table.action)}</th>`)}
             <th class="actions-col"></th>
           </tr>
         </thead>
@@ -51,39 +71,62 @@ export class AliAssetTable extends LitElement {
     `;
   }
 
+  private show(key: string): boolean {
+    return !this.visibleColumns || this.visibleColumns.includes(key);
+  }
+
+  private col(key: string, render: () => TemplateResult): TemplateResult | typeof nothing {
+    return this.show(key) ? render() : nothing;
+  }
+
+  // eslint-disable-next-line max-lines-per-function -- single row template with optional columns
   private renderRow(row: Row): TemplateResult {
     const band = bandForLevel(row.risk.level);
     const { asset } = row;
+    const supportUrl = asset.supportUrl || deriveSupportUrl(asset.mlfb);
     return html`
       <tr>
         <td class="strong">${asset.name}</td>
-        <td class="mono">${asset.mlfb}</td>
-        <td class="mono">${asset.station}</td>
-        <td>${asset.area}</td>
-        <td>
-          <span class="src" style="--c:${SOURCE_COLORS[asset.source]}" title=${asset.tiaProject || SOURCE_LABELS[asset.source]}>
-            ${SOURCE_LABELS[asset.source]}
-          </span>
-        </td>
-        <td title=${PHASE_LABELS[asset.phase]}>${asset.phase}</td>
+        ${this.col('mlfb', () => html`<td class="mono">${asset.mlfb}</td>`)}
+        ${this.col('station', () => html`<td class="mono">${asset.station}</td>`)}
+        ${this.col('area', () => html`<td>${asset.area}</td>`)}
+        ${this.col('assetGroup', () => html`<td>${asset.assetGroup ?? ''}</td>`)}
+        ${this.col(
+          'source',
+          () => html`<td>
+            <span class="src" style="--c:${SOURCE_COLORS[asset.source]}" title=${asset.tiaProject || localize(SOURCE_LABELS[asset.source])}>
+              ${localizeDir(SOURCE_LABELS[asset.source])}
+            </span>
+          </td>`
+        )}
+        ${this.col('phase', () => html`<td title=${localize(PHASE_LABELS[asset.phase])}>${asset.phase}</td>`)}
         <td>
           <span class="score" style="--c:${band.color}">${row.risk.score}</span>
         </td>
-        <td><span class="level" style="--c:${band.color}">${band.label}</span></td>
-        <td class="action">${band.action}</td>
+        ${this.col('level', () => html`<td><span class="level" style="--c:${band.color}">${localizeDir(band.label)}</span></td>`)}
+        ${this.col('action', () => html`<td class="action">${localizeDir(band.action)}</td>`)}
         <td class="actions-col">
+          ${supportUrl
+            ? html`<ix-icon-button
+                ghost
+                size="16"
+                icon="export"
+                title=${localize(MSG.table.support)}
+                @click=${() => this.openSupport(supportUrl)}
+              ></ix-icon-button>`
+            : nothing}
           <ix-icon-button
             ghost
             size="16"
             icon="pen"
-            title="Modifier"
+            title=${localize(MSG.table.edit)}
             @click=${() => this.requestEdit(asset.id)}
           ></ix-icon-button>
           <ix-icon-button
             ghost
             size="16"
             icon="trashcan"
-            title="Supprimer"
+            title=${localize(MSG.table.remove)}
             @click=${() => this.requestDelete(asset.id)}
           ></ix-icon-button>
         </td>
@@ -91,12 +134,18 @@ export class AliAssetTable extends LitElement {
     `;
   }
 
-  private header(label: string, key: SortKey): TemplateResult {
+  private header(label: MultiLangString, key: SortKey): TemplateResult {
     const active = this.sortKey === key;
     const arrow = active ? (this.sortAsc ? '▲' : '▼') : '';
     return html`
-      <th class="sortable" @click=${() => this.setSort(key)}>${label} <span class="arrow">${arrow}</span></th>
+      <th class="sortable" @click=${() => this.setSort(key)}>
+        ${localizeDir(label)} <span class="arrow">${arrow}</span>
+      </th>
     `;
+  }
+
+  private openSupport(url: string): void {
+    window.open(url, '_blank', 'noopener');
   }
 
   private sortedRows(): Row[] {
@@ -111,11 +160,26 @@ export class AliAssetTable extends LitElement {
       case 'score': {
         return a.risk.score - b.risk.score;
       }
+      case 'level': {
+        return LEVEL_RANK[a.risk.level] - LEVEL_RANK[b.risk.level];
+      }
       case 'name': {
         return a.asset.name.localeCompare(b.asset.name);
       }
+      case 'mlfb': {
+        return a.asset.mlfb.localeCompare(b.asset.mlfb);
+      }
+      case 'station': {
+        return a.asset.station.localeCompare(b.asset.station);
+      }
       case 'area': {
         return a.asset.area.localeCompare(b.asset.area);
+      }
+      case 'assetGroup': {
+        return (a.asset.assetGroup ?? '').localeCompare(b.asset.assetGroup ?? '');
+      }
+      case 'source': {
+        return a.asset.source.localeCompare(b.asset.source);
       }
       case 'phase': {
         return a.asset.phase.localeCompare(b.asset.phase);

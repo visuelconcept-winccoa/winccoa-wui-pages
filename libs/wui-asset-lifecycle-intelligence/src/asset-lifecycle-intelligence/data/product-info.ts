@@ -6,9 +6,26 @@
  * which bridges over MSA vRPC to the `productInfo` manager (holding the API key)
  * → Siemens. The key never reaches the browser.
  */
-import type { LifecyclePhase, SupplyStatus } from '../types.js';
+import { getLanguage } from '@wincc-oa/wui-i18n-shared/localize-base.js';
+import type { Asset, LifecyclePhase, SupplyStatus } from '../types.js';
 
 const LOOKUP_URL = '/api/product-info/lookup';
+
+/** Languages the Siemens Industry Online Support site serves; others fall back to English. */
+const SUPPORT_LANGS = new Set(['en', 'de', 'fr', 'es', 'it', 'zh', 'pt']);
+
+/**
+ * Canonical Siemens Industry Online Support product page for an MLFB
+ * (same URL shape the PIH obsolescence `supportUrl` returns), localised to the
+ * active UI language. Returns '' when no MLFB is available.
+ */
+export function deriveSupportUrl(mlfb: string): string {
+  const ref = mlfb.trim();
+  if (!ref) return '';
+  const lang = getLanguage();
+  const seg = SUPPORT_LANGS.has(lang) ? lang : 'en';
+  return `https://support.industry.siemens.com/cs/ww/${seg}/pv/${encodeURIComponent(ref)}/pi`;
+}
 
 /** A referenced product (successor / substitute / related). */
 export interface ProductRef {
@@ -115,4 +132,71 @@ export function supplyFromDelivery(del: ProductDelivery): SupplyStatus {
   if (days <= LEAD_IN_STOCK_MAX_DAYS) return 'inStock';
   if (days <= LEAD_MEDIUM_MAX_DAYS) return 'lead4to12';
   return 'over12OrOos';
+}
+
+/**
+ * Derive the asset fields to update from a Product Information lookup result —
+ * the single source of truth shared by the per-asset dialog ("Appliquer aux
+ * champs") and the bulk refresh. Updates `phase`/`successor`/`supportUrl` from
+ * obsolescence and `supply` from delivery; leaves manual fields untouched.
+ */
+export function assetPatchFromProductInfo(r: ProductInfoResult): Partial<Asset> {
+  const part: Partial<Asset> = {};
+  if (r.obsolescence) {
+    part.phase = phaseFromObsolescence(r.obsolescence);
+    const succ = r.obsolescence.successor?.productNumber || r.obsolescence.substitute?.productNumber;
+    if (succ) part.successor = succ;
+    if (r.obsolescence.supportUrl) part.supportUrl = r.obsolescence.supportUrl;
+  }
+  if (r.delivery) part.supply = supplyFromDelivery(r.delivery);
+  return part;
+}
+
+/** Unique, trimmed, non-empty MLFBs across the given assets (one lookup each). */
+export function uniqueMlfbs(assets: readonly Pick<Asset, 'mlfb'>[]): string[] {
+  return [...new Set(assets.map((a) => a.mlfb.trim()).filter((m) => m !== ''))];
+}
+
+/** Progress of a bulk lookup run. */
+export interface BulkLookupProgress {
+  done: number;
+  total: number;
+}
+
+/** Default number of concurrent Siemens lookups (kept low for the gateway rate limit). */
+const BULK_CONCURRENCY = 3;
+
+/**
+ * Look up many MLFBs with bounded concurrency. A per-MLFB transport failure is
+ * captured as an errored result (it never aborts the whole batch). Returns a map
+ * keyed by the trimmed MLFB.
+ */
+export async function bulkLookupProductInfo(
+  mlfbs: string[],
+  opts: { concurrency?: number; onProgress?: (p: BulkLookupProgress) => void } = {}
+): Promise<Map<string, ProductInfoResult>> {
+  const total = mlfbs.length;
+  const concurrency = Math.max(1, Math.min(opts.concurrency ?? BULK_CONCURRENCY, total));
+  const out = new Map<string, ProductInfoResult>();
+  let cursor = 0;
+  let done = 0;
+  const worker = async (): Promise<void> => {
+    while (cursor < total) {
+      const mlfb = mlfbs[cursor++];
+      try {
+        out.set(mlfb, await lookupProductInfo(mlfb, true));
+      } catch (error) {
+        out.set(mlfb, {
+          obsolescence: null,
+          delivery: null,
+          errors: { obsolescence: error instanceof Error ? error.message : String(error) }
+        });
+      } finally {
+        done += 1;
+        opts.onProgress?.({ done, total });
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  return out;
 }

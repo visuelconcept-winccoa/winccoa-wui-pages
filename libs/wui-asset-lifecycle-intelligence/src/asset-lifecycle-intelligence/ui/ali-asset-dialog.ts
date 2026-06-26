@@ -5,9 +5,11 @@
  * updates as inputs change. Emits `wui:save` with the edited asset, `wui:cancel`
  * on dismiss.
  */
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { MSG, daysMsg, dateLocale, localizeDir, obsLevelMsg } from '../i18n.js';
 import { bandForLevel, computeRisk } from '../risk.js';
 import {
   CRITICALITY_LABELS,
@@ -27,9 +29,8 @@ import {
 } from '../types.js';
 import { dialogStyles } from './dialog-styles.js';
 import {
+  assetPatchFromProductInfo,
   lookupProductInfo,
-  phaseFromObsolescence,
-  supplyFromDelivery,
   type ProductInfoResult
 } from '../data/product-info.js';
 
@@ -37,20 +38,15 @@ interface IxValueEvent {
   detail: string | number;
 }
 
-function options<T extends string>(labels: Record<T, string>): { value: T; label: string }[] {
+function options<T extends string>(labels: Record<T, MultiLangString>): { value: T; label: MultiLangString }[] {
   return (Object.keys(labels) as T[]).map((value) => ({ value, label: labels[value] }));
 }
 
-/** Format an ISO date (or null) as a short French date. */
+/** Format an ISO date (or null) as a short date in the active UI language. */
 function fmtDate(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR');
-}
-
-/** Format a delivery lead time in days (null = on request). */
-function fmtDays(days: number | null): string {
-  return days == null ? 'sur demande' : `${days} j`;
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString(dateLocale());
 }
 
 const PHASE_OPTIONS = options<LifecyclePhase>(PHASE_LABELS);
@@ -85,25 +81,28 @@ export class AliAssetDialog extends LitElement {
         <div class="panel" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
             <ix-typography format="h3">
-              ${isNew ? 'Nouvel actif' : `Édition — ${this.working.name}`}
+              ${isNew
+                ? localizeDir(MSG.dialog.newAsset)
+                : html`${localizeDir(MSG.dialog.editPrefix)} — ${this.working.name}`}
             </ix-typography>
             <span class="score-badge" style="--c:${band.color}">
-              ${risk.score} · ${band.label}
+              ${risk.score} · ${localizeDir(band.label)}
             </span>
           </div>
 
           <div class="panel-body">
-            <div class="subhead">Identité</div>
+            <div class="subhead">${localizeDir(MSG.dialog.secIdentity)}</div>
             <div class="grid2">
-              ${this.textField('Désignation', 'name')}
-              ${this.textField('Référence (MLFB)', 'mlfb')}
-              ${this.textField('Nom de station', 'station')}
-              ${this.textField('Adresse IP', 'ip')}
-              ${this.textField('Atelier / zone', 'area')}
-              ${this.textField('Successeur (MLFB)', 'successor')}
-              ${this.textField('Firmware terrain', 'firmwareField')}
-              ${this.textField('Firmware disponible', 'firmwareAvail')}
-              ${this.selectField('Source de création', 'source', SOURCE_OPTIONS)}
+              ${this.textField(MSG.dialog.fName, 'name')}
+              ${this.textField(MSG.dialog.fMlfb, 'mlfb')}
+              ${this.textField(MSG.dialog.fStation, 'station')}
+              ${this.textField(MSG.dialog.fIp, 'ip')}
+              ${this.textField(MSG.dialog.fArea, 'area')}
+              ${this.textField(MSG.dialog.fAssetGroup, 'assetGroup')}
+              ${this.textField(MSG.dialog.fSuccessor, 'successor')}
+              ${this.textField(MSG.dialog.fFirmwareField, 'firmwareField')}
+              ${this.textField(MSG.dialog.fFirmwareAvail, 'firmwareAvail')}
+              ${this.selectField(MSG.dialog.fSource, 'source', SOURCE_OPTIONS)}
             </div>
 
             <div class="pi-bar">
@@ -112,26 +111,26 @@ export class AliAssetDialog extends LitElement {
                 ?disabled=${this.piLoading || this.working.mlfb.trim() === ''}
                 @click=${() => void this.crossReference()}
               >
-                <ix-icon name="cloud-download" slot="icon"></ix-icon>Recouper via MLFB (Siemens)
+                <ix-icon name="cloud-download" slot="icon"></ix-icon>${localizeDir(MSG.dialog.crossRef)}
               </ix-button>
               ${this.piLoading ? html`<ix-spinner size="small"></ix-spinner>` : ''}
               ${this.piError ? html`<span class="pi-error">${this.piError}</span>` : ''}
             </div>
             ${this.renderProductInfo()}
 
-            <div class="subhead">Données de risque</div>
+            <div class="subhead">${localizeDir(MSG.dialog.secRisk)}</div>
             <div class="grid2">
-              ${this.selectField('Phase cycle de vie', 'phase', PHASE_OPTIONS)}
-              ${this.selectField('Écart firmware', 'firmware', FIRMWARE_OPTIONS)}
-              ${this.selectField('Criticité process', 'criticality', CRITICALITY_OPTIONS)}
-              ${this.selectField('Chaîne d’approvisionnement', 'supply', SUPPLY_OPTIONS)}
-              ${this.selectField('Vulnérabilités', 'vuln', VULN_OPTIONS)}
+              ${this.selectField(MSG.dialog.fPhase, 'phase', PHASE_OPTIONS)}
+              ${this.selectField(MSG.dialog.fFirmware, 'firmware', FIRMWARE_OPTIONS)}
+              ${this.selectField(MSG.dialog.fCriticality, 'criticality', CRITICALITY_OPTIONS)}
+              ${this.selectField(MSG.dialog.fSupply, 'supply', SUPPLY_OPTIONS)}
+              ${this.selectField(MSG.dialog.fVuln, 'vuln', VULN_OPTIONS)}
               <span></span>
-              ${this.numberField('Heures de service', 'operatingHours')}
-              ${this.numberField('MTBF (heures, 0 = inconnu)', 'mtbfHours')}
+              ${this.numberField(MSG.dialog.fHours, 'operatingHours')}
+              ${this.numberField(MSG.dialog.fMtbf, 'mtbfHours')}
             </div>
 
-            <div class="subhead">Notes</div>
+            <div class="subhead">${localizeDir(MSG.dialog.secNotes)}</div>
             <ix-input
               .value=${this.working.notes}
               @valueChange=${(e: IxValueEvent) => this.patch({ notes: String(e.detail) })}
@@ -139,9 +138,9 @@ export class AliAssetDialog extends LitElement {
           </div>
 
           <div class="panel-foot">
-            <ix-button variant="secondary" @click=${this.cancel}>Annuler</ix-button>
+            <ix-button variant="secondary" @click=${this.cancel}>${localizeDir(MSG.dialog.cancel)}</ix-button>
             <ix-button @click=${this.save} ?disabled=${this.working.name.trim() === ''}>
-              <ix-icon name="floppy-disk" slot="icon"></ix-icon>Enregistrer
+              <ix-icon name="floppy-disk" slot="icon"></ix-icon>${localizeDir(MSG.dialog.save)}
             </ix-button>
           </div>
         </div>
@@ -166,39 +165,39 @@ export class AliAssetDialog extends LitElement {
     return html`
       <div class="pi-panel">
         <div class="pi-head">
-          <span class="subhead">Données Siemens (MLFB)</span>
+          <span class="subhead">${localizeDir(MSG.dialog.secSiemens)}</span>
           <span class="grow"></span>
           <ix-button variant="secondary" outline @click=${() => this.applyProductInfo()}>
-            <ix-icon name="copy" slot="icon"></ix-icon>Appliquer aux champs
+            <ix-icon name="copy" slot="icon"></ix-icon>${localizeDir(MSG.dialog.applyFields)}
           </ix-button>
         </div>
         <div class="pi-grid">
           ${obs
             ? html`
-                <div class="pi-kv"><span>Achetabilité</span><b>${obs.purchasabilityStatus}</b></div>
-                <div class="pi-kv"><span>Obsolescence</span><b>niveau ${obs.obsolescenceLevel}/6</b></div>
-                <div class="pi-kv"><span>Annonce phase-out</span><b>${fmtDate(obs.phaseOutAnnouncement)}</b></div>
-                <div class="pi-kv"><span>Annulation produit</span><b>${fmtDate(obs.productCancellation)}</b></div>
+                <div class="pi-kv"><span>${localizeDir(MSG.pi.purchasability)}</span><b>${obs.purchasabilityStatus}</b></div>
+                <div class="pi-kv"><span>${localizeDir(MSG.pi.obsolescence)}</span><b>${localizeDir(obsLevelMsg(obs.obsolescenceLevel))}</b></div>
+                <div class="pi-kv"><span>${localizeDir(MSG.pi.phaseOut)}</span><b>${fmtDate(obs.phaseOutAnnouncement)}</b></div>
+                <div class="pi-kv"><span>${localizeDir(MSG.pi.cancellation)}</span><b>${fmtDate(obs.productCancellation)}</b></div>
                 ${obs.successor
-                  ? html`<div class="pi-kv"><span>Successeur</span><b>${obs.successor.productNumber}</b></div>`
+                  ? html`<div class="pi-kv"><span>${localizeDir(MSG.pi.successor)}</span><b>${obs.successor.productNumber}</b></div>`
                   : ''}
                 ${obs.substitute
-                  ? html`<div class="pi-kv"><span>Substitut</span><b>${obs.substitute.productNumber}</b></div>`
+                  ? html`<div class="pi-kv"><span>${localizeDir(MSG.pi.substitute)}</span><b>${obs.substitute.productNumber}</b></div>`
                   : ''}
                 ${obs.supportUrl
-                  ? html`<div class="pi-kv"><span>Support</span><a href=${obs.supportUrl} target="_blank" rel="noreferrer">ouvrir ↗</a></div>`
+                  ? html`<div class="pi-kv"><span>${localizeDir(MSG.pi.support)}</span><a href=${obs.supportUrl} target="_blank" rel="noreferrer">${localizeDir(MSG.pi.open)}</a></div>`
                   : ''}
               `
-            : html`<div class="pi-kv pi-warn"><span>Obsolescence</span><b>${r.errors.obsolescence ?? 'indisponible'}</b></div>`}
+            : html`<div class="pi-kv pi-warn"><span>${localizeDir(MSG.pi.obsolescence)}</span><b>${r.errors.obsolescence ?? localizeDir(MSG.pi.unavailable)}</b></div>`}
           ${del
             ? html`
-                <div class="pi-kv"><span>Délai pièce neuve</span><b>${fmtDays(del.deliveryTimes.newPart)}</b></div>
-                <div class="pi-kv"><span>Délai rechange</span><b>${fmtDays(del.deliveryTimes.sparePart)}</b></div>
-                <div class="pi-kv"><span>Prix pièce neuve</span><b>${del.prices.newPart ?? '—'}</b></div>
-                <div class="pi-kv"><span>Origine</span><b>${del.countryOfOrigin}</b></div>
-                <div class="pi-kv"><span>ECCN</span><b>${del.eccn}</b></div>
+                <div class="pi-kv"><span>${localizeDir(MSG.pi.newPartLead)}</span><b>${localizeDir(daysMsg(del.deliveryTimes.newPart))}</b></div>
+                <div class="pi-kv"><span>${localizeDir(MSG.pi.sparePartLead)}</span><b>${localizeDir(daysMsg(del.deliveryTimes.sparePart))}</b></div>
+                <div class="pi-kv"><span>${localizeDir(MSG.pi.newPartPrice)}</span><b>${del.prices.newPart ?? '—'}</b></div>
+                <div class="pi-kv"><span>${localizeDir(MSG.pi.origin)}</span><b>${del.countryOfOrigin}</b></div>
+                <div class="pi-kv"><span>${localizeDir(MSG.pi.eccn)}</span><b>${del.eccn}</b></div>
               `
-            : html`<div class="pi-kv pi-warn"><span>Livraison</span><b>${r.errors.delivery ?? 'indisponible'}</b></div>`}
+            : html`<div class="pi-kv pi-warn"><span>${localizeDir(MSG.pi.delivery)}</span><b>${r.errors.delivery ?? localizeDir(MSG.pi.unavailable)}</b></div>`}
         </div>
       </div>
     `;
@@ -220,25 +219,16 @@ export class AliAssetDialog extends LitElement {
     }
   }
 
-  /** Apply the fetched data into the risk-input fields (phase / supply / successor). */
+  /** Apply the fetched data into the risk-input fields (phase / supply / successor / support). */
   private applyProductInfo(): void {
-    const r = this.piResult;
-    if (!r) return;
-    const part: Partial<Asset> = {};
-    if (r.obsolescence) {
-      part.phase = phaseFromObsolescence(r.obsolescence);
-      const succ =
-        r.obsolescence.successor?.productNumber || r.obsolescence.substitute?.productNumber;
-      if (succ) part.successor = succ;
-    }
-    if (r.delivery) part.supply = supplyFromDelivery(r.delivery);
-    this.patch(part);
+    if (!this.piResult) return;
+    this.patch(assetPatchFromProductInfo(this.piResult));
   }
 
-  private textField(label: string, key: keyof Asset): TemplateResult {
+  private textField(label: MultiLangString, key: keyof Asset): TemplateResult {
     return html`
       <div class="field">
-        <label>${label}</label>
+        <label>${localizeDir(label)}</label>
         <ix-input
           .value=${String(this.working[key] ?? '')}
           @valueChange=${(e: IxValueEvent) => this.patch({ [key]: String(e.detail) } as Partial<Asset>)}
@@ -247,10 +237,10 @@ export class AliAssetDialog extends LitElement {
     `;
   }
 
-  private numberField(label: string, key: 'operatingHours' | 'mtbfHours'): TemplateResult {
+  private numberField(label: MultiLangString, key: 'operatingHours' | 'mtbfHours'): TemplateResult {
     return html`
       <div class="field">
-        <label>${label}</label>
+        <label>${localizeDir(label)}</label>
         <ix-number-input
           .value=${this.working[key]}
           @valueChange=${(e: IxValueEvent) => this.patch({ [key]: Number(e.detail) } as Partial<Asset>)}
@@ -260,18 +250,18 @@ export class AliAssetDialog extends LitElement {
   }
 
   private selectField<T extends string>(
-    label: string,
+    label: MultiLangString,
     key: keyof Asset,
-    opts: { value: T; label: string }[]
+    opts: { value: T; label: MultiLangString }[]
   ): TemplateResult {
     return html`
       <div class="field">
-        <label>${label}</label>
+        <label>${localizeDir(label)}</label>
         <ix-select
           .value=${String(this.working[key])}
           @valueChange=${(e: IxValueEvent) => this.patch({ [key]: String(e.detail) } as Partial<Asset>)}
         >
-          ${opts.map((o) => html`<ix-select-item label=${o.label} value=${o.value}></ix-select-item>`)}
+          ${opts.map((o) => html`<ix-select-item label=${localizeDir(o.label)} value=${o.value}></ix-select-item>`)}
         </ix-select>
       </div>
     `;

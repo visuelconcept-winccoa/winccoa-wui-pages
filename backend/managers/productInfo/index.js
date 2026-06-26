@@ -66,7 +66,10 @@ async function ensureConfig() {
   const root = new WinccoaDpTypeNode(CONFIG_TYPE, ELEM.Struct, '', [
     new WinccoaDpTypeNode('apiKey', ELEM.String),
     new WinccoaDpTypeNode('baseUrl', ELEM.String),
-    new WinccoaDpTypeNode('apiVersion', ELEM.String)
+    new WinccoaDpTypeNode('apiVersion', ELEM.String),
+    // Credit meter: remaining lookups, set by the operator, decremented 1 per
+    // Lookup. Stored as String (uniform with the other fields), parsed as a number.
+    new WinccoaDpTypeNode('credit', ELEM.String)
   ]);
   try {
     await winccoa.dpTypeCreate(root);
@@ -97,6 +100,9 @@ async function ensureConfig() {
     if (!extractString(arr[0])) await winccoa.dpSetWait(`${SYS}${CONFIG_DP}.apiKey`, DEFAULT_API_KEY);
     if (!extractString(arr[1])) await winccoa.dpSetWait(`${SYS}${CONFIG_DP}.baseUrl`, DEFAULT_BASE_URL);
     if (!extractString(arr[2])) await winccoa.dpSetWait(`${SYS}${CONFIG_DP}.apiVersion`, DEFAULT_API_VERSION);
+    if (!winccoa.dpExists(`${CONFIG_DP}.credit`) || extractString(await winccoa.dpGet([`${SYS}${CONFIG_DP}.credit`])) === '') {
+      await winccoa.dpSetWait(`${SYS}${CONFIG_DP}.credit`, '0');
+    }
   } catch (e) {
     log(`Échec initialisation config : ${e}`);
   }
@@ -117,6 +123,38 @@ async function readConfig() {
     };
   } catch {
     return { apiKey: DEFAULT_API_KEY, baseUrl: DEFAULT_BASE_URL, apiVersion: DEFAULT_API_VERSION };
+  }
+}
+
+// ---- credit meter ----------------------------------------------------------
+// Remaining-lookups counter held in `ProductInfo_Config.credit`. Decremented by
+// 1 per Lookup. Kept in memory (decrement is synchronous → race-free across
+// concurrent vRPC handlers in Node's single-threaded loop) and re-synced from the
+// DP when the operator changes it externally (initialisation from the config UI).
+let creditValue = 0;
+let creditLastPersisted = null;
+
+async function consumeCredit() {
+  try {
+    const raw = await winccoa.dpGet([`${SYS}${CONFIG_DP}.credit`]);
+    const dpVal = Number(extractString(raw)) || 0;
+    if (creditLastPersisted === null || dpVal !== creditLastPersisted) {
+      creditValue = dpVal; // adopt an external (operator) initialisation
+    }
+  } catch {
+    // keep the in-memory value
+  }
+  if (creditValue <= 0) {
+    creditValue = 0;
+    creditLastPersisted = 0;
+    return;
+  }
+  creditValue -= 1;
+  creditLastPersisted = creditValue;
+  try {
+    await winccoa.dpSetWait(`${SYS}${CONFIG_DP}.credit`, String(creditValue));
+  } catch (e) {
+    log(`Échec décrément crédit : ${e}`);
   }
 }
 
@@ -198,6 +236,7 @@ class ProductInfoService extends Vrpc.ServiceBase {
         out.errors.delivery = `delivery: ${e.message}`;
       }
     }
+    await consumeCredit(); // 1 credit per Lookup request (per MLFB)
     return Vrpc.Variant.createString(JSON.stringify(out));
   }
 }

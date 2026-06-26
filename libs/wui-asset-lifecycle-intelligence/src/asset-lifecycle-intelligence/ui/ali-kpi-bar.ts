@@ -5,6 +5,7 @@
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type TemplateResult } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { MSG, localizeDir } from '../i18n.js';
 import { RISK_BANDS, computeRisk } from '../risk.js';
 import type { Asset, RiskLevel } from '../types.js';
 
@@ -27,19 +28,19 @@ export class AliKpiBar extends LitElement {
       <div class="bar">
         <div class="kpi total">
           <span class="value">${this.assets.length}</span>
-          <span class="label">Actifs</span>
+          <span class="label">${localizeDir(MSG.kpi.assets)}</span>
         </div>
         ${RISK_BANDS.map(
           (band) => html`
             <div class="kpi" style="--c:${band.color}">
               <span class="value">${counts[band.level]}</span>
-              <span class="label">${band.label}</span>
+              <span class="label">${localizeDir(band.label)}</span>
             </div>
           `
         )}
         <div class="kpi avg">
           <span class="value">${avg}</span>
-          <span class="label">Score moyen</span>
+          <span class="label">${localizeDir(MSG.kpi.avgScore)}</span>
         </div>
       </div>
     `;

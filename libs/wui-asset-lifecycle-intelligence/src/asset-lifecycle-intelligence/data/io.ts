@@ -7,6 +7,7 @@
  *   BI / CMMS / spreadsheets (the deck's "open to the ecosystem" angle). CSV is
  *   export-only; a UTF-8 BOM is prepended so Excel renders accents correctly.
  */
+import { localize } from '../i18n.js';
 import { computeRisk, bandForLevel } from '../risk.js';
 import { SOURCE_LABELS, blankAsset, normalizePhase, type Asset } from '../types.js';
 import { CSV_BOM, JSON_INDENT, csvCell, download, timestampSlug } from '@visuelconcept/wui-kit/data/io.js';
@@ -50,9 +51,9 @@ export function exportCsv(assets: Asset[]): void {
     const risk = computeRisk(asset);
     const enriched: Record<string, unknown> = {
       ...asset,
-      source: SOURCE_LABELS[asset.source],
+      source: localize(SOURCE_LABELS[asset.source], 'fr.utf8'),
       score: risk.score,
-      level: bandForLevel(risk.level).label
+      level: localize(bandForLevel(risk.level).label, 'fr.utf8')
     };
     rows.push(CSV_COLUMNS.map((c) => csvCell(enriched[c.key])).join(','));
   }
@@ -82,7 +83,7 @@ function normalize(item: Partial<Asset>): Asset {
   const out: Asset = { ...base };
   for (const key of Object.keys(base) as (keyof Asset)[]) {
     if (item[key] !== undefined && item[key] !== null) {
-      (out as Record<string, unknown>)[key] = item[key];
+      (out as unknown as Record<string, unknown>)[key] = item[key];
     }
   }
   out.operatingHours = Number(out.operatingHours) || 0;
