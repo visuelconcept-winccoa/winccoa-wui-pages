@@ -372,15 +372,12 @@ export interface DisplayConfig {
   roof: boolean;
   labels: boolean;
   alertOnly: boolean;
-  /** Highlight the current work order (OF) and operation in the machine bubble. */
-  production: boolean;
 }
 
 export const DEFAULT_DISPLAY: DisplayConfig = {
   roof: true,
   labels: true,
-  alertOnly: false,
-  production: false
+  alertOnly: false
 };
 
 /** Serialisable machine definition (config input). */
@@ -423,6 +420,15 @@ export interface MachineDef {
   stopCauseLabel?: string;
   workOrder?: string | number;
   operation?: string | number;
+  /** Linked Asset Lifecycle Intelligence (ALI) asset id (`AssetLifecycle_<id>`),
+   * used to surface that asset's composite obsolescence/risk score on the machine. */
+  aliAssetId?: string;
+  /** Live ALI composite risk score [0..100] resolved from the linked asset. */
+  aliRiskScore?: number;
+  /** Live ALI risk level label (e.g. "Élevé") resolved from the linked asset. */
+  aliRiskLabel?: string;
+  /** Live colour for the ALI risk band (`#RRGGBB`). */
+  aliRiskColor?: string;
   /** Type-specific build hint (e.g. furnace tonnage, lathe size). */
   variant?: string | number;
   /** When true, the machine is not rendered in the 3D scene (still listed/editable). */
@@ -564,13 +570,21 @@ export interface Machine extends MachineDef {
 }
 
 /** Kind of a displayable info item (drives label/styling in bubble & popup). */
-export type DisplayKind = 'state' | 'stopCause' | 'workOrder' | 'operation' | 'param' | 'kpi';
+export type DisplayKind =
+  | 'state'
+  | 'stopCause'
+  | 'workOrder'
+  | 'operation'
+  | 'obsolescence'
+  | 'param'
+  | 'kpi';
 
 export const DISPLAY_KIND_LABEL: Record<DisplayKind, string> = {
   state: 'État',
   stopCause: 'Production',
   workOrder: 'Production',
   operation: 'Production',
+  obsolescence: 'ALI',
   param: 'Paramètre',
   kpi: 'KPI'
 };
@@ -617,6 +631,16 @@ const FIXED_DISPLAY: { ref: string; kind: DisplayKind; label: string }[] = [
 export function resolveDisplaySlots(m: MachineDef): DisplaySlot[] {
   const catalog = new Map<string, DisplaySlot>();
   for (const f of FIXED_DISPLAY) catalog.set(f.ref, { ...f, inBubble: true, inPopup: true });
+  // Obsolescence (ALI) is only displayable once the machine is linked to an asset.
+  if (m.aliAssetId != null && m.aliAssetId !== '') {
+    catalog.set('obsolescence', {
+      ref: 'obsolescence',
+      kind: 'obsolescence',
+      label: 'Obsolescence (ALI)',
+      inBubble: false,
+      inPopup: true
+    });
+  }
   for (const p of m.kpis ?? []) {
     catalog.set(`param:${p.key}`, {
       ref: `param:${p.key}`,
