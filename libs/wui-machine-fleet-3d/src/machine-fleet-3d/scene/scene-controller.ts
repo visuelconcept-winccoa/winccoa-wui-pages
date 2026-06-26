@@ -174,10 +174,6 @@ export class SceneController {
     this.labels.setAlertOnly(on);
   }
 
-  setShowProduction(on: boolean): void {
-    this.labels.setShowProduction(on);
-  }
-
   setStateColors(colors: Record<StateColorKey, string>): void {
     this.labels.setStateColors(colors);
   }
@@ -277,6 +273,9 @@ export class SceneController {
       tiltAngle?: number;
       kpiCalcValues?: Record<string, number>;
       kpiCalcColors?: Record<string, string>;
+      aliRiskScore?: number;
+      aliRiskLabel?: string;
+      aliRiskColor?: string;
     }
   ): void {
     const m = this.machines.find((x) => x.id === id);
@@ -296,6 +295,10 @@ export class SceneController {
     if (patch.connected !== undefined) m.connected = patch.connected;
     if (patch.kpiCalcValues !== undefined) m.kpiCalcValues = patch.kpiCalcValues;
     if (patch.kpiCalcColors !== undefined) m.kpiCalcColors = patch.kpiCalcColors;
+    // Assign on key presence (not value) so a removed link / missing asset clears it.
+    if ('aliRiskScore' in patch) m.aliRiskScore = patch.aliRiskScore;
+    if ('aliRiskLabel' in patch) m.aliRiskLabel = patch.aliRiskLabel;
+    if ('aliRiskColor' in patch) m.aliRiskColor = patch.aliRiskColor;
   }
 
   start(): void {

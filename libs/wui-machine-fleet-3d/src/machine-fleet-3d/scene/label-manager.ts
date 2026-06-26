@@ -34,8 +34,12 @@ const DEFAULT_BUBBLE_H = 40;
 /** Horizontal gap (px) kept between the building silhouette and the bubbles. */
 const BUILDING_MARGIN = 24;
 const EDGE_PAD = 2;
+/** Minimum gutter (px) above/below the building needed to seat a row of bubbles. */
+const MIN_ROW_GUTTER = BUILDING_MARGIN + DEFAULT_BUBBLE_H;
 const HIDDEN = 'none';
 const STATE_VAR = '--mf-state';
+/** CSS class for a numeric/value bubble line (parameters, KPIs, obsolescence). */
+const LINE_KPI_CLS = 'mf-label__kpi-line';
 
 /** Axis-aligned world footprint of the building (centred at the origin). */
 interface BuildingBounds {
@@ -79,17 +83,17 @@ interface BubbleLine {
 const DECIMALS = 2;
 
 /** Ordered, visible bubble lines for a machine (order = the Affichage tab). */
-function buildBubbleLines(m: Machine, showProduction: boolean): BubbleLine[] {
+function buildBubbleLines(m: Machine): BubbleLine[] {
   const lines: BubbleLine[] = [];
   for (const slot of resolveDisplaySlots(m)) {
     if (!slot.inBubble) continue;
-    const line = bubbleLineFor(slot, m, showProduction);
+    const line = bubbleLineFor(slot, m);
     if (line) lines.push(line);
   }
   return lines;
 }
 
-function bubbleLineFor(slot: DisplaySlot, m: Machine, showProduction: boolean): BubbleLine | null {
+function bubbleLineFor(slot: DisplaySlot, m: Machine): BubbleLine | null {
   if (slot.kind === 'state') return { text: STATE_LABELS[m.state], cls: 'mf-label__badge' };
   if (slot.kind === 'stopCause') {
     return m.state !== 'ok' && m.stopCauseLabel
@@ -97,18 +101,24 @@ function bubbleLineFor(slot: DisplaySlot, m: Machine, showProduction: boolean): 
       : null;
   }
   if (slot.kind === 'workOrder') {
-    return showProduction && m.workOrder != null && m.workOrder !== ''
+    return m.workOrder != null && m.workOrder !== ''
       ? { text: `OF ${m.workOrder}`, cls: 'mf-label__prod-line' }
       : null;
   }
   if (slot.kind === 'operation') {
-    return showProduction && m.operation != null && m.operation !== ''
+    return m.operation != null && m.operation !== ''
       ? { text: `Op. ${m.operation}`, cls: 'mf-label__prod-line' }
       : null;
   }
   if (slot.kind === 'param') {
     const text = formatKpi(slot.param);
-    return text ? { text, cls: 'mf-label__kpi-line' } : null;
+    return text ? { text, cls: LINE_KPI_CLS } : null;
+  }
+  if (slot.kind === 'obsolescence') {
+    // Composite ALI risk score (0–100) + level, resolved from the linked asset.
+    if (m.aliRiskScore == null) return null;
+    const label = m.aliRiskLabel ? ` · ${m.aliRiskLabel}` : '';
+    return { text: `Obs. ${m.aliRiskScore}${label}`, cls: LINE_KPI_CLS, color: m.aliRiskColor };
   }
   // kind === 'kpi' (server-computed value).
   const kpi = slot.kpi;
@@ -117,7 +127,7 @@ function bubbleLineFor(slot: DisplaySlot, m: Machine, showProduction: boolean): 
   const num = Number.isInteger(v) ? String(v) : v.toFixed(DECIMALS);
   return {
     text: `${slot.label} ${num} ${KPI_TYPE_INFO[kpi.type].unit}`,
-    cls: 'mf-label__kpi-line',
+    cls: LINE_KPI_CLS,
     color: (m.kpiCalcColors ?? {})[kpi.id]
   };
 }
@@ -140,6 +150,77 @@ function rectsOverlap(a: Rect, b: Rect, gap: number): boolean {
   );
 }
 
+/**
+ * Resolve overlapping 1-D placements: turn each item's desired centre into a
+ * non-overlapping start, kept within `[min, max]`. Two-pass label spreader
+ * (push forward, then pull back from the far edge). Items must be pre-sorted by
+ * `desired` ascending; `sizes[i]` is item i's extent along the axis.
+ */
+// eslint-disable-next-line max-params -- a 1-D spreader needs its bounds + gap
+function spreadAlong(desired: number[], sizes: number[], gap: number, min: number, max: number): number[] {
+  const pos = desired.map((d, i) => d - sizes[i] / 2);
+  let cursor = min;
+  for (let i = 0; i < pos.length; i++) {
+    if (pos[i] < cursor) pos[i] = cursor;
+    cursor = pos[i] + sizes[i] + gap;
+  }
+  cursor = max;
+  for (let i = pos.length - 1; i >= 0; i--) {
+    if (pos[i] + sizes[i] > cursor) pos[i] = cursor - sizes[i];
+    cursor = pos[i] - gap;
+  }
+  for (let i = 0; i < pos.length; i++) if (pos[i] < min) pos[i] = min;
+  return pos;
+}
+
+/** Keep as many bubbles as a vertical gutter column can stack without overlap;
+ * the rest spill into `overflow` (to be re-routed to the top/bottom rows). */
+function fitColumn(items: Placeable[], height: number): { kept: Placeable[]; overflow: Placeable[] } {
+  const avail = height - 2 * EDGE_PAD;
+  const kept: Placeable[] = [];
+  const overflow: Placeable[] = [];
+  let used = 0;
+  for (const item of items) {
+    const h = item.entry.el.offsetHeight || DEFAULT_BUBBLE_H;
+    const need = h + (kept.length > 0 ? DECLUTTER_GAP : 0);
+    if (used + need <= avail) {
+      kept.push(item);
+      used += need;
+    } else overflow.push(item);
+  }
+  return { kept, overflow };
+}
+
+/** Keep as many bubbles as a top/bottom row can lay out across the building's
+ * width without overlap; `rest` is what does not fit (or all of them when the
+ * gutter outside the building is too short to seat a row). */
+// eslint-disable-next-line max-params -- a row fit needs the building rect + bounds
+function fitRow(
+  items: Placeable[],
+  building: Rect,
+  width: number,
+  height: number,
+  isTop: boolean
+): { kept: Placeable[]; rest: Placeable[] } {
+  const gutter = isTop ? building.y - EDGE_PAD : height - EDGE_PAD - (building.y + building.h);
+  if (gutter < MIN_ROW_GUTTER) return { kept: [], rest: items };
+  const minX = Math.max(EDGE_PAD, building.x);
+  const maxX = Math.min(width - EDGE_PAD, building.x + building.w);
+  const avail = maxX - minX;
+  const kept: Placeable[] = [];
+  const rest: Placeable[] = [];
+  let used = 0;
+  for (const item of items) {
+    const w = item.entry.el.offsetWidth || DEFAULT_BUBBLE_W;
+    const need = w + (kept.length > 0 ? DECLUTTER_GAP : 0);
+    if (used + need <= avail) {
+      kept.push(item);
+      used += need;
+    } else rest.push(item);
+  }
+  return { kept, rest };
+}
+
 export class LabelManager {
   private entries: LabelEntry[] = [];
   private enabled = true;
@@ -147,7 +228,6 @@ export class LabelManager {
   private readonly anchor = new Vector3();
   private readonly corner = new Vector3();
   private buildingBounds: BuildingBounds | null = null;
-  private showProduction = false;
   /** State/overlay colours (from the atelier's mapping), with defaults. */
   private stateColors: Record<StateColorKey, string> = DEFAULT_STATE_COLOR_MAP;
 
@@ -181,11 +261,6 @@ export class LabelManager {
   /** Building footprint used to keep bubbles outside its projected silhouette. */
   setBuildingBounds(bounds: BuildingBounds): void {
     this.buildingBounds = bounds;
-  }
-
-  /** Toggle the work-order (OF) / operation highlight block in each bubble. */
-  setShowProduction(on: boolean): void {
-    this.showProduction = on;
   }
 
   update(camera: Camera, width: number, height: number): void {
@@ -281,7 +356,7 @@ export class LabelManager {
     // info lines (state / production / params / KPIs) per the Affichage config.
     const lines = offline
       ? [{ text: DISCONNECTED_LABEL, cls: 'mf-label__badge' }]
-      : buildBubbleLines(machine, this.showProduction);
+      : buildBubbleLines(machine);
     this.renderLines(entry.linesEl, lines);
     return { entry, ax, ay };
   }
@@ -331,11 +406,14 @@ export class LabelManager {
   }
 
   /**
-   * Lay bubbles out as callouts: each one is pushed into the left or right
-   * gutter just beyond the building's projected silhouette (chosen by which side
-   * of the building centre its machine sits), stacked vertically to avoid
-   * overlaps, with a leader from the dot (inside) to the bubble's inner edge.
-   * Falls back to the above-anchor layout when no building bounds are known.
+   * Lay bubbles out as callouts around the building's projected silhouette.
+   *
+   * Primary placement is a vertical column in the left and right gutters (chosen
+   * by which side of the building centre the machine sits). When a column cannot
+   * hold all of its bubbles, the overflow is re-routed into horizontal rows in
+   * the gutters above and below the building — so bubbles stay aligned in rows
+   * or columns and never sit over the 3D scene. Falls back to the above-anchor
+   * layout when no building bounds are known.
    */
   private placeBubbles(
     placeable: Placeable[],
@@ -351,36 +429,78 @@ export class LabelManager {
     const left: Placeable[] = [];
     const right: Placeable[] = [];
     for (const item of placeable) (item.ax < centreX ? left : right).push(item);
-    this.placeGutter(left, building, true, width, height);
-    this.placeGutter(right, building, false, width, height);
+    left.sort((a, b) => a.ay - b.ay);
+    right.sort((a, b) => a.ay - b.ay);
+
+    const leftFit = fitColumn(left, height);
+    const rightFit = fitColumn(right, height);
+    this.placeColumn(leftFit.kept, building, true, width, height);
+    this.placeColumn(rightFit.kept, building, false, width, height);
+
+    const overflow = [...leftFit.overflow, ...rightFit.overflow];
+    if (overflow.length === 0) return;
+    overflow.sort((a, b) => a.ax - b.ax);
+    const topFit = fitRow(overflow, building, width, height, true);
+    const bottomFit = fitRow(topFit.rest, building, width, height, false);
+    // Anything still left over (both rows full) joins the bottom row, where the
+    // spreader compresses it as a last resort.
+    this.placeRow([...bottomFit.kept, ...bottomFit.rest], building, false, width, height);
+    this.placeRow(topFit.kept, building, true, width, height);
   }
 
-  /** Stack one gutter's bubbles outside the building edge (top-to-bottom). */
-  private placeGutter(
+  /** Lay a side's bubbles out as a non-overlapping vertical column just beyond
+   * the building edge, with a leader from each dot to the bubble's inner edge. */
+  private placeColumn(
     items: Placeable[],
     building: Rect,
     isLeft: boolean,
     width: number,
     height: number
   ): void {
-    items.sort((a, b) => a.ay - b.ay);
-    let cursorY = EDGE_PAD;
-    for (const item of items) {
+    if (items.length === 0) return;
+    const sizes = items.map((it) => it.entry.el.offsetHeight || DEFAULT_BUBBLE_H);
+    const ys = spreadAlong(items.map((it) => it.ay), sizes, DECLUTTER_GAP, EDGE_PAD, height - EDGE_PAD);
+    for (const [i, item] of items.entries()) {
       const el = item.entry.el;
       const w = el.offsetWidth || DEFAULT_BUBBLE_W;
-      const h = el.offsetHeight || DEFAULT_BUBBLE_H;
+      const h = sizes[i];
       const rawX = isLeft
         ? building.x - BUILDING_MARGIN - w
         : building.x + building.w + BUILDING_MARGIN;
       const bx = Math.max(EDGE_PAD, Math.min(rawX, width - w - EDGE_PAD));
-      // Centre on the machine's height, but never above the running cursor so
-      // bubbles in the same gutter never overlap.
-      const desiredY = item.ay - h / 2;
-      const by = Math.min(Math.max(desiredY, cursorY), height - h - EDGE_PAD);
-      cursorY = by + h + DECLUTTER_GAP;
+      const by = ys[i];
       el.style.transform = `translate(${bx}px, ${by}px)`;
       const innerX = isLeft ? bx + w : bx;
       this.drawLeader(item.entry, item.ax, item.ay, innerX, by + h / 2);
+    }
+  }
+
+  /** Lay overflow bubbles out as a non-overlapping horizontal row in the gutter
+   * above (top) or below (bottom) the building, with a leader to the near edge. */
+  private placeRow(
+    items: Placeable[],
+    building: Rect,
+    isTop: boolean,
+    width: number,
+    height: number
+  ): void {
+    if (items.length === 0) return;
+    const sizes = items.map((it) => it.entry.el.offsetWidth || DEFAULT_BUBBLE_W);
+    const minX = Math.max(EDGE_PAD, building.x);
+    const maxX = Math.min(width - EDGE_PAD, building.x + building.w);
+    const xs = spreadAlong(items.map((it) => it.ax), sizes, DECLUTTER_GAP, minX, maxX);
+    for (const [i, item] of items.entries()) {
+      const el = item.entry.el;
+      const w = sizes[i];
+      const h = el.offsetHeight || DEFAULT_BUBBLE_H;
+      const rawY = isTop
+        ? building.y - BUILDING_MARGIN - h
+        : building.y + building.h + BUILDING_MARGIN;
+      const by = Math.max(EDGE_PAD, Math.min(rawY, height - h - EDGE_PAD));
+      const bx = xs[i];
+      el.style.transform = `translate(${bx}px, ${by}px)`;
+      const edgeY = isTop ? by + h : by;
+      this.drawLeader(item.entry, item.ax, item.ay, bx + w / 2, edgeY);
     }
   }
 

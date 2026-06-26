@@ -61,7 +61,11 @@ const MACHINE_LIVE_FIELDS = new Set<string>([
   'tiltAngle',
   // Server-computed KPI values pushed live by the editor's dpConnect (not config).
   'kpiCalcValues',
-  'kpiCalcColors'
+  'kpiCalcColors',
+  // Composite ALI risk resolved live from the linked asset (the link id is config).
+  'aliRiskScore',
+  'aliRiskLabel',
+  'aliRiskColor'
 ]);
 /** Atelier config fields traced in the audit trail (old → new); camera viewpoints + live state excluded. */
 const ATELIER_AUDIT_FIELDS = ['name', 'building', 'display', 'mappings', 'trsThresholds', 'machines'] as const;

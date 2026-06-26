@@ -20,6 +20,7 @@ import {
   buildMachineWidgets,
   isMachineWidget
 } from '../data/dashboard-export.js';
+import { AliAssetReader, type AliAssetInfo } from '../data/ali-assets.js';
 import { normDp, toNumber } from '../data/dp-utils.js';
 import type { FleetStore } from '../data/fleet-store.js';
 import { canEditFleet, canEditFleet$ } from '../data/permissions.js';
@@ -165,10 +166,13 @@ export class MfAtelierView extends LitElement {
   @state() private editMode = false;
   @state() private dashboards: DashboardOption[] = [];
   @state() private stopCauses: StopCause[] = [];
+  /** Assets from the Asset Lifecycle Intelligence module (machine link + obsolescence). */
+  @state() private aliAssets: AliAssetInfo[] = [];
   /** Edit permission (canPublish); when false the UI is view-only. */
   @state() private canEdit = canEditFleet();
 
   private scene: SceneController | null = null;
+  private readonly aliReader = new AliAssetReader();
   private permSub = new Subscription();
   private resizeObserver: ResizeObserver | null = null;
   private visibility: IntersectionObserver | null = null;
@@ -260,6 +264,7 @@ export class MfAtelierView extends LitElement {
     }
     void this.loadDashboards();
     void this.loadStopCauses();
+    void this.loadAliAssets();
     this.scene.setOnMachineMove((id, x, z) => this.onMachineMove(id, x, z));
     this.scene.setOnRotate(this.onCameraRotate);
     this.scene.setBuilding(this.building);
@@ -296,7 +301,6 @@ export class MfAtelierView extends LitElement {
         <ix-icon-button icon="home" ghost title="Toiture du bâtiment" variant=${this.display.roof ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, roof: !this.display.roof })}></ix-icon-button>
         <ix-icon-button icon="label" ghost title="Étiquettes des machines" variant=${this.display.labels ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, labels: !this.display.labels })}></ix-icon-button>
         <ix-icon-button icon="warning" ghost title="Afficher seulement les alertes" variant=${this.display.alertOnly ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, alertOnly: !this.display.alertOnly })}></ix-icon-button>
-        <ix-icon-button icon="document" ghost title="Afficher l'OF et l'opération sur les bulles" variant=${this.display.production ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, production: !this.display.production })}></ix-icon-button>
         <ix-icon-button icon="screenshot" ghost title="Points de vue" variant=${this.viewpointsOpen ? 'primary' : 'secondary'} @click=${() => (this.viewpointsOpen = !this.viewpointsOpen)}></ix-icon-button>
         <ix-icon-button icon="box-open" ghost title="Catalogue de graphiques (GLB / billboards)" @click=${() => (this.resourcesOpen = true)}></ix-icon-button>
         <ix-icon-button icon="building1" ghost title="Configurer le bâtiment" @click=${() => (this.buildingOpen = true)}></ix-icon-button>
@@ -580,6 +584,15 @@ export class MfAtelierView extends LitElement {
       const value = `${p.value ?? '—'}${p.value != null && p.unit ? ` ${p.unit}` : ''}`;
       return { label: p.label || slot.label, value };
     }
+    if (slot.kind === 'obsolescence') {
+      if (m.aliRiskScore == null) return null;
+      const level = m.aliRiskLabel ? ` — ${m.aliRiskLabel}` : '';
+      return {
+        label: 'Obsolescence (ALI)',
+        value: `${m.aliRiskScore}${level}`,
+        style: m.aliRiskColor ? `color:${m.aliRiskColor};font-weight:700` : ''
+      };
+    }
     // kind === 'kpi'
     const k = slot.kpi;
     if (!k) return null;
@@ -609,6 +622,7 @@ export class MfAtelierView extends LitElement {
             .glbResources=${this.glbResources}
             .billboardResources=${this.billboardResources}
             .dashboards=${this.dashboards}
+            .aliAssets=${this.aliAssets}
             .canEdit=${this.canEdit}
             @wui:apply=${(e: CustomEvent<{ machine: MachineDef }>) => this.onMachineApply(e.detail.machine)}
             @wui:mapping=${() => (this.mappingOpen = true)}
@@ -689,6 +703,32 @@ export class MfAtelierView extends LitElement {
         this.scene?.updateMachineLive(m.id, { stopCauseLabel: label });
         touched = true;
       }
+    }
+    if (touched) this.machines = [...this.machines];
+  }
+
+  /** Load the ALI asset inventory (read-only) and resolve linked machines' risk. */
+  private async loadAliAssets(): Promise<void> {
+    this.aliAssets = await this.aliReader.list();
+    this.applyAliRisk();
+  }
+
+  /** Resolve each linked machine's composite ALI risk from the loaded inventory
+   * and push it onto the scene (bubble / popup show it via the Affichage config). */
+  private applyAliRisk(): void {
+    const byId = new Map(this.aliAssets.map((a) => [a.id, a]));
+    let touched = false;
+    for (const m of this.machines) {
+      const info = m.aliAssetId ? byId.get(m.aliAssetId) : undefined;
+      const score = info?.risk.score;
+      const label = info?.risk.label;
+      const color = info?.risk.color;
+      if (m.aliRiskScore === score && m.aliRiskLabel === label && m.aliRiskColor === color) continue;
+      m.aliRiskScore = score;
+      m.aliRiskLabel = label;
+      m.aliRiskColor = color;
+      this.scene?.updateMachineLive(m.id, { aliRiskScore: score, aliRiskLabel: label, aliRiskColor: color });
+      touched = true;
     }
     if (touched) this.machines = [...this.machines];
   }
@@ -868,11 +908,11 @@ export class MfAtelierView extends LitElement {
     this.scene?.setRoofVisible(this.display.roof);
     this.scene?.setLabelsEnabled(this.display.labels);
     this.scene?.setAlertOnly(this.display.alertOnly);
-    this.scene?.setShowProduction(this.display.production ?? false);
   }
 
   private rebuildMachines(): void {
     this.scene?.setMachines(this.machines);
+    this.applyAliRisk();
     this.resubscribeDps();
     this.scheduleSave();
   }

@@ -42,6 +42,7 @@ import {
 } from '../types.js';
 import '@visuelconcept/wui-kit/ui/wui-dp-input.js';
 import { SEMIFAB_ICONS } from '../data/semifab-icons.js';
+import type { AliAssetInfo } from '../data/ali-assets.js';
 import type { FleetStore } from '../data/fleet-store.js';
 import { dialogStyles } from './dialog-styles.js';
 
@@ -109,6 +110,8 @@ export class MfMachineDialog extends LitElement {
   @property({ attribute: false }) glbResources: GlbResource[] = [];
   @property({ attribute: false }) billboardResources: GlbResource[] = [];
   @property({ attribute: false }) dashboards: DashboardOption[] = [];
+  /** Assets from the Asset Lifecycle Intelligence module, for the État-tab link. */
+  @property({ attribute: false }) aliAssets: AliAssetInfo[] = [];
   @property({ attribute: false }) store: FleetStore | null = null;
   /** When false, the dialog is view-only: saving is disabled. */
   @property({ type: Boolean }) canEdit = true;
@@ -935,7 +938,51 @@ export class MfMachineDialog extends LitElement {
         .value=${m.commDp ?? ''}
         @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ commDp: e.detail.value })}
       ></wui-dp-input>
+      ${this.renderAliLink()}
     `;
+  }
+
+  /** Link this machine to an Asset Lifecycle Intelligence (ALI) asset, so its
+   * composite obsolescence/risk score can be displayed (see the Affichage tab). */
+  private renderAliLink(): TemplateResult {
+    const selectedId = this.working.aliAssetId ?? '';
+    const selected = this.aliAssets.find((a) => a.id === selectedId);
+    return html`
+      <div class="subhead">Asset Lifecycle Intelligence (obsolescence)</div>
+      <div class="hint">
+        Liez cette machine à un asset du module ALI pour afficher son score d'obsolescence/risque.
+        Activez ensuite « Obsolescence (ALI) » dans l'onglet <strong>Affichage</strong>.
+      </div>
+      ${this.aliAssets.length === 0
+        ? html`<div class="hint">
+            Aucun asset ALI trouvé (module Asset Lifecycle non installé, inventaire vide ou backend
+            indisponible).
+          </div>`
+        : html`<ix-select
+            label="Asset ALI lié"
+            allow-clear
+            .value=${selectedId}
+            @valueChange=${(e: IxValueEvent) =>
+              this.patch({ aliAssetId: e.detail ? String(e.detail) : undefined })}
+          >
+            ${this.aliAssets.map(
+              (a) => html`<ix-select-item label=${this.aliAssetLabel(a)} value=${a.id}></ix-select-item>`
+            )}
+          </ix-select>`}
+      ${selected
+        ? html`<div class="ali-risk" style="--c:${selected.risk.color}">
+            <span class="ali-risk__score">${selected.risk.score}</span>
+            <span class="ali-risk__level">${selected.risk.label}</span>
+          </div>`
+        : ''}
+    `;
+  }
+
+  private aliAssetLabel(a: AliAssetInfo): string {
+    const parts = [a.name];
+    if (a.mlfb) parts.push(a.mlfb);
+    if (a.area) parts.push(a.area);
+    return parts.join(' · ');
   }
 
   private renderProduction(): TemplateResult {
@@ -1271,6 +1318,26 @@ function extraStyles(): ReturnType<typeof css> {
   return css`
     .link {
       margin-top: 0.5rem;
+    }
+    .ali-risk {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 0.4rem;
+      margin-top: 0.5rem;
+      padding: 0.25rem 0.6rem;
+      border: 1px solid var(--c, var(--theme-color-soft-bdr));
+      border-left: 4px solid var(--c, var(--theme-color-soft-bdr));
+      border-radius: var(--theme-default-border-radius);
+      background: color-mix(in srgb, var(--c, transparent) 12%, transparent);
+    }
+    .ali-risk__score {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--c, var(--theme-color-std-text));
+    }
+    .ali-risk__level {
+      font-size: 0.85rem;
+      color: var(--theme-color-soft-text);
     }
     .disp-list {
       display: flex;
