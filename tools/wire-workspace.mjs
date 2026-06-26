@@ -21,7 +21,7 @@
 //   3. patch apps/dashboard-wc/vite.config.ts       (add pageMenuMergePlugin before copyConfigFilesPlugin)
 //   4. patch apps/dashboard-wc/vite.config.pages.ts (add pageMenuMergePlugin for the build:pages menu merge)
 //   5. patch tsconfig.base.json                     (paths @visuelconcept/wui-*/* -> libs/wui-*/src/*)
-//   6. patch libs/default-components/src/lib/webui-app-ix.ts (honor ?embed → chromeless shell for Mosaïque tiles; embed flag latched at module load so the router can't strip it)
+//   6. patch libs/default-components/src/lib/webui-app-ix.ts (chromeless shell for Mosaïque tiles; embed flag read from the hash so the root redirect / SPA router can't strip it)
 //   7. patch libs/default-components/src/lib/route-generators/route-generator-utils.ts (loadModuleWithFallback: always try import(), only /error on real failure — fixes blank page on first nav)
 //   8. patch libs/default-components/src/lib/services/webui-ix-routes.service.ts (route action honors the loader's redirect instead of rendering a blank element)
 //
@@ -283,11 +283,12 @@ function patchTsconfigPaths() {
   changed += 1;
 }
 
-// --- 6. webui-app-ix.ts (chromeless ?embed mode for Mosaïque tiles) -----------
+// --- 6. webui-app-ix.ts (chromeless embed mode for Mosaïque tiles) ------------
 // The Mosaïque page embeds internal dashboard views as iframes in chromeless mode
-// (…/index.html?embed=1#/route). The shell must honor ?embed by rendering only the
-// routed outlet — no header, no menu. Without this, embedded tiles (e.g. a fleet-3d
-// atelier) show the full app chrome. default-components is scaffolded by
+// (…/index.html#/route?embed=1 — flag inside the hash so it survives the root
+// redirect and the SPA router). The shell must honor it by rendering only the
+// routed outlet — no header, no menu. Without this, embedded tiles (e.g. a
+// fleet-3d atelier) show the full app chrome. default-components is scaffolded by
 // webui-runtime-init, so this is re-applied after every re-scaffold, like the vite
 // patches above.
 function patchWebuiAppEmbed() {
@@ -300,24 +301,45 @@ function patchWebuiAppEmbed() {
         `addIcons({ 'rotate-180': iconRotate180 });`,
         `addIcons({ 'rotate-180': iconRotate180 });\n\n` +
           `/**\n` +
-          ` * "Chromeless" / embedded mode: latched ONCE at module load. When the app is\n` +
-          ` * loaded with \`?embed\` in the query string (e.g. inside a Mosaïque tile via\n` +
-          ` * \`…/index.html?embed=1#/route\`), the shell renders only the routed page content\n` +
-          ` * — no application header, no navigation menu. The flag is read here, before the\n` +
-          ` * SPA router runs: \`updateBrowserHistory\` rebuilds the URL as \`pathname+hash+search\`\n` +
-          ` * and \`replaceState\`s it, dropping the pre-hash \`?embed\` from \`location.search\` —\n` +
-          ` * so reading it lazily (per render) would flip back to chrome. Latching keeps the\n` +
-          ` * embedded mode stable for the whole iframe session.\n` +
+          ` * "Chromeless" / embedded mode for Mosaïque tiles. A tile embeds an internal\n` +
+          ` * view as \`…/index.html#/route?embed=1\` — when the \`embed\` flag is set the shell\n` +
+          ` * renders only the routed page content (no header, no menu).\n` +
+          ` *\n` +
+          ` * The flag is read from the hash region (\`#/route?embed=1\`) OR a legacy pre-hash\n` +
+          ` * \`?embed\` query. The hash is where it durably lives: the root redirect in\n` +
+          ` * index.html preserves only \`location.hash\`, and the SPA router rewrites the URL\n` +
+          ` * keeping the route's own query inside the hash — both of which would drop a\n` +
+          ` * pre-hash \`?embed\`. It is also latched once at module load (early pre-hash flag),\n` +
+          ` * and \`isEmbedded()\` falls back to a live read of the durable hash so detection\n` +
+          ` * never flips back to chrome mid-session.\n` +
           ` */\n` +
+          `function hasEmbedFlag(): boolean {\n` +
+          `  const loc = globalThis.location;\n` +
+          `  if (new URLSearchParams(loc.search).has('embed')) {\n` +
+          `    return true;\n` +
+          `  }\n` +
+          `  const queryIndex = loc.hash.indexOf('?');\n` +
+          `  return (\n` +
+          `    queryIndex !== -1 &&\n` +
+          `    new URLSearchParams(loc.hash.slice(queryIndex)).has('embed')\n` +
+          `  );\n` +
+          `}\n\n` +
           `const EMBEDDED: boolean = (() => {\n` +
           `  try {\n` +
-          `    return new URLSearchParams(globalThis.location.search).has('embed');\n` +
+          `    return hasEmbedFlag();\n` +
           `  } catch {\n` +
           `    return false;\n` +
           `  }\n` +
           `})();\n\n` +
           `function isEmbedded(): boolean {\n` +
-          `  return EMBEDDED;\n` +
+          `  if (EMBEDDED) {\n` +
+          `    return true;\n` +
+          `  }\n` +
+          `  try {\n` +
+          `    return hasEmbedFlag();\n` +
+          `  } catch {\n` +
+          `    return false;\n` +
+          `  }\n` +
           `}`,
         'webui-app-ix.ts (isEmbedded helper)'
       );

@@ -78,14 +78,22 @@ export interface Mosaic {
 export const APP_SHELL = '/data/dashboard-wc/index.html';
 /**
  * Query flag that puts the shell in "chromeless" mode (no header/menu — handled
- * in `webui-app-ix.ts`), so an embedded internal view shows only its page
- * content. Lives before the hash so it survives hash-based routing.
+ * in `webui-app-ix.ts`), so an embedded internal view shows only its page content.
+ *
+ * It lives INSIDE the hash, *after* the route (`…index.html#/route?embed=1`), not
+ * as a pre-hash `?embed` query. A pre-hash query is fragile: the root-path
+ * redirect in `index.html` keeps only `location.hash`, and the SPA router rewrites
+ * the URL — both drop a pre-hash `?embed`, leaving the tile showing the full app
+ * chrome. In the hash region the flag survives the redirect (hash preserved) and
+ * the router (which keeps the route's own query inside the hash).
  */
 export const EMBED_QUERY = '?embed=1';
 
 /** Build an embeddable, chromeless URL to an internal hash route (e.g. `/fleet-3d/x`). */
 export function embeddedViewUrl(route: string): string {
-  return `${APP_SHELL}${EMBED_QUERY}#${route}`;
+  // Embed flag goes after the route, inside the hash — see EMBED_QUERY.
+  const sep = route.includes('?') ? '&embed=1' : EMBED_QUERY;
+  return `${APP_SHELL}#${route}${sep}`;
 }
 
 const FULL_PCT = 100;
