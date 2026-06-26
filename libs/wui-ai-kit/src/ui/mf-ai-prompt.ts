@@ -21,6 +21,7 @@ import { Subscription } from 'rxjs';
 import { askAi, type ToolCall } from '../data/ai-store.js';
 import { canEditFleet, canEditFleet$ } from '@visuelconcept/wui-kit/data/permissions.js';
 import { renderMarkdown } from '../data/markdown.js';
+import { AI_MSG, localize, localizeDir } from '../i18n.js';
 import './mf-ai-config-dialog.js';
 
 const PROMPT_ROWS = 3;
@@ -75,7 +76,7 @@ export class MfAiPrompt extends LitElement {
           class="toggle"
           icon="ai"
           variant=${this.open ? 'primary' : 'secondary'}
-          title="Assistant IA"
+          title=${localize(AI_MSG.title)}
           @click=${this.toggle}
         ></ix-icon-button>
         ${this.open ? this.renderPanel() : ''}
@@ -96,21 +97,21 @@ export class MfAiPrompt extends LitElement {
     return html`
       <div class="panel">
         <div class="panel-head">
-          <ix-icon name="ai"></ix-icon><span>Assistant IA</span>
+          <ix-icon name="ai"></ix-icon><span>${localizeDir(AI_MSG.title)}</span>
           <span class="spacer"></span>
           ${this.messages.length > 0
-            ? html`<ix-icon-button ghost size="16" icon="trashcan" title="Effacer la conversation" @click=${this.clear}></ix-icon-button>`
+            ? html`<ix-icon-button ghost size="16" icon="trashcan" title=${localize(AI_MSG.clear)} @click=${this.clear}></ix-icon-button>`
             : ''}
           ${this.canEdit
             ? html`<ix-icon-button
                 ghost
                 size="16"
                 icon="cogwheel"
-                title="Configurer l'IA (fournisseur, modèle, token, serveurs MCP)"
+                title=${localize(AI_MSG.configure)}
                 @click=${() => (this.configOpen = true)}
               ></ix-icon-button>`
             : ''}
-          <ix-icon-button ghost size="16" icon="close" title="Fermer" @click=${this.toggle}></ix-icon-button>
+          <ix-icon-button ghost size="16" icon="close" title=${localize(AI_MSG.close)} @click=${this.toggle}></ix-icon-button>
         </div>
 
         <div class="conv">
@@ -119,7 +120,7 @@ export class MfAiPrompt extends LitElement {
           ${this.busy
             ? html`<div class="msg msg--assistant working">
                 <span class="dots"><span></span><span></span><span></span></span>
-                <span class="working-text">L'assistant réfléchit…</span>
+                <span class="working-text">${localizeDir(AI_MSG.thinking)}</span>
               </div>`
             : ''}
         </div>
@@ -128,7 +129,7 @@ export class MfAiPrompt extends LitElement {
           <textarea
             class="ta"
             rows=${PROMPT_ROWS}
-            placeholder="Écrivez votre message… (Ctrl+Entrée pour envoyer)"
+            placeholder=${localize(AI_MSG.composerPlaceholder)}
             .value=${this.prompt}
             ?disabled=${this.busy}
             @input=${(e: Event) => (this.prompt = (e.target as HTMLTextAreaElement).value)}
@@ -138,7 +139,7 @@ export class MfAiPrompt extends LitElement {
             class="send"
             icon="send-right"
             variant="primary"
-            title="Envoyer"
+            title=${localize(AI_MSG.send)}
             ?disabled=${this.busy || this.prompt.trim() === ''}
             @click=${() => void this.sendPrompt()}
           ></ix-icon-button>
@@ -149,7 +150,7 @@ export class MfAiPrompt extends LitElement {
 
   private renderEmpty(): TemplateResult {
     return html`
-      <div class="placeholder">Posez une question à l'assistant IA…</div>
+      <div class="placeholder">${localizeDir(AI_MSG.ask)}</div>
       ${this.suggestions.length > 0
         ? html`<div class="suggestions">
             ${this.suggestions.map(
@@ -174,9 +175,9 @@ export class MfAiPrompt extends LitElement {
     return html`<div class="msg msg--assistant">
       ${m.tools && m.tools.length > 0
         ? html`<div class="tools">
-            <span class="tools-label">Outils :</span>
+            <span class="tools-label">${localizeDir(AI_MSG.tools)}</span>
             ${m.tools.map(
-              (t) => html`<span class="tool ${t.ok ? '' : 'tool--err'}" title=${t.ok ? 'Succès' : 'Échec'}>${t.name}</span>`
+              (t) => html`<span class="tool ${t.ok ? '' : 'tool--err'}" title=${t.ok ? localize(AI_MSG.success) : localize(AI_MSG.failure)}>${t.name}</span>`
             )}
           </div>`
         : ''}
@@ -209,7 +210,7 @@ export class MfAiPrompt extends LitElement {
       const answer = await askAi(prompt, { system: this.system });
       this.messages = [
         ...this.messages,
-        { role: 'assistant', text: answer.text || '(réponse vide)', tools: answer.toolCalls }
+        { role: 'assistant', text: answer.text || localize(AI_MSG.emptyAnswer), tools: answer.toolCalls }
       ];
     } catch (error) {
       const text = error instanceof Error ? error.message : String(error);

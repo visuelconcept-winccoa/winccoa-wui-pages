@@ -15,6 +15,7 @@ import {
   type AiConfig,
   type McpServer
 } from '../data/ai-store.js';
+import { AI_MSG, localize, localizeDir } from '../i18n.js';
 
 export class MfAiConfigDialog extends LitElement {
   static override readonly styles = [IXCoreStyles, dialogStyles()];
@@ -28,19 +29,20 @@ export class MfAiConfigDialog extends LitElement {
     void this.load();
   }
 
+  // eslint-disable-next-line max-lines-per-function -- single dialog template
   override render(): TemplateResult {
     const models = AI_PROVIDERS[this.cfg.provider]?.models ?? [];
     return html`
       <div class="backdrop" @click=${this.close}></div>
       <div class="dialog" role="dialog" aria-modal="true">
         <div class="head">
-          <ix-icon name="ai"></ix-icon><span>Configuration de l'assistant IA</span>
+          <ix-icon name="ai"></ix-icon><span>${localizeDir(AI_MSG.cfgTitle)}</span>
           <span class="spacer"></span>
-          <ix-icon-button ghost icon="close" title="Fermer" @click=${this.close}></ix-icon-button>
+          <ix-icon-button ghost icon="close" title=${localize(AI_MSG.close)} @click=${this.close}></ix-icon-button>
         </div>
         <div class="body">
           <label class="field">
-            <span class="lbl">Fournisseur</span>
+            <span class="lbl">${localizeDir(AI_MSG.provider)}</span>
             <ix-select
               .value=${this.cfg.provider}
               @valueChange=${(e: CustomEvent<string | string[]>) => this.onProvider(e.detail)}
@@ -51,7 +53,7 @@ export class MfAiConfigDialog extends LitElement {
             </ix-select>
           </label>
           <label class="field">
-            <span class="lbl">Modèle</span>
+            <span class="lbl">${localizeDir(AI_MSG.model)}</span>
             <ix-select
               editable
               .value=${this.cfg.model}
@@ -62,7 +64,7 @@ export class MfAiConfigDialog extends LitElement {
             </ix-select>
           </label>
           <label class="field">
-            <span class="lbl">Token API</span>
+            <span class="lbl">${localizeDir(AI_MSG.token)}</span>
             <input
               class="in"
               type="password"
@@ -74,29 +76,24 @@ export class MfAiConfigDialog extends LitElement {
 
           <div class="mcp">
             <div class="mcp-head">
-              <span class="lbl">Serveurs MCP</span>
+              <span class="lbl">${localizeDir(AI_MSG.mcpServers)}</span>
               <span class="spacer"></span>
               <ix-button variant="secondary" @click=${this.addMcp}>
-                <ix-icon name="plus" slot="icon"></ix-icon>Ajouter
+                <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(AI_MSG.add)}
               </ix-button>
             </div>
             ${this.cfg.mcpServers.length === 0
-              ? html`<div class="muted">Aucun serveur MCP</div>`
+              ? html`<div class="muted">${localizeDir(AI_MSG.noMcp)}</div>`
               : this.cfg.mcpServers.map((s, i) => this.renderMcpRow(s, i))}
-            <div class="hint">
-              Le manager se connecte <strong>localement</strong> à ces serveurs MCP et exécute les
-              outils pour le LLM (boucle agentique) — aucune exposition publique requise, le serveur
-              MCP WinCC OA en <code>localhost</code> fonctionne directement. Renseignez le token si le
-              serveur l'exige (WinCC OA : <code>MCP_API_TOKEN</code>).
-            </div>
+            <div class="hint">${localizeDir(AI_MSG.mcpHint)}</div>
           </div>
 
           ${this.error ? html`<div class="err">${this.error}</div>` : ''}
         </div>
         <div class="foot">
-          <ix-button variant="secondary" outline @click=${this.close}>Annuler</ix-button>
+          <ix-button variant="secondary" outline @click=${this.close}>${localizeDir(AI_MSG.cancel)}</ix-button>
           <ix-button @click=${this.save} ?disabled=${this.saving}>
-            <ix-icon name="check" slot="icon"></ix-icon>Enregistrer
+            <ix-icon name="check" slot="icon"></ix-icon>${localizeDir(AI_MSG.save)}
           </ix-button>
         </div>
       </div>
@@ -107,24 +104,24 @@ export class MfAiConfigDialog extends LitElement {
     return html`
       <div class="mcp-card">
         <div class="mcp-card-head">
-          <span class="mcp-card-title">Serveur MCP ${i + 1}</span>
+          <span class="mcp-card-title">${localize(AI_MSG.mcpServer)} ${i + 1}</span>
           <span class="spacer"></span>
-          <ix-icon-button ghost size="16" icon="trashcan" title="Retirer ce serveur"
+          <ix-icon-button ghost size="16" icon="trashcan" title=${localize(AI_MSG.removeServer)}
             @click=${() => this.removeMcp(i)}></ix-icon-button>
         </div>
         <label class="field">
-          <span class="lbl">Nom <em>— identifiant libre du serveur (affichage uniquement)</em></span>
-          <input class="in" placeholder="ex. winccoa" .value=${s.name}
+          <span class="lbl">${localizeDir(AI_MSG.nameLbl)} <em>${localizeDir(AI_MSG.nameHint)}</em></span>
+          <input class="in" placeholder="winccoa" .value=${s.name}
             @input=${(e: Event) => this.patchMcp(i, { name: (e.target as HTMLInputElement).value })} />
         </label>
         <label class="field">
-          <span class="lbl">URL <em>— endpoint MCP (Streamable-HTTP) auquel le manager se connecte</em></span>
+          <span class="lbl">URL <em>${localizeDir(AI_MSG.urlHint)}</em></span>
           <input class="in" placeholder="http://127.0.0.1:3000/mcp" .value=${s.url}
             @input=${(e: Event) => this.patchMcp(i, { url: (e.target as HTMLInputElement).value })} />
         </label>
         <label class="field">
-          <span class="lbl">Token <em>— jeton Bearer d'authentification, optionnel (laisser vide si non requis)</em></span>
-          <input class="in" type="password" autocomplete="off" placeholder="(aucun par défaut)" .value=${s.token ?? ''}
+          <span class="lbl">${localizeDir(AI_MSG.token)} <em>${localizeDir(AI_MSG.tokenHint)}</em></span>
+          <input class="in" type="password" autocomplete="off" placeholder=${localize(AI_MSG.tokenPlaceholder)} .value=${s.token ?? ''}
             @input=${(e: Event) => this.patchMcp(i, { token: (e.target as HTMLInputElement).value })} />
         </label>
       </div>
