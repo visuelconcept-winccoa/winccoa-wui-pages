@@ -135,6 +135,39 @@ backend module into `customer-webserver/src/modules/`, deploys any manager(s) in
 `<project>/javascript/<manager>/`, and runs the page build into
 `<project>/data/dashboard-wc/`. (Per-page specifics: `docs/wui-<page>/INTEGRATION.md`.)
 
+### Quick deploy from this repo — `deploy-release.mjs`
+
+To build and deploy a **curated set of pages + their backends** straight from this
+repo (no per-page packaging), use the interactive helper:
+
+```bash
+node tools/scripts/deploy-release.mjs --project <project>
+```
+
+It prompts for the project, lets you **select the modules** to include, the
+**default landing page**, and whether to enable the **AI assistant** (OFF by
+default), then: builds the pages into `<project>/data/dashboard-wc`, filters the
+menu to the selection, writes `dashboard-features.json` (the AI-assistant flag),
+and deploys the **backend modules + managers** of the selected pages (via
+`deploy-backend.mjs`; webserver module descriptors are generated from
+`tools/specs.json`).
+
+| Option | Effet |
+|---|---|
+| `--modules a,b,c` | pages à inclure (sinon sélection interactive) |
+| `--full` | rebuild complet (shell + shared bundles + app + pages) — projet **neuf** |
+| `--install-webserver` [`--winccoa <path>`] | installe d'abord le customer-webserver (projet neuf) |
+| `--start-page <route\|id>` | page de démarrage (redirection de `/`) ; défaut `/dashboard` |
+| `--ai-assistant` | active l'assistant IA dans les pages (défaut **OFF**) |
+| `--prune` | supprime les bundles non sélectionnés (version stricte) |
+| `--yes` | sans confirmation (non-interactif) |
+
+Projet neuf en une commande :
+`node tools/scripts/deploy-release.mjs --project <p> --full --install-webserver`.
+Le script **ne redémarre jamais** les managers/webserver — il imprime quoi
+redémarrer. Ensuite, fais le **Clear site data + reload** dans le navigateur
+(voir *After install* ci-dessous).
+
 ### After install (mandatory)
 
 1. **Backend pages**: `cd <project>/javascript/customer-webserver && npm run build`,
