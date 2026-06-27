@@ -10,6 +10,7 @@
  * in the model editor for the user to review and save. The user always validates.
  */
 import { askAi, type ToolCall } from '@visuelconcept/wui-ai-kit/data/ai-store.js';
+import { isAiAssistantEnabled } from '@visuelconcept/wui-ai-kit/data/ai-feature.js';
 import { renderMarkdown } from '@visuelconcept/wui-ai-kit/data/markdown.js';
 import '@visuelconcept/wui-ai-kit/ui/mf-ai-config-dialog.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
@@ -39,10 +40,18 @@ export class WuiParaAiAssistant extends LitElement {
   @state() private messages: ChatMessage[] = [];
   @state() private busy = false;
   @state() private configOpen = false;
+  /** Deploy-time feature flag — the assistant renders nothing until enabled. */
+  @state() private aiEnabled = false;
 
   @query('.conv') private convEl?: HTMLElement;
 
-  override render(): TemplateResult {
+  override connectedCallback(): void {
+    super.connectedCallback();
+    void isAiAssistantEnabled().then((on) => (this.aiEnabled = on));
+  }
+
+  override render(): TemplateResult | typeof nothing {
+    if (!this.aiEnabled) return nothing; // hidden unless enabled at deploy time
     return html`
       <div class="anchor">
         <ix-icon-button

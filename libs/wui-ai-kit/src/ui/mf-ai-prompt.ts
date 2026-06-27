@@ -14,11 +14,12 @@
  * not yet replayed to the model).
  */
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
-import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
+import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { property, query, state } from 'lit/decorators.js';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { Subscription } from 'rxjs';
 import { askAi, type ToolCall } from '../data/ai-store.js';
+import { isAiAssistantEnabled } from '../data/ai-feature.js';
 import { canEditFleet, canEditFleet$ } from '@visuelconcept/wui-kit/data/permissions.js';
 import { renderMarkdown } from '../data/markdown.js';
 import { AI_MSG, localize, localizeDir } from '../i18n.js';
@@ -54,6 +55,8 @@ export class MfAiPrompt extends LitElement {
   @state() private configOpen = false;
   /** canPublish — gates the configuration gear. */
   @state() private canEdit = canEditFleet();
+  /** Deploy-time feature flag — the assistant renders nothing until enabled. */
+  @state() private aiEnabled = false;
 
   @query('.conv') private convEl?: HTMLElement;
 
@@ -62,6 +65,7 @@ export class MfAiPrompt extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     this.permSub = canEditFleet$().subscribe((allowed) => (this.canEdit = allowed));
+    void isAiAssistantEnabled().then((on) => (this.aiEnabled = on));
   }
 
   override disconnectedCallback(): void {
@@ -69,7 +73,8 @@ export class MfAiPrompt extends LitElement {
     this.permSub.unsubscribe();
   }
 
-  override render(): TemplateResult {
+  override render(): TemplateResult | typeof nothing {
+    if (!this.aiEnabled) return nothing; // hidden unless enabled at deploy time
     return html`
       <div class="anchor">
         <ix-icon-button
