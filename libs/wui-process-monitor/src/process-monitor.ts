@@ -41,7 +41,8 @@ export class WuiProcessMonitor extends LitElement {
 
   @state() private tab: Tab = 'console';
   @state() private instances: Instance[] = [];
-  @state() private activeSystem = '';
+  /** Active node tab, keyed by the node DP (unique per computer, vs. per system). */
+  @state() private activeDp = '';
   @state() private history: HistoryEntry[] = [];
   @state() private lastUpdate = '';
   @state() private canEdit = canEditFleet();
@@ -51,9 +52,9 @@ export class WuiProcessMonitor extends LitElement {
   private permSub = new Subscription();
   private timer: ReturnType<typeof globalThis.setInterval> | undefined;
 
-  /** The instance whose tab is active (defaults to the first server). */
+  /** The instance whose tab is active (defaults to the first node). */
   private get active(): Instance | undefined {
-    return this.instances.find((i) => i.system === this.activeSystem) ?? this.instances[0];
+    return this.instances.find((i) => i.dp === this.activeDp) ?? this.instances[0];
   }
 
   override connectedCallback(): void {
@@ -127,12 +128,12 @@ export class WuiProcessMonitor extends LitElement {
   }
 
   private renderServerTabs(): TemplateResult {
-    const current = this.active?.system ?? '';
+    const current = this.active?.dp ?? '';
     return html`<div class="server-tabs">
       ${this.instances.map(
         (i) => html`<button
-          class="server-tab ${i.system === current ? 'active' : ''}"
-          @click=${() => (this.activeSystem = i.system)}
+          class="server-tab ${i.dp === current ? 'active' : ''}"
+          @click=${() => (this.activeDp = i.dp)}
         >
           <ix-icon name="host" size="16"></ix-icon>${serverLabel(i)}
           <span class="count">${i.managers.length}</span>
@@ -169,8 +170,8 @@ export class WuiProcessMonitor extends LitElement {
   private async refreshInstances(): Promise<void> {
     try {
       this.instances = await listInstances();
-      if (!this.instances.some((i) => i.system === this.activeSystem)) {
-        this.activeSystem = this.instances[0]?.system ?? '';
+      if (!this.instances.some((i) => i.dp === this.activeDp)) {
+        this.activeDp = this.instances[0]?.dp ?? '';
       }
       this.lastUpdate = new Date().toLocaleTimeString();
     } catch {
@@ -193,10 +194,11 @@ export class WuiProcessMonitor extends LitElement {
   }
 
   private async onControl(d: ControlIntent): Promise<void> {
-    const system = this.active?.system ?? '';
+    const target = this.active;
+    const label = nodeLabel(target);
     let ok = false;
     try {
-      const res = await controlManager(system, d.action, d.index);
+      const res = await controlManager(target?.dp ?? '', d.action, d.index);
       ok = res.ok !== false;
     } catch {
       ok = false;
@@ -208,9 +210,9 @@ export class WuiProcessMonitor extends LitElement {
         detail: `${d.name} — ${d.action}`,
         status: ok ? 'success' : 'failed',
         host: hostName(),
-        system: cleanSystem(system)
+        system: label
       },
-      { action: d.action.toUpperCase(), item: d.name, newval: d.action, reason: cleanSystem(system) }
+      { action: d.action.toUpperCase(), item: d.name, newval: d.action, reason: label }
     );
     await this.refreshInstances();
     void this.refreshHistory();
@@ -218,10 +220,11 @@ export class WuiProcessMonitor extends LitElement {
 
   private async onRestartAll(): Promise<void> {
     this.restartAllPending = false;
-    const system = this.active?.system ?? '';
+    const target = this.active;
+    const label = nodeLabel(target);
     let ok = false;
     try {
-      const res = await restartAll(system);
+      const res = await restartAll(target?.dp ?? '');
       ok = res.ok !== false;
     } catch {
       ok = false;
@@ -233,9 +236,9 @@ export class WuiProcessMonitor extends LitElement {
         detail: 'all managers',
         status: ok ? 'success' : 'failed',
         host: hostName(),
-        system: cleanSystem(system)
+        system: label
       },
-      { action: 'RESTART_ALL', item: 'project', reason: cleanSystem(system) }
+      { action: 'RESTART_ALL', item: 'project', reason: label }
     );
     await this.refreshInstances();
     void this.refreshHistory();
@@ -282,6 +285,11 @@ function hostName(): string {
 /** Strip the trailing ':' from a WinCC OA system name for display/logging. */
 function cleanSystem(system: string): string {
   return system.endsWith(':') ? system.slice(0, -1) : system;
+}
+
+/** Human label of a node (computer) for tracing — hostname, else system, else 'local'. */
+function nodeLabel(instance?: Instance): string {
+  return instance?.hostname || cleanSystem(instance?.system ?? '') || 'local';
 }
 
 // eslint-disable-next-line max-lines-per-function -- single stylesheet literal

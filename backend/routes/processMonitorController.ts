@@ -53,20 +53,25 @@ export class ProcessMonitorController {
     await this.call('ListManagers', {}, res);
   };
 
-  /** POST /manager { action: start|stop|restart, index, systemName? } */
+  /** POST /manager { action: start|stop|restart, index, node? } — node = target node DP */
   public manager = async (req: Request, res: Response): Promise<void> => {
-    const { action, index, systemName } = (req.body ?? {}) as { action?: string; index?: number; systemName?: string };
+    const { action, index, node, systemName } = (req.body ?? {}) as {
+      action?: string;
+      index?: number;
+      node?: string;
+      systemName?: string;
+    };
     if (!['start', 'stop', 'restart'].includes(String(action)) || typeof index !== 'number') {
       res.status(400).json({ ok: false, error: 'action (start|stop|restart) + index (number) requis' });
       return;
     }
-    await this.call('ControlManager', { action, index, systemName: systemName ?? '' }, res);
+    await this.call('ControlManager', { action, index, node: node ?? systemName ?? '' }, res);
   };
 
-  /** POST /restart { systemName? } -> restart all managers (of one system, or local) */
+  /** POST /restart { node? } -> restart all managers of one node (computer), or local */
   public restartAll = async (req: Request, res: Response): Promise<void> => {
-    const { systemName } = (req.body ?? {}) as { systemName?: string };
-    await this.call('RestartAll', { systemName: systemName ?? '' }, res);
+    const { node, systemName } = (req.body ?? {}) as { node?: string; systemName?: string };
+    await this.call('RestartAll', { node: node ?? systemName ?? '' }, res);
   };
 
   /** POST /upload/init { fileName } -> { ok, uploadId } */

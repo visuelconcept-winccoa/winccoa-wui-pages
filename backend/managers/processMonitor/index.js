@@ -3,21 +3,23 @@
  * Process Monitor — WinCC OA JavaScript Manager hosting an MSA (Manager Service
  * API) vRPC service for the "Process Monitor" WebUI page.
  *
- * Distributed, multi-server model (faithful to the legacy `winccoa_projectmanager`
- * which aggregated `dpNames("*", PROJECT_DOWNLOAD)`): this manager runs on EVERY
- * connected system and plays two roles —
+ * Multi-node model (faithful to the legacy `winccoa_projectmanager` which
+ * aggregated `dpNames("*", PROJECT_DOWNLOAD)`): this manager runs on EVERY pmon
+ * node — i.e. on every COMPUTER that runs a pmon, whether they belong to one
+ * WinCC OA system whose managers are split across computers, or to several
+ * distributed systems. It plays two roles —
  *
- *   - AGENT (every system): maintains its own node datapoint `ProcessMonitor_Node`
- *     (distributed → visible system-wide as `<System>:ProcessMonitor_Node`),
- *     periodically publishing its LOCAL pmon snapshot into `.pmon`, and reacting
- *     to control (`.cmd`) and deploy (`.deployCmd`/`.deployData`) commands
- *     targeted at it by executing them against its local pmon / project.
+ *   - AGENT (every computer): on startup it creates/maintains its OWN node
+ *     datapoint named after the host — `ProcessMonitor_Node_<hostname>` — and
+ *     periodically publishes its LOCAL pmon snapshot into `.pmon`, reacting to
+ *     control (`.cmd`) and deploy (`.deployCmd`/`.deployData`) commands targeted
+ *     at it by executing them against its local pmon / project.
  *
- *   - AGGREGATOR (the system serving the customer-webserver): the vRPC service
- *     methods read every node DP via `dpNames("*", ProcessMonitor_Node)` →
- *     one instance per server → the page renders one tab per server. Control /
- *     restart-all are routed to a target system's `.cmd`; project deploy can be
- *     propagated to ALL connected servers (file shipped via `.deployData`).
+ *   - AGGREGATOR (the computer serving the customer-webserver): the vRPC methods
+ *     read every node DP via `dpNames("*", ProcessMonitor_Node)` → one instance
+ *     per computer → the page renders one tab per computer. Control / restart-all
+ *     are routed to a target NODE's `.cmd` (the agent on that computer runs it);
+ *     project deploy can be propagated to ALL nodes (file shipped via `.deployData`).
  *
  * Project deployment: optionally purge selected folders (allow-list), extract an
  * uploaded ZIP (7-Zip) into the project — NEVER into protected folders
@@ -45,13 +47,17 @@ const { execFile } = require('node:child_process');
 const { PmonClient } = require('./pmon-client.js');
 
 const winccoa = new WinccoaManager();
-const pmonClient = new PmonClient();
 
 const SERVICE_NAME = 'ProcessMonitor';
 const ELEM = { Struct: 1, String: 25 };
-/** Distributed node DP type/name: one per system, aggregated by dpNames("*", type). */
+/** Node DP type — ONE datapoint per pmon node (per computer), aggregated by dpNames. */
 const NODE_TYPE = 'ProcessMonitor_Node';
-const NODE_DP = 'ProcessMonitor_Node';
+/** Node DP name prefix; the actual DP is `<prefix>_<hostname>` (one per computer). */
+const NODE_DP_PREFIX = 'ProcessMonitor_Node';
+/** Legacy single-node DP name (pre per-host); pruned/ignored at startup if present. */
+const LEGACY_NODE_DP = 'ProcessMonitor_Node';
+/** THIS node's DP — `ProcessMonitor_Node_<hostname>`, set at startup from the host. */
+let NODE_DP = '';
 const PUBLISH_MS = 3000;
 
 // <PROJ>/javascript/processMonitor/index.js -> project root is two levels up.
@@ -68,6 +74,38 @@ function log(msg) {
   // eslint-disable-next-line no-console
   console.log(`[ProcessMonitor] ${msg}`);
 }
+
+/**
+ * Resolve the pmon TCP port. pmon listens on the port set by `[general] pmonPort`
+ * in <PROJ>/config/config (a project may override the WinCC OA default 4999, e.g.
+ * 8999), so the hard-coded PmonClient default would connect to the wrong port and
+ * fail with "Pmon connection error". Priority: env override → config/config → 4999.
+ */
+function readPmonPort() {
+  const env = Number.parseInt(process.env.WINCCOA_PMON_PORT || '', 10);
+  if (Number.isInteger(env) && env > 0) return env;
+  try {
+    const text = fs.readFileSync(path.join(PROJ_PATH, 'config', 'config'), 'utf8');
+    let section = '';
+    let found = 0;
+    for (const rawLine of text.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (line.startsWith('#') || line === '') continue;
+      const sec = line.match(/^\[(.+)\]$/);
+      if (sec) { section = sec[1].toLowerCase(); continue; }
+      // single-value key → a later definition overrides an earlier one (WinCC OA semantics)
+      const m = section === 'general' && line.match(/^pmonPort\s*=\s*(\d+)/i);
+      if (m) found = Number.parseInt(m[1], 10);
+    }
+    if (found > 0) return found;
+  } catch (e) {
+    log(`could not read pmonPort from config/config (${e.message}); using default`);
+  }
+  return 4999;
+}
+
+const PMON_PORT = readPmonPort();
+const pmonClient = new PmonClient({ port: PMON_PORT });
 
 function parseReq(request) {
   if (!request.isString() || request.isNull()) return {};
@@ -98,9 +136,25 @@ function sysPrefix(dp) {
   return i >= 0 ? dp.slice(0, i + 1) : OWN_SYSTEM;
 }
 
-/** True when a discovered node refers to THIS system (local pmon/project). */
+/** The bare dp name (drops a `System:` prefix). */
+function bareDp(dp) {
+  const i = dp.indexOf(':');
+  return i >= 0 ? dp.slice(i + 1) : dp;
+}
+
+/** Sanitize a hostname into a valid WinCC OA DP-name fragment ([A-Za-z0-9_]). */
+function dpHost(host) {
+  return String(host || 'unknown').replace(/[^A-Za-z0-9_]/g, '_');
+}
+
+/** A real per-host node DP is `ProcessMonitor_Node_<host>` (excludes the legacy bare DP). */
+function isValidNodeName(dp) {
+  return bareDp(dp).startsWith(`${NODE_DP_PREFIX}_`);
+}
+
+/** True when a discovered node is THIS computer's own node (own pmon/project). */
 function isLocal(node) {
-  return node.system === OWN_SYSTEM || node.dp === NODE_DP || !node.dp.includes(':');
+  return bareDp(node.dp) === NODE_DP;
 }
 
 // ---- 7-Zip extraction (deny-listed, staged) --------------------------------
@@ -230,6 +284,18 @@ async function ensureNodeDp() {
   await winccoa.dpSetWait([`${NODE_DP}.hostname`, `${NODE_DP}.system`], [HOSTNAME, OWN_SYSTEM]);
 }
 
+/** Remove the legacy single-node DP (`ProcessMonitor_Node`, no host suffix). */
+async function cleanupLegacyDp() {
+  try {
+    if (LEGACY_NODE_DP !== NODE_DP && winccoa.dpExists(LEGACY_NODE_DP)) {
+      await winccoa.dpDelete(LEGACY_NODE_DP);
+      log(`DP legacy supprimé : ${LEGACY_NODE_DP}`);
+    }
+  } catch (e) {
+    log(`could not delete legacy DP ${LEGACY_NODE_DP}: ${e.message}`);
+  }
+}
+
 async function publishOnce() {
   try {
     const managers = await pmonClient.listManagers();
@@ -280,7 +346,7 @@ async function onDeployCmd(cmd) {
 }
 
 function startAgent() {
-  // React to commands targeted at THIS system (answer=false → skip initial value).
+  // React to commands targeted at THIS computer's node (answer=false → skip initial).
   winccoa.dpConnect(
     (_names, values) => {
       try {
@@ -322,6 +388,7 @@ async function discoverNodes() {
   const out = [];
   for (const raw of names) {
     const dp = raw.endsWith('.') ? raw.slice(0, -1) : raw;
+    if (!isValidNodeName(dp)) continue; // skip the legacy bare ProcessMonitor_Node DP
     try {
       const vals = await winccoa.dpGet([`${dp}.system`, `${dp}.hostname`]);
       out.push({ dp, system: asStr(vals[0]) || sysPrefix(dp), hostname: asStr(vals[1]) });
@@ -350,12 +417,18 @@ async function pollResult(dpeName, reqId, timeoutMs, stepMs = 300) {
   return { reqId, ok: false, error: 'timeout' };
 }
 
-/** Resolve the target node(s) for a system name ('' / 'all' → all, else match). */
-async function resolveTargets(systemName) {
+/**
+ * Resolve target node(s). `target` is a node DP name (per-host), '' / 'all' for
+ * every node. A bare or `System:`-prefixed dp both match. Falls back to matching
+ * a plain hostname (e.g. "PC1" → ProcessMonitor_Node_PC1) for convenience.
+ */
+async function resolveTargets(target) {
   const nodes = await discoverNodes();
-  if (!systemName || systemName === 'all') return nodes;
-  const match = nodes.filter((n) => n.system === systemName || n.dp === systemName || n.dp === `${systemName}${NODE_DP}`);
-  return match.length > 0 ? match : nodes.filter((n) => n.system.replace(':', '') === String(systemName).replace(':', ''));
+  if (!target || target === 'all') return nodes;
+  const t = String(target);
+  const byDp = nodes.filter((n) => n.dp === t || bareDp(n.dp) === bareDp(t));
+  if (byDp.length > 0) return byDp;
+  return nodes.filter((n) => bareDp(n.dp) === `${NODE_DP_PREFIX}_${dpHost(t)}` || n.hostname === t);
 }
 
 class ProcessMonitorService extends Vrpc.ServiceBase {
@@ -374,6 +447,7 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
       const instances = [];
       for (const raw of nodes) {
         const dp = raw.endsWith('.') ? raw.slice(0, -1) : raw;
+        if (!isValidNodeName(dp)) continue; // skip the legacy bare ProcessMonitor_Node DP
         const vals = await winccoa.dpGet([`${dp}.system`, `${dp}.hostname`, `${dp}.pmon`, `${dp}.updated`]);
         let managers = [];
         try {
@@ -391,7 +465,7 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
       // compatibility: a still-cached pre-multi-server page bundle reads `managers`,
       // the current one reads `instances` — returning both avoids an empty list
       // until the service worker serves the new bundle.
-      const localInst = instances.find((i) => i.system === OWN_SYSTEM) ?? instances[0];
+      const localInst = instances.find(isLocal) ?? instances.find((i) => i.system === OWN_SYSTEM) ?? instances[0];
       return reply({ ok: true, instances, managers: localInst?.managers ?? [] });
     } catch (e) {
       return reply({ ok: false, error: e.message, instances: [], managers: [] });
@@ -400,38 +474,49 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
 
   async controlManager(ctx, request) {
     ctx.cancelSignal.throwIfAborted();
-    const { systemName, action, index } = parseReq(request);
+    const { node, systemName, action, index } = parseReq(request);
     if (typeof index !== 'number' || index < 0) throw vrpcError('InvalidArgument', 'index (pmon, 0-based) requis');
     if (!['start', 'stop', 'restart'].includes(action)) throw vrpcError('InvalidArgument', 'action invalide');
-    return reply(await this.routeCommand(systemName, { action, index }));
+    return reply(await this.routeCommand(node ?? systemName ?? '', { action, index }));
   }
 
   async restartAll(ctx, request) {
     ctx.cancelSignal.throwIfAborted();
-    const { systemName } = parseReq(request);
-    return reply(await this.routeCommand(systemName, { action: 'restart-all', index: -1 }));
+    const { node, systemName } = parseReq(request);
+    return reply(await this.routeCommand(node ?? systemName ?? '', { action: 'restart-all', index: -1 }));
   }
 
-  /** Send a control command to a target system's node DP and await its result. */
-  async routeCommand(systemName, cmd) {
-    const targets = await resolveTargets(systemName);
-    const target = targets[0];
-    if (!target) {
-      // No node DP at all → act on the local pmon directly.
-      try {
-        if (cmd.action === 'restart-all') await pmonClient.restartAll();
-        else if (cmd.action === 'start') await pmonClient.startManager(cmd.index);
-        else if (cmd.action === 'stop') await pmonClient.stopManager(cmd.index);
-        else await pmonClient.restartManager(cmd.index);
-        return { ok: true, ...cmd, system: OWN_SYSTEM };
-      } catch (e) {
-        return { ok: false, error: e.message, ...cmd, system: OWN_SYSTEM };
-      }
+  /** Execute a control command on the LOCAL pmon (this computer). */
+  async localPmon(cmd, system) {
+    try {
+      if (cmd.action === 'restart-all') await pmonClient.restartAll();
+      else if (cmd.action === 'start') await pmonClient.startManager(cmd.index);
+      else if (cmd.action === 'stop') await pmonClient.stopManager(cmd.index);
+      else await pmonClient.restartManager(cmd.index);
+      return { ok: true, ...cmd, system: system || OWN_SYSTEM };
+    } catch (e) {
+      return { ok: false, error: e.message, ...cmd, system: system || OWN_SYSTEM };
     }
+  }
+
+  /**
+   * Route a control command to a target node. The target node's OWN agent (the
+   * processMonitor manager running on that computer) executes it against its
+   * local pmon via the node DP's `.cmd`/`.cmdResult`. This computer's own node is
+   * handled directly (no DP round-trip).
+   */
+  async routeCommand(target, cmd) {
+    const targets = await resolveTargets(target);
+    const node = targets[0];
+    if (!node) {
+      // No matching node DP (fresh start / unknown target) → local pmon.
+      return this.localPmon(cmd, OWN_SYSTEM);
+    }
+    if (isLocal(node)) return this.localPmon(cmd, node.system);
     const reqId = crypto.randomUUID();
-    await winccoa.dpSetWait(`${target.dp}.cmd`, JSON.stringify({ reqId, ...cmd }));
-    const res = await pollResult(`${target.dp}.cmdResult`, reqId, 12000);
-    return { ok: res.ok === true, error: res.error || '', ...cmd, system: target.system };
+    await winccoa.dpSetWait(`${node.dp}.cmd`, JSON.stringify({ reqId, ...cmd }));
+    const res = await pollResult(`${node.dp}.cmdResult`, reqId, 12000);
+    return { ok: res.ok === true, error: res.error || '', ...cmd, system: node.system };
   }
 
   async deploy(ctx, request) {
@@ -495,14 +580,20 @@ function vrpcError(code, message) {
 async function run_() {
   log('Démarrage du service Process Monitor (MSA vRPC)…');
   log(`Project path: ${PROJ_PATH}`);
+  log(`Pmon: ${pmonClient.host}:${PMON_PORT}`);
   try {
     OWN_SYSTEM = winccoa.getSystemName();
   } catch {
     OWN_SYSTEM = '';
   }
-  log(`System: ${OWN_SYSTEM || '(standalone)'} · host: ${HOSTNAME}`);
+  // One node DP per pmon node, named after THIS computer — so a single WinCC OA
+  // system whose managers/pmon are spread over several computers shows one node
+  // (one tab) per computer.
+  NODE_DP = `${NODE_DP_PREFIX}_${dpHost(HOSTNAME)}`;
+  log(`System: ${OWN_SYSTEM || '(standalone)'} · host: ${HOSTNAME} · node DP: ${NODE_DP}`);
   try {
     await ensureNodeDp();
+    await cleanupLegacyDp();
     startAgent();
   } catch (e) {
     log(`Agent init failed (continuing as aggregator only): ${e.message}`);

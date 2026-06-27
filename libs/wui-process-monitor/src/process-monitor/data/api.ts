@@ -33,12 +33,13 @@ export async function listInstances(): Promise<Instance[]> {
   return data.instances ?? [];
 }
 
-export function controlManager(systemName: string, action: 'start' | 'stop' | 'restart', index: number): Promise<{ ok: boolean }> {
-  return postJson(`${BASE}/manager`, { systemName, action, index });
+/** `node` is the target node DP name (one per computer); '' / 'all' for the local/only one. */
+export function controlManager(node: string, action: 'start' | 'stop' | 'restart', index: number): Promise<{ ok: boolean }> {
+  return postJson(`${BASE}/manager`, { node, action, index });
 }
 
-export function restartAll(systemName: string): Promise<{ ok: boolean }> {
-  return postJson(`${BASE}/restart`, { systemName });
+export function restartAll(node: string): Promise<{ ok: boolean }> {
+  return postJson(`${BASE}/restart`, { node });
 }
 
 /** Sub-batch size for stack-safe base64 (each byte 0–255 maps 1:1 to a code point). */
