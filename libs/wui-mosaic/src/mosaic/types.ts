@@ -127,7 +127,7 @@ export function snapToGrid(v: number): number {
 }
 
 const KIND_LABELS: Record<TileKind, string> = {
-  'fleet-3d': 'Parc machines 3D',
+  'fleet-3d': 'Parc machine',
   'remote-vnc': 'VNC (lecture seule)',
   camera: 'Caméra (flux vidéo)',
   url: 'URL'

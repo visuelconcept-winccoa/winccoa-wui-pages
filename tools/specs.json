@@ -110,7 +110,7 @@
   {
     "page": "machine-fleet-3d",
     "name": "@visuelconcept/wui-machine-fleet-3d",
-    "title": "Machine Fleet 3D",
+    "title": "Machine Fleet",
     "tier": "hub",
     "description": "Machine Fleet 3D hub page (/machine-fleet-3d) — three.js 3D fleet view with per-machine state/KPI bubbles, stop-cause catalog, contextual machine dashboard (Gantt + Pareto), and an AI assistant. Managers: machineSim (fleet simulation), kpiCalc (live KPIs), aiAssistant + mcpServer (the AI assistant, via the /api/ai bridge). AI provider tokens are read from the AI_Assistant_Config DP — NONE are shipped.",
     "backend": { "mount": "/api/ai", "routeClass": "AiRoute", "routeFile": "aiRoute", "srcFiles": ["aiController.ts", "aiRoute.ts"] },

@@ -142,7 +142,7 @@ export class WuiMachineFleet3d extends LitElement {
           .config=${{
             headerTitle: {
               context: 'translate',
-              config: { 'en_US.utf8': 'Machine Fleet 3D', 'fr.utf8': 'Parc machines 3D' }
+              config: { 'en_US.utf8': 'Machine Fleet', 'fr.utf8': 'Parc machine', 'de_AT.utf8': 'Maschinenpark' }
             }
           }}
         >
