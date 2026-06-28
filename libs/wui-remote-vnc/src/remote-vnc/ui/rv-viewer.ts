@@ -18,8 +18,17 @@
  */
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import RFB from '@novnc/novnc/core/rfb.js';
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
+import {
+  MSG,
+  authFailureMsg,
+  giveUpMsg,
+  localize,
+  localizeDir,
+  reconnectMsg
+} from '../i18n.js';
 import {
   DEFAULT_CONNECT_TIMEOUT_SEC,
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
@@ -32,13 +41,13 @@ type Status = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnect
 
 const SEC_MS = 1000;
 
-const STATUS_LABELS: Record<Status, string> = {
-  idle: 'Inactif',
-  connecting: 'Connexion…',
-  connected: 'Connecté',
-  reconnecting: 'Reconnexion…',
-  disconnected: 'Déconnecté',
-  error: 'Erreur'
+const STATUS_LABELS: Record<Status, MultiLangString> = {
+  idle: MSG.viewer.statusIdle,
+  connecting: MSG.viewer.statusConnecting,
+  connected: MSG.viewer.statusConnected,
+  reconnecting: MSG.viewer.statusReconnecting,
+  disconnected: MSG.viewer.statusDisconnected,
+  error: MSG.viewer.statusError
 };
 
 const STATUS_COLORS: Record<Status, string> = {
@@ -74,25 +83,27 @@ export class RvViewer extends LitElement {
     const busy = connected || this.status === 'connecting' || this.status === 'reconnecting';
     return html`
       <div class="toolbar">
-        <ix-button variant="secondary" @click=${this.back}>‹ Retour</ix-button>
+        <ix-button variant="secondary" @click=${this.back}>${localizeDir(MSG.viewer.back)}</ix-button>
         <span class="title">${c.name}</span>
         <span class="endpoint mono">${endpoint(c)}</span>
         <span class="status" style="--c:${STATUS_COLORS[this.status]}">
-          <span class="dot"></span>${STATUS_LABELS[this.status]}${c.viewOnly ? ' · lecture seule' : ''}
+          <span class="dot"></span>${localizeDir(STATUS_LABELS[this.status])}${c.viewOnly
+            ? localizeDir(MSG.viewer.viewOnlySuffix)
+            : ''}
         </span>
         <span class="grow"></span>
         <ix-button variant="secondary" ?disabled=${!connected || c.viewOnly} @click=${this.sendCad}>
-          Ctrl+Alt+Suppr
+          ${localizeDir(MSG.viewer.ctrlAltDel)}
         </ix-button>
         <ix-button variant="secondary" @click=${this.fullscreen}>
-          <ix-icon name="maximize" slot="icon"></ix-icon>Plein écran
+          <ix-icon name="maximize" slot="icon"></ix-icon>${localizeDir(MSG.viewer.fullscreen)}
         </ix-button>
         ${busy
           ? html`<ix-button variant="secondary" @click=${this.disconnect}>
-              <ix-icon name="close" slot="icon"></ix-icon>Déconnecter
+              <ix-icon name="close" slot="icon"></ix-icon>${localizeDir(MSG.viewer.disconnect)}
             </ix-button>`
           : html`<ix-button @click=${this.reconnect}>
-              <ix-icon name="play" slot="icon"></ix-icon>Reconnecter
+              <ix-icon name="play" slot="icon"></ix-icon>${localizeDir(MSG.viewer.reconnect)}
             </ix-button>`}
       </div>
 
@@ -108,7 +119,7 @@ export class RvViewer extends LitElement {
           ? html`<div class="overlay">
               <div class="connecting">
                 <ix-spinner></ix-spinner>
-                <div class="c-status">${STATUS_LABELS[this.status]}</div>
+                <div class="c-status">${localizeDir(STATUS_LABELS[this.status])}</div>
                 <div class="c-target">${c.name} · <span class="mono">${endpoint(c)}</span></div>
                 ${this.errorMsg ? html`<div class="c-hint">${this.errorMsg}</div>` : null}
               </div>
@@ -146,7 +157,7 @@ export class RvViewer extends LitElement {
     const c = this.connection;
     if (!c?.host) {
       this.status = 'error';
-      this.errorMsg = 'Hôte non renseigné.';
+      this.errorMsg = localize(MSG.viewer.noHost);
       return;
     }
     this.manualClose = false;
@@ -160,7 +171,7 @@ export class RvViewer extends LitElement {
         credentials: { password: c.password }
       });
     } catch (error) {
-      this.scheduleReconnect(error instanceof Error ? error.message : 'Échec de la connexion');
+      this.scheduleReconnect(error instanceof Error ? error.message : localize(MSG.viewer.connectFailed));
       return;
     }
     rfb.viewOnly = c.viewOnly;
@@ -189,7 +200,7 @@ export class RvViewer extends LitElement {
       // clean === true → normal server-side close; do not auto-reconnect.
       const clean = (e as CustomEvent<{ clean: boolean }>).detail?.clean;
       if (clean) this.status = 'disconnected';
-      else this.scheduleReconnect('Connexion interrompue');
+      else this.scheduleReconnect(localize(MSG.viewer.connectionLost));
     });
     rfb.addEventListener('credentialsrequired', () => {
       if (this.rfb === rfb) rfb.sendCredentials({ password: c.password });
@@ -199,15 +210,14 @@ export class RvViewer extends LitElement {
       // Auth won't fix itself on retry — stop and report.
       this.clearTimers();
       const reason = (e as CustomEvent<{ reason?: string }>).detail?.reason;
-      const suffix = reason ? ` : ${reason}` : '';
       this.status = 'error';
-      this.errorMsg = `Échec d'authentification VNC${suffix}.`;
+      this.errorMsg = authFailureMsg(reason ?? '');
     });
   }
 
   private onConnectTimeout(rfb: RFB): void {
     if (this.rfb !== rfb || this.status === 'connected') return;
-    this.scheduleReconnect('Délai de connexion dépassé');
+    this.scheduleReconnect(localize(MSG.viewer.connectTimeout));
   }
 
   private scheduleReconnect(reason: string): void {
@@ -216,7 +226,7 @@ export class RvViewer extends LitElement {
     const max = this.maxAttempts();
     if (!this.autoReconnect() || (max > 0 && this.attempt >= max)) {
       this.status = 'error';
-      const giveUp = this.autoReconnect() ? ` Reconnexion abandonnée après ${max} tentative(s).` : '';
+      const giveUp = this.autoReconnect() ? giveUpMsg(max) : '';
       this.errorMsg = `${reason}.${giveUp}`;
       return;
     }
@@ -224,7 +234,7 @@ export class RvViewer extends LitElement {
     const total = max > 0 ? `/${max}` : '';
     const delaySec = Math.round(this.reconnectDelayMs() / SEC_MS);
     this.status = 'reconnecting';
-    this.errorMsg = `${reason} — reconnexion ${this.attempt}${total} dans ${delaySec}s…`;
+    this.errorMsg = reconnectMsg(reason, this.attempt, total, delaySec);
     this.reconnectTimer = window.setTimeout(() => this.connect(), this.reconnectDelayMs());
   }
 

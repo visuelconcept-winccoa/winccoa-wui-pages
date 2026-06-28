@@ -6,9 +6,11 @@
  * target (host/port), the optional stored password, a description and the RFB
  * options (read-only, shared). Emits `wui:save` / `wui:cancel`.
  */
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { MSG, localizeDir } from '../i18n.js';
 import {
   DEFAULT_CONNECT_TIMEOUT_SEC,
   DEFAULT_RECONNECT_DELAY_SEC,
@@ -40,18 +42,20 @@ export class RvConnectionDialog extends LitElement {
         <div class="panel" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
             <ix-typography format="h3">
-              ${isNew ? 'Nouvelle connexion VNC' : `Édition — ${this.working.name}`}
+              ${isNew
+                ? localizeDir(MSG.dialog.newConnection)
+                : html`${localizeDir(MSG.dialog.editPrefix)} — ${this.working.name}`}
             </ix-typography>
           </div>
 
           <div class="panel-body">
             <div class="grid2">
-              ${this.textField('Nom', 'name')} ${this.textField('Groupe', 'group')}
+              ${this.textField(MSG.dialog.fName, 'name')} ${this.textField(MSG.dialog.fGroup, 'group')}
             </div>
             <div class="grid2">
-              ${this.textField('Hôte / IP', 'host')}
+              ${this.textField(MSG.dialog.fHost, 'host')}
               <div class="field">
-                <label>Port</label>
+                <label>${localizeDir(MSG.dialog.fPort)}</label>
                 <ix-number-input
                   .value=${this.working.port}
                   @valueChange=${(e: IxValueEvent) =>
@@ -61,7 +65,7 @@ export class RvConnectionDialog extends LitElement {
             </div>
 
             <div class="field">
-              <label>Mot de passe VNC (optionnel)</label>
+              <label>${localizeDir(MSG.dialog.fPassword)}</label>
               <div class="pw-row">
                 <input
                   class="pw"
@@ -76,26 +80,25 @@ export class RvConnectionDialog extends LitElement {
                   @click=${() => (this.showPassword = !this.showPassword)}
                 >
                   <ix-icon name="eye" slot="icon"></ix-icon>
-                  ${this.showPassword ? 'Masquer' : 'Afficher'}
+                  ${this.showPassword ? localizeDir(MSG.dialog.hide) : localizeDir(MSG.dialog.show)}
                 </ix-button>
               </div>
               <div class="warn">
-                <ix-icon name="warning"></ix-icon>Le mot de passe est enregistré en clair dans le
-                datapoint. À réserver à un environnement de confiance.
+                <ix-icon name="warning"></ix-icon>${localizeDir(MSG.dialog.passwordWarning)}
               </div>
             </div>
 
             <div class="field">
-              <label>Description</label>
+              <label>${localizeDir(MSG.dialog.fDescription)}</label>
               <ix-input
                 .value=${this.working.description}
                 @valueChange=${(e: IxValueEvent) => this.patch({ description: String(e.detail) })}
               ></ix-input>
             </div>
 
-            <div class="subhead">Options de session</div>
+            <div class="subhead">${localizeDir(MSG.dialog.secSession)}</div>
             <div class="toggle-row">
-              <span>Lecture seule (pas de clavier/souris vers le poste distant)</span>
+              <span>${localizeDir(MSG.dialog.viewOnly)}</span>
               <ix-toggle
                 hide-text
                 ?checked=${this.working.viewOnly}
@@ -103,7 +106,7 @@ export class RvConnectionDialog extends LitElement {
               ></ix-toggle>
             </div>
             <div class="toggle-row">
-              <span>Session partagée (ne pas déconnecter les autres clients)</span>
+              <span>${localizeDir(MSG.dialog.shared)}</span>
               <ix-toggle
                 hide-text
                 ?checked=${this.working.shared}
@@ -111,9 +114,9 @@ export class RvConnectionDialog extends LitElement {
               ></ix-toggle>
             </div>
 
-            <div class="subhead">Délai & reconnexion</div>
+            <div class="subhead">${localizeDir(MSG.dialog.secReconnect)}</div>
             <div class="toggle-row">
-              <span>Reconnexion automatique après coupure ou délai dépassé</span>
+              <span>${localizeDir(MSG.dialog.autoReconnect)}</span>
               <ix-toggle
                 hide-text
                 ?checked=${this.working.autoReconnect}
@@ -122,7 +125,7 @@ export class RvConnectionDialog extends LitElement {
             </div>
             <div class="grid3">
               <div class="field">
-                <label>Délai de connexion (s)</label>
+                <label>${localizeDir(MSG.dialog.fConnectTimeout)}</label>
                 <ix-number-input
                   .value=${this.working.connectTimeoutSec}
                   @valueChange=${(e: IxValueEvent) =>
@@ -130,7 +133,7 @@ export class RvConnectionDialog extends LitElement {
                 ></ix-number-input>
               </div>
               <div class="field">
-                <label>Délai entre tentatives (s)</label>
+                <label>${localizeDir(MSG.dialog.fReconnectDelay)}</label>
                 <ix-number-input
                   .value=${this.working.reconnectDelaySec}
                   @valueChange=${(e: IxValueEvent) =>
@@ -138,7 +141,7 @@ export class RvConnectionDialog extends LitElement {
                 ></ix-number-input>
               </div>
               <div class="field">
-                <label>Tentatives max (0 = illimité)</label>
+                <label>${localizeDir(MSG.dialog.fMaxAttempts)}</label>
                 <ix-number-input
                   .value=${this.working.maxReconnectAttempts}
                   @valueChange=${(e: IxValueEvent) =>
@@ -149,12 +152,12 @@ export class RvConnectionDialog extends LitElement {
           </div>
 
           <div class="panel-foot">
-            <ix-button variant="secondary" @click=${this.cancel}>Annuler</ix-button>
+            <ix-button variant="secondary" @click=${this.cancel}>${localizeDir(MSG.dialog.cancel)}</ix-button>
             <ix-button
               @click=${this.save}
               ?disabled=${this.working.name.trim() === '' || this.working.host.trim() === ''}
             >
-              <ix-icon name="check" slot="icon"></ix-icon>Enregistrer
+              <ix-icon name="check" slot="icon"></ix-icon>${localizeDir(MSG.dialog.save)}
             </ix-button>
           </div>
         </div>
@@ -173,10 +176,10 @@ export class RvConnectionDialog extends LitElement {
     }
   }
 
-  private textField(label: string, key: 'name' | 'group' | 'host'): TemplateResult {
+  private textField(label: MultiLangString, key: 'name' | 'group' | 'host'): TemplateResult {
     return html`
       <div class="field">
-        <label>${label}</label>
+        <label>${localizeDir(label)}</label>
         <ix-input
           .value=${this.working[key]}
           @valueChange=${(e: IxValueEvent) =>

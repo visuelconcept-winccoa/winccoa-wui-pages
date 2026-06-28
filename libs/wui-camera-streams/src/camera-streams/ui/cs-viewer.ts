@@ -28,6 +28,8 @@ import {
   streamWsUrl,
   type CameraStream
 } from '../types.js';
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
+import { MSG, localize, localizeDir } from '../i18n.js';
 
 type Status = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'error';
 
@@ -38,13 +40,13 @@ const STALL_CHECK_MS = 2000;
 /** JSMpeg video decode buffer (1 MiB). */
 const VIDEO_BUFFER_BYTES = 1_048_576;
 
-const STATUS_LABELS: Record<Status, string> = {
-  idle: 'Inactif',
-  connecting: 'Connexion…',
-  connected: 'En direct',
-  reconnecting: 'Reconnexion…',
-  disconnected: 'Arrêté',
-  error: 'Erreur'
+const STATUS_LABELS: Record<Status, MultiLangString> = {
+  idle: MSG.viewer.statusIdle,
+  connecting: MSG.viewer.statusConnecting,
+  connected: MSG.viewer.statusConnected,
+  reconnecting: MSG.viewer.statusReconnecting,
+  disconnected: MSG.viewer.statusDisconnected,
+  error: MSG.viewer.statusError
 };
 
 const STATUS_COLORS: Record<Status, string> = {
@@ -79,22 +81,24 @@ export class CsViewer extends LitElement {
     const busy = this.status === 'connected' || this.status === 'connecting' || this.status === 'reconnecting';
     return html`
       <div class="toolbar">
-        <ix-button variant="secondary" @click=${this.back}>‹ Retour</ix-button>
+        <ix-button variant="secondary" @click=${this.back}>${localizeDir(MSG.viewer.back)}</ix-button>
         <span class="title">${c.name}</span>
         <span class="endpoint mono">${streamHost(c)}</span>
         <span class="status" style="--c:${STATUS_COLORS[this.status]}">
-          <span class="dot"></span>${STATUS_LABELS[this.status]}${c.audio ? ' · audio' : ''}
+          <span class="dot"></span>${localizeDir(STATUS_LABELS[this.status])}${c.audio
+            ? localizeDir(MSG.viewer.audioSuffix)
+            : ''}
         </span>
         <span class="grow"></span>
         <ix-button variant="secondary" @click=${this.fullscreen}>
-          <ix-icon name="maximize" slot="icon"></ix-icon>Plein écran
+          <ix-icon name="maximize" slot="icon"></ix-icon>${localizeDir(MSG.viewer.fullscreen)}
         </ix-button>
         ${busy
           ? html`<ix-button variant="secondary" @click=${this.stop}>
-              <ix-icon name="close" slot="icon"></ix-icon>Arrêter
+              <ix-icon name="close" slot="icon"></ix-icon>${localizeDir(MSG.viewer.stop)}
             </ix-button>`
           : html`<ix-button @click=${this.reconnect}>
-              <ix-icon name="play" slot="icon"></ix-icon>Relancer
+              <ix-icon name="play" slot="icon"></ix-icon>${localizeDir(MSG.viewer.restart)}
             </ix-button>`}
       </div>
 
@@ -110,7 +114,7 @@ export class CsViewer extends LitElement {
           ? html`<div class="overlay">
               <div class="connecting">
                 <ix-spinner></ix-spinner>
-                <div class="c-status">${STATUS_LABELS[this.status]}</div>
+                <div class="c-status">${localizeDir(STATUS_LABELS[this.status])}</div>
                 <div class="c-target">${c.name} · <span class="mono">${streamHost(c)}</span></div>
                 ${this.errorMsg ? html`<div class="c-hint">${this.errorMsg}</div>` : null}
               </div>
@@ -146,7 +150,7 @@ export class CsViewer extends LitElement {
     const c = this.stream;
     if (!c?.url) {
       this.status = 'error';
-      this.errorMsg = 'URL RTSP non renseignée.';
+      this.errorMsg = localize(MSG.viewer.errNoUrl);
       return;
     }
     this.manualStop = false;
@@ -166,7 +170,7 @@ export class CsViewer extends LitElement {
       });
     } catch (error) {
       this.status = 'error';
-      this.errorMsg = error instanceof Error ? error.message : 'Échec de l’initialisation du lecteur.';
+      this.errorMsg = error instanceof Error ? error.message : localize(MSG.viewer.errPlayerInit);
       return;
     }
     this.connectTimer = window.setTimeout(() => this.onConnectTimeout(), CONNECT_TIMEOUT_MS);
@@ -186,8 +190,8 @@ export class CsViewer extends LitElement {
   private onConnectTimeout(): void {
     if (this.status === 'connected' || this.manualStop) return;
     this.status = 'error';
-    const retry = this.stream.autoReconnect ? ' Nouvelle tentative en cours…' : '';
-    this.errorMsg = `Aucun flux reçu (proxy RTSP injoignable, caméra hors ligne ou URL invalide).${retry}`;
+    const retry = this.stream.autoReconnect ? localize(MSG.viewer.retrySuffix) : '';
+    this.errorMsg = `${localize(MSG.viewer.errNoStream)}${retry}`;
   }
 
   private checkStall(): void {
@@ -195,7 +199,7 @@ export class CsViewer extends LitElement {
     const idleMs = Date.now() - this.lastFrameAt;
     if (idleMs > STALL_TIMEOUT_MS && this.status === 'connected') {
       this.status = 'reconnecting';
-      this.errorMsg = 'Flux interrompu — reconnexion…';
+      this.errorMsg = localize(MSG.viewer.stalled);
     }
   }
 

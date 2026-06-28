@@ -11,6 +11,7 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type TemplateResult } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { tileKindLabel, type Mosaic } from '../types.js';
+import { MSG, localize, localizeDir } from '../i18n.js';
 
 const PAD_LEN = 2;
 const PREVIEW_KINDS = 3;
@@ -31,10 +32,10 @@ export class MoMosaicTable extends LitElement {
       <table>
         <thead>
           <tr>
-            <th>Nom</th>
-            <th>Sources</th>
-            <th class="num">Tuiles</th>
-            <th>Dernière modification</th>
+            <th>${localizeDir(MSG.table.name)}</th>
+            <th>${localizeDir(MSG.table.sources)}</th>
+            <th class="num">${localizeDir(MSG.table.tiles)}</th>
+            <th>${localizeDir(MSG.table.updatedAt)}</th>
             <th class="actions-col"></th>
           </tr>
         </thead>
@@ -61,28 +62,28 @@ export class MoMosaicTable extends LitElement {
             ghost
             size="16"
             icon="screen"
-            title="Ouvrir"
+            title=${localize(MSG.table.open)}
             @click=${() => this.requestOpen(mosaic.id)}
           ></ix-icon-button>
           <ix-icon-button
             ghost
             size="16"
             icon="pen"
-            title="Renommer"
+            title=${localize(MSG.table.rename)}
             @click=${() => this.requestEdit(mosaic.id)}
           ></ix-icon-button>
           <ix-icon-button
             ghost
             size="16"
             icon="download"
-            title="Exporter cette mosaïque"
+            title=${localize(MSG.table.exportOne)}
             @click=${() => this.requestExport(mosaic.id)}
           ></ix-icon-button>
           <ix-icon-button
             ghost
             size="16"
             icon="trashcan"
-            title="Supprimer"
+            title=${localize(MSG.table.remove)}
             @click=${() => this.requestDelete(mosaic.id)}
           ></ix-icon-button>
         </td>
@@ -93,7 +94,7 @@ export class MoMosaicTable extends LitElement {
   private renderKinds(mosaic: Mosaic): TemplateResult {
     const labels = mosaic.tiles.slice(0, PREVIEW_KINDS).map((t) => tileKindLabel(t.kind));
     const extra = mosaic.tiles.length - labels.length;
-    if (labels.length === 0) return html`<span class="muted">vide</span>`;
+    if (labels.length === 0) return html`<span class="muted">${localizeDir(MSG.table.emptyKinds)}</span>`;
     return html`
       ${labels.map((l) => html`<span class="chip">${l}</span>`)}
       ${extra > 0 ? html`<span class="chip">+${extra}</span>` : null}
@@ -101,7 +102,7 @@ export class MoMosaicTable extends LitElement {
   }
 
   private fmtDate(value: string): string {
-    if (!value) return 'jamais';
+    if (!value) return localize(MSG.table.never);
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return value;
     return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;

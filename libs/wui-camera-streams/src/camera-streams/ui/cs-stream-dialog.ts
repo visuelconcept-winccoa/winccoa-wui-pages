@@ -16,6 +16,7 @@ import {
   type CameraStream,
   type RtspTransport
 } from '../types.js';
+import { MSG, localizeDir } from '../i18n.js';
 import { dialogStyles } from './dialog-styles.js';
 
 interface IxValueEvent {
@@ -40,17 +41,19 @@ export class CsStreamDialog extends LitElement {
         <div class="panel" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
             <ix-typography format="h3">
-              ${isNew ? 'Nouvelle caméra RTSP' : `Édition — ${this.working.name}`}
+              ${isNew
+                ? localizeDir(MSG.dialog.newCamera)
+                : html`${localizeDir(MSG.dialog.editPrefix)} — ${this.working.name}`}
             </ix-typography>
           </div>
 
           <div class="panel-body">
             <div class="grid2">
-              ${this.textField('Nom', 'name')} ${this.textField('Groupe', 'group')}
+              ${this.textField(MSG.dialog.fName, 'name')} ${this.textField(MSG.dialog.fGroup, 'group')}
             </div>
 
             <div class="field">
-              <label>URL RTSP</label>
+              <label>${localizeDir(MSG.dialog.fUrl)}</label>
               <ix-input
                 placeholder="rtsp://10.0.5.21:554/Streaming/Channels/101"
                 .value=${this.working.url}
@@ -59,9 +62,9 @@ export class CsStreamDialog extends LitElement {
             </div>
 
             <div class="grid2">
-              ${this.textField('Utilisateur (optionnel)', 'username')}
+              ${this.textField(MSG.dialog.fUsername, 'username')}
               <div class="field">
-                <label>Mot de passe (optionnel)</label>
+                <label>${localizeDir(MSG.dialog.fPassword)}</label>
                 <div class="pw-row">
                   <input
                     class="pw"
@@ -76,19 +79,17 @@ export class CsStreamDialog extends LitElement {
                     @click=${() => (this.showPassword = !this.showPassword)}
                   >
                     <ix-icon name="eye" slot="icon"></ix-icon>
-                    ${this.showPassword ? 'Masquer' : 'Afficher'}
+                    ${this.showPassword ? localizeDir(MSG.dialog.hide) : localizeDir(MSG.dialog.show)}
                   </ix-button>
                 </div>
               </div>
             </div>
             <div class="warn">
-              <ix-icon name="warning"></ix-icon>Les identifiants sont enregistrés en clair dans le
-              datapoint et injectés dans l'URL côté serveur (jamais envoyés au navigateur). À réserver
-              à un environnement de confiance.
+              <ix-icon name="warning"></ix-icon>${localizeDir(MSG.dialog.credentialsWarning)}
             </div>
 
             <div class="field">
-              <label>Description</label>
+              <label>${localizeDir(MSG.dialog.fDescription)}</label>
               <ix-input
                 .value=${this.working.description}
                 @valueChange=${(e: IxValueEvent) => this.patch({ description: String(e.detail) })}
