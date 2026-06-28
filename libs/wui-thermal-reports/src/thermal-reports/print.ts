@@ -7,6 +7,7 @@
  * component so the rendering stays a pure string builder.
  */
 import type { CycleSummary } from './engine.js';
+import { MSG, localize, printCycleSummaryMsg, printValidatedByMsg } from './i18n.js';
 import {
   CONFORMITY_LABELS,
   QUENCH_LABELS,
@@ -28,20 +29,20 @@ function fmt(value: string): string {
 
 function factTable(r: ThermalReport): string {
   const facts: [string, string][] = [
-    ['N° rapport', r.reportNo],
-    ['N° charge', r.charge],
-    ['OF', r.orderNo],
-    ['Pièce', r.part],
-    ['Matière', r.material],
-    ['Quantité', String(r.quantity)],
-    ['Traitement', TREATMENT_LABELS[r.treatment]],
-    ['Atmosphère', r.atmosphere],
-    ['Trempe', QUENCH_LABELS[r.quench]],
-    ['Four', r.machineName],
-    ['Opérateur', r.operator],
-    ['Début', fmt(r.startTime)],
-    ['Fin', fmt(r.endTime)],
-    ['Statut', STATUS_LABELS[r.status]]
+    [localize(MSG.print.fReportNo), r.reportNo],
+    [localize(MSG.print.fCharge), r.charge],
+    [localize(MSG.print.fOrder), r.orderNo],
+    [localize(MSG.print.fPart), r.part],
+    [localize(MSG.print.fMaterial), r.material],
+    [localize(MSG.print.fQuantity), String(r.quantity)],
+    [localize(MSG.print.fTreatment), localize(TREATMENT_LABELS[r.treatment])],
+    [localize(MSG.print.fAtmosphere), r.atmosphere],
+    [localize(MSG.print.fQuench), localize(QUENCH_LABELS[r.quench])],
+    [localize(MSG.print.fFurnace), r.machineName],
+    [localize(MSG.print.fOperator), r.operator],
+    [localize(MSG.print.fStart), fmt(r.startTime)],
+    [localize(MSG.print.fEnd), fmt(r.endTime)],
+    [localize(MSG.print.fStatus), localize(STATUS_LABELS[r.status])]
   ];
   return facts.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v || '—')}</td></tr>`).join('');
 }
@@ -59,16 +60,22 @@ function resultRows(r: ThermalReport): string {
   return r.results
     .map((res) => {
       const ok = resultConform(res);
-      const verdict = ok === null ? '—' : (ok ? 'OK' : 'Hors tolérance');
-      return `<tr><td>${esc(res.label)}</td><td>${res.value} ${esc(res.unit)}</td><td>${res.min ?? '—'}</td><td>${res.max ?? '—'}</td><td>${verdict}</td></tr>`;
+      const verdict =
+        ok === null ? '—' : (ok ? localize(MSG.print.ok) : localize(MSG.print.outOfTolerance));
+      return `<tr><td>${esc(res.label)}</td><td>${res.value} ${esc(res.unit)}</td><td>${res.min ?? '—'}</td><td>${res.max ?? '—'}</td><td>${esc(verdict)}</td></tr>`;
     })
     .join('');
 }
 
 function summaryLine(summary: CycleSummary | null, simulated: boolean): string {
   if (!summary) return '';
-  const sim = simulated ? ' (courbe simulée)' : '';
-  return `<p><strong>Cycle :</strong> ${summary.inBandPct}% dans la tolérance · écart max ${summary.maxDeviation} °C · min/max ${summary.minTemp}/${summary.maxTemp} °C${sim}</p>`;
+  return printCycleSummaryMsg(
+    summary.inBandPct,
+    summary.maxDeviation,
+    summary.minTemp,
+    summary.maxTemp,
+    simulated
+  );
 }
 
 const PRINT_CSS = `
@@ -108,23 +115,25 @@ export function buildPrintHtml(
   image: string
 ): string {
   const validation = r.validatedBy
-    ? `<p>Validé par ${esc(r.validatedBy)}${r.validatedAt ? ' le ' + esc(fmt(r.validatedAt)) : ''}</p>`
+    ? `<p>${esc(printValidatedByMsg(r.validatedBy, r.validatedAt ? fmt(r.validatedAt) : ''))}</p>`
     : '';
-  const notes = r.notes ? `<h2>Observations</h2><p>${esc(r.notes)}</p>` : '';
-  const chart = image ? `<img src="${image}" alt="Courbe de température"/>` : '<p>(graphique indisponible)</p>';
+  const notes = r.notes ? `<h2>${esc(localize(MSG.print.secNotes))}</h2><p>${esc(r.notes)}</p>` : '';
+  const chart = image
+    ? `<img src="${image}" alt="${esc(localize(MSG.print.chartAlt))}"/>`
+    : `<p>${esc(localize(MSG.print.chartUnavailable))}</p>`;
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8">
-<title>${esc(r.reportNo || 'Rapport')} — ${esc(r.charge)}</title>
+<title>${esc(r.reportNo || localize(MSG.print.docTitleFallback))} — ${esc(r.charge)}</title>
 <style>${PRINT_CSS}</style></head><body>
-<h1>Rapport de traitement thermique (TTD)</h1>
+<h1>${esc(localize(MSG.print.docHeading))}</h1>
 <table class="facts">${factTable(r)}</table>
-<h2>Recette</h2>
-<table><thead><tr><th>#</th><th>Étape</th><th>Consigne °C</th><th>Durée min</th><th>Tol.</th><th>Atmosphère</th></tr></thead><tbody>${stepRows(r)}</tbody></table>
-<h2>Courbe de température</h2>
+<h2>${esc(localize(MSG.print.secRecipe))}</h2>
+<table><thead><tr><th>#</th><th>${esc(localize(MSG.print.colStep))}</th><th>${esc(localize(MSG.print.colSetpoint))}</th><th>${esc(localize(MSG.print.colDuration))}</th><th>${esc(localize(MSG.print.colTolerance))}</th><th>${esc(localize(MSG.print.colAtmosphere))}</th></tr></thead><tbody>${stepRows(r)}</tbody></table>
+<h2>${esc(localize(MSG.print.secCurve))}</h2>
 ${chart}
 ${summaryLine(summary, simulated)}
-<h2>Contrôle qualité</h2>
-<table><thead><tr><th>Contrôle</th><th>Valeur</th><th>Min</th><th>Max</th><th>Verdict</th></tr></thead><tbody>${resultRows(r)}</tbody></table>
-<p class="verdict">Conformité : ${esc(CONFORMITY_LABELS[r.conformity])}</p>
+<h2>${esc(localize(MSG.print.secQuality))}</h2>
+<table><thead><tr><th>${esc(localize(MSG.print.colControl))}</th><th>${esc(localize(MSG.print.colValue))}</th><th>${esc(localize(MSG.print.colMin))}</th><th>${esc(localize(MSG.print.colMax))}</th><th>${esc(localize(MSG.print.colVerdict))}</th></tr></thead><tbody>${resultRows(r)}</tbody></table>
+<p class="verdict">${esc(localize(MSG.print.conformityLabel))} : ${esc(localize(CONFORMITY_LABELS[r.conformity]))}</p>
 ${validation}
 ${notes}
 ${PRINT_SCRIPT}

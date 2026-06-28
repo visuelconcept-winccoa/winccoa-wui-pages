@@ -6,14 +6,16 @@
  * breakdown (en cours / terminés / validés) and a non-conformity count. Computed
  * locally from the `.reports` property.
  */
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type TemplateResult } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { MSG, localizeDir } from '../i18n.js';
 import { CONFORMITY_COLORS, STATUS_COLORS, type ThermalReport } from '../types.js';
 
 interface Kpi {
   value: number;
-  label: string;
+  label: MultiLangString;
   color?: string;
 }
 
@@ -29,11 +31,11 @@ export class TtKpiBar extends LitElement {
     const validated = this.reports.filter((r) => r.status === 'validated').length;
     const nonconform = this.reports.filter((r) => r.conformity === 'nonconform').length;
     const kpis: Kpi[] = [
-      { value: this.reports.length, label: 'Rapports' },
-      { value: running, label: 'En cours', color: STATUS_COLORS.running },
-      { value: completed, label: 'Terminés', color: STATUS_COLORS.completed },
-      { value: validated, label: 'Validés', color: STATUS_COLORS.validated },
-      { value: nonconform, label: 'Non conformes', color: CONFORMITY_COLORS.nonconform }
+      { value: this.reports.length, label: MSG.kpi.reports },
+      { value: running, label: MSG.kpi.running, color: STATUS_COLORS.running },
+      { value: completed, label: MSG.kpi.completed, color: STATUS_COLORS.completed },
+      { value: validated, label: MSG.kpi.validated, color: STATUS_COLORS.validated },
+      { value: nonconform, label: MSG.kpi.nonconform, color: CONFORMITY_COLORS.nonconform }
     ];
     return html`
       <div class="bar">
@@ -41,7 +43,7 @@ export class TtKpiBar extends LitElement {
           (kpi) => html`
             <div class="kpi" style=${kpi.color ? `--c:${kpi.color}` : ''}>
               <span class="value">${kpi.value}</span>
-              <span class="label">${kpi.label}</span>
+              <span class="label">${localizeDir(kpi.label)}</span>
             </div>
           `
         )}

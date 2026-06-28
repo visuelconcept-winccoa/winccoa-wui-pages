@@ -34,6 +34,7 @@ import { exportCsv, exportJson, parseOrders } from './production-orders/data/io.
 import { OrderStore } from './production-orders/data/order-store.js';
 import type { OrderStatus, ProductionOrder } from './production-orders/types.js';
 import { applyTransition } from './production-orders/workflow.js';
+import { MSG, confirmDeleteMsg, localize, localizeDir } from './production-orders/i18n.js';
 import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
 import './production-orders/ui/po-gantt.js';
 import './production-orders/ui/po-kpi-bar.js';
@@ -90,34 +91,34 @@ export class WuiProductionOrders extends LitElement {
                   variant=${this.view === 'table' ? 'primary' : 'secondary'}
                   @click=${() => (this.view = 'table')}
                 >
-                  <ix-icon name="table" slot="icon"></ix-icon>Table
+                  <ix-icon name="table" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.table)}
                 </ix-button>
                 <ix-button
                   variant=${this.view === 'gantt' ? 'primary' : 'secondary'}
                   @click=${() => (this.view = 'gantt')}
                 >
-                  <ix-icon name="barchart-horizontal" slot="icon"></ix-icon>Planning
+                  <ix-icon name="barchart-horizontal" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.planning)}
                 </ix-button>
               </div>
               <ix-button variant="secondary" @click=${this.triggerImport}>
-                <ix-icon name="upload" slot="icon"></ix-icon>Importer JSON
+                <ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.importJson)}
               </ix-button>
               <ix-button
                 variant="secondary"
                 ?disabled=${this.orders.length === 0}
                 @click=${this.onExportJson}
               >
-                <ix-icon name="download" slot="icon"></ix-icon>Export JSON
+                <ix-icon name="download" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.exportJson)}
               </ix-button>
               <ix-button
                 variant="secondary"
                 ?disabled=${this.orders.length === 0}
                 @click=${this.onExportCsv}
               >
-                <ix-icon name="download" slot="icon"></ix-icon>Export CSV
+                <ix-icon name="download" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.exportCsv)}
               </ix-button>
               <ix-button @click=${this.openCreate}>
-                <ix-icon name="plus" slot="icon"></ix-icon>Nouvel ordre
+                <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.newOrder)}
               </ix-button>
             </div>
           </div>
@@ -136,8 +137,7 @@ export class WuiProductionOrders extends LitElement {
             : nothing}
           ${this.offline
             ? html`<div class="notice">
-                <ix-icon name="info"></ix-icon>Mode hors-ligne : modifications non persistées dans les
-                datapoints (backend indisponible ou droits d'écriture manquants).
+                <ix-icon name="info"></ix-icon>${localizeDir(MSG.notice.offline)}
               </div>`
             : nothing}
           ${this.renderContent()}
@@ -154,7 +154,7 @@ export class WuiProductionOrders extends LitElement {
           ></po-order-dialog>`}
       ${this.deletingId
         ? html`<wui-confirm-dialog
-            message=${`Supprimer l'ordre « ${this.orderName(this.deletingId)} » ?`}
+            message=${confirmDeleteMsg(this.orderName(this.deletingId))}
             @wui:confirm=${this.onDeleteConfirm}
             @wui:cancel=${() => (this.deletingId = null)}
           ></wui-confirm-dialog>`
@@ -171,9 +171,9 @@ export class WuiProductionOrders extends LitElement {
     if (this.orders.length === 0) {
       return html`
         <div class="center empty">
-          <ix-typography>Aucun ordre de production pour l'instant.</ix-typography>
+          <ix-typography>${localizeDir(MSG.empty.none)}</ix-typography>
           <ix-button variant="secondary" @click=${this.generateDemo}>
-            <ix-icon name="add" slot="icon"></ix-icon>Générer des OF de démonstration
+            <ix-icon name="add" slot="icon"></ix-icon>${localizeDir(MSG.empty.generateDemo)}
           </ix-button>
         </div>
       `;
@@ -278,7 +278,7 @@ export class WuiProductionOrders extends LitElement {
     try {
       parsed = parseOrders(await file.text());
     } catch (error) {
-      this.importError = error instanceof Error ? error.message : 'Import échoué.';
+      this.importError = error instanceof Error ? error.message : localize(MSG.empty.importFailed);
       return;
     }
     this.importError = '';

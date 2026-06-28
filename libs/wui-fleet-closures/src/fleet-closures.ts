@@ -25,6 +25,17 @@ import '@wincc-oa/wui-oarxjs-context/components/wui-context-generator/wui-contex
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
+import {
+  MSG,
+  localize,
+  localizeDir,
+  atelierScopeLabel,
+  periodCountMsg,
+  coveredReasonMsg,
+  atWorkshopLevelMsg,
+  daysSpanMsg,
+  hoursSpanMsg
+} from './i18n.js';
 import { pageStyles } from '@visuelconcept/wui-fleet-core/styles.js';
 import { FleetStore } from '@visuelconcept/wui-fleet-core/data/fleet-store.js';
 import type { Atelier } from '@visuelconcept/wui-fleet-core/types.js';
@@ -132,19 +143,19 @@ export class WuiFleetClosures extends LitElement {
     return html`
       <div class="toolbar">
         <ix-button variant="secondary" outline @click=${this.back}>
-          <ix-icon name="arrow-left" slot="icon"></ix-icon>Retour
+          <ix-icon name="arrow-left" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.back)}
         </ix-button>
         <span class="sep"></span>
         ${this.renderYearField()} ${this.renderAtelierField()} ${this.renderMachineField()}
         <span class="grow"></span>
         <ix-button variant="secondary" outline @click=${this.triggerImport}>
-          <ix-icon name="upload" slot="icon"></ix-icon>Importer
+          <ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.import)}
         </ix-button>
         <ix-button variant="secondary" outline @click=${this.exportJson}>
-          <ix-icon name="download" slot="icon"></ix-icon>Exporter
+          <ix-icon name="download" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.export)}
         </ix-button>
         <ix-button @click=${() => void this.save()} ?disabled=${!this.dirty || this.saving}>
-          <ix-icon name="save" slot="icon"></ix-icon>Enregistrer
+          <ix-icon name="save" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.save)}
         </ix-button>
       </div>
       <input
@@ -160,12 +171,15 @@ export class WuiFleetClosures extends LitElement {
   private renderYearField(): TemplateResult {
     return html`
       <label class="field">
-        <span class="lbl">Année</span>
+        <span class="lbl">${localizeDir(MSG.filters.year)}</span>
         <ix-select
           .value=${String(this.year)}
           @valueChange=${(e: IxValueEvent) => (this.year = Number(firstOf(e.detail)) || ALL_YEARS)}
         >
-          <ix-select-item value=${String(ALL_YEARS)} label="Toutes les années"></ix-select-item>
+          <ix-select-item
+            value=${String(ALL_YEARS)}
+            label=${localize(MSG.filters.allYears)}
+          ></ix-select-item>
           ${this.yearOptions().map(
             (y) => html`<ix-select-item value=${String(y)} label=${String(y)}></ix-select-item>`
           )}
@@ -177,11 +191,11 @@ export class WuiFleetClosures extends LitElement {
   private renderAtelierField(): TemplateResult {
     return html`
       <label class="field">
-        <span class="lbl">Ateliers</span>
+        <span class="lbl">${localizeDir(MSG.filters.ateliers)}</span>
         <ix-select
           mode="multiple"
           allow-clear
-          i18n-placeholder="Tous les ateliers"
+          i18n-placeholder=${localize(MSG.filters.allAteliers)}
           .value=${this.selectedAteliers}
           @valueChange=${(e: IxValueEvent) => this.onSelect('ateliers', e.detail)}
         >
@@ -196,11 +210,11 @@ export class WuiFleetClosures extends LitElement {
   private renderMachineField(): TemplateResult {
     return html`
       <label class="field">
-        <span class="lbl">Machines</span>
+        <span class="lbl">${localizeDir(MSG.filters.machines)}</span>
         <ix-select
           mode="multiple"
           allow-clear
-          i18n-placeholder="Toutes les machines"
+          i18n-placeholder=${localize(MSG.filters.allMachines)}
           .value=${this.selectedMachines}
           @valueChange=${(e: IxValueEvent) => this.onSelect('machines', e.detail)}
         >
@@ -215,8 +229,7 @@ export class WuiFleetClosures extends LitElement {
   private renderOffline(): TemplateResult {
     if (!this.offline) return html``;
     return html`<div class="notice">
-      <ix-icon name="info"></ix-icon>Mode hors-ligne : la configuration ne peut pas être lue ni
-      enregistrée (backend non connecté).
+      <ix-icon name="info"></ix-icon>${localizeDir(MSG.offline)}
     </div>`;
   }
 
@@ -228,17 +241,17 @@ export class WuiFleetClosures extends LitElement {
         <table class="tbl">
           <thead>
             <tr>
-              <th>Périmètre</th>
-              <th>Début</th>
-              <th>Fin</th>
-              <th class="num">Durée</th>
+              <th>${localizeDir(MSG.table.scope)}</th>
+              <th>${localizeDir(MSG.table.start)}</th>
+              <th>${localizeDir(MSG.table.end)}</th>
+              <th class="num">${localizeDir(MSG.table.duration)}</th>
               <th class="num"></th>
             </tr>
           </thead>
           <tbody>
             ${rows.length === 0
               ? html`<tr>
-                  <td colspan="5" class="muted">Aucune période sur ce filtre.</td>
+                  <td colspan="5" class="muted">${localizeDir(MSG.table.empty)}</td>
                 </tr>`
               : rows.map((r) => this.renderRow(r))}
           </tbody>
@@ -246,14 +259,14 @@ export class WuiFleetClosures extends LitElement {
             <tr>
               <td colspan="5">
                 <ix-button variant="secondary" @click=${this.addRange}>
-                  <ix-icon name="plus" slot="icon"></ix-icon>Ajouter une période
+                  <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.table.addRange)}
                 </ix-button>
                 <span class="foot-scope">
-                  <span class="lbl">pour</span>
+                  <span class="lbl">${localizeDir(MSG.table.addFor)}</span>
                   ${this.renderScopeSelect(this.currentAddScope(), (v) => (this.addScope = v))}
                 </span>
                 <span class="grow"></span>
-                <span class="count">${rows.length} période(s)</span>
+                <span class="count">${periodCountMsg(rows.length)}</span>
               </td>
             </tr>
           </tfoot>
@@ -308,7 +321,7 @@ export class WuiFleetClosures extends LitElement {
           <ix-icon-button
             ghost
             icon="trashcan"
-            title="Supprimer"
+            title=${localize(MSG.table.delete)}
             @click=${() => this.removeRange(r)}
           ></ix-icon-button>
         </td>
@@ -336,28 +349,35 @@ export class WuiFleetClosures extends LitElement {
       <div class="overlay" @click=${() => (this.pendingImport = null)}>
         <div class="panel" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
-            <ix-typography format="h3">Recouvrement de périodes</ix-typography>
+            <ix-typography format="h3">${localizeDir(MSG.overlap.title)}</ix-typography>
           </div>
           <div class="panel-body">
-            Certaines périodes importées chevauchent des périodes existantes. Que souhaitez-vous
-            faire ?
+            ${localizeDir(MSG.overlap.body)}
             <ul class="hint">
-              <li><strong>Remplacer</strong> : la configuration importée remplace l'existante.</li>
               <li>
-                <strong>Ignorer</strong> : conserver l'existant, n'ajouter que les périodes sans
-                chevauchement.
+                <strong>${localizeDir(MSG.overlap.replaceLabel)}</strong
+                >${localizeDir(MSG.overlap.replaceDesc)}
               </li>
-              <li><strong>Annuler</strong> : ne rien importer.</li>
+              <li>
+                <strong>${localizeDir(MSG.overlap.ignoreLabel)}</strong
+                >${localizeDir(MSG.overlap.ignoreDesc)}
+              </li>
+              <li>
+                <strong>${localizeDir(MSG.overlap.cancelLabel)}</strong
+                >${localizeDir(MSG.overlap.cancelDesc)}
+              </li>
             </ul>
           </div>
           <div class="panel-foot">
             <ix-button variant="secondary" @click=${() => (this.pendingImport = null)}>
-              Annuler
+              ${localizeDir(MSG.overlap.cancelLabel)}
             </ix-button>
             <ix-button variant="secondary" outline @click=${() => this.resolveImport('ignore')}>
-              Ignorer
+              ${localizeDir(MSG.overlap.ignoreLabel)}
             </ix-button>
-            <ix-button @click=${() => this.resolveImport('replace')}>Remplacer</ix-button>
+            <ix-button @click=${() => this.resolveImport('replace')}
+              >${localizeDir(MSG.overlap.replaceLabel)}</ix-button
+            >
           </div>
         </div>
       </div>
@@ -386,7 +406,7 @@ export class WuiFleetClosures extends LitElement {
     const ok = await this.store.saveClosures(this.working);
     this.saving = false;
     if (ok) this.dirty = false;
-    this.flash(ok ? 'Périodes enregistrées.' : "Échec de l'enregistrement.");
+    this.flash(ok ? localize(MSG.toast.saved) : localize(MSG.toast.saveFailed));
   }
 
   private readonly back = (): void => {
@@ -413,7 +433,7 @@ export class WuiFleetClosures extends LitElement {
       for (const [index, range] of (this.working.ateliers[a.id] ?? []).entries()) {
         out.push({
           scope: `a:${a.id}`,
-          label: `Atelier : ${a.name}`,
+          label: atelierScopeLabel(a.name),
           atelierId: a.id,
           machineId: '',
           index,
@@ -444,10 +464,11 @@ export class WuiFleetClosures extends LitElement {
   private coveredReason(r: FlatRow): string {
     const cover = this.coveringCandidates(r).find((c) => strictlyContains(c.range, r.range));
     if (!cover) return '';
-    const where = cover.kind === 'a' && r.machineId ? ' au niveau atelier' : '';
-    return (
-      `Période ignorée : entièrement couverte par une période plus large${where} ` +
-      `(du ${formatDateTimeFr(cover.range.start)} au ${formatDateTimeFr(cover.range.end)}).`
+    const where = cover.kind === 'a' && r.machineId ? atWorkshopLevelMsg() : '';
+    return coveredReasonMsg(
+      where,
+      formatDateTimeFr(cover.range.start),
+      formatDateTimeFr(cover.range.end)
     );
   }
 
@@ -470,7 +491,7 @@ export class WuiFleetClosures extends LitElement {
     const multi = this.ateliers.length > 1;
     const out: ScopeOption[] = [];
     for (const a of this.ateliers) {
-      out.push({ key: `a:${a.id}`, label: `Atelier : ${a.name}` });
+      out.push({ key: `a:${a.id}`, label: atelierScopeLabel(a.name) });
       for (const m of a.machines) {
         out.push({ key: `m:${m.id}`, label: `   ${m.name}${multi ? ` · ${a.name}` : ''}` });
       }
@@ -595,7 +616,7 @@ export class WuiFleetClosures extends LitElement {
     void file
       .text()
       .then((text) => this.applyImport(text))
-      .catch(() => this.flash('Fichier illisible.'));
+      .catch(() => this.flash(localize(MSG.toast.unreadableFile)));
   };
 
   private applyImport(text: string): void {
@@ -603,7 +624,7 @@ export class WuiFleetClosures extends LitElement {
     try {
       incoming = normaliseClosures(JSON.parse(text));
     } catch {
-      this.flash('JSON invalide.');
+      this.flash(localize(MSG.toast.invalidJson));
       return;
     }
     if (hasOverlap(this.working, incoming)) {
@@ -612,7 +633,7 @@ export class WuiFleetClosures extends LitElement {
     }
     this.working = mergeClosures(this.working, incoming, 'ignore');
     this.dirty = true;
-    this.flash('Périodes importées.');
+    this.flash(localize(MSG.toast.imported));
   }
 
   private resolveImport(mode: 'replace' | 'ignore'): void {
@@ -620,7 +641,9 @@ export class WuiFleetClosures extends LitElement {
     this.working = mergeClosures(this.working, this.pendingImport, mode);
     this.pendingImport = null;
     this.dirty = true;
-    this.flash(mode === 'replace' ? 'Configuration remplacée.' : 'Périodes non conflictuelles ajoutées.');
+    this.flash(
+      mode === 'replace' ? localize(MSG.toast.replaced) : localize(MSG.toast.addedNonConflicting)
+    );
   }
 
   private exportJson(): void {
@@ -692,8 +715,8 @@ function formatSpan(range: ClosureRange): string {
   const hours = Math.round((e - s) / MS_PER_HOUR);
   const days = Math.floor(hours / HOURS_PER_DAY);
   const rem = hours % HOURS_PER_DAY;
-  if (days > 0) return rem > 0 ? `${days} j ${rem} h` : `${days} j`;
-  return `${hours} h`;
+  if (days > 0) return daysSpanMsg(days, rem);
+  return hoursSpanMsg(hours);
 }
 
 function extraStyles(): ReturnType<typeof css> {

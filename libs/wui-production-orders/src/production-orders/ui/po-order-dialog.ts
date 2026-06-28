@@ -13,25 +13,33 @@ import { LitElement, css, html, type PropertyValues, type TemplateResult } from 
 import { customElement, property, state } from 'lit/decorators.js';
 import type { Atelier } from '@visuelconcept/wui-fleet-core/types.js';
 import {
-  PRIORITY_LABELS,
-  STATUS_LABELS,
   blankOrder,
   type OrderPriority,
   type OrderStatus,
   type ProductionOrder
 } from '../types.js';
+import { MSG, editTitleMsg, localize, localizeDir, priorityLabel, statusLabel } from '../i18n.js';
 import { dialogStyles } from './dialog-styles.js';
 
 interface IxValueEvent {
   detail: string | number;
 }
 
-function options<T extends string>(labels: Record<T, string>): { value: T; label: string }[] {
-  return (Object.keys(labels) as T[]).map((value) => ({ value, label: labels[value] }));
+/** Status select options, localized for the active language at call time. */
+function statusOptions(): { value: OrderStatus; label: string }[] {
+  return (Object.keys(MSG.status) as OrderStatus[]).map((value) => ({
+    value,
+    label: localize(statusLabel(value))
+  }));
 }
 
-const STATUS_OPTIONS = options<OrderStatus>(STATUS_LABELS);
-const PRIORITY_OPTIONS = options<OrderPriority>(PRIORITY_LABELS);
+/** Priority select options, localized for the active language at call time. */
+function priorityOptions(): { value: OrderPriority; label: string }[] {
+  return (Object.keys(MSG.priority) as OrderPriority[]).map((value) => ({
+    value,
+    label: localize(priorityLabel(value))
+  }));
+}
 
 @customElement('po-order-dialog')
 export class PoOrderDialog extends LitElement {
@@ -54,42 +62,42 @@ export class PoOrderDialog extends LitElement {
         <div class="panel" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
             <ix-typography format="h3">
-              ${isNew ? 'Nouvel ordre de production' : `Édition — ${this.working.orderNo}`}
+              ${isNew ? localizeDir(MSG.dialog.titleNew) : editTitleMsg(this.working.orderNo)}
             </ix-typography>
           </div>
 
           <div class="panel-body">
-            <div class="subhead">Identité & produit</div>
+            <div class="subhead">${localizeDir(MSG.dialog.subIdentity)}</div>
             <div class="grid2">
-              ${this.textField('N° OF', 'orderNo')}
-              ${this.textField('Désignation produit', 'product')}
-              ${this.textField('Référence article', 'article')}
+              ${this.textField(localize(MSG.dialog.orderNo), 'orderNo')}
+              ${this.textField(localize(MSG.dialog.product), 'product')}
+              ${this.textField(localize(MSG.dialog.article), 'article')}
               <span></span>
-              ${this.numberField('Quantité commandée', 'qtyOrdered')}
-              ${this.numberField('Quantité produite', 'qtyProduced')}
+              ${this.numberField(localize(MSG.dialog.qtyOrdered), 'qtyOrdered')}
+              ${this.numberField(localize(MSG.dialog.qtyProduced), 'qtyProduced')}
             </div>
 
-            <div class="subhead">Affectation</div>
+            <div class="subhead">${localizeDir(MSG.dialog.subAssignment)}</div>
             <div class="grid2">
               ${this.atelierField()} ${this.machineField()}
             </div>
 
-            <div class="subhead">Planning</div>
+            <div class="subhead">${localizeDir(MSG.dialog.subSchedule)}</div>
             <div class="grid2">
-              ${this.dateField('Début prévu', 'plannedStart')}
-              ${this.dateField('Fin prévue', 'plannedEnd')}
-              ${this.dateField('Début réel', 'actualStart')}
-              ${this.dateField('Fin réelle', 'actualEnd')}
+              ${this.dateField(localize(MSG.dialog.plannedStart), 'plannedStart')}
+              ${this.dateField(localize(MSG.dialog.plannedEnd), 'plannedEnd')}
+              ${this.dateField(localize(MSG.dialog.actualStart), 'actualStart')}
+              ${this.dateField(localize(MSG.dialog.actualEnd), 'actualEnd')}
             </div>
 
-            <div class="subhead">Statut & priorité</div>
+            <div class="subhead">${localizeDir(MSG.dialog.subStatus)}</div>
             <div class="grid2">
-              ${this.selectField('Statut', 'status', STATUS_OPTIONS)}
-              ${this.selectField('Priorité', 'priority', PRIORITY_OPTIONS)}
-              ${this.numberField('Avancement (%)', 'progress')}
+              ${this.selectField(localize(MSG.dialog.status), 'status', statusOptions())}
+              ${this.selectField(localize(MSG.dialog.priority), 'priority', priorityOptions())}
+              ${this.numberField(localize(MSG.dialog.progress), 'progress')}
             </div>
 
-            <div class="subhead">Notes</div>
+            <div class="subhead">${localizeDir(MSG.dialog.subNotes)}</div>
             <ix-input
               .value=${this.working.notes}
               @valueChange=${(e: IxValueEvent) => this.patch({ notes: String(e.detail) })}
@@ -97,9 +105,9 @@ export class PoOrderDialog extends LitElement {
           </div>
 
           <div class="panel-foot">
-            <ix-button variant="secondary" @click=${this.cancel}>Annuler</ix-button>
+            <ix-button variant="secondary" @click=${this.cancel}>${localizeDir(MSG.dialog.cancel)}</ix-button>
             <ix-button @click=${this.save} ?disabled=${this.working.orderNo.trim() === ''}>
-              <ix-icon name="check" slot="icon"></ix-icon>Enregistrer
+              <ix-icon name="check" slot="icon"></ix-icon>${localizeDir(MSG.dialog.save)}
             </ix-button>
           </div>
         </div>
@@ -182,7 +190,7 @@ export class PoOrderDialog extends LitElement {
   private atelierField(): TemplateResult {
     return html`
       <div class="field">
-        <label>Atelier</label>
+        <label>${localizeDir(MSG.dialog.atelier)}</label>
         <ix-select
           .value=${this.working.atelierId}
           @valueChange=${(e: IxValueEvent) => this.onAtelierChange(String(e.detail))}
@@ -200,7 +208,7 @@ export class PoOrderDialog extends LitElement {
     const machines = atelier?.machines ?? [];
     return html`
       <div class="field">
-        <label>Machine</label>
+        <label>${localizeDir(MSG.dialog.machine)}</label>
         <ix-select
           .value=${this.working.machineId}
           ?disabled=${machines.length === 0}

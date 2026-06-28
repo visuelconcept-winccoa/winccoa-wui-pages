@@ -10,29 +10,28 @@
  *   so Excel renders accents). CSV is export-only.
  */
 import {
-  PRIORITY_LABELS,
-  STATUS_LABELS,
   blankOrder,
   type ProductionOrder
 } from '../types.js';
+import { MSG, localize, priorityLabel, statusLabel } from '../i18n.js';
 import { CSV_BOM, JSON_INDENT, csvCell, download, timestampSlug } from '@visuelconcept/wui-kit/data/io.js';
 
-const CSV_COLUMNS: { key: keyof ProductionOrder | 'statusLabel' | 'priorityLabel'; label: string }[] = [
-  { key: 'orderNo', label: 'N° OF' },
-  { key: 'product', label: 'Produit' },
-  { key: 'article', label: 'Article' },
-  { key: 'qtyOrdered', label: 'Qté commandée' },
-  { key: 'qtyProduced', label: 'Qté produite' },
-  { key: 'atelierName', label: 'Atelier' },
-  { key: 'machineName', label: 'Machine' },
-  { key: 'plannedStart', label: 'Début prévu' },
-  { key: 'plannedEnd', label: 'Fin prévue' },
-  { key: 'actualStart', label: 'Début réel' },
-  { key: 'actualEnd', label: 'Fin réelle' },
-  { key: 'statusLabel', label: 'Statut' },
-  { key: 'priorityLabel', label: 'Priorité' },
-  { key: 'progress', label: 'Avancement %' },
-  { key: 'notes', label: 'Notes' }
+const CSV_COLUMNS: { key: keyof ProductionOrder | 'statusLabel' | 'priorityLabel'; label: () => string }[] = [
+  { key: 'orderNo', label: () => localize(MSG.csv.orderNo) },
+  { key: 'product', label: () => localize(MSG.csv.product) },
+  { key: 'article', label: () => localize(MSG.csv.article) },
+  { key: 'qtyOrdered', label: () => localize(MSG.csv.qtyOrdered) },
+  { key: 'qtyProduced', label: () => localize(MSG.csv.qtyProduced) },
+  { key: 'atelierName', label: () => localize(MSG.csv.atelier) },
+  { key: 'machineName', label: () => localize(MSG.csv.machine) },
+  { key: 'plannedStart', label: () => localize(MSG.csv.plannedStart) },
+  { key: 'plannedEnd', label: () => localize(MSG.csv.plannedEnd) },
+  { key: 'actualStart', label: () => localize(MSG.csv.actualStart) },
+  { key: 'actualEnd', label: () => localize(MSG.csv.actualEnd) },
+  { key: 'statusLabel', label: () => localize(MSG.csv.status) },
+  { key: 'priorityLabel', label: () => localize(MSG.csv.priority) },
+  { key: 'progress', label: () => localize(MSG.csv.progress) },
+  { key: 'notes', label: () => localize(MSG.csv.notes) }
 ];
 
 /** Download the full order list as a JSON file. */
@@ -47,12 +46,12 @@ export function exportJson(orders: ProductionOrder[]): void {
 
 /** Download the order list as a CSV file (labels resolved). */
 export function exportCsv(orders: ProductionOrder[]): void {
-  const rows = [CSV_COLUMNS.map((c) => c.label).join(',')];
+  const rows = [CSV_COLUMNS.map((c) => c.label()).join(',')];
   for (const order of orders) {
     const enriched: Record<string, unknown> = {
       ...order,
-      statusLabel: STATUS_LABELS[order.status],
-      priorityLabel: PRIORITY_LABELS[order.priority]
+      statusLabel: localize(statusLabel(order.status)),
+      priorityLabel: localize(priorityLabel(order.priority))
     };
     rows.push(CSV_COLUMNS.map((c) => csvCell(enriched[c.key])).join(','));
   }
@@ -73,7 +72,7 @@ export function parseOrders(text: string): ProductionOrder[] {
   const raw: unknown = JSON.parse(text);
   const list = Array.isArray(raw) ? raw : (raw as { orders?: unknown }).orders;
   if (!Array.isArray(list)) {
-    throw new TypeError('Format invalide : tableau « orders » introuvable.');
+    throw new TypeError(localize(MSG.io.invalidFormat));
   }
   return list.map((item) => normalize(item as Partial<ProductionOrder>));
 }

@@ -6,15 +6,16 @@
  * description and a time classification (unplanned / planned / production).
  * Persisted as one app-level datapoint via {@link FleetStore}. Emits `wui:close`.
  */
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
 import { property, query, state } from 'lit/decorators.js';
 import type { FleetStore } from '../data/fleet-store.js';
 import {
-  STOP_CLASSIFICATION_LABELS,
   type StopCause,
   type StopClassification
 } from '../types.js';
+import { MSG, localize, localizeDir } from '../i18n.js';
 import { dialogStyles } from './dialog-styles.js';
 
 interface IxValueEvent {
@@ -26,6 +27,14 @@ interface IxCheckedEvent {
 }
 
 const CLASSIFICATIONS: StopClassification[] = ['unplanned', 'planned', 'production'];
+
+/** Localized label per stop classification (kit-local; the shared
+ * `STOP_CLASSIFICATION_LABELS` map stays a plain-string data contract). */
+const CLASSIFICATION_LABELS: Record<StopClassification, MultiLangString> = {
+  unplanned: MSG.classification.unplanned,
+  planned: MSG.classification.planned,
+  production: MSG.classification.production
+};
 
 export class MfStopCauses extends LitElement {
   static override readonly styles = [IXCoreStyles, dialogStyles(), extraStyles()];
@@ -44,20 +53,20 @@ export class MfStopCauses extends LitElement {
       <div class="overlay" @click=${this.close}>
         <div class="panel causes" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
-            <ix-typography format="h3">Catalogue des causes d'arrêt</ix-typography>
+            <ix-typography format="h3">${localizeDir(MSG.causes.title)}</ix-typography>
             <span class="head-spacer"></span>
             ${this.canEdit
               ? html`<ix-icon-button
                   ghost
                   icon="upload"
-                  title="Importer (JSON)"
+                  title=${localize(MSG.causes.importJson)}
                   @click=${this.triggerImport}
                 ></ix-icon-button>`
               : ''}
             <ix-icon-button
               ghost
               icon="download"
-              title="Exporter (JSON)"
+              title=${localize(MSG.causes.exportJson)}
               ?disabled=${this.causes.length === 0}
               @click=${this.exportCauses}
             ></ix-icon-button>
@@ -71,22 +80,22 @@ export class MfStopCauses extends LitElement {
           />
           <div class="panel-body">
             <div class="cause-row cause-head">
-              <span>Code</span><span>Description</span><span>Classification</span><span>Défaut</span
+              <span>${localizeDir(MSG.causes.colCode)}</span><span>${localizeDir(MSG.causes.colDescription)}</span><span>${localizeDir(MSG.causes.colClassification)}</span><span>${localizeDir(MSG.causes.colDefault)}</span
               ><span></span>
             </div>
             ${this.causes.length === 0
-              ? html`<div class="muted">Aucune cause.</div>`
+              ? html`<div class="muted">${localizeDir(MSG.causes.empty)}</div>`
               : this.causes.map((c, i) => this.renderRow(c, i))}
             ${this.canEdit
               ? html`<ix-button class="add" variant="secondary" @click=${this.addCause}>
-                  <ix-icon name="plus" slot="icon"></ix-icon>Ajouter une cause
+                  <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.causes.addCause)}
                 </ix-button>`
               : ''}
           </div>
           <div class="panel-foot">
-            <ix-button variant="secondary" @click=${this.close}>Fermer</ix-button>
+            <ix-button variant="secondary" @click=${this.close}>${localizeDir(MSG.causes.close)}</ix-button>
             ${this.canEdit
-              ? html`<ix-button ?disabled=${this.busy} @click=${this.save}>Enregistrer</ix-button>`
+              ? html`<ix-button ?disabled=${this.busy} @click=${this.save}>${localizeDir(MSG.causes.save)}</ix-button>`
               : ''}
           </div>
         </div>
@@ -119,14 +128,14 @@ export class MfStopCauses extends LitElement {
             this.patch(i, { classification: e.detail as StopClassification })}
         >
           ${CLASSIFICATIONS.map(
-            (k) => html`<ix-select-item label=${STOP_CLASSIFICATION_LABELS[k]} value=${k}></ix-select-item>`
+            (k) => html`<ix-select-item label=${localize(CLASSIFICATION_LABELS[k])} value=${k}></ix-select-item>`
           )}
         </ix-select>
         <ix-toggle
           class="default-toggle"
           hide-text
           ?disabled=${ro}
-          title="Cause affichée quand le code est absent du catalogue"
+          title=${localize(MSG.causes.defaultToggle)}
           ?checked=${c.isDefault === true}
           @checkedChange=${(e: IxCheckedEvent) => this.setDefault(i, e.detail)}
         ></ix-toggle>
@@ -135,7 +144,7 @@ export class MfStopCauses extends LitElement {
           : html`<ix-icon-button
               ghost
               icon="trashcan"
-              title="Supprimer"
+              title=${localize(MSG.causes.remove)}
               @click=${() => this.removeCause(i)}
             ></ix-icon-button>`}
       </div>

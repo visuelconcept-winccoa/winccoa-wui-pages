@@ -18,7 +18,9 @@ import { LitElement, css, html, type PropertyValues, type TemplateResult } from 
 import { customElement, property, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { STATUS_COLORS, type OrderStatus, type ProductionOrder } from '../types.js';
+import { MSG, localizeDir } from '../i18n.js';
 
 const LATE_COLOR = '#ef4444';
 const KPI_DP = 'ProductionOrders_Kpi';
@@ -32,7 +34,7 @@ interface DpEmission {
 
 interface Kpi {
   value: number;
-  label: string;
+  label: MultiLangString;
   color?: string;
 }
 
@@ -52,11 +54,11 @@ export class PoKpiBar extends LitElement {
   override render(): TemplateResult {
     const counts = this.counts();
     const kpis: Kpi[] = [
-      { value: counts.total, label: 'Ordres' },
-      { value: counts.planned, label: 'À venir', color: STATUS_COLORS.planned },
-      { value: counts.running, label: 'En cours', color: STATUS_COLORS.running },
-      { value: counts.done, label: 'Terminés', color: STATUS_COLORS.done },
-      { value: counts.late, label: 'En retard', color: LATE_COLOR }
+      { value: counts.total, label: MSG.kpi.orders },
+      { value: counts.planned, label: MSG.kpi.upcoming, color: STATUS_COLORS.planned },
+      { value: counts.running, label: MSG.kpi.running, color: STATUS_COLORS.running },
+      { value: counts.done, label: MSG.kpi.done, color: STATUS_COLORS.done },
+      { value: counts.late, label: MSG.kpi.late, color: LATE_COLOR }
     ];
     return html`
       <div class="bar">
@@ -64,7 +66,7 @@ export class PoKpiBar extends LitElement {
           (kpi) => html`
             <div class="kpi" style=${kpi.color ? `--c:${kpi.color}` : ''}>
               <span class="value">${kpi.value}</span>
-              <span class="label">${kpi.label}</span>
+              <span class="label">${localizeDir(kpi.label)}</span>
             </div>
           `
         )}

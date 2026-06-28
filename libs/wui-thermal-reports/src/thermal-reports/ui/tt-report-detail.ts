@@ -11,11 +11,13 @@
  *
  * Emits: `wui:back`, `wui:edit` (`{ id }`) and `wui:status` (`{ id, target }`).
  */
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { container } from 'tsyringe';
+import { MSG, localize, localizeDir } from '../i18n.js';
 import {
   buildProfile,
   evaluateCycle,
@@ -70,14 +72,16 @@ export class TtReportDetail extends LitElement {
       ${this.renderToolbar()}
       <div class="sheet">
         ${this.renderHeader()}
-        <h3 class="section">Recette de traitement</h3>
+        <h3 class="section">${localizeDir(MSG.detail.secRecipe)}</h3>
         ${this.renderRecipe()}
-        <h3 class="section">Courbe de température (réel vs consigne)</h3>
+        <h3 class="section">${localizeDir(MSG.detail.secCurve)}</h3>
         ${this.renderCurve()}
-        <h3 class="section">Contrôle qualité</h3>
+        <h3 class="section">${localizeDir(MSG.detail.secQuality)}</h3>
         ${this.renderQuality()}
         ${this.renderConformity()}
-        ${r.notes ? html`<h3 class="section">Observations</h3><p class="notes">${r.notes}</p>` : nothing}
+        ${r.notes
+          ? html`<h3 class="section">${localizeDir(MSG.detail.secNotes)}</h3><p class="notes">${r.notes}</p>`
+          : nothing}
       </div>
     `;
   }
@@ -100,23 +104,25 @@ export class TtReportDetail extends LitElement {
     const r = this.report;
     return html`
       <div class="toolbar">
-        <ix-button variant="secondary" @click=${this.back}>‹ Retour</ix-button>
-        <span class="title">${r.reportNo || 'Rapport'} — charge ${r.charge || '—'}</span>
+        <ix-button variant="secondary" @click=${this.back}>${localizeDir(MSG.detail.back)}</ix-button>
+        <span class="title"
+          >${r.reportNo || localize(MSG.detail.report)} — ${localizeDir(MSG.detail.charge)} ${r.charge || '—'}</span
+        >
         <span class="grow"></span>
         <ix-button variant="secondary" @click=${this.print}>
-          <ix-icon name="document" slot="icon"></ix-icon>Imprimer
+          <ix-icon name="document" slot="icon"></ix-icon>${localizeDir(MSG.detail.print)}
         </ix-button>
         <ix-button variant="secondary" @click=${this.edit}>
-          <ix-icon name="pen" slot="icon"></ix-icon>Modifier
+          <ix-icon name="pen" slot="icon"></ix-icon>${localizeDir(MSG.detail.edit)}
         </ix-button>
         ${r.status === 'validated'
           ? nothing
           : html`
               <ix-button variant="secondary" @click=${() => this.setStatus('rejected')}>
-                <ix-icon name="close" slot="icon"></ix-icon>Refuser
+                <ix-icon name="close" slot="icon"></ix-icon>${localizeDir(MSG.detail.reject)}
               </ix-button>
               <ix-button @click=${() => this.setStatus('validated')}>
-                <ix-icon name="check" slot="icon"></ix-icon>Valider
+                <ix-icon name="check" slot="icon"></ix-icon>${localizeDir(MSG.detail.validate)}
               </ix-button>
             `}
       </div>
@@ -125,41 +131,42 @@ export class TtReportDetail extends LitElement {
 
   private renderHeader(): TemplateResult {
     const r = this.report;
-    const facts: { label: string; value: string }[] = [
-      { label: 'N° rapport', value: r.reportNo || '—' },
-      { label: 'N° charge', value: r.charge || '—' },
-      { label: 'OF', value: r.orderNo || '—' },
-      { label: 'Pièce', value: r.part || '—' },
-      { label: 'Matière', value: r.material || '—' },
-      { label: 'Quantité', value: r.quantity ? String(r.quantity) : '—' },
-      { label: 'Traitement', value: TREATMENT_LABELS[r.treatment] },
-      { label: 'Atmosphère', value: r.atmosphere || '—' },
-      { label: 'Trempe', value: QUENCH_LABELS[r.quench] },
-      { label: 'Four', value: r.machineName || '—' },
-      { label: 'Atelier', value: r.atelierName || '—' },
-      { label: 'Opérateur', value: r.operator || '—' },
-      { label: 'Début cycle', value: this.fmt(r.startTime) },
-      { label: 'Fin cycle', value: this.fmt(r.endTime) }
+    const facts: { label: MultiLangString; value: string }[] = [
+      { label: MSG.detail.fReportNo, value: r.reportNo || '—' },
+      { label: MSG.detail.fCharge, value: r.charge || '—' },
+      { label: MSG.detail.fOrder, value: r.orderNo || '—' },
+      { label: MSG.detail.fPart, value: r.part || '—' },
+      { label: MSG.detail.fMaterial, value: r.material || '—' },
+      { label: MSG.detail.fQuantity, value: r.quantity ? String(r.quantity) : '—' },
+      { label: MSG.detail.fTreatment, value: localize(TREATMENT_LABELS[r.treatment]) },
+      { label: MSG.detail.fAtmosphere, value: r.atmosphere || '—' },
+      { label: MSG.detail.fQuench, value: localize(QUENCH_LABELS[r.quench]) },
+      { label: MSG.detail.fFurnace, value: r.machineName || '—' },
+      { label: MSG.detail.fWorkshop, value: r.atelierName || '—' },
+      { label: MSG.detail.fOperator, value: r.operator || '—' },
+      { label: MSG.detail.fCycleStart, value: this.fmt(r.startTime) },
+      { label: MSG.detail.fCycleEnd, value: this.fmt(r.endTime) }
     ];
     return html`
       <div class="report-head">
         <div class="report-head-top">
-          <ix-typography format="h2">Rapport de traitement thermique</ix-typography>
+          <ix-typography format="h2">${localizeDir(MSG.detail.docTitle)}</ix-typography>
           <span class="chip solid" style="--c:${STATUS_COLORS[r.status]}">
-            ${STATUS_LABELS[r.status]}
+            ${localizeDir(STATUS_LABELS[r.status])}
           </span>
         </div>
         <div class="facts">
           ${facts.map(
             (f) => html`<div class="fact">
-              <span class="fact-label">${f.label}</span>
+              <span class="fact-label">${localizeDir(f.label)}</span>
               <span class="fact-value">${f.value}</span>
             </div>`
           )}
         </div>
         ${r.validatedBy
           ? html`<div class="validation">
-              Validé par <strong>${r.validatedBy}</strong>${r.validatedAt ? ` le ${this.fmt(r.validatedAt)}` : ''}
+              ${localizeDir(MSG.detail.validatedBy)} <strong>${r.validatedBy}</strong
+              >${r.validatedAt ? html` ${localizeDir(MSG.detail.validatedOn)} ${this.fmt(r.validatedAt)}` : ''}
             </div>`
           : nothing}
       </div>
@@ -168,18 +175,18 @@ export class TtReportDetail extends LitElement {
 
   private renderRecipe(): TemplateResult {
     const r = this.report;
-    if (r.steps.length === 0) return html`<p class="muted">Aucun palier défini.</p>`;
+    if (r.steps.length === 0) return html`<p class="muted">${localizeDir(MSG.detail.noStep)}</p>`;
     const totalMin = Math.round(recipeDurationMs(r.steps) / 60_000);
     return html`
       <table class="tbl">
         <thead>
           <tr>
             <th>#</th>
-            <th>Étape</th>
-            <th>Consigne (°C)</th>
-            <th>Durée (min)</th>
-            <th>Tolérance</th>
-            <th>Atmosphère</th>
+            <th>${localizeDir(MSG.detail.colStep)}</th>
+            <th>${localizeDir(MSG.detail.colSetpoint)}</th>
+            <th>${localizeDir(MSG.detail.colDuration)}</th>
+            <th>${localizeDir(MSG.detail.colTolerance)}</th>
+            <th>${localizeDir(MSG.detail.colAtmosphere)}</th>
           </tr>
         </thead>
         <tbody>
@@ -198,7 +205,7 @@ export class TtReportDetail extends LitElement {
           <tr>
             <td colspan="3"></td>
             <td class="mono strong">${totalMin}</td>
-            <td colspan="2" class="muted">durée totale</td>
+            <td colspan="2" class="muted">${localizeDir(MSG.detail.totalDuration)}</td>
           </tr>
         </tfoot>
       </table>
@@ -207,15 +214,13 @@ export class TtReportDetail extends LitElement {
 
   private renderCurve(): TemplateResult {
     if (this.startMs() == null || this.report.steps.length === 0) {
-      return html`<p class="muted">
-        Renseignez la fenêtre du cycle (début) et au moins un palier pour afficher la courbe.
-      </p>`;
+      return html`<p class="muted">${localizeDir(MSG.detail.curveHint)}</p>`;
     }
     return html`
       ${this.simulated
         ? html`<div class="notice">
-            <ix-icon name="info"></ix-icon>Courbe simulée — aucune donnée archivée trouvée pour
-            <code>${this.report.tempDp || '(datapoint non renseigné)'}</code> sur la période.
+            <ix-icon name="info"></ix-icon>${localizeDir(MSG.detail.simulatedPre)}
+            <code>${this.report.tempDp || localize(MSG.detail.noDatapoint)}</code> ${localizeDir(MSG.detail.simulatedPost)}
           </div>`
         : nothing}
       ${this.curveLoading ? html`<div class="loading"><ix-spinner></ix-spinner></div>` : nothing}
@@ -230,15 +235,15 @@ export class TtReportDetail extends LitElement {
       <div class="summary">
         <div class="metric" style="--c:${good ? CONFORMITY_COLORS.conform : CONFORMITY_COLORS.nonconform}">
           <span class="metric-value">${s.inBandPct}%</span>
-          <span class="metric-label">dans la tolérance</span>
+          <span class="metric-label">${localizeDir(MSG.detail.inTolerance)}</span>
         </div>
         <div class="metric">
           <span class="metric-value">${s.maxDeviation} °C</span>
-          <span class="metric-label">écart max</span>
+          <span class="metric-label">${localizeDir(MSG.detail.maxDeviation)}</span>
         </div>
         <div class="metric">
           <span class="metric-value">${s.minTemp} / ${s.maxTemp} °C</span>
-          <span class="metric-label">min / max</span>
+          <span class="metric-label">${localizeDir(MSG.detail.minMax)}</span>
         </div>
       </div>
     `;
@@ -246,16 +251,16 @@ export class TtReportDetail extends LitElement {
 
   private renderQuality(): TemplateResult {
     const r = this.report;
-    if (r.results.length === 0) return html`<p class="muted">Aucun résultat de contrôle saisi.</p>`;
+    if (r.results.length === 0) return html`<p class="muted">${localizeDir(MSG.detail.noResult)}</p>`;
     return html`
       <table class="tbl">
         <thead>
           <tr>
-            <th>Contrôle</th>
-            <th>Valeur</th>
-            <th>Min</th>
-            <th>Max</th>
-            <th>Verdict</th>
+            <th>${localizeDir(MSG.detail.colControl)}</th>
+            <th>${localizeDir(MSG.detail.colValue)}</th>
+            <th>${localizeDir(MSG.detail.colMin)}</th>
+            <th>${localizeDir(MSG.detail.colMax)}</th>
+            <th>${localizeDir(MSG.detail.colVerdict)}</th>
           </tr>
         </thead>
         <tbody>
@@ -271,7 +276,7 @@ export class TtReportDetail extends LitElement {
       ok === null
         ? html`<span class="muted">—</span>`
         : html`<span class="chip" style="--c:${ok ? CONFORMITY_COLORS.conform : CONFORMITY_COLORS.nonconform}"
-            >${ok ? 'OK' : 'Hors tolérance'}</span
+            >${ok ? localizeDir(MSG.detail.ok) : localizeDir(MSG.detail.outOfTolerance)}</span
           >`;
     return html`<tr>
       <td>${res.label || '—'}</td>
@@ -286,8 +291,8 @@ export class TtReportDetail extends LitElement {
     const r = this.report;
     return html`
       <div class="verdict" style="--c:${CONFORMITY_COLORS[r.conformity]}">
-        <span class="verdict-label">Conformité de la charge</span>
-        <span class="verdict-value">${CONFORMITY_LABELS[r.conformity]}</span>
+        <span class="verdict-label">${localizeDir(MSG.detail.chargeConformity)}</span>
+        <span class="verdict-value">${localizeDir(CONFORMITY_LABELS[r.conformity])}</span>
       </div>
     `;
   }

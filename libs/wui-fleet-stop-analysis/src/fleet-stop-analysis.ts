@@ -54,6 +54,8 @@ import {
   normaliseClosures,
   type ClosureConfig
 } from '@visuelconcept/wui-fleet-core/closures.js';
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
+import { MSG, localize, localizeDir, rawStopCountMsg } from './i18n.js';
 
 const TAB_TABLE = 0;
 const TAB_CHART = 1;
@@ -62,10 +64,10 @@ const DEBOUNCE_MS = 300;
 const DATE_FORMAT = 'yyyy-MM-dd';
 const END_OF_DAY_MS = 24 * 60 * 60 * 1000 - 1;
 
-const SORT_LABELS: Record<SortKey, string> = {
-  assigned: 'Cumul de temps assigné',
-  downtime: "Temps d'arrêt total",
-  occurrences: "Nombre d'occurrences"
+const SORT_LABELS: Record<SortKey, MultiLangString> = {
+  assigned: MSG.sort.assigned,
+  downtime: MSG.sort.downtime,
+  occurrences: MSG.sort.occurrences
 };
 
 /** Bar colour per machine series (cycled). */
@@ -80,19 +82,19 @@ type SortDir = 'asc' | 'desc';
 
 /** Time-category (classification) filter: a classification or "all". */
 type ClassFilter = StopClassification | 'all';
-const CLASS_OPTIONS: { value: ClassFilter; label: string }[] = [
-  { value: 'unplanned', label: 'Non planifié' },
-  { value: 'planned', label: 'Planifié' },
-  { value: 'all', label: 'Toutes catégories' }
+const CLASS_OPTIONS: { value: ClassFilter; label: MultiLangString }[] = [
+  { value: 'unplanned', label: MSG.classFilter.unplanned },
+  { value: 'planned', label: MSG.classFilter.planned },
+  { value: 'all', label: MSG.classFilter.all }
 ];
 
 /** Default number of causes (bars) shown in the chart. */
 const DEFAULT_CHART_TOP = 5;
 /** Chart "Top N causes" options (value `0` = all). */
-const TOP_OPTIONS: { value: string; label: string }[] = [
-  { value: '5', label: 'Top 5' },
-  { value: '10', label: 'Top 10' },
-  { value: '0', label: 'Toutes les causes' }
+const TOP_OPTIONS: { value: string; label: MultiLangString }[] = [
+  { value: '5', label: MSG.chartTop.top5 },
+  { value: '10', label: MSG.chartTop.top10 },
+  { value: '0', label: MSG.chartTop.all }
 ];
 
 /** Coerce an ix-select value (string | string[]) to a string array. */
@@ -198,18 +200,18 @@ export class WuiFleetStopAnalysis extends LitElement {
     return html`
       <div class="toolbar">
         <ix-button variant="secondary" outline @click=${this.back}>
-          <ix-icon name="arrow-left" slot="icon"></ix-icon>Retour
+          <ix-icon name="arrow-left" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.back)}
         </ix-button>
         <ix-button variant="secondary" @click=${() => (this.stopCausesOpen = true)}>
-          <ix-icon name="alarm" slot="icon"></ix-icon>Causes d'arrêt
+          <ix-icon name="alarm" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.stopCauses)}
         </ix-button>
         <span class="sep"></span>
-        ${this.renderDateField('Début', this.startStr, 'start')}
-        ${this.renderDateField('Fin', this.endStr, 'end')} ${this.renderAtelierField()}
+        ${this.renderDateField(localize(MSG.toolbar.dateStart), this.startStr, 'start')}
+        ${this.renderDateField(localize(MSG.toolbar.dateEnd), this.endStr, 'end')} ${this.renderAtelierField()}
         ${this.renderMachineField()} ${this.renderClassField()} ${this.renderSortField()}
         <span class="grow"></span>
         <ix-button @click=${() => void this.recompute()} ?disabled=${this.loading}>
-          <ix-icon name="refresh" slot="icon"></ix-icon>Actualiser
+          <ix-icon name="refresh" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.refresh)}
         </ix-button>
       </div>
     `;
@@ -231,11 +233,11 @@ export class WuiFleetStopAnalysis extends LitElement {
   private renderAtelierField(): TemplateResult {
     return html`
       <label class="field">
-        <span class="lbl">Ateliers</span>
+        <span class="lbl">${localizeDir(MSG.toolbar.ateliers)}</span>
         <ix-select
           mode="multiple"
           allow-clear
-          i18n-placeholder="Tous les ateliers"
+          i18n-placeholder=${localize(MSG.toolbar.allAteliers)}
           .value=${this.selectedAteliers}
           @valueChange=${(e: CustomEvent<string | string[]>) => this.onSelect('ateliers', e.detail)}
         >
@@ -250,11 +252,11 @@ export class WuiFleetStopAnalysis extends LitElement {
   private renderMachineField(): TemplateResult {
     return html`
       <label class="field">
-        <span class="lbl">Machines</span>
+        <span class="lbl">${localizeDir(MSG.toolbar.machines)}</span>
         <ix-select
           mode="multiple"
           allow-clear
-          i18n-placeholder="Toutes les machines"
+          i18n-placeholder=${localize(MSG.toolbar.allMachines)}
           .value=${this.selectedMachines}
           @valueChange=${(e: CustomEvent<string | string[]>) => this.onSelect('machines', e.detail)}
         >
@@ -269,13 +271,13 @@ export class WuiFleetStopAnalysis extends LitElement {
   private renderSortField(): TemplateResult {
     return html`
       <label class="field">
-        <span class="lbl">Trier par</span>
+        <span class="lbl">${localizeDir(MSG.toolbar.sortBy)}</span>
         <ix-select
           .value=${this.sortKey}
           @valueChange=${(e: CustomEvent<string | string[]>) => this.onSort(e.detail)}
         >
           ${(Object.keys(SORT_LABELS) as SortKey[]).map(
-            (k) => html`<ix-select-item value=${k} label=${SORT_LABELS[k]}></ix-select-item>`
+            (k) => html`<ix-select-item value=${k} label=${localize(SORT_LABELS[k])}></ix-select-item>`
           )}
         </ix-select>
       </label>
@@ -285,13 +287,13 @@ export class WuiFleetStopAnalysis extends LitElement {
   private renderClassField(): TemplateResult {
     return html`
       <label class="field">
-        <span class="lbl">Catégorie de temps</span>
+        <span class="lbl">${localizeDir(MSG.toolbar.timeCategory)}</span>
         <ix-select
           .value=${this.classFilter}
           @valueChange=${(e: CustomEvent<string | string[]>) => this.onClassFilter(e.detail)}
         >
           ${CLASS_OPTIONS.map(
-            (o) => html`<ix-select-item value=${o.value} label=${o.label}></ix-select-item>`
+            (o) => html`<ix-select-item value=${o.value} label=${localize(o.label)}></ix-select-item>`
           )}
         </ix-select>
       </label>
@@ -301,17 +303,16 @@ export class WuiFleetStopAnalysis extends LitElement {
   private renderOffline(): TemplateResult {
     if (!this.offline) return html``;
     return html`<div class="notice">
-      <ix-icon name="info"></ix-icon>Mode hors-ligne : configuration des ateliers indisponible
-      (backend non connecté). Les données d'historique ne peuvent pas être lues.
+      <ix-icon name="info"></ix-icon>${localizeDir(MSG.offline)}
     </div>`;
   }
 
   private renderTabs(): TemplateResult {
     return html`
       <ix-tabs .selected=${this.tab} @selectedChange=${(e: CustomEvent<number>) => (this.tab = e.detail)}>
-        <ix-tab-item>Tableau</ix-tab-item>
-        <ix-tab-item>Graphique</ix-tab-item>
-        <ix-tab-item>Données brutes</ix-tab-item>
+        <ix-tab-item>${localizeDir(MSG.tabs.table)}</ix-tab-item>
+        <ix-tab-item>${localizeDir(MSG.tabs.chart)}</ix-tab-item>
+        <ix-tab-item>${localizeDir(MSG.tabs.raw)}</ix-tab-item>
       </ix-tabs>
     `;
   }
@@ -322,21 +323,20 @@ export class WuiFleetStopAnalysis extends LitElement {
     if (!result) return html``;
     if (result.queriedMachineCount === 0) {
       return html`<div class="center muted">
-        Aucune machine sélectionnée n'a de datapoint d'état et de cause d'arrêt configurés.
+        ${localizeDir(MSG.empty.noMachineDp)}
       </div>`;
     }
     if (result.noHistory) {
       return html`<div class="center muted">
-        Aucune donnée d'historique sur la période. Vérifiez que les datapoints d'état et de cause
-        sont archivés (configuration d'archivage NGA).
+        ${localizeDir(MSG.empty.noHistory)}
       </div>`;
     }
     if (result.rows.length === 0) {
-      return html`<div class="center muted">Aucun arrêt sur la période sélectionnée.</div>`;
+      return html`<div class="center muted">${localizeDir(MSG.empty.noStops)}</div>`;
     }
     if (this.visibleRows().length === 0) {
       return html`<div class="center muted">
-        Aucune cause dans cette catégorie de temps sur la période.
+        ${localizeDir(MSG.empty.noCauseInCategory)}
       </div>`;
     }
     if (this.tab === TAB_CHART) return this.renderChartHost();
@@ -361,11 +361,11 @@ export class WuiFleetStopAnalysis extends LitElement {
         <table class="tbl">
           <thead>
             <tr>
-              <th>Cause</th>
-              <th>Classification</th>
-              ${this.aggHeader('Temps assigné', 'assigned')}
-              ${this.aggHeader("Temps d'arrêt total", 'downtime')}
-              ${this.aggHeader('Occurrences', 'occurrences')}
+              <th>${localizeDir(MSG.table.cause)}</th>
+              <th>${localizeDir(MSG.table.classification)}</th>
+              ${this.aggHeader(localize(MSG.table.assignedTime), 'assigned')}
+              ${this.aggHeader(localize(MSG.table.totalDowntime), 'downtime')}
+              ${this.aggHeader(localize(MSG.table.occurrences), 'occurrences')}
             </tr>
           </thead>
           <tbody>
@@ -373,7 +373,7 @@ export class WuiFleetStopAnalysis extends LitElement {
           </tbody>
           <tfoot>
             <tr>
-              <td>Total</td>
+              <td>${localizeDir(MSG.table.total)}</td>
               <td></td>
               <td class="num">${formatDuration(totalAssigned)}</td>
               <td class="num">${formatDuration(totalDowntime)}</td>
@@ -445,7 +445,7 @@ export class WuiFleetStopAnalysis extends LitElement {
         <div class="raw-tools">
           <ix-input
             class="raw-search"
-            placeholder="Rechercher une machine…"
+            placeholder=${localize(MSG.raw.search)}
             .value=${this.machineSearch}
             @valueChange=${(e: CustomEvent<string>) => (this.machineSearch = String(e.detail))}
           ></ix-input>
@@ -454,10 +454,10 @@ export class WuiFleetStopAnalysis extends LitElement {
           <table class="tbl">
             <thead>
               <tr>
-                ${this.rawHeader('Machine', 'machine')} ${this.rawHeader('Cause', 'cause')}
-                ${this.rawHeader('Catégorie', 'category')} ${this.rawHeader('Début', 'start')}
-                ${this.rawHeader('Fin', 'end')} ${this.rawHeader('Durée', 'duration', true)}
-                ${this.rawHeader('Temps comptabilisé', 'counted', true)}
+                ${this.rawHeader(localize(MSG.raw.machine), 'machine')} ${this.rawHeader(localize(MSG.raw.cause), 'cause')}
+                ${this.rawHeader(localize(MSG.raw.category), 'category')} ${this.rawHeader(localize(MSG.raw.start), 'start')}
+                ${this.rawHeader(localize(MSG.raw.end), 'end')} ${this.rawHeader(localize(MSG.raw.duration), 'duration', true)}
+                ${this.rawHeader(localize(MSG.raw.counted), 'counted', true)}
               </tr>
             </thead>
             <tbody>
@@ -469,7 +469,7 @@ export class WuiFleetStopAnalysis extends LitElement {
                   <td class="nowrap">${formatDateTime(r.startMs)}</td>
                   <td class="nowrap">${formatDateTime(r.endMs)}</td>
                   <td class="num">${formatDuration(r.durationMs)}</td>
-                  <td class="num" title=${r.countedMs < r.durationMs ? 'Réduit par une période non travaillée' : ''}>
+                  <td class="num" title=${r.countedMs < r.durationMs ? localize(MSG.raw.countedReducedTitle) : ''}>
                     ${formatDuration(r.countedMs)}${r.countedMs < r.durationMs
                       ? html` <ix-icon name="calendar" size="12"></ix-icon>`
                       : ''}
@@ -479,7 +479,7 @@ export class WuiFleetStopAnalysis extends LitElement {
             </tbody>
             <tfoot>
               <tr>
-                <td colspan="5">${rows.length} arrêt(s)</td>
+                <td colspan="5">${rawStopCountMsg(rows.length)}</td>
                 <td class="num">${formatDuration(rows.reduce((s, r) => s + r.durationMs, 0))}</td>
                 <td class="num">${formatDuration(rows.reduce((s, r) => s + r.countedMs, 0))}</td>
               </tr>
@@ -515,13 +515,13 @@ export class WuiFleetStopAnalysis extends LitElement {
       <div class="chart-area">
         <div class="chart-tools">
           <label class="field field--inline">
-            <span class="lbl">Afficher</span>
+            <span class="lbl">${localizeDir(MSG.chart.show)}</span>
             <ix-select
               .value=${String(this.chartTop)}
               @valueChange=${(e: CustomEvent<string | string[]>) => this.onChartTop(e.detail)}
             >
               ${TOP_OPTIONS.map(
-                (o) => html`<ix-select-item value=${o.value} label=${o.label}></ix-select-item>`
+                (o) => html`<ix-select-item value=${o.value} label=${localize(o.label)}></ix-select-item>`
               )}
             </ix-select>
           </label>
@@ -579,7 +579,7 @@ export class WuiFleetStopAnalysis extends LitElement {
       },
       yAxis: {
         type: 'value',
-        name: 'Heures',
+        name: localize(MSG.chart.hoursAxis),
         nameTextStyle: { color: text },
         axisLabel: { color: text },
         splitLine: { lineStyle: { color: this.cssVar('--theme-color-soft-bdr', '#444') } }

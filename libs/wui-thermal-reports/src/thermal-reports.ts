@@ -28,6 +28,7 @@ import { LitElement, css, html, nothing, type PropertyValues, type TemplateResul
 import { query, state } from 'lit/decorators.js';
 import type { Atelier } from '@visuelconcept/wui-fleet-core/types.js';
 import { FleetStore } from '@visuelconcept/wui-fleet-core/data/fleet-store.js';
+import { MSG, confirmDeleteMsg, localize, localizeDir } from './thermal-reports/i18n.js';
 import { buildDemoReports } from './thermal-reports/data/demo-reports.js';
 import { exportCsv, exportJson, parseReports } from './thermal-reports/data/io.js';
 import { ReportStore } from './thermal-reports/data/report-store.js';
@@ -114,8 +115,7 @@ export class WuiThermalReports extends LitElement {
             : nothing}
           ${this.offline
             ? html`<div class="notice">
-                <ix-icon name="info"></ix-icon>Mode hors-ligne : modifications non persistées dans les
-                datapoints (backend indisponible ou droits d'écriture manquants).
+                <ix-icon name="info"></ix-icon>${localizeDir(MSG.page.offline)}
               </div>`
             : nothing}
           ${this.renderBody()}
@@ -132,7 +132,7 @@ export class WuiThermalReports extends LitElement {
           ></tt-report-dialog>`}
       ${this.deletingId
         ? html`<wui-confirm-dialog
-            message=${`Supprimer le rapport « ${this.reportName(this.deletingId)} » ?`}
+            message=${confirmDeleteMsg(this.reportName(this.deletingId))}
             @wui:confirm=${this.onDeleteConfirm}
             @wui:cancel=${() => (this.deletingId = null)}
           ></wui-confirm-dialog>`
@@ -161,16 +161,16 @@ export class WuiThermalReports extends LitElement {
         <tt-kpi-bar class="grow" .reports=${this.reports}></tt-kpi-bar>
         <div class="actions">
           <ix-button variant="secondary" @click=${this.triggerImport}>
-            <ix-icon name="upload" slot="icon"></ix-icon>Importer JSON
+            <ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.page.importJson)}
           </ix-button>
           <ix-button variant="secondary" ?disabled=${this.reports.length === 0} @click=${this.onExportJson}>
-            <ix-icon name="download" slot="icon"></ix-icon>Export JSON
+            <ix-icon name="download" slot="icon"></ix-icon>${localizeDir(MSG.page.exportJson)}
           </ix-button>
           <ix-button variant="secondary" ?disabled=${this.reports.length === 0} @click=${this.onExportCsv}>
-            <ix-icon name="download" slot="icon"></ix-icon>Export CSV
+            <ix-icon name="download" slot="icon"></ix-icon>${localizeDir(MSG.page.exportCsv)}
           </ix-button>
           <ix-button @click=${this.openCreate}>
-            <ix-icon name="plus" slot="icon"></ix-icon>Nouveau rapport
+            <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.page.newReport)}
           </ix-button>
         </div>
       </div>
@@ -183,9 +183,9 @@ export class WuiThermalReports extends LitElement {
     if (this.reports.length === 0) {
       return html`
         <div class="center empty">
-          <ix-typography>Aucun rapport de traitement thermique pour l'instant.</ix-typography>
+          <ix-typography>${localizeDir(MSG.page.empty)}</ix-typography>
           <ix-button variant="secondary" @click=${this.generateDemo}>
-            <ix-icon name="add" slot="icon"></ix-icon>Générer des rapports de démonstration
+            <ix-icon name="add" slot="icon"></ix-icon>${localizeDir(MSG.page.generateDemo)}
           </ix-button>
         </div>
       `;
@@ -289,7 +289,7 @@ export class WuiThermalReports extends LitElement {
     try {
       parsed = parseReports(await file.text());
     } catch (error) {
-      this.importError = error instanceof Error ? error.message : 'Import échoué.';
+      this.importError = error instanceof Error ? error.message : localize(MSG.io.importFailed);
       return;
     }
     this.importError = '';

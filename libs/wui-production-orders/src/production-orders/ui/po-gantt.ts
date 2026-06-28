@@ -13,7 +13,8 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import * as echarts from 'echarts';
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
-import { STATUS_COLORS, STATUS_LABELS, type ProductionOrder } from '../types.js';
+import { STATUS_COLORS, type ProductionOrder } from '../types.js';
+import { MSG, localize, localizeDir, statusLabel } from '../i18n.js';
 
 const BAR_HEIGHT_RATIO = 0.6;
 const MIN_ROW_PX = 28;
@@ -54,7 +55,7 @@ export class PoGantt extends LitElement {
       ${hasData
         ? html`<div class="chart" id="chart"></div>`
         : html`<div class="empty">
-            <ix-typography>Aucun ordre planifié (renseignez les dates « début/fin prévue »).</ix-typography>
+            <ix-typography>${localizeDir(MSG.gantt.empty)}</ix-typography>
           </div>`}
     `;
   }
@@ -166,7 +167,7 @@ export class PoGantt extends LitElement {
         start,
         end,
         color: STATUS_COLORS[order.status],
-        status: STATUS_LABELS[order.status]
+        status: localize(statusLabel(order.status))
       });
     }
     return out;
