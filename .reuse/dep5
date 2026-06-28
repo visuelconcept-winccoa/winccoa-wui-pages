@@ -14,20 +14,13 @@ Copyright: 2026 VISUEL CONCEPT
 License: AGPL-3.0-only
 
 # ---------------------------------------------------------------------------
-# Third-party component (NOT authored by VISUEL CONCEPT, NOT relicensed).
-# WinCC OA MCP server by ETM professional control GmbH (initial author
-# Martin Kumhera). Upstream: https://github.com/winccoa/winccoa-ae-js-mcpserver
-# License: ISC. Slated for removal from this repository in favour of the
-# published npm package @etm-professional-control/winccoa-mcp-server; remove
-# this stanza once backend/managers/mcpServer/ is gone.
-# ---------------------------------------------------------------------------
-Files: backend/managers/mcpServer/*
-Copyright: ETM professional control GmbH
-License: ISC
-
-# ---------------------------------------------------------------------------
 # Note on dependencies: third-party software consumed via npm (Siemens iX,
 # @wincc-oa/*, @etm-professional-control/*, lit, rxjs, three, @novnc/novnc, …)
 # is NOT vendored in this repository and retains its own license. See NOTICE
 # and package.json. WinCC OA and its components remain the property of Siemens.
+#
+# The WinCC OA MCP server (ETM professional control GmbH, ISC, upstream
+# https://github.com/winccoa/winccoa-ae-js-mcpserver) is no longer vendored:
+# install the npm package @etm-professional-control/winccoa-mcp-server if the
+# AI assistant needs MCP tools (optional, external).
 # ---------------------------------------------------------------------------

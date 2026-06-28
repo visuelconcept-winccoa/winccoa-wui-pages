@@ -34,8 +34,8 @@ machines colour-coded by state (the demo atelier shows 9 machines: 6 running, 1
 fault, 1 warning, 1 idle). Opening an atelier renders an interactive **Three.js 3D
 scene** with per-machine state and KPI bubbles. The toolbar links to the graphics
 catalog and to the contextual analyses below (non-working periods, stop-cause, KPI)
-and an AI assistant. *Tier 3* — backed by the `machineSim`, `kpiCalc`, `aiAssistant`
-and `mcpServer` managers.
+and an AI assistant. *Tier 3* — backed by the `machineSim`, `kpiCalc` and
+`aiAssistant` managers (the assistant's MCP tools come from an optional external MCP server).
 
 ![Machine Fleet 3D — atelier 3D scene](images/manual/fleet-3d-detail.png)
 

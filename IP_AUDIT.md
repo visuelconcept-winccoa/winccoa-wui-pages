@@ -143,3 +143,23 @@ Je m'arrête ici comme demandé. Pour continuer, j'ai besoin de vos arbitrages :
 5. **R6 logo** — OK pour **remplacer** `sie-light.png` par un logo VC (et corriger `alt/title="ETM@Siemens"`) ?
 
 > Une fois ces points tranchés, je passerai aux étapes 2→7 (LICENSE, NOTICE, en-têtes SPDX sur le **seul** code VC, CONTRIBUTING+CLA, README, `.reuse/dep5`), puis je préparerai **un commit unique** (non poussé) et vous montrerai le diff. Aucune licence ni en-tête ne sera appliqué aux éléments R1–R7 tiers tant que vous ne l'avez pas validé.
+
+---
+
+## 7. Suivi des décisions (mise à jour)
+
+Décisions validées par l'utilisateur le 2026-06-28 : **périmètre = sous-ensemble curé** ;
+**R4 mcpServer → retirer** (consommer via npm) ; **R5 .zip → retirer** ; **R7 semifab-icons = tiers** (ne pas relicencier).
+
+| # | Décision | Action réalisée |
+|---|---|---|
+| R1 | Remplacer le LICENSE MIT amont | **Fait** — `LICENSE` = texte AGPL-3.0 verbatim (commit *licensing*) |
+| R4 | Retirer `backend/managers/mcpServer/` (tiers ETM, ISC) | **Fait** — `git rm` (127 fichiers) ; retiré de `tools/specs.json` ; ajouté à `.gitignore` ; docs machine-fleet-3d/MANUAL/README mises à jour (MCP = serveur externe optionnel via npm `@etm-professional-control/winccoa-mcp-server`) ; stanza ISC retirée de `.reuse/dep5` (commit *IP cleanup*) |
+| R5 | Retirer `winccoa_projectmanager.zip` | **Non publié** (non suivi) + ajouté à `.gitignore` ; références = commentaires uniquement (aucun impact fonctionnel) |
+| R7 | `semifab-icons` (tiers) | **Non publié** (non suivi, sous `apps/`) + ajouté à `.gitignore` ; **à remplacer** par des symboles originaux/licenciés |
+| R2/R3/R6 | `package.json` ETM / `default-components` / logo `sie-light.png` | **Hors périmètre publié** (scaffold non suivi, exclu du sous-ensemble curé) — à corriger seulement si l'arbre complet est un jour publié |
+
+> Reste à la charge de VC : remplacer les `semifab-icons` par des assets propres ; si un
+> `package.json` racine public est committé un jour, corriger `name`/`author`/`license`
+> (actuellement métadonnées ETM). L'assistant IA fonctionne sans le serveur MCP (sans
+> outils) ; pour les outils MCP, installer le paquet npm ETM séparément.
