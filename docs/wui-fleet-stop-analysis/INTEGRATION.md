@@ -14,7 +14,7 @@ is **compiled against the target's runtime workspace** (bundle = correct version
 
 ## Install (one command)
 ```bash
-node install.mjs --workspace <workspace-runtime> --project <racine-projet>
+node install.mjs --workspace <workspace-runtime> --project <project-root>
 ```
 Example (WebDemo2):
 ```bash
@@ -24,14 +24,14 @@ The installer:
 1. copies the **source** (vendored kit) → `<workspace>/…/standalone-pages/`;
 2. inserts the **menu entry** → the workspace's `menuconfig.jsonc` (idempotent by `routeId`);
 3. installs the **frontend npm deps** (`@siemens/ix-echarts`, `three`) into the workspace (so `build:pages` bundles them);
-4. runs **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
+4. runs **`build:pages`** (OUT_DIR=`<project>/data/dashboard-wc`).
 
 ## After install (mandatory)
 1. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).
    ⚠️ The SW caches `menuconfig.json` → **`Ctrl+Shift+R` is not enough**; only `Clear site data` purges it.
 
 ## Verify
-1. Logged in → the **`/fleet-stops`** page loads (entry "Analyse des causes d'arrêts", normally reached from the fleet overview — the menu entry is `hidden`).
+1. Logged in → the **`/fleet-stops`** page loads (entry "Analyse des causes d'arrêts" (stop-cause analysis), normally reached from the fleet overview — the menu entry is `hidden`).
 2. Select a period → the per-cause breakdown shows in the **table** tab and the **ECharts** chart.
 
 ## Notes / security

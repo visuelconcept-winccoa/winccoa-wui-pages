@@ -15,7 +15,7 @@ prerequisite), and the page is **built against the target's runtime workspace**
 
 ## Install (one command)
 ```bash
-node install.mjs --workspace <workspace-runtime> --project <racine-projet> --register-pmon
+node install.mjs --workspace <workspace-runtime> --project <project-root> --register-pmon
 ```
 Example (WebDemo2):
 ```bash
@@ -25,17 +25,17 @@ The installer:
 1. copies the **source** (vendored kit under `_vendor/`) → `<workspace>/…/standalone-pages/`;
 2. inserts the **menu entry** → the workspace's `menuconfig.jsonc` (idempotent);
 3. drops the **backend module** → `customer-webserver/src/modules/asset-lifecycle-intelligence/` (route `/api/product-info`);
-4. deploys the **`productInfo` manager** → `<projet>/javascript/productInfo/` + `npm install`; with `--register-pmon`, adds the line to `config/progs`;
-5. runs **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
+4. deploys the **`productInfo` manager** → `<project>/javascript/productInfo/` + `npm install`; with `--register-pmon`, adds the line to `config/progs`;
+5. runs **`build:pages`** (OUT_DIR=`<project>/data/dashboard-wc`).
 
 ## After install (mandatory)
-1. **Webserver**: `cd <projet>/javascript/customer-webserver && npm run build`, then **restart** the webserver manager (it auto-mounts `/api/product-info`).
+1. **Webserver**: `cd <project>/javascript/customer-webserver && npm run build`, then **restart** the webserver manager (it auto-mounts `/api/product-info`).
 2. **Manager**: start **`productInfo`** in the WinCC OA console. Check the manager order/number if pmon was edited.
 3. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).
    ⚠️ The SW caches `menuconfig.json` → **`Ctrl+Shift+R` is not enough**; only `Clear site data` purges it.
 
 ## Verify
-1. Logged in → **"Intelligence du cycle de vie des actifs"** entry, `/asset-lifecycle` loads the page.
+1. Logged in → **"Intelligence du cycle de vie des actifs"** (asset lifecycle intelligence) entry, `/asset-lifecycle` loads the page.
 2. `GET https://<dashboard>/api/product-info/health` → liveness JSON response (indicates whether the MSA client is available).
 3. Open an asset's record → the obsolescence/delivery lookup (MLFB) queries the PIH via the `productInfo` manager.
 

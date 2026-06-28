@@ -208,15 +208,6 @@ manager (which drives `WCCOAasciiSQLite`).
 
 ---
 
-## MSP — `/msp`
-
-![MSP](images/manual/msp.png)
-
-A frontend-only shell page — the scaffold to grow the MSP feature into. *Tier 1*
-(no backend, no manager).
-
----
-
 ## System Status — `/status`
 
 ![System Status](images/manual/status.png)

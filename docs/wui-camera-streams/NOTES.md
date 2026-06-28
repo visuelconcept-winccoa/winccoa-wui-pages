@@ -1,6 +1,6 @@
 # wui-camera-streams — business & architecture notes
 
-Standalone WebUI page **Flux caméras (RTSP)** (`/camera-streams`, entry `wui-camera-streams`, class `WuiCameraStreams`, sub-component prefix `cs-`). Tier **3** (frontend + backend module `/api/rtsp` + dedicated manager `rtspProxy`). Modeled on the **remote-vnc** page (same store / table / dialog / viewer / io structure).
+Standalone WebUI page **Flux caméras (RTSP)** (camera streams) (`/camera-streams`, entry `wui-camera-streams`, class `WuiCameraStreams`, sub-component prefix `cs-`). Tier **3** (frontend + backend module `/api/rtsp` + dedicated manager `rtspProxy`). Modeled on the **remote-vnc** page (same store / table / dialog / viewer / io structure).
 
 ## Domain / purpose
 
@@ -22,12 +22,12 @@ Two menu entries: the list, and a hidden entry `/camera-streams/:streamid` (attr
 Everything goes through the dashboard webserver to eliminate the HTTPS **mixed-content** problem (no extra port/certificate, inherits the dashboard's TLS + auth):
 
 ```
-Navigateur (JSMpeg)
-  → wss://<dashboard>/api/rtsp/ws?id=<id>      (MÊME ORIGINE, TLS+auth du dashboard)
-  → relais ws↔ws du webserver
-  → ws://127.0.0.1:9999/api/rtsp/stream/<id>   (loopback uniquement)
-  → manager rtspProxy (rtsp-relay + ffmpeg)
-  → source RTSP
+Browser (JSMpeg)
+  → wss://<dashboard>/api/rtsp/ws?id=<id>      (SAME ORIGIN, dashboard's TLS+auth)
+  → webserver ws↔ws relay
+  → ws://127.0.0.1:9999/api/rtsp/stream/<id>   (loopback only)
+  → rtspProxy manager (rtsp-relay + ffmpeg)
+  → RTSP source
 ```
 
 - The manager **owns the allow-list** (resolves `id → RTSP URL` from the DP): no SSRF, the client only sends an `id`.

@@ -43,7 +43,7 @@ WinCC OA manager `productionOrdersKpi` (`manager/productionOrdersKpi/index.js`, 
 
 ## Fleet link (Machine Fleet 3D)
 
-- The page instantiates Machine Fleet 3D's `FleetStore` (`./machine-fleet-3d/data/fleet-store.js`) to populate the dialog's cascading atelier→machine selects and to seed the demo orders against the **real** fleet (`data/demo-orders.ts buildDemoOrders(ateliers)`).
+- The page instantiates Machine Fleet 3D's `FleetStore` (`./machine-fleet-3d/data/fleet-store.js`) to populate the dialog's cascading workshop→machine selects and to seed the demo orders against the **real** fleet (`data/demo-orders.ts buildDemoOrders(ateliers)`).
 - On status → `running`, best-effort push of `orderNo`/`product` to the assigned machine's `workOrderDp`/`operationDp` fields (these MachineDef fields drive the OF/Op display of the 3D bubble); cleared on `done`/`cancelled` (`data/fleet-link.ts`, REST `/api/para/dp/set`, all in silent try/catch).
 - Shares the rollup chunk `chunks/fleet-store.js` with the other fleet pages.
 

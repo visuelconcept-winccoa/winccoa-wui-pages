@@ -78,7 +78,7 @@ In the customer-webserver-example (TS): `productInfoController.ts` + `productInf
 - `GET /health` → `{ok, service:'product-info', vrpc}`
 - `POST /lookup {productNumber, withDelivery?}` → `callFunction('Lookup', …)` → 200 `{ok, ...parsed}` / 502 on error.
 
-Frontend: `data/product-info.ts` → `lookupProductInfo(mlfb)` = `POST /api/product-info/lookup`. Wired in `ui/ali-asset-dialog.ts`: "Recouper via MLFB (Siemens)" button (disabled if MLFB empty) → `.pi-panel` panel (obsolescence + delivery or error) → "Appliquer aux champs" button that patches phase/supply/successor **and `supportUrl`** (when the obsolescence record carries one).
+Frontend: `data/product-info.ts` → `lookupProductInfo(mlfb)` = `POST /api/product-info/lookup`. Wired in `ui/ali-asset-dialog.ts`: "Recouper via MLFB (Siemens)" (cross-reference via MLFB) button (disabled if MLFB empty) → `.pi-panel` panel (obsolescence + delivery or error) → "Appliquer aux champs" (apply to fields) button that patches phase/supply/successor **and `supportUrl`** (when the obsolescence record carries one).
 
 **Support page — one-click from the table**: `ali-asset-table` shows a per-row `export`-icon button that opens the Siemens Industry Online Support page in a new tab. It opens `asset.supportUrl` if stored (from a successful obsolescence lookup), otherwise the URL **derived from the MLFB** — `data/product-info.ts › deriveSupportUrl(mlfb)` = `https://support.industry.siemens.com/cs/ww/{lang}/pv/{MLFB}/pi` (same shape the API returns, localised to the UI language). So it works for every row even though the dev key has 0 obsolescence credit. The button is hidden only when the row has neither a stored URL nor an MLFB.
 

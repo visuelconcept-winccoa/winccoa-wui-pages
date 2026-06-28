@@ -1,7 +1,7 @@
 # @visuelconcept/wui-fleet-closures — source module (Tier 1)
 
 Manage **non-working days** for the fleet on the **`/fleet-closures`** page:
-year / atelier / machine filters, JSON import-export, and overlap handling
+year / workshop / machine filters, JSON import-export, and overlap handling
 (replace / ignore / cancel). Frontend-only — no backend module, no manager.
 
 Self-contained **source** distribution: the shared kit / fleet-core / ai-kit is

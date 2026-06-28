@@ -18,13 +18,6 @@
     "managers": ["rtspProxy"]
   },
   {
-    "page": "msp",
-    "name": "@visuelconcept/wui-msp",
-    "title": "MSP",
-    "tier": 1,
-    "description": "MSP standalone page (shell)."
-  },
-  {
     "page": "audit-trail",
     "name": "@visuelconcept/wui-audit-trail",
     "title": "Audit Trail",

@@ -19,7 +19,7 @@ and the page is **compiled against the target's runtime workspace** (bundle = co
 
 ## Install (one command)
 ```bash
-node install.mjs --workspace <workspace-runtime> --project <racine-projet> --register-pmon
+node install.mjs --workspace <workspace-runtime> --project <project-root> --register-pmon
 ```
 Example (WebDemo2):
 ```bash
@@ -30,17 +30,17 @@ The installer:
 2. inserts the **2 menu entries** → the workspace's `menuconfig.jsonc` (idempotent: `/fleet-3d` + `/fleet-3d/:atelier`);
 3. installs **`three`** into the workspace (so `build:pages` bundles it);
 4. drops the **backend module** `/api/ai` → `customer-webserver/src/modules/machine-fleet-3d/`;
-5. deploys the **3 managers** → `<projet>/javascript/{machineSim,kpiCalc,aiAssistant}/` + `npm install`; with `--register-pmon`, adds their lines to `config/progs`;
-6. runs **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
+5. deploys the **3 managers** → `<project>/javascript/{machineSim,kpiCalc,aiAssistant}/` + `npm install`; with `--register-pmon`, adds their lines to `config/progs`;
+6. runs **`build:pages`** (OUT_DIR=`<project>/data/dashboard-wc`).
 
 ## After install (mandatory)
-1. **Webserver**: `cd <projet>/javascript/customer-webserver && npm run build`, then **restart** the webserver manager (it auto-mounts `/api/ai`).
+1. **Webserver**: `cd <project>/javascript/customer-webserver && npm run build`, then **restart** the webserver manager (it auto-mounts `/api/ai`).
 2. **Managers**: start **`machineSim`**, **`kpiCalc`**, **`aiAssistant`** in the WinCC OA console. Check the manager order/number if pmon was edited. (For MCP tools, also run the optional external MCP server — see Notes.)
 3. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).
    ⚠️ The SW caches `menuconfig.json` → **`Ctrl+Shift+R` is not enough**.
 
 ## Verify
-1. Logged in → **"Parc machines 3D"** entry, `/fleet-3d` loads the 3D view (per-machine status/KPI bubbles).
+1. Logged in → **"Parc machines 3D"** (3D machine fleet) entry, `/fleet-3d` loads the 3D view (per-machine status/KPI bubbles).
 2. `GET https://<dashboard>/api/ai/health` → `ok` response (the AI bridge is mounted).
 3. The KPI bubbles update (`machineSim` + `kpiCalc` managers active); the AI assistant responds via `aiAssistant` (MCP tools require the optional external MCP server).
 

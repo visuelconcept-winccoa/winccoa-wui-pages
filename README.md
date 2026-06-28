@@ -32,7 +32,6 @@ All pages are published under the `@visuelconcept/` scope (e.g.
 | `wui-fleet-stop-analysis` | `/fleet-stops` | Downtime decomposition per stop cause (table + ECharts views) | — |
 | `wui-machine-fleet-3d` | `/fleet-3d` | Three.js 3D fleet view with per-machine state/KPI bubbles, contextual Gantt/Pareto, and AI assistant (hub page) | `/api/ai` + `machineSim`, `kpiCalc`, `aiAssistant` mgrs (assistant MCP tools via an optional external MCP server) |
 | `wui-mosaic` | `/mosaic` | Display-wall page embedding other dashboard views as chromeless, same-origin iframes | — |
-| `wui-msp` | `/msp` | Frontend-only shell page to grow the MSP feature into | — |
 | `wui-para` | `/para` | Datapoint-parametrization page | `/api/para` |
 | `wui-production-orders` | `/production-orders` | Production orders CRUD + status workflow + ECharts Gantt + server-side KPI | `productionOrdersKpi` mgr |
 | `wui-remote-vnc` | `/remote-vnc` | Manage VNC connections and open them in-browser via bundled noVNC over a WebSocket relay | `/api/vnc` + `vncProxy` mgr |
@@ -154,21 +153,21 @@ and deploys the **backend modules + managers** of the selected pages (via
 `deploy-backend.mjs`; webserver module descriptors are generated from
 `tools/specs.json`).
 
-| Option | Effet |
+| Option | Effect |
 |---|---|
-| `--modules a,b,c` | pages à inclure (sinon sélection interactive) |
-| `--full` | rebuild complet (shell + shared bundles + app + pages) — projet **neuf** |
-| `--install-webserver` [`--winccoa <path>`] | installe d'abord le customer-webserver (projet neuf) |
-| `--start-page <route\|id>` | page de démarrage (redirection de `/`) ; défaut `/dashboard` |
-| `--ai-assistant` | active l'assistant IA dans les pages (défaut **OFF**) |
-| `--prune` | supprime les bundles non sélectionnés (version stricte) |
-| `--yes` | sans confirmation (non-interactif) |
+| `--modules a,b,c` | pages to include (otherwise interactive selection) |
+| `--full` | full rebuild (shell + shared bundles + app + pages) — **fresh** project |
+| `--install-webserver` [`--winccoa <path>`] | install the customer-webserver first (fresh project) |
+| `--start-page <route\|id>` | landing page (redirect of `/`); default `/dashboard` |
+| `--ai-assistant` | enable the AI assistant in the pages (default **OFF**) |
+| `--prune` | remove the non-selected bundles (strict release) |
+| `--yes` | no confirmation (non-interactive) |
 
-Projet neuf en une commande :
+Fresh project in one command:
 `node tools/scripts/deploy-release.mjs --project <p> --full --install-webserver`.
-Le script **ne redémarre jamais** les managers/webserver — il imprime quoi
-redémarrer. Ensuite, fais le **Clear site data + reload** dans le navigateur
-(voir *After install* ci-dessous).
+The script **never restarts** the managers/webserver — it prints what to
+restart. Then do the **Clear site data + reload** in the browser
+(see *After install* below).
 
 ### After install (mandatory)
 

@@ -18,7 +18,7 @@ the shared kit is **vendored** under `audit-trail/_vendor/`, and the page is
 
 ## Install (one command)
 ```bash
-node install.mjs --workspace <workspace-runtime> --project <racine-projet>
+node install.mjs --workspace <workspace-runtime> --project <project-root>
 ```
 Example (WebDemo2):
 ```bash
@@ -27,7 +27,7 @@ node install.mjs --workspace D:\WinCC_OA_Proj_321\WebDemo2\webui-workspace --pro
 The installer:
 1. copies the **source** (vendored kit) → `<workspace>/…/standalone-pages/`;
 2. inserts the **menu entry** → the workspace's `menuconfig.jsonc` (idempotent by `routeId`);
-3. runs **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
+3. runs **`build:pages`** (OUT_DIR=`<project>/data/dashboard-wc`).
 
 ## After install (mandatory)
 1. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).
@@ -35,9 +35,9 @@ The installer:
 
 ## Verify
 1. Logged in → the **"Audit Trail"** entry appears in the menu, `/audit-trail` loads the page.
-2. Click **"Gérer"** → create a DP (e.g. `AuditTrail_Production`) with an **active archive group**. It is created of type `_AuditTrail` and archiving is enabled on every element.
+2. Click **"Gérer"** (manage) → create a DP (e.g. `AuditTrail_Production`) with an **active archive group**. It is created of type `_AuditTrail` and archiving is enabled on every element.
 3. Select the DP in the toolbar. Default view = **last 24 h live**; toggle live off to pick a **start/end** interval. Once audit records exist (written by OA's audit mechanism), they appear as table rows.
-4. **CSV / JSON / Imprimer** export/print the displayed log; the view config is persisted in the DP **`AuditTrail_Config`**.
+4. **CSV / JSON / Imprimer** (print) export/print the displayed log; the view config is persisted in the DP **`AuditTrail_Config`**.
 
 ## Notes / security
 - **Frontend-only** page: no `/api/*` route of its own; it reuses the **PARA REST** endpoints (`/api/para/dp/*`) — these must be mounted (the `wui-para` backend / webserver), otherwise create/archive/delete fall back to read-only.

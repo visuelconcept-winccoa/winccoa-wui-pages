@@ -6,8 +6,8 @@ or its backend. It records the non-obvious contracts and assumptions.
 ## Page shape
 
 `para.ts` is a two-tab shell under a shared header:
-- Tab 0 **Modèle (Types)** → `wui-para-type-editor`.
-- Tab 1 **Instances & valeurs** → `wui-para-nav` (Type→DP→element tree) +
+- Tab 0 **Modèle (Types)** (model — types) → `wui-para-type-editor`.
+- Tab 1 **Instances & valeurs** (instances & values) → `wui-para-nav` (Type→DP→element tree) +
   `wui-para-detail` (live values + `wui-para-config-detail`).
 
 Both tab bodies stay mounted; the inactive one is hidden with a `.hidden`

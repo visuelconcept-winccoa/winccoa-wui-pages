@@ -21,7 +21,7 @@ version).
 
 ## Install (one command)
 ```bash
-node install.mjs --workspace <workspace-runtime> --project <racine-projet> --register-pmon
+node install.mjs --workspace <workspace-runtime> --project <project-root> --register-pmon
 ```
 Example (WebDemo2):
 ```bash
@@ -31,8 +31,8 @@ The installer:
 1. copies the **source** (kit vendored under `_vendor/`) → `<workspace>/…/standalone-pages/`;
 2. inserts the **menu entry** (`/fleet-kpi`, hidden) → the workspace's `menuconfig.jsonc` (idempotent by `routeId`);
 3. installs **`@siemens/ix-echarts`** and **`three`** into the workspace (so `build:pages` bundles them);
-4. deploys the **`kpiCalc` manager** → `<projet>/javascript/kpiCalc/` (+ `npm install` if a `package.json` is shipped); with `--register-pmon`, adds the line to `config/progs`;
-5. runs **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
+4. deploys the **`kpiCalc` manager** → `<project>/javascript/kpiCalc/` (+ `npm install` if a `package.json` is shipped); with `--register-pmon`, adds the line to `config/progs`;
+5. runs **`build:pages`** (OUT_DIR=`<project>/data/dashboard-wc`).
 
 ## After install (mandatory)
 1. **Manager**: start **`kpiCalc`** in the WinCC OA console (it computes the
@@ -44,7 +44,7 @@ The installer:
    `Clear site data` purges it.
 
 ## Verify
-1. Logged in → the **"Analyse des KPI"** page (`/fleet-kpi`) loads (reached
+1. Logged in → the **"Analyse des KPI"** (KPI analysis) page (`/fleet-kpi`) loads (reached
    from the fleet overview — the menu entry is hidden).
 2. The **`kpiCalc`** manager is running in the WinCC OA console and feeds the
    KPI DPs; the availability / OEE per machine curves are shown (echarts).
