@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * PARA Archiving tab — enable/disable NGA value archiving per DP or DPE and
  * assign an archive group.

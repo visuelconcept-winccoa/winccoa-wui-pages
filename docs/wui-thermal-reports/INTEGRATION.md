@@ -15,7 +15,7 @@ page is **compiled against the target's runtime workspace** (bundle = correct ve
 
 ## Install (one command)
 ```bash
-node install.mjs --workspace <workspace-runtime> --project <racine-projet>
+node install.mjs --workspace <workspace-runtime> --project <project-root>
 ```
 Example (WebDemo2):
 ```bash
@@ -25,7 +25,7 @@ The installer:
 1. copies the **source** (vendored kit under `_vendor/`) → `<workspace>/libs/default-components/src/lib/standalone-pages/`;
 2. inserts the **menu entry** → the workspace's `menuconfig.jsonc` (idempotent);
 3. installs the **frontend npm deps** (`@siemens/ix-echarts`, `three`) into the workspace (so that `build:pages` bundles them);
-4. runs **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
+4. runs **`build:pages`** (OUT_DIR=`<project>/data/dashboard-wc`).
 
 ## After install (mandatory)
 1. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).
@@ -34,7 +34,7 @@ The installer:
 No webserver to recompile and no manager to start: this module is **frontend only**.
 
 ## Verify
-1. Logged in → the **"Rapports traitement thermique"** entry appears in the menu.
+1. Logged in → the **"Rapports traitement thermique"** (thermal treatment reports) entry appears in the menu.
 2. `/thermal-reports` loads the report list; opening/creating a report shows the actual furnace curve (read via `dpGetPeriod`) overlaid on the recipe's tolerance band, with the quality/conformity verdict and printing.
 
 ## Notes / security

@@ -14,7 +14,7 @@ Each wall is stored in a DP (`Mosaic_Board`) + a preview list.
 
 ## Install (one command)
 ```bash
-node install.mjs --workspace <workspace-runtime> --project <racine-projet>
+node install.mjs --workspace <workspace-runtime> --project <project-root>
 ```
 Example (WebDemo2):
 ```bash
@@ -23,7 +23,7 @@ node install.mjs --workspace D:\WinCC_OA_Proj_321\WebDemo2\webui-workspace --pro
 The installer:
 1. copies the **source** (kit vendored under `_vendor/`) → `<workspace>/…/standalone-pages/`;
 2. inserts the **menu entries** → the workspace's `menuconfig.jsonc` (idempotent);
-3. runs **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
+3. runs **`build:pages`** (OUT_DIR=`<project>/data/dashboard-wc`).
 
 ## After install (mandatory)
 1. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).

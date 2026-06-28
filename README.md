@@ -1,5 +1,7 @@
 # WinCC OA WebUI Pages — `@visuelconcept/wui-*`
 
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+
 A collection of **redistributable standalone pages** for the WinCC OA
 [WebUI Runtime](https://www.winccoa.com/documentation/WinCCOA/latest/en_US/WebUIRuntime/topics/WebUIRuntime_Basics.html)
 dashboard. Each page is a Lit 3 / [Siemens iX](https://ix.siemens.io/) web component that
@@ -22,15 +24,13 @@ All pages are published under the `@visuelconcept/` scope (e.g.
 
 | Module | Route | What it does | Backend |
 | --- | --- | --- | --- |
-| `wui-asset-lifecycle-intelligence` | `/asset-lifecycle` | Asset risk-scoring with product obsolescence / delivery lookup via the Siemens Product Information Hub | `/api/product-info` + `productInfo` mgr |
 | `wui-audit-trail` | `/audit-trail` | Pivot table of a datapoint's NGA-archived value history (configurable period, columns, refresh) | — |
 | `wui-camera-streams` | `/camera-streams` | View RTSP IP cameras in-browser over a WebSocket relay (JSMpeg, no plugin) | `/api/rtsp` + `rtspProxy` mgr |
 | `wui-fleet-closures` | `/fleet-closures` | Manage fleet non-working days (year / atelier / machine filters, JSON import-export) | — |
 | `wui-fleet-kpi-analysis` | `/fleet-kpi` | Per-machine availability & TRS charts, computed live by a manager over opening time minus closures | `kpiCalc` mgr |
 | `wui-fleet-stop-analysis` | `/fleet-stops` | Downtime decomposition per stop cause (table + ECharts views) | — |
-| `wui-machine-fleet-3d` | `/fleet-3d` | Three.js 3D fleet view with per-machine state/KPI bubbles, contextual Gantt/Pareto, and AI assistant (hub page) | `/api/ai` + `machineSim`, `kpiCalc`, `aiAssistant`, `mcpServer` mgrs |
+| `wui-machine-fleet-3d` | `/fleet-3d` | Three.js 3D fleet view with per-machine state/KPI bubbles, contextual Gantt/Pareto, and AI assistant (hub page) | `/api/ai` + `machineSim`, `kpiCalc`, `aiAssistant` mgrs (assistant MCP tools via an optional external MCP server) |
 | `wui-mosaic` | `/mosaic` | Display-wall page embedding other dashboard views as chromeless, same-origin iframes | — |
-| `wui-msp` | `/msp` | Frontend-only shell page to grow the MSP feature into | — |
 | `wui-para` | `/para` | Datapoint-parametrization page | `/api/para` |
 | `wui-production-orders` | `/production-orders` | Production orders CRUD + status workflow + ECharts Gantt + server-side KPI | `productionOrdersKpi` mgr |
 | `wui-remote-vnc` | `/remote-vnc` | Manage VNC connections and open them in-browser via bundled noVNC over a WebSocket relay | `/api/vnc` + `vncProxy` mgr |
@@ -152,21 +152,21 @@ and deploys the **backend modules + managers** of the selected pages (via
 `deploy-backend.mjs`; webserver module descriptors are generated from
 `tools/specs.json`).
 
-| Option | Effet |
+| Option | Effect |
 |---|---|
-| `--modules a,b,c` | pages à inclure (sinon sélection interactive) |
-| `--full` | rebuild complet (shell + shared bundles + app + pages) — projet **neuf** |
-| `--install-webserver` [`--winccoa <path>`] | installe d'abord le customer-webserver (projet neuf) |
-| `--start-page <route\|id>` | page de démarrage (redirection de `/`) ; défaut `/dashboard` |
-| `--ai-assistant` | active l'assistant IA dans les pages (défaut **OFF**) |
-| `--prune` | supprime les bundles non sélectionnés (version stricte) |
-| `--yes` | sans confirmation (non-interactif) |
+| `--modules a,b,c` | pages to include (otherwise interactive selection) |
+| `--full` | full rebuild (shell + shared bundles + app + pages) — **fresh** project |
+| `--install-webserver` [`--winccoa <path>`] | install the customer-webserver first (fresh project) |
+| `--start-page <route\|id>` | landing page (redirect of `/`); default `/dashboard` |
+| `--ai-assistant` | enable the AI assistant in the pages (default **OFF**) |
+| `--prune` | remove the non-selected bundles (strict release) |
+| `--yes` | no confirmation (non-interactive) |
 
-Projet neuf en une commande :
+Fresh project in one command:
 `node tools/scripts/deploy-release.mjs --project <p> --full --install-webserver`.
-Le script **ne redémarre jamais** les managers/webserver — il imprime quoi
-redémarrer. Ensuite, fais le **Clear site data + reload** dans le navigateur
-(voir *After install* ci-dessous).
+The script **never restarts** the managers/webserver — it prints what to
+restart. Then do the **Clear site data + reload** in the browser
+(see *After install* below).
 
 ### After install (mandatory)
 
@@ -209,5 +209,25 @@ build outputs, and the runtime API reference (services, DI, routing, i18n).
 
 ## License
 
-MIT (see [LICENSE](./LICENSE)). Running the pages requires a valid WinCC OA base
-package and UI license as described under [Requirements](#0-wincc-oa-project-base).
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+
+The VISUEL CONCEPT code in this repository is licensed under the **GNU Affero
+General Public License v3.0 only** (AGPL-3.0-only) — see [LICENSE](./LICENSE) and
+[NOTICE](./NOTICE).
+
+**Network use counts as distribution.** Under the AGPL, if you run a modified
+version of these pages on a server and let users interact with it over a network,
+you must make the complete corresponding source code of that version available to
+those users.
+
+**Commercial license available.** If the AGPL's obligations don't fit your use case
+(for example, shipping a closed-source product), a commercial license is available —
+contact **contact@visuelconcept.com**.
+
+> **Scope.** This license covers only the VISUEL CONCEPT code in this repository.
+> **WinCC OA and its components remain the property of Siemens** and are governed by
+> their own licenses; the third-party dependencies (Siemens iX, `@wincc-oa/*`,
+> `@etm-professional-control/*`, …) likewise keep their respective licenses. Running
+> the pages requires a valid WinCC OA base package and UI license as described under
+> [Requirements](#0-wincc-oa-project-base).
+

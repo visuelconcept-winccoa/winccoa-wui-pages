@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Camera Streams (RTSP) — Standalone page (WinCC OA WebUI Runtime).
  *
@@ -24,6 +27,7 @@ import { StreamStore } from './camera-streams/data/stream-store.js';
 import { DEMO_STREAMS } from './camera-streams/data/demo-streams.js';
 import { exportJson, exportStream, parseStreams } from './camera-streams/data/io.js';
 import type { CameraStatus, CameraStream } from './camera-streams/types.js';
+import { MSG, cameraCountMsg, confirmDeleteCameraMsg, localize, localizeDir } from './camera-streams/i18n.js';
 import {
   AuditTrailWriter,
   auditDiff,
@@ -120,8 +124,7 @@ export class WuiCameraStreams extends LitElement {
             : nothing}
           ${this.offline
             ? html`<div class="notice">
-                <ix-icon name="info"></ix-icon>Mode hors-ligne : modifications non persistées dans les
-                datapoints (backend indisponible ou droits d'écriture manquants).
+                <ix-icon name="info"></ix-icon>${localizeDir(MSG.page.offline)}
               </div>`
             : nothing}
           ${this.renderBody()}
@@ -137,7 +140,7 @@ export class WuiCameraStreams extends LitElement {
           ></cs-stream-dialog>`}
       ${this.deletingId
         ? html`<wui-confirm-dialog
-            message=${`Supprimer la caméra « ${this.camName(this.deletingId)} » ?`}
+            message=${confirmDeleteCameraMsg(this.camName(this.deletingId))}
             @wui:confirm=${this.onDeleteConfirm}
             @wui:cancel=${() => (this.deletingId = null)}
           ></wui-confirm-dialog>`
@@ -171,16 +174,16 @@ export class WuiCameraStreams extends LitElement {
     }
     return html`
       <div class="toolbar">
-        <span class="count">${this.streams.length} caméra(s)</span>
+        <span class="count">${cameraCountMsg(this.streams.length)}</span>
         <span class="grow"></span>
         <ix-button variant="secondary" @click=${this.triggerImport}>
-          <ix-icon name="upload" slot="icon"></ix-icon>Importer
+          <ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.page.import)}
         </ix-button>
         <ix-button variant="secondary" ?disabled=${this.streams.length === 0} @click=${this.onExportAll}>
-          <ix-icon name="download" slot="icon"></ix-icon>Exporter tout
+          <ix-icon name="download" slot="icon"></ix-icon>${localizeDir(MSG.page.exportAll)}
         </ix-button>
         <ix-button @click=${this.openCreate}>
-          <ix-icon name="plus" slot="icon"></ix-icon>Nouvelle caméra
+          <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.page.newCamera)}
         </ix-button>
       </div>
       <input
@@ -198,9 +201,9 @@ export class WuiCameraStreams extends LitElement {
     if (this.streams.length === 0) {
       return html`
         <div class="center empty">
-          <ix-typography>Aucune caméra RTSP enregistrée.</ix-typography>
+          <ix-typography>${localizeDir(MSG.page.empty)}</ix-typography>
           <ix-button variant="secondary" @click=${this.generateDemo}>
-            <ix-icon name="add" slot="icon"></ix-icon>Générer des caméras de démonstration
+            <ix-icon name="add" slot="icon"></ix-icon>${localizeDir(MSG.page.generateDemo)}
           </ix-button>
         </div>
       `;
@@ -411,7 +414,7 @@ export class WuiCameraStreams extends LitElement {
     try {
       parsed = parseStreams(await file.text());
     } catch (error) {
-      this.importError = error instanceof Error ? error.message : 'Import échoué.';
+      this.importError = error instanceof Error ? error.message : localize(MSG.page.importFailed);
       return;
     }
     this.importError = '';

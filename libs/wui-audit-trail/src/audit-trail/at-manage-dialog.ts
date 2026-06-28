@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Audit-trail DP manager dialog.
  *
@@ -23,6 +26,18 @@ import {
   listAuditDps,
   readArchiveStatus
 } from './dp-admin.js';
+import {
+  MSG,
+  confirmDeleteMsg,
+  createFailedMsg,
+  createdMsg,
+  deleteFailedMsg,
+  deletedMsg,
+  failedMsg,
+  groupAppliedMsg,
+  localize,
+  localizeDir
+} from './i18n.js';
 import { AUDIT_DP_PREFIX, AUDIT_DP_TYPE } from './types.js';
 
 const MANAGE_TAG = 'at-manage-dialog';
@@ -72,14 +87,14 @@ export class AtManageDialog extends LitElement {
       <div class="overlay" @click=${this.close}>
         <div class="panel" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
-            <ix-typography format="h3">Datapoints d'audit trail</ix-typography>
+            <ix-typography format="h3">${localizeDir(MSG.manage.title)}</ix-typography>
             <ix-icon-button ghost icon="close" @click=${this.close}></ix-icon-button>
           </div>
           <div class="panel-body">
             ${this.renderNoGroups()} ${this.renderCreate()} ${this.renderMessage()} ${this.renderList()}
           </div>
           <div class="panel-foot">
-            <ix-button @click=${this.close}>Fermer</ix-button>
+            <ix-button @click=${this.close}>${localizeDir(MSG.manage.close)}</ix-button>
           </div>
         </div>
       </div>
@@ -90,20 +105,22 @@ export class AtManageDialog extends LitElement {
   private renderNoGroups(): TemplateResult {
     if (this.loading || this.groups.length > 0) return html``;
     return html`<div class="notice warn">
-      <ix-icon name="warning"></ix-icon>Aucun groupe d'archive NGA actif (type
-      <code>_NGA_Group</code>). Activez-en un pour pouvoir créer un datapoint archivé.
+      <ix-icon name="warning"></ix-icon>${localizeDir(MSG.manage.noGroupsPrefix)}
+      <code>_NGA_Group</code>${localizeDir(MSG.manage.noGroupsSuffix)}
     </div>`;
   }
 
   private renderCreate(): TemplateResult {
     const canCreate = !this.busy && this.groups.length > 0 && sanitizeSuffix(this.suffix) !== '';
     return html`
-      <div class="subhead">Nouveau datapoint (type <code>${AUDIT_DP_TYPE}</code>, archivé)</div>
+      <div class="subhead">
+        ${localizeDir(MSG.manage.newDpPrefix)} <code>${AUDIT_DP_TYPE}</code>${localizeDir(MSG.manage.newDpSuffix)}
+      </div>
       <div class="create-row">
         <span class="prefix">${AUDIT_DP_PREFIX}</span>
         <ix-input
           class="suffix"
-          placeholder="Nom (ex. Production)"
+          placeholder=${localize(MSG.manage.namePlaceholder)}
           .value=${this.suffix}
           @valueChange=${(e: IxValueEvent) => (this.suffix = asString(e.detail))}
         ></ix-input>
@@ -117,7 +134,7 @@ export class AtManageDialog extends LitElement {
           ${this.groups.map((g) => html`<ix-select-item label=${g} value=${g}></ix-select-item>`)}
         </ix-select>
         <ix-button ?disabled=${!canCreate} @click=${() => void this.create()}>
-          <ix-icon name="plus" slot="icon"></ix-icon>Créer
+          <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.manage.create)}
         </ix-button>
       </div>
     `;
@@ -131,13 +148,19 @@ export class AtManageDialog extends LitElement {
   private renderList(): TemplateResult {
     if (this.loading) return html`<div class="center"><ix-spinner></ix-spinner></div>`;
     if (this.dps.length === 0) {
-      return html`<div class="hint">Aucun datapoint <code>${AUDIT_DP_TYPE}</code> pour le moment.</div>`;
+      return html`<div class="hint">
+        ${localizeDir(MSG.manage.noDpsPrefix)} <code>${AUDIT_DP_TYPE}</code>${localizeDir(MSG.manage.noDpsSuffix)}
+      </div>`;
     }
-    return html`<div class="subhead">Datapoints existants (${this.dps.length})</div>
+    return html`<div class="subhead">${localizeDir(MSG.manage.existingDps)} (${this.dps.length})</div>
       <div class="list">
         <table>
           <thead>
-            <tr><th>Datapoint</th><th>Groupe d'archive</th><th></th></tr>
+            <tr>
+              <th>${localizeDir(MSG.manage.colDatapoint)}</th>
+              <th>${localizeDir(MSG.manage.colArchiveGroup)}</th>
+              <th></th>
+            </tr>
           </thead>
           <tbody>
             ${this.dps.map((d) => this.renderRow(d))}
@@ -153,7 +176,7 @@ export class AtManageDialog extends LitElement {
       <tr>
         <td class="name">
           ${d.name}
-          ${d.archived ? nothing : html`<span class="badge">non archivé</span>`}
+          ${d.archived ? nothing : html`<span class="badge">${localizeDir(MSG.manage.notArchived)}</span>`}
         </td>
         <td>
           <ix-select
@@ -170,7 +193,7 @@ export class AtManageDialog extends LitElement {
             ghost
             size="16"
             icon="trashcan"
-            title=${isSystem ? 'Datapoint système — non supprimable' : 'Supprimer'}
+            title=${isSystem ? localize(MSG.manage.systemNotDeletable) : localize(MSG.manage.deleteTitle)}
             ?disabled=${this.busy || isSystem}
             @click=${() => (this.confirmName = d.name)}
           ></ix-icon-button>
@@ -182,8 +205,8 @@ export class AtManageDialog extends LitElement {
   private renderConfirm(): TemplateResult {
     if (this.confirmName == null) return html``;
     return html`<wui-confirm-dialog
-      heading="Supprimer le datapoint"
-      message=${`Supprimer définitivement « ${this.confirmName} » et son historique archivé ?`}
+      heading=${localize(MSG.manage.confirmHeading)}
+      message=${confirmDeleteMsg(this.confirmName)}
       @wui:confirm=${this.confirmDelete}
       @wui:cancel=${() => (this.confirmName = null)}
     ></wui-confirm-dialog>`;
@@ -216,11 +239,11 @@ export class AtManageDialog extends LitElement {
       await createAuditDp(name);
       await enableArchive(name, group);
       this.suffix = '';
-      this.setMessage(`Datapoint « ${name} » créé et archivé (groupe « ${group} »).`, true);
+      this.setMessage(createdMsg(name, group), true);
       await this.reload();
       this.emitChange();
     } catch (error) {
-      this.setMessage(`Échec de création : ${this.errText(error)}`, false);
+      this.setMessage(createFailedMsg(this.errText(error)), false);
     } finally {
       this.busy = false;
     }
@@ -231,11 +254,11 @@ export class AtManageDialog extends LitElement {
     this.busy = true;
     try {
       await enableArchive(d.name, group);
-      this.setMessage(`Groupe « ${group} » appliqué à « ${d.name} ».`, true);
+      this.setMessage(groupAppliedMsg(group, d.name), true);
       await this.reload();
       this.emitChange();
     } catch (error) {
-      this.setMessage(`Échec : ${this.errText(error)}`, false);
+      this.setMessage(failedMsg(this.errText(error)), false);
     } finally {
       this.busy = false;
     }
@@ -248,11 +271,11 @@ export class AtManageDialog extends LitElement {
     this.busy = true;
     try {
       await deleteAuditDp(name);
-      this.setMessage(`Datapoint « ${name} » supprimé.`, true);
+      this.setMessage(deletedMsg(name), true);
       await this.reload();
       this.emitChange();
     } catch (error) {
-      this.setMessage(`Échec de suppression : ${this.errText(error)}`, false);
+      this.setMessage(deleteFailedMsg(this.errText(error)), false);
     } finally {
       this.busy = false;
     }

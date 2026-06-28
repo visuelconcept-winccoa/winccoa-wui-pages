@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Full report view ("rapport") for one charge: identity header, treatment recipe
  * table, the temperature curve (actual vs setpoint + tolerance band, read from

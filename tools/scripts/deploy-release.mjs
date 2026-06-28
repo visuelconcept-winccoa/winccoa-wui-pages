@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /* eslint-disable no-console */
 // -----------------------------------------------------------------------------
 // deploy-release.mjs — build + deploy a curated set of dashboard modules

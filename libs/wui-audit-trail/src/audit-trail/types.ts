@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /** Types for the Audit-trail standalone page (fixed `_AuditTrail` GxP structure). */
 
 /** WinCC OA DP type holding GxP audit records (system type, fixed structure). */

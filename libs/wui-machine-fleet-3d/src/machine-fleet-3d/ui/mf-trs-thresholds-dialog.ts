@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Modal dialog to manage named TRS threshold configs. Each config has an
  * ordered list of colour bands (min % + colour + optional label); a machine

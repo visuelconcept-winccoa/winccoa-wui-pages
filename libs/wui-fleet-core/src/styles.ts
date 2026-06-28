@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /** Styles for the Fleet Stop-Cause Analysis page (kept out of the component file). */
 import { css } from 'lit';
 

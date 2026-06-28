@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Summary KPI strip for the thermal-report list: total count plus a per-status
  * breakdown (en cours / terminés / validés) and a non-conformity count. Computed

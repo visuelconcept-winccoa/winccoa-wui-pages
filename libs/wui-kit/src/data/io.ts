@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Shared import/export primitives used by the standalone pages' own `io.ts`
  * modules. Only the page-agnostic helpers live here — each page keeps its own

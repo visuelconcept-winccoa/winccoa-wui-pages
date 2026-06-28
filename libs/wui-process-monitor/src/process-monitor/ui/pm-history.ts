@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * History panel: the operations log (project imports / manager restarts) read
  * from the `ProcessMonitor_History` datapoint. Presentational — the page passes

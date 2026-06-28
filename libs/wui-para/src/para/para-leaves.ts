@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Shared helpers to enumerate the scalar leaf elements of a datapoint from its
  * type STRUCTURE (as returned by WuiDpeService.getDatapointTypes). Used by the

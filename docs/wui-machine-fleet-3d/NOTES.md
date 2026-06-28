@@ -155,8 +155,11 @@ of the machine), stacked vertically, with a leader from the dot to the inner edg
   `max_tokens` required by Anthropic (set to 8192). **Local MCP** tool loop: the manager is
   itself the MCP client (`gatherMcpTools` + local execution via `mcp.callTool`), so the
   cloud provider never reaches the MCP server → `localhost` works.
-- **mcpServer** (manager, `always`): WinCC OA MCP server (Streamable-HTTP) consumed by
-  aiAssistant (default URL/token in the `mcpServers` of `AI_Assistant_Config`).
+- **MCP server (optional, external — not shipped)**: aiAssistant is the MCP *client*
+  and reaches an MCP server (Streamable-HTTP) at the URL/token in the `mcpServers` of
+  `AI_Assistant_Config` (default `http://127.0.0.1:3000/mcp`). The server itself is
+  ETM's `@etm-professional-control/winccoa-mcp-server` (ISC) — install/run it
+  separately for MCP tools; the assistant works without it (no tools).
 
 **Security**: the AI provider tokens are read from `AI_Assistant_Config` — **none
 are shipped**.
@@ -231,8 +234,8 @@ All writes are best-effort (never throw into the edit), no-op when the store is 
   `CustomEvent` names = string literals `^wui:[a-z]{3,}$` (no hyphen); avoid
   a method named `flat` (collision `no-magic-array-flat-depth`).
   `no-magic-numbers` = warning only (OK for the 3D code).
-- **Manager restart**: after editing a manager (machineSim / kpiCalc / aiAssistant /
-  mcpServer) or the webserver backend, **restart the affected manager** to apply (mode
+- **Manager restart**: after editing a manager (machineSim / kpiCalc / aiAssistant)
+  or the webserver backend, **restart the affected manager** to apply (mode
   `always` → pmon relaunches it; a manual `start-manager` right after a stop often returns
   "START not possible" but pmon brings it back in ~1 s). No KPI is configured by default →
   kpiCalc runs idle until a KPI is added in the machine dialog.

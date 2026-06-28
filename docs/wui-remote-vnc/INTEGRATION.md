@@ -16,7 +16,7 @@ page is **built against the target's runtime workspace** (bundle = correct versi
 
 ## Install (one command)
 ```bash
-node install.mjs --workspace <workspace-runtime> --project <racine-projet> --register-pmon
+node install.mjs --workspace <workspace-runtime> --project <project-root> --register-pmon
 ```
 Example (WebDemo2):
 ```bash
@@ -27,17 +27,17 @@ The installer:
 2. inserts the **2 menu entries** (list + hidden detail `/:connectionid`) → the workspace's `menuconfig.jsonc` (idempotent by `routeId`);
 3. installs **`@novnc/novnc@1.4.0`** in the workspace (so that `build:pages` bundles it);
 4. drops the **backend module** → `customer-webserver/src/modules/remote-vnc/`;
-5. deploys the **`vncProxy` manager** → `<projet>/javascript/vncProxy/` + `npm install`; with `--register-pmon`, adds the line to `config/progs`;
-6. runs **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
+5. deploys the **`vncProxy` manager** → `<project>/javascript/vncProxy/` + `npm install`; with `--register-pmon`, adds the line to `config/progs`;
+6. runs **`build:pages`** (OUT_DIR=`<project>/data/dashboard-wc`).
 
 ## After install (mandatory)
-1. **Webserver**: `cd <projet>/javascript/customer-webserver && npm run build`, then **restart** the webserver manager (it auto-mounts `/api/vnc` + the `/api/vnc/ws` relay).
+1. **Webserver**: `cd <project>/javascript/customer-webserver && npm run build`, then **restart** the webserver manager (it auto-mounts `/api/vnc` + the `/api/vnc/ws` relay).
 2. **Manager**: start **`vncProxy`** in the WinCC OA console (vRPC service that resolves id → host:port). Check the manager order/number if pmon was edited.
 3. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).
    ⚠️ The SW caches `menuconfig.json` → **`Ctrl+Shift+R` is not enough**.
 
 ## Verify
-1. Logged in → **"Connexions VNC distantes"** entry, `/remote-vnc` loads the list.
+1. Logged in → **"Connexions VNC distantes"** (remote VNC connections) entry, `/remote-vnc` loads the list.
 2. `GET https://<dashboard>/api/vnc/health` → `{ ok, service:"vnc", … }`.
 3. Add a connection (creates `RemoteVnc_<id>`, type `RemoteVnc_Connection`), open it → noVNC connects via `/api/vnc/ws?id=<id>` (the relay opens the TCP to the `host:port` resolved by `vncProxy`).
 

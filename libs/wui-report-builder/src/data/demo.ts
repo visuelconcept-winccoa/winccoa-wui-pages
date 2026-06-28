@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Demo seed for the Report Builder: one fully-featured template (one section of
  * each kind + a checklist + the default multi-signature workflow) and one report

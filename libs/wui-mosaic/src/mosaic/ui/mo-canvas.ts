@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * The mosaic canvas: renders every tile as an absolutely-positioned frame
  * holding an `<iframe>`, sized as a percentage of the canvas so the layout
@@ -19,6 +22,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { styleMap } from 'lit/directives/style-map.js';
 import { GRID_PCT, MIN_TILE_H, MIN_TILE_W, isInteractive, snapToGrid, tileSrc, type Tile } from '../types.js';
+import { MSG, localize, localizeDir } from '../i18n.js';
 
 type DragMode = 'move' | 'resize';
 
@@ -66,7 +70,7 @@ export class MoCanvas extends LitElement {
         ${tiles.length === 0
           ? html`<div class="empty">
               <ix-icon name="tiles" size="32"></ix-icon>
-              <span>${this.editing ? 'Ajoutez une tuile pour composer la mosaïque.' : 'Mosaïque vide.'}</span>
+              <span>${this.editing ? localizeDir(MSG.canvas.emptyEditing) : localizeDir(MSG.canvas.emptyDisplay)}</span>
             </div>`
           : nothing}
         ${repeat(
@@ -120,7 +124,7 @@ export class MoCanvas extends LitElement {
           ${this.editing ? html`<ix-icon name="drag-gripper" size="16"></ix-icon>` : nothing}
           <span class="title" title=${tile.title}>${tile.title}</span>
           ${!live && !this.editing
-            ? html`<ix-icon class="lock" name="lock" size="12" title="Lecture seule"></ix-icon>`
+            ? html`<ix-icon class="lock" name="lock" size="12" title=${localize(MSG.canvas.readonly)}></ix-icon>`
             : nothing}
           <span class="grow"></span>
           ${this.editing
@@ -129,7 +133,7 @@ export class MoCanvas extends LitElement {
                   ghost
                   size="16"
                   icon="pen"
-                  title="Modifier"
+                  title=${localize(MSG.canvas.edit)}
                   @pointerdown=${(e: Event) => e.stopPropagation()}
                   @click=${() => this.emitEdit(tile.id)}
                 ></ix-icon-button>
@@ -137,7 +141,7 @@ export class MoCanvas extends LitElement {
                   ghost
                   size="16"
                   icon="trashcan"
-                  title="Supprimer"
+                  title=${localize(MSG.canvas.remove)}
                   @pointerdown=${(e: Event) => e.stopPropagation()}
                   @click=${() => this.emitRemove(tile.id)}
                 ></ix-icon-button>
@@ -147,14 +151,14 @@ export class MoCanvas extends LitElement {
                   ghost
                   size="16"
                   icon="refresh"
-                  title="Recharger"
+                  title=${localize(MSG.canvas.reload)}
                   @click=${() => this.reload(tile.id)}
                 ></ix-icon-button>
                 <ix-icon-button
                   ghost
                   size="16"
                   icon="full-screen"
-                  title="Plein écran"
+                  title=${localize(MSG.canvas.fullscreen)}
                   @click=${() => this.fullscreen(tile.id)}
                 ></ix-icon-button>
               `}
@@ -170,14 +174,14 @@ export class MoCanvas extends LitElement {
               ></iframe>`
             : html`<div class="missing">
                 <ix-icon name="warning"></ix-icon>${tile.kind === 'url' && tile.url.trim() !== ''
-                  ? 'URL externe refusée'
-                  : 'Source non renseignée'}
+                  ? localizeDir(MSG.canvas.urlRefused)
+                  : localizeDir(MSG.canvas.noSource)}
               </div>`}
         </div>
         ${this.editing
           ? html`<div
               class="gripper"
-              title="Redimensionner"
+              title=${localize(MSG.canvas.resize)}
               @pointerdown=${(e: PointerEvent) => this.onDown(e, tile, 'resize')}
               @pointermove=${this.onMove}
               @pointerup=${this.onUp}

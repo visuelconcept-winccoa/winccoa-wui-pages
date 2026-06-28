@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Modal dialog to create or edit one thermal treatment report: identity, the
  * treatment recipe (a repeatable list of paliers + quench), the furnace link

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Non-Worked Periods (Jours non travaillés) — Standalone page (WinCC OA WebUI).
  *

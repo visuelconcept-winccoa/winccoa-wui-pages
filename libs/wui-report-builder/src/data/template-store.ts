@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /** Persistence for report templates (1 DP per template, type `ReportBuilder_Template`). */
 import type { ReportTemplate } from '../types.js';
 import { buildDemoTemplates } from './demo.js';

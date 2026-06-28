@@ -65,7 +65,7 @@ User constraint: "don't change the WebUI Runtime source code, only options for m
 - **Visible grid = very light thin lines** (in `.canvas.editing` mode only): two 1px `linear-gradient`s (vertical + horizontal) with `background-size:${GRID_PCT}%` inline, `background-position:0 0` (no offset → avoids the background-position % formula). Color `--mo-grid = color-mix(... soft-text 28%, transparent)`.
 
 ### Same-origin URL validation
-`isInternalUrl()` (`types.ts`) = `new URL(u, location.origin).origin === location.origin`: accepts relative (`/…`, `#/…`, `page.html`) + same-origin absolute; rejects external host, `//host`, `data:` / `javascript:`. Applied in the tile dialog (inline error + save disabled) AND in `tileSrc` (external → empty src → the tile shows "URL externe refusée").
+`isInternalUrl()` (`types.ts`) = `new URL(u, location.origin).origin === location.origin`: accepts relative (`/…`, `#/…`, `page.html`) + same-origin absolute; rejects external host, `//host`, `data:` / `javascript:`. Applied in the tile dialog (inline error + save disabled) AND in `tileSrc` (external → empty src → the tile shows "URL externe refusée" (external URL refused)).
 
 ### Import / export
 `mosaic/data/io.ts` (copy of the remote-vnc pattern): `exportJson(all)` / `exportMosaic(one)` download the envelope `{kind:'mosaic-boards',version:1,mosaics:[…]}`. **`parseMosaics(text)` accepts a bare array, the envelope, OR a single mosaic object** (import of one or several), coercing each mosaic and its tiles against the blank defaults (validates `kind` against a Set, reassigns a `t-<i>` id to tiles without an id). Import: if the id exists → update, otherwise `createMosaic`.
@@ -77,7 +77,7 @@ User constraint: "don't change the WebUI Runtime source code, only options for m
 - `data/mosaic-store.ts`, `data/demo-mosaics.ts` (2 demo walls), `data/source-catalog.ts`, `data/io.ts`.
 - `ui/`: `dialog-styles.ts` (shared overlay/panel), `mo-confirm-dialog`, `mo-mosaic-table` (preview list: name / source chips / tile count / updated; open/rename/delete), `mo-mosaic-dialog` (name + description), `mo-tile-dialog` (kind select + catalog dropdown OR manual id + url + interactive/refresh; VNC toggle disabled), **`mo-canvas`** (the core: absolute `%` tiles, drag via pointer-capture on the header + resize via bottom-right gripper, commit of the rounded layout via `wui:layout`; per-tile auto-reload via `setInterval` → `iframe.src=iframe.src`).
 
-**Routing / shell**: `/mosaic` = overview (`mo-mosaic-table`); **`/mosaic/:mosaicid`** = display of one mosaic (`hidden:true` in menuconfig, param → `mosaicid` attribute → `@property({attribute:'mosaicid'})`), with an in-place edit toggle **Modifier / Terminer**. Navigation via `RouterEvent` (`@wincc-oa/wui-models/events/router-event.js`). Menuconfig: icon `tiles`, permission `connected`.
+**Routing / shell**: `/mosaic` = overview (`mo-mosaic-table`); **`/mosaic/:mosaicid`** = display of one mosaic (`hidden:true` in menuconfig, param → `mosaicid` attribute → `@property({attribute:'mosaicid'})`), with an in-place edit toggle **"Modifier / Terminer"** (Edit / Done). Navigation via `RouterEvent` (`@wincc-oa/wui-models/events/router-event.js`). Menuconfig: icon `tiles`, permission `connected`.
 
 ## Pitfalls / things to know
 

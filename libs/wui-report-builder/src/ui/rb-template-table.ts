@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Table of report templates. Each row opens the template editor; actions edit /
  * duplicate / delete. Emits `wui:edit` / `wui:duplicate` / `wui:delete` (`{ id }`).

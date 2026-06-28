@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Generic "single datapoint" JSON store: the whole value (an object or an array)
  * lives in ONE fixed WinCC OA datapoint — a Struct type with a single String

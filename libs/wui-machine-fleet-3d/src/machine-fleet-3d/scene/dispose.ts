@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Three.js disposal helpers. Three does not free GPU resources automatically —
  * a leaked WebGLRenderer / undisposed geometry melts VRAM on every navigation.

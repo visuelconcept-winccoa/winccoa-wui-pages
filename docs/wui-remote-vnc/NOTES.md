@@ -1,6 +1,6 @@
 # wui-remote-vnc — business & architecture notes
 
-Standalone WebUI page **Connexions VNC distantes** (`/remote-vnc`, entry `wui-remote-vnc`, class `WuiRemoteVnc`, sub-component prefix `rv-`). **Tier 3** module: frontend + backend module `/api/vnc` + manager `vncProxy`.
+Standalone WebUI page **Connexions VNC distantes** (remote VNC connections) (`/remote-vnc`, entry `wui-remote-vnc`, class `WuiRemoteVnc`, sub-component prefix `rv-`). **Tier 3** module: frontend + backend module `/api/vnc` + manager `vncProxy`.
 
 ## Domain / purpose
 
@@ -23,11 +23,11 @@ The parameter arrives via the `connectionid` attribute → `@property({attribute
 
 End-to-end chain:
 ```
-noVNC RFB (navigateur)
-  → WebSocket wss://<dashboard>/api/vnc/ws?id=<connId>   (même origine)
-  → relais webserver (websockify)
-  → résout id → host:port via le manager VncProxy (vRPC)
-  → socket TCP vers le serveur VNC, octets relayés dans les deux sens
+noVNC RFB (browser)
+  → WebSocket wss://<dashboard>/api/vnc/ws?id=<connId>   (same origin)
+  → webserver relay (websockify)
+  → resolves id → host:port via the VncProxy manager (vRPC)
+  → TCP socket to the VNC server, bytes relayed both ways
 ```
 The **RFB protocol and VNC auth are end-to-end**: the relay is just a byte pipe, and the **password is sent client-side by noVNC** (read from the DP). Keeping the `id → host:port` resolution server-side means the browser can only reach **known** connections (no open proxy / SSRF).
 

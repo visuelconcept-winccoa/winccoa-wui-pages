@@ -57,7 +57,7 @@ without writing). What it wires:
    **in dev** (at packaging time they are vendored).
 4. **Chromeless `?embed`** — patches `libs/default-components/src/lib/webui-app-ix.ts`
    so the shell honors `?embed` in the query string by rendering only the routed
-   outlet (no header, no menu). The Mosaïque page embeds internal views as
+   outlet (no header, no menu). The Mosaic page embeds internal views as
    `…/index.html?embed=1#/<route>` iframes; without this the embedded tiles (e.g. a
    `fleet-3d` atelier) show the full app chrome.
 

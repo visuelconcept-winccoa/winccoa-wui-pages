@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Sortable table of thermal treatment reports. Shows report/charge identity, the
  * part/material, the linked furnace, the cycle window, and coloured

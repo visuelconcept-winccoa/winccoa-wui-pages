@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Modal dialog to create or edit one production order: identity/product,
  * atelier+machine assignment (cascading selects fed by the Machine Fleet 3D

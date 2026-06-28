@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Domain model for the Mosaïque page.
  *
@@ -18,6 +21,7 @@
  * (see {@link isInteractive}) so an embedded VNC session can never be controlled
  * from the wall — the "lecture seule obligatoire" requirement.
  */
+import { MSG, localize } from './i18n.js';
 
 /** Source kind backing a tile. */
 export type TileKind = 'fleet-3d' | 'remote-vnc' | 'camera' | 'url';
@@ -126,16 +130,16 @@ export function snapToGrid(v: number): number {
   return Math.round(v / GRID_PCT) * GRID_PCT;
 }
 
-const KIND_LABELS: Record<TileKind, string> = {
-  'fleet-3d': 'Parc machine',
-  'remote-vnc': 'VNC (lecture seule)',
-  camera: 'Caméra (flux vidéo)',
-  url: 'URL'
+const KIND_LABELS: Record<TileKind, import('@wincc-oa/wui-models/interfaces/multi-lang-string.js').MultiLangString> = {
+  'fleet-3d': MSG.kind.fleet3d,
+  'remote-vnc': MSG.kind.vnc,
+  camera: MSG.kind.camera,
+  url: MSG.kind.url
 };
 
-/** Human label for a tile kind. */
+/** Human label for a tile kind (localized to the active UI language). */
 export function tileKindLabel(kind: TileKind): string {
-  return KIND_LABELS[kind];
+  return localize(KIND_LABELS[kind]);
 }
 
 /** A blank tile with sensible defaults, positioned at the canvas origin. */

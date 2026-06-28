@@ -31,7 +31,7 @@ by a checklist.
 - `fields` — key/value pairs (`FieldDef`) with optional numeric min/max → `fieldConform`
   returns an OK / Out-of-tolerance chip.
 - `table` — configurable columns (`ColumnDef`), rows entered by the operator.
-- `dataset` — `DatasetDef = dp + ops[]`; the **Actualiser** button reads the archives over `report.period`
+- `dataset` — `DatasetDef = dp + ops[]`; the **"Actualiser"** (refresh) button reads the archives over `report.period`
   and freezes the aggregations; optional echarts line chart `rb-dataset-chart` (self-contained, exposes
   `getImageDataUrl()` for printing).
 - `checklist` — items; `required` items gate the signature.
@@ -62,7 +62,7 @@ Generic storage: `data/dp-json-store.ts` = base `DpJsonStore<T extends {id;dp}>`
   each non-final state defines a signature level via
   `advance: SignOff {toStateId, actionLabel, roleLabel, level, requirePermission, requireChecklist}`
   → arbitrary number of levels. Default workflow:
-  Brouillon →[L1 Opérateur]→ Vérifié →[L2 Responsable, `requireChecklist`]→ Approuvé, + Rejeté.
+  "Brouillon" (Draft) →[L1 "Opérateur" (Operator)]→ "Vérifié" (Verified) →[L2 "Responsable" (Manager), `requireChecklist`]→ "Approuvé" (Approved), + "Rejeté" (Rejected).
   Helpers: `currentState` / `isLocked` / `checklistComplete` / `canAdvance` / `applySignature` /
   `applyReject`. `canAdvance` is gated by `canPublish` (+ checklist); `applySignature` records
   **the logged-in user** (`WuiUserService.name`/`id`) + ISO timestamp + comment (via

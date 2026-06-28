@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Sortable table of RTSP cameras. Shows favourite, name, endpoint (host), group,
  * transport and last-viewed time. Each row opens the JSMpeg viewer, edits, or
@@ -9,6 +12,7 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { streamHost, type CameraStatus, type CameraStream } from '../types.js';
+import { MSG, checkedAtMsg, clientsConnectedMsg, localize, localizeDir } from '../i18n.js';
 
 type SortKey = 'name' | 'host' | 'group' | 'lastViewedAt';
 
@@ -38,13 +42,13 @@ export class CsStreamTable extends LitElement {
         <thead>
           <tr>
             <th class="star-col"></th>
-            <th class="led-col" title="Joignabilité du flux RTSP (test serveur cyclique)">État</th>
-            ${this.header('Nom', 'name')}
-            ${this.header('Hôte', 'host')}
-            ${this.header('Groupe', 'group')}
-            <th>Transport</th>
-            <th class="clients-col">Clients</th>
-            ${this.header('Dernière vue', 'lastViewedAt')}
+            <th class="led-col" title=${localize(MSG.table.stateTitle)}>${localizeDir(MSG.table.state)}</th>
+            ${this.header(localize(MSG.table.name), 'name')}
+            ${this.header(localize(MSG.table.host), 'host')}
+            ${this.header(localize(MSG.table.group), 'group')}
+            <th>${localizeDir(MSG.table.transport)}</th>
+            <th class="clients-col">${localizeDir(MSG.table.clients)}</th>
+            ${this.header(localize(MSG.table.lastViewed), 'lastViewedAt')}
             <th class="actions-col"></th>
           </tr>
         </thead>
@@ -62,7 +66,7 @@ export class CsStreamTable extends LitElement {
         <td class="star-col" @click=${(e: Event) => e.stopPropagation()}>
           <button
             class="star ${cam.favorite ? 'on' : ''}"
-            title=${cam.favorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+            title=${cam.favorite ? localize(MSG.table.removeFavorite) : localize(MSG.table.addFavorite)}
             @click=${() => this.requestFav(cam.id)}
           >
             ${cam.favorite ? '★' : '☆'}
@@ -77,7 +81,7 @@ export class CsStreamTable extends LitElement {
         <td>${cam.group || '—'}</td>
         <td>
           <span class="chip ${cam.transport === 'tcp' ? 'solid' : ''}">${cam.transport.toUpperCase()}</span>
-          ${cam.audio ? html`<span class="chip">Audio</span>` : null}
+          ${cam.audio ? html`<span class="chip">${localizeDir(MSG.table.audioChip)}</span>` : null}
         </td>
         <td class="clients-col">${this.renderClients(cam.id)}</td>
         <td class="mono">${this.fmtDate(cam.lastViewedAt)}</td>
@@ -86,28 +90,28 @@ export class CsStreamTable extends LitElement {
             ghost
             size="16"
             icon="play"
-            title="Visionner"
+            title=${localize(MSG.table.view)}
             @click=${() => this.requestOpen(cam.id)}
           ></ix-icon-button>
           <ix-icon-button
             ghost
             size="16"
             icon="pen"
-            title="Modifier"
+            title=${localize(MSG.table.edit)}
             @click=${() => this.requestEdit(cam.id)}
           ></ix-icon-button>
           <ix-icon-button
             ghost
             size="16"
             icon="download"
-            title="Exporter cette caméra"
+            title=${localize(MSG.table.exportOne)}
             @click=${() => this.requestExport(cam.id)}
           ></ix-icon-button>
           <ix-icon-button
             ghost
             size="16"
             icon="trashcan"
-            title="Supprimer"
+            title=${localize(MSG.table.remove)}
             @click=${() => this.requestDelete(cam.id)}
           ></ix-icon-button>
         </td>
@@ -118,7 +122,7 @@ export class CsStreamTable extends LitElement {
   private renderStatus(id: string): TemplateResult {
     const st = this.statusById[id];
     if (!st) {
-      return html`<span class="led unknown" title="Joignabilité inconnue (test en attente)"></span>`;
+      return html`<span class="led unknown" title=${localize(MSG.table.statusUnknownTitle)}></span>`;
     }
     const cls = st.reachable ? 'ok' : 'ko';
     return html`<span class="led ${cls}" title=${this.statusTitle(st)}></span>`;
@@ -126,9 +130,11 @@ export class CsStreamTable extends LitElement {
 
   private statusTitle(st: CameraStatus): string {
     const when = this.fmtCheckedAt(st.checkedAt);
-    const parts: string[] = [st.reachable ? 'Flux RTSP joignable' : 'Flux RTSP injoignable'];
+    const parts: string[] = [
+      st.reachable ? localize(MSG.table.statusReachable) : localize(MSG.table.statusUnreachable)
+    ];
     if (!st.reachable && st.detail) parts.push(st.detail);
-    if (when) parts.push(st.reachable ? `vérifié à ${when}` : when);
+    if (when) parts.push(st.reachable ? checkedAtMsg(when) : when);
     return parts.join(' · ');
   }
 
@@ -142,7 +148,7 @@ export class CsStreamTable extends LitElement {
   private renderClients(id: string): TemplateResult {
     const count = this.clientsById[id] ?? 0;
     if (count <= 0) return html`<span class="muted">0</span>`;
-    return html`<span class="live" title="${count} client(s) connecté(s)">
+    return html`<span class="live" title=${clientsConnectedMsg(count)}>
       <span class="pulse"></span>${count}
     </span>`;
   }
@@ -158,7 +164,7 @@ export class CsStreamTable extends LitElement {
   }
 
   private fmtDate(value: string): string {
-    if (!value) return 'jamais';
+    if (!value) return localize(MSG.table.never);
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return value;
     return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;

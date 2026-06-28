@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // -----------------------------------------------------------------------------
 // Install the third-party npm packages that the `libs/wui-*` pages need beyond
 // what the @wincc-oa/webui-runtime workspace already provides (three,

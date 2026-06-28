@@ -34,8 +34,8 @@ machines colour-coded by state (the demo atelier shows 9 machines: 6 running, 1
 fault, 1 warning, 1 idle). Opening an atelier renders an interactive **Three.js 3D
 scene** with per-machine state and KPI bubbles. The toolbar links to the graphics
 catalog and to the contextual analyses below (non-working periods, stop-cause, KPI)
-and an AI assistant. *Tier 3* — backed by the `machineSim`, `kpiCalc`, `aiAssistant`
-and `mcpServer` managers.
+and an AI assistant. *Tier 3* — backed by the `machineSim`, `kpiCalc` and
+`aiAssistant` managers (the assistant's MCP tools come from an optional external MCP server).
 
 ![Machine Fleet 3D — atelier 3D scene](images/manual/fleet-3d-detail.png)
 
@@ -127,17 +127,6 @@ value evolved over time.
 
 ---
 
-## Asset Lifecycle Intelligence — `/asset-lifecycle`
-
-![Asset Lifecycle Intelligence](images/manual/asset-lifecycle.png)
-
-An asset domain model with a composite **risk-scoring** engine (criticality, supply,
-vulnerability, age) and **product obsolescence / delivery** lookups via the Siemens
-**Product Information Hub**. *Tier 3* — backed by the `productInfo` manager and
-`/api/product-info`. The PIH key is provided on the target, never committed.
-
----
-
 ## Camera Streams — `/camera-streams`
 
 ![Camera Streams](images/manual/camera-streams.png)
@@ -205,15 +194,6 @@ review and save** it.
 several DPs and/or DP-types and **export** them to a WinCC OA `.dpl` file, or
 **import** a `.dpl`. The export/import is run server-side by the `dplAscii` MSA
 manager (which drives `WCCOAasciiSQLite`).
-
----
-
-## MSP — `/msp`
-
-![MSP](images/manual/msp.png)
-
-A frontend-only shell page — the scaffold to grow the MSP feature into. *Tier 1*
-(no backend, no manager).
 
 ---
 

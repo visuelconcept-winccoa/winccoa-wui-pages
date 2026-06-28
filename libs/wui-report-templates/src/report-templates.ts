@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Report Templates — Standalone page (WinCC OA WebUI Runtime).
  *
@@ -26,6 +29,7 @@ import { blankTemplate, nowLocal, type ReportTemplate } from '@visuelconcept/wui
 import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
 import '@visuelconcept/wui-report-builder/ui/rb-template-editor.js';
 import '@visuelconcept/wui-report-builder/ui/rb-template-table.js';
+import { MSG, confirmDeleteMsg, localize, localizeDir } from './i18n.js';
 
 const REPORTS_ROUTE = '/report-builder';
 
@@ -83,8 +87,7 @@ export class WuiReportTemplates extends LitElement {
             : nothing}
           ${this.offline
             ? html`<div class="notice">
-                <ix-icon name="info"></ix-icon>Mode hors-ligne : modifications non persistées (backend
-                indisponible ou droits d'écriture manquants).
+                <ix-icon name="info"></ix-icon>${localizeDir(MSG.offline)}
               </div>`
             : nothing}
           ${this.renderBody()}
@@ -101,7 +104,7 @@ export class WuiReportTemplates extends LitElement {
           ></rb-template-editor>`}
       ${this.deletingId
         ? html`<wui-confirm-dialog
-            message=${`Supprimer le modèle « ${this.templateName(this.deletingId)} » ?`}
+            message=${confirmDeleteMsg(this.templateName(this.deletingId))}
             @wui:confirm=${this.onDeleteConfirm}
             @wui:cancel=${() => (this.deletingId = null)}
           ></wui-confirm-dialog>`
@@ -120,18 +123,18 @@ export class WuiReportTemplates extends LitElement {
         <span class="grow"></span>
         <div class="actions">
           <ix-button variant="secondary" @click=${() => this.dispatchEvent(new RouterEvent(REPORTS_ROUTE))}>
-            <ix-icon name="list" slot="icon"></ix-icon>Rapports
+            <ix-icon name="list" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.reports)}
           </ix-button>
-          <ix-button variant="secondary" @click=${this.triggerImport}><ix-icon name="upload" slot="icon"></ix-icon>Importer</ix-button>
-          <ix-button variant="secondary" ?disabled=${this.templates.length === 0} @click=${() => exportTemplatesJson(this.templates)}><ix-icon name="download" slot="icon"></ix-icon>JSON</ix-button>
-          <ix-button ?disabled=${!this.canPublish} @click=${this.newTemplate}><ix-icon name="plus" slot="icon"></ix-icon>Nouveau modèle</ix-button>
+          <ix-button variant="secondary" @click=${this.triggerImport}><ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.import)}</ix-button>
+          <ix-button variant="secondary" ?disabled=${this.templates.length === 0} @click=${() => exportTemplatesJson(this.templates)}><ix-icon name="download" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.json)}</ix-button>
+          <ix-button ?disabled=${!this.canPublish} @click=${this.newTemplate}><ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.newTemplate)}</ix-button>
         </div>
       </div>
       <input class="import-input" type="file" accept="application/json,.json" hidden @change=${this.onImportFile} />
       ${this.templates.length === 0
         ? html`<div class="center empty">
-            <ix-typography>Aucun modèle.</ix-typography>
-            <ix-button variant="secondary" ?disabled=${!this.canPublish} @click=${this.generateDemo}><ix-icon name="add" slot="icon"></ix-icon>Générer un modèle de démonstration</ix-button>
+            <ix-typography>${localizeDir(MSG.empty.none)}</ix-typography>
+            <ix-button variant="secondary" ?disabled=${!this.canPublish} @click=${this.generateDemo}><ix-icon name="add" slot="icon"></ix-icon>${localizeDir(MSG.empty.generateDemo)}</ix-button>
           </div>`
         : html`<rb-template-table
             .templates=${this.templates}
@@ -176,7 +179,12 @@ export class WuiReportTemplates extends LitElement {
   private async duplicate(id: string): Promise<void> {
     const src = this.templates.find((t) => t.id === id);
     if (!src) return;
-    const copy: ReportTemplate = { ...structuredClone(src), id: '', dp: '', name: `${src.name} (copie)` };
+    const copy: ReportTemplate = {
+      ...structuredClone(src),
+      id: '',
+      dp: '',
+      name: `${src.name} (${localize(MSG.msg.copySuffix)})`
+    };
     const created = await this.store.create(copy);
     this.templates = [...this.templates, created];
     this.offline = this.store.offline;
@@ -214,7 +222,7 @@ export class WuiReportTemplates extends LitElement {
     try {
       parsed = parseTemplates(await file.text());
     } catch (error) {
-      this.importError = error instanceof Error ? error.message : 'Import échoué.';
+      this.importError = error instanceof Error ? error.message : localize(MSG.msg.importFailed);
       return;
     }
     this.importError = '';

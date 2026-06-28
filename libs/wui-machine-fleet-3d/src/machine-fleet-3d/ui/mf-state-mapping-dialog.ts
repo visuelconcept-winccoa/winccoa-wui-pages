@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Modal dialog to manage named value→state mappings. Each mapping has an
  * ordered list of rules (state + optional min/max bounds, first match wins) and

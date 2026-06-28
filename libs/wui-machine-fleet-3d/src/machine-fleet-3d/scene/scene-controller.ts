@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Scene engine: owns the Three.js renderer/scene/camera/lights, builds the
  * building and machines, drives the orbit camera, the HTML labels, and the

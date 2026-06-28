@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Standalone Page Discovery from `libs/wui-*` - AUTO-DISCOVERED
  *

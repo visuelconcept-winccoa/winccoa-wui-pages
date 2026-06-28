@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Line chart for a dataset section: fetches each datapoint's archived history
  * over the report period and plots it. Self-contained (resolves OaRxJsApi);

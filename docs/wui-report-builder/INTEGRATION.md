@@ -18,7 +18,7 @@ target's runtime workspace** (bundle = correct version).
 
 ## Install (one command)
 ```bash
-node install.mjs --workspace <workspace-runtime> --project <racine-projet>
+node install.mjs --workspace <workspace-runtime> --project <project-root>
 ```
 Example (WebDemo2):
 ```bash
@@ -28,14 +28,14 @@ The installer:
 1. copies the **source** (vendored kit) → `<workspace>/…/standalone-pages/`;
 2. inserts the **2 menu entries** → the workspace's `menuconfig.jsonc` (idempotent by `routeId`);
 3. installs **`@siemens/ix-echarts`** into the workspace (so that `build:pages` bundles it);
-4. runs **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
+4. runs **`build:pages`** (OUT_DIR=`<project>/data/dashboard-wc`).
 
 ## After install (mandatory)
 1. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).
    ⚠️ The SW caches `menuconfig.json` → **`Ctrl+Shift+R` is not enough**; only `Clear site data` purges it.
 
 ## Verify
-1. Logged in → the **"Rapports"** entry appears in the menu, `/report-builder` loads the report list.
+1. Logged in → the **"Rapports"** (Reports) entry appears in the menu, `/report-builder` loads the report list.
 2. Open/create a report → `/report-builder/:reportid` loads the detail (data entry, dataset recompute from the archives, multi-level signature, lock, print).
 
 ## Notes / security

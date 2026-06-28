@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Persistence for the Audit-trail page configuration. The whole config is kept
  * in a single WinCC OA datapoint — type `AuditTrail_Config`, a Struct with one

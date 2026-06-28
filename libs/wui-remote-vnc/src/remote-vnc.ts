@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Remote VNC — Standalone page (WinCC OA WebUI Runtime).
  *
@@ -21,6 +24,7 @@ import { property, query, state } from 'lit/decorators.js';
 import { ConnectionStore } from './remote-vnc/data/connection-store.js';
 import { DEMO_CONNECTIONS } from './remote-vnc/data/demo-connections.js';
 import { exportConnection, exportJson, parseConnections } from './remote-vnc/data/io.js';
+import { MSG, confirmDeleteMsg, localize, localizeDir } from './remote-vnc/i18n.js';
 import type { VncConnection, VncStatus } from './remote-vnc/types.js';
 import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
 import './remote-vnc/ui/rv-connection-dialog.js';
@@ -86,8 +90,7 @@ export class WuiRemoteVnc extends LitElement {
             : nothing}
           ${this.offline
             ? html`<div class="notice">
-                <ix-icon name="info"></ix-icon>Mode hors-ligne : modifications non persistées dans les
-                datapoints (backend indisponible ou droits d'écriture manquants).
+                <ix-icon name="info"></ix-icon>${localizeDir(MSG.page.offline)}
               </div>`
             : nothing}
           ${this.renderBody()}
@@ -103,7 +106,7 @@ export class WuiRemoteVnc extends LitElement {
           ></rv-connection-dialog>`}
       ${this.deletingId
         ? html`<wui-confirm-dialog
-            message=${`Supprimer la connexion « ${this.connName(this.deletingId)} » ?`}
+            message=${confirmDeleteMsg(this.connName(this.deletingId))}
             @wui:confirm=${this.onDeleteConfirm}
             @wui:cancel=${() => (this.deletingId = null)}
           ></wui-confirm-dialog>`
@@ -140,20 +143,20 @@ export class WuiRemoteVnc extends LitElement {
     }
     return html`
       <div class="toolbar">
-        <span class="count">${this.connections.length} connexion(s)</span>
+        <span class="count">${localizeDir(MSG.page.connectionsCount(this.connections.length))}</span>
         <span class="grow"></span>
         <ix-button variant="secondary" @click=${this.triggerImport}>
-          <ix-icon name="upload" slot="icon"></ix-icon>Importer
+          <ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.page.import)}
         </ix-button>
         <ix-button
           variant="secondary"
           ?disabled=${this.connections.length === 0}
           @click=${this.onExportAll}
         >
-          <ix-icon name="download" slot="icon"></ix-icon>Exporter tout
+          <ix-icon name="download" slot="icon"></ix-icon>${localizeDir(MSG.page.exportAll)}
         </ix-button>
         <ix-button @click=${this.openCreate}>
-          <ix-icon name="plus" slot="icon"></ix-icon>Nouvelle connexion
+          <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.page.newConnection)}
         </ix-button>
       </div>
       <input
@@ -171,9 +174,9 @@ export class WuiRemoteVnc extends LitElement {
     if (this.connections.length === 0) {
       return html`
         <div class="center empty">
-          <ix-typography>Aucune connexion VNC enregistrée.</ix-typography>
+          <ix-typography>${localizeDir(MSG.page.empty)}</ix-typography>
           <ix-button variant="secondary" @click=${this.generateDemo}>
-            <ix-icon name="add" slot="icon"></ix-icon>Générer des connexions de démonstration
+            <ix-icon name="add" slot="icon"></ix-icon>${localizeDir(MSG.page.generateDemo)}
           </ix-button>
         </div>
       `;
@@ -319,7 +322,7 @@ export class WuiRemoteVnc extends LitElement {
     try {
       parsed = parseConnections(await file.text());
     } catch (error) {
-      this.importError = error instanceof Error ? error.message : 'Import échoué.';
+      this.importError = error instanceof Error ? error.message : localize(MSG.page.importFailed);
       return;
     }
     this.importError = '';

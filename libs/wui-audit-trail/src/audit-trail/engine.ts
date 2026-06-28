@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Audit-trail engine: read the NGA value history of the fixed `_AuditTrail` leaf
  * elements over a period and pivot them into a time × element table where every

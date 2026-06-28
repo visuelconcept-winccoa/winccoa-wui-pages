@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Single source of truth for the WinCC OA datapoint-element types offered by
  * the PARA model editor (and referenced by the AI assistant's system prompt).

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // -----------------------------------------------------------------------------
 // Single source of truth for the third-party npm packages that page libs pull
 // in BEYOND what the @wincc-oa/webui-runtime workspace already provides.

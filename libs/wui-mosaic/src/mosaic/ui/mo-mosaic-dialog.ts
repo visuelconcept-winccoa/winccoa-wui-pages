@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Modal dialog to create a new mosaic or rename/redescribe an existing one
  * (name + description only — the tiles are edited on the canvas). Emits
@@ -7,6 +10,7 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { blankMosaic, type Mosaic } from '../types.js';
+import { MSG, localize, localizeDir, renameTitleMsg } from '../i18n.js';
 import { dialogStyles } from './dialog-styles.js';
 
 interface IxValueEvent {
@@ -29,26 +33,28 @@ export class MoMosaicDialog extends LitElement {
         <div class="panel small" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
             <ix-typography format="h3">
-              ${isNew ? 'Nouvelle mosaïque' : `Renommer — ${this.working.name}`}
+              ${isNew ? localizeDir(MSG.mosaicDialog.newTitle) : renameTitleMsg(this.working.name)}
             </ix-typography>
             <ix-icon-button ghost icon="close" @click=${this.cancel}></ix-icon-button>
           </div>
           <div class="panel-body">
             <ix-input
-              label="Nom"
+              label=${localize(MSG.mosaicDialog.name)}
               .value=${this.working.name}
               @valueChange=${(e: IxValueEvent) => this.patch({ name: e.detail })}
             ></ix-input>
             <ix-input
-              label="Description"
+              label=${localize(MSG.mosaicDialog.description)}
               .value=${this.working.description}
               @valueChange=${(e: IxValueEvent) => this.patch({ description: e.detail })}
             ></ix-input>
           </div>
           <div class="panel-foot">
-            <ix-button variant="secondary" @click=${this.cancel}>Annuler</ix-button>
+            <ix-button variant="secondary" @click=${this.cancel}>${localizeDir(MSG.mosaicDialog.cancel)}</ix-button>
             <ix-button ?disabled=${this.working.name.trim() === ''} @click=${this.save}>
-              <ix-icon name="check" slot="icon"></ix-icon>${isNew ? 'Créer' : 'Enregistrer'}
+              <ix-icon name="check" slot="icon"></ix-icon>${isNew
+                ? localizeDir(MSG.mosaicDialog.create)
+                : localizeDir(MSG.mosaicDialog.save)}
             </ix-button>
           </div>
         </div>

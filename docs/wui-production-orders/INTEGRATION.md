@@ -17,7 +17,7 @@ target's runtime workspace** (bundle = correct version).
 
 ## Install (one command)
 ```bash
-node install.mjs --workspace <workspace-runtime> --project <racine-projet> --register-pmon
+node install.mjs --workspace <workspace-runtime> --project <project-root> --register-pmon
 ```
 Example (WebDemo2):
 ```bash
@@ -27,8 +27,8 @@ The installer:
 1. copies the **source** (vendored kit) → `<workspace>/…/standalone-pages/`;
 2. inserts the **menu entry** → the workspace's `menuconfig.jsonc` (idempotent);
 3. installs **`@siemens/ix-echarts`** and **`three`** into the workspace (so `build:pages` bundles them);
-4. deploys the **`productionOrdersKpi`** manager → `<projet>/javascript/productionOrdersKpi/` + `npm install`; with `--register-pmon`, adds the line to `config/progs`;
-5. runs **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
+4. deploys the **`productionOrdersKpi`** manager → `<project>/javascript/productionOrdersKpi/` + `npm install`; with `--register-pmon`, adds the line to `config/progs`;
+5. runs **`build:pages`** (OUT_DIR=`<project>/data/dashboard-wc`).
 
 ## After install (mandatory)
 1. **Manager**: start **`productionOrdersKpi`** in the WinCC OA console (it `dpConnect`s the order list and recomputes the `ProductionOrders_Kpi` DP). Check the manager order/number if pmon was edited.
@@ -36,7 +36,7 @@ The installer:
    ⚠️ The SW caches `menuconfig.json` → **`Ctrl+Shift+R` is not enough**; only `Clear site data` purges it.
 
 ## Verify
-1. Logged in → **"Ordres de production"** entry, `/production-orders` loads the order list.
+1. Logged in → **"Ordres de production"** (production orders) entry, `/production-orders` loads the order list.
 2. Create / edit an order (persists in `ProductionOrders_List`), advance the status → the **Gantt** updates.
 3. With the `productionOrdersKpi` manager started → the **top-of-page KPIs** (DP `ProductionOrders_Kpi`) populate and refresh.
 

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Mosaïque — Standalone page (WinCC OA WebUI Runtime).
  *
@@ -26,6 +29,14 @@ import { DEMO_MOSAICS } from './mosaic/data/demo-mosaics.js';
 import { exportJson, exportMosaic, parseMosaics } from './mosaic/data/io.js';
 import { SourceCatalog, type SourceOption } from './mosaic/data/source-catalog.js';
 import { GRID_PCT, blankMosaic, blankTile, type Mosaic, type Tile } from './mosaic/types.js';
+import {
+  MSG,
+  confirmDeleteMsg,
+  localize,
+  localizeDir,
+  mosaicCountMsg,
+  tileCountMsg
+} from './mosaic/i18n.js';
 import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
 import './mosaic/ui/mo-canvas.js';
 import './mosaic/ui/mo-mosaic-dialog.js';
@@ -92,8 +103,7 @@ export class WuiMosaic extends LitElement {
             : nothing}
           ${this.offline
             ? html`<div class="notice">
-                <ix-icon name="info"></ix-icon>Mode hors-ligne : modifications non persistées dans les
-                datapoints (backend indisponible ou droits d'écriture manquants).
+                <ix-icon name="info"></ix-icon>${localizeDir(MSG.page.offline)}
               </div>`
             : nothing}
           ${this.renderBody()}
@@ -119,7 +129,7 @@ export class WuiMosaic extends LitElement {
           ></mo-tile-dialog>`}
       ${this.deletingId
         ? html`<wui-confirm-dialog
-            message=${`Supprimer la mosaïque « ${this.mosaicName(this.deletingId)} » ?`}
+            message=${confirmDeleteMsg(this.mosaicName(this.deletingId))}
             @wui:confirm=${this.onDeleteConfirm}
             @wui:cancel=${() => (this.deletingId = null)}
           ></wui-confirm-dialog>`
@@ -150,16 +160,16 @@ export class WuiMosaic extends LitElement {
   private renderOverview(): TemplateResult {
     return html`
       <div class="toolbar">
-        <span class="count">${this.mosaics.length} mosaïque(s)</span>
+        <span class="count">${mosaicCountMsg(this.mosaics.length)}</span>
         <span class="grow"></span>
         <ix-button variant="secondary" @click=${this.triggerImport}>
-          <ix-icon name="upload" slot="icon"></ix-icon>Importer
+          <ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.import)}
         </ix-button>
         <ix-button variant="secondary" ?disabled=${this.mosaics.length === 0} @click=${this.onExportAll}>
-          <ix-icon name="download" slot="icon"></ix-icon>Exporter tout
+          <ix-icon name="download" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.exportAll)}
         </ix-button>
         <ix-button @click=${this.openCreate}>
-          <ix-icon name="plus" slot="icon"></ix-icon>Nouvelle mosaïque
+          <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.newMosaic)}
         </ix-button>
       </div>
       <input
@@ -171,9 +181,9 @@ export class WuiMosaic extends LitElement {
       />
       ${this.mosaics.length === 0
         ? html`<div class="center empty">
-            <ix-typography>Aucune mosaïque enregistrée.</ix-typography>
+            <ix-typography>${localizeDir(MSG.page.emptyList)}</ix-typography>
             <ix-button variant="secondary" @click=${this.generateDemo}>
-              <ix-icon name="add" slot="icon"></ix-icon>Générer des mosaïques de démonstration
+              <ix-icon name="add" slot="icon"></ix-icon>${localizeDir(MSG.page.generateDemo)}
             </ix-button>
           </div>`
         : html`<mo-mosaic-table
@@ -188,8 +198,8 @@ export class WuiMosaic extends LitElement {
 
   private renderMissing(): TemplateResult {
     return html`<div class="center empty">
-      <ix-typography>Mosaïque introuvable.</ix-typography>
-      <ix-button variant="secondary" @click=${this.goToList}>Retour à la liste</ix-button>
+      <ix-typography>${localizeDir(MSG.page.missing)}</ix-typography>
+      <ix-button variant="secondary" @click=${this.goToList}>${localizeDir(MSG.page.backToList)}</ix-button>
     </div>`;
   }
 
@@ -199,19 +209,19 @@ export class WuiMosaic extends LitElement {
   private renderDisplay(mosaic: Mosaic): TemplateResult {
     return html`
       <div class="toolbar">
-        <ix-button variant="secondary" @click=${this.goToList}>‹ Mosaïques</ix-button>
+        <ix-button variant="secondary" @click=${this.goToList}>${localizeDir(MSG.toolbar.backToList)}</ix-button>
         <span class="title">${mosaic.name}</span>
-        <span class="count">${mosaic.tiles.length} tuile(s)</span>
+        <span class="count">${tileCountMsg(mosaic.tiles.length)}</span>
         <span class="grow"></span>
         ${this.editing
           ? html`<ix-button variant="secondary" @click=${() => (this.editingTile = null)}>
-                <ix-icon name="add-circle" slot="icon"></ix-icon>Ajouter une tuile
+                <ix-icon name="add-circle" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.addTile)}
               </ix-button>
               <ix-button @click=${() => (this.editing = false)}>
-                <ix-icon name="check" slot="icon"></ix-icon>Terminer
+                <ix-icon name="check" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.done)}
               </ix-button>`
           : html`<ix-button variant="secondary" @click=${() => (this.editing = true)}>
-              <ix-icon name="pen" slot="icon"></ix-icon>Modifier
+              <ix-icon name="pen" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.edit)}
             </ix-button>`}
       </div>
       <mo-canvas
@@ -335,7 +345,7 @@ export class WuiMosaic extends LitElement {
     try {
       parsed = parseMosaics(await file.text());
     } catch (error) {
-      this.importError = error instanceof Error ? error.message : 'Import échoué.';
+      this.importError = error instanceof Error ? error.message : localize(MSG.page.importFailed);
       return;
     }
     this.importError = '';

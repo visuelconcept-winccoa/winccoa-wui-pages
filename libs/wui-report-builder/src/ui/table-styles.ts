@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /** Shared list-table styles for the report-builder tables. */
 import { css, type CSSResult } from 'lit';
 

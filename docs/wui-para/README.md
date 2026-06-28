@@ -7,12 +7,12 @@ runtime version (a page bundle is coupled to the shell's import map).
 
 ## Features
 
-- **Modèle (Types) tab** — an ergonomic, nested tree editor for datapoint
+- **Modèle (Types)** (model — types) **tab** — an ergonomic, nested tree editor for datapoint
   **types**: add elements / sub-structures, rename, change element type, set a
   `Typeref` target, delete. Creates new types and updates existing ones **in
   place** via `dptype/change` (preserves existing datapoints; renamed elements
   are matched by their original name and carried over with `newName`).
-- **Instances & valeurs tab** — the master-detail browser (Type→DP→element tree
+- **Instances & valeurs** (instances & values) **tab** — the master-detail browser (Type→DP→element tree
   + live values & config-attribute editor; create/rename/delete DPs).
 - **AI assistant** (header) — *proposal-only*: scoped to PARA modeling, runs with
   **no MCP tools** (`mcpServers: []`, so it never mutates), and can load a

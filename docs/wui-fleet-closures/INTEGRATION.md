@@ -14,7 +14,7 @@ page is **compiled against the target's runtime workspace** (bundle = correct ve
 
 ## Install (one command)
 ```bash
-node install.mjs --workspace <workspace-runtime> --project <racine-projet>
+node install.mjs --workspace <workspace-runtime> --project <project-root>
 ```
 Example (WebDemo2):
 ```bash
@@ -24,14 +24,14 @@ The installer:
 1. copies the **source** (kit vendored under `_vendor/`) → `<workspace>/…/standalone-pages/`;
 2. inserts the **menu entry** → the workspace's `menuconfig.jsonc` (idempotent);
 3. installs the page's **npm dependencies** (`three`) into the workspace (so `build:pages` bundles them);
-4. runs **`build:pages`** (OUT_DIR=`<projet>/data/dashboard-wc`).
+4. runs **`build:pages`** (OUT_DIR=`<project>/data/dashboard-wc`).
 
 ## After install (mandatory)
 1. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).
    ⚠️ The SW caches `menuconfig.json` → **`Ctrl+Shift+R` is not enough**; only `Clear site data` purges it.
 
 ## Verify
-1. Logged in → the **`/fleet-closures`** page loads (the "Jours non travaillés" entry is `hidden`, reached from the fleet overview).
+1. Logged in → the **`/fleet-closures`** page loads (the "Jours non travaillés" (non-working days) entry is `hidden`, reached from the fleet overview).
 2. The year / workshop / machine filters work, and JSON import-export opens.
 
 ## Notes / security

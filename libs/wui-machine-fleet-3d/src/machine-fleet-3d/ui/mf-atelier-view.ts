@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * 3D view of a single atelier: the Three.js scene plus the integrated config UI
  * (building dialog, per-machine dialog with DP bindings, state-mapping dialog,

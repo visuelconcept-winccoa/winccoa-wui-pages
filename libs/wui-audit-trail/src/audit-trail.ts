@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Audit Trail — Standalone page (WinCC OA WebUI Runtime).
  *
@@ -27,6 +30,7 @@ import { AuditConfigStore } from './audit-trail/config-store.js';
 import { listAuditDps } from './audit-trail/dp-admin.js';
 import { buildPivot, type PivotResult } from './audit-trail/engine.js';
 import { exportAuditCsv, exportAuditJson, printAudit } from './audit-trail/export.js';
+import { MSG, colLabel, liveSuffixMsg, localizeDir, recordsMsg, truncatedMsg } from './audit-trail/i18n.js';
 import {
   AUDIT_DP_TYPE,
   AUDIT_FIELDS,
@@ -94,12 +98,13 @@ export class WuiAuditTrail extends LitElement {
   }
 
   override render(): TemplateResult {
+    const title = 'Audit Trail';
     return html`
       <wui-context-generator
         .config=${{
           headerTitle: {
             context: 'translate',
-            config: { 'en_US.utf8': 'Audit Trail', 'fr.utf8': 'Audit Trail' }
+            config: { 'en_US.utf8': title, 'fr.utf8': title, 'de.utf8': title }
           }
         }}
       >
@@ -126,7 +131,7 @@ export class WuiAuditTrail extends LitElement {
     return html`
       <div class="toolbar">
         <label class="inline">
-          <span>Datapoint</span>
+          <span>${localizeDir(MSG.toolbar.datapoint)}</span>
           <ix-select
             class="dp-select"
             mode="single"
@@ -138,25 +143,25 @@ export class WuiAuditTrail extends LitElement {
           </ix-select>
         </label>
         <ix-button variant="secondary" @click=${() => (this.manageOpen = true)}>
-          <ix-icon name="cogwheel" slot="icon"></ix-icon>Gérer
+          <ix-icon name="cogwheel" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.manage)}
         </ix-button>
         ${this.renderRangeControls()}
         <span class="grow"></span>
         <ix-button variant="secondary" ?disabled=${!hasRows} @click=${this.onExportCsv}>
-          <ix-icon name="export" slot="icon"></ix-icon>CSV
+          <ix-icon name="export" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.csv)}
         </ix-button>
         <ix-button variant="secondary" ?disabled=${!hasRows} @click=${this.onExportJson}>
-          <ix-icon name="export" slot="icon"></ix-icon>JSON
+          <ix-icon name="export" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.json)}
         </ix-button>
         <ix-button variant="secondary" ?disabled=${!hasRows} @click=${this.onPrint}>
-          <ix-icon name="print" slot="icon"></ix-icon>Imprimer
+          <ix-icon name="print" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.print)}
         </ix-button>
         <ix-button
           variant="secondary"
           ?disabled=${this.loading || this.config.dpName === ''}
           @click=${() => void this.recompute()}
         >
-          <ix-icon name="refresh" slot="icon"></ix-icon>Actualiser
+          <ix-icon name="refresh" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.refresh)}
         </ix-button>
       </div>
     `;
@@ -165,7 +170,7 @@ export class WuiAuditTrail extends LitElement {
   private renderRangeControls(): TemplateResult {
     return html`
       <label class="inline live">
-        <span>Live 24 h</span>
+        <span>${localizeDir(MSG.toolbar.live24h)}</span>
         <ix-toggle
           hide-text
           ?checked=${this.config.live}
@@ -195,8 +200,7 @@ export class WuiAuditTrail extends LitElement {
   private renderOffline(): TemplateResult {
     if (!this.offline) return html``;
     return html`<div class="notice">
-      <ix-icon name="info"></ix-icon>Mode hors-ligne : configuration non persistée (backend non
-      connecté ou droits manquants).
+      <ix-icon name="info"></ix-icon>${localizeDir(MSG.notice.offline)}
     </div>`;
   }
 
@@ -204,16 +208,16 @@ export class WuiAuditTrail extends LitElement {
     if (this.loading) return html`<div class="center"><ix-spinner></ix-spinner></div>`;
     if (this.dps.length === 0) {
       return html`<div class="center muted">
-        Aucun datapoint <code>${AUDIT_DP_TYPE}</code>. Cliquez « Gérer » pour en créer un (archivé).
+        ${localizeDir(MSG.content.noDpsPrefix)} <code>${AUDIT_DP_TYPE}</code>${localizeDir(MSG.content.noDpsSuffix)}
       </div>`;
     }
     if (this.config.dpName === '') {
-      return html`<div class="center muted">Sélectionnez un datapoint d'audit trail.</div>`;
+      return html`<div class="center muted">${localizeDir(MSG.content.selectDp)}</div>`;
     }
     const rows = this.displayRows();
     if (rows.length === 0) {
       return html`<div class="center muted">
-        Aucun enregistrement sur la période. Vérifiez que le datapoint est archivé (NGA).
+        ${localizeDir(MSG.content.noRecords)}
       </div>`;
     }
     return this.renderTable(rows);
@@ -223,18 +227,22 @@ export class WuiAuditTrail extends LitElement {
     return html`
       ${this.result?.truncated
         ? html`<div class="notice">
-            <ix-icon name="info"></ix-icon>Historique tronqué aux ${this.config.maxRows} enregistrements
-            les plus récents.
+            <ix-icon name="info"></ix-icon>${truncatedMsg(this.config.maxRows)}
           </div>`
         : ''}
       <div class="meta">
-        <strong>${this.config.dpName}</strong> · ${rows.length} enregistrement(s) · ${this.rangeLabel()}
+        <strong>${this.config.dpName}</strong> · ${recordsMsg(rows.length)} · ${this.rangeLabel()}
       </div>
       <div class="table-wrap">
         <table class="tbl">
           <thead>
             <tr>
-              ${AUDIT_FIELDS.map((f) => html`<th class=${f.kind === 'time' ? 'sticky' : ''}>${f.label}</th>`)}
+              ${AUDIT_FIELDS.map(
+                (f) =>
+                  html`<th class=${f.kind === 'time' ? 'sticky' : ''}>
+                    ${localizeDir(colLabel(f.key as keyof typeof MSG.col))}
+                  </th>`
+              )}
             </tr>
           </thead>
           <tbody>
@@ -305,7 +313,7 @@ export class WuiAuditTrail extends LitElement {
   private rangeLabel(): string {
     const { start, end } = this.resolveRange();
     const range = `${formatDateTime(start.getTime())} → ${formatDateTime(end.getTime())}`;
-    return this.config.live ? `${range} (live 24 h)` : range;
+    return this.config.live ? `${range} ${liveSuffixMsg()}` : range;
   }
 
   private async recompute(): Promise<void> {

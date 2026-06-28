@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Report-builder engine (pure logic): read a datapoint's archived history over a
  * period and aggregate it (avg/min/max/sum/last/count/stddev), plus the workflow

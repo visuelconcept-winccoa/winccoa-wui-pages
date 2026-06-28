@@ -1,0 +1,26 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: winccoa-wui-pages
+Upstream-Contact: VISUEL CONCEPT <contact@visuelconcept.com>
+Source: https://github.com/visuelconcept/winccoa-wui-pages
+
+# ---------------------------------------------------------------------------
+# Default: everything in this repository is VISUEL CONCEPT code under AGPL-3.0.
+# Source files also carry an inline SPDX header; this stanza covers files that
+# cannot embed a comment (JSON, Markdown, images, SVG, config) so the whole repo
+# is license-declared.
+# ---------------------------------------------------------------------------
+Files: *
+Copyright: 2026 VISUEL CONCEPT
+License: AGPL-3.0-only
+
+# ---------------------------------------------------------------------------
+# Note on dependencies: third-party software consumed via npm (Siemens iX,
+# @wincc-oa/*, @etm-professional-control/*, lit, rxjs, three, @novnc/novnc, …)
+# is NOT vendored in this repository and retains its own license. See NOTICE
+# and package.json. WinCC OA and its components remain the property of Siemens.
+#
+# The WinCC OA MCP server (ETM professional control GmbH, ISC, upstream
+# https://github.com/winccoa/winccoa-ae-js-mcpserver) is no longer vendored:
+# install the npm package @etm-professional-control/winccoa-mcp-server if the
+# AI assistant needs MCP tools (optional, external).
+# ---------------------------------------------------------------------------

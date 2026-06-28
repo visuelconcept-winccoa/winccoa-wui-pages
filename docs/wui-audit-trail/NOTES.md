@@ -10,7 +10,7 @@ Standalone **GxP Audit Trail** page over the **fixed `_AuditTrail`** datapoint t
 (who / what / when / why / old → new — the standard GxP audit fields).
 
 The page has two jobs:
-1. **Manage** the project's `_AuditTrail` datapoints — create new ones (always NGA-archived), reassign the archive group, delete them — via the `at-manage-dialog` popup ("Gérer" button).
+1. **Manage** the project's `_AuditTrail` datapoints — create new ones (always NGA-archived), reassign the archive group, delete them — via the `at-manage-dialog` popup ("Gérer" / manage button).
 2. **View** the archived history of the selected `_AuditTrail` DP as a **log table** (one row per archived record, newest first). Default = rolling **last 24 h in live mode** (auto-refresh); a **start/end `datetime-local`** range selects an arbitrary interval. Export to **CSV / JSON** and **print**.
 
 > Records are **written by WinCC OA's audit mechanism / panels / scripts**, not by this page. The page only creates/archives the DPs and visualizes them.

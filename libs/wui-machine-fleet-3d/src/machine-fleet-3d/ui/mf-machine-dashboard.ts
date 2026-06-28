@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Default, hard-coded **machine dashboard** — a contextualised overlay opened
  * from a machine's detail card when it is NOT linked to a specific WinCC OA

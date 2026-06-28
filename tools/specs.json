@@ -18,13 +18,6 @@
     "managers": ["rtspProxy"]
   },
   {
-    "page": "msp",
-    "name": "@visuelconcept/wui-msp",
-    "title": "MSP",
-    "tier": 1,
-    "description": "MSP standalone page (shell)."
-  },
-  {
     "page": "audit-trail",
     "name": "@visuelconcept/wui-audit-trail",
     "title": "Audit Trail",
@@ -99,22 +92,13 @@
     "managers": ["vncProxy"]
   },
   {
-    "page": "asset-lifecycle-intelligence",
-    "name": "@visuelconcept/wui-asset-lifecycle-intelligence",
-    "title": "Asset Lifecycle Intelligence",
-    "tier": 3,
-    "description": "Asset Lifecycle Intelligence page (/asset-lifecycle) — asset domain model + composite risk-scoring engine, DP persistence; product obsolescence/delivery lookup via /api/product-info bridged to the productInfo MSA manager (Siemens Product Information Hub).",
-    "backend": { "mount": "/api/product-info", "routeClass": "ProductInfoRoute", "routeFile": "productInfoRoute", "srcFiles": ["productInfoController.ts", "productInfoRoute.ts"] },
-    "managers": ["productInfo", "aliMcp"]
-  },
-  {
     "page": "machine-fleet-3d",
     "name": "@visuelconcept/wui-machine-fleet-3d",
     "title": "Machine Fleet",
     "tier": "hub",
-    "description": "Machine Fleet 3D hub page (/machine-fleet-3d) — three.js 3D fleet view with per-machine state/KPI bubbles, stop-cause catalog, contextual machine dashboard (Gantt + Pareto), and an AI assistant. Managers: machineSim (fleet simulation), kpiCalc (live KPIs), aiAssistant + mcpServer (the AI assistant, via the /api/ai bridge). AI provider tokens are read from the AI_Assistant_Config DP — NONE are shipped.",
+    "description": "Machine Fleet 3D hub page (/machine-fleet-3d) — three.js 3D fleet view with per-machine state/KPI bubbles, stop-cause catalog, contextual machine dashboard (Gantt + Pareto), and an AI assistant. Managers: machineSim (fleet simulation), kpiCalc (live KPIs), aiAssistant (the AI assistant, via the /api/ai bridge). The assistant's MCP tools are provided by an OPTIONAL external WinCC OA MCP server (ETM @etm-professional-control/winccoa-mcp-server, ISC) — installed separately, not shipped here. AI provider tokens are read from the AI_Assistant_Config DP — NONE are shipped.",
     "backend": { "mount": "/api/ai", "routeClass": "AiRoute", "routeFile": "aiRoute", "srcFiles": ["aiController.ts", "aiRoute.ts"] },
-    "managers": ["machineSim", "kpiCalc", "aiAssistant", "mcpServer"]
+    "managers": ["machineSim", "kpiCalc", "aiAssistant"]
   },
   {
     "page": "process-monitor",

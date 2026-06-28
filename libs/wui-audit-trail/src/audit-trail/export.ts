@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Export / print helpers for the audit-trail log. The page passes already
  * formatted display rows (`string[][]`, one cell per `AUDIT_FIELDS` column, in
@@ -5,9 +8,15 @@
  * print-friendly window. CSV/JSON download primitives come from the shared kit.
  */
 import { CSV_BOM, JSON_INDENT, csvCell, download, timestampSlug } from '@visuelconcept/wui-kit/data/io.js';
+import { MSG, colLabel, dateLocale, localize, recordsMsg } from './i18n.js';
 import { AUDIT_FIELDS } from './types.js';
 
-const HEADERS = AUDIT_FIELDS.map((f) => f.label);
+/** Localized column headers (resolved at call time → matches the active UI language). */
+function headers(): string[] {
+  return AUDIT_FIELDS.map((f) => localize(colLabel(f.key as keyof typeof MSG.col)));
+}
+
+/** `_AuditTrail` element names — JSON export keys (data contract, never translated). */
 const KEYS = AUDIT_FIELDS.map((f) => f.key);
 
 /**
@@ -44,7 +53,7 @@ function escapeHtml(value: string): string {
 
 /** Download the rows as a `;`-separated CSV (UTF-8 BOM for Excel). */
 export function exportAuditCsv(dpName: string, rows: string[][]): void {
-  const header = HEADERS.map((h) => csvCell(h)).join(';');
+  const header = headers().map((h) => csvCell(h)).join(';');
   const lines = rows.map((r) => r.map((c) => csvCell(c)).join(';'));
   download(`${fileBase(dpName)}.csv`, CSV_BOM + [header, ...lines].join('\r\n'), 'text/csv;charset=utf-8');
 }
@@ -61,12 +70,12 @@ export function printAudit(dpName: string, subtitle: string, rows: string[][]): 
   const win = window.open('', '_blank');
   if (!win) return;
   const cols = AUDIT_FIELDS.map((f) => `<col style="width:${PRINT_COL_WIDTH[f.key] ?? 'auto'}" />`).join('');
-  const head = HEADERS.map((h) => `<th>${escapeHtml(h)}</th>`).join('');
+  const head = headers().map((h) => `<th>${escapeHtml(h)}</th>`).join('');
   const body = rows
     .map((r) => `<tr>${r.map((c) => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`)
     .join('');
   win.document.write(
-    `<!doctype html><html lang="fr"><head><meta charset="utf-8" />` +
+    `<!doctype html><html lang="${escapeHtml(dateLocale())}"><head><meta charset="utf-8" />` +
       `<title>Audit Trail — ${escapeHtml(dpName)}</title><style>` +
       `@page{size:A4 landscape;margin:10mm}` +
       `body{font-family:Arial,Helvetica,sans-serif;margin:1.5rem;color:#111}` +
@@ -79,7 +88,7 @@ export function printAudit(dpName: string, subtitle: string, rows: string[][]): 
       `thead th{background:#eee}tbody tr:nth-child(even){background:#f6f6f6}` +
       `@media print{body{margin:0}}</style></head><body>` +
       `<h1>Audit Trail — ${escapeHtml(dpName)}</h1>` +
-      `<p class="sub">${escapeHtml(subtitle)} · ${rows.length} enregistrement(s)</p>` +
+      `<p class="sub">${escapeHtml(subtitle)} · ${escapeHtml(recordsMsg(rows.length))}</p>` +
       `<table><colgroup>${cols}</colgroup><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>` +
       `</body></html>`
   );

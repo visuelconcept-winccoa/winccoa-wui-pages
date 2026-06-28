@@ -115,6 +115,19 @@ pnpm-debug.log*
 **/custom-elements.json
 tmp/
 
+# -----------------------------------------------------------------------------
+# Third-party IP — MUST NOT be published under this project's license.
+# (See IP_AUDIT.md. Kept out of the open-source repo; not authored by Visuel Concept.)
+# -----------------------------------------------------------------------------
+# WinCC OA project archive: contains Siemens/WinCC-OA-SDK-derived .ctl scripts,
+# GEDI panels and a WinCC OA logo. Referenced only in comments (legacy model).
+/winccoa_projectmanager.zip
+# Industrial symbol set of third-party origin (replace with original/licensed art).
+/apps/dashboard-wc/public/semifab-icons/
+# ETM WinCC OA MCP server (ISC) — consume via npm @etm-professional-control/winccoa-mcp-server,
+# do not re-vendor it into the repo.
+/backend/managers/mcpServer/
+
 # =============================================================================
 # Scaffolded WebUI-runtime workspace — PARTIAL ignore
 #

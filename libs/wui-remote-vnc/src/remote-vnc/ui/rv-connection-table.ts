@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Sortable table of VNC connections. Shows favourite, name, endpoint
  * (host:port), group, read-only flag and last-connected time. Each row connects
@@ -5,9 +8,11 @@
  *
  * Emits: `wui:open` / `wui:edit` / `wui:delete` / `wui:export` / `wui:fav` (all `{ id }`).
  */
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { MSG, checkedAtMsg, localize, localizeDir } from '../i18n.js';
 import { endpoint, type VncConnection, type VncStatus } from '../types.js';
 
 type SortKey = 'name' | 'host' | 'group' | 'lastConnectedAt';
@@ -36,12 +41,12 @@ export class RvConnectionTable extends LitElement {
         <thead>
           <tr>
             <th class="star-col"></th>
-            <th class="led-col" title="Joignabilité du socket configuré (test serveur cyclique)">État</th>
-            ${this.header('Nom', 'name')}
-            ${this.header('Hôte:port', 'host')}
-            ${this.header('Groupe', 'group')}
-            <th>Mode</th>
-            ${this.header('Dernière connexion', 'lastConnectedAt')}
+            <th class="led-col" title=${localize(MSG.table.statusTitle)}>${localizeDir(MSG.table.state)}</th>
+            ${this.header(MSG.table.name, 'name')}
+            ${this.header(MSG.table.hostPort, 'host')}
+            ${this.header(MSG.table.group, 'group')}
+            <th>${localizeDir(MSG.table.mode)}</th>
+            ${this.header(MSG.table.lastConnected, 'lastConnectedAt')}
             <th class="actions-col"></th>
           </tr>
         </thead>
@@ -59,7 +64,7 @@ export class RvConnectionTable extends LitElement {
         <td class="star-col" @click=${(e: Event) => e.stopPropagation()}>
           <button
             class="star ${conn.favorite ? 'on' : ''}"
-            title=${conn.favorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+            title=${conn.favorite ? localize(MSG.table.removeFavorite) : localize(MSG.table.addFavorite)}
             @click=${() => this.requestFav(conn.id)}
           >
             ${conn.favorite ? '★' : '☆'}
@@ -74,8 +79,8 @@ export class RvConnectionTable extends LitElement {
         <td>${conn.group || '—'}</td>
         <td>
           ${conn.viewOnly
-            ? html`<span class="chip">Lecture seule</span>`
-            : html`<span class="chip solid">Contrôle</span>`}
+            ? html`<span class="chip">${localizeDir(MSG.table.viewOnly)}</span>`
+            : html`<span class="chip solid">${localizeDir(MSG.table.control)}</span>`}
         </td>
         <td class="mono">${this.fmtDate(conn.lastConnectedAt)}</td>
         <td class="actions-col" @click=${(e: Event) => e.stopPropagation()}>
@@ -83,28 +88,28 @@ export class RvConnectionTable extends LitElement {
             ghost
             size="16"
             icon="play"
-            title="Connecter"
+            title=${localize(MSG.table.connect)}
             @click=${() => this.requestOpen(conn.id)}
           ></ix-icon-button>
           <ix-icon-button
             ghost
             size="16"
             icon="pen"
-            title="Modifier"
+            title=${localize(MSG.table.edit)}
             @click=${() => this.requestEdit(conn.id)}
           ></ix-icon-button>
           <ix-icon-button
             ghost
             size="16"
             icon="download"
-            title="Exporter cette connexion"
+            title=${localize(MSG.table.exportOne)}
             @click=${() => this.requestExport(conn.id)}
           ></ix-icon-button>
           <ix-icon-button
             ghost
             size="16"
             icon="trashcan"
-            title="Supprimer"
+            title=${localize(MSG.table.remove)}
             @click=${() => this.requestDelete(conn.id)}
           ></ix-icon-button>
         </td>
@@ -115,7 +120,7 @@ export class RvConnectionTable extends LitElement {
   private renderStatus(id: string): TemplateResult {
     const st = this.statusById[id];
     if (!st) {
-      return html`<span class="led unknown" title="Joignabilité inconnue (test en attente)"></span>`;
+      return html`<span class="led unknown" title=${localize(MSG.table.statusUnknown)}></span>`;
     }
     const cls = st.reachable ? 'ok' : 'ko';
     return html`<span class="led ${cls}" title=${this.statusTitle(st)}></span>`;
@@ -123,9 +128,11 @@ export class RvConnectionTable extends LitElement {
 
   private statusTitle(st: VncStatus): string {
     const when = this.fmtCheckedAt(st.checkedAt);
-    const parts: string[] = [st.reachable ? 'Socket joignable' : 'Socket injoignable'];
+    const parts: string[] = [
+      st.reachable ? localize(MSG.table.socketReachable) : localize(MSG.table.socketUnreachable)
+    ];
     if (!st.reachable && st.detail) parts.push(st.detail);
-    if (when) parts.push(st.reachable ? `vérifié à ${when}` : when);
+    if (when) parts.push(checkedAtMsg(st.reachable, when));
     return parts.join(' · ');
   }
 
@@ -136,18 +143,18 @@ export class RvConnectionTable extends LitElement {
     return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   }
 
-  private header(label: string, key: SortKey): TemplateResult {
+  private header(label: MultiLangString, key: SortKey): TemplateResult {
     const active = this.sortKey === key;
     const arrow = active ? (this.sortAsc ? '▲' : '▼') : '';
     return html`
       <th class="sortable" @click=${() => this.setSort(key)}>
-        ${label} <span class="arrow">${arrow}</span>
+        ${localizeDir(label)} <span class="arrow">${arrow}</span>
       </th>
     `;
   }
 
   private fmtDate(value: string): string {
-    if (!value) return 'jamais';
+    if (!value) return localize(MSG.table.never);
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return value;
     return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
