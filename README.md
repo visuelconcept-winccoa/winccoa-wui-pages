@@ -24,7 +24,6 @@ All pages are published under the `@visuelconcept/` scope (e.g.
 
 | Module | Route | What it does | Backend |
 | --- | --- | --- | --- |
-| `wui-asset-lifecycle-intelligence` | `/asset-lifecycle` | Asset risk-scoring with product obsolescence / delivery lookup via the Siemens Product Information Hub | `/api/product-info` + `productInfo` mgr |
 | `wui-audit-trail` | `/audit-trail` | Pivot table of a datapoint's NGA-archived value history (configurable period, columns, refresh) | — |
 | `wui-camera-streams` | `/camera-streams` | View RTSP IP cameras in-browser over a WebSocket relay (JSMpeg, no plugin) | `/api/rtsp` + `rtspProxy` mgr |
 | `wui-fleet-closures` | `/fleet-closures` | Manage fleet non-working days (year / atelier / machine filters, JSON import-export) | — |

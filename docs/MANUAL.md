@@ -127,17 +127,6 @@ value evolved over time.
 
 ---
 
-## Asset Lifecycle Intelligence — `/asset-lifecycle`
-
-![Asset Lifecycle Intelligence](images/manual/asset-lifecycle.png)
-
-An asset domain model with a composite **risk-scoring** engine (criticality, supply,
-vulnerability, age) and **product obsolescence / delivery** lookups via the Siemens
-**Product Information Hub**. *Tier 3* — backed by the `productInfo` manager and
-`/api/product-info`. The PIH key is provided on the target, never committed.
-
----
-
 ## Camera Streams — `/camera-streams`
 
 ![Camera Streams](images/manual/camera-streams.png)

@@ -1,4 +1,0 @@
-// Menu fragment for @visuelconcept/wui-asset-lifecycle-intelligence.
-[
-  { "title": { "en_US": "Asset Lifecycle Intelligence", "fr": "Intelligence du cycle de vie des actifs" }, "icon": "cycle", "path": "/asset-lifecycle", "module": "/data/dashboard-wc/pages/asset-lifecycle-intelligence.js", "routeId": "asset-lifecycle", "component": "wui-asset-lifecycle", "permission": ["connected"] }
-]
