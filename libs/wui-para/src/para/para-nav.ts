@@ -20,6 +20,8 @@ import { LitElement, css, html, type TemplateResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { Subscription, catchError, forkJoin, map, of } from 'rxjs';
 import { container } from 'tsyringe';
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
+import { MSG, localize, localizeDir, navCouldNotLoadTypeMsg, navCouldNotLoadTypesMsg, navExportSelectedMsg } from './i18n.js';
 
 /** Default datapoint-type search pattern. */
 const DEFAULT_PATTERN = '*';
@@ -34,14 +36,14 @@ const ELEMENT_BASE_LEVEL = 2;
  * Configs badged on an element when present (`:_<config>.._type` > 0). The
  * `_type` attribute is the standard existence/kind probe for a config.
  */
-const CONFIG_BADGES: { config: string; label: string; title: string }[] = [
-  { config: '_alert_hdl', label: 'alert', title: 'Alarm handling' },
-  { config: '_archive', label: 'arch', title: 'Archiving' },
-  { config: '_address', label: 'addr', title: 'Peripheral address' },
-  { config: '_pv_range', label: 'range', title: 'Value range' },
-  { config: '_smooth', label: 'smooth', title: 'Smoothing' },
-  { config: '_dp_fct', label: 'fct', title: 'DP function' },
-  { config: '_msg_conv', label: 'conv', title: 'Message conversion' }
+const CONFIG_BADGES: { config: string; label: string; title: MultiLangString }[] = [
+  { config: '_alert_hdl', label: 'alert', title: MSG.nav.cfgAlertHdl },
+  { config: '_archive', label: 'arch', title: MSG.nav.cfgArchive },
+  { config: '_address', label: 'addr', title: MSG.nav.cfgAddress },
+  { config: '_pv_range', label: 'range', title: MSG.nav.cfgPvRange },
+  { config: '_smooth', label: 'smooth', title: MSG.nav.cfgSmooth },
+  { config: '_dp_fct', label: 'fct', title: MSG.nav.cfgDpFct },
+  { config: '_msg_conv', label: 'conv', title: MSG.nav.cfgMsgConv }
 ];
 
 /** Nested datapoint-type structure: a scalar type name, or a struct of children. */
@@ -67,7 +69,7 @@ interface TreeNode {
   /** Cached element structure (type nodes only). */
   struct?: DpStruct;
   /** Labels of configs present on this element (`:_<config>.._type` > 0). */
-  configs?: { label: string; title: string }[];
+  configs?: { label: string; title: MultiLangString }[];
   /** Whether config badges of this node's child leaves have been requested. */
   childConfigsLoaded?: boolean;
 }
@@ -259,11 +261,11 @@ export class WuiParaNav extends LitElement {
             @valueChange=${(e: Event) => (this.pattern = (e.target as HTMLInputElement).value)}
             @keydown=${(e: KeyboardEvent) => e.key === 'Enter' && this.loadTypes()}
           ></ix-input>
-          <ix-icon-button icon="refresh" variant="secondary" title="Reload" @click=${this.loadTypes}></ix-icon-button>
+          <ix-icon-button icon="refresh" variant="secondary" title=${localize(MSG.nav.reload)} @click=${this.loadTypes}></ix-icon-button>
         </div>
         <ix-input
           .value=${this.filter}
-          placeholder="Filter types…"
+          placeholder=${localize(MSG.nav.filterTypes)}
           @valueChange=${(e: Event) => (this.filter = (e.target as HTMLInputElement).value)}
         ></ix-input>
         <div class="options">
@@ -272,13 +274,13 @@ export class WuiParaNav extends LitElement {
               .checked=${this.showInternal}
               @checkedChange=${this.onToggleInternal}
             ></ix-toggle>
-            Show internal datapoints
+            ${localizeDir(MSG.nav.showInternal)}
           </label>
         </div>
         ${this.showExport && this.exportSel.size > 0
           ? html`<div class="dpl-sel">
-              <span>${this.exportSel.size} sélectionné(s) pour l'export DPL</span>
-              <ix-icon-button ghost size="16" icon="close" title="Tout décocher" @click=${this.clearExport}></ix-icon-button>
+              <span>${navExportSelectedMsg(this.exportSel.size)}</span>
+              <ix-icon-button ghost size="16" icon="close" title=${localize(MSG.nav.deselectAll)} @click=${this.clearExport}></ix-icon-button>
             </div>`
           : ''}
       </div>
@@ -294,14 +296,14 @@ export class WuiParaNav extends LitElement {
 
   private renderTree(): TemplateResult {
     if (this.loading) {
-      return html`<div class="message">Loading…</div>`;
+      return html`<div class="message">${localizeDir(MSG.nav.loading)}</div>`;
     }
     if (this.error !== '') {
       return html`<div class="message error">${this.error}</div>`;
     }
     const visible = this.visibleRoots();
     if (visible.length === 0) {
-      return html`<div class="message">No datapoint types match.</div>`;
+      return html`<div class="message">${localizeDir(MSG.nav.noMatch)}</div>`;
     }
     return html`${visible.flatMap((node) => this.renderNode(node))}`;
   }
@@ -325,7 +327,7 @@ export class WuiParaNav extends LitElement {
               type="checkbox"
               class="export-cb"
               .checked=${this.exportSel.has(this.exportKey(node))}
-              title="Select for DPL export"
+              title=${localize(MSG.nav.selectForExport)}
               @click=${(e: Event) => e.stopPropagation()}
               @change=${() => this.toggleExport(node)}
             />`
@@ -334,10 +336,10 @@ export class WuiParaNav extends LitElement {
           <span class="twisty">${this.renderTwisty(node)}</span>
           <span class="label ${node.kind === 'type' ? 'type-name' : ''}">${node.label}</span>
           ${node.dataType
-            ? html`<span class="badge type-badge" title="Data type: ${node.dataType}">${node.dataType}</span>`
+            ? html`<span class="badge type-badge" title="${localize(MSG.nav.dataType)}: ${node.dataType}">${node.dataType}</span>`
             : ''}
           ${(node.configs ?? []).map(
-            (cfg) => html`<span class="badge config-badge" title="${cfg.title}">${cfg.label}</span>`
+            (cfg) => html`<span class="badge config-badge" title=${localize(cfg.title)}>${cfg.label}</span>`
           )}
         </button>
         ${this.renderActions(node)}
@@ -353,7 +355,7 @@ export class WuiParaNav extends LitElement {
             icon="plus"
             size="16"
             ghost
-            title="Create datapoint"
+            title=${localize(MSG.nav.createDp)}
             @click=${(e: Event) => this.requestDp(e, 'create', node)}
           ></ix-icon-button>
         </span>
@@ -366,14 +368,14 @@ export class WuiParaNav extends LitElement {
             icon="pen"
             size="16"
             ghost
-            title="Rename datapoint"
+            title=${localize(MSG.nav.renameDp)}
             @click=${(e: Event) => this.requestDp(e, 'rename', node)}
           ></ix-icon-button>
           <ix-icon-button
             icon="trashcan"
             size="16"
             ghost
-            title="Delete datapoint"
+            title=${localize(MSG.nav.deleteDp)}
             @click=${(e: Event) => this.requestDp(e, 'delete', node)}
           ></ix-icon-button>
         </span>
@@ -478,7 +480,7 @@ export class WuiParaNav extends LitElement {
             this.loading = false;
           },
           error: (err: unknown) => {
-            this.error = `Could not load datapoint types: ${String(err)}`;
+            this.error = navCouldNotLoadTypesMsg(String(err));
             this.roots = [];
             this.loading = false;
           }
@@ -596,7 +598,7 @@ export class WuiParaNav extends LitElement {
         error: (err: unknown) => {
           node.loading = false;
           node.expanded = false;
-          this.error = `Could not load '${typeName}': ${String(err)}`;
+          this.error = navCouldNotLoadTypeMsg(typeName, String(err));
           this.requestUpdate();
         }
       })

@@ -21,6 +21,7 @@ import { LitElement, css, html, nothing, type PropertyValues, type TemplateResul
 import { property, query, state } from 'lit/decorators.js';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { PARA_SUGGESTIONS, buildSystemPrompt, extractTypeProposals, type TypeProposal } from './para-ai-context.js';
+import { MSG, localize, localizeDir } from './i18n.js';
 
 const PROMPT_ROWS = 3;
 
@@ -61,7 +62,7 @@ export class WuiParaAiAssistant extends LitElement {
           class="toggle"
           icon="ai"
           variant=${this.open ? 'primary' : 'secondary'}
-          title="Assistant IA — modélisation PARA"
+          title=${localize(MSG.ai.assistantTitle)}
           @click=${this.toggle}
         ></ix-icon-button>
         ${this.open ? this.renderPanel() : nothing}
@@ -82,13 +83,13 @@ export class WuiParaAiAssistant extends LitElement {
     return html`
       <div class="panel">
         <div class="panel-head">
-          <ix-icon name="ai"></ix-icon><span>Assistant PARA</span>
+          <ix-icon name="ai"></ix-icon><span>${localizeDir(MSG.ai.panelTitle)}</span>
           <span class="spacer"></span>
           ${this.messages.length > 0
-            ? html`<ix-icon-button ghost size="16" icon="trashcan" title="Effacer la conversation" @click=${this.clear}></ix-icon-button>`
+            ? html`<ix-icon-button ghost size="16" icon="trashcan" title=${localize(MSG.ai.clear)} @click=${this.clear}></ix-icon-button>`
             : nothing}
-          <ix-icon-button ghost size="16" icon="cogwheel" title="Configurer l'IA (fournisseur, modèle, token)" @click=${() => (this.configOpen = true)}></ix-icon-button>
-          <ix-icon-button ghost size="16" icon="close" title="Fermer" @click=${this.toggle}></ix-icon-button>
+          <ix-icon-button ghost size="16" icon="cogwheel" title=${localize(MSG.ai.configure)} @click=${() => (this.configOpen = true)}></ix-icon-button>
+          <ix-icon-button ghost size="16" icon="close" title=${localize(MSG.ai.close)} @click=${this.toggle}></ix-icon-button>
         </div>
         <div class="conv">
           ${this.messages.length === 0 && !this.busy ? this.renderEmpty() : nothing}
@@ -96,7 +97,7 @@ export class WuiParaAiAssistant extends LitElement {
           ${this.busy
             ? html`<div class="msg msg--assistant working">
                 <span class="dots"><span></span><span></span><span></span></span>
-                <span class="working-text">L'assistant réfléchit…</span>
+                <span class="working-text">${localizeDir(MSG.ai.thinking)}</span>
               </div>`
             : nothing}
         </div>
@@ -104,7 +105,7 @@ export class WuiParaAiAssistant extends LitElement {
           <textarea
             class="ta"
             rows=${PROMPT_ROWS}
-            placeholder="Décrivez le modèle à créer… (Ctrl+Entrée pour envoyer)"
+            placeholder=${localize(MSG.ai.composerPlaceholder)}
             .value=${this.prompt}
             ?disabled=${this.busy}
             @input=${(e: Event) => (this.prompt = (e.target as HTMLTextAreaElement).value)}
@@ -114,7 +115,7 @@ export class WuiParaAiAssistant extends LitElement {
             class="send"
             icon="send-right"
             variant="primary"
-            title="Envoyer"
+            title=${localize(MSG.ai.send)}
             ?disabled=${this.busy || this.prompt.trim() === ''}
             @click=${() => void this.sendPrompt()}
           ></ix-icon-button>
@@ -125,11 +126,12 @@ export class WuiParaAiAssistant extends LitElement {
 
   private renderEmpty(): TemplateResult {
     return html`
-      <div class="placeholder">Demandez à l'assistant de proposer ou d'ajuster un modèle de données. Il propose ; vous validez dans l'éditeur.</div>
+      <div class="placeholder">${localizeDir(MSG.ai.placeholder)}</div>
       <div class="suggestions">
-        ${PARA_SUGGESTIONS.map(
-          (s) => html`<button class="suggestion" type="button" ?disabled=${this.busy} @click=${() => void this.sendPrompt(s)}>${s}</button>`
-        )}
+        ${PARA_SUGGESTIONS.map((s) => {
+          const text = localize(s);
+          return html`<button class="suggestion" type="button" ?disabled=${this.busy} @click=${() => void this.sendPrompt(text)}>${text}</button>`;
+        })}
       </div>
     `;
   }
@@ -148,8 +150,8 @@ export class WuiParaAiAssistant extends LitElement {
     const count = (proposal.structure.children ?? []).length;
     return html`<div class="proposal">
       <ix-icon name="tree" size="16"></ix-icon>
-      <span class="proposal-label">Modèle proposé : <strong>${proposal.typeName}</strong> (${count} élément${count > 1 ? 's' : ''})</span>
-      <ix-button size="16" variant="primary" icon="upload" @click=${() => this.applyProposal(proposal)}>Appliquer dans l'éditeur</ix-button>
+      <span class="proposal-label">${localizeDir(MSG.ai.proposedModel)} <strong>${proposal.typeName}</strong> (${count} ${localizeDir(count > 1 ? MSG.ai.elementMany : MSG.ai.elementOne)})</span>
+      <ix-button size="16" variant="primary" icon="upload" @click=${() => this.applyProposal(proposal)}>${localizeDir(MSG.ai.applyToEditor)}</ix-button>
     </div>`;
   }
 
@@ -183,7 +185,7 @@ export class WuiParaAiAssistant extends LitElement {
     try {
       // mcpServers: [] -> the assistant runs with NO tools (proposal-only).
       const answer = await askAi(prompt, { system: buildSystemPrompt(this.contextSummary), mcpServers: [] });
-      const text = answer.text || '(réponse vide)';
+      const text = answer.text || localize(MSG.ai.emptyAnswer);
       this.messages = [...this.messages, { role: 'assistant', text, proposals: extractTypeProposals(text) }];
     } catch (error) {
       this.messages = [...this.messages, { role: 'error', text: error instanceof Error ? error.message : String(error) }];

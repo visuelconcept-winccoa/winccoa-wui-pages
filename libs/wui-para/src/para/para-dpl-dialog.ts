@@ -14,16 +14,18 @@
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
+import { MSG, localize, localizeDir } from './i18n.js';
 
 /** Selectable export categories, in canonical TDACOPH order. */
-const DPL_FILTERS: { letter: string; label: string; hint: string }[] = [
-  { letter: 'T', label: 'Types (définitions)', hint: 'Définitions des DP-Types' },
-  { letter: 'D', label: 'Datapoints (instances)', hint: 'La liste des datapoints' },
-  { letter: 'P', label: 'Parametrization / configs', hint: 'Tous les configs (incl. _common, _pv_range, _alert_hdl…)' },
-  { letter: 'O', label: 'Original values', hint: 'Valeurs courantes (_original.._value)' },
-  { letter: 'A', label: 'Aliases & commentaires', hint: 'Alias et commentaires des DP/DPE' },
-  { letter: 'C', label: 'CNS views', hint: 'Vues/arbres CNS' },
-  { letter: 'H', label: 'Timestamps des configs', hint: 'Horodatages sur les configs (modifie P)' }
+const DPL_FILTERS: { letter: string; label: MultiLangString; hint: MultiLangString }[] = [
+  { letter: 'T', label: MSG.dplDialog.fT, hint: MSG.dplDialog.fTHint },
+  { letter: 'D', label: MSG.dplDialog.fD, hint: MSG.dplDialog.fDHint },
+  { letter: 'P', label: MSG.dplDialog.fP, hint: MSG.dplDialog.fPHint },
+  { letter: 'O', label: MSG.dplDialog.fO, hint: MSG.dplDialog.fOHint },
+  { letter: 'A', label: MSG.dplDialog.fA, hint: MSG.dplDialog.fAHint },
+  { letter: 'C', label: MSG.dplDialog.fC, hint: MSG.dplDialog.fCHint },
+  { letter: 'H', label: MSG.dplDialog.fH, hint: MSG.dplDialog.fHHint }
 ];
 
 export class WuiParaDplDialog extends LitElement {
@@ -44,24 +46,24 @@ export class WuiParaDplDialog extends LitElement {
         <div class="panel" @click=${(e: Event) => e.stopPropagation()}>
           <div class="header">
             <ix-icon name="download" size="24"></ix-icon>
-            <span class="title">Export DPL — contenu</span>
+            <span class="title">${localizeDir(MSG.dplDialog.title)}</span>
             <ix-icon-button icon="close" ghost @click=${this.cancel}></ix-icon-button>
           </div>
           <div class="body">
             <div class="summary">
-              Sélection : ${this.typeCount} type(s), ${this.dpCount} datapoint(s).
+              ${localizeDir(MSG.dplDialog.summaryPre)} ${this.typeCount} ${localizeDir(MSG.dplDialog.summaryTypes)}, ${this.dpCount} ${localizeDir(MSG.dplDialog.summaryDps)}.
             </div>
             <div class="filters">
               ${DPL_FILTERS.map((f) => this.renderRow(f))}
             </div>
             ${filter === ''
-              ? html`<div class="warn">Cochez au moins une catégorie.</div>`
+              ? html`<div class="warn">${localizeDir(MSG.dplDialog.pickOne)}</div>`
               : nothing}
           </div>
           <div class="footer">
-            <ix-button outline @click=${this.cancel}>Annuler</ix-button>
+            <ix-button outline @click=${this.cancel}>${localizeDir(MSG.dplDialog.cancel)}</ix-button>
             <ix-button variant="primary" icon="download" ?disabled=${filter === ''} @click=${this.confirm}>
-              Exporter
+              ${localizeDir(MSG.dplDialog.export)}
             </ix-button>
           </div>
         </div>
@@ -69,16 +71,16 @@ export class WuiParaDplDialog extends LitElement {
     `;
   }
 
-  private renderRow(f: { letter: string; label: string; hint: string }): TemplateResult {
+  private renderRow(f: { letter: string; label: MultiLangString; hint: MultiLangString }): TemplateResult {
     return html`
-      <label class="filter-row" title=${f.hint}>
+      <label class="filter-row" title=${localize(f.hint)}>
         <input
           type="checkbox"
           .checked=${this.checked.has(f.letter)}
           @change=${() => this.toggle(f.letter)}
         />
-        <span class="filter-label">${f.label}</span>
-        <span class="filter-hint">${f.hint}</span>
+        <span class="filter-label">${localizeDir(f.label)}</span>
+        <span class="filter-hint">${localizeDir(f.hint)}</span>
       </label>
     `;
   }

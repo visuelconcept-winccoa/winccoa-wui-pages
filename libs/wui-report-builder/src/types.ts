@@ -19,19 +19,15 @@
  * the thermal-reports / asset-lifecycle stores.
  */
 
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
+import { AGG_MSG, DEFAULTS_MSG, FIELD_TYPE_MSG, SECTION_KIND_MSG, STATE_KIND_MSG, localize } from './i18n.js';
+
 export type SectionKind = 'text' | 'comment' | 'fields' | 'table' | 'dataset' | 'checklist';
 export type FieldType = 'text' | 'number' | 'date';
 export type AggOp = 'avg' | 'min' | 'max' | 'sum' | 'last' | 'count' | 'stddev';
 export type StateKind = 'start' | 'intermediate' | 'final' | 'rejected';
 
-export const SECTION_KIND_LABELS: Record<SectionKind, string> = {
-  text: 'Texte libre',
-  comment: 'Zone de commentaire',
-  fields: 'Champs clé/valeur',
-  table: 'Tableau manuel',
-  dataset: 'Données (datapoints)',
-  checklist: 'Checklist'
-};
+export const SECTION_KIND_LABELS: Record<SectionKind, MultiLangString> = SECTION_KIND_MSG;
 
 export const SECTION_KIND_ICONS: Record<SectionKind, string> = {
   text: 'document',
@@ -42,30 +38,13 @@ export const SECTION_KIND_ICONS: Record<SectionKind, string> = {
   checklist: 'checkboxes'
 };
 
-export const FIELD_TYPE_LABELS: Record<FieldType, string> = {
-  text: 'Texte',
-  number: 'Nombre',
-  date: 'Date'
-};
+export const FIELD_TYPE_LABELS: Record<FieldType, MultiLangString> = FIELD_TYPE_MSG;
 
-export const AGG_LABELS: Record<AggOp, string> = {
-  avg: 'Moyenne',
-  min: 'Minimum',
-  max: 'Maximum',
-  sum: 'Somme',
-  last: 'Dernière valeur',
-  count: 'Nombre de points',
-  stddev: 'Écart-type'
-};
+export const AGG_LABELS: Record<AggOp, MultiLangString> = AGG_MSG;
 
 export const AGG_OPS: AggOp[] = ['avg', 'min', 'max', 'sum', 'last', 'count', 'stddev'];
 
-export const STATE_KIND_LABELS: Record<StateKind, string> = {
-  start: 'Initial',
-  intermediate: 'Intermédiaire',
-  final: 'Final (verrouillé)',
-  rejected: 'Rejeté'
-};
+export const STATE_KIND_LABELS: Record<StateKind, MultiLangString> = STATE_KIND_MSG;
 
 export const STATE_COLORS: Record<StateKind, string> = {
   start: '#94a3b8',
@@ -258,7 +237,7 @@ export function sanitizeId(name: string): string {
 // --- blank factories --------------------------------------------------------
 
 export function blankSection(kind: SectionKind): TemplateSection {
-  const base: TemplateSection = { id: uid('sec'), title: SECTION_KIND_LABELS[kind], kind };
+  const base: TemplateSection = { id: uid('sec'), title: localize(SECTION_KIND_LABELS[kind]), kind };
   switch (kind) {
     case 'text':
     case 'comment': {
@@ -283,19 +262,19 @@ export function blankSection(kind: SectionKind): TemplateSection {
 }
 
 export function blankField(): FieldDef {
-  return { id: uid('fld'), label: 'Champ', unit: '', type: 'text', min: null, max: null };
+  return { id: uid('fld'), label: localize(DEFAULTS_MSG.field), unit: '', type: 'text', min: null, max: null };
 }
 
 export function blankColumn(): ColumnDef {
-  return { id: uid('col'), label: 'Colonne', type: 'text' };
+  return { id: uid('col'), label: localize(DEFAULTS_MSG.column), type: 'text' };
 }
 
 export function blankDataset(): DatasetDef {
-  return { id: uid('ds'), label: 'Mesure', dp: '', ops: ['avg', 'min', 'max'] };
+  return { id: uid('ds'), label: localize(DEFAULTS_MSG.measure), dp: '', ops: ['avg', 'min', 'max'] };
 }
 
 export function blankChecklistItem(): ChecklistItem {
-  return { id: uid('chk'), label: 'Point à vérifier', required: true };
+  return { id: uid('chk'), label: localize(DEFAULTS_MSG.checklistItem), required: true };
 }
 
 /** A sensible default 4-state workflow with two signature levels + a reject path. */
@@ -307,13 +286,13 @@ export function defaultWorkflow(): WorkflowState[] {
   return [
     {
       id: draft,
-      label: 'Brouillon',
+      label: localize(DEFAULTS_MSG.stateDraft),
       color: STATE_COLORS.start,
       kind: 'start',
       advance: {
         toStateId: checked,
-        actionLabel: 'Vérifier & signer',
-        roleLabel: 'Opérateur',
+        actionLabel: localize(DEFAULTS_MSG.advanceVerify),
+        roleLabel: localize(DEFAULTS_MSG.roleOperator),
         level: 1,
         requirePermission: true,
         requireChecklist: false
@@ -321,26 +300,26 @@ export function defaultWorkflow(): WorkflowState[] {
     },
     {
       id: checked,
-      label: 'Vérifié',
+      label: localize(DEFAULTS_MSG.stateChecked),
       color: STATE_COLORS.intermediate,
       kind: 'intermediate',
       advance: {
         toStateId: approved,
-        actionLabel: 'Approuver & signer',
-        roleLabel: 'Responsable',
+        actionLabel: localize(DEFAULTS_MSG.advanceApprove),
+        roleLabel: localize(DEFAULTS_MSG.roleManager),
         level: 2,
         requirePermission: true,
         requireChecklist: true
       },
-      reject: { toStateId: rejected, actionLabel: 'Rejeter' }
+      reject: { toStateId: rejected, actionLabel: localize(DEFAULTS_MSG.reject) }
     },
-    { id: approved, label: 'Approuvé', color: STATE_COLORS.final, kind: 'final' },
+    { id: approved, label: localize(DEFAULTS_MSG.stateApproved), color: STATE_COLORS.final, kind: 'final' },
     {
       id: rejected,
-      label: 'Rejeté',
+      label: localize(DEFAULTS_MSG.stateRejected),
       color: STATE_COLORS.rejected,
       kind: 'rejected',
-      reject: { toStateId: draft, actionLabel: 'Renvoyer en brouillon' }
+      reject: { toStateId: draft, actionLabel: localize(DEFAULTS_MSG.sendBackToDraft) }
     }
   ];
 }

@@ -25,6 +25,7 @@ import { LitElement, css, html, nothing, type PropertyValues, type TemplateResul
 import { property, query, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
+import { MSG, confirmDeleteReportMsg, localize, localizeDir } from './i18n.js';
 import { buildDemoReports, buildDemoTemplates } from './data/demo.js';
 import { exportReportsCsv, exportReportsJson, parseReports } from './data/io.js';
 import { ReportStore } from './data/report-store.js';
@@ -94,8 +95,7 @@ export class WuiReportBuilder extends LitElement {
             : nothing}
           ${this.offline
             ? html`<div class="notice">
-                <ix-icon name="info"></ix-icon>Mode hors-ligne : modifications non persistées (backend
-                indisponible ou droits d'écriture manquants).
+                <ix-icon name="info"></ix-icon>${localizeDir(MSG.page.offline)}
               </div>`
             : nothing}
           ${this.renderBody()}
@@ -111,7 +111,7 @@ export class WuiReportBuilder extends LitElement {
         : nothing}
       ${this.deletingId
         ? html`<wui-confirm-dialog
-            message=${`Supprimer le rapport « ${this.reportName(this.deletingId)} » ?`}
+            message=${confirmDeleteReportMsg(this.reportName(this.deletingId))}
             @wui:confirm=${this.onDeleteConfirm}
             @wui:cancel=${() => (this.deletingId = null)}
           ></wui-confirm-dialog>`
@@ -141,12 +141,12 @@ export class WuiReportBuilder extends LitElement {
         <rb-kpi-bar class="grow" .reports=${this.reports}></rb-kpi-bar>
         <div class="actions">
           <ix-button variant="secondary" @click=${() => this.dispatchEvent(new RouterEvent(TEMPLATES_ROUTE))}>
-            <ix-icon name="document" slot="icon"></ix-icon>Modèles
+            <ix-icon name="document" slot="icon"></ix-icon>${localizeDir(MSG.page.templates)}
           </ix-button>
-          <ix-button variant="secondary" @click=${this.triggerImport}><ix-icon name="upload" slot="icon"></ix-icon>Importer</ix-button>
+          <ix-button variant="secondary" @click=${this.triggerImport}><ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.page.import)}</ix-button>
           <ix-button variant="secondary" ?disabled=${this.reports.length === 0} @click=${() => exportReportsJson(this.reports)}><ix-icon name="download" slot="icon"></ix-icon>JSON</ix-button>
           <ix-button variant="secondary" ?disabled=${this.reports.length === 0} @click=${() => exportReportsCsv(this.reports)}><ix-icon name="download" slot="icon"></ix-icon>CSV</ix-button>
-          <ix-button ?disabled=${this.templates.length === 0} @click=${() => (this.creatingReport = true)}><ix-icon name="plus" slot="icon"></ix-icon>Nouveau rapport</ix-button>
+          <ix-button ?disabled=${this.templates.length === 0} @click=${() => (this.creatingReport = true)}><ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.page.newReport)}</ix-button>
         </div>
       </div>
       <input class="import-input" type="file" accept="application/json,.json" hidden @change=${this.onImportFile} />
@@ -161,11 +161,11 @@ export class WuiReportBuilder extends LitElement {
 
   private renderEmpty(): TemplateResult {
     return html`<div class="center empty">
-      <ix-typography>Aucun rapport pour l'instant.</ix-typography>
+      <ix-typography>${localizeDir(MSG.page.empty)}</ix-typography>
       ${this.templates.length === 0
-        ? html`<ix-typography>Créez d'abord un modèle (page « Modèles »), ou générez la démonstration.</ix-typography>`
+        ? html`<ix-typography>${localizeDir(MSG.page.emptyNoTemplate)}</ix-typography>`
         : nothing}
-      <ix-button variant="secondary" @click=${this.generateDemo}><ix-icon name="add" slot="icon"></ix-icon>Générer la démonstration</ix-button>
+      <ix-button variant="secondary" @click=${this.generateDemo}><ix-icon name="add" slot="icon"></ix-icon>${localizeDir(MSG.page.generateDemo)}</ix-button>
     </div>`;
   }
 
@@ -240,7 +240,7 @@ export class WuiReportBuilder extends LitElement {
     try {
       parsed = parseReports(await file.text());
     } catch (error) {
-      this.importError = error instanceof Error ? error.message : 'Import échoué.';
+      this.importError = error instanceof Error ? error.message : localize(MSG.io.importFailed);
       return;
     }
     this.importError = '';

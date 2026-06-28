@@ -10,6 +10,7 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, html, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { dialogStyles } from './dialog-styles.js';
+import { MSG, localize, localizeDir } from '../i18n.js';
 import { instantiateReport, nowLocal, type Report, type ReportTemplate } from '../types.js';
 
 interface IxValueEvent {
@@ -49,42 +50,42 @@ export class RbReportDialog extends LitElement {
     return html`
       <div class="overlay" @click=${this.cancel}>
         <div class="panel" @click=${(e: Event) => e.stopPropagation()} style="width:560px">
-          <div class="panel-head"><ix-typography format="h3">Nouveau rapport</ix-typography></div>
+          <div class="panel-head"><ix-typography format="h3">${localizeDir(MSG.reportDialog.title)}</ix-typography></div>
           <div class="panel-body">
             ${this.templates.length === 0
-              ? html`<div class="hint">Aucun modèle disponible. Créez d'abord un modèle dans l'onglet « Modèles ».</div>`
+              ? html`<div class="hint">${localizeDir(MSG.reportDialog.noTemplate)}</div>`
               : html`
                   <ix-select
-                    label="Modèle"
+                    label=${localize(MSG.reportDialog.model)}
                     .value=${this.templateId}
                     @valueChange=${(e: IxValueEvent) => (this.templateId = String(e.detail))}
                   >
                     ${this.templates.map(
-                      (t) => html`<ix-select-item label=${t.name || '(sans nom)'} value=${t.id}></ix-select-item>`
+                      (t) => html`<ix-select-item label=${t.name || localize(MSG.reportDialog.unnamed)} value=${t.id}></ix-select-item>`
                     )}
                   </ix-select>
                   <div class="grid2" style="margin-top:0.75rem">
-                    <ix-input label="N° rapport" .value=${this.reportNo} @valueChange=${(e: IxValueEvent) => (this.reportNo = String(e.detail))}></ix-input>
-                    <ix-input label="Titre" .value=${this.title} @valueChange=${(e: IxValueEvent) => (this.title = String(e.detail))}></ix-input>
+                    <ix-input label=${localize(MSG.reportDialog.reportNo)} .value=${this.reportNo} @valueChange=${(e: IxValueEvent) => (this.reportNo = String(e.detail))}></ix-input>
+                    <ix-input label=${localize(MSG.reportDialog.title)} .value=${this.title} @valueChange=${(e: IxValueEvent) => (this.title = String(e.detail))}></ix-input>
                   </div>
-                  <ix-input style="margin-top:0.75rem" label="Objet" .value=${this.subject} @valueChange=${(e: IxValueEvent) => (this.subject = String(e.detail))}></ix-input>
+                  <ix-input style="margin-top:0.75rem" label=${localize(MSG.reportDialog.subject)} .value=${this.subject} @valueChange=${(e: IxValueEvent) => (this.subject = String(e.detail))}></ix-input>
                   <div class="grid2" style="margin-top:0.75rem">
                     <div class="field">
-                      <label>Période — début</label>
+                      <label>${localizeDir(MSG.reportDialog.periodStart)}</label>
                       <input type="datetime-local" .value=${this.start} @change=${(e: Event) => (this.start = (e.target as HTMLInputElement).value)} />
                     </div>
                     <div class="field">
-                      <label>Période — fin</label>
+                      <label>${localizeDir(MSG.reportDialog.periodEnd)}</label>
                       <input type="datetime-local" .value=${this.end} @change=${(e: Event) => (this.end = (e.target as HTMLInputElement).value)} />
                     </div>
                   </div>
-                  <div class="hint">La période sert aux sections « Données » (lecture des archives sur cet intervalle).</div>
+                  <div class="hint">${localizeDir(MSG.reportDialog.periodHint)}</div>
                 `}
           </div>
           <div class="panel-foot">
-            <ix-button variant="secondary" @click=${this.cancel}>Annuler</ix-button>
+            <ix-button variant="secondary" @click=${this.cancel}>${localizeDir(MSG.reportDialog.cancel)}</ix-button>
             <ix-button ?disabled=${this.templates.length === 0 || !this.templateId} @click=${this.create}>
-              <ix-icon name="plus" slot="icon"></ix-icon>Créer
+              <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.reportDialog.create)}
             </ix-button>
           </div>
         </div>

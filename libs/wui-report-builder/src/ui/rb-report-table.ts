@@ -9,6 +9,7 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, html, type TemplateResult } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { tableStyles } from './table-styles.js';
+import { MSG, localize, localizeDir } from '../i18n.js';
 import type { Report } from '../types.js';
 
 @customElement('rb-report-table')
@@ -23,11 +24,11 @@ export class RbReportTable extends LitElement {
       <table>
         <thead>
           <tr>
-            <th>N° rapport</th>
-            <th>Titre / objet</th>
-            <th>Modèle</th>
-            <th>État</th>
-            <th>Signatures</th>
+            <th>${localizeDir(MSG.reportTable.reportNo)}</th>
+            <th>${localizeDir(MSG.reportTable.titleSubject)}</th>
+            <th>${localizeDir(MSG.reportTable.model)}</th>
+            <th>${localizeDir(MSG.reportTable.state)}</th>
+            <th>${localizeDir(MSG.reportTable.signatures)}</th>
             <th class="actions-col"></th>
           </tr>
         </thead>
@@ -44,7 +45,7 @@ export class RbReportTable extends LitElement {
       <tr class="clickable" @click=${() => this.open(r.id)}>
         <td class="mono strong">${r.reportNo || '—'}</td>
         <td>
-          <div class="strong">${r.title || '(sans titre)'}</div>
+          <div class="strong">${r.title || localizeDir(MSG.reportTable.untitled)}</div>
           <div class="muted">${r.subject}</div>
         </td>
         <td>${r.templateName || '—'}</td>
@@ -53,8 +54,8 @@ export class RbReportTable extends LitElement {
         </td>
         <td>${r.signatures.length}</td>
         <td class="actions-col" @click=${(e: Event) => e.stopPropagation()}>
-          <ix-icon-button ghost size="16" icon="eye" title="Ouvrir" @click=${() => this.open(r.id)}></ix-icon-button>
-          <ix-icon-button ghost size="16" icon="trashcan" title="Supprimer" ?disabled=${!this.canEdit} @click=${() => this.remove(r.id)}></ix-icon-button>
+          <ix-icon-button ghost size="16" icon="eye" title=${localize(MSG.reportTable.open)} @click=${() => this.open(r.id)}></ix-icon-button>
+          <ix-icon-button ghost size="16" icon="trashcan" title=${localize(MSG.reportTable.remove)} ?disabled=${!this.canEdit} @click=${() => this.remove(r.id)}></ix-icon-button>
         </td>
       </tr>
     `;

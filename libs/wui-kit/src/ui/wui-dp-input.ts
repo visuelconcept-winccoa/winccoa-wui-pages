@@ -19,6 +19,7 @@ import { LitElement, css, html, type TemplateResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
+import { MSG, localize } from '../i18n.js';
 
 interface IxValueEvent {
   detail: string;
@@ -74,7 +75,7 @@ export class WuiDpInput extends LitElement {
           class="browse"
           ghost
           icon="search"
-          title="Rechercher un datapoint"
+          title=${localize(MSG.dpInput.browse)}
           @click=${this.browse}
         ></ix-icon-button>
         ${this.open && this.suggestions.length > 0

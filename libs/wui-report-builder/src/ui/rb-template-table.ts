@@ -9,6 +9,7 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, html, type TemplateResult } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { tableStyles } from './table-styles.js';
+import { MSG, localize, localizeDir } from '../i18n.js';
 import type { ReportTemplate } from '../types.js';
 
 @customElement('rb-template-table')
@@ -23,10 +24,10 @@ export class RbTemplateTable extends LitElement {
       <table>
         <thead>
           <tr>
-            <th>Modèle</th>
-            <th>Sections</th>
-            <th>États / signatures</th>
-            <th>Mis à jour</th>
+            <th>${localizeDir(MSG.templateTable.model)}</th>
+            <th>${localizeDir(MSG.templateTable.sections)}</th>
+            <th>${localizeDir(MSG.templateTable.statesSignatures)}</th>
+            <th>${localizeDir(MSG.templateTable.updated)}</th>
             <th class="actions-col"></th>
           </tr>
         </thead>
@@ -42,22 +43,22 @@ export class RbTemplateTable extends LitElement {
     return html`
       <tr class="clickable" @click=${() => this.edit(t.id)}>
         <td>
-          <div class="strong">${t.name || '(sans nom)'}</div>
+          <div class="strong">${t.name || localizeDir(MSG.templateTable.unnamed)}</div>
           <div class="muted">${t.description}</div>
         </td>
         <td>${t.sections.length}</td>
-        <td>${t.workflow.length} états · ${levels} niveau(x) de signature</td>
+        <td>${t.workflow.length} ${localizeDir(MSG.templateTable.statesLevels)} · ${levels} ${localizeDir(MSG.templateTable.signatureLevels)}</td>
         <td class="mono">${t.updatedAt || '—'}</td>
         <td class="actions-col" @click=${(e: Event) => e.stopPropagation()}>
           <ix-icon-button
             ghost
             size="16"
             icon=${this.canEdit ? 'pen' : 'eye'}
-            title=${this.canEdit ? 'Éditer' : 'Visualiser'}
+            title=${this.canEdit ? localize(MSG.templateTable.edit) : localize(MSG.templateTable.view)}
             @click=${() => this.edit(t.id)}
           ></ix-icon-button>
-          <ix-icon-button ghost size="16" icon="copy" title="Dupliquer" ?disabled=${!this.canEdit} @click=${() => this.duplicate(t.id)}></ix-icon-button>
-          <ix-icon-button ghost size="16" icon="trashcan" title="Supprimer" ?disabled=${!this.canEdit} @click=${() => this.remove(t.id)}></ix-icon-button>
+          <ix-icon-button ghost size="16" icon="copy" title=${localize(MSG.templateTable.duplicate)} ?disabled=${!this.canEdit} @click=${() => this.duplicate(t.id)}></ix-icon-button>
+          <ix-icon-button ghost size="16" icon="trashcan" title=${localize(MSG.templateTable.remove)} ?disabled=${!this.canEdit} @click=${() => this.remove(t.id)}></ix-icon-button>
         </td>
       </tr>
     `;

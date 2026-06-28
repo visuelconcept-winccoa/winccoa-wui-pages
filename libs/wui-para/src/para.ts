@@ -36,6 +36,16 @@ import './para/para-nav.js';
 import './para/para-type-editor.js';
 import './para/para-archive.js';
 import './para/para-alarm.js';
+import {
+  MSG,
+  dplExportFailedMsg,
+  dplExportedMsg,
+  dplImportFailedMsg,
+  dplImportedMsg,
+  localize,
+  localizeDir,
+  ml
+} from './para/i18n.js';
 
 /** Tab indices (match the ix-tab-item order). */
 const TAB_MODEL = 0;
@@ -141,10 +151,10 @@ export class WuiPara extends LitElement {
     return html`
       ${this.renderTopbar()}
       <ix-tabs .selected=${this.activeTab} @selectedChange=${(e: CustomEvent<number>) => (this.activeTab = e.detail)}>
-        <ix-tab-item>Modèle (Types)</ix-tab-item>
-        <ix-tab-item>Instances & valeurs</ix-tab-item>
-        <ix-tab-item>Archivage</ix-tab-item>
-        <ix-tab-item>Alarming</ix-tab-item>
+        <ix-tab-item>${localizeDir(MSG.page.tabModel)}</ix-tab-item>
+        <ix-tab-item>${localizeDir(MSG.page.tabInstances)}</ix-tab-item>
+        <ix-tab-item>${localizeDir(MSG.page.tabArchive)}</ix-tab-item>
+        <ix-tab-item>${localizeDir(MSG.page.tabAlarm)}</ix-tab-item>
       </ix-tabs>
       ${this.renderTabBody()}
       ${this.dpDialog
@@ -184,16 +194,16 @@ export class WuiPara extends LitElement {
         </wui-context-generator>
         <div class="dpl-bar">
           ${this.dplMsg === '' ? nothing : html`<span class="dpl-msg ${this.dplOk ? 'ok' : 'err'}">${this.dplMsg}</span>`}
-          <ix-button outline icon="upload" ?disabled=${this.dplBusy} @click=${this.doImport}>Import DPL</ix-button>
+          <ix-button outline icon="upload" ?disabled=${this.dplBusy} @click=${this.doImport}>${localizeDir(MSG.page.importDpl)}</ix-button>
           <ix-button
             variant="primary"
             icon="download"
             ?disabled=${this.dplBusy || this.dplSelCount() === 0}
             .loading=${this.dplBusy}
-            title="Exporter la sélection cochée dans l'arbre des instances"
+            title=${localize(MSG.page.exportTitle)}
             @click=${this.openExportDialog}
           >
-            Export DPL${this.dplSelCount() > 0 ? ` (${this.dplSelCount()})` : ''}
+            ${localizeDir(MSG.page.exportDpl)}${this.dplSelCount() > 0 ? ` (${this.dplSelCount()})` : ''}
           </ix-button>
         </div>
         <wui-para-ai-assistant
@@ -248,15 +258,33 @@ export class WuiPara extends LitElement {
   private contextSummary(): string {
     if (this.activeTab === TAB_MODEL) {
       return this.modelTypeName == null
-        ? 'Onglet « Modèle » (définition de DP-Types). Aucun type sélectionné.'
-        : `Onglet « Modèle ». Type en cours d'édition : ${this.modelTypeName}.`;
+        ? localize(MSG.page.ctxModelNone)
+        : localize(
+            ml(
+              `« Model » tab. Type being edited: ${this.modelTypeName}.`,
+              `Onglet « Modèle ». Type en cours d'édition : ${this.modelTypeName}.`,
+              `„Modell“-Tab. Bearbeiteter Typ: ${this.modelTypeName}.`
+            )
+          );
     }
-    const parts = ['Onglet « Instances & valeurs ».'];
+    const parts = [localize(MSG.page.ctxInstances)];
     if (this.selectedType != null) {
-      parts.push(`Type sélectionné : ${this.selectedType}.`);
+      parts.push(
+        localize(
+          ml(`Selected type: ${this.selectedType}.`, `Type sélectionné : ${this.selectedType}.`, `Ausgewählter Typ: ${this.selectedType}.`)
+        )
+      );
     }
     if (this.selectedDp != null) {
-      parts.push(`Datapoint/élément sélectionné : ${this.selectedDp}.`);
+      parts.push(
+        localize(
+          ml(
+            `Selected datapoint/element: ${this.selectedDp}.`,
+            `Datapoint/élément sélectionné : ${this.selectedDp}.`,
+            `Ausgewählter Datenpunkt/Element: ${this.selectedDp}.`
+          )
+        )
+      );
     }
     return parts.join(' ');
   }
@@ -324,7 +352,10 @@ export class WuiPara extends LitElement {
     this.dplMsg = '';
     try {
       const result = await exportDpl({ dpts: this.dplSel.dpts, dps: this.dplSel.dps, filter });
-      this.setDplMsg(result.ok ? `DPL exporté (${result.count ?? this.dplSelCount()})` : result.error ?? 'Export échoué', result.ok === true);
+      this.setDplMsg(
+        result.ok ? dplExportedMsg(result.count ?? this.dplSelCount()) : result.error ?? dplExportFailedMsg(),
+        result.ok === true
+      );
     } finally {
       this.dplBusy = false;
     }
@@ -339,7 +370,10 @@ export class WuiPara extends LitElement {
     this.dplMsg = '';
     try {
       const result = await importDpl(file);
-      this.setDplMsg(result.ok ? result.message ?? `Importé ${file.name}` : result.error ?? 'Import échoué', result.ok === true);
+      this.setDplMsg(
+        result.ok ? result.message ?? dplImportedMsg(file.name) : result.error ?? dplImportFailedMsg(),
+        result.ok === true
+      );
       if (result.ok) {
         // Data changed broadly: refresh the tree + detail panel.
         this.reloadToken += 1;

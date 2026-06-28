@@ -26,6 +26,18 @@ import {
   decodeBits
 } from './para-configs.js';
 import { convertDynList, convertItem, formatDynItem, formatStime } from './para-value.js';
+import {
+  CONFIG_LABEL,
+  MSG,
+  attrLabel,
+  infoBitTitleMsg,
+  invalidAttrValueMsg,
+  localize,
+  localizeDir,
+  writeAttrRejectedMsg,
+  writeFailedMsg,
+  wroteAttrMsg
+} from './i18n.js';
 
 /** webserver.js PARA extension endpoint that writes DPE values/configs. */
 const DP_SET_URL = '/api/para/dp/set';
@@ -205,11 +217,11 @@ export class WuiParaConfigDetail extends LitElement {
   override render(): TemplateResult {
     return html`
       <div class="head">
-        <span>Config attributes</span>
-        <ix-icon-button icon="refresh" size="12" ghost title="Reload config attributes" @click=${this.reload}></ix-icon-button>
+        <span>${localizeDir(MSG.configDetail.head)}</span>
+        <ix-icon-button icon="refresh" size="12" ghost title=${localize(MSG.configDetail.reload)} @click=${this.reload}></ix-icon-button>
       </div>
       ${this.status === '' ? nothing : html`<div class="status ${this.statusOk ? 'ok' : 'error'}">${this.status}</div>`}
-      ${this.loading ? html`<div class="msg">Reading config attributes…</div>` : this.renderSnapshots()}
+      ${this.loading ? html`<div class="msg">${localizeDir(MSG.configDetail.reading)}</div>` : this.renderSnapshots()}
     `;
   }
 
@@ -222,15 +234,21 @@ export class WuiParaConfigDetail extends LitElement {
   private renderSnapshots(): TemplateResult {
     const visible = (this.snapshots ?? []).filter((snapshot) => snapshot.available);
     if (visible.length === 0) {
-      return html`<div class="msg">No configs found for this element.</div>`;
+      return html`<div class="msg">${localizeDir(MSG.configDetail.noConfigs)}</div>`;
     }
     return html`<div class="grid">${visible.map((snapshot) => this.renderCard(snapshot))}</div>`;
+  }
+
+  /** Localized config label (falls back to the spec-provided label). */
+  private configLabel(snapshot: ConfigSnapshot): string {
+    const ml = CONFIG_LABEL[snapshot.config];
+    return ml ? localize(ml) : snapshot.label;
   }
 
   private renderCard(snapshot: ConfigSnapshot): TemplateResult {
     return html`
       <div class="card">
-        <div class="config-name">${snapshot.label} <code>${snapshot.config}</code></div>
+        <div class="config-name">${this.configLabel(snapshot)} <code>${snapshot.config}</code></div>
         ${snapshot.entries.map((entry) => this.renderEntry(snapshot.config, entry))}
       </div>
     `;
@@ -246,10 +264,10 @@ export class WuiParaConfigDetail extends LitElement {
         return this.renderUserBits(decodeBits(entry.raw, USER_BIT_COUNT).map((bit) => bit + 1));
       }
       case 'time': {
-        return this.renderReadonly(entry.spec.label, formatStime(entry.raw));
+        return this.renderReadonly(localize(attrLabel(entry.spec.label)), formatStime(entry.raw));
       }
       case 'readonly': {
-        return this.renderReadonly(entry.spec.label, this.formatAttr(entry.raw));
+        return this.renderReadonly(localize(attrLabel(entry.spec.label)), this.formatAttr(entry.raw));
       }
       default: {
         return this.renderEditable(path, entry);
@@ -274,13 +292,13 @@ export class WuiParaConfigDetail extends LitElement {
         size="16"
         variant=${dirty ? 'primary' : 'secondary'}
         ?disabled=${!dirty}
-        title="Write ${entry.spec.attr}"
+        title=${`${localize(MSG.detail.writeValue)} · ${entry.spec.attr}`}
         @click=${() => this.write(path, entry.spec)}
       ></ix-icon-button>
     `;
     return html`
       <div class="attr ${entry.spec.kind === 'dyn' ? 'dyn' : ''}">
-        <span class="attr-label">${entry.spec.label}</span>
+        <span class="attr-label">${localizeDir(attrLabel(entry.spec.label))}</span>
         ${this.renderEditor(path, entry)}${save}
       </div>
     `;
@@ -302,7 +320,7 @@ export class WuiParaConfigDetail extends LitElement {
         class="editor"
         .value=${value}
         rows="3"
-        placeholder="one item per line"
+        placeholder=${localize(MSG.configDetail.onePerLine)}
         @valueChange=${(e: CustomEvent<string>) => this.onDraft(path, e.detail)}
       ></ix-textarea>`;
     }
@@ -326,11 +344,11 @@ export class WuiParaConfigDetail extends LitElement {
     const setCount = INFO_BITS.filter((bit) => set.has(bit.position)).length;
     const flags = INFO_BITS.map((bit) => {
       const on = set.has(bit.position);
-      return html`<span class="flag ${on ? 'on' : ''}" title="bit ${bit.position} — ${bit.meaning}">${bit.name}</span>`;
+      return html`<span class="flag ${on ? 'on' : ''}" title=${infoBitTitleMsg(bit.position, bit.meaning)}>${bit.name}</span>`;
     });
     return html`
       <div class="bits">
-        <div class="bits-head" title="_status64 = ${statusRaw}">Info bits <span class="bits-summary">(${setCount} set)</span></div>
+        <div class="bits-head" title="_status64 = ${statusRaw}">${localizeDir(MSG.configDetail.infoBits)} <span class="bits-summary">(${setCount} ${localize(MSG.configDetail.set)})</span></div>
         <div class="flag-list">${flags}</div>
       </div>
     `;
@@ -341,12 +359,12 @@ export class WuiParaConfigDetail extends LitElement {
     const cells = Array.from({ length: USER_BIT_COUNT }, (_unused, index) => {
       const bit = index + 1;
       const on = set.has(bit);
-      return html`<span class="bit ${on ? 'on' : ''}" title="User bit ${bit}${on ? ' (set)' : ''}">${bit}</span>`;
+      return html`<span class="bit ${on ? 'on' : ''}" title="${localize(MSG.configDetail.userBitPrefix)} ${bit}${on ? ` (${localize(MSG.configDetail.set)})` : ''}">${bit}</span>`;
     });
-    const summary = setBits.length === 0 ? 'none set' : setBits.join(', ');
+    const summary = setBits.length === 0 ? localize(MSG.configDetail.noneSet) : setBits.join(', ');
     return html`
       <div class="bits">
-        <div class="bits-head">User bits <span class="bits-summary">(${summary})</span></div>
+        <div class="bits-head">${localizeDir(MSG.configDetail.userBits)} <span class="bits-summary">(${summary})</span></div>
         <div class="bit-grid">${cells}</div>
       </div>
     `;
@@ -404,7 +422,7 @@ export class WuiParaConfigDetail extends LitElement {
     }
     const value = this.convertDraft(spec, draft);
     if (value === undefined) {
-      this.setStatus(`Invalid value for ${spec.attr}`, false);
+      this.setStatus(invalidAttrValueMsg(spec.attr), false);
       return;
     }
     try {
@@ -418,13 +436,13 @@ export class WuiParaConfigDetail extends LitElement {
         const next = new Map(this.drafts);
         next.delete(path);
         this.drafts = next;
-        this.setStatus(`Wrote ${spec.attr}`, true);
+        this.setStatus(wroteAttrMsg(spec.attr), true);
         this.load();
       } else {
-        this.setStatus(result.error ?? `Write rejected for ${spec.attr} (HTTP ${response.status})`, false);
+        this.setStatus(result.error ?? writeAttrRejectedMsg(spec.attr, response.status), false);
       }
     } catch (error) {
-      this.setStatus(`Write failed: ${String(error)}`, false);
+      this.setStatus(writeFailedMsg(String(error)), false);
     }
   }
 

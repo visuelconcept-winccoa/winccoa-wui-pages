@@ -17,6 +17,13 @@
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
+import {
+  MSG,
+  dpCouldNotReachApiMsg,
+  dpRequestFailedMsg,
+  localize,
+  localizeDir
+} from './i18n.js';
 
 /** webserver.js PARA extension endpoints (relative = same origin). */
 const CREATE_DP_URL = '/api/para/dp/create';
@@ -128,7 +135,7 @@ export class WuiParaDpDialog extends LitElement {
           </div>
           <div class="body">${this.renderBody()}</div>
           <div class="footer">
-            <ix-button outline @click=${this.cancel}>Cancel</ix-button>
+            <ix-button outline @click=${this.cancel}>${localizeDir(MSG.dpDialog.cancel)}</ix-button>
             <ix-button
               variant=${this.mode === 'delete' ? 'danger-primary' : 'primary'}
               ?disabled=${this.busy}
@@ -146,17 +153,17 @@ export class WuiParaDpDialog extends LitElement {
   private renderBody(): TemplateResult {
     if (this.mode === 'delete') {
       return html`
-        <div>Delete datapoint <strong>${this.dp}</strong>? This cannot be undone.</div>
-        <div class="type-line">Type: <code>${this.dpType}</code></div>
+        <div>${localizeDir(MSG.dpDialog.deleteConfirmPre)} <strong>${this.dp}</strong>? ${localizeDir(MSG.dpDialog.cannotUndo)}</div>
+        <div class="type-line">${localizeDir(MSG.dpDialog.typePrefix)}: <code>${this.dpType}</code></div>
         ${this.error === '' ? nothing : html`<div class="error">${this.error}</div>`}
       `;
     }
     return html`
-      <div class="type-line">Type: <code>${this.dpType}</code></div>
+      <div class="type-line">${localizeDir(MSG.dpDialog.typePrefix)}: <code>${this.dpType}</code></div>
       <ix-input
-        label="${this.mode === 'rename' ? 'New datapoint name' : 'Datapoint name'}"
+        label=${localize(this.mode === 'rename' ? MSG.dpDialog.newDpName : MSG.dpDialog.dpName)}
         .value=${this.name}
-        placeholder="MyDatapoint"
+        placeholder=${localize(MSG.dpDialog.dpNamePlaceholder)}
         @valueChange=${(e: Event) => (this.name = (e.target as HTMLInputElement).value)}
         @keydown=${(e: KeyboardEvent) => e.key === 'Enter' && this.submit()}
       ></ix-input>
@@ -173,16 +180,16 @@ export class WuiParaDpDialog extends LitElement {
 
   private headerTitle(): string {
     if (this.mode === 'delete') {
-      return 'Delete datapoint';
+      return localize(MSG.dpDialog.deleteTitle);
     }
-    return this.mode === 'rename' ? 'Rename datapoint' : 'Create datapoint';
+    return localize(this.mode === 'rename' ? MSG.dpDialog.renameTitle : MSG.dpDialog.createTitle);
   }
 
   private submitLabel(): string {
     if (this.mode === 'delete') {
-      return 'Delete';
+      return localize(MSG.dpDialog.delete);
     }
-    return this.mode === 'rename' ? 'Rename' : 'Create';
+    return localize(this.mode === 'rename' ? MSG.dpDialog.rename : MSG.dpDialog.create);
   }
 
   private cancel(): void {
@@ -209,10 +216,10 @@ export class WuiParaDpDialog extends LitElement {
       if (response.ok && result.ok) {
         this.done();
       } else {
-        this.error = result.error ?? `Request failed (HTTP ${response.status})`;
+        this.error = result.error ?? dpRequestFailedMsg(response.status);
       }
     } catch (error) {
-      this.error = `Could not reach the PARA API: ${String(error)}`;
+      this.error = dpCouldNotReachApiMsg(String(error));
     } finally {
       this.busy = false;
     }
@@ -226,12 +233,12 @@ export class WuiParaDpDialog extends LitElement {
 
     const name = this.name.trim();
     if (name === '') {
-      this.error = 'A datapoint name is required';
+      this.error = localize(MSG.dpDialog.nameRequired);
       return null;
     }
     if (this.mode === 'rename') {
       if (name === this.dp) {
-        this.error = 'The new name must differ from the current name';
+        this.error = localize(MSG.dpDialog.nameMustDiffer);
         return null;
       }
       return { url: RENAME_DP_URL, init: jsonPost({ oldName: this.dp, newName: name, expectedType: this.dpType }) };

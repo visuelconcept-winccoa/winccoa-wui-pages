@@ -12,6 +12,7 @@
  */
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { firstValueFrom } from 'rxjs';
+import { MSG, localize } from './i18n.js';
 import {
   nowLocal,
   uid,
@@ -164,12 +165,12 @@ export interface AdvanceCheck {
 /** Whether the report can advance to the next state right now (and why not). */
 export function canAdvance(report: Report, canPublish: boolean): AdvanceCheck {
   const advance = currentState(report)?.advance;
-  if (!advance) return { ok: false, reason: 'Aucune transition depuis cet état.' };
+  if (!advance) return { ok: false, reason: localize(MSG.engine.noTransition) };
   if (advance.requirePermission && !canPublish) {
-    return { ok: false, reason: 'Permission de publication requise pour signer.' };
+    return { ok: false, reason: localize(MSG.engine.permissionRequired) };
   }
   if (advance.requireChecklist && !checklistComplete(report)) {
-    return { ok: false, reason: 'Checklist incomplète : cochez tous les points obligatoires.' };
+    return { ok: false, reason: localize(MSG.engine.checklistIncomplete) };
   }
   return { ok: true, reason: '' };
 }
@@ -189,7 +190,7 @@ export function applySignature(
     toStateId: advance.toStateId,
     level: advance.level,
     roleLabel: advance.roleLabel,
-    signerName: signer.name || 'Utilisateur',
+    signerName: signer.name || localize(MSG.engine.fallbackUser),
     signerId: signer.id,
     timestamp: new Date().toISOString(),
     comment

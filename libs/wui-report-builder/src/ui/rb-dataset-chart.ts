@@ -14,6 +14,7 @@ import { LitElement, css, html, type PropertyValues, type TemplateResult } from 
 import { customElement, property, state } from 'lit/decorators.js';
 import { container } from 'tsyringe';
 import { readSeries, type Sample } from '../engine.js';
+import { MSG, localizeDir } from '../i18n.js';
 import type { DatasetDef } from '../types.js';
 
 const CHART_HEIGHT_PX = 280;
@@ -38,7 +39,7 @@ export class RbDatasetChart extends LitElement {
   override render(): TemplateResult {
     return html`
       <div class="chart" id="chart"></div>
-      ${this.empty ? html`<div class="empty">Aucune donnée archivée sur la période.</div>` : ''}
+      ${this.empty ? html`<div class="empty">${localizeDir(MSG.chart.empty)}</div>` : ''}
     `;
   }
 

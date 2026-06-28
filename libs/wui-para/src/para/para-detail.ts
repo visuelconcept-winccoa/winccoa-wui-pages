@@ -17,6 +17,18 @@ import { Subscription, catchError, forkJoin, map, of } from 'rxjs';
 import { container } from 'tsyringe';
 import './para-config-detail.js';
 import { NUMERIC_TYPES, convertDynList, convertItem, formatDynItem, formatStime, isEditableType } from './para-value.js';
+import {
+  MSG,
+  couldNotLoadValuesMsg,
+  detailTruncatedMsg,
+  invalidValueMsg,
+  localize,
+  localizeDir,
+  valueListWord,
+  writeFailedMsg,
+  writeRejectedMsg,
+  wroteValueMsg
+} from './i18n.js';
 
 /** A datapoint-type structure: a scalar type name, or a struct of children. */
 type DpStruct = string | { [element: string]: DpStruct };
@@ -233,13 +245,13 @@ export class WuiParaDetail extends LitElement {
 
   override render(): TemplateResult {
     if (this.dp == null && this.dpType == null) {
-      return html`<div class="message">Select a datapoint type, datapoint, or element to view and edit its values.</div>`;
+      return html`<div class="message">${localizeDir(MSG.detail.selectToView)}</div>`;
     }
     const isType = this.dpType != null;
     return html`
       <div class="header">
         <ix-icon name="${isType ? 'tree' : 'hierarchy'}" size="24"></ix-icon>
-        <span class="dp-name">${isType ? `Type: ${this.dpType}` : this.dp}</span>
+        <span class="dp-name">${isType ? `${localize(MSG.detail.typePrefix)}: ${this.dpType}` : this.dp}</span>
       </div>
       ${this.renderBody()}
       ${this.status === '' ? nothing : html`<div class="status ${this.statusOk ? 'ok' : 'error'}">${this.status}</div>`}
@@ -254,29 +266,29 @@ export class WuiParaDetail extends LitElement {
 
   private renderBody(): TemplateResult {
     if (this.loading) {
-      return html`<div class="message">Loading values…</div>`;
+      return html`<div class="message">${localizeDir(MSG.detail.loadingValues)}</div>`;
     }
     if (this.error !== '') {
       return html`<div class="message status error">${this.error}</div>`;
     }
     if (this.elements.length === 0) {
-      return html`<div class="message">No value-bearing elements found for this selection.</div>`;
+      return html`<div class="message">${localizeDir(MSG.detail.noValueElements)}</div>`;
     }
     return html`
       ${this.truncated
-        ? html`<div class="status error">Showing the first ${MAX_VALUE_ELEMENTS} values; narrow the selection to see more.</div>`
+        ? html`<div class="status error">${detailTruncatedMsg(MAX_VALUE_ELEMENTS)}</div>`
         : nothing}
       ${this.liveWarning === '' ? nothing : html`<div class="status error">${this.liveWarning}</div>`}
       <div class="scroll">
         <table>
           <thead>
             <tr>
-              <th>Element</th>
-              <th>Type</th>
-              <th>Source time</th>
-              <th>Value</th>
-              <th>Unit</th>
-              <th>Description</th>
+              <th>${localizeDir(MSG.detail.colElement)}</th>
+              <th>${localizeDir(MSG.detail.colType)}</th>
+              <th>${localizeDir(MSG.detail.colSourceTime)}</th>
+              <th>${localizeDir(MSG.detail.colValue)}</th>
+              <th>${localizeDir(MSG.detail.colUnit)}</th>
+              <th>${localizeDir(MSG.detail.colDescription)}</th>
             </tr>
           </thead>
           <tbody>
@@ -295,8 +307,8 @@ export class WuiParaDetail extends LitElement {
           <div class="element-cell">
             <button
               class="expander"
-              aria-label="${isExpanded ? 'Hide config attributes' : 'Show config attributes'}"
-              title="Show _original / _online config attributes"
+              aria-label=${localize(isExpanded ? MSG.detail.hideConfig : MSG.detail.showConfig)}
+              title=${localize(MSG.detail.showOriginalOnline)}
               @click=${() => this.toggleDetails(el)}
             >
               <ix-icon name="${isExpanded ? 'chevron-down-small' : 'chevron-right-small'}" size="16"></ix-icon>
@@ -345,7 +357,7 @@ export class WuiParaDetail extends LitElement {
         <ix-textarea
           .value=${value}
           rows="4"
-          placeholder="one ${el.baseType} item per line"
+          placeholder="${localize(MSG.detail.onePerLinePre)} ${el.baseType} ${localize(MSG.detail.onePerLinePost)}"
           @valueChange=${(e: CustomEvent<string>) => this.onDraft(el, e.detail)}
         ></ix-textarea>
         ${this.renderSetButton(el)}
@@ -389,7 +401,7 @@ export class WuiParaDetail extends LitElement {
         size="16"
         variant=${dirty ? 'primary' : 'secondary'}
         ?disabled=${!dirty}
-        title="Write value to datapoint"
+        title=${localize(MSG.detail.writeValue)}
         @click=${() => this.writeValue(el)}
       ></ix-icon-button>
     `;
@@ -497,7 +509,7 @@ export class WuiParaDetail extends LitElement {
    */
   private loadDpView(dp: string, ownerType: string | null): void {
     if (ownerType == null || ownerType === '') {
-      this.error = "Type du datapoint inconnu — re-sélectionnez l'élément dans l'arbre.";
+      this.error = localize(MSG.shared.unknownDpType);
       return;
     }
     const { root, relPath } = this.splitDpPath(dp);
@@ -522,7 +534,7 @@ export class WuiParaDetail extends LitElement {
   }
 
   private failLoad(err: unknown): void {
-    this.error = `Could not load values: ${String(err)}`;
+    this.error = couldNotLoadValuesMsg(String(err));
     this.loading = false;
   }
 
@@ -649,7 +661,7 @@ export class WuiParaDetail extends LitElement {
             this.liveValues = next;
           },
           error: () => {
-            this.liveWarning = 'Certaines valeurs en direct sont indisponibles.';
+            this.liveWarning = localize(MSG.detail.liveUnavailable);
           }
         })
       );
@@ -663,8 +675,8 @@ export class WuiParaDetail extends LitElement {
     }
     const converted = this.convert(el, draft);
     if (converted === undefined) {
-      const what = el.isDyn ? `${el.baseType} list` : 'value';
-      this.setStatus(`Invalid ${what} for ${el.name}`, false);
+      const what = el.isDyn ? valueListWord(el.baseType) : localize(MSG.detail.colValue).toLowerCase();
+      this.setStatus(invalidValueMsg(what, el.name), false);
       return;
     }
     try {
@@ -676,12 +688,12 @@ export class WuiParaDetail extends LitElement {
       const result = await response.json().catch(() => ({}));
       if (response.ok && result.ok) {
         this.drafts.delete(el.valuePath);
-        this.setStatus(`Wrote ${el.name}`, true);
+        this.setStatus(wroteValueMsg(el.name), true);
       } else {
-        this.setStatus(result.error ?? `Write rejected for ${el.name} (HTTP ${response.status})`, false);
+        this.setStatus(result.error ?? writeRejectedMsg(el.name, response.status), false);
       }
     } catch (error) {
-      this.setStatus(`Write failed: ${String(error)}`, false);
+      this.setStatus(writeFailedMsg(String(error)), false);
     }
   }
 

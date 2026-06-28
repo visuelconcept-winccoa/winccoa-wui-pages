@@ -24,6 +24,7 @@ import {
   currentState,
   isLocked
 } from '../engine.js';
+import { MSG, localize, localizeDir } from '../i18n.js';
 import { AGG_LABELS, fieldConform, type Report, type SectionData, type TemplateSection } from '../types.js';
 import type { RbDatasetChart } from './rb-dataset-chart.js';
 
@@ -59,18 +60,18 @@ export class RbReportDetail extends LitElement {
     return html`
       <div class="wrap">
         <div class="toolbar">
-          <ix-icon-button ghost icon="arrow-left" title="Retour" @click=${this.back}></ix-icon-button>
+          <ix-icon-button ghost icon="arrow-left" title=${localize(MSG.detail.back)} @click=${this.back}></ix-icon-button>
           <div class="titles">
-            <div class="rep-no">${this.working.reportNo || '(sans n°)'}</div>
+            <div class="rep-no">${this.working.reportNo || localizeDir(MSG.detail.noNumber)}</div>
             <div class="rep-title">${this.working.title}</div>
           </div>
           <span class="chip solid" style="--c:${state?.color ?? '#888'}">${state?.label ?? '—'}</span>
           <span class="grow"></span>
           <ix-button variant="secondary" ?disabled=${locked} @click=${this.save}>
-            <ix-icon name="floppy-disk" slot="icon"></ix-icon>Enregistrer
+            <ix-icon name="floppy-disk" slot="icon"></ix-icon>${localizeDir(MSG.detail.save)}
           </ix-button>
           <ix-button variant="secondary" @click=${this.print}>
-            <ix-icon name="print" slot="icon"></ix-icon>Imprimer
+            <ix-icon name="print" slot="icon"></ix-icon>${localizeDir(MSG.detail.print)}
           </ix-button>
         </div>
 
@@ -101,17 +102,17 @@ export class RbReportDetail extends LitElement {
     return html`
       <div class="head-card">
         <div class="grid3">
-          <div class="kv"><span class="k">Modèle</span><span>${this.working.templateName || '—'}</span></div>
-          <div class="kv"><span class="k">Objet</span><span>${this.working.subject || '—'}</span></div>
-          <div class="kv"><span class="k">Créé le</span><span>${this.working.createdAt || '—'}</span></div>
+          <div class="kv"><span class="k">${localizeDir(MSG.detail.model)}</span><span>${this.working.templateName || '—'}</span></div>
+          <div class="kv"><span class="k">${localizeDir(MSG.detail.subject)}</span><span>${this.working.subject || '—'}</span></div>
+          <div class="kv"><span class="k">${localizeDir(MSG.detail.createdAt)}</span><span>${this.working.createdAt || '—'}</span></div>
         </div>
         <div class="grid2" style="margin-top:0.5rem">
           <div class="field">
-            <label>Période — début</label>
+            <label>${localizeDir(MSG.detail.periodStart)}</label>
             <input type="datetime-local" ?disabled=${locked} .value=${this.working.period.start} @change=${(e: Event) => this.patchPeriod('start', (e.target as HTMLInputElement).value)} />
           </div>
           <div class="field">
-            <label>Période — fin</label>
+            <label>${localizeDir(MSG.detail.periodEnd)}</label>
             <input type="datetime-local" ?disabled=${locked} .value=${this.working.period.end} @change=${(e: Event) => this.patchPeriod('end', (e.target as HTMLInputElement).value)} />
           </div>
         </div>
@@ -131,7 +132,7 @@ export class RbReportDetail extends LitElement {
           ? html`<ix-button ?disabled=${!check.ok} title=${check.ok ? '' : check.reason} @click=${() => (this.signOpen = true)}>
               <ix-icon name="pen" slot="icon"></ix-icon>${state.advance.actionLabel}
             </ix-button>`
-          : html`${locked ? html`<span class="locked-note"><ix-icon name="lock-closed"></ix-icon>Rapport verrouillé (état final)</span>` : ''}`}
+          : html`${locked ? html`<span class="locked-note"><ix-icon name="lock-closed"></ix-icon>${localizeDir(MSG.detail.lockedNote)}</span>` : ''}`}
         ${state.reject
           ? html`<ix-button variant="secondary" @click=${this.reject}>
               <ix-icon name="undo" slot="icon"></ix-icon>${state.reject.actionLabel}
@@ -201,7 +202,7 @@ export class RbReportDetail extends LitElement {
               .value=${v}
               @input=${(e: Event) => this.setFieldValue(section.id, f.id, (e.target as HTMLInputElement).value)}
             />
-            ${conform === null ? '' : html`<span class="chip ${conform ? 'ok' : 'bad'}">${conform ? 'OK' : 'Hors tolérance'}</span>`}
+            ${conform === null ? '' : html`<span class="chip ${conform ? 'ok' : 'bad'}">${conform ? localizeDir(MSG.detail.ok) : localizeDir(MSG.detail.outOfTolerance)}</span>`}
           </div>
         </div>`;
       })}
@@ -240,7 +241,7 @@ export class RbReportDetail extends LitElement {
         </tbody>
       </table>
       <ix-button variant="secondary" ?disabled=${locked} @click=${() => this.addRow(section.id)}>
-        <ix-icon name="plus" slot="icon"></ix-icon>Ajouter une ligne
+        <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.detail.addRow)}
       </ix-button>
     `;
   }
@@ -251,12 +252,12 @@ export class RbReportDetail extends LitElement {
     return html`
       <div class="ds-actions">
         <ix-button variant="secondary" ?disabled=${locked} @click=${() => this.recompute(section)}>
-          <ix-icon name="refresh" slot="icon"></ix-icon>Actualiser les données
+          <ix-icon name="refresh" slot="icon"></ix-icon>${localizeDir(MSG.detail.refreshData)}
         </ix-button>
       </div>
       <table class="data-table">
         <thead>
-          <tr><th>Mesure</th><th>Indicateurs</th><th>Points</th><th>Calculé le</th></tr>
+          <tr><th>${localizeDir(MSG.detail.measure)}</th><th>${localizeDir(MSG.detail.indicators)}</th><th>${localizeDir(MSG.detail.points)}</th><th>${localizeDir(MSG.detail.computedAt)}</th></tr>
         </thead>
         <tbody>
           ${datasets.map((d) => {
@@ -265,8 +266,8 @@ export class RbReportDetail extends LitElement {
               <td><div class="strong">${d.label}</div><div class="muted mono">${d.dp || '—'}</div></td>
               <td>
                 ${res
-                  ? d.ops.map((op) => html`<span class="agg"><span class="k">${AGG_LABELS[op]}</span> ${res.agg[op] ?? '—'}</span>`)
-                  : html`<span class="muted">— (cliquez « Actualiser »)</span>`}
+                  ? d.ops.map((op) => html`<span class="agg"><span class="k">${localizeDir(AGG_LABELS[op])}</span> ${res.agg[op] ?? '—'}</span>`)
+                  : html`<span class="muted">${localizeDir(MSG.detail.refreshHint)}</span>`}
               </td>
               <td>${res?.n ?? '—'}</td>
               <td class="mono">${res ? this.fmtIso(res.computedAt) : '—'}</td>
@@ -291,7 +292,7 @@ export class RbReportDetail extends LitElement {
             @checkedChange=${(e: IxCheckedEvent) => this.setChecked(section.id, it.id, e.detail)}
           ></ix-toggle>
           <span>${it.label}</span>
-          ${it.required ? html`<span class="req">obligatoire</span>` : ''}
+          ${it.required ? html`<span class="req">${localizeDir(MSG.detail.required)}</span>` : ''}
         </label>`
       )}
     </div>`;
@@ -301,10 +302,10 @@ export class RbReportDetail extends LitElement {
     if (this.working.signatures.length === 0) return html``;
     return html`
       <div class="section">
-        <div class="section-title">Signatures</div>
+        <div class="section-title">${localizeDir(MSG.detail.signatures)}</div>
         <table class="data-table">
           <thead>
-            <tr><th>Niveau</th><th>Rôle</th><th>Signataire</th><th>Date</th><th>Commentaire</th></tr>
+            <tr><th>${localizeDir(MSG.detail.colLevel)}</th><th>${localizeDir(MSG.detail.colRole)}</th><th>${localizeDir(MSG.detail.colSigner)}</th><th>${localizeDir(MSG.detail.colDate)}</th><th>${localizeDir(MSG.detail.colComment)}</th></tr>
           </thead>
           <tbody>
             ${this.working.signatures.map(
