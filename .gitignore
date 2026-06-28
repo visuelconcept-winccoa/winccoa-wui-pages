@@ -148,8 +148,7 @@ tmp/
 /.ai/skills/
 /.vscode/settings.json
 
-# Project guidelines + runtime helper scripts (scaffolded; not read by nx)
-/AGENTS.md
+# Runtime helper scripts (scaffolded; not read by nx)
 /tools/scripts/init-oa-data.mjs
 /tools/scripts/init-oa-data.spec.ts
 /tools/scripts/deploy-oa-data.mjs
