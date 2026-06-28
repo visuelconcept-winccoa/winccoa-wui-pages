@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Procedural floor textures, ported from the prototype's `FLOOR_PATTERNS`
  * registry. Each pattern paints a 1024×1024 canvas (final colours, no tint

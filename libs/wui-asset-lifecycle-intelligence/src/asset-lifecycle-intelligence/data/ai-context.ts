@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * AI assistant scoping for the Asset Lifecycle Intelligence page.
  *

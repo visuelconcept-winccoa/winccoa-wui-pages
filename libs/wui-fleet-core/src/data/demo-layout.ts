@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Default demo fleet — a representative spread of machine types across the
  * standard 240×160 m hall. Stands in until the page is bound to live WinCC OA

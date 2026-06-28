@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Persistence layer for mosaic boards — one WinCC OA datapoint per mosaic
  * (type `Mosaic_Board`, a Struct with String elements `name` + `json`).

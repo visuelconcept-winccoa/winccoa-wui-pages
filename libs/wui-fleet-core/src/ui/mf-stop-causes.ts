@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Stop-cause catalog manager (single-level). Each entry has a code, a
  * description and a time classification (unplanned / planned / production).

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Product Information client — cross-references an asset's MLFB with the Siemens
  * Product Information Hub (obsolescence + delivery).

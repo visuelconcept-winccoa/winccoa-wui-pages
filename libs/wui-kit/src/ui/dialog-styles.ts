@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Shared modal-dialog styles (overlay + panel + form grid) for the standalone
  * pages' dialogs. `dialogCore()` is the page-agnostic core WITHOUT a fixed panel

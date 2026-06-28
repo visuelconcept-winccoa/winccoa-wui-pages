@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Modal dialog to create a new mosaic or rename/redescribe an existing one
  * (name + description only — the tiles are edited on the canvas). Emits

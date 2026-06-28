@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Modal dialog to create or edit one asset: field identity (MLFB, station, IP,
  * firmware) plus the structured risk inputs (lifecycle phase, firmware gap,

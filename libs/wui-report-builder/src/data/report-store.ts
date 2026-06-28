@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /** Persistence for report instances (1 DP per report, type `ReportBuilder_Report`). */
 import type { Report } from '../types.js';
 import { buildDemoReports } from './demo.js';

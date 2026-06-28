@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /* eslint-disable sonarjs/no-duplicate-string, max-lines --
    Demo data fixtures: repeated MLFB / firmware / area values and the overall
    length are inherent to multi-domain sample datasets, not logic to refactor. */

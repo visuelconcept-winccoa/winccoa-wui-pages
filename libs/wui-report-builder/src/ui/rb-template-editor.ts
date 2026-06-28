@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Template editor: parameterise a report's sections (text, comment, key/value
  * fields, manual table, datapoint dataset+aggregation, checklist) and its

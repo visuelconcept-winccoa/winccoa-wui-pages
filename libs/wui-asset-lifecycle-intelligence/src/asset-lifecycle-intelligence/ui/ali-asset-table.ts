@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Sortable table of managed assets. Each row shows identity columns plus the
  * computed risk score (coloured badge) and the recommended action. Rows are

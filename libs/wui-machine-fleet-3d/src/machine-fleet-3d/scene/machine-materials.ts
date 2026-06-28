@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Shared procedural textures, PBR materials, and geometry helpers for the
  * machine factory. Ported from the prototype's global `TEX` / `MAT_*` pools and

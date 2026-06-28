@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Procedural building generator: floor + outdoor terrain + central walkway +
  * bay separators + steel columns + roof (shed / flat / monoslope) + semi-

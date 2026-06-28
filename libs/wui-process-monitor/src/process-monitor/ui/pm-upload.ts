@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Project upload panel: pick a .zip, optionally select folders to purge before
  * extraction, optionally restart after deploy (with a confirmation), then upload

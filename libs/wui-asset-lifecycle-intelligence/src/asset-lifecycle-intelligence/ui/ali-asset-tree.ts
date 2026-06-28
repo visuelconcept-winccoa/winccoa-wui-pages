@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Tree view of the inventory: Workshop → Asset → Station → MLFB. Grouping nodes
  * show the number of MLFBs and the **summed** risk score (total exposure),

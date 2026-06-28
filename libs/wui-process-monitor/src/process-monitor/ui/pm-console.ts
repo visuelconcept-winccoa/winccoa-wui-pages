@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Console panel: live pmon manager list with per-manager start/stop/restart and
  * a restart-all action. Presentational — it renders the `managers` passed by the

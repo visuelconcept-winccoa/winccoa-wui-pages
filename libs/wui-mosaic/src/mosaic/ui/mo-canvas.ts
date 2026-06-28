@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * The mosaic canvas: renders every tile as an absolutely-positioned frame
  * holding an `<iframe>`, sized as a percentage of the canvas so the layout

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Thermal-report engine (pure logic): build the setpoint staircase + tolerance
  * band from a recipe, read the *actual* temperature curve from a DPE's

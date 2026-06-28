@@ -1,5 +1,7 @@
 # WinCC OA WebUI Pages — `@visuelconcept/wui-*`
 
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+
 A collection of **redistributable standalone pages** for the WinCC OA
 [WebUI Runtime](https://www.winccoa.com/documentation/WinCCOA/latest/en_US/WebUIRuntime/topics/WebUIRuntime_Basics.html)
 dashboard. Each page is a Lit 3 / [Siemens iX](https://ix.siemens.io/) web component that
@@ -209,5 +211,25 @@ build outputs, and the runtime API reference (services, DI, routing, i18n).
 
 ## License
 
-MIT (see [LICENSE](./LICENSE)). Running the pages requires a valid WinCC OA base
-package and UI license as described under [Requirements](#0-wincc-oa-project-base).
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+
+The VISUEL CONCEPT code in this repository is licensed under the **GNU Affero
+General Public License v3.0 only** (AGPL-3.0-only) — see [LICENSE](./LICENSE) and
+[NOTICE](./NOTICE).
+
+**Network use counts as distribution.** Under the AGPL, if you run a modified
+version of these pages on a server and let users interact with it over a network,
+you must make the complete corresponding source code of that version available to
+those users.
+
+**Commercial license available.** If the AGPL's obligations don't fit your use case
+(for example, shipping a closed-source product), a commercial license is available —
+contact **contact@visuelconcept.com**.
+
+> **Scope.** This license covers only the VISUEL CONCEPT code in this repository.
+> **WinCC OA and its components remain the property of Siemens** and are governed by
+> their own licenses; the third-party dependencies (Siemens iX, `@wincc-oa/*`,
+> `@etm-professional-control/*`, …) likewise keep their respective licenses. Running
+> the pages requires a valid WinCC OA base package and UI license as described under
+> [Requirements](#0-wincc-oa-project-base).
+

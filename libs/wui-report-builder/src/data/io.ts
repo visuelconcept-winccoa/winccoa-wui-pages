@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * JSON import/export for templates & reports + a flat CSV summary of the report
  * list. JSON round-trips the full objects (re-import merges by `id`); CSV is

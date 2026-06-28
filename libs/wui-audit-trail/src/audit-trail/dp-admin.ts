@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Admin data layer for `_AuditTrail` datapoints: list instances, create a new
  * (mandatorily archived) DP, (re)assign its NGA archive group and delete it.

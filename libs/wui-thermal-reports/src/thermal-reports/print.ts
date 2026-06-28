@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Build a self-contained, printable HTML document for one thermal report
  * (opened in a new window for "Imprimer / PDF"). Kept separate from the view

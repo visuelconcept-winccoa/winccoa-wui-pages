@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Signature dialog: confirms a workflow sign-off. Shows the action / role /
  * level, the signer (the connected user, recorded with a timestamp) and an

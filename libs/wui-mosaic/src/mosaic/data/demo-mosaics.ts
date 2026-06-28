@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Demo mosaics (self-contained). Used both as the offline in-memory seed and the
  * empty-state "generate demo" action. References point at the demo ateliers /

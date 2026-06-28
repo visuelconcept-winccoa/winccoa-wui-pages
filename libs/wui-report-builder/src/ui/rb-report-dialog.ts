@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Create a new report instance from a template: pick the template, set the
  * report number / title / subject and the data period (used by dataset

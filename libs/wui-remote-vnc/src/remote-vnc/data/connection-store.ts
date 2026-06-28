@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Persistence layer for remote VNC connections — one WinCC OA datapoint per
  * connection (type `RemoteVnc_Connection`, a Struct with String elements `name`

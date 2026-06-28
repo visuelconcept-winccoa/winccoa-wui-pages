@@ -1,0 +1,39 @@
+WinCC OA WebUI Pages (@visuelconcept/wui-*)
+Copyright (C) 2026 VISUEL CONCEPT
+
+This product is licensed under the GNU Affero General Public License, version 3.0
+only (AGPL-3.0-only). See the LICENSE file for the full license text.
+
+Individual source files written by VISUEL CONCEPT carry SPDX copyright and license
+headers and retain them on copy or modification:
+
+    SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+    SPDX-License-Identifier: AGPL-3.0-only
+
+Commercial license
+------------------------------------------------------------------------------
+A commercial license is available for uses that the AGPL-3.0 does not permit
+(for example, distributing a closed-source product built on this software).
+For dual-licensing inquiries, contact: contact@visuelconcept.com
+
+Third-party components and dependencies
+------------------------------------------------------------------------------
+This repository contains VISUEL CONCEPT code only. It is designed to run on top
+of, and alongside, third-party software that is NOT part of this project and
+that retains its own copyright and license:
+
+  * WinCC Open Architecture and the WebUI Runtime shell
+    (@wincc-oa/webui-runtime, @wincc-oa/default-components, @wincc-oa/wui-*)
+    — (C) ETM professional control GmbH / Siemens. Installed separately on the
+    target; governed by the applicable Siemens/ETM licenses.
+  * Siemens iX (@siemens/ix, @siemens/ix-echarts, @siemens/ix-icons)
+    — (C) Siemens AG; MIT-licensed npm packages.
+  * @etm-professional-control/oa-rx-js-api,
+    @etm-professional-control/winccoa-mcp-server
+    — (C) ETM professional control GmbH.
+  * Other open-source npm dependencies (lit, rxjs, three, @novnc/novnc, …)
+    — see package.json and the respective package licenses.
+
+These components are obtained as dependencies (npm) or installed on the target
+system. They are not relicensed by this project. WinCC OA and its components
+remain the property of Siemens and are subject to their own licenses.

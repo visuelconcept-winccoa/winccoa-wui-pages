@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Internationalisation for the Process Monitor page (EN / FR / DE), following the
  * shared `lit-translate` singleton. `localizeDir(...)` in templates (reactive),

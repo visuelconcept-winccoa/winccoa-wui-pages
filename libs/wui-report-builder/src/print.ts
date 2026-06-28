@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Build a self-contained printable HTML document for one report instance
  * (opened in a new window). Renders every section by kind, the dataset charts

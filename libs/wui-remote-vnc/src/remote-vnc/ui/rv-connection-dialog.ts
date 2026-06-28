@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Modal dialog to create or edit one VNC connection: identity (name/group),
  * target (host/port), the optional stored password, a description and the RFB

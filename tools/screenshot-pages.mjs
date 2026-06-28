@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // -----------------------------------------------------------------------------
 // Screenshot every standalone page (libs/wui-*) of the WebUI dashboard, logged in
 // against a live WinCC OA backend, by driving the Vite dev server with Playwright.

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 'use strict';
 /**
  * Process Monitor — WinCC OA JavaScript Manager hosting an MSA (Manager Service

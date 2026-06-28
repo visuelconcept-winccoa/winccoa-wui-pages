@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Pmon TCP client (ported from the WinCC OA MCP server's PmonClient) — talks to
  * the local Process Monitor over TCP (default localhost:4999) to list managers

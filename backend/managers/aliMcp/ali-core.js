@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * ALI core — data access + risk scoring + aggregations for the Asset Lifecycle
  * Intelligence MCP server. This is a server-side JS port of the page's

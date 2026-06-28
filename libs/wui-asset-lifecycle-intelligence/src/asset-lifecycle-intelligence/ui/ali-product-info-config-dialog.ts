@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Product Information Hub configuration dialog (opened from the Asset Lifecycle
  * toolbar gear, canPublish-gated). Edits the Siemens API base URL, API version

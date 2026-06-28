@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Internationalisation for the shared AI assistant UI (prompt bar + config
  * dialog). Strings follow the active WebUI language via the shared

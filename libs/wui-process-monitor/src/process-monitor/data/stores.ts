@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Persistence for the Process Monitor page:
  *  - **Audit trail** (GxP): a `_AuditTrail` datapoint `AuditTrail_ProcessMonitor`

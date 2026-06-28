@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Demo thermal treatment reports, built against the *real* fleet so the furnace
  * link and the archived temperature curve line up with the Machine Fleet 3D

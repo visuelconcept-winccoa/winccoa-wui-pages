@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Table of report instances: identity, source template, current workflow state
  * chip and signature count. Emits `wui:open` / `wui:edit` / `wui:delete` (`{ id }`).

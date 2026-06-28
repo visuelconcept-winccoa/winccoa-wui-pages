@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Modal dialog to edit one machine: identity + geometry, the state-datapoint
  * binding (with a selectable state mapping), and up to MAX_PARAMS KPI

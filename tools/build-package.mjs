@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // -----------------------------------------------------------------------------
 // build-package.mjs <specFile>   (spec = one object, or an array of objects)
 //

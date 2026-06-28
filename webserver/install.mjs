@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // -----------------------------------------------------------------------------
 // One-command installer for @visuelconcept/wui-webserver — the prerequisite
 // dashboard webserver (customer-webserver base + backend-module auto-discovery).

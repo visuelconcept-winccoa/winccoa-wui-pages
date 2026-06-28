@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Client for the Process Monitor backend (`/api/process-monitor`, bridged over
  * MSA vRPC to the processMonitor manager). Manager list/control + chunked ZIP

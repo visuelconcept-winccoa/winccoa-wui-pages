@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Temperature curve for one thermal cycle: the *actual* temperature (read from
  * the furnace's archived history) over the setpoint staircase and its tolerance

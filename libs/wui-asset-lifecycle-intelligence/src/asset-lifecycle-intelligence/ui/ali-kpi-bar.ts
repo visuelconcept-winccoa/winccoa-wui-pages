@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Summary KPI strip: total asset count and a per-risk-level breakdown
  * (Low / Moderate / High / Critical) with the fleet's average score.

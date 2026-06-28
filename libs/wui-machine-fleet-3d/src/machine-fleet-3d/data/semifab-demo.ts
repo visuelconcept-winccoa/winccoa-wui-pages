@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Demo "SemiFab" atelier — a semiconductor-fab site synoptic reproduced from
  * SemiFab.pptx: a central cleanroom process band surrounded by utility posts,

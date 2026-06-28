@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Modal dialog to configure the building (length / width / height / bays /
  * column step / roof / floor), mirroring the prototype's "Architecture" modal.

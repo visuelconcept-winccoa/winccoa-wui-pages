@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Modal dialog to create a new atelier: a name plus an id that is either
  * auto-generated from the name or chosen manually, with live uniqueness

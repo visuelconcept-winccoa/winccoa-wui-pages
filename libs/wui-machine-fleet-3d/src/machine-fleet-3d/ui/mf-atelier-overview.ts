@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Overview grid of ateliers (workshops). One card per atelier showing its name
  * (two reserved lines for uniform card height), machine count, a per-state

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Sortable table of VNC connections. Shows favourite, name, endpoint
  * (host:port), group, read-only flag and last-connected time. Each row connects

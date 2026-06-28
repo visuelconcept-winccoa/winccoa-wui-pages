@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Sortable table of production orders. Shows order/product identity, the
  * atelier+machine assignment, the planned schedule, quantity, a progress bar and

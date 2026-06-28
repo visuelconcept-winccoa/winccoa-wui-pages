@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Modal dialog to create or edit one RTSP camera: identity (name/group), the
  * rtsp URL + optional stored credentials, a description, and the classic stream

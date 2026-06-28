@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Neutral, reusable confirmation dialog (modal overlay) shown before destructive
  * actions. Single source of truth for every standalone page (replaces the former

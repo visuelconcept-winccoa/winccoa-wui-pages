@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Sortable table of RTSP cameras. Shows favourite, name, endpoint (host), group,
  * transport and last-viewed time. Each row opens the JSMpeg viewer, edits, or

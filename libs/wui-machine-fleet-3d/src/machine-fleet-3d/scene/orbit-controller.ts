@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /**
  * Lightweight spherical orbit camera (azimuth θ / polar φ / radius r), ported in
  * spirit from the prototype's hand-rolled `applyOrbit`. Left-drag orbits,
