@@ -276,10 +276,10 @@ export const TREATMENT_MSG = {
   cementation: ml('Carburizing', 'Cémentation', 'Aufkohlen'),
   carbonitruration: ml('Carbonitriding', 'Carbonitruration', 'Carbonitrieren'),
   nitruration: ml('Nitriding', 'Nitruration', 'Nitrieren'),
-  trempe: ml('Quenching', 'Trempe', 'Härten'), // TODO(de): review — "Härten" (hardening) vs "Abschrecken" (quenching as a process)
+  trempe: ml('Quenching', 'Trempe', 'Abschrecken'),
   revenu: ml('Tempering', 'Revenu', 'Anlassen'),
   recuit: ml('Annealing', 'Recuit', 'Glühen'),
-  detente: ml('Stress relieving', 'Détensionnement', 'Spannungsarmglühen'), // TODO(de): review — confirm "Spannungsarmglühen" is the preferred term
+  detente: ml('Stress relieving', 'Détensionnement', 'Spannungsarmglühen'),
   normalisation: ml('Normalizing', 'Normalisation', 'Normalglühen'),
   autre: ml('Other', 'Autre', 'Sonstiges')
 } as const;

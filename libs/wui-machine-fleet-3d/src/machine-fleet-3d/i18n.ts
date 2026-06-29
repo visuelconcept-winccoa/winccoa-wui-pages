@@ -54,7 +54,7 @@ export const MSG = {
     ),
     openView3d: ml('Open the 3D view', 'Ouvrir la vue 3D', '3D-Ansicht öffnen'),
     machineCount: ml('machine(s)', 'machine(s)', 'Maschine(n)'),
-    defaultAtelierName: ml('Atelier', 'Atelier', 'Werkstatt'), // TODO(de): review label vs. proper name
+    defaultAtelierName: ml('Atelier', 'Atelier', 'Werkstatt'),
     demoAtelierName: ml(
       'Demonstration atelier',
       'Atelier de démonstration',
@@ -64,7 +64,7 @@ export const MSG = {
   view: {
     backToAteliers: ml('Back to ateliers', 'Retour aux ateliers', 'Zurück zu den Werkstätten'),
     confirm: ml('Confirm', 'Valider', 'Bestätigen'),
-    atelier: ml('Atelier', 'Atelier', 'Werkstatt'), // TODO(de): review label vs. proper name
+    atelier: ml('Atelier', 'Atelier', 'Werkstatt'),
     renameAtelier: ml("Rename the atelier", "Renommer l'atelier", 'Werkstatt umbenennen'),
     deleteAtelier: ml("Delete the atelier", "Supprimer l'atelier", 'Werkstatt löschen'),
     resetView: ml('Reset the view', 'Réinitialiser la vue', 'Ansicht zurücksetzen'),
@@ -156,7 +156,7 @@ export const MSG = {
     obsolescenceAli: ml('Obsolescence (ALI)', 'Obsolescence (ALI)', 'Obsoleszenz (ALI)'),
     confirmDeleteHeading: ml("Delete the atelier", "Supprimer l'atelier", 'Werkstatt löschen'),
     newMachineName: ml('New machine', 'Nouvelle machine', 'Neue Maschine'),
-    viewLabel: ml('View', 'Vue', 'Ansicht') // TODO(de): review (used as viewpoint name prefix)
+    viewLabel: ml('View', 'Vue', 'Ansicht')
   },
   create: {
     title: ml('New atelier', 'Nouvel atelier', 'Neue Werkstatt'),
@@ -215,8 +215,8 @@ export const MSG = {
       'Stillstandsursachenanalyse für diese Maschine gefiltert öffnen'
     ),
     analyse: ml('Analyse', 'Analyser', 'Analysieren'),
-    classPlanned: ml('planned', 'planifié', 'geplant'), // TODO(de): review (interpolated into "no … stop" message)
-    classUnplanned: ml('unplanned', 'non planifié', 'ungeplant'), // TODO(de): review
+    classPlanned: ml('planned', 'planifié', 'geplant'),
+    classUnplanned: ml('unplanned', 'non planifié', 'ungeplant'),
     periodToday: ml('Today', "Aujourd'hui", 'Heute'),
     period24h: ml('24 hours', '24 heures', '24 Stunden'),
     period7d: ml('7 days', '7 jours', '7 Tage'),
@@ -505,7 +505,7 @@ export const MSG = {
     paramUnit: ml('Unit', 'Unité', 'Einheit'),
     defaultParamName: ml('Parameter', 'Paramètre', 'Parameter'),
     delete: ml('Delete', 'Supprimer', 'Löschen'),
-    editTitlePrefix: ml('Edit', 'Édition', 'Bearbeiten') // TODO(de): review (used as "Edit — <name>")
+    editTitlePrefix: ml('Edit', 'Édition', 'Bearbeiten')
   },
   buildingDialog: {
     title: ml('Building configuration', 'Configuration du bâtiment', 'Gebäudekonfiguration'),
@@ -575,7 +575,7 @@ export const MSG = {
     close: ml('Close', 'Fermer', 'Schließen'),
     cancel: ml('Cancel', 'Annuler', 'Abbrechen'),
     save: ml('Save', 'Enregistrer', 'Speichern'),
-    mapping: ml('Mapping', 'Mapping', 'Zuordnung'), // TODO(de): review technical term
+    mapping: ml('Mapping', 'Mapping', 'Zuordnung'),
     newItem: ml('New', 'Nouveau', 'Neu'),
     deleteMapping: ml(
       'Delete this mapping',
@@ -596,7 +596,7 @@ export const MSG = {
     newMappingName: ml('New mapping', 'Nouveau mapping', 'Neue Zuordnung')
   },
   trsThresholds: {
-    title: ml('TRS thresholds', 'Seuils TRS', 'OEE-Schwellenwerte'), // TODO(de): TRS=OEE confirm
+    title: ml('TRS thresholds', 'Seuils TRS', 'OEE-Schwellenwerte'),
     close: ml('Close', 'Fermer', 'Schließen'),
     cancel: ml('Cancel', 'Annuler', 'Abbrechen'),
     save: ml('Save', 'Enregistrer', 'Speichern'),
@@ -611,7 +611,7 @@ export const MSG = {
     bandsHeading: ml(
       'Value bands (TRS ≥ threshold → colour)',
       'Bandes de valeurs (TRS ≥ seuil → couleur)',
-      'Wertebänder (OEE ≥ Schwelle → Farbe)' // TODO(de): TRS=OEE confirm
+      'Wertebänder (OEE ≥ Schwelle → Farbe)'
     ),
     colThreshold: ml('Threshold (%)', 'Seuil (%)', 'Schwelle (%)'),
     colColour: ml('Colour', 'Couleur', 'Farbe'),
@@ -650,7 +650,7 @@ export function noStopOfClassMsg(klass: string): string {
     ml(
       `No ${klass} stop over the period.`,
       `Aucun arrêt ${klass} sur la période.`,
-      `Kein ${klass} Stillstand im Zeitraum.`
+      `Kein Stillstand (${klass}) im Zeitraum.`
     )
   );
 }

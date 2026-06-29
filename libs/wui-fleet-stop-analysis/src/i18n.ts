@@ -30,8 +30,8 @@ export const MSG = {
     stopCauses: ml('Stop causes', "Causes d'arrêt", 'Stoppursachen'),
     dateStart: ml('Start', 'Début', 'Start'),
     dateEnd: ml('End', 'Fin', 'Ende'),
-    ateliers: ml('Workshops', 'Ateliers', 'Werkstätten'), // TODO(de): review "Werkstätten" vs domain term
-    allAteliers: ml('All workshops', 'Tous les ateliers', 'Alle Werkstätten'), // TODO(de): review
+    ateliers: ml('Workshops', 'Ateliers', 'Werkstätten'),
+    allAteliers: ml('All workshops', 'Tous les ateliers', 'Alle Werkstätten'),
     machines: ml('Machines', 'Machines', 'Maschinen'),
     allMachines: ml('All machines', 'Toutes les machines', 'Alle Maschinen'),
     sortBy: ml('Sort by', 'Trier par', 'Sortieren nach'),
@@ -56,7 +56,7 @@ export const MSG = {
   offline: ml(
     'Offline mode: workshop configuration unavailable (backend not connected). History data cannot be read.',
     "Mode hors-ligne : configuration des ateliers indisponible (backend non connecté). Les données d'historique ne peuvent pas être lues.",
-    'Offline-Modus: Werkstattkonfiguration nicht verfügbar (Backend nicht verbunden). Verlaufsdaten können nicht gelesen werden.' // TODO(de): review "Werkstattkonfiguration"
+    'Offline-Modus: Werkstattkonfiguration nicht verfügbar (Backend nicht verbunden). Verlaufsdaten können nicht gelesen werden.'
   ),
   tabs: {
     table: ml('Table', 'Tableau', 'Tabelle'),
