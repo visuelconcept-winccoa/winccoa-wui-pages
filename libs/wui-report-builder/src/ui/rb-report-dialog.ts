@@ -66,7 +66,7 @@ export class RbReportDialog extends LitElement {
                   </ix-select>
                   <div class="grid2" style="margin-top:0.75rem">
                     <ix-input label=${localize(MSG.reportDialog.reportNo)} .value=${this.reportNo} @valueChange=${(e: IxValueEvent) => (this.reportNo = String(e.detail))}></ix-input>
-                    <ix-input label=${localize(MSG.reportDialog.title)} .value=${this.title} @valueChange=${(e: IxValueEvent) => (this.title = String(e.detail))}></ix-input>
+                    <ix-input label=${localize(MSG.reportDialog.fTitle)} .value=${this.title} @valueChange=${(e: IxValueEvent) => (this.title = String(e.detail))}></ix-input>
                   </div>
                   <ix-input style="margin-top:0.75rem" label=${localize(MSG.reportDialog.subject)} .value=${this.subject} @valueChange=${(e: IxValueEvent) => (this.subject = String(e.detail))}></ix-input>
                   <div class="grid2" style="margin-top:0.75rem">

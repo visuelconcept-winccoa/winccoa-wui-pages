@@ -113,7 +113,7 @@ export const MSG = {
     model: ML_MODEL,
     unnamed: ml('(no name)', '(sans nom)', '(kein Name)'),
     reportNo: ML_REPORT_NO,
-    title: ML_TITLE,
+    fTitle: ML_TITLE,
     subject: ML_SUBJECT,
     periodStart: ML_PERIOD_START,
     periodEnd: ML_PERIOD_END,
