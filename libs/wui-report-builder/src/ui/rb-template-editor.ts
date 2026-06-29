@@ -12,6 +12,7 @@ import { LitElement, css, html, type PropertyValues, type TemplateResult } from 
 import { customElement, property, state } from 'lit/decorators.js';
 import '@visuelconcept/wui-kit/ui/wui-dp-input.js';
 import { dialogStyles } from './dialog-styles.js';
+import { DEFAULTS_MSG, MSG, localize, localizeDir } from '../i18n.js';
 import {
   AGG_LABELS,
   AGG_OPS,
@@ -65,23 +66,23 @@ export class RbTemplateEditor extends LitElement {
       <div class="overlay" @click=${this.close}>
         <div class="panel" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
-            <ix-typography format="h3">${this.working.id ? 'Modèle' : 'Nouveau modèle'}</ix-typography>
+            <ix-typography format="h3">${this.working.id ? localizeDir(MSG.editor.template) : localizeDir(MSG.editor.newTemplate)}</ix-typography>
             <ix-icon-button ghost icon="close" @click=${this.close}></ix-icon-button>
           </div>
           <div class="panel-body">
             <div class="grid2">
-              <ix-input label="Nom du modèle" .value=${this.working.name} @valueChange=${(e: IxValueEvent) => this.patch({ name: String(e.detail) })}></ix-input>
-              <ix-input label="Description" .value=${this.working.description} @valueChange=${(e: IxValueEvent) => this.patch({ description: String(e.detail) })}></ix-input>
+              <ix-input label=${localize(MSG.editor.name)} .value=${this.working.name} @valueChange=${(e: IxValueEvent) => this.patch({ name: String(e.detail) })}></ix-input>
+              <ix-input label=${localize(MSG.editor.description)} .value=${this.working.description} @valueChange=${(e: IxValueEvent) => this.patch({ description: String(e.detail) })}></ix-input>
             </div>
             <div class="tabs" role="tablist">
-              <button type="button" class="tab ${this.tab === 0 ? 'tab--active' : ''}" @click=${() => (this.tab = 0)}>Sections (${this.working.sections.length})</button>
-              <button type="button" class="tab ${this.tab === 1 ? 'tab--active' : ''}" @click=${() => (this.tab = 1)}>Workflow & signatures (${this.working.workflow.length})</button>
+              <button type="button" class="tab ${this.tab === 0 ? 'tab--active' : ''}" @click=${() => (this.tab = 0)}>${localizeDir(MSG.editor.tabSections)} (${this.working.sections.length})</button>
+              <button type="button" class="tab ${this.tab === 1 ? 'tab--active' : ''}" @click=${() => (this.tab = 1)}>${localizeDir(MSG.editor.tabWorkflow)} (${this.working.workflow.length})</button>
             </div>
             ${this.tab === 0 ? this.renderSections() : this.renderWorkflow()}
           </div>
           <div class="panel-foot">
-            <ix-button variant="secondary" @click=${this.close}>${this.canEdit ? 'Annuler' : 'Fermer'}</ix-button>
-            ${this.canEdit ? html`<ix-button @click=${this.save}>Enregistrer</ix-button>` : ''}
+            <ix-button variant="secondary" @click=${this.close}>${this.canEdit ? localizeDir(MSG.editor.cancel) : localizeDir(MSG.editor.close)}</ix-button>
+            ${this.canEdit ? html`<ix-button @click=${this.save}>${localizeDir(MSG.editor.save)}</ix-button>` : ''}
           </div>
         </div>
       </div>
@@ -100,12 +101,12 @@ export class RbTemplateEditor extends LitElement {
   private renderSections(): TemplateResult {
     return html`
       <div class="subhead">
-        Sections du rapport<span class="grow"></span>
+        ${localizeDir(MSG.editor.reportSections)}<span class="grow"></span>
         <ix-button variant="secondary" ?disabled=${!this.canEdit} @click=${this.addSection}>
-          <ix-icon name="plus" slot="icon"></ix-icon>Ajouter une section
+          <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.editor.addSection)}
         </ix-button>
       </div>
-      ${this.working.sections.length === 0 ? html`<div class="hint">Aucune section.</div>` : ''}
+      ${this.working.sections.length === 0 ? html`<div class="hint">${localizeDir(MSG.editor.noSection)}</div>` : ''}
       ${this.working.sections.map((s, i) => this.renderSectionCard(s, i))}
     `;
   }
@@ -121,19 +122,19 @@ export class RbTemplateEditor extends LitElement {
             ?disabled=${!this.canEdit}
             @valueChange=${(e: IxValueEvent) => this.changeKind(i, String(e.detail) as SectionKind)}
           >
-            ${SECTION_KINDS.map((k) => html`<ix-select-item label=${SECTION_KIND_LABELS[k]} value=${k}></ix-select-item>`)}
+            ${SECTION_KINDS.map((k) => html`<ix-select-item label=${localize(SECTION_KIND_LABELS[k])} value=${k}></ix-select-item>`)}
           </ix-select>
           <ix-input
             class="grow"
-            placeholder="Titre de la section"
+            placeholder=${localize(MSG.editor.sectionTitlePlaceholder)}
             .value=${section.title}
             ?disabled=${!this.canEdit}
             @valueChange=${(e: IxValueEvent) => this.patchSection(i, { title: String(e.detail) })}
           ></ix-input>
           <div class="row-actions">
-            <ix-icon-button ghost size="16" icon="chevron-up" title="Monter" ?disabled=${!this.canEdit || i === 0} @click=${() => this.moveSection(i, -1)}></ix-icon-button>
-            <ix-icon-button ghost size="16" icon="chevron-down" title="Descendre" ?disabled=${!this.canEdit || i === this.working.sections.length - 1} @click=${() => this.moveSection(i, 1)}></ix-icon-button>
-            <ix-icon-button ghost size="16" icon="trashcan" title="Supprimer" ?disabled=${!this.canEdit} @click=${() => this.removeSection(i)}></ix-icon-button>
+            <ix-icon-button ghost size="16" icon="chevron-up" title=${localize(MSG.editor.moveUp)} ?disabled=${!this.canEdit || i === 0} @click=${() => this.moveSection(i, -1)}></ix-icon-button>
+            <ix-icon-button ghost size="16" icon="chevron-down" title=${localize(MSG.editor.moveDown)} ?disabled=${!this.canEdit || i === this.working.sections.length - 1} @click=${() => this.moveSection(i, 1)}></ix-icon-button>
+            <ix-icon-button ghost size="16" icon="trashcan" title=${localize(MSG.editor.remove)} ?disabled=${!this.canEdit} @click=${() => this.removeSection(i)}></ix-icon-button>
           </div>
         </div>
         ${this.renderSectionConfig(section, i)}
@@ -146,7 +147,7 @@ export class RbTemplateEditor extends LitElement {
       case 'text':
       case 'comment': {
         return html`<ix-input
-          label="Texte d'aide (placeholder)"
+          label=${localize(MSG.editor.placeholderHelp)}
           .value=${section.placeholder ?? ''}
           ?disabled=${!this.canEdit}
           @valueChange=${(e: IxValueEvent) => this.patchSection(i, { placeholder: String(e.detail) })}
@@ -175,36 +176,36 @@ export class RbTemplateEditor extends LitElement {
     return html`
       ${fields.map(
         (f, fi) => html`<div class="nested">
-          <ix-input class="grow" placeholder="Libellé" .value=${f.label} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchField(si, fi, { label: String(e.detail) })}></ix-input>
-          <ix-input class="unit" placeholder="Unité" .value=${f.unit} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchField(si, fi, { unit: String(e.detail) })}></ix-input>
+          <ix-input class="grow" placeholder=${localize(MSG.editor.fieldLabel)} .value=${f.label} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchField(si, fi, { label: String(e.detail) })}></ix-input>
+          <ix-input class="unit" placeholder=${localize(MSG.editor.fieldUnit)} .value=${f.unit} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchField(si, fi, { unit: String(e.detail) })}></ix-input>
           <ix-select class="type" .value=${f.type} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchField(si, fi, { type: String(e.detail) as FieldType })}>
-            ${FIELD_TYPES.map((t) => html`<ix-select-item label=${FIELD_TYPE_LABELS[t]} value=${t}></ix-select-item>`)}
+            ${FIELD_TYPES.map((t) => html`<ix-select-item label=${localize(FIELD_TYPE_LABELS[t])} value=${t}></ix-select-item>`)}
           </ix-select>
           ${f.type === 'number'
-            ? html`<ix-number-input class="bound" placeholder="min" .value=${f.min ?? ''} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchField(si, fi, { min: numOrNull(e.detail) })}></ix-number-input>
-                <ix-number-input class="bound" placeholder="max" .value=${f.max ?? ''} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchField(si, fi, { max: numOrNull(e.detail) })}></ix-number-input>`
+            ? html`<ix-number-input class="bound" placeholder=${localize(MSG.editor.boundMin)} .value=${f.min ?? ''} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchField(si, fi, { min: numOrNull(e.detail) })}></ix-number-input>
+                <ix-number-input class="bound" placeholder=${localize(MSG.editor.boundMax)} .value=${f.max ?? ''} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchField(si, fi, { max: numOrNull(e.detail) })}></ix-number-input>`
             : ''}
           <ix-icon-button ghost size="16" icon="trashcan" ?disabled=${!this.canEdit} @click=${() => this.removeField(si, fi)}></ix-icon-button>
         </div>`
       )}
-      <ix-button variant="secondary" ?disabled=${!this.canEdit} @click=${() => this.addField(si)}><ix-icon name="plus" slot="icon"></ix-icon>Ajouter un champ</ix-button>
+      <ix-button variant="secondary" ?disabled=${!this.canEdit} @click=${() => this.addField(si)}><ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.editor.addField)}</ix-button>
     `;
   }
 
   private renderColumnsConfig(section: TemplateSection, si: number): TemplateResult {
     const cols = section.columns ?? [];
     return html`
-      <div class="hint">Colonnes du tableau (les lignes sont saisies dans le rapport).</div>
+      <div class="hint">${localizeDir(MSG.editor.columnsHint)}</div>
       ${cols.map(
         (c, ci) => html`<div class="nested">
-          <ix-input class="grow" placeholder="Colonne" .value=${c.label} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchColumn(si, ci, { label: String(e.detail) })}></ix-input>
+          <ix-input class="grow" placeholder=${localize(MSG.editor.column)} .value=${c.label} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchColumn(si, ci, { label: String(e.detail) })}></ix-input>
           <ix-select class="type" .value=${c.type} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchColumn(si, ci, { type: String(e.detail) as FieldType })}>
-            ${FIELD_TYPES.map((t) => html`<ix-select-item label=${FIELD_TYPE_LABELS[t]} value=${t}></ix-select-item>`)}
+            ${FIELD_TYPES.map((t) => html`<ix-select-item label=${localize(FIELD_TYPE_LABELS[t])} value=${t}></ix-select-item>`)}
           </ix-select>
           <ix-icon-button ghost size="16" icon="trashcan" ?disabled=${!this.canEdit} @click=${() => this.removeColumn(si, ci)}></ix-icon-button>
         </div>`
       )}
-      <ix-button variant="secondary" ?disabled=${!this.canEdit} @click=${() => this.addColumn(si)}><ix-icon name="plus" slot="icon"></ix-icon>Ajouter une colonne</ix-button>
+      <ix-button variant="secondary" ?disabled=${!this.canEdit} @click=${() => this.addColumn(si)}><ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.editor.addColumn)}</ix-button>
     `;
   }
 
@@ -213,23 +214,23 @@ export class RbTemplateEditor extends LitElement {
     return html`
       <label class="toggle-line">
         <ix-toggle ?checked=${section.chart !== false} ?disabled=${!this.canEdit} @checkedChange=${(e: IxCheckedEvent) => this.patchSection(si, { chart: e.detail })}></ix-toggle>
-        Afficher un graphique
+        ${localizeDir(MSG.editor.showChart)}
       </label>
       ${datasets.map((d, di) => this.renderDatasetRow(section, si, d, di))}
-      <ix-button variant="secondary" ?disabled=${!this.canEdit} @click=${() => this.addDataset(si)}><ix-icon name="plus" slot="icon"></ix-icon>Ajouter une mesure</ix-button>
+      <ix-button variant="secondary" ?disabled=${!this.canEdit} @click=${() => this.addDataset(si)}><ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.editor.addMeasure)}</ix-button>
     `;
   }
 
   private renderDatasetRow(section: TemplateSection, si: number, d: DatasetDef, di: number): TemplateResult {
     return html`<div class="ds-row">
       <div class="ds-top">
-        <ix-input class="grow" placeholder="Libellé de la mesure" .value=${d.label} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchDataset(si, di, { label: String(e.detail) })}></ix-input>
+        <ix-input class="grow" placeholder=${localize(MSG.editor.measureLabelPlaceholder)} .value=${d.label} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchDataset(si, di, { label: String(e.detail) })}></ix-input>
         <ix-icon-button ghost size="16" icon="trashcan" ?disabled=${!this.canEdit} @click=${() => this.removeDataset(si, di)}></ix-icon-button>
       </div>
-      <wui-dp-input label="Datapoint" .value=${d.dp} @wui:change=${(e: CustomEvent<{ value: string }>) => this.patchDataset(si, di, { dp: e.detail.value })}></wui-dp-input>
+      <wui-dp-input label=${localize(MSG.editor.datapoint)} .value=${d.dp} @wui:change=${(e: CustomEvent<{ value: string }>) => this.patchDataset(si, di, { dp: e.detail.value })}></wui-dp-input>
       <div class="op-chips">
         ${AGG_OPS.map(
-          (op) => html`<button type="button" class="op-chip ${d.ops.includes(op) ? 'op-chip--on' : ''}" ?disabled=${!this.canEdit} @click=${() => this.toggleOp(si, di, op)}>${AGG_LABELS[op]}</button>`
+          (op) => html`<button type="button" class="op-chip ${d.ops.includes(op) ? 'op-chip--on' : ''}" ?disabled=${!this.canEdit} @click=${() => this.toggleOp(si, di, op)}>${localizeDir(AGG_LABELS[op])}</button>`
         )}
       </div>
     </div>`;
@@ -240,12 +241,12 @@ export class RbTemplateEditor extends LitElement {
     return html`
       ${items.map(
         (it, ii) => html`<div class="nested">
-          <ix-input class="grow" placeholder="Point à vérifier" .value=${it.label} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchItem(si, ii, { label: String(e.detail) })}></ix-input>
-          <label class="toggle-line"><ix-toggle ?checked=${it.required} ?disabled=${!this.canEdit} @checkedChange=${(e: IxCheckedEvent) => this.patchItem(si, ii, { required: e.detail })}></ix-toggle>Obligatoire</label>
+          <ix-input class="grow" placeholder=${localize(MSG.editor.checklistItemPlaceholder)} .value=${it.label} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchItem(si, ii, { label: String(e.detail) })}></ix-input>
+          <label class="toggle-line"><ix-toggle ?checked=${it.required} ?disabled=${!this.canEdit} @checkedChange=${(e: IxCheckedEvent) => this.patchItem(si, ii, { required: e.detail })}></ix-toggle>${localizeDir(MSG.editor.mandatory)}</label>
           <ix-icon-button ghost size="16" icon="trashcan" ?disabled=${!this.canEdit} @click=${() => this.removeItem(si, ii)}></ix-icon-button>
         </div>`
       )}
-      <ix-button variant="secondary" ?disabled=${!this.canEdit} @click=${() => this.addItem(si)}><ix-icon name="plus" slot="icon"></ix-icon>Ajouter un point</ix-button>
+      <ix-button variant="secondary" ?disabled=${!this.canEdit} @click=${() => this.addItem(si)}><ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.editor.addItem)}</ix-button>
     `;
   }
 
@@ -254,12 +255,12 @@ export class RbTemplateEditor extends LitElement {
   private renderWorkflow(): TemplateResult {
     return html`
       <div class="subhead">
-        États & signatures<span class="grow"></span>
+        ${localizeDir(MSG.editor.statesSignatures)}<span class="grow"></span>
         <ix-button variant="secondary" ?disabled=${!this.canEdit} @click=${this.addState}>
-          <ix-icon name="plus" slot="icon"></ix-icon>Ajouter un état
+          <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.editor.addState)}
         </ix-button>
       </div>
-      <div class="hint">Chaque « transition » (avancer) définit un niveau de signature : rôle, niveau, permission requise et exigence de checklist.</div>
+      <div class="hint">${localizeDir(MSG.editor.workflowHint)}</div>
       ${this.working.workflow.map((s, i) => this.renderStateCard(s, i))}
     `;
   }
@@ -271,9 +272,9 @@ export class RbTemplateEditor extends LitElement {
       <div class="card">
         <div class="card-head">
           <span class="state-dot" style="background:${s.color}"></span>
-          <ix-input class="grow" placeholder="Libellé de l'état" .value=${s.label} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchState(i, { label: String(e.detail) })}></ix-input>
+          <ix-input class="grow" placeholder=${localize(MSG.editor.stateLabelPlaceholder)} .value=${s.label} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchState(i, { label: String(e.detail) })}></ix-input>
           <ix-select class="kind" .value=${s.kind} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchState(i, { kind: String(e.detail) as StateKind, color: STATE_COLORS[String(e.detail) as StateKind] })}>
-            ${STATE_KINDS.map((k) => html`<ix-select-item label=${STATE_KIND_LABELS[k]} value=${k}></ix-select-item>`)}
+            ${STATE_KINDS.map((k) => html`<ix-select-item label=${localize(STATE_KIND_LABELS[k])} value=${k}></ix-select-item>`)}
           </ix-select>
           <div class="row-actions">
             <ix-icon-button ghost size="16" icon="chevron-up" ?disabled=${!this.canEdit || i === 0} @click=${() => this.moveState(i, -1)}></ix-icon-button>
@@ -283,32 +284,32 @@ export class RbTemplateEditor extends LitElement {
         </div>
         <label class="toggle-line">
           <ix-toggle ?checked=${s.advance != null} ?disabled=${!this.canEdit} @checkedChange=${(e: IxCheckedEvent) => this.toggleAdvance(i, e.detail)}></ix-toggle>
-          Transition « avancer » (signature)
+          ${localizeDir(MSG.editor.advanceToggle)}
         </label>
         ${s.advance
           ? html`<div class="signoff">
               <div class="grid3">
-                <ix-input label="Action" .value=${s.advance.actionLabel} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchAdvance(i, { actionLabel: String(e.detail) })}></ix-input>
-                <ix-input label="Rôle / niveau" .value=${s.advance.roleLabel} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchAdvance(i, { roleLabel: String(e.detail) })}></ix-input>
-                <ix-number-input label="Niveau" min="1" .value=${s.advance.level} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchAdvance(i, { level: Number(e.detail) || 1 })}></ix-number-input>
+                <ix-input label=${localize(MSG.editor.action)} .value=${s.advance.actionLabel} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchAdvance(i, { actionLabel: String(e.detail) })}></ix-input>
+                <ix-input label=${localize(MSG.editor.roleLevel)} .value=${s.advance.roleLabel} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchAdvance(i, { roleLabel: String(e.detail) })}></ix-input>
+                <ix-number-input label=${localize(MSG.editor.level)} min="1" .value=${s.advance.level} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchAdvance(i, { level: Number(e.detail) || 1 })}></ix-number-input>
               </div>
-              <ix-select label="État cible" .value=${s.advance.toStateId} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchAdvance(i, { toStateId: String(e.detail) })}>
+              <ix-select label=${localize(MSG.editor.targetState)} .value=${s.advance.toStateId} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchAdvance(i, { toStateId: String(e.detail) })}>
                 ${others.map((o) => html`<ix-select-item label=${o.label} value=${o.id}></ix-select-item>`)}
               </ix-select>
               <div class="toggle-row2">
-                <label class="toggle-line"><ix-toggle ?checked=${s.advance.requirePermission} ?disabled=${!this.canEdit} @checkedChange=${(e: IxCheckedEvent) => this.patchAdvance(i, { requirePermission: e.detail })}></ix-toggle>Permission requise (canPublish)</label>
-                <label class="toggle-line"><ix-toggle ?checked=${s.advance.requireChecklist} ?disabled=${!this.canEdit} @checkedChange=${(e: IxCheckedEvent) => this.patchAdvance(i, { requireChecklist: e.detail })}></ix-toggle>Checklist obligatoire</label>
+                <label class="toggle-line"><ix-toggle ?checked=${s.advance.requirePermission} ?disabled=${!this.canEdit} @checkedChange=${(e: IxCheckedEvent) => this.patchAdvance(i, { requirePermission: e.detail })}></ix-toggle>${localizeDir(MSG.editor.requirePermission)}</label>
+                <label class="toggle-line"><ix-toggle ?checked=${s.advance.requireChecklist} ?disabled=${!this.canEdit} @checkedChange=${(e: IxCheckedEvent) => this.patchAdvance(i, { requireChecklist: e.detail })}></ix-toggle>${localizeDir(MSG.editor.requireChecklist)}</label>
               </div>
             </div>`
           : ''}
         <label class="toggle-line">
           <ix-toggle ?checked=${s.reject != null} ?disabled=${!this.canEdit} @checkedChange=${(e: IxCheckedEvent) => this.toggleReject(i, e.detail)}></ix-toggle>
-          Transition « rejeter / renvoyer »
+          ${localizeDir(MSG.editor.rejectToggle)}
         </label>
         ${s.reject
           ? html`<div class="signoff grid2">
-              <ix-input label="Action" .value=${s.reject.actionLabel} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchReject(i, { actionLabel: String(e.detail) })}></ix-input>
-              <ix-select label="État cible" .value=${s.reject.toStateId} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchReject(i, { toStateId: String(e.detail) })}>
+              <ix-input label=${localize(MSG.editor.action)} .value=${s.reject.actionLabel} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchReject(i, { actionLabel: String(e.detail) })}></ix-input>
+              <ix-select label=${localize(MSG.editor.targetState)} .value=${s.reject.toStateId} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchReject(i, { toStateId: String(e.detail) })}>
                 ${others.map((o) => html`<ix-select-item label=${o.label} value=${o.id}></ix-select-item>`)}
               </ix-select>
             </div>`
@@ -410,7 +411,7 @@ export class RbTemplateEditor extends LitElement {
   }
   private readonly addState = (): void => {
     const stateId = uid('st');
-    this.patch({ workflow: [...this.working.workflow, { id: stateId, label: 'Nouvel état', color: STATE_COLORS.intermediate, kind: 'intermediate' }] });
+    this.patch({ workflow: [...this.working.workflow, { id: stateId, label: localize(DEFAULTS_MSG.newState), color: STATE_COLORS.intermediate, kind: 'intermediate' }] });
   };
   private removeState(i: number): void {
     this.patch({ workflow: this.working.workflow.filter((_, idx) => idx !== i) });
@@ -422,7 +423,7 @@ export class RbTemplateEditor extends LitElement {
     const other = this.working.workflow.find((x) => x.id !== this.working.workflow[i].id);
     this.patchState(i, {
       advance: on
-        ? { toStateId: other?.id ?? '', actionLabel: 'Signer & avancer', roleLabel: 'Signataire', level: 1, requirePermission: true, requireChecklist: false }
+        ? { toStateId: other?.id ?? '', actionLabel: localize(DEFAULTS_MSG.advanceSign), roleLabel: localize(DEFAULTS_MSG.roleSigner), level: 1, requirePermission: true, requireChecklist: false }
         : undefined
     });
   }
@@ -432,7 +433,7 @@ export class RbTemplateEditor extends LitElement {
   }
   private toggleReject(i: number, on: boolean): void {
     const other = this.working.workflow.find((x) => x.id !== this.working.workflow[i].id);
-    this.patchState(i, { reject: on ? { toStateId: other?.id ?? '', actionLabel: 'Rejeter' } : undefined });
+    this.patchState(i, { reject: on ? { toStateId: other?.id ?? '', actionLabel: localize(DEFAULTS_MSG.reject) } : undefined });
   }
   private patchReject(i: number, part: Partial<NonNullable<WorkflowState['reject']>>): void {
     const reject = this.working.workflow[i].reject;

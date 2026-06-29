@@ -5,6 +5,8 @@
  * Status workflow for production orders: which transitions are allowed from a
  * given status, and how applying one stamps the actual times / progress.
  */
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
+import { MSG } from './i18n.js';
 import type { OrderStatus, ProductionOrder } from './types.js';
 
 const FULL_PROGRESS = 100;
@@ -12,7 +14,7 @@ const FULL_PROGRESS = 100;
 /** A status-change action offered for an order, with its UI affordances. */
 export interface StatusAction {
   target: OrderStatus;
-  label: string;
+  label: MultiLangString;
   icon: string;
 }
 
@@ -33,22 +35,22 @@ export function actionsFor(status: OrderStatus): StatusAction[] {
   switch (status) {
     case 'planned': {
       return [
-        { target: 'running', label: 'Démarrer', icon: 'play' },
-        { target: 'cancelled', label: 'Annuler', icon: 'cancel' }
+        { target: 'running', label: MSG.action.start, icon: 'play' },
+        { target: 'cancelled', label: MSG.action.cancel, icon: 'cancel' }
       ];
     }
     case 'running': {
       return [
-        { target: 'paused', label: 'Pause', icon: 'pause' },
-        { target: 'done', label: 'Terminer', icon: 'check' },
-        { target: 'cancelled', label: 'Annuler', icon: 'cancel' }
+        { target: 'paused', label: MSG.action.pause, icon: 'pause' },
+        { target: 'done', label: MSG.action.done, icon: 'check' },
+        { target: 'cancelled', label: MSG.action.cancel, icon: 'cancel' }
       ];
     }
     case 'paused': {
       return [
-        { target: 'running', label: 'Reprendre', icon: 'play' },
-        { target: 'done', label: 'Terminer', icon: 'check' },
-        { target: 'cancelled', label: 'Annuler', icon: 'cancel' }
+        { target: 'running', label: MSG.action.resume, icon: 'play' },
+        { target: 'done', label: MSG.action.done, icon: 'check' },
+        { target: 'cancelled', label: MSG.action.cancel, icon: 'cancel' }
       ];
     }
     default: {

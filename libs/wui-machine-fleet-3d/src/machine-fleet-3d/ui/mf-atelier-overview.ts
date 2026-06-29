@@ -14,6 +14,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import type { FleetStore } from '../data/fleet-store.js';
 import { canEditFleet, canEditFleet$ } from '../data/permissions.js';
+import { MSG, localize, localizeDir } from '../i18n.js';
 import { STATE_COLORS, type Atelier, type MachineState } from '../types.js';
 import './mf-ai-prompt.js';
 import './mf-atelier-create-dialog.js';
@@ -57,28 +58,27 @@ export class MfAtelierOverview extends LitElement {
       <div class="head">
         <span class="spacer"></span>
         <ix-button variant="secondary" @click=${() => (this.resourcesOpen = true)}>
-          <ix-icon name="box-open" slot="icon"></ix-icon>Catalogue graphiques
+          <ix-icon name="box-open" slot="icon"></ix-icon>${localizeDir(MSG.overview.graphicsCatalog)}
         </ix-button>
         <ix-button variant="secondary" @click=${this.manageClosures}>
-          <ix-icon name="calendar" slot="icon"></ix-icon>Jours non travaillés
+          <ix-icon name="calendar" slot="icon"></ix-icon>${localizeDir(MSG.overview.closures)}
         </ix-button>
         <ix-button variant="secondary" @click=${this.analyze}>
-          <ix-icon name="analysis" slot="icon"></ix-icon>Analyse des causes d'arrêts
+          <ix-icon name="analysis" slot="icon"></ix-icon>${localizeDir(MSG.overview.stopAnalysis)}
         </ix-button>
         <ix-button variant="secondary" @click=${this.analyzeKpi}>
-          <ix-icon name="barchart" slot="icon"></ix-icon>Analyse des KPI
+          <ix-icon name="barchart" slot="icon"></ix-icon>${localizeDir(MSG.overview.kpiAnalysis)}
         </ix-button>
         ${this.canEdit
           ? html`<ix-button @click=${this.create}>
-              <ix-icon name="plus" slot="icon"></ix-icon>Nouveau…
+              <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.overview.newEllipsis)}
             </ix-button>`
           : ''}
         <mf-ai-prompt></mf-ai-prompt>
       </div>
       ${this.offline
         ? html`<div class="notice">
-            <ix-icon name="info"></ix-icon>Mode hors-ligne : modifications non persistées dans les
-            datapoints (backend indisponible ou droits d'écriture manquants).
+            <ix-icon name="info"></ix-icon>${localizeDir(MSG.overview.offlineNotice)}
           </div>`
         : ''}
       ${this.ateliers.length === 0 ? this.renderEmpty() : this.renderGrid()}
@@ -105,10 +105,10 @@ export class MfAtelierOverview extends LitElement {
   private renderEmpty(): TemplateResult {
     return html`
       <div class="empty">
-        <ix-typography>Aucun atelier configuré.</ix-typography>
+        <ix-typography>${localizeDir(MSG.overview.emptyNone)}</ix-typography>
         ${this.canEdit
           ? html`<ix-button variant="secondary" @click=${this.importDemo}>
-              <ix-icon name="add" slot="icon"></ix-icon>Importer l'atelier de démonstration
+              <ix-icon name="add" slot="icon"></ix-icon>${localizeDir(MSG.overview.importDemo)}
             </ix-button>`
           : ''}
       </div>
@@ -121,12 +121,12 @@ export class MfAtelierOverview extends LitElement {
 
   private renderCard(a: Atelier): TemplateResult {
     return html`
-      <ix-card class="card" title="Ouvrir la vue 3D" @click=${() => this.open(a)}>
+      <ix-card class="card" title=${localize(MSG.overview.openView3d)} @click=${() => this.open(a)}>
         <ix-card-content>
           <div class="card-title">${a.name}</div>
           ${this.renderMinimap(a)}
           <div class="stats">
-            <span class="count">${a.machines.length} machine(s)</span>
+            <span class="count">${a.machines.length} ${localizeDir(MSG.overview.machineCount)}</span>
             <span class="spacer"></span>
             ${this.renderStateChips(a)}
           </div>
@@ -176,13 +176,13 @@ export class MfAtelierOverview extends LitElement {
 
   private create(): void {
     this.createTemplate = '';
-    this.createDefaultName = `Atelier ${this.ateliers.length + 1}`;
+    this.createDefaultName = `${localize(MSG.overview.defaultAtelierName)} ${this.ateliers.length + 1}`;
     this.createOpen = true;
   }
 
   private importDemo(): void {
     this.createTemplate = 'demo';
-    this.createDefaultName = 'Atelier de démonstration';
+    this.createDefaultName = localize(MSG.overview.demoAtelierName);
     this.createOpen = true;
   }
 

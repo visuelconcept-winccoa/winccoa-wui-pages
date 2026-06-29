@@ -10,6 +10,7 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { dialogStyles } from './dialog-styles.js';
+import { MSG, localize, localizeDir } from '../i18n.js';
 import type { SignOff } from '../types.js';
 
 interface IxValueEvent {
@@ -30,25 +31,25 @@ export class RbSignatureDialog extends LitElement {
     return html`
       <div class="overlay" @click=${this.cancel}>
         <div class="panel" @click=${(e: Event) => e.stopPropagation()} style="width:520px">
-          <div class="panel-head"><ix-typography format="h3">${so?.actionLabel ?? 'Signer'}</ix-typography></div>
+          <div class="panel-head"><ix-typography format="h3">${so?.actionLabel ?? localizeDir(MSG.signatureDialog.fallbackTitle)}</ix-typography></div>
           <div class="panel-body">
             <div class="meta">
-              <div><span class="k">Rôle / niveau</span><span class="v">${so?.roleLabel} · niveau ${so?.level}</span></div>
-              <div><span class="k">Signataire</span><span class="v">${this.signerName || 'Utilisateur connecté'}</span></div>
+              <div><span class="k">${localizeDir(MSG.signatureDialog.roleLevel)}</span><span class="v">${so?.roleLabel} · ${localizeDir(MSG.signatureDialog.level)} ${so?.level}</span></div>
+              <div><span class="k">${localizeDir(MSG.signatureDialog.signer)}</span><span class="v">${this.signerName || localizeDir(MSG.signatureDialog.connectedUser)}</span></div>
             </div>
             <div class="field" style="margin-top:0.75rem">
-              <label>Commentaire (optionnel)</label>
+              <label>${localizeDir(MSG.signatureDialog.commentOptional)}</label>
               <ix-input
                 .value=${this.comment}
-                placeholder="Visa, observations…"
+                placeholder=${localize(MSG.signatureDialog.commentPlaceholder)}
                 @valueChange=${(e: IxValueEvent) => (this.comment = String(e.detail))}
               ></ix-input>
             </div>
-            <div class="hint">La signature enregistre votre nom et l'horodatage, puis fait avancer l'état du rapport.</div>
+            <div class="hint">${localizeDir(MSG.signatureDialog.hint)}</div>
           </div>
           <div class="panel-foot">
-            <ix-button variant="secondary" @click=${this.cancel}>Annuler</ix-button>
-            <ix-button @click=${this.sign}><ix-icon name="pen" slot="icon"></ix-icon>Signer</ix-button>
+            <ix-button variant="secondary" @click=${this.cancel}>${localizeDir(MSG.signatureDialog.cancel)}</ix-button>
+            <ix-button @click=${this.sign}><ix-icon name="pen" slot="icon"></ix-icon>${localizeDir(MSG.signatureDialog.sign)}</ix-button>
           </div>
         </div>
       </div>

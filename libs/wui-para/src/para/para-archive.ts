@@ -23,6 +23,15 @@ import { firstValueFrom } from 'rxjs';
 import { container } from 'tsyringe';
 import { type DpStruct, collectLeaves, leavesUnder, makeDpeName, splitDpPath, stripSystem } from './para-leaves.js';
 import './para-nav.js';
+import {
+  MSG,
+  archiveGroupSetMsg,
+  archiveLoadErrorMsg,
+  archiveToggledMsg,
+  failedOnMsg,
+  localize,
+  localizeDir
+} from './i18n.js';
 
 const DP_SET_URL = '/api/para/dp/set';
 /** WinCC OA archive-config constants (CTRL DPCONFIG/DPATTR values). */
@@ -100,26 +109,26 @@ export class WuiParaArchive extends LitElement {
 
   private renderPanel(): TemplateResult {
     if (this.selectedDp == null && this.selectedType == null) {
-      return html`<div class="message">Sélectionnez un datapoint, un élément ou un type dans l'arbre pour configurer son archivage.</div>`;
+      return html`<div class="message">${localizeDir(MSG.archive.selectToConfigure)}</div>`;
     }
     if (this.loading) {
-      return html`<div class="message">Chargement…</div>`;
+      return html`<div class="message">${localizeDir(MSG.shared.loading)}</div>`;
     }
     return html`
       <div class="panel-head">
         <ix-icon name="database" size="20"></ix-icon>
         <span class="sel">${this.selectedDp ?? this.selectedType}</span>
         ${this.groups.length === 0
-          ? html`<span class="warn">Aucun groupe d'archive actif (type _NGA_Group)</span>`
+          ? html`<span class="warn">${localizeDir(MSG.archive.noGroups)}</span>`
           : nothing}
         ${this.message === '' ? nothing : html`<span class="msg ${this.messageOk ? 'ok' : 'err'}">${this.message}</span>`}
       </div>
       ${this.rows.length === 0
-        ? html`<div class="message">Aucun élément à valeur sous cette sélection.</div>`
+        ? html`<div class="message">${localizeDir(MSG.shared.noValueElements)}</div>`
         : html`<div class="scroll">
             <table>
               <thead>
-                <tr><th>Élément</th><th>Groupe d'archive</th><th>Archivé</th></tr>
+                <tr><th>${localizeDir(MSG.shared.element)}</th><th>${localizeDir(MSG.archive.colArchiveGroup)}</th><th>${localizeDir(MSG.archive.colArchived)}</th></tr>
               </thead>
               <tbody>
                 ${this.rows.map((row) => this.renderRow(row))}
@@ -185,7 +194,7 @@ export class WuiParaArchive extends LitElement {
       this.rows = rows;
     } catch (error) {
       this.rows = [];
-      this.setMessage(`Erreur de chargement : ${error instanceof Error ? error.message : String(error)}`, false);
+      this.setMessage(archiveLoadErrorMsg(error instanceof Error ? error.message : String(error)), false);
     } finally {
       this.loading = false;
     }
@@ -214,7 +223,7 @@ export class WuiParaArchive extends LitElement {
       return [];
     }
     if (this.ownerType == null || this.ownerType === '') {
-      throw new Error("Type du datapoint inconnu — re-sélectionnez l'élément.");
+      throw new Error(localize(MSG.shared.unknownDpType));
     }
     const struct = (await firstValueFrom(this.dpe.getDatapointTypes(this.ownerType))) as DpStruct;
     const { root, relPath } = splitDpPath(dp);
@@ -283,13 +292,13 @@ export class WuiParaArchive extends LitElement {
       return;
     }
     const ok = await this.setArchive(row.dpe, enabled, group);
-    this.setMessage(ok ? `${enabled ? 'Archivage activé' : 'Archivage désactivé'} : ${row.display}` : `Échec sur ${row.display}`, ok);
+    this.setMessage(ok ? archiveToggledMsg(enabled, row.display) : failedOnMsg(row.display), ok);
     await this.refreshRow(row.dpe);
   }
 
   private async changeGroup(row: ArchiveRow, group: string): Promise<void> {
     const ok = await this.setArchive(row.dpe, true, group);
-    this.setMessage(ok ? `Groupe « ${group} » : ${row.display}` : `Échec sur ${row.display}`, ok);
+    this.setMessage(ok ? archiveGroupSetMsg(group, row.display) : failedOnMsg(row.display), ok);
     await this.refreshRow(row.dpe);
   }
 

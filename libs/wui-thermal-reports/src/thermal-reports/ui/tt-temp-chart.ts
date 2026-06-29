@@ -15,6 +15,7 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import * as echarts from 'echarts';
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { MSG, localize } from '../i18n.js';
 import type { ProfilePoint, Sample } from '../engine.js';
 
 const CHART_HEIGHT_PX = 340;
@@ -71,6 +72,9 @@ export class TtTempChart extends LitElement {
   private chartOption(): echarts.EChartsCoreOption {
     const text = this.cssVar('--theme-color-std-text', '#e8e8e8');
     const grid = this.cssVar('--theme-color-soft-bdr', '#444');
+    const nameActual = localize(MSG.chart.actual);
+    const nameSetpoint = localize(MSG.chart.setpoint);
+    const nameTolerance = localize(MSG.chart.tolerance);
     const lower = this.profile.map((p) => [p.t, p.lo]);
     const band = this.profile.map((p) => [p.t, Math.max(0, p.hi - p.lo)]);
     const setpoint = this.profile.map((p) => [p.t, p.setpoint]);
@@ -83,7 +87,7 @@ export class TtTempChart extends LitElement {
       textStyle: { color: text },
       tooltip: { trigger: 'axis', valueFormatter: (v: unknown) => `${Number(v).toFixed(1)} °C` },
       legend: {
-        data: ['Température réelle', 'Consigne', 'Tolérance'],
+        data: [nameActual, nameSetpoint, nameTolerance],
         textStyle: { color: text },
         top: 0
       },
@@ -115,7 +119,7 @@ export class TtTempChart extends LitElement {
           legendHoverLink: false
         },
         {
-          name: 'Tolérance',
+          name: nameTolerance,
           type: 'line',
           data: band,
           stack: 'tol',
@@ -126,7 +130,7 @@ export class TtTempChart extends LitElement {
           silent: true
         },
         {
-          name: 'Consigne',
+          name: nameSetpoint,
           type: 'line',
           data: setpoint,
           step: 'end',
@@ -134,7 +138,7 @@ export class TtTempChart extends LitElement {
           lineStyle: { color: SETPOINT_COLOR, width: 2, type: 'dashed' }
         },
         {
-          name: 'Température réelle',
+          name: nameActual,
           type: 'line',
           data: actual,
           smooth: true,

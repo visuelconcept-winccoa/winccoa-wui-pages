@@ -47,6 +47,7 @@ import {
   normaliseClosures,
   type ClosureConfig
 } from '@visuelconcept/wui-fleet-core/closures.js';
+import { MSG, localize, localizeDir } from './fleet-kpi-analysis/i18n.js';
 
 const TAB_TABLE = 0;
 const TAB_CHART = 1;
@@ -136,15 +137,15 @@ export class WuiFleetKpiAnalysis extends LitElement {
     return html`
       <div class="toolbar">
         <ix-button variant="secondary" outline @click=${this.back}>
-          <ix-icon name="arrow-left" slot="icon"></ix-icon>Retour
+          <ix-icon name="arrow-left" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.back)}
         </ix-button>
         <span class="sep"></span>
-        ${this.renderDateField('Début', this.startStr, 'start')}
-        ${this.renderDateField('Fin', this.endStr, 'end')} ${this.renderAtelierField()}
+        ${this.renderDateField(localize(MSG.toolbar.start), this.startStr, 'start')}
+        ${this.renderDateField(localize(MSG.toolbar.end), this.endStr, 'end')} ${this.renderAtelierField()}
         ${this.renderMachineField()}
         <span class="grow"></span>
         <ix-button @click=${() => void this.recompute()} ?disabled=${this.loading}>
-          <ix-icon name="refresh" slot="icon"></ix-icon>Actualiser
+          <ix-icon name="refresh" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.refresh)}
         </ix-button>
       </div>
     `;
@@ -166,11 +167,11 @@ export class WuiFleetKpiAnalysis extends LitElement {
   private renderAtelierField(): TemplateResult {
     return html`
       <label class="field">
-        <span class="lbl">Ateliers</span>
+        <span class="lbl">${localizeDir(MSG.toolbar.ateliers)}</span>
         <ix-select
           mode="multiple"
           allow-clear
-          i18n-placeholder="Tous les ateliers"
+          i18n-placeholder=${localize(MSG.toolbar.allAteliers)}
           .value=${this.selectedAteliers}
           @valueChange=${(e: CustomEvent<string | string[]>) => this.onSelect('ateliers', e.detail)}
         >
@@ -185,11 +186,11 @@ export class WuiFleetKpiAnalysis extends LitElement {
   private renderMachineField(): TemplateResult {
     return html`
       <label class="field">
-        <span class="lbl">Machines</span>
+        <span class="lbl">${localizeDir(MSG.toolbar.machines)}</span>
         <ix-select
           mode="multiple"
           allow-clear
-          i18n-placeholder="Toutes les machines"
+          i18n-placeholder=${localize(MSG.toolbar.allMachines)}
           .value=${this.selectedMachines}
           @valueChange=${(e: CustomEvent<string | string[]>) => this.onSelect('machines', e.detail)}
         >
@@ -204,16 +205,15 @@ export class WuiFleetKpiAnalysis extends LitElement {
   private renderOffline(): TemplateResult {
     if (!this.offline) return html``;
     return html`<div class="notice">
-      <ix-icon name="info"></ix-icon>Mode hors-ligne : configuration des ateliers indisponible
-      (backend non connecté). Les données d'historique ne peuvent pas être lues.
+      <ix-icon name="info"></ix-icon>${localizeDir(MSG.offline)}
     </div>`;
   }
 
   private renderTabs(): TemplateResult {
     return html`
       <ix-tabs .selected=${this.tab} @selectedChange=${(e: CustomEvent<number>) => (this.tab = e.detail)}>
-        <ix-tab-item>Tableau</ix-tab-item>
-        <ix-tab-item>Graphique</ix-tab-item>
+        <ix-tab-item>${localizeDir(MSG.tabs.table)}</ix-tab-item>
+        <ix-tab-item>${localizeDir(MSG.tabs.chart)}</ix-tab-item>
       </ix-tabs>
     `;
   }
@@ -223,15 +223,10 @@ export class WuiFleetKpiAnalysis extends LitElement {
     const result = this.result;
     if (!result) return html``;
     if (result.queriedMachineCount === 0) {
-      return html`<div class="center muted">
-        Aucune machine sélectionnée n'a de datapoint d'état et de cause d'arrêt configurés.
-      </div>`;
+      return html`<div class="center muted">${localizeDir(MSG.content.noMachines)}</div>`;
     }
     if (result.noHistory) {
-      return html`<div class="center muted">
-        Aucune donnée d'historique sur la période. Vérifiez que les datapoints d'état et de cause
-        sont archivés (configuration d'archivage NGA).
-      </div>`;
+      return html`<div class="center muted">${localizeDir(MSG.content.noHistory)}</div>`;
     }
     return this.tab === TAB_TABLE ? this.renderTable(result) : this.renderChartHost();
   }
@@ -247,7 +242,7 @@ export class WuiFleetKpiAnalysis extends LitElement {
         <div class="raw-tools">
           <ix-input
             class="raw-search"
-            placeholder="Rechercher une machine…"
+            placeholder=${localize(MSG.table.searchMachine)}
             .value=${this.machineSearch}
             @valueChange=${(e: CustomEvent<string>) => (this.machineSearch = String(e.detail))}
           ></ix-input>
@@ -256,10 +251,10 @@ export class WuiFleetKpiAnalysis extends LitElement {
           <table class="tbl">
             <thead>
               <tr>
-                ${this.kpiHeader('Machine', 'machine')}
-                ${this.kpiHeader('TRS (disponibilité)', 'trs', true)}
-                ${this.kpiHeader('Arrêt non planifié', 'unplanned', true)}
-                ${this.kpiHeader('Arrêt planifié', 'planned', true)}
+                ${this.kpiHeader(localize(MSG.table.machine), 'machine')}
+                ${this.kpiHeader(localize(MSG.table.trs), 'trs', true)}
+                ${this.kpiHeader(localize(MSG.table.unplanned), 'unplanned', true)}
+                ${this.kpiHeader(localize(MSG.table.planned), 'planned', true)}
               </tr>
             </thead>
             <tbody>
@@ -267,7 +262,7 @@ export class WuiFleetKpiAnalysis extends LitElement {
             </tbody>
             <tfoot>
               <tr>
-                <td>Parc (${rows.length})</td>
+                <td>${localizeDir(MSG.table.fleet)} (${rows.length})</td>
                 <td class="num">${formatPct(fleetTrs)}</td>
                 <td class="num">${formatDuration(totalUnplanned)}</td>
                 <td class="num">${formatDuration(totalPlanned)}</td>
@@ -326,7 +321,7 @@ export class WuiFleetKpiAnalysis extends LitElement {
     if (!r.hasData) {
       return html`<tr>
         <td>${name}</td>
-        <td class="num muted">— <em>(pas d'historique)</em></td>
+        <td class="num muted">— <em>${localizeDir(MSG.table.noHistoryRow)}</em></td>
         <td class="num muted">—</td>
         <td class="num muted">—</td>
       </tr>`;
@@ -395,7 +390,7 @@ export class WuiFleetKpiAnalysis extends LitElement {
       },
       yAxis: {
         type: 'value',
-        name: 'TRS %',
+        name: localize(MSG.chart.trsAxis),
         min: 0,
         max: PCT,
         nameTextStyle: { color: text },
@@ -404,7 +399,7 @@ export class WuiFleetKpiAnalysis extends LitElement {
       },
       series: [
         {
-          name: 'TRS',
+          name: localize(MSG.chart.trsSeries),
           type: 'bar',
           barMaxWidth: 48,
           data

@@ -20,17 +20,19 @@ import {
 } from '../types.js';
 import { FLOOR_PATTERNS } from '../scene/floor-patterns.js';
 import { dialogStyles } from './dialog-styles.js';
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
+import { MSG, localize, localizeDir } from '../i18n.js';
 
 interface IxValueEvent {
   detail: string | number;
 }
 
 const ROOF_TYPES: RoofType[] = ['shed', 'flat', 'monoslope', 'none'];
-const ROOF_TYPE_LABELS: Record<RoofType, string> = {
-  shed: 'Sheds (redents)',
-  flat: 'Plate',
-  monoslope: 'Monopente',
-  none: 'Aucune'
+const ROOF_TYPE_LABELS: Record<RoofType, MultiLangString> = {
+  shed: MSG.buildingDialog.roofShed,
+  flat: MSG.buildingDialog.roofFlat,
+  monoslope: MSG.buildingDialog.roofMonoslope,
+  none: MSG.buildingDialog.roofNone
 };
 // Driven from the pattern registry so new floor types appear automatically.
 const FLOOR_TYPES = Object.keys(FLOOR_PATTERNS) as FloorType[];
@@ -76,29 +78,29 @@ export class MfBuildingDialog extends LitElement {
       <div class="overlay" @click=${this.close}>
         <div class="panel" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
-            <ix-typography format="h3">Configuration du bâtiment</ix-typography>
+            <ix-typography format="h3">${localizeDir(MSG.buildingDialog.title)}</ix-typography>
             <ix-icon-button ghost icon="close" @click=${this.close}></ix-icon-button>
           </div>
           <div class="panel-body">
             <div class="sliders">
-              ${this.slider('Longueur (m)', b.length, 40, 400, 5, (v) => this.patch({ length: v }))}
-              ${this.slider('Largeur (m)', b.width, 30, 200, 5, (v) => this.patch({ width: v }))}
-              ${this.slider('Hauteur (m)', b.height, 5, 25, 1, (v) => this.patch({ height: v }))}
-              ${this.slider('Travées', b.bays, 1, 6, 1, (v) => this.patch({ bays: v }))}
-              ${this.slider('Pas poteaux (m)', b.colStep, 6, 40, 1, (v) => this.patch({ colStep: v }))}
+              ${this.slider(localize(MSG.buildingDialog.length), b.length, 40, 400, 5, (v) => this.patch({ length: v }))}
+              ${this.slider(localize(MSG.buildingDialog.width), b.width, 30, 200, 5, (v) => this.patch({ width: v }))}
+              ${this.slider(localize(MSG.buildingDialog.height), b.height, 5, 25, 1, (v) => this.patch({ height: v }))}
+              ${this.slider(localize(MSG.buildingDialog.bays), b.bays, 1, 6, 1, (v) => this.patch({ bays: v }))}
+              ${this.slider(localize(MSG.buildingDialog.colStep), b.colStep, 6, 40, 1, (v) => this.patch({ colStep: v }))}
             </div>
             <div class="grid2">
               <ix-select
-                label="Type de toiture"
+                label=${localize(MSG.buildingDialog.roofType)}
                 .value=${b.roofType}
                 @valueChange=${(e: IxValueEvent) => this.patch({ roofType: e.detail as RoofType })}
               >
                 ${ROOF_TYPES.map(
-                  (t) => html`<ix-select-item label=${ROOF_TYPE_LABELS[t]} value=${t}></ix-select-item>`
+                  (t) => html`<ix-select-item label=${localize(ROOF_TYPE_LABELS[t])} value=${t}></ix-select-item>`
                 )}
               </ix-select>
               <ix-select
-                label="Type de sol"
+                label=${localize(MSG.buildingDialog.floorType)}
                 .value=${b.floorType}
                 @valueChange=${(e: IxValueEvent) => this.patch({ floorType: e.detail as FloorType })}
               >
@@ -110,7 +112,7 @@ export class MfBuildingDialog extends LitElement {
                 )}
               </ix-select>
               <ix-select
-                label="Boutons de navigation"
+                label=${localize(MSG.buildingDialog.navButtons)}
                 .value=${b.navCorner ?? DEFAULT_NAV_CORNER}
                 @valueChange=${(e: IxValueEvent) => this.patch({ navCorner: e.detail as NavCorner })}
               >
@@ -121,8 +123,8 @@ export class MfBuildingDialog extends LitElement {
             </div>
           </div>
           <div class="panel-foot">
-            <ix-button variant="secondary" @click=${this.close}>Fermer</ix-button>
-            ${this.canEdit ? html`<ix-button @click=${this.apply}>Appliquer</ix-button>` : ''}
+            <ix-button variant="secondary" @click=${this.close}>${localizeDir(MSG.buildingDialog.close)}</ix-button>
+            ${this.canEdit ? html`<ix-button @click=${this.apply}>${localizeDir(MSG.buildingDialog.apply)}</ix-button>` : ''}
           </div>
         </div>
       </div>

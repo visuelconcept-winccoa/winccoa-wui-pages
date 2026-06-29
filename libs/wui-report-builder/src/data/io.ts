@@ -6,6 +6,8 @@
  * list. JSON round-trips the full objects (re-import merges by `id`); CSV is
  * export-only (UTF-8 BOM for Excel).
  */
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
+import { MSG, localize } from '../i18n.js';
 import { defaultWorkflow, type Report, type ReportTemplate } from '../types.js';
 import { CSV_BOM, JSON_INDENT, csvCell, download, timestampSlug } from '@visuelconcept/wui-kit/data/io.js';
 
@@ -23,7 +25,7 @@ function normalizeTemplate(item: Partial<ReportTemplate>): ReportTemplate {
   return {
     id: String(item.id ?? ''),
     dp: String(item.dp ?? ''),
-    name: String(item.name ?? 'Modèle importé'),
+    name: String(item.name ?? localize(MSG.io.importedTemplate)),
     description: String(item.description ?? ''),
     sections: Array.isArray(item.sections) ? item.sections : [],
     workflow: Array.isArray(item.workflow) && item.workflow.length > 0 ? item.workflow : defaultWorkflow(),
@@ -56,29 +58,29 @@ function normalizeReport(item: Partial<Report>): Report {
 export function parseTemplates(text: string): ReportTemplate[] {
   const raw: unknown = JSON.parse(text);
   const list = Array.isArray(raw) ? raw : (raw as { templates?: unknown }).templates;
-  if (!Array.isArray(list)) throw new TypeError('Format invalide : tableau « templates » introuvable.');
+  if (!Array.isArray(list)) throw new TypeError(localize(MSG.io.invalidTemplates));
   return list.map((item) => normalizeTemplate(item as Partial<ReportTemplate>));
 }
 
 export function parseReports(text: string): Report[] {
   const raw: unknown = JSON.parse(text);
   const list = Array.isArray(raw) ? raw : (raw as { reports?: unknown }).reports;
-  if (!Array.isArray(list)) throw new TypeError('Format invalide : tableau « reports » introuvable.');
+  if (!Array.isArray(list)) throw new TypeError(localize(MSG.io.invalidReports));
   return list.map((item) => normalizeReport(item as Partial<Report>));
 }
 
-const CSV_COLUMNS: { key: string; label: string }[] = [
-  { key: 'reportNo', label: 'N° rapport' },
-  { key: 'title', label: 'Titre' },
-  { key: 'subject', label: 'Objet' },
-  { key: 'templateName', label: 'Modèle' },
-  { key: 'stateLabel', label: 'État' },
-  { key: 'signatureCount', label: 'Signatures' },
-  { key: 'createdAt', label: 'Créé le' }
+const CSV_COLUMNS: { key: string; label: MultiLangString }[] = [
+  { key: 'reportNo', label: MSG.csv.reportNo },
+  { key: 'title', label: MSG.csv.title },
+  { key: 'subject', label: MSG.csv.subject },
+  { key: 'templateName', label: MSG.csv.model },
+  { key: 'stateLabel', label: MSG.csv.state },
+  { key: 'signatureCount', label: MSG.csv.signatures },
+  { key: 'createdAt', label: MSG.csv.createdAt }
 ];
 
 export function exportReportsCsv(reports: Report[]): void {
-  const rows = [CSV_COLUMNS.map((c) => c.label).join(',')];
+  const rows = [CSV_COLUMNS.map((c) => localize(c.label)).join(',')];
   for (const report of reports) {
     const stateLabel = report.workflow.find((s) => s.id === report.currentStateId)?.label ?? '';
     const enriched: Record<string, unknown> = {

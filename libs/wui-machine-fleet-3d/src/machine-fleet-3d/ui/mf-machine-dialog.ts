@@ -48,6 +48,8 @@ import { SEMIFAB_ICONS } from '../data/semifab-icons.js';
 import type { AliAssetInfo } from '../data/ali-assets.js';
 import type { FleetStore } from '../data/fleet-store.js';
 import { dialogStyles } from './dialog-styles.js';
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
+import { MSG, localize, localizeDir, linkFallbackMsg, dashboardLinksHintMsg } from '../i18n.js';
 
 interface IxValueEvent {
   detail: string | number;
@@ -80,14 +82,14 @@ const PORTIQUE_SIZES: PortiqueSize[] = ['XS', 'S', 'M', 'L', 'XL'];
 const MACHINE_PROCESSES: MachineProcess[] = ['generic', 'usinage', 'soudage'];
 const DASHBOARD_MODES: DashboardMode[] = ['default', 'oa'];
 /** Tab labels for the machine dialog (wrapping bar, no overflow arrows). */
-const TAB_LABELS = [
-  'Général',
-  'État & production',
-  'Paramètres',
-  'Dashboard',
-  'Archivage',
-  'KPI',
-  'Affichage'
+const TAB_LABELS: MultiLangString[] = [
+  MSG.machineDialog.tabGeneral,
+  MSG.machineDialog.tabStateProduction,
+  MSG.machineDialog.tabParams,
+  MSG.machineDialog.tabDashboard,
+  MSG.machineDialog.tabArchiving,
+  MSG.machineDialog.tabKpi,
+  MSG.machineDialog.tabDisplay
 ];
 const TRS_WINDOWS = Object.keys(TRS_WINDOW_LABELS) as TrsWindow[];
 const KPI_TYPES = Object.keys(KPI_TYPE_INFO) as KpiType[];
@@ -140,18 +142,18 @@ export class MfMachineDialog extends LitElement {
       <div class="overlay" @click=${this.close}>
         <div class="panel" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
-            <ix-typography format="h3">Édition — ${this.working.name}</ix-typography>
+            <ix-typography format="h3">${localizeDir(MSG.machineDialog.editTitlePrefix)} — ${this.working.name}</ix-typography>
             <span class="head-spacer"></span>
             <ix-icon-button
               ghost
               icon="upload"
-              title="Importer la machine (JSON)"
+              title=${localize(MSG.machineDialog.importMachine)}
               @click=${this.triggerImport}
             ></ix-icon-button>
             <ix-icon-button
               ghost
               icon="download"
-              title="Exporter la machine (JSON)"
+              title=${localize(MSG.machineDialog.exportMachine)}
               @click=${this.exportMachine}
             ></ix-icon-button>
             <ix-icon-button ghost icon="close" @click=${this.close}></ix-icon-button>
@@ -171,7 +173,7 @@ export class MfMachineDialog extends LitElement {
                 aria-selected=${this.tab === i ? 'true' : 'false'}
                 @click=${() => this.onTab(i)}
               >
-                ${label}
+                ${localizeDir(label)}
               </button>`
             )}
           </div>
@@ -188,9 +190,9 @@ export class MfMachineDialog extends LitElement {
             ${this.tab === 6 ? this.renderDisplay() : ''}
           </div>
           <div class="panel-foot">
-            <ix-button variant="secondary" @click=${this.close}>${this.canEdit ? 'Annuler' : 'Fermer'}</ix-button>
+            <ix-button variant="secondary" @click=${this.close}>${this.canEdit ? localizeDir(MSG.machineDialog.cancel) : localizeDir(MSG.machineDialog.close)}</ix-button>
             ${this.canEdit
-              ? html`<ix-button @click=${this.apply}>Enregistrer</ix-button>`
+              ? html`<ix-button @click=${this.apply}>${localizeDir(MSG.machineDialog.save)}</ix-button>`
               : ''}
           </div>
         </div>
@@ -238,12 +240,12 @@ export class MfMachineDialog extends LitElement {
   private boundDps(): { label: string; dp: string }[] {
     const m = this.working;
     const rows: { label: string; dp?: string }[] = [
-      { label: 'État machine', dp: m.stateDp },
-      { label: 'Communication', dp: m.commDp },
-      { label: "Cause d'arrêt", dp: m.stopCauseDp },
-      { label: 'OF en cours', dp: m.workOrderDp },
-      { label: 'Opération', dp: m.operationDp },
-      { label: 'Angle basculement', dp: m.tiltDp },
+      { label: localize(MSG.machineDialog.machineState), dp: m.stateDp },
+      { label: localize(MSG.machineDialog.commLabel), dp: m.commDp },
+      { label: localize(MSG.machineDialog.stopCauseLabel), dp: m.stopCauseDp },
+      { label: localize(MSG.machineDialog.workOrderLabel), dp: m.workOrderDp },
+      { label: localize(MSG.machineDialog.operationLabel), dp: m.operationDp },
+      { label: localize(MSG.machineDialog.tiltAngleLabel), dp: m.tiltDp },
       ...(m.kpis ?? []).map((k) => ({ label: k.label || k.key, dp: k.dp }))
     ];
     const seen = new Set<string>();
@@ -269,31 +271,29 @@ export class MfMachineDialog extends LitElement {
   }
 
   private renderArchiving(): TemplateResult {
-    if (!this.store) return html`<div class="hint">Backend indisponible.</div>`;
+    if (!this.store) return html`<div class="hint">${localizeDir(MSG.machineDialog.backendUnavailable)}</div>`;
     const dps = this.boundDps();
     const kpis = this.working.kpiCalcs ?? [];
     if (dps.length === 0 && kpis.length === 0) {
       return html`<div class="hint">
-        Aucun datapoint lié ni KPI configuré. Configurez d'abord les DP / KPI dans les autres onglets.
+        ${localizeDir(MSG.machineDialog.archivingEmpty)}
       </div>`;
     }
     return html`
       ${this.archiveGroups.length === 0
-        ? html`<div class="hint">Aucun groupe d'archive actif découvert (type _NGA_Group).</div>`
+        ? html`<div class="hint">${localizeDir(MSG.machineDialog.noArchiveGroup)}</div>`
         : ''}
       ${dps.length > 0
-        ? html`<div class="subhead">Archivage NGA des datapoints</div>
+        ? html`<div class="subhead">${localizeDir(MSG.machineDialog.archivingDpsTitle)}</div>
             <div class="hint">
-              Activez l'archivage et choisissez un groupe d'archive pour historiser ces datapoints
-              (état machine, cause d'arrêt, paramètres…).
+              ${localizeDir(MSG.machineDialog.archivingDpsHint)}
             </div>
             <div class="params">${dps.map((d) => this.renderArchiveRow(d))}</div>`
         : ''}
       ${kpis.length > 0
-        ? html`<div class="subhead">Archivage des KPI temps réel</div>
+        ? html`<div class="subhead">${localizeDir(MSG.machineDialog.archivingKpiTitle)}</div>
             <div class="hint">
-              Active l'archivage de la valeur calculée par le manager (pour tracer des courbes) et
-              choisit le groupe d'archive.
+              ${localizeDir(MSG.machineDialog.archivingKpiHint)}
             </div>
             <div class="params">${kpis.map((k, i) => this.renderKpiArchive(k, i))}</div>`
         : ''}
@@ -348,23 +348,21 @@ export class MfMachineDialog extends LitElement {
   private renderKpi(): TemplateResult {
     const kpis = this.working.kpiCalcs ?? [];
     return html`
-      <div class="subhead">KPI temps réel (calcul serveur, archivés)</div>
+      <div class="subhead">${localizeDir(MSG.machineDialog.kpiRealtimeTitle)}</div>
       <div class="hint">
-        Chaque KPI est calculé côté serveur (manager kpiCalc) sur une fenêtre glissante et écrit
-        dans un datapoint <em>archivé</em> — ce qui permet d'en tracer des courbes. Choisissez le
-        type (la formule en découle), la période d'agrégation et la fréquence d'actualisation.
+        ${localizeDir(MSG.machineDialog.kpiRealtimeHint)}
       </div>
       <div class="kpi-head">
         <span class="spacer"></span>
         <ix-button variant="secondary" @click=${this.addKpi}>
-          <ix-icon name="plus" slot="icon"></ix-icon>Ajouter un KPI
+          <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.machineDialog.addKpi)}
         </ix-button>
       </div>
       ${kpis.length === 0
-        ? html`<div class="hint">Aucun KPI configuré.</div>`
+        ? html`<div class="hint">${localizeDir(MSG.machineDialog.noKpi)}</div>`
         : kpis.map((k, i) => this.renderKpiRow(k, i))}
       <ix-button class="link" variant="secondary" @click=${this.openThresholds}>
-        <ix-icon name="cogwheel" slot="icon"></ix-icon>Gérer les seuils (couleurs)…
+        <ix-icon name="cogwheel" slot="icon"></ix-icon>${localizeDir(MSG.machineDialog.manageThresholds)}
       </ix-button>
     `;
   }
@@ -375,12 +373,12 @@ export class MfMachineDialog extends LitElement {
         <div class="kpi-card-head">
           <span class="kpi-card-title">${KPI_TYPE_INFO[k.type].label}</span>
           <span class="spacer"></span>
-          <ix-icon-button ghost size="16" icon="trashcan" title="Retirer ce KPI"
+          <ix-icon-button ghost size="16" icon="trashcan" title=${localize(MSG.machineDialog.removeKpi)}
             @click=${() => this.removeKpi(i)}></ix-icon-button>
         </div>
         <div class="grid2">
           <ix-select
-            label="Type (détermine la formule)"
+            label=${localize(MSG.machineDialog.kpiTypeLabel)}
             .value=${k.type}
             @valueChange=${(e: IxValueEvent) => this.patchKpi(i, { type: String(e.detail) as KpiType })}
           >
@@ -389,14 +387,14 @@ export class MfMachineDialog extends LitElement {
             )}
           </ix-select>
           <ix-input
-            label="Nom (optionnel)"
+            label=${localize(MSG.machineDialog.kpiNameOptional)}
             .value=${k.label ?? ''}
             @valueChange=${(e: IxValueEvent) => this.patchKpi(i, { label: String(e.detail) })}
           ></ix-input>
         </div>
         <div class="grid2">
           <ix-select
-            label="Période d'agrégation (fenêtre glissante)"
+            label=${localize(MSG.machineDialog.kpiWindowLabel)}
             .value=${k.window}
             @valueChange=${(e: IxValueEvent) => this.patchKpi(i, { window: String(e.detail) as TrsWindow })}
           >
@@ -405,7 +403,7 @@ export class MfMachineDialog extends LitElement {
             )}
           </ix-select>
           <ix-number-input
-            label="Actualisation (min)"
+            label=${localize(MSG.machineDialog.kpiRefreshLabel)}
             min=${TRS_REFRESH_MIN_BOUND}
             max=${TRS_REFRESH_MAX_BOUND}
             .value=${k.refreshMin}
@@ -414,7 +412,7 @@ export class MfMachineDialog extends LitElement {
         </div>
         ${k.type === 'TRS'
           ? html`<ix-select
-              label="Seuils (couleurs)"
+              label=${localize(MSG.machineDialog.kpiThresholdsLabel)}
               .value=${k.thresholdId ?? this.thresholds[0]?.id ?? ''}
               @valueChange=${(e: IxValueEvent) => this.patchKpi(i, { thresholdId: String(e.detail) })}
             >
@@ -436,7 +434,7 @@ export class MfMachineDialog extends LitElement {
       <div class="archive-row">
         <div class="archive-info">
           <span class="archive-label">${name}</span>
-          <span class="archive-dp">Valeur KPI calculée (courbes)</span>
+          <span class="archive-dp">${localizeDir(MSG.machineDialog.kpiValueComputed)}</span>
         </div>
         <ix-select
           class="archive-group"
@@ -491,22 +489,22 @@ export class MfMachineDialog extends LitElement {
   private renderIdentity(): TemplateResult {
     const m = this.working;
     return html`
-      <div class="subhead">Identité</div>
+      <div class="subhead">${localizeDir(MSG.machineDialog.identity)}</div>
       <div class="grid2">
         <ix-input
-          label="Nom"
+          label=${localize(MSG.machineDialog.fieldName)}
           .value=${m.name}
           @valueChange=${(e: IxValueEvent) => this.patch({ name: String(e.detail) })}
         ></ix-input>
         <ix-select
-          label="Type"
+          label=${localize(MSG.machineDialog.fieldType)}
           .value=${m.type}
           @valueChange=${(e: IxValueEvent) => this.patch({ type: e.detail as MachineType })}
         >
           ${MACHINE_TYPES.map((t) => html`<ix-select-item label=${t} value=${t}></ix-select-item>`)}
         </ix-select>
         <ix-select
-          label="Métier (paramètres simulés)"
+          label=${localize(MSG.machineDialog.processLabel)}
           .value=${resolveProcess(m)}
           @valueChange=${(e: IxValueEvent) => this.patch({ process: e.detail as MachineProcess })}
         >
@@ -515,7 +513,7 @@ export class MfMachineDialog extends LitElement {
           )}
         </ix-select>
         <ix-input
-          label="Repère (ex. C7)"
+          label=${localize(MSG.machineDialog.fieldLoc)}
           .value=${m.loc ?? ''}
           @valueChange=${(e: IxValueEvent) => this.patch({ loc: String(e.detail) })}
         ></ix-input>
@@ -531,7 +529,7 @@ export class MfMachineDialog extends LitElement {
             @valueChange=${(e: IxValueEvent) => this.patch({ z: Number(e.detail) })}
           ></ix-number-input>
           <ix-number-input
-            label="Hauteur"
+            label=${localize(MSG.machineDialog.fieldHeight)}
             .value=${m.y ?? 0}
             @valueChange=${(e: IxValueEvent) => this.patch({ y: Number(e.detail) })}
           ></ix-number-input>
@@ -545,17 +543,17 @@ export class MfMachineDialog extends LitElement {
     const rotation = m.rotationY ?? 0;
     const color = m.color ?? '#3B82F6';
     return html`
-      <div class="subhead">Apparence</div>
+      <div class="subhead">${localizeDir(MSG.machineDialog.appearance)}</div>
       <div class="grid2">
         <ix-select
-          label="Rotation (axe vertical)"
+          label=${localize(MSG.machineDialog.rotationLabel)}
           .value=${String(rotation)}
           @valueChange=${(e: IxValueEvent) => this.patch({ rotationY: Number(e.detail) })}
         >
           ${ROTATIONS.map((r) => html`<ix-select-item label=${`${r}°`} value=${String(r)}></ix-select-item>`)}
         </ix-select>
         <div class="color-field">
-          <span class="color-label">Couleur</span>
+          <span class="color-label">${localizeDir(MSG.machineDialog.colour)}</span>
           <div class="color-controls">
             <input
               type="color"
@@ -566,14 +564,14 @@ export class MfMachineDialog extends LitElement {
             <ix-icon-button
               ghost
               icon="undo"
-              title="Couleur par défaut"
+              title=${localize(MSG.machineDialog.defaultColour)}
               ?disabled=${m.color == null}
               @click=${() => this.patch({ color: undefined })}
             ></ix-icon-button>
           </div>
         </div>
       </div>
-      ${this.labeledToggle('Afficher la machine dans la scène 3D', !m.hidden, (v) =>
+      ${this.labeledToggle(localize(MSG.machineDialog.showInScene), !m.hidden, (v) =>
         this.patch({ hidden: !v })
       )}
     `;
@@ -600,17 +598,15 @@ export class MfMachineDialog extends LitElement {
   private renderDisplay(): TemplateResult {
     const slots = resolveDisplaySlots(this.working);
     return html`
-      <div class="subhead">Affichage (bulle &amp; popup)</div>
+      <div class="subhead">${localizeDir(MSG.machineDialog.displayTitle)}</div>
       <div class="hint">
-        Pour chaque information (état, suivi de production, paramètres et KPI), choisissez sa
-        visibilité dans la <strong>bulle</strong> machine et dans le <strong>popup</strong> (au clic),
-        et réglez son <strong>ordre</strong> d'affichage avec les flèches.
+        ${localizeDir(MSG.machineDialog.displayHint)}
       </div>
       <div class="disp-row disp-row--head">
-        <span class="disp-label">Information</span>
-        <span class="disp-tog">Bulle</span>
-        <span class="disp-tog">Popup</span>
-        <span class="disp-ord">Ordre</span>
+        <span class="disp-label">${localizeDir(MSG.machineDialog.colInformation)}</span>
+        <span class="disp-tog">${localizeDir(MSG.machineDialog.colBubble)}</span>
+        <span class="disp-tog">${localizeDir(MSG.machineDialog.colPopup)}</span>
+        <span class="disp-ord">${localizeDir(MSG.machineDialog.colOrder)}</span>
       </div>
       <div class="disp-list">${slots.map((s, i) => this.renderDisplayRow(s, i, slots.length))}</div>
     `;
@@ -639,7 +635,7 @@ export class MfMachineDialog extends LitElement {
             ghost
             size="16"
             icon="chevron-up"
-            title="Monter"
+            title=${localize(MSG.machineDialog.moveUp)}
             ?disabled=${i === 0}
             @click=${() => this.moveDisplay(i, -1)}
           ></ix-icon-button>
@@ -647,7 +643,7 @@ export class MfMachineDialog extends LitElement {
             ghost
             size="16"
             icon="chevron-down"
-            title="Descendre"
+            title=${localize(MSG.machineDialog.moveDown)}
             ?disabled=${i === count - 1}
             @click=${() => this.moveDisplay(i, 1)}
           ></ix-icon-button>
@@ -688,9 +684,9 @@ export class MfMachineDialog extends LitElement {
     const height = this.working.portiqueHeight ?? Math.round((HEIGHT_BASE + span * HEIGHT_FACTOR) * 10) / 10;
     const legW = this.working.portiqueLegW ?? Math.round((LEG_BASE + span * LEG_FACTOR) * 10) / 10;
     return html`
-      <div class="subhead">Dimensions du portique</div>
+      <div class="subhead">${localizeDir(MSG.machineDialog.portiqueDimensions)}</div>
       <div class="slider-field">
-        <div class="slider-head"><span>Portée</span><span class="slider-val">${span} m</span></div>
+        <div class="slider-head"><span>${localizeDir(MSG.machineDialog.span)}</span><span class="slider-val">${span} m</span></div>
         <ix-slider
           .value=${span}
           min="2"
@@ -700,7 +696,7 @@ export class MfMachineDialog extends LitElement {
         ></ix-slider>
       </div>
       <div class="slider-field">
-        <div class="slider-head"><span>Hauteur</span><span class="slider-val">${height} m</span></div>
+        <div class="slider-head"><span>${localizeDir(MSG.machineDialog.height)}</span><span class="slider-val">${height} m</span></div>
         <ix-slider
           .value=${height}
           min="2"
@@ -710,7 +706,7 @@ export class MfMachineDialog extends LitElement {
         ></ix-slider>
       </div>
       <div class="slider-field">
-        <div class="slider-head"><span>Piliers</span><span class="slider-val">${legW} m</span></div>
+        <div class="slider-head"><span>${localizeDir(MSG.machineDialog.pillars)}</span><span class="slider-val">${legW} m</span></div>
         <ix-slider
           .value=${legW}
           min="0.3"
@@ -738,7 +734,7 @@ export class MfMachineDialog extends LitElement {
     return html`
       <div class="slider-field">
         <div class="slider-head">
-          <span>Diamètre de la table rotative</span><span class="slider-val">${d} m</span>
+          <span>${localizeDir(MSG.machineDialog.tableDiameter)}</span><span class="slider-val">${d} m</span>
         </div>
         <ix-slider
           .value=${d}
@@ -757,17 +753,17 @@ export class MfMachineDialog extends LitElement {
     const h = this.working.basculeurH ?? BASCULEUR_DEFAULTS.h;
     const d = this.working.basculeurD ?? BASCULEUR_DEFAULTS.d;
     return html`
-      <div class="subhead">Dimensions du basculeur</div>
-      ${this.dimSlider('Largeur', w, 2, 10, (v) => this.patch({ basculeurW: v }))}
-      ${this.dimSlider('Hauteur', h, 2, 8, (v) => this.patch({ basculeurH: v }))}
-      ${this.dimSlider('Profondeur', d, 2, 8, (v) => this.patch({ basculeurD: v }))}
+      <div class="subhead">${localizeDir(MSG.machineDialog.basculeurDimensions)}</div>
+      ${this.dimSlider(localize(MSG.machineDialog.width), w, 2, 10, (v) => this.patch({ basculeurW: v }))}
+      ${this.dimSlider(localize(MSG.machineDialog.height), h, 2, 8, (v) => this.patch({ basculeurH: v }))}
+      ${this.dimSlider(localize(MSG.machineDialog.depth), d, 2, 8, (v) => this.patch({ basculeurD: v }))}
       <wui-dp-input
-        label="DP angle de basculement (°, 0 = à plat)"
+        label=${localize(MSG.machineDialog.tiltDpLabel)}
         .value=${this.working.tiltDp ?? ''}
         @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ tiltDp: e.detail.value })}
       ></wui-dp-input>
       ${this.labeledToggle(
-        "Inverser l'angle d'animation (0 ↔ 90)",
+        localize(MSG.machineDialog.tiltInvert),
         this.working.tiltInvert ?? false,
         (v) => this.patch({ tiltInvert: v })
       )}
@@ -800,14 +796,13 @@ export class MfMachineDialog extends LitElement {
     if (this.working.type !== 'billboard') return html``;
     const size = this.working.billboardW ?? 6;
     return html`
-      <div class="subhead">Icône (billboard)</div>
+      <div class="subhead">${localizeDir(MSG.machineDialog.billboardTitle)}</div>
       <div class="hint">
-        Choisissez une bibliothèque, puis l'icône représentant ce poste (ou importez-en via le
-        catalogue).
+        ${localizeDir(MSG.machineDialog.billboardHint)}
       </div>
       <div class="bb-toolbar">
         <ix-select
-          label="Bibliothèque"
+          label=${localize(MSG.machineDialog.library)}
           .value=${this.bbLibrary}
           @valueChange=${(e: IxValueEvent) => (this.bbLibrary = String(e.detail))}
         >
@@ -816,12 +811,12 @@ export class MfMachineDialog extends LitElement {
           )}
         </ix-select>
         <ix-button class="link" variant="secondary" @click=${this.openResources}>
-          <ix-icon name="folder" slot="icon"></ix-icon>Gérer le catalogue…
+          <ix-icon name="folder" slot="icon"></ix-icon>${localizeDir(MSG.machineDialog.manageCatalog)}
         </ix-button>
       </div>
       ${this.renderBillboardGallery()}
       <div class="slider-field">
-        <div class="slider-head"><span>Taille</span><span class="slider-val">${size} m</span></div>
+        <div class="slider-head"><span>${localizeDir(MSG.machineDialog.size)}</span><span class="slider-val">${size} m</span></div>
         <ix-slider
           .value=${size}
           min="2"
@@ -836,13 +831,13 @@ export class MfMachineDialog extends LitElement {
 
   /** Library options for the billboard picker: SemiFab built-in + imported. */
   private billboardLibraryOptions(): { value: string; label: string }[] {
-    const opts = [{ value: SEMIFAB_LIB, label: 'SemiFab (intégrée)' }];
+    const opts = [{ value: SEMIFAB_LIB, label: localize(MSG.machineDialog.semifabBuiltin) }];
     const libs = [...new Set(this.billboardResources.map((r) => r.library).filter(Boolean))].sort(
       (a, b) => String(a).localeCompare(String(b))
     );
     for (const l of libs) opts.push({ value: String(l), label: String(l) });
     if (this.billboardResources.some((r) => !r.library)) {
-      opts.push({ value: UNCLASSIFIED_LIB, label: 'Importées (sans bibliothèque)' });
+      opts.push({ value: UNCLASSIFIED_LIB, label: localize(MSG.machineDialog.importedNoLibrary) });
     }
     return opts;
   }
@@ -867,7 +862,7 @@ export class MfMachineDialog extends LitElement {
     const items = this.billboardResources.filter((r) =>
       this.bbLibrary === UNCLASSIFIED_LIB ? !r.library : r.library === this.bbLibrary
     );
-    if (items.length === 0) return html`<div class="hint">Aucune ressource dans cette bibliothèque.</div>`;
+    if (items.length === 0) return html`<div class="hint">${localizeDir(MSG.machineDialog.noResourceInLibrary)}</div>`;
     return html`<div class="icon-grid">
       ${items.map((r) => {
         const preview = this.bbPreviews[r.id];
@@ -886,11 +881,11 @@ export class MfMachineDialog extends LitElement {
   private renderGlb(): TemplateResult {
     if (this.working.type !== 'glb') return html``;
     return html`
-      <div class="subhead">Modèle 3D (GLB)</div>
+      <div class="subhead">${localizeDir(MSG.machineDialog.glbTitle)}</div>
       <div class="glb-row">
         <ix-select
           class="glb-url"
-          label="Ressource GLB"
+          label=${localize(MSG.machineDialog.glbResource)}
           allow-clear
           .value=${this.working.glbUrl ?? ''}
           @valueChange=${(e: IxValueEvent) => this.patch({ glbUrl: e.detail ? String(e.detail) : undefined })}
@@ -900,11 +895,11 @@ export class MfMachineDialog extends LitElement {
           )}
         </ix-select>
         <ix-button variant="secondary" @click=${this.openResources}>
-          <ix-icon name="folder" slot="icon"></ix-icon>Gérer
+          <ix-icon name="folder" slot="icon"></ix-icon>${localizeDir(MSG.machineDialog.manage)}
         </ix-button>
       </div>
       ${this.glbResources.length === 0
-        ? html`<div class="hint">Aucune ressource — cliquez « Gérer » pour importer un modèle GLB.</div>`
+        ? html`<div class="hint">${localizeDir(MSG.machineDialog.glbEmpty)}</div>`
         : ''}
     `;
   }
@@ -916,15 +911,15 @@ export class MfMachineDialog extends LitElement {
   private renderState(): TemplateResult {
     const m = this.working;
     return html`
-      <div class="subhead">État machine</div>
+      <div class="subhead">${localizeDir(MSG.machineDialog.machineState)}</div>
       <div class="grid2">
         <wui-dp-input
-          label="Datapoint d'état"
+          label=${localize(MSG.machineDialog.stateDpLabel)}
           .value=${m.stateDp ?? ''}
           @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ stateDp: e.detail.value })}
         ></wui-dp-input>
         <ix-select
-          label="Mapping d'état"
+          label=${localize(MSG.machineDialog.stateMappingLabel)}
           .value=${m.stateMappingId ?? ''}
           @valueChange=${(e: IxValueEvent) => this.patch({ stateMappingId: String(e.detail) })}
         >
@@ -934,10 +929,10 @@ export class MfMachineDialog extends LitElement {
         </ix-select>
       </div>
       <ix-button class="link" variant="secondary" @click=${this.openMappings}>
-        <ix-icon name="cogwheel" slot="icon"></ix-icon>Gérer les mappings d'état…
+        <ix-icon name="cogwheel" slot="icon"></ix-icon>${localizeDir(MSG.machineDialog.manageStateMappings)}
       </ix-button>
       <wui-dp-input
-        label="DP communication (bool, ou int : 0 = hors ligne, ≥ 1 = connectée)"
+        label=${localize(MSG.machineDialog.commDpLabel)}
         .value=${m.commDp ?? ''}
         @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ commDp: e.detail.value })}
       ></wui-dp-input>
@@ -951,18 +946,16 @@ export class MfMachineDialog extends LitElement {
     const selectedId = this.working.aliAssetId ?? '';
     const selected = this.aliAssets.find((a) => a.id === selectedId);
     return html`
-      <div class="subhead">Asset Lifecycle Intelligence (obsolescence)</div>
+      <div class="subhead">${localizeDir(MSG.machineDialog.aliTitle)}</div>
       <div class="hint">
-        Liez cette machine à un asset du module ALI pour afficher son score d'obsolescence/risque.
-        Activez ensuite « Obsolescence (ALI) » dans l'onglet <strong>Affichage</strong>.
+        ${localizeDir(MSG.machineDialog.aliHint)}
       </div>
       ${this.aliAssets.length === 0
         ? html`<div class="hint">
-            Aucun asset ALI trouvé (module Asset Lifecycle non installé, inventaire vide ou backend
-            indisponible).
+            ${localizeDir(MSG.machineDialog.aliEmpty)}
           </div>`
         : html`<ix-select
-            label="Asset ALI lié"
+            label=${localize(MSG.machineDialog.aliLinkedAsset)}
             allow-clear
             .value=${selectedId}
             @valueChange=${(e: IxValueEvent) =>
@@ -991,20 +984,20 @@ export class MfMachineDialog extends LitElement {
   private renderProduction(): TemplateResult {
     const m = this.working;
     return html`
-      <div class="subhead">Suivi production</div>
+      <div class="subhead">${localizeDir(MSG.machineDialog.production)}</div>
       <div class="grid2">
         <wui-dp-input
-          label="DP cause d'arrêt"
+          label=${localize(MSG.machineDialog.stopCauseDpLabel)}
           .value=${m.stopCauseDp ?? ''}
           @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ stopCauseDp: e.detail.value })}
         ></wui-dp-input>
         <wui-dp-input
-          label="DP OF en cours"
+          label=${localize(MSG.machineDialog.workOrderDpLabel)}
           .value=${m.workOrderDp ?? ''}
           @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ workOrderDp: e.detail.value })}
         ></wui-dp-input>
         <wui-dp-input
-          label="DP opération en cours"
+          label=${localize(MSG.machineDialog.operationDpLabel)}
           .value=${m.operationDp ?? ''}
           @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ operationDp: e.detail.value })}
         ></wui-dp-input>
@@ -1016,9 +1009,9 @@ export class MfMachineDialog extends LitElement {
     const current = this.working.dashboardId;
     const mode = resolveDashboardMode(this.working);
     return html`
-      <div class="subhead">Dashboard machine</div>
+      <div class="subhead">${localizeDir(MSG.machineDialog.dashboardMachine)}</div>
       <ix-select
-        label="Tableau de bord ouvert depuis la fiche machine"
+        label=${localize(MSG.machineDialog.dashboardModeLabel)}
         .value=${mode}
         @valueChange=${(e: IxValueEvent) => this.patch({ dashboardMode: e.detail as DashboardMode })}
       >
@@ -1028,14 +1021,12 @@ export class MfMachineDialog extends LitElement {
       </ix-select>
       ${mode === 'default'
         ? html`<div class="hint">
-            Le tableau de bord machine intégré (Paramètres process, suivi alarmes, KPI : Gantt état
-            + Pareto des arrêts) s'affiche, contextualisé avec cette machine. Aucune configuration
-            requise.
+            ${localizeDir(MSG.machineDialog.dashboardDefaultHint)}
           </div>`
         : html`
             ${this.dashboards.length > 0
               ? html`<ix-select
-                  label="Dashboard WinCC OA lié"
+                  label=${localize(MSG.machineDialog.dashboardLinkedLabel)}
                   allow-clear
                   .value=${current == null ? '' : String(current)}
                   @valueChange=${(e: IxValueEvent) => this.setDashboard(e.detail)}
@@ -1045,21 +1036,21 @@ export class MfMachineDialog extends LitElement {
                   )}
                 </ix-select>`
               : html`<ix-number-input
-                  label="Numéro de dashboard"
+                  label=${localize(MSG.machineDialog.dashboardNumberLabel)}
                   .value=${current ?? ''}
                   @valueChange=${(e: IxValueEvent) => this.setDashboard(e.detail)}
                 ></ix-number-input>`}
             <div class="dash-actions">
               <ix-button variant="secondary" @click=${this.createDashboard}>
-                <ix-icon name="add-circle" slot="icon"></ix-icon>Créer un dashboard pour cette machine
+                <ix-icon name="add-circle" slot="icon"></ix-icon>${localizeDir(MSG.machineDialog.createDashboard)}
               </ix-button>
               <ix-button
                 variant="secondary"
                 ?disabled=${current == null}
-                title=${current == null ? 'Sélectionnez d’abord un dashboard' : 'Exporter les paramètres configurés'}
+                title=${current == null ? localize(MSG.machineDialog.exportParamsTitleDisabled) : localize(MSG.machineDialog.exportParamsTitle)}
                 @click=${this.exportDashboard}
               >
-                <ix-icon name="upload" slot="icon"></ix-icon>Exporter les paramètres (État + KPI)
+                <ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.machineDialog.exportParams)}
               </ix-button>
             </div>
           `}
@@ -1071,10 +1062,9 @@ export class MfMachineDialog extends LitElement {
   private renderDashboardLinks(): TemplateResult {
     const links = this.working.dashboardLinks ?? [];
     return html`
-      <div class="subhead">Liens externes (URL)</div>
+      <div class="subhead">${localizeDir(MSG.machineDialog.externalLinks)}</div>
       <div class="hint">
-        Jusqu'à ${MAX_DASHBOARD_LINKS} liens s'affichent comme boutons dans la fiche machine
-        (popup). Chaque lien s'ouvre dans un nouvel onglet.
+        ${dashboardLinksHintMsg(MAX_DASHBOARD_LINKS)}
       </div>
       <div class="kpi-head">
         <span class="spacer"></span>
@@ -1083,11 +1073,11 @@ export class MfMachineDialog extends LitElement {
           ?disabled=${links.length >= MAX_DASHBOARD_LINKS}
           @click=${this.addDashboardLink}
         >
-          <ix-icon name="plus" slot="icon"></ix-icon>Ajouter un lien
+          <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.machineDialog.addLink)}
         </ix-button>
       </div>
       ${links.length === 0
-        ? html`<div class="hint">Aucun lien externe.</div>`
+        ? html`<div class="hint">${localizeDir(MSG.machineDialog.noExternalLink)}</div>`
         : links.map((l, i) => this.renderDashboardLinkRow(l, i))}
     `;
   }
@@ -1097,24 +1087,24 @@ export class MfMachineDialog extends LitElement {
     return html`
       <div class="kpi-card">
         <div class="kpi-card-head">
-          <span class="kpi-card-title">${link.label || `Lien ${i + 1}`}</span>
+          <span class="kpi-card-title">${link.label || linkFallbackMsg(i + 1)}</span>
           <span class="spacer"></span>
           <ix-icon-button
             ghost
             size="16"
             icon="trashcan"
-            title="Retirer ce lien"
+            title=${localize(MSG.machineDialog.removeLink)}
             @click=${() => this.removeDashboardLink(i)}
           ></ix-icon-button>
         </div>
         <div class="grid2">
           <ix-input
-            label="Libellé du bouton"
+            label=${localize(MSG.machineDialog.buttonLabel)}
             .value=${link.label}
             @valueChange=${(e: IxValueEvent) => this.patchDashboardLink(i, { label: String(e.detail) })}
           ></ix-input>
           <div class="icon-field">
-            <span class="icon-field__label">Icône du bouton</span>
+            <span class="icon-field__label">${localizeDir(MSG.machineDialog.buttonIcon)}</span>
             <ix-button outline icon=${icon} @click=${() => this.toggleIconPicker(i)}>
               ${this.iconLabelFor(icon)}
             </ix-button>
@@ -1134,8 +1124,8 @@ export class MfMachineDialog extends LitElement {
           </div>
         </div>
         <ix-input
-          label="URL (https://…)"
-          placeholder="https://exemple.com/dashboard"
+          label=${localize(MSG.machineDialog.urlLabel)}
+          placeholder=${localize(MSG.machineDialog.urlPlaceholder)}
           .value=${link.url}
           @valueChange=${(e: IxValueEvent) => this.patchDashboardLink(i, { url: String(e.detail) })}
         ></ix-input>
@@ -1153,7 +1143,7 @@ export class MfMachineDialog extends LitElement {
   }
 
   private iconLabelFor(icon: string): string {
-    return DASHBOARD_LINK_ICONS.find((ic) => ic.value === icon)?.label ?? 'Choisir…';
+    return DASHBOARD_LINK_ICONS.find((ic) => ic.value === icon)?.label ?? localize(MSG.machineDialog.chooseEllipsis);
   }
 
   private readonly addDashboardLink = (): void => {
@@ -1206,7 +1196,7 @@ export class MfMachineDialog extends LitElement {
   private renderParams(): TemplateResult {
     const params = this.working.kpis ?? [];
     return html`
-      <div class="subhead">Paramètres (${params.length}/${MAX_PARAMS})</div>
+      <div class="subhead">${localizeDir(MSG.machineDialog.paramsTitle)} (${params.length}/${MAX_PARAMS})</div>
       <div class="params">${params.map((p, i) => this.renderParamRow(p, i))}</div>
       <ix-button
         class="link"
@@ -1214,7 +1204,7 @@ export class MfMachineDialog extends LitElement {
         ?disabled=${params.length >= MAX_PARAMS}
         @click=${this.addParam}
       >
-        <ix-icon name="plus" slot="icon"></ix-icon>Ajouter un paramètre
+        <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.machineDialog.addParam)}
       </ix-button>
     `;
   }
@@ -1224,7 +1214,7 @@ export class MfMachineDialog extends LitElement {
       <div class="param-row">
         <ix-input
           class="p-label"
-          placeholder="Libellé"
+          placeholder=${localize(MSG.machineDialog.paramLabel)}
           .value=${p.label}
           @valueChange=${(e: IxValueEvent) => this.patchParam(i, { label: String(e.detail) })}
         ></ix-input>
@@ -1235,14 +1225,14 @@ export class MfMachineDialog extends LitElement {
         ></wui-dp-input>
         <ix-input
           class="p-unit"
-          placeholder="Unité"
+          placeholder=${localize(MSG.machineDialog.paramUnit)}
           .value=${p.unit ?? ''}
           @valueChange=${(e: IxValueEvent) => this.patchParam(i, { unit: String(e.detail) })}
         ></ix-input>
         <ix-icon-button
           ghost
           icon="trashcan"
-          title="Supprimer"
+          title=${localize(MSG.machineDialog.delete)}
           @click=${() => this.removeParam(i)}
         ></ix-icon-button>
       </div>
@@ -1261,7 +1251,7 @@ export class MfMachineDialog extends LitElement {
   private addParam(): void {
     const kpis = [...(this.working.kpis ?? [])];
     if (kpis.length >= MAX_PARAMS) return;
-    kpis.push({ key: `p${kpis.length + 1}`, label: 'Paramètre', showInCard: true });
+    kpis.push({ key: `p${kpis.length + 1}`, label: localize(MSG.machineDialog.defaultParamName), showInCard: true });
     this.patch({ kpis });
   }
 

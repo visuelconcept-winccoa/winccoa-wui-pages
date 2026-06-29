@@ -33,6 +33,25 @@ import {
   type ParaStructureNode
 } from './para-element-types.js';
 import type { TypeProposal } from './para-ai-context.js';
+import {
+  ELEMENT_TYPE_LABEL,
+  MSG,
+  couldNotLoadTypesMsg,
+  couldNotReachApiMsg,
+  couldNotReadTypeMsg,
+  deleteRefusedMsg,
+  deleteTypeConfirmMsg,
+  duplicateElementMsg,
+  localize,
+  localizeDir,
+  saveFailedMsg,
+  scalarRootNoteMsg,
+  typeCreatedMsg,
+  typeDeletedMsg,
+  typeExistsMsg,
+  typeUpdatedMsg,
+  typerefNeedsRefMsg
+} from './i18n.js';
 
 const GET_TYPE_URL = (name: string): string => `/api/para/dptype/${encodeURIComponent(name)}`;
 const CREATE_TYPE_URL = '/api/para/dptype/create';
@@ -143,10 +162,10 @@ export class WuiParaTypeEditor extends LitElement {
   private renderTypeList(): TemplateResult {
     return html`
       <div class="types-toolbar">
-        <ix-button icon="plus" variant="primary" @click=${this.startNewType}>Nouveau type</ix-button>
+        <ix-button icon="plus" variant="primary" @click=${this.startNewType}>${localizeDir(MSG.typeEditor.newType)}</ix-button>
         <ix-input
           .value=${this.filter}
-          placeholder="Filtrer les types…"
+          placeholder=${localize(MSG.typeEditor.filterTypes)}
           @valueChange=${(e: Event) => (this.filter = (e.target as HTMLInputElement).value)}
         ></ix-input>
       </div>
@@ -156,7 +175,7 @@ export class WuiParaTypeEditor extends LitElement {
 
   private renderTypeRows(): TemplateResult {
     if (this.loadingTypes) {
-      return html`<div class="message">Chargement des types…</div>`;
+      return html`<div class="message">${localizeDir(MSG.typeEditor.loadingTypes)}</div>`;
     }
     if (this.typesError !== '') {
       return html`<div class="message error">${this.typesError}</div>`;
@@ -164,7 +183,7 @@ export class WuiParaTypeEditor extends LitElement {
     const needle = this.filter.trim().toLowerCase();
     const visible = needle === '' ? this.types : this.types.filter((t) => t.toLowerCase().includes(needle));
     if (visible.length === 0) {
-      return html`<div class="message">Aucun type.</div>`;
+      return html`<div class="message">${localizeDir(MSG.typeEditor.noType)}</div>`;
     }
     return html`${visible.map(
       (name) => html`
@@ -184,17 +203,15 @@ export class WuiParaTypeEditor extends LitElement {
   private renderEditor(): TemplateResult {
     const root = this.root;
     if (root == null) {
-      return html`<div class="message">
-        Sélectionnez un type à gauche pour l'éditer, ou créez-en un nouveau pour définir un modèle.
-      </div>`;
+      return html`<div class="message">${localizeDir(MSG.typeEditor.selectOrCreate)}</div>`;
     }
     if (this.loadingType) {
-      return html`<div class="message">Chargement du type…</div>`;
+      return html`<div class="message">${localizeDir(MSG.typeEditor.loadingType)}</div>`;
     }
     return html`
       ${this.renderEditorHeader()}
       ${this.isNew && this.types.includes(this.typeNameDraft.trim())
-        ? html`<div class="warn">Un type « ${this.typeNameDraft.trim()} » existe déjà : sélectionnez-le à gauche pour le modifier, ou choisissez un autre nom.</div>`
+        ? html`<div class="warn">${typeExistsMsg(this.typeNameDraft.trim())}</div>`
         : nothing}
       ${this.renderRootBody(root)}
       ${this.error === '' ? nothing : html`<div class="message error">${this.error}</div>`}
@@ -209,21 +226,22 @@ export class WuiParaTypeEditor extends LitElement {
       return html`
         <div class="tree">${root.children.map((child) => this.renderNode(child, 0))}</div>
         <div class="tree-add">
-          <ix-button outline icon="plus" @click=${() => this.addChild(root.uid, false)}>Ajouter un élément</ix-button>
-          <ix-button outline icon="add-circle" @click=${() => this.addChild(root.uid, true)}>Ajouter une sous-structure</ix-button>
+          <ix-button outline icon="plus" @click=${() => this.addChild(root.uid, false)}>${localizeDir(MSG.typeEditor.addElement)}</ix-button>
+          <ix-button outline icon="add-circle" @click=${() => this.addChild(root.uid, true)}>${localizeDir(MSG.typeEditor.addSubstruct)}</ix-button>
         </div>
       `;
     }
     return html`
       <div class="scalar-root">
         <ix-icon name="info" size="16"></ix-icon>
-        <span>Type à racine scalaire (<code>${root.type}</code>) — aucun élément. Le datapoint portera directement une valeur de ce type.</span>
+        <span>${scalarRootNoteMsg(root.type)}</span>
+        <!-- type shown as code in the localized note above -->
         ${isTyperefType(root.type)
           ? html`<ix-input
               class="node-ref"
-              label="Type référencé"
+              label=${localize(MSG.typeEditor.refLabel)}
               .value=${root.refName}
-              placeholder="type référencé"
+              placeholder=${localize(MSG.typeEditor.scalarRootRef)}
               @valueChange=${(e: Event) => this.patch(root.uid, { refName: (e.target as HTMLInputElement).value })}
             ></ix-input>`
           : nothing}
@@ -238,22 +256,22 @@ export class WuiParaTypeEditor extends LitElement {
         ${this.isNew
           ? html`<ix-input
               class="type-name-input"
-              label="Nom du type"
+              label=${localize(MSG.typeEditor.typeNameLabel)}
               .value=${this.typeNameDraft}
-              placeholder="MonType"
+              placeholder=${localize(MSG.typeEditor.typeNamePlaceholder)}
               @valueChange=${(e: Event) => (this.typeNameDraft = (e.target as HTMLInputElement).value)}
             ></ix-input>`
           : html`<span class="type-title">${this.typeNameDraft}</span>`}
         ${this.root == null
           ? nothing
           : html`<label class="root-type">
-              <span class="root-type-lbl">Racine</span>
+              <span class="root-type-lbl">${localizeDir(MSG.typeEditor.root)}</span>
               <ix-select
                 mode="single"
                 .value=${this.root.type}
                 @valueChange=${(e: CustomEvent) => this.changeRootType(String(e.detail))}
               >
-                ${ELEMENT_TYPES.map((t) => html`<ix-select-item label=${t.label} value=${t.name}></ix-select-item>`)}
+                ${ELEMENT_TYPES.map((t) => html`<ix-select-item label=${this.elementTypeLabel(t)} value=${t.name}></ix-select-item>`)}
               </ix-select>
             </label>`}
         <span class="spacer"></span>
@@ -265,9 +283,9 @@ export class WuiParaTypeEditor extends LitElement {
               icon="trashcan"
               ?disabled=${this.busy}
               @click=${() => (this.confirmDelete = true)}
-            >Supprimer</ix-button>`}
+            >${localizeDir(MSG.shared.delete)}</ix-button>`}
         <ix-button variant="primary" icon="upload" ?disabled=${this.busy} .loading=${this.busy} @click=${this.save}>
-          ${this.isNew ? 'Créer le type' : 'Enregistrer'}
+          ${this.isNew ? localizeDir(MSG.typeEditor.createType) : localizeDir(MSG.typeEditor.save)}
         </ix-button>
       </div>
     `;
@@ -282,7 +300,7 @@ export class WuiParaTypeEditor extends LitElement {
         <ix-input
           class="node-name"
           .value=${node.name}
-          placeholder="nom"
+          placeholder=${localize(MSG.typeEditor.namePlaceholder)}
           @valueChange=${(e: Event) => this.patch(node.uid, { name: (e.target as HTMLInputElement).value })}
         ></ix-input>
         <ix-select
@@ -291,24 +309,24 @@ export class WuiParaTypeEditor extends LitElement {
           .value=${node.type}
           @valueChange=${(e: CustomEvent) => this.changeType(node.uid, String(e.detail))}
         >
-          ${ELEMENT_TYPES.map((t) => html`<ix-select-item label=${t.label} value=${t.name}></ix-select-item>`)}
+          ${ELEMENT_TYPES.map((t) => html`<ix-select-item label=${this.elementTypeLabel(t)} value=${t.name}></ix-select-item>`)}
         </ix-select>
         ${typeref
           ? html`<ix-input
               class="node-ref"
               .value=${node.refName}
-              placeholder="type référencé"
+              placeholder=${localize(MSG.typeEditor.scalarRootRef)}
               @valueChange=${(e: Event) => this.patch(node.uid, { refName: (e.target as HTMLInputElement).value })}
             ></ix-input>`
           : nothing}
         <span class="node-actions">
           ${struct
             ? html`
-                <ix-icon-button size="16" ghost icon="plus" title="Ajouter un élément" @click=${() => this.addChild(node.uid, false)}></ix-icon-button>
-                <ix-icon-button size="16" ghost icon="add-circle" title="Ajouter une sous-structure" @click=${() => this.addChild(node.uid, true)}></ix-icon-button>
+                <ix-icon-button size="16" ghost icon="plus" title=${localize(MSG.typeEditor.addElement)} @click=${() => this.addChild(node.uid, false)}></ix-icon-button>
+                <ix-icon-button size="16" ghost icon="add-circle" title=${localize(MSG.typeEditor.addSubstruct)} @click=${() => this.addChild(node.uid, true)}></ix-icon-button>
               `
             : nothing}
-          <ix-icon-button size="16" ghost icon="trashcan" title="Supprimer" @click=${() => this.removeNode(node.uid)}></ix-icon-button>
+          <ix-icon-button size="16" ghost icon="trashcan" title=${localize(MSG.shared.delete)} @click=${() => this.removeNode(node.uid)}></ix-icon-button>
         </span>
       </div>
       ${struct ? node.children.map((child) => this.renderNode(child, level + 1)) : nothing}
@@ -319,15 +337,21 @@ export class WuiParaTypeEditor extends LitElement {
     return html`
       <div class="overlay" @click=${() => (this.confirmDelete = false)}>
         <div class="confirm" @click=${(e: Event) => e.stopPropagation()}>
-          <div class="confirm-head"><ix-icon name="trashcan" size="20"></ix-icon> Supprimer le type</div>
-          <p>Supprimer le type <strong>${this.selectedTypeName}</strong> ? La suppression échoue s'il possède encore des instances.</p>
+          <div class="confirm-head"><ix-icon name="trashcan" size="20"></ix-icon> ${localizeDir(MSG.typeEditor.deleteHead)}</div>
+          <p>${deleteTypeConfirmMsg(this.selectedTypeName ?? '')}</p>
           <div class="confirm-actions">
-            <ix-button outline @click=${() => (this.confirmDelete = false)}>Annuler</ix-button>
-            <ix-button variant="danger-primary" ?disabled=${this.busy} .loading=${this.busy} @click=${this.deleteType}>Supprimer</ix-button>
+            <ix-button outline @click=${() => (this.confirmDelete = false)}>${localizeDir(MSG.shared.cancel)}</ix-button>
+            <ix-button variant="danger-primary" ?disabled=${this.busy} .loading=${this.busy} @click=${this.deleteType}>${localizeDir(MSG.shared.delete)}</ix-button>
           </div>
         </div>
       </div>
     `;
+  }
+
+  /** Localized dropdown label for an element type (descriptive entries are translated). */
+  private elementTypeLabel(t: { name: string; label: string }): string {
+    const ml = ELEMENT_TYPE_LABEL[t.name];
+    return ml ? localize(ml) : t.label;
   }
 
   // ---- tree editing --------------------------------------------------------
@@ -413,7 +437,7 @@ export class WuiParaTypeEditor extends LitElement {
             this.loadingTypes = false;
           },
           error: (err: unknown) => {
-            this.typesError = `Impossible de charger les types : ${String(err)}`;
+            this.typesError = couldNotLoadTypesMsg(String(err));
             this.loadingTypes = false;
           }
         })
@@ -458,14 +482,14 @@ export class WuiParaTypeEditor extends LitElement {
       const response = await fetch(GET_TYPE_URL(name));
       const result = (await response.json().catch(() => ({}))) as { ok?: boolean; structure?: ParaStructureNode; error?: string };
       if (!response.ok || !result.ok || !result.structure) {
-        this.error = result.error ?? `Impossible de lire le type (HTTP ${response.status})`;
+        this.error = result.error ?? couldNotReadTypeMsg(response.status);
         this.loadingType = false;
         return;
       }
       this.root = this.structureToEditor(result.structure, true);
       this.loadingType = false;
     } catch (error) {
-      this.error = `Impossible de joindre l'API PARA : ${String(error)}`;
+      this.error = couldNotReachApiMsg(String(error));
       this.loadingType = false;
     }
   }
@@ -475,7 +499,7 @@ export class WuiParaTypeEditor extends LitElement {
     this.isNew = true;
     this.typeNameDraft = proposal.typeName;
     this.error = '';
-    this.status = 'Proposition chargée — relisez puis enregistrez pour l\'appliquer.';
+    this.status = localize(MSG.typeEditor.proposalLoaded);
     this.statusOk = true;
     this.root = this.structureToEditor(proposal.structure, false);
     this.emitSelection(proposal.typeName);
@@ -512,18 +536,18 @@ export class WuiParaTypeEditor extends LitElement {
   private validate(): string | null {
     const typeName = this.typeNameDraft.trim();
     if (typeName === '') {
-      return 'Le nom du type est requis.';
+      return localize(MSG.typeEditor.typeNameRequired);
     }
     const root = this.root;
     if (root == null) {
-      return 'Structure vide.';
+      return localize(MSG.typeEditor.emptyStructure);
     }
     if (isTyperefType(root.type) && root.refName.trim() === '') {
-      return 'La racine Typeref doit référencer un type.';
+      return localize(MSG.typeEditor.rootTyperefRef);
     }
     if (isStructType(root.type)) {
       if (root.children.length === 0) {
-        return 'Une racine Struct doit avoir au moins un élément (ou choisissez un type scalaire pour la racine).';
+        return localize(MSG.typeEditor.rootStructNeedsChild);
       }
       return this.validateChildren(root);
     }
@@ -536,14 +560,14 @@ export class WuiParaTypeEditor extends LitElement {
     for (const child of node.children) {
       const name = child.name.trim();
       if (name === '') {
-        return 'Chaque élément doit avoir un nom.';
+        return localize(MSG.typeEditor.elementNeedsName);
       }
       if (names.has(name)) {
-        return `Nom d'élément en double : « ${name} ».`;
+        return duplicateElementMsg(name);
       }
       names.add(name);
       if (isTyperefType(child.type) && child.refName.trim() === '') {
-        return `L'élément « ${name} » (Typeref) doit référencer un type.`;
+        return typerefNeedsRefMsg(name);
       }
       if (isStructType(child.type)) {
         const childError = this.validateChildren(child);
@@ -580,15 +604,15 @@ export class WuiParaTypeEditor extends LitElement {
       });
       const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
       if (response.ok && result.ok) {
-        this.setStatus(existing ? `Type « ${typeName} » mis à jour.` : `Type « ${typeName} » créé.`, true);
+        this.setStatus(existing ? typeUpdatedMsg(typeName) : typeCreatedMsg(typeName), true);
         this.notifyChanged(typeName);
         this.loadTypes();
         await this.selectType(typeName);
       } else {
-        this.error = result.error ?? `Échec de l'enregistrement (HTTP ${response.status})`;
+        this.error = result.error ?? saveFailedMsg(response.status);
       }
     } catch (error) {
-      this.error = `Impossible de joindre l'API PARA : ${String(error)}`;
+      this.error = couldNotReachApiMsg(String(error));
     } finally {
       this.busy = false;
     }
@@ -607,17 +631,17 @@ export class WuiParaTypeEditor extends LitElement {
         this.confirmDelete = false;
         this.root = null;
         this.selectedTypeName = null;
-        this.setStatus(`Type « ${name} » supprimé.`, true);
+        this.setStatus(typeDeletedMsg(name), true);
         this.notifyChanged(name);
         this.emitSelection(null);
         this.loadTypes();
       } else {
         this.confirmDelete = false;
-        this.error = result.error ?? `Suppression refusée (HTTP ${response.status})`;
+        this.error = result.error ?? deleteRefusedMsg(response.status);
       }
     } catch (error) {
       this.confirmDelete = false;
-      this.error = `Impossible de joindre l'API PARA : ${String(error)}`;
+      this.error = couldNotReachApiMsg(String(error));
     } finally {
       this.busy = false;
     }

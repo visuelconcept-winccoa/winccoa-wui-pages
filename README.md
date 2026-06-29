@@ -116,7 +116,7 @@ workspace** (a page bundle is coupled to the shell's version — a `.js` pre-bui
 against another version won't work).
 
 ```bash
-git clone https://github.com/visuelconcept/winccoa-wui-pages
+git clone https://github.com/visuelconcept-winccoa/winccoa-wui-pages
 cd winccoa-wui-pages
 node tools/build-package.mjs tools/specs.json   # (re)generate packages/wui-<page>/  (git-ignored)
 ```

@@ -17,6 +17,14 @@ import { LitElement, css, html, type PropertyValues, type TemplateResult } from 
 import { customElement, property, query, state } from 'lit/decorators.js';
 import type { FleetStore } from '../data/fleet-store.js';
 import type { GlbResource, GraphicKind } from '../types.js';
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
+import {
+  MSG,
+  fileTooLargeMsg,
+  localize,
+  localizeDir,
+  resourcesCountMsg
+} from '../i18n.js';
 import { dialogStyles } from './dialog-styles.js';
 
 interface IxValueEvent {
@@ -28,11 +36,16 @@ const MAX_BYTES = 2 * BYTES_PER_MB;
 
 const KIND_CFG: Record<
   GraphicKind,
-  { label: string; accept: string; icon: string; strip: RegExp }
+  { label: MultiLangString; accept: string; icon: string; strip: RegExp }
 > = {
-  glb: { label: 'Objets 3D (GLB)', accept: '.glb,.gltf', icon: 'box-open', strip: /\.(glb|gltf)$/i },
+  glb: {
+    label: MSG.graphicsCatalog.tabGlb,
+    accept: '.glb,.gltf',
+    icon: 'box-open',
+    strip: /\.(glb|gltf)$/i
+  },
   billboard: {
-    label: 'Billboards',
+    label: MSG.graphicsCatalog.tabBillboards,
     accept: '.svg,.png,.jpg,.jpeg,.webp',
     icon: 'image',
     strip: /\.(svg|png|jpe?g|webp)$/i
@@ -71,18 +84,18 @@ export class MfGraphicsCatalog extends LitElement {
       <div class="overlay" @click=${this.close}>
         <div class="panel res" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
-            <ix-typography format="h3">Catalogue de graphiques</ix-typography>
+            <ix-typography format="h3">${localizeDir(MSG.graphicsCatalog.title)}</ix-typography>
             <ix-icon-button ghost icon="close" @click=${this.close}></ix-icon-button>
           </div>
           <ix-tabs .selected=${this.tab} @selectedChange=${(e: CustomEvent<number>) => this.onTab(e.detail)}>
-            ${KINDS.map((k) => html`<ix-tab-item>${KIND_CFG[k].label}</ix-tab-item>`)}
+            ${KINDS.map((k) => html`<ix-tab-item>${localizeDir(KIND_CFG[k].label)}</ix-tab-item>`)}
           </ix-tabs>
           <div class="panel-body">
             ${this.canEdit ? this.renderImport(cfg) : ''} ${this.renderList(cfg)}
             ${this.error ? html`<div class="err">${this.error}</div>` : ''}
           </div>
           <div class="panel-foot">
-            <ix-button @click=${this.close}>Fermer</ix-button>
+            <ix-button @click=${this.close}>${localizeDir(MSG.graphicsCatalog.close)}</ix-button>
           </div>
         </div>
       </div>
@@ -96,32 +109,32 @@ export class MfGraphicsCatalog extends LitElement {
   private renderImport(cfg: (typeof KIND_CFG)[GraphicKind]): TemplateResult {
     const libs = this.libraries();
     return html`
-      <div class="subhead">Importer</div>
+      <div class="subhead">${localizeDir(MSG.graphicsCatalog.import)}</div>
       <div class="import-row">
         <ix-input
           class="imp-name"
-          label="Nom"
-          placeholder="Nom de la ressource"
+          label=${localize(MSG.graphicsCatalog.name)}
+          placeholder=${localize(MSG.graphicsCatalog.resourceNamePlaceholder)}
           .value=${this.importName}
           @valueChange=${(e: IxValueEvent) => (this.importName = String(e.detail))}
         ></ix-input>
         <ix-input
           class="imp-lib"
-          label="Bibliothèque"
+          label=${localize(MSG.graphicsCatalog.library)}
           list="lib-list"
-          placeholder="(optionnel)"
+          placeholder=${localize(MSG.graphicsCatalog.optional)}
           .value=${this.importLibrary}
           @valueChange=${(e: IxValueEvent) => (this.importLibrary = String(e.detail))}
         ></ix-input>
         <datalist id="lib-list">${libs.map((l) => html`<option value=${l}></option>`)}</datalist>
         <ix-button variant="secondary" @click=${this.pick}>
-          <ix-icon name="folder" slot="icon"></ix-icon>${this.pendingFile || 'Choisir un fichier'}
+          <ix-icon name="folder" slot="icon"></ix-icon>${this.pendingFile || localizeDir(MSG.graphicsCatalog.chooseFile)}
         </ix-button>
         <ix-button
           ?disabled=${this.busy || this.pendingData === '' || this.importName.trim() === ''}
           @click=${this.doImport}
         >
-          <ix-icon name="upload" slot="icon"></ix-icon>Importer
+          <ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.graphicsCatalog.import)}
         </ix-button>
       </div>
       <input class="res-file" type="file" accept=${cfg.accept} hidden @change=${this.onFile} />
@@ -137,7 +150,8 @@ export class MfGraphicsCatalog extends LitElement {
 
   private renderList(cfg: (typeof KIND_CFG)[GraphicKind]): TemplateResult {
     const list = this.lists[this.kind];
-    if (list.length === 0) return html`<div class="muted">Aucune ressource importée</div>`;
+    if (list.length === 0)
+      return html`<div class="muted">${localizeDir(MSG.graphicsCatalog.noResource)}</div>`;
     // Group by library; unclassified last.
     const groups = new Map<string, GlbResource[]>();
     for (const r of list) {
@@ -150,10 +164,10 @@ export class MfGraphicsCatalog extends LitElement {
       return a.localeCompare(b);
     });
     return html`
-      <div class="subhead">Ressources (${list.length})</div>
+      <div class="subhead">${resourcesCountMsg(list.length)}</div>
       ${keys.map(
         (key) => html`<div class="lib-group">
-          <div class="lib-title">${key || 'Sans bibliothèque'}</div>
+          <div class="lib-title">${key || localizeDir(MSG.graphicsCatalog.noLibrary)}</div>
           <div class="res-grid">${groups.get(key)?.map((r) => this.renderResource(cfg, r))}</div>
         </div>`
       )}
@@ -174,7 +188,7 @@ export class MfGraphicsCatalog extends LitElement {
           ? html`<ix-input
                 class="res-lib"
                 list="lib-list"
-                placeholder="Bibliothèque"
+                placeholder=${localize(MSG.graphicsCatalog.library)}
                 .value=${r.library ?? ''}
                 @valueChange=${(e: IxValueEvent) => void this.changeLibrary(r, String(e.detail))}
               ></ix-input>
@@ -182,7 +196,7 @@ export class MfGraphicsCatalog extends LitElement {
                 ghost
                 size="16"
                 icon="trashcan"
-                title="Supprimer"
+                title=${localize(MSG.graphicsCatalog.delete)}
                 @click=${() => this.removeResource(r)}
               ></ix-icon-button>`
           : ''}
@@ -225,7 +239,10 @@ export class MfGraphicsCatalog extends LitElement {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
     if (file.size > MAX_BYTES) {
-      this.error = `Fichier trop volumineux (${(file.size / BYTES_PER_MB).toFixed(1)} Mo, max ${MAX_BYTES / BYTES_PER_MB} Mo).`;
+      this.error = fileTooLargeMsg(
+        (file.size / BYTES_PER_MB).toFixed(1),
+        MAX_BYTES / BYTES_PER_MB
+      );
       return;
     }
     const reader = new FileReader();
@@ -236,7 +253,7 @@ export class MfGraphicsCatalog extends LitElement {
         this.importName = file.name.replace(KIND_CFG[this.kind].strip, '');
       }
     });
-    reader.addEventListener('error', () => (this.error = 'Lecture du fichier impossible.'));
+    reader.addEventListener('error', () => (this.error = localize(MSG.graphicsCatalog.fileUnreadable)));
     reader.readAsDataURL(file);
   }
 
@@ -253,7 +270,7 @@ export class MfGraphicsCatalog extends LitElement {
     );
     this.busy = false;
     if (!resource) {
-      this.error = "Échec de l'import (droits d'écriture ou backend indisponible).";
+      this.error = localize(MSG.graphicsCatalog.importFailed);
       return;
     }
     this.resetImport();

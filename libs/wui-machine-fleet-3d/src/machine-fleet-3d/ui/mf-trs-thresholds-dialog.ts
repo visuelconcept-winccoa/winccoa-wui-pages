@@ -12,6 +12,7 @@ import { LitElement, css, html, type PropertyValues, type TemplateResult } from 
 import { customElement, property, state } from 'lit/decorators.js';
 import { type TrsThresholdRule, type TrsThresholds } from '../types.js';
 import { dialogStyles } from './dialog-styles.js';
+import { MSG, localize, localizeDir } from '../i18n.js';
 
 interface IxValueEvent {
   detail: string | number;
@@ -36,15 +37,15 @@ export class MfTrsThresholdsDialog extends LitElement {
       <div class="overlay" @click=${this.close}>
         <div class="panel" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
-            <ix-typography format="h3">Seuils TRS</ix-typography>
+            <ix-typography format="h3">${localizeDir(MSG.trsThresholds.title)}</ix-typography>
             <ix-icon-button ghost icon="close" @click=${this.close}></ix-icon-button>
           </div>
           <div class="panel-body">
             ${this.renderSelector()} ${config ? this.renderEditor(config) : ''}
           </div>
           <div class="panel-foot">
-            <ix-button variant="secondary" @click=${this.close}>${this.canEdit ? 'Annuler' : 'Fermer'}</ix-button>
-            ${this.canEdit ? html`<ix-button @click=${this.apply}>Enregistrer</ix-button>` : ''}
+            <ix-button variant="secondary" @click=${this.close}>${this.canEdit ? localizeDir(MSG.trsThresholds.cancel) : localizeDir(MSG.trsThresholds.close)}</ix-button>
+            ${this.canEdit ? html`<ix-button @click=${this.apply}>${localizeDir(MSG.trsThresholds.save)}</ix-button>` : ''}
           </div>
         </div>
       </div>
@@ -62,7 +63,7 @@ export class MfTrsThresholdsDialog extends LitElement {
     return html`
       <div class="selector">
         <ix-select
-          label="Configuration"
+          label=${localize(MSG.trsThresholds.configuration)}
           .value=${this.working[this.selected]?.id ?? ''}
           @valueChange=${(e: IxValueEvent) => this.selectById(String(e.detail))}
         >
@@ -71,12 +72,12 @@ export class MfTrsThresholdsDialog extends LitElement {
           )}
         </ix-select>
         <ix-button variant="secondary" @click=${this.addConfig}>
-          <ix-icon name="plus" slot="icon"></ix-icon>Nouveau
+          <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.trsThresholds.newItem)}
         </ix-button>
         <ix-icon-button
           ghost
           icon="trashcan"
-          title="Supprimer cette configuration"
+          title=${localize(MSG.trsThresholds.deleteConfig)}
           @click=${this.removeConfig}
         ></ix-icon-button>
       </div>
@@ -87,19 +88,19 @@ export class MfTrsThresholdsDialog extends LitElement {
     const rules = [...config.rules].sort((a, b) => a.min - b.min);
     return html`
       <ix-input
-        label="Nom"
+        label=${localize(MSG.trsThresholds.name)}
         .value=${config.name}
         @valueChange=${(e: IxValueEvent) => this.patch({ name: String(e.detail) })}
       ></ix-input>
-      <div class="subhead">Bandes de valeurs (TRS ≥ seuil → couleur)</div>
+      <div class="subhead">${localizeDir(MSG.trsThresholds.bandsHeading)}</div>
       <div class="rules">
         <div class="rule-row rule-head">
-          <span>Seuil (%)</span><span>Couleur</span><span>Libellé</span><span></span>
+          <span>${localizeDir(MSG.trsThresholds.colThreshold)}</span><span>${localizeDir(MSG.trsThresholds.colColour)}</span><span>${localizeDir(MSG.trsThresholds.colLabel)}</span><span></span>
         </div>
         ${config.rules.map((r, i) => this.renderRule(r, i))}
       </div>
       <ix-button class="link" variant="secondary" @click=${this.addRule}>
-        <ix-icon name="plus" slot="icon"></ix-icon>Ajouter une bande
+        <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.trsThresholds.addBand)}
       </ix-button>
       <div class="preview">
         ${rules.map(
@@ -162,7 +163,7 @@ export class MfTrsThresholdsDialog extends LitElement {
     const id = `trs-${Date.now()}`;
     this.working = [
       ...this.working,
-      { id, name: 'Nouveaux seuils', rules: [{ min: 0, color: NEW_BAND_COLOR, label: '' }] }
+      { id, name: localize(MSG.trsThresholds.newConfigName), rules: [{ min: 0, color: NEW_BAND_COLOR, label: '' }] }
     ];
     this.selected = this.working.length - 1;
   }

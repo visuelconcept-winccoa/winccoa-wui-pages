@@ -62,14 +62,6 @@ export interface ProductionOrder {
   notes: string;
 }
 
-export const STATUS_LABELS: Record<OrderStatus, string> = {
-  planned: 'À venir',
-  running: 'En cours',
-  paused: 'En pause',
-  done: 'Terminé',
-  cancelled: 'Annulé'
-};
-
 /** Chip / bar colour per status. */
 export const STATUS_COLORS: Record<OrderStatus, string> = {
   planned: '#3b82f6',
@@ -77,13 +69,6 @@ export const STATUS_COLORS: Record<OrderStatus, string> = {
   paused: '#f59e0b',
   done: '#94a3b8',
   cancelled: '#ef4444'
-};
-
-export const PRIORITY_LABELS: Record<OrderPriority, string> = {
-  low: 'Basse',
-  normal: 'Normale',
-  high: 'Haute',
-  urgent: 'Urgente'
 };
 
 export const PRIORITY_COLORS: Record<OrderPriority, string> = {

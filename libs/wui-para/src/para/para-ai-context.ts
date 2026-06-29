@@ -10,7 +10,9 @@
  * {@link TypeProposal}; the page parses it and offers an "apply to editor"
  * action so the user reviews and saves the model themselves.
  */
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { ELEMENT_TYPE_NAMES, isKnownElementType, type ParaStructureNode } from './para-element-types.js';
+import { MSG } from './i18n.js';
 
 /** A datapoint-type model proposed by the assistant, ready to load in the editor. */
 export interface TypeProposal {
@@ -18,12 +20,12 @@ export interface TypeProposal {
   structure: ParaStructureNode;
 }
 
-/** Clickable starter prompts shown when the chat is empty. */
-export const PARA_SUGGESTIONS: string[] = [
-  'Propose un type pour un moteur : vitesse (Float), état (Bool), consigne (Float) et une sous-structure alarmes.',
-  'Ajoute une sous-structure « maintenance » (dernier entretien Time, heures Float) au type sélectionné.',
-  'À quoi servent les configs _pv_range, _alert_hdl et _archive sur un élément ?',
-  'Comment bien modéliser une station de pompage en DP-Types WinCC OA ?'
+/** Clickable starter prompts shown when the chat is empty (tri-lingual). */
+export const PARA_SUGGESTIONS: MultiLangString[] = [
+  MSG.suggestions.s1,
+  MSG.suggestions.s2,
+  MSG.suggestions.s3,
+  MSG.suggestions.s4
 ];
 
 /**

@@ -1,7 +1,7 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: winccoa-wui-pages
 Upstream-Contact: VISUEL CONCEPT <contact@visuelconcept.com>
-Source: https://github.com/visuelconcept/winccoa-wui-pages
+Source: https://github.com/visuelconcept-winccoa/winccoa-wui-pages
 
 # ---------------------------------------------------------------------------
 # Default: everything in this repository is VISUEL CONCEPT code under AGPL-3.0.

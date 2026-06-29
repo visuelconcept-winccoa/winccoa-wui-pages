@@ -16,6 +16,8 @@
  * Each report is persisted as one WinCC OA datapoint (Struct name+json — see
  * {@link ./data/report-store.ts}).
  */
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
+import { CONFORMITY_MSG, QUENCH_MSG, STATUS_MSG, TREATMENT_MSG } from './i18n.js';
 
 /** Type of thermal treatment. */
 export type TreatmentType =
@@ -123,35 +125,11 @@ export interface ThermalReport {
   notes: string;
 }
 
-export const TREATMENT_LABELS: Record<TreatmentType, string> = {
-  cementation: 'Cémentation',
-  carbonitruration: 'Carbonitruration',
-  nitruration: 'Nitruration',
-  trempe: 'Trempe',
-  revenu: 'Revenu',
-  recuit: 'Recuit',
-  detente: 'Détensionnement',
-  normalisation: 'Normalisation',
-  autre: 'Autre'
-};
+export const TREATMENT_LABELS: Record<TreatmentType, MultiLangString> = TREATMENT_MSG;
 
-export const QUENCH_LABELS: Record<QuenchMedium, string> = {
-  none: 'Aucune',
-  oil: 'Huile',
-  water: 'Eau',
-  polymer: 'Polymère',
-  gas: 'Gaz (sous pression)',
-  air: 'Air',
-  salt: 'Bain de sels'
-};
+export const QUENCH_LABELS: Record<QuenchMedium, MultiLangString> = QUENCH_MSG;
 
-export const STATUS_LABELS: Record<ReportStatus, string> = {
-  draft: 'Brouillon',
-  running: 'En cours',
-  completed: 'Terminé',
-  validated: 'Validé',
-  rejected: 'Refusé'
-};
+export const STATUS_LABELS: Record<ReportStatus, MultiLangString> = STATUS_MSG;
 
 /** Chip / accent colour per status. */
 export const STATUS_COLORS: Record<ReportStatus, string> = {
@@ -162,11 +140,7 @@ export const STATUS_COLORS: Record<ReportStatus, string> = {
   rejected: '#ef4444'
 };
 
-export const CONFORMITY_LABELS: Record<Conformity, string> = {
-  pending: 'En attente',
-  conform: 'Conforme',
-  nonconform: 'Non conforme'
-};
+export const CONFORMITY_LABELS: Record<Conformity, MultiLangString> = CONFORMITY_MSG;
 
 export const CONFORMITY_COLORS: Record<Conformity, string> = {
   pending: '#f59e0b',

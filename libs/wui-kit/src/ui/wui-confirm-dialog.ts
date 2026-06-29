@@ -11,6 +11,7 @@
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type TemplateResult } from 'lit';
 import { property } from 'lit/decorators.js';
+import { MSG, localize, localizeDir } from '../i18n.js';
 import { dialogCore } from './dialog-styles.js';
 
 const CONFIRM_TAG = 'wui-confirm-dialog';
@@ -26,20 +27,27 @@ export class WuiConfirmDialog extends LitElement {
     `
   ];
 
-  @property() heading = 'Confirmer la suppression';
+  @property() heading = '';
   @property() message = '';
-  @property() confirmLabel = 'Supprimer';
+  @property() confirmLabel = '';
 
   override render(): TemplateResult {
     return html`
       <div class="overlay" @click=${this.cancel}>
         <div class="panel confirm" @click=${(e: Event) => e.stopPropagation()}>
-          <div class="panel-head"><ix-typography format="h3">${this.heading}</ix-typography></div>
+          <div class="panel-head">
+            <ix-typography format="h3">
+              ${this.heading || localize(MSG.confirmDialog.heading)}
+            </ix-typography>
+          </div>
           <div class="panel-body">${this.message}</div>
           <div class="panel-foot">
-            <ix-button variant="secondary" @click=${this.cancel}>Annuler</ix-button>
+            <ix-button variant="secondary" @click=${this.cancel}
+              >${localizeDir(MSG.confirmDialog.cancel)}</ix-button
+            >
             <ix-button @click=${this.confirm}>
-              <ix-icon name="trashcan" slot="icon"></ix-icon>${this.confirmLabel}
+              <ix-icon name="trashcan" slot="icon"></ix-icon
+              >${this.confirmLabel || localize(MSG.confirmDialog.confirm)}
             </ix-button>
           </div>
         </div>

@@ -10,10 +10,12 @@
  *
  * Emits `wui:save` with the edited report, `wui:cancel` on dismiss.
  */
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { Atelier, MachineDef } from '@visuelconcept/wui-fleet-core/types.js';
+import { MSG, localize, localizeDir } from '../i18n.js';
 import {
   CONFORMITY_LABELS,
   QUENCH_LABELS,
@@ -35,7 +37,7 @@ interface IxValueEvent {
   detail: string | number;
 }
 
-function options<T extends string>(labels: Record<T, string>): { value: T; label: string }[] {
+function options<T extends string>(labels: Record<T, MultiLangString>): { value: T; label: MultiLangString }[] {
   return (Object.keys(labels) as T[]).map((value) => ({ value, label: labels[value] }));
 }
 
@@ -65,33 +67,35 @@ export class TtReportDialog extends LitElement {
         <div class="panel" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
             <ix-typography format="h3">
-              ${isNew ? 'Nouveau rapport de traitement' : `Édition — ${this.working.reportNo}`}
+              ${isNew
+                ? localizeDir(MSG.dialog.newReport)
+                : html`${localizeDir(MSG.dialog.editPrefix)} — ${this.working.reportNo}`}
             </ix-typography>
           </div>
 
           <div class="panel-body">
-            <div class="subhead">Identité & pièce</div>
+            <div class="subhead">${localizeDir(MSG.dialog.secIdentity)}</div>
             <div class="grid3">
-              ${this.textField('N° rapport', 'reportNo')}
-              ${this.textField('N° charge', 'charge')}
-              ${this.textField('OF (lié)', 'orderNo')}
-              ${this.textField('Désignation pièce', 'part')}
-              ${this.textField('Matière / nuance', 'material')}
-              ${this.numberField('Quantité', 'quantity')}
+              ${this.textField(MSG.dialog.fReportNo, 'reportNo')}
+              ${this.textField(MSG.dialog.fCharge, 'charge')}
+              ${this.textField(MSG.dialog.fOrder, 'orderNo')}
+              ${this.textField(MSG.dialog.fPart, 'part')}
+              ${this.textField(MSG.dialog.fMaterial, 'material')}
+              ${this.numberField(MSG.dialog.fQuantity, 'quantity')}
             </div>
 
-            <div class="subhead">Traitement</div>
+            <div class="subhead">${localizeDir(MSG.dialog.secTreatment)}</div>
             <div class="grid3">
-              ${this.selectField('Type de traitement', 'treatment', TREATMENT_OPTIONS)}
-              ${this.textField('Atmosphère', 'atmosphere')}
-              ${this.selectField('Trempe', 'quench', QUENCH_OPTIONS)}
+              ${this.selectField(MSG.dialog.fTreatment, 'treatment', TREATMENT_OPTIONS)}
+              ${this.textField(MSG.dialog.fAtmosphere, 'atmosphere')}
+              ${this.selectField(MSG.dialog.fQuench, 'quench', QUENCH_OPTIONS)}
             </div>
 
-            <div class="subhead">Four & source de données</div>
+            <div class="subhead">${localizeDir(MSG.dialog.secFurnace)}</div>
             <div class="grid3">
               ${this.atelierField()} ${this.furnaceField()}
               <div class="field">
-                <label>Début du cycle</label>
+                <label>${localizeDir(MSG.dialog.fCycleStart)}</label>
                 <input
                   class="dt"
                   type="datetime-local"
@@ -102,15 +106,15 @@ export class TtReportDialog extends LitElement {
             </div>
             <div class="grid3">
               <div class="field span2">
-                <label>Datapoint température (historique archivé)</label>
+                <label>${localizeDir(MSG.dialog.fTempDp)}</label>
                 <ix-input
-                  placeholder="ex. MachineSim_four1.temperature"
+                  placeholder=${localize(MSG.dialog.tempDpPlaceholder)}
                   .value=${this.working.tempDp}
                   @valueChange=${(e: IxValueEvent) => this.patch({ tempDp: String(e.detail) })}
                 ></ix-input>
               </div>
               <div class="field">
-                <label>Fin du cycle</label>
+                <label>${localizeDir(MSG.dialog.fCycleEnd)}</label>
                 <input
                   class="dt"
                   type="datetime-local"
@@ -121,31 +125,31 @@ export class TtReportDialog extends LitElement {
             </div>
 
             <div class="subhead">
-              Recette (paliers)
+              ${localizeDir(MSG.dialog.secRecipe)}
               <span class="grow"></span>
               <ix-button variant="secondary" outline @click=${this.addStep}>
-                <ix-icon name="plus" slot="icon"></ix-icon>Ajouter un palier
+                <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.dialog.addStep)}
               </ix-button>
             </div>
             ${this.renderSteps()}
 
             <div class="subhead">
-              Contrôle qualité
+              ${localizeDir(MSG.dialog.secQuality)}
               <span class="grow"></span>
               <ix-button variant="secondary" outline @click=${this.addResult}>
-                <ix-icon name="plus" slot="icon"></ix-icon>Ajouter un contrôle
+                <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.dialog.addControl)}
               </ix-button>
             </div>
             ${this.renderResults()}
 
-            <div class="subhead">Suivi & validation</div>
+            <div class="subhead">${localizeDir(MSG.dialog.secTracking)}</div>
             <div class="grid3">
-              ${this.selectField('Statut', 'status', STATUS_OPTIONS)}
-              ${this.selectField('Conformité', 'conformity', CONFORMITY_OPTIONS)}
-              ${this.textField('Opérateur', 'operator')}
+              ${this.selectField(MSG.dialog.fStatus, 'status', STATUS_OPTIONS)}
+              ${this.selectField(MSG.dialog.fConformity, 'conformity', CONFORMITY_OPTIONS)}
+              ${this.textField(MSG.dialog.fOperator, 'operator')}
             </div>
             <div class="field">
-              <label>Observations</label>
+              <label>${localizeDir(MSG.dialog.fNotes)}</label>
               <ix-input
                 .value=${this.working.notes}
                 @valueChange=${(e: IxValueEvent) => this.patch({ notes: String(e.detail) })}
@@ -154,9 +158,9 @@ export class TtReportDialog extends LitElement {
           </div>
 
           <div class="panel-foot">
-            <ix-button variant="secondary" @click=${this.cancel}>Annuler</ix-button>
+            <ix-button variant="secondary" @click=${this.cancel}>${localizeDir(MSG.dialog.cancel)}</ix-button>
             <ix-button @click=${this.save} ?disabled=${this.working.reportNo.trim() === ''}>
-              <ix-icon name="check" slot="icon"></ix-icon>Enregistrer
+              <ix-icon name="check" slot="icon"></ix-icon>${localizeDir(MSG.dialog.save)}
             </ix-button>
           </div>
         </div>
@@ -174,17 +178,17 @@ export class TtReportDialog extends LitElement {
 
   private renderSteps(): TemplateResult {
     if (this.working.steps.length === 0) {
-      return html`<p class="hint">Aucun palier — ajoutez les étapes du cycle (consigne, durée, tolérance).</p>`;
+      return html`<p class="hint">${localizeDir(MSG.dialog.noStep)}</p>`;
     }
     return html`
       <div class="rows">
         <div class="row head">
-          <span>Étape</span>
-          <span>Consigne °C</span>
-          <span>Durée min</span>
-          <span>Tol. −</span>
-          <span>Tol. +</span>
-          <span>Atmosphère</span>
+          <span>${localizeDir(MSG.dialog.colStep)}</span>
+          <span>${localizeDir(MSG.dialog.colSetpoint)}</span>
+          <span>${localizeDir(MSG.dialog.colDuration)}</span>
+          <span>${localizeDir(MSG.dialog.colTolMinus)}</span>
+          <span>${localizeDir(MSG.dialog.colTolPlus)}</span>
+          <span>${localizeDir(MSG.dialog.colAtmosphere)}</span>
           <span></span>
         </div>
         ${this.working.steps.map((step, i) => this.renderStepRow(step, i))}
@@ -201,23 +205,23 @@ export class TtReportDialog extends LitElement {
         <input class="cell num" type="number" .value=${String(step.tolMinus)} @input=${(e: Event) => this.updateStep(i, { tolMinus: num(e) })} />
         <input class="cell num" type="number" .value=${String(step.tolPlus)} @input=${(e: Event) => this.updateStep(i, { tolPlus: num(e) })} />
         <input class="cell" .value=${step.atmosphere} @input=${(e: Event) => this.updateStep(i, { atmosphere: val(e) })} />
-        <ix-icon-button ghost size="16" icon="trashcan" title="Retirer" @click=${() => this.removeStep(i)}></ix-icon-button>
+        <ix-icon-button ghost size="16" icon="trashcan" title=${localize(MSG.dialog.remove)} @click=${() => this.removeStep(i)}></ix-icon-button>
       </div>
     `;
   }
 
   private renderResults(): TemplateResult {
     if (this.working.results.length === 0) {
-      return html`<p class="hint">Aucun contrôle — ajoutez les résultats (dureté, profondeur, …).</p>`;
+      return html`<p class="hint">${localizeDir(MSG.dialog.noControl)}</p>`;
     }
     return html`
       <div class="rows">
         <div class="row res head">
-          <span>Contrôle</span>
-          <span>Valeur</span>
-          <span>Unité</span>
-          <span>Min</span>
-          <span>Max</span>
+          <span>${localizeDir(MSG.dialog.colControl)}</span>
+          <span>${localizeDir(MSG.dialog.colValue)}</span>
+          <span>${localizeDir(MSG.dialog.colUnit)}</span>
+          <span>${localizeDir(MSG.dialog.colMin)}</span>
+          <span>${localizeDir(MSG.dialog.colMax)}</span>
           <span></span>
         </div>
         ${this.working.results.map((res, i) => this.renderResultRow(res, i))}
@@ -233,17 +237,17 @@ export class TtReportDialog extends LitElement {
         <input class="cell" .value=${res.unit} @input=${(e: Event) => this.updateResult(i, { unit: val(e) })} />
         <input class="cell num" type="number" .value=${res.min == null ? '' : String(res.min)} @input=${(e: Event) => this.updateResult(i, { min: optNum(e) })} />
         <input class="cell num" type="number" .value=${res.max == null ? '' : String(res.max)} @input=${(e: Event) => this.updateResult(i, { max: optNum(e) })} />
-        <ix-icon-button ghost size="16" icon="trashcan" title="Retirer" @click=${() => this.removeResult(i)}></ix-icon-button>
+        <ix-icon-button ghost size="16" icon="trashcan" title=${localize(MSG.dialog.remove)} @click=${() => this.removeResult(i)}></ix-icon-button>
       </div>
     `;
   }
 
   // --- generic fields --------------------------------------------------------
 
-  private textField(label: string, key: keyof ThermalReport): TemplateResult {
+  private textField(label: MultiLangString, key: keyof ThermalReport): TemplateResult {
     return html`
       <div class="field">
-        <label>${label}</label>
+        <label>${localizeDir(label)}</label>
         <ix-input
           .value=${String(this.working[key] ?? '')}
           @valueChange=${(e: IxValueEvent) => this.patch({ [key]: String(e.detail) } as Partial<ThermalReport>)}
@@ -252,10 +256,10 @@ export class TtReportDialog extends LitElement {
     `;
   }
 
-  private numberField(label: string, key: 'quantity'): TemplateResult {
+  private numberField(label: MultiLangString, key: 'quantity'): TemplateResult {
     return html`
       <div class="field">
-        <label>${label}</label>
+        <label>${localizeDir(label)}</label>
         <ix-number-input
           .value=${this.working[key]}
           @valueChange=${(e: IxValueEvent) => this.patch({ [key]: Number(e.detail) } as Partial<ThermalReport>)}
@@ -265,18 +269,18 @@ export class TtReportDialog extends LitElement {
   }
 
   private selectField<T extends string>(
-    label: string,
+    label: MultiLangString,
     key: keyof ThermalReport,
-    opts: { value: T; label: string }[]
+    opts: { value: T; label: MultiLangString }[]
   ): TemplateResult {
     return html`
       <div class="field">
-        <label>${label}</label>
+        <label>${localizeDir(label)}</label>
         <ix-select
           .value=${String(this.working[key])}
           @valueChange=${(e: IxValueEvent) => this.patch({ [key]: String(e.detail) } as Partial<ThermalReport>)}
         >
-          ${opts.map((o) => html`<ix-select-item label=${o.label} value=${o.value}></ix-select-item>`)}
+          ${opts.map((o) => html`<ix-select-item label=${localize(o.label)} value=${o.value}></ix-select-item>`)}
         </ix-select>
       </div>
     `;
@@ -285,7 +289,7 @@ export class TtReportDialog extends LitElement {
   private atelierField(): TemplateResult {
     return html`
       <div class="field">
-        <label>Atelier</label>
+        <label>${localizeDir(MSG.dialog.fWorkshop)}</label>
         <ix-select
           .value=${this.working.atelierId}
           @valueChange=${(e: IxValueEvent) => this.onAtelierChange(String(e.detail))}
@@ -300,7 +304,7 @@ export class TtReportDialog extends LitElement {
     const machines = this.furnaceChoices();
     return html`
       <div class="field">
-        <label>Four</label>
+        <label>${localizeDir(MSG.dialog.fFurnace)}</label>
         <ix-select
           .value=${this.working.machineId}
           ?disabled=${machines.length === 0}

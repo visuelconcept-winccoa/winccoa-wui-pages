@@ -23,6 +23,15 @@ import { firstValueFrom } from 'rxjs';
 import { container } from 'tsyringe';
 import { type DpStruct, collectLeaves, leavesUnder, makeDpeName, splitDpPath, stripSystem } from './para-leaves.js';
 import './para-nav.js';
+import {
+  MSG,
+  alarmConfiguredMsg,
+  alarmDisabledMsg,
+  alarmFailedOnMsg,
+  archiveLoadErrorMsg,
+  localize,
+  localizeDir
+} from './i18n.js';
 
 const DP_SET_URL = '/api/para/dp/set';
 /** Verified _alert_hdl constants (see backend mcpServer constants.js). */
@@ -122,26 +131,26 @@ export class WuiParaAlarm extends LitElement {
 
   private renderPanel(): TemplateResult {
     if (this.selectedDp == null && this.selectedType == null) {
-      return html`<div class="message">Sélectionnez un datapoint, un élément ou un type dans l'arbre pour configurer ses alarmes.</div>`;
+      return html`<div class="message">${localizeDir(MSG.alarm.selectToConfigure)}</div>`;
     }
     if (this.loading) {
-      return html`<div class="message">Chargement…</div>`;
+      return html`<div class="message">${localizeDir(MSG.shared.loading)}</div>`;
     }
     return html`
       <div class="panel-head">
         <ix-icon name="bell" size="20"></ix-icon>
         <span class="sel">${this.selectedDp ?? this.selectedType}</span>
         ${this.classes.length === 0
-          ? html`<span class="warn">Aucune classe d'alarme (_AlertClass) trouvée</span>`
+          ? html`<span class="warn">${localizeDir(MSG.alarm.noClasses)}</span>`
           : nothing}
         ${this.message === '' ? nothing : html`<span class="msg ${this.messageOk ? 'ok' : 'err'}">${this.message}</span>`}
       </div>
       ${this.rows.length === 0
-        ? html`<div class="message">Aucun élément à valeur sous cette sélection.</div>`
+        ? html`<div class="message">${localizeDir(MSG.shared.noValueElements)}</div>`
         : html`<div class="scroll">
             <table>
               <thead>
-                <tr><th>Élément</th><th>Type</th><th>Classe d'alarme</th><th>Déclenchement</th><th>Seuils</th><th>Statut</th><th></th></tr>
+                <tr><th>${localizeDir(MSG.shared.element)}</th><th>${localizeDir(MSG.shared.type)}</th><th>${localizeDir(MSG.alarm.colAlarmClass)}</th><th>${localizeDir(MSG.alarm.colTrigger)}</th><th>${localizeDir(MSG.alarm.colThresholds)}</th><th>${localizeDir(MSG.shared.status)}</th><th></th></tr>
               </thead>
               <tbody>
                 ${this.rows.map((row) => this.renderRow(row))}
@@ -155,14 +164,14 @@ export class WuiParaAlarm extends LitElement {
     if (row.category === 'none') {
       return html`<tr class="muted">
         <td class="element" title=${row.dpe}>${row.display}</td>
-        <td colspan="6">non alarmable</td>
+        <td colspan="6">${localizeDir(MSG.alarm.notAlarmable)}</td>
       </tr>`;
     }
     const analog = row.category === 'analog';
     return html`
       <tr>
         <td class="element" title=${row.dpe}>${row.display}</td>
-        <td class="muted">${analog ? 'analogique' : 'binaire'}</td>
+        <td class="muted">${analog ? localizeDir(MSG.alarm.analog) : localizeDir(MSG.alarm.binary)}</td>
         <td>
           <ix-select
             mode="single"
@@ -180,10 +189,10 @@ export class WuiParaAlarm extends LitElement {
             @valueChange=${(e: CustomEvent) => this.patchRow(row.dpe, { direction: String(e.detail) as AlarmDir })}
           >
             ${analog
-              ? html`<ix-select-item label="Haut (ASC)" value="ASC"></ix-select-item>
-                  <ix-select-item label="Bas (DESC)" value="DESC"></ix-select-item>`
-              : html`<ix-select-item label="si VRAI" value="ASC"></ix-select-item>
-                  <ix-select-item label="si FAUX" value="DESC"></ix-select-item>`}
+              ? html`<ix-select-item label=${localize(MSG.alarm.high)} value="ASC"></ix-select-item>
+                  <ix-select-item label=${localize(MSG.alarm.low)} value="DESC"></ix-select-item>`
+              : html`<ix-select-item label=${localize(MSG.alarm.ifTrue)} value="ASC"></ix-select-item>
+                  <ix-select-item label=${localize(MSG.alarm.ifFalse)} value="DESC"></ix-select-item>`}
           </ix-select>
         </td>
         <td>
@@ -191,21 +200,21 @@ export class WuiParaAlarm extends LitElement {
             ? html`<ix-input
                 class="thresholds"
                 .value=${row.thresholds}
-                placeholder="ex. 80 ou 50,75,90"
+                placeholder=${localize(MSG.alarm.thresholdsPlaceholder)}
                 @valueChange=${(e: Event) => this.patchRow(row.dpe, { thresholds: (e.target as HTMLInputElement).value })}
               ></ix-input>`
             : html`<span class="muted">—</span>`}
         </td>
-        <td class="status">${row.active ? html`<span class="on">actif</span>` : 'inactif'}</td>
+        <td class="status">${row.active ? html`<span class="on">${localizeDir(MSG.alarm.active)}</span>` : localizeDir(MSG.alarm.inactive)}</td>
         <td class="actions">
           <ix-button
             size="16"
             variant="primary"
             ?disabled=${row.busy || this.classes.length === 0}
             @click=${() => this.apply(row)}
-          >Appliquer</ix-button>
+          >${localizeDir(MSG.alarm.apply)}</ix-button>
           ${row.active
-            ? html`<ix-button size="16" outline ?disabled=${row.busy} @click=${() => this.disable(row)}>Désactiver</ix-button>`
+            ? html`<ix-button size="16" outline ?disabled=${row.busy} @click=${() => this.disable(row)}>${localizeDir(MSG.alarm.disable)}</ix-button>`
             : nothing}
         </td>
       </tr>
@@ -257,7 +266,7 @@ export class WuiParaAlarm extends LitElement {
       this.rows = rows;
     } catch (error) {
       this.rows = [];
-      this.setMessage(`Erreur de chargement : ${error instanceof Error ? error.message : String(error)}`, false);
+      this.setMessage(archiveLoadErrorMsg(error instanceof Error ? error.message : String(error)), false);
     } finally {
       this.loading = false;
     }
@@ -290,7 +299,7 @@ export class WuiParaAlarm extends LitElement {
       return [];
     }
     if (this.ownerType == null || this.ownerType === '') {
-      throw new Error("Type du datapoint inconnu — re-sélectionnez l'élément.");
+      throw new Error(localize(MSG.shared.unknownDpType));
     }
     const struct = (await firstValueFrom(this.dpe.getDatapointTypes(this.ownerType))) as DpStruct;
     const { root, relPath } = splitDpPath(dp);
@@ -337,16 +346,16 @@ export class WuiParaAlarm extends LitElement {
 
   private async apply(row: AlarmRow): Promise<void> {
     if (row.alarmClass === '') {
-      this.setMessage('Choisissez une classe d\'alarme.', false);
+      this.setMessage(localize(MSG.alarm.pickClass), false);
       return;
     }
     this.patchRow(row.dpe, { busy: true });
     try {
       await (row.category === 'binary' ? this.applyBinary(row) : this.applyAnalog(row));
-      this.setMessage(`Alarme configurée : ${row.display}`, true);
+      this.setMessage(alarmConfiguredMsg(row.display), true);
       await this.refreshRow(row.dpe);
     } catch (error) {
-      this.setMessage(`Échec sur ${row.display} : ${String(error)}`, false);
+      this.setMessage(alarmFailedOnMsg(row.display, String(error)), false);
     } finally {
       this.patchRow(row.dpe, { busy: false });
     }
@@ -370,7 +379,7 @@ export class WuiParaAlarm extends LitElement {
   private async applyAnalog(row: AlarmRow): Promise<void> {
     const thresholds = this.parseThresholds(row.thresholds);
     if (thresholds.length === 0) {
-      throw new Error('seuil(s) requis (ex. 80 ou 50,75,90)');
+      throw new Error(localize(MSG.alarm.thresholdsRequired));
     }
     const [minValue, maxValue] = NUMERIC_BOUNDS[row.baseType] ?? NUMERIC_BOUNDS['float'];
     const cls = `${row.alarmClass}.`;
@@ -414,10 +423,10 @@ export class WuiParaAlarm extends LitElement {
     this.patchRow(row.dpe, { busy: true });
     try {
       await this.send({ dpeName: `${row.dpe}:_alert_hdl.._active`, value: false });
-      this.setMessage(`Alarme désactivée : ${row.display}`, true);
+      this.setMessage(alarmDisabledMsg(row.display), true);
       await this.refreshRow(row.dpe);
     } catch (error) {
-      this.setMessage(`Échec sur ${row.display} : ${String(error)}`, false);
+      this.setMessage(alarmFailedOnMsg(row.display, String(error)), false);
     } finally {
       this.patchRow(row.dpe, { busy: false });
     }

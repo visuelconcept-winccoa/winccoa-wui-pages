@@ -27,6 +27,7 @@ import { AliAssetReader, type AliAssetInfo } from '../data/ali-assets.js';
 import { normDp, toNumber } from '../data/dp-utils.js';
 import type { FleetStore } from '../data/fleet-store.js';
 import { canEditFleet, canEditFleet$ } from '../data/permissions.js';
+import { MSG, confirmDeleteAtelierMsg, localize, localizeDir } from '../i18n.js';
 import { SceneController } from '../scene/scene-controller.js';
 import {
   DEFAULT_NAV_CORNER,
@@ -205,7 +206,7 @@ export class MfAtelierView extends LitElement {
     return html`
       <div class="page">
         <div class="topbar">
-          <ix-icon-button ghost icon="arrow-left" title="Retour aux ateliers" @click=${this.back}></ix-icon-button>
+          <ix-icon-button ghost icon="arrow-left" title=${localize(MSG.view.backToAteliers)} @click=${this.back}></ix-icon-button>
           ${this.renaming
             ? html`<ix-input
                   class="title-input"
@@ -213,15 +214,15 @@ export class MfAtelierView extends LitElement {
                   @valueChange=${(e: CustomEvent<string>) => (this.atelierName = String(e.detail))}
                   @keydown=${this.onRenameKey}
                 ></ix-input>
-                <ix-icon-button ghost icon="check" title="Valider" @click=${this.commitRename}></ix-icon-button>`
-            : html`<ix-typography class="title" format="h3">${this.atelierName || 'Atelier'}</ix-typography>
+                <ix-icon-button ghost icon="check" title=${localize(MSG.view.confirm)} @click=${this.commitRename}></ix-icon-button>`
+            : html`<ix-typography class="title" format="h3">${this.atelierName || localize(MSG.view.atelier)}</ix-typography>
                 ${this.canEdit
-                  ? html`<ix-icon-button ghost icon="pen" title="Renommer l'atelier" @click=${this.startRename}></ix-icon-button>`
+                  ? html`<ix-icon-button ghost icon="pen" title=${localize(MSG.view.renameAtelier)} @click=${this.startRename}></ix-icon-button>`
                   : ''}`}
           <span class="topbar-spacer"></span>
           ${this.renderToolbar()}
           ${this.canEdit
-            ? html`<ix-icon-button ghost icon="trashcan" title="Supprimer l'atelier" @click=${() => (this.confirmDeleteOpen = true)}></ix-icon-button>`
+            ? html`<ix-icon-button ghost icon="trashcan" title=${localize(MSG.view.deleteAtelier)} @click=${() => (this.confirmDeleteOpen = true)}></ix-icon-button>`
             : ''}
           <mf-ai-prompt></mf-ai-prompt>
         </div>
@@ -297,22 +298,22 @@ export class MfAtelierView extends LitElement {
   private renderToolbar(): TemplateResult {
     return html`
       <div class="toolbar">
-        <ix-icon-button icon="undo" ghost title="Réinitialiser la vue" @click=${() => this.scene?.resetView()}></ix-icon-button>
+        <ix-icon-button icon="undo" ghost title=${localize(MSG.view.resetView)} @click=${() => this.scene?.resetView()}></ix-icon-button>
         ${this.canEdit
-          ? html`<ix-icon-button icon="move" ghost title="Mode édition (déplacer les machines)" variant=${this.editMode ? 'primary' : 'secondary'} @click=${this.toggleEditMode}></ix-icon-button>`
+          ? html`<ix-icon-button icon="move" ghost title=${localize(MSG.view.editMode)} variant=${this.editMode ? 'primary' : 'secondary'} @click=${this.toggleEditMode}></ix-icon-button>`
           : ''}
-        <ix-icon-button icon="home" ghost title="Toiture du bâtiment" variant=${this.display.roof ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, roof: !this.display.roof })}></ix-icon-button>
-        <ix-icon-button icon="label" ghost title="Étiquettes des machines" variant=${this.display.labels ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, labels: !this.display.labels })}></ix-icon-button>
-        <ix-icon-button icon="warning" ghost title="Afficher seulement les alertes" variant=${this.display.alertOnly ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, alertOnly: !this.display.alertOnly })}></ix-icon-button>
-        <ix-icon-button icon="screenshot" ghost title="Points de vue" variant=${this.viewpointsOpen ? 'primary' : 'secondary'} @click=${() => (this.viewpointsOpen = !this.viewpointsOpen)}></ix-icon-button>
-        <ix-icon-button icon="box-open" ghost title="Catalogue de graphiques (GLB / billboards)" @click=${() => (this.resourcesOpen = true)}></ix-icon-button>
-        <ix-icon-button icon="building1" ghost title="Configurer le bâtiment" @click=${() => (this.buildingOpen = true)}></ix-icon-button>
-        <ix-icon-button icon="configuration" ghost title="Mappings d'état" @click=${() => (this.mappingOpen = true)}></ix-icon-button>
+        <ix-icon-button icon="home" ghost title=${localize(MSG.view.roof)} variant=${this.display.roof ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, roof: !this.display.roof })}></ix-icon-button>
+        <ix-icon-button icon="label" ghost title=${localize(MSG.view.labels)} variant=${this.display.labels ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, labels: !this.display.labels })}></ix-icon-button>
+        <ix-icon-button icon="warning" ghost title=${localize(MSG.view.alertsOnly)} variant=${this.display.alertOnly ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, alertOnly: !this.display.alertOnly })}></ix-icon-button>
+        <ix-icon-button icon="screenshot" ghost title=${localize(MSG.view.viewpoints)} variant=${this.viewpointsOpen ? 'primary' : 'secondary'} @click=${() => (this.viewpointsOpen = !this.viewpointsOpen)}></ix-icon-button>
+        <ix-icon-button icon="box-open" ghost title=${localize(MSG.view.graphicsCatalogGlb)} @click=${() => (this.resourcesOpen = true)}></ix-icon-button>
+        <ix-icon-button icon="building1" ghost title=${localize(MSG.view.configureBuilding)} @click=${() => (this.buildingOpen = true)}></ix-icon-button>
+        <ix-icon-button icon="configuration" ghost title=${localize(MSG.view.stateMappings)} @click=${() => (this.mappingOpen = true)}></ix-icon-button>
         ${this.canEdit
-          ? html`<ix-icon-button icon="upload" ghost title="Importer l'atelier (JSON)" @click=${this.triggerImport}></ix-icon-button>`
+          ? html`<ix-icon-button icon="upload" ghost title=${localize(MSG.view.importAtelier)} @click=${this.triggerImport}></ix-icon-button>`
           : ''}
-        <ix-icon-button icon="download" ghost title="Exporter l'atelier (JSON)" @click=${this.exportAtelier}></ix-icon-button>
-        <ix-icon-button icon="app-menu" ghost title="Machines" variant=${this.panelOpen ? 'primary' : 'secondary'} @click=${() => (this.panelOpen = !this.panelOpen)}></ix-icon-button>
+        <ix-icon-button icon="download" ghost title=${localize(MSG.view.exportAtelier)} @click=${this.exportAtelier}></ix-icon-button>
+        <ix-icon-button icon="app-menu" ghost title=${localize(MSG.view.machines)} variant=${this.panelOpen ? 'primary' : 'secondary'} @click=${() => (this.panelOpen = !this.panelOpen)}></ix-icon-button>
       </div>
       <input
         type="file"
@@ -330,26 +331,26 @@ export class MfAtelierView extends LitElement {
       <div class="nav nav--${corner}">
         <div class="nav-pad">
           <span></span>
-          <ix-icon-button ghost icon="chevron-up" title="Incliner vers le haut" @click=${() => this.scene?.orbitBy(0, -TILT_STEP)}></ix-icon-button>
+          <ix-icon-button ghost icon="chevron-up" title=${localize(MSG.view.tiltUp)} @click=${() => this.scene?.orbitBy(0, -TILT_STEP)}></ix-icon-button>
           <span></span>
-          <ix-icon-button ghost icon="chevron-left" title="Pivoter à gauche" @click=${() => this.scene?.orbitBy(-ORBIT_STEP, 0)}></ix-icon-button>
-          <ix-icon-button ghost icon="home" title="Vue par défaut" @click=${() => this.goHome()}></ix-icon-button>
-          <ix-icon-button ghost icon="chevron-right" title="Pivoter à droite" @click=${() => this.scene?.orbitBy(ORBIT_STEP, 0)}></ix-icon-button>
+          <ix-icon-button ghost icon="chevron-left" title=${localize(MSG.view.rotateLeft)} @click=${() => this.scene?.orbitBy(-ORBIT_STEP, 0)}></ix-icon-button>
+          <ix-icon-button ghost icon="home" title=${localize(MSG.view.defaultView)} @click=${() => this.goHome()}></ix-icon-button>
+          <ix-icon-button ghost icon="chevron-right" title=${localize(MSG.view.rotateRight)} @click=${() => this.scene?.orbitBy(ORBIT_STEP, 0)}></ix-icon-button>
           <span></span>
-          <ix-icon-button ghost icon="chevron-down" title="Incliner vers le bas" @click=${() => this.scene?.orbitBy(0, TILT_STEP)}></ix-icon-button>
+          <ix-icon-button ghost icon="chevron-down" title=${localize(MSG.view.tiltDown)} @click=${() => this.scene?.orbitBy(0, TILT_STEP)}></ix-icon-button>
           <span></span>
         </div>
         <div class="nav-zoom">
-          <ix-icon-button ghost icon="zoom-in" title="Zoom avant" @click=${() => this.scene?.zoomBy(ZOOM_IN)}></ix-icon-button>
-          <ix-icon-button ghost icon="zoom-out" title="Zoom arrière" @click=${() => this.scene?.zoomBy(ZOOM_OUT)}></ix-icon-button>
+          <ix-icon-button ghost icon="zoom-in" title=${localize(MSG.view.zoomIn)} @click=${() => this.scene?.zoomBy(ZOOM_IN)}></ix-icon-button>
+          <ix-icon-button ghost icon="zoom-out" title=${localize(MSG.view.zoomOut)} @click=${() => this.scene?.zoomBy(ZOOM_OUT)}></ix-icon-button>
         </div>
         <div class="nav-views">
-          <ix-button outline @click=${() => this.applyPreset('top')}>Dessus</ix-button>
-          <ix-button outline @click=${() => this.applyPreset('front')}>Face</ix-button>
-          <ix-button outline @click=${() => this.applyPreset('side')}>Côté</ix-button>
-          <ix-button outline @click=${() => this.applyPreset('iso')}>Iso</ix-button>
+          <ix-button outline @click=${() => this.applyPreset('top')}>${localizeDir(MSG.view.presetTop)}</ix-button>
+          <ix-button outline @click=${() => this.applyPreset('front')}>${localizeDir(MSG.view.presetFront)}</ix-button>
+          <ix-button outline @click=${() => this.applyPreset('side')}>${localizeDir(MSG.view.presetSide)}</ix-button>
+          <ix-button outline @click=${() => this.applyPreset('iso')}>${localizeDir(MSG.view.presetIso)}</ix-button>
         </div>
-        <div class="mode-toggle" role="group" title="Vue 3D (perspective) / 2D (dessus)">
+        <div class="mode-toggle" role="group" title=${localize(MSG.view.cameraModeToggle)}>
           <button
             type="button"
             class="mode-btn ${this.cameraMode === '3d' ? 'mode-btn--on' : ''}"
@@ -412,15 +413,15 @@ export class MfAtelierView extends LitElement {
     return html`
       <div class="viewpoints">
         <div class="vp-head">
-          <span>Points de vue</span>
+          <span>${localizeDir(MSG.view.viewpoints)}</span>
           ${this.canEdit
             ? html`<ix-button variant="secondary" @click=${this.saveViewpoint}>
-                <ix-icon name="plus" slot="icon"></ix-icon>Enregistrer la vue
+                <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.view.saveView)}
               </ix-button>`
             : ''}
         </div>
         ${this.viewpoints.length === 0
-          ? html`<div class="muted">Aucun point de vue enregistré</div>`
+          ? html`<div class="muted">${localizeDir(MSG.view.noViewpoints)}</div>`
           : html`<div class="vp-list">
               ${this.viewpoints.map((vp) => this.renderViewpointRow(vp))}
             </div>`}
@@ -437,12 +438,12 @@ export class MfAtelierView extends LitElement {
           @valueChange=${(e: CustomEvent<string>) => (this.vpRenameValue = String(e.detail))}
           @keydown=${(e: KeyboardEvent) => this.onVpRenameKey(e, vp)}
         ></ix-input>
-        <ix-icon-button ghost size="16" icon="check" title="Valider" @click=${() => this.commitVpRename(vp)}></ix-icon-button>
+        <ix-icon-button ghost size="16" icon="check" title=${localize(MSG.view.confirm)} @click=${() => this.commitVpRename(vp)}></ix-icon-button>
       </div>`;
     }
     const isDefault = vp.id === this.defaultViewpointId;
     return html`<div class="vp-row">
-      <span class="vp-name" title="Aller à cette vue" @click=${() => this.applyViewpoint(vp)}>
+      <span class="vp-name" title=${localize(MSG.view.goToView)} @click=${() => this.applyViewpoint(vp)}>
         ${vp.name}${isDefault ? html`<ix-icon class="vp-default-badge" name="star-filled" size="12"></ix-icon>` : ''}
       </span>
       ${this.canEdit
@@ -452,13 +453,13 @@ export class MfAtelierView extends LitElement {
               icon=${isDefault ? 'star-filled' : 'star'}
               variant=${isDefault ? 'primary' : 'secondary'}
               title=${isDefault
-                ? 'Vue par défaut au chargement (cliquer pour retirer)'
-                : 'Définir comme vue par défaut au chargement'}
+                ? localize(MSG.view.defaultViewpointOn)
+                : localize(MSG.view.defaultViewpointOff)}
               @click=${() => this.setDefaultViewpoint(vp.id)}
             ></ix-icon-button>
-            <ix-icon-button ghost size="16" icon="refresh" title="Actualiser depuis la vue caméra actuelle" @click=${() => this.updateViewpoint(vp.id)}></ix-icon-button>
-            <ix-icon-button ghost size="16" icon="pen" title="Renommer" @click=${() => this.startVpRename(vp)}></ix-icon-button>
-            <ix-icon-button ghost size="16" icon="trashcan" title="Supprimer" @click=${() => this.deleteViewpoint(vp.id)}></ix-icon-button>`
+            <ix-icon-button ghost size="16" icon="refresh" title=${localize(MSG.view.refreshFromCamera)} @click=${() => this.updateViewpoint(vp.id)}></ix-icon-button>
+            <ix-icon-button ghost size="16" icon="pen" title=${localize(MSG.view.rename)} @click=${() => this.startVpRename(vp)}></ix-icon-button>
+            <ix-icon-button ghost size="16" icon="trashcan" title=${localize(MSG.view.delete)} @click=${() => this.deleteViewpoint(vp.id)}></ix-icon-button>`
         : ''}
     </div>`;
   }
@@ -492,8 +493,8 @@ export class MfAtelierView extends LitElement {
           <span class="dot" style="background:${headColor}"></span>
           <ix-typography class="name" format="h3" title=${m.name}>${m.name}</ix-typography>
           <ix-chip outline>${m.loc ?? m.type}</ix-chip>
-          <ix-icon-button ghost icon=${this.canEdit ? 'pen' : 'eye'} title=${this.canEdit ? 'Éditer' : 'Visualiser'} @click=${() => this.onEdit(m.id)}></ix-icon-button>
-          <ix-icon-button ghost icon="close" title="Fermer" @click=${() => (this.selectedId = null)}></ix-icon-button>
+          <ix-icon-button ghost icon=${this.canEdit ? 'pen' : 'eye'} title=${this.canEdit ? localize(MSG.view.edit) : localize(MSG.view.viewOnly)} @click=${() => this.onEdit(m.id)}></ix-icon-button>
+          <ix-icon-button ghost icon="close" title=${localize(MSG.view.close)} @click=${() => (this.selectedId = null)}></ix-icon-button>
         </div>
         ${offline
           ? html`<div class="detail__offline" style="--c:${stateColor(mapping, 'disconnected')}">${DISCONNECTED_LABEL}</div>`
@@ -512,7 +513,7 @@ export class MfAtelierView extends LitElement {
       .slice(0, MAX_DASHBOARD_LINKS);
     return html`
       <ix-button class="dash-btn" variant="primary" @click=${() => this.openMachineDashboard(m)}>
-        <ix-icon name="ontology" slot="icon"></ix-icon>Ouvrir le tableau de bord
+        <ix-icon name="ontology" slot="icon"></ix-icon>${localizeDir(MSG.view.openDashboard)}
       </ix-button>
       ${links.map(
         (l) => html`<ix-button
@@ -521,7 +522,7 @@ export class MfAtelierView extends LitElement {
           icon=${l.icon || 'ontology'}
           title=${l.url}
           @click=${() => this.openLink(l.url)}
-        >${l.label || 'Lien'}</ix-button>`
+        >${l.label || localize(MSG.view.link)}</ix-button>`
       )}
     `;
   }
@@ -541,7 +542,7 @@ export class MfAtelierView extends LitElement {
       .filter((s) => s.inPopup)
       .map((s) => this.popupRow(s, m))
       .filter((r): r is TemplateResult => r !== null);
-    if (rows.length === 0) return html`<div class="muted">Aucune information</div>`;
+    if (rows.length === 0) return html`<div class="muted">${localizeDir(MSG.view.noInformation)}</div>`;
     return html`<div class="detail__info">${rows}</div>`;
   }
 
@@ -562,23 +563,23 @@ export class MfAtelierView extends LitElement {
   ): { label: string; value: string | number; style?: string } | null {
     if (slot.kind === 'state') {
       return {
-        label: 'État',
+        label: localize(MSG.view.state),
         value: STATE_LABELS[m.state],
         style: `color:${stateColor(this.mappingFor(m), m.state)};font-weight:700`
       };
     }
     if (slot.kind === 'stopCause') {
       const cause = m.state === 'ok' ? undefined : (m.stopCauseLabel || m.stopCause);
-      return cause != null && cause !== '' ? { label: "Cause d'arrêt", value: cause } : null;
+      return cause != null && cause !== '' ? { label: localize(MSG.view.stopCause), value: cause } : null;
     }
     if (slot.kind === 'workOrder') {
       return m.workOrder != null && m.workOrder !== ''
-        ? { label: 'OF en cours', value: m.workOrder }
+        ? { label: localize(MSG.view.workOrder), value: m.workOrder }
         : null;
     }
     if (slot.kind === 'operation') {
       return m.operation != null && m.operation !== ''
-        ? { label: 'Opération', value: m.operation }
+        ? { label: localize(MSG.view.operation), value: m.operation }
         : null;
     }
     if (slot.kind === 'param') {
@@ -591,7 +592,7 @@ export class MfAtelierView extends LitElement {
       if (m.aliRiskScore == null) return null;
       const level = m.aliRiskLabel ? ` — ${m.aliRiskLabel}` : '';
       return {
-        label: 'Obsolescence (ALI)',
+        label: localize(MSG.view.obsolescenceAli),
         value: `${m.aliRiskScore}${level}`,
         style: m.aliRiskColor ? `color:${m.aliRiskColor};font-weight:700` : ''
       };
@@ -654,8 +655,8 @@ export class MfAtelierView extends LitElement {
         : ''}
       ${this.confirmDeleteOpen
         ? html`<wui-confirm-dialog
-            heading="Supprimer l'atelier"
-            message=${`Supprimer définitivement l'atelier « ${this.atelierName} » et son datapoint ?`}
+            heading=${localize(MSG.view.confirmDeleteHeading)}
+            message=${confirmDeleteAtelierMsg(this.atelierName)}
             @wui:confirm=${this.confirmDelete}
             @wui:cancel=${() => (this.confirmDeleteOpen = false)}
           ></wui-confirm-dialog>`
@@ -864,7 +865,7 @@ export class MfAtelierView extends LitElement {
   private onAdd(): void {
     const def: MachineDef = {
       id: `machine-${Date.now()}`,
-      name: 'Nouvelle machine',
+      name: localize(MSG.view.newMachineName),
       type: 'cabinet',
       x: 0,
       z: 0,
@@ -959,7 +960,7 @@ export class MfAtelierView extends LitElement {
       ...this.viewpoints,
       {
         id: `vp-${Date.now()}`,
-        name: `Vue ${this.viewpoints.length + 1}`,
+        name: `${localize(MSG.view.viewLabel)} ${this.viewpoints.length + 1}`,
         pos: pose.pos,
         target: pose.target
       }

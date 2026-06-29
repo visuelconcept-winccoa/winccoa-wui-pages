@@ -9,9 +9,11 @@
  *
  * Emits: `wui:open` / `wui:edit` / `wui:delete` (all `{ id }`).
  */
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { MSG, localize, localizeDir } from '../i18n.js';
 import {
   CONFORMITY_COLORS,
   CONFORMITY_LABELS,
@@ -44,14 +46,14 @@ export class TtReportTable extends LitElement {
       <table>
         <thead>
           <tr>
-            ${this.header('N° rapport', 'reportNo')}
-            <th>Charge</th>
-            ${this.header('Pièce · matière', 'part')}
-            <th>Traitement</th>
-            ${this.header('Four', 'machine')}
-            ${this.header('Début cycle', 'startTime')}
-            ${this.header('Statut', 'status')}
-            <th>Conformité</th>
+            ${this.header(MSG.table.reportNo, 'reportNo')}
+            <th>${localizeDir(MSG.table.charge)}</th>
+            ${this.header(MSG.table.partMaterial, 'part')}
+            <th>${localizeDir(MSG.table.treatment)}</th>
+            ${this.header(MSG.table.furnace, 'machine')}
+            ${this.header(MSG.table.startTime, 'startTime')}
+            ${this.header(MSG.table.status, 'status')}
+            <th>${localizeDir(MSG.table.conformity)}</th>
             <th class="actions-col"></th>
           </tr>
         </thead>
@@ -71,17 +73,17 @@ export class TtReportTable extends LitElement {
           <div class="strong">${report.part || '—'}</div>
           <div class="muted">${report.material}</div>
         </td>
-        <td>${TREATMENT_LABELS[report.treatment]}</td>
+        <td>${localizeDir(TREATMENT_LABELS[report.treatment])}</td>
         <td>${report.machineName || '—'}</td>
         <td class="mono">${this.fmtDate(report.startTime)}</td>
         <td>
           <span class="chip solid" style="--c:${STATUS_COLORS[report.status]}">
-            ${STATUS_LABELS[report.status]}
+            ${localizeDir(STATUS_LABELS[report.status])}
           </span>
         </td>
         <td>
           <span class="chip" style="--c:${CONFORMITY_COLORS[report.conformity]}">
-            ${CONFORMITY_LABELS[report.conformity]}
+            ${localizeDir(CONFORMITY_LABELS[report.conformity])}
           </span>
         </td>
         <td class="actions-col" @click=${(e: Event) => e.stopPropagation()}>
@@ -89,21 +91,21 @@ export class TtReportTable extends LitElement {
             ghost
             size="16"
             icon="eye"
-            title="Ouvrir le rapport"
+            title=${localize(MSG.table.openReport)}
             @click=${() => this.requestOpen(report.id)}
           ></ix-icon-button>
           <ix-icon-button
             ghost
             size="16"
             icon="pen"
-            title="Modifier"
+            title=${localize(MSG.table.edit)}
             @click=${() => this.requestEdit(report.id)}
           ></ix-icon-button>
           <ix-icon-button
             ghost
             size="16"
             icon="trashcan"
-            title="Supprimer"
+            title=${localize(MSG.table.remove)}
             @click=${() => this.requestDelete(report.id)}
           ></ix-icon-button>
         </td>
@@ -111,12 +113,12 @@ export class TtReportTable extends LitElement {
     `;
   }
 
-  private header(label: string, key: SortKey): TemplateResult {
+  private header(label: MultiLangString, key: SortKey): TemplateResult {
     const active = this.sortKey === key;
     const arrow = active ? (this.sortAsc ? '▲' : '▼') : '';
     return html`
       <th class="sortable" @click=${() => this.setSort(key)}>
-        ${label} <span class="arrow">${arrow}</span>
+        ${localizeDir(label)} <span class="arrow">${arrow}</span>
       </th>
     `;
   }

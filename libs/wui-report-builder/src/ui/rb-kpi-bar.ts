@@ -6,7 +6,9 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type TemplateResult } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { currentState } from '../engine.js';
+import { MSG, localizeDir } from '../i18n.js';
 import { STATE_COLORS, type Report } from '../types.js';
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 
 @customElement('rb-kpi-bar')
 export class RbKpiBar extends LitElement {
@@ -25,17 +27,17 @@ export class RbKpiBar extends LitElement {
       else inProgress += 1;
     }
     return html`
-      ${this.tile('Rapports', this.reports.length, 'var(--theme-color-std-text)')}
-      ${this.tile('En cours', inProgress, STATE_COLORS.intermediate)}
-      ${this.tile('Approuvés', approved, STATE_COLORS.final)}
-      ${this.tile('Rejetés', rejected, STATE_COLORS.rejected)}
+      ${this.tile(MSG.kpi.reports, this.reports.length, 'var(--theme-color-std-text)')}
+      ${this.tile(MSG.kpi.inProgress, inProgress, STATE_COLORS.intermediate)}
+      ${this.tile(MSG.kpi.approved, approved, STATE_COLORS.final)}
+      ${this.tile(MSG.kpi.rejected, rejected, STATE_COLORS.rejected)}
     `;
   }
 
-  private tile(label: string, value: number, color: string): TemplateResult {
+  private tile(label: MultiLangString, value: number, color: string): TemplateResult {
     return html`<div class="tile">
       <div class="value" style="color:${color}">${value}</div>
-      <div class="label">${label}</div>
+      <div class="label">${localizeDir(label)}</div>
     </div>`;
   }
 }

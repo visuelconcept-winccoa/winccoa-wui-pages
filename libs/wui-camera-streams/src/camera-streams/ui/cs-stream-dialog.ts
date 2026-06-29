@@ -16,7 +16,8 @@ import {
   type CameraStream,
   type RtspTransport
 } from '../types.js';
-import { MSG, localizeDir } from '../i18n.js';
+import { MSG, localize, localizeDir } from '../i18n.js';
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { dialogStyles } from './dialog-styles.js';
 
 interface IxValueEvent {
@@ -96,21 +97,21 @@ export class CsStreamDialog extends LitElement {
               ></ix-input>
             </div>
 
-            <div class="subhead">Options de flux</div>
+            <div class="subhead">${localizeDir(MSG.dialog.secStreamOptions)}</div>
             <div class="grid2">
               <div class="field">
-                <label>Transport RTSP</label>
+                <label>${localizeDir(MSG.dialog.fTransport)}</label>
                 <ix-select
                   .selectedIndices=${[this.working.transport === 'udp' ? 1 : 0]}
                   @valueChange=${(e: CustomEvent<string | string[]>) =>
                     this.patch({ transport: this.readTransport(e.detail) })}
                 >
-                  <ix-select-item value="tcp" label="TCP (fiable, recommandé)"></ix-select-item>
-                  <ix-select-item value="udp" label="UDP (latence plus faible)"></ix-select-item>
+                  <ix-select-item value="tcp" label=${localize(MSG.dialog.transportTcp)}></ix-select-item>
+                  <ix-select-item value="udp" label=${localize(MSG.dialog.transportUdp)}></ix-select-item>
                 </ix-select>
               </div>
               <div class="toggle-row standalone">
-                <span>Audio (piste MP2)</span>
+                <span>${localizeDir(MSG.dialog.audioToggle)}</span>
                 <ix-toggle
                   hide-text
                   ?checked=${this.working.audio}
@@ -119,29 +120,29 @@ export class CsStreamDialog extends LitElement {
               </div>
             </div>
             <div class="grid3">
-              ${this.numberField('Largeur max (px, 0 = source)', 'maxWidth')}
-              ${this.numberField('Images/s (0 = 30)', 'frameRate')}
-              ${this.numberField('Débit vidéo (kbps, 0 = auto)', 'videoBitrate')}
+              ${this.numberField(MSG.dialog.fMaxWidth, 'maxWidth')}
+              ${this.numberField(MSG.dialog.fFrameRate, 'frameRate')}
+              ${this.numberField(MSG.dialog.fVideoBitrate, 'videoBitrate')}
             </div>
 
-            <div class="subhead">Reconnexion</div>
+            <div class="subhead">${localizeDir(MSG.dialog.secReconnect)}</div>
             <div class="grid2">
               <div class="toggle-row standalone">
-                <span>Reconnexion automatique du WebSocket</span>
+                <span>${localizeDir(MSG.dialog.autoReconnectToggle)}</span>
                 <ix-toggle
                   hide-text
                   ?checked=${this.working.autoReconnect}
                   @checkedChange=${(e: CustomEvent<boolean>) => this.patch({ autoReconnect: e.detail })}
                 ></ix-toggle>
               </div>
-              ${this.numberField('Délai entre tentatives (s)', 'reconnectDelaySec')}
+              ${this.numberField(MSG.dialog.fReconnectDelay, 'reconnectDelaySec')}
             </div>
           </div>
 
           <div class="panel-foot">
-            <ix-button variant="secondary" @click=${this.cancel}>Annuler</ix-button>
+            <ix-button variant="secondary" @click=${this.cancel}>${localizeDir(MSG.dialog.cancel)}</ix-button>
             <ix-button @click=${this.save} ?disabled=${!this.isValid()}>
-              <ix-icon name="check" slot="icon"></ix-icon>Enregistrer
+              <ix-icon name="check" slot="icon"></ix-icon>${localizeDir(MSG.dialog.save)}
             </ix-button>
           </div>
         </div>
@@ -159,10 +160,10 @@ export class CsStreamDialog extends LitElement {
     }
   }
 
-  private textField(label: string, key: 'name' | 'group' | 'username'): TemplateResult {
+  private textField(label: MultiLangString, key: 'name' | 'group' | 'username'): TemplateResult {
     return html`
       <div class="field">
-        <label>${label}</label>
+        <label>${localizeDir(label)}</label>
         <ix-input
           .value=${this.working[key]}
           @valueChange=${(e: IxValueEvent) =>
@@ -173,12 +174,12 @@ export class CsStreamDialog extends LitElement {
   }
 
   private numberField(
-    label: string,
+    label: MultiLangString,
     key: 'maxWidth' | 'frameRate' | 'videoBitrate' | 'reconnectDelaySec'
   ): TemplateResult {
     return html`
       <div class="field">
-        <label>${label}</label>
+        <label>${localizeDir(label)}</label>
         <ix-number-input
           .value=${this.working[key]}
           @valueChange=${(e: IxValueEvent) =>

@@ -62,7 +62,6 @@ export const MSG = {
   },
   content: {
     noDpsPrefix: ml('No', 'Aucun datapoint', 'Kein'),
-    // TODO(de): review — sentence is split around the <code>_AuditTrail</code> tag.
     noDpsSuffix: ml(
       ' datapoint. Click “Manage” to create one (archived).',
       '. Cliquez « Gérer » pour en créer un (archivé).',
@@ -94,7 +93,6 @@ export const MSG = {
     ),
     close: ml('Close', 'Fermer', 'Schließen'),
     create: ml('Create', 'Créer', 'Anlegen'),
-    // TODO(de): review — sentence is split around the <code>_NGA_Group</code> tag.
     noGroupsPrefix: ml(
       'No active NGA archive group (type',
       "Aucun groupe d'archive NGA actif (type",
@@ -105,12 +103,10 @@ export const MSG = {
       '). Activez-en un pour pouvoir créer un datapoint archivé.',
       '). Aktivieren Sie eine, um einen archivierten Datenpunkt anlegen zu können.'
     ),
-    // TODO(de): review — sentence is split around the <code>_AuditTrail</code> tag.
     newDpPrefix: ml('New datapoint (type', 'Nouveau datapoint (type', 'Neuer Datenpunkt (Typ'),
     newDpSuffix: ml(', archived)', ', archivé)', ', archiviert)'),
     namePlaceholder: ml('Name (e.g. Production)', 'Nom (ex. Production)', 'Name (z. B. Production)'),
     existingDps: ml('Existing datapoints', 'Datapoints existants', 'Vorhandene Datenpunkte'),
-    // TODO(de): review — sentence is split around the <code>_AuditTrail</code> tag.
     noDpsPrefix: ml('No', 'Aucun datapoint', 'Kein'),
     noDpsSuffix: ml(
       ' datapoint for now.',

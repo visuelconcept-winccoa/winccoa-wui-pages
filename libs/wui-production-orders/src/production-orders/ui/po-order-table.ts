@@ -10,19 +10,19 @@
  * Emits: `wui:edit` / `wui:delete` (`{ id }`) and `wui:status`
  * (`{ id, target }`).
  */
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import {
   PRIORITY_COLORS,
-  PRIORITY_LABELS,
   PRIORITY_RANK,
   STATUS_COLORS,
-  STATUS_LABELS,
   type OrderStatus,
   type ProductionOrder
 } from '../types.js';
 import { actionsFor } from '../workflow.js';
+import { MSG, localize, localizeDir, priorityLabel, statusLabel } from '../i18n.js';
 
 type SortKey = 'orderNo' | 'machine' | 'plannedStart' | 'priority' | 'status';
 
@@ -48,15 +48,15 @@ export class PoOrderTable extends LitElement {
       <table>
         <thead>
           <tr>
-            ${this.header('N° OF', 'orderNo')}
-            <th>Produit</th>
-            ${this.header('Atelier · Machine', 'machine')}
-            ${this.header('Début prévu', 'plannedStart')}
-            <th>Fin prévue</th>
-            <th>Qté</th>
-            <th>Avancement</th>
-            ${this.header('Priorité', 'priority')}
-            ${this.header('Statut', 'status')}
+            ${this.header(MSG.table.orderNo, 'orderNo')}
+            <th>${localizeDir(MSG.table.product)}</th>
+            ${this.header(MSG.table.machine, 'machine')}
+            ${this.header(MSG.table.plannedStart, 'plannedStart')}
+            <th>${localizeDir(MSG.table.plannedEnd)}</th>
+            <th>${localizeDir(MSG.table.qty)}</th>
+            <th>${localizeDir(MSG.table.progress)}</th>
+            ${this.header(MSG.table.priority, 'priority')}
+            ${this.header(MSG.table.status, 'status')}
             <th class="actions-col"></th>
           </tr>
         </thead>
@@ -82,12 +82,12 @@ export class PoOrderTable extends LitElement {
         <td>${this.renderProgress(order)}</td>
         <td>
           <span class="chip" style="--c:${PRIORITY_COLORS[order.priority]}">
-            ${PRIORITY_LABELS[order.priority]}
+            ${localizeDir(priorityLabel(order.priority))}
           </span>
         </td>
         <td>
           <span class="chip solid" style="--c:${STATUS_COLORS[order.status]}">
-            ${STATUS_LABELS[order.status]}
+            ${localizeDir(statusLabel(order.status))}
           </span>
         </td>
         <td class="actions-col">${this.renderActions(order)}</td>
@@ -104,7 +104,7 @@ export class PoOrderTable extends LitElement {
             ghost
             size="16"
             icon=${action.icon}
-            title=${action.label}
+            title=${localize(action.label)}
             @click=${() => this.requestStatus(order.id, action.target)}
           ></ix-icon-button>
         `
@@ -113,14 +113,14 @@ export class PoOrderTable extends LitElement {
         ghost
         size="16"
         icon="pen"
-        title="Modifier"
+        title=${localize(MSG.table.edit)}
         @click=${() => this.requestEdit(order.id)}
       ></ix-icon-button>
       <ix-icon-button
         ghost
         size="16"
         icon="trashcan"
-        title="Supprimer"
+        title=${localize(MSG.table.delete)}
         @click=${() => this.requestDelete(order.id)}
       ></ix-icon-button>
     `;
@@ -136,12 +136,12 @@ export class PoOrderTable extends LitElement {
     `;
   }
 
-  private header(label: string, key: SortKey): TemplateResult {
+  private header(label: MultiLangString, key: SortKey): TemplateResult {
     const active = this.sortKey === key;
     const arrow = active ? (this.sortAsc ? '▲' : '▼') : '';
     return html`
       <th class="sortable" @click=${() => this.setSort(key)}>
-        ${label} <span class="arrow">${arrow}</span>
+        ${localizeDir(label)} <span class="arrow">${arrow}</span>
       </th>
     `;
   }

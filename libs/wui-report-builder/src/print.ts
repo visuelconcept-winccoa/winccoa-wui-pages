@@ -10,6 +10,7 @@
  * Printing waits for the chart images to decode before calling window.print()
  * (see PRINT_SCRIPT) — calling it synchronously would print blank charts.
  */
+import { MSG, localize } from './i18n.js';
 import { AGG_LABELS, fieldConform, type Report, type TemplateSection } from './types.js';
 
 function esc(s: string): string {
@@ -18,19 +19,19 @@ function esc(s: string): string {
 
 function verdictLabel(conform: boolean | null): string {
   if (conform === null) return '';
-  return conform ? 'OK' : 'Hors tolérance';
+  return conform ? localize(MSG.print.ok) : localize(MSG.print.outOfTolerance);
 }
 
 function factTable(r: Report): string {
   const state = r.workflow.find((s) => s.id === r.currentStateId);
   const facts: [string, string][] = [
-    ['N° rapport', r.reportNo],
-    ['Titre', r.title],
-    ['Objet', r.subject],
-    ['Modèle', r.templateName],
-    ['Période', `${r.period.start || '—'} → ${r.period.end || '—'}`],
-    ['État', state?.label ?? '—'],
-    ['Créé le', r.createdAt]
+    [localize(MSG.print.reportNo), r.reportNo],
+    [localize(MSG.print.title), r.title],
+    [localize(MSG.print.subject), r.subject],
+    [localize(MSG.print.model), r.templateName],
+    [localize(MSG.print.period), `${r.period.start || '—'} → ${r.period.end || '—'}`],
+    [localize(MSG.print.state), state?.label ?? '—'],
+    [localize(MSG.print.createdAt), r.createdAt]
   ];
   return facts.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v || '—')}</td></tr>`).join('');
 }
@@ -64,12 +65,12 @@ function datasetSection(section: TemplateSection, r: Report, image: string | und
     .map((d) => {
       const res = results[d.id];
       const aggs = res
-        ? d.ops.map((op) => `${AGG_LABELS[op]}: ${res.agg[op] ?? '—'}`).join(' · ')
+        ? d.ops.map((op) => `${localize(AGG_LABELS[op])}: ${res.agg[op] ?? '—'}`).join(' · ')
         : '—';
       return `<tr><th>${esc(d.label)}</th><td>${esc(aggs)}</td><td>${res?.n ?? '—'}</td></tr>`;
     })
     .join('');
-  const chart = image ? `<img src="${image}" alt="Graphique ${esc(section.title)}"/>` : '';
+  const chart = image ? `<img src="${image}" alt="${esc(localize(MSG.print.chartAlt))} ${esc(section.title)}"/>` : '';
   return `<table class="facts"><tbody>${rows}</tbody></table>${chart}`;
 }
 
@@ -78,7 +79,7 @@ function checklistSection(section: TemplateSection, r: Report): string {
   const items = (section.items ?? [])
     .map((it) => {
       const mark = checked[it.id] ? '☑' : '☐';
-      const req = it.required ? ' (obligatoire)' : '';
+      const req = it.required ? ` (${localize(MSG.print.mandatory)})` : '';
       return `<li>${mark} ${esc(it.label)}${req}</li>`;
     })
     .join('');
@@ -125,7 +126,7 @@ function signaturesHtml(r: Report): string {
       return `<tr><td>${s.level}</td><td>${esc(s.roleLabel)}</td><td>${esc(s.signerName)}</td><td>${esc(ts)}</td><td>${esc(s.comment)}</td></tr>`;
     })
     .join('');
-  return `<h2>Signatures</h2><table><thead><tr><th>Niveau</th><th>Rôle</th><th>Signataire</th><th>Date</th><th>Commentaire</th></tr></thead><tbody>${rows}</tbody></table>`;
+  return `<h2>${esc(localize(MSG.print.signatures))}</h2><table><thead><tr><th>${esc(localize(MSG.print.colLevel))}</th><th>${esc(localize(MSG.print.colRole))}</th><th>${esc(localize(MSG.print.colSigner))}</th><th>${esc(localize(MSG.print.colDate))}</th><th>${esc(localize(MSG.print.colComment))}</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 const PRINT_CSS = `
@@ -154,10 +155,11 @@ const PRINT_SCRIPT = `<script>
 
 export function buildPrintHtml(report: Report, images: Record<string, string>): string {
   const sections = report.sections.map((s) => sectionHtml(s, report, images)).join('');
-  return `<!doctype html><html lang="fr"><head><meta charset="utf-8">
-<title>${esc(report.reportNo || 'Rapport')} — ${esc(report.title)}</title>
+  const fallbackTitle = localize(MSG.print.fallbackTitle);
+  return `<!doctype html><html><head><meta charset="utf-8">
+<title>${esc(report.reportNo || fallbackTitle)} — ${esc(report.title)}</title>
 <style>${PRINT_CSS}</style></head><body>
-<h1>${esc(report.title || 'Rapport')}</h1>
+<h1>${esc(report.title || fallbackTitle)}</h1>
 <table class="facts"><tbody>${factTable(report)}</tbody></table>
 ${sections}
 ${signaturesHtml(report)}

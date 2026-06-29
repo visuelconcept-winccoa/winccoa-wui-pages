@@ -14,6 +14,8 @@
  * export/import on the server.
  */
 
+import { localize, ml } from './i18n.js';
+
 const EXPORT_URL = '/api/para/dpl/export';
 const IMPORT_URL = '/api/para/dpl/import';
 
@@ -85,7 +87,13 @@ export async function exportDpl(selection: DplSelection): Promise<DplResult> {
   if (response.ok && data.ok && data.contentBase64) {
     triggerDownload(data.fileName ?? 'export.dpl', data.contentBase64);
   } else if (data.error == null) {
-    data.error = `Export refusé (HTTP ${response.status})`;
+    data.error = localize(
+      ml(
+        `Export refused (HTTP ${response.status})`,
+        `Export refusé (HTTP ${response.status})`,
+        `Export abgelehnt (HTTP ${response.status})`
+      )
+    );
   }
   return data;
 }
@@ -99,7 +107,13 @@ export async function importDpl(file: File): Promise<DplResult> {
     .json()
     .catch(() => ({ ok: false, error: `HTTP ${response.status}` }))) as DplResult;
   if (!response.ok && data.error == null) {
-    data.error = `Import refusé (HTTP ${response.status})`;
+    data.error = localize(
+      ml(
+        `Import refused (HTTP ${response.status})`,
+        `Import refusé (HTTP ${response.status})`,
+        `Import abgelehnt (HTTP ${response.status})`
+      )
+    );
   }
   return data;
 }
