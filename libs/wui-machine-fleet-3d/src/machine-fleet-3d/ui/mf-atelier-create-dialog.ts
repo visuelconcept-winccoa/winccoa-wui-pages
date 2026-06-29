@@ -11,6 +11,7 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { ATELIER_TEMPLATES } from '../data/atelier-templates.js';
+import { MSG, localize, localizeDir } from '../i18n.js';
 import { dialogStyles } from './dialog-styles.js';
 
 interface IxValueEvent {
@@ -30,7 +31,7 @@ export class MfAtelierCreateDialog extends LitElement {
   static override readonly styles = [IXCoreStyles, dialogStyles(), extraStyles()];
 
   @property({ attribute: false }) existingIds: string[] = [];
-  @property() defaultName = 'Nouvel atelier';
+  @property() defaultName = localize(MSG.create.defaultName);
   /** Pre-selected template id (example set). */
   @property() defaultTemplate = '';
   /** When false, creation is disabled (view-only user). */
@@ -48,12 +49,12 @@ export class MfAtelierCreateDialog extends LitElement {
       <div class="overlay" @click=${this.cancel}>
         <div class="panel create" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
-            <ix-typography format="h3">Nouvel atelier</ix-typography>
+            <ix-typography format="h3">${localizeDir(MSG.create.title)}</ix-typography>
             <ix-icon-button ghost icon="close" @click=${this.cancel}></ix-icon-button>
           </div>
           <div class="panel-body">
             <ix-select
-              label="Modèle de départ"
+              label=${localize(MSG.create.startTemplate)}
               .value=${this.template}
               @valueChange=${(e: IxValueEvent) => this.onTemplate(e.detail)}
             >
@@ -62,14 +63,14 @@ export class MfAtelierCreateDialog extends LitElement {
               )}
             </ix-select>
             <ix-input
-              label="Nom"
+              label=${localize(MSG.create.name)}
               .value=${this.atelierName}
               @valueChange=${(e: IxValueEvent) => this.onName(e.detail)}
             ></ix-input>
             <div class="id-row">
               <ix-input
                 class="id-input"
-                label="Identifiant"
+                label=${localize(MSG.create.id)}
                 .value=${this.atelierId}
                 invalid=${invalid || undefined}
                 @valueChange=${(e: IxValueEvent) => this.onId(e.detail)}
@@ -77,17 +78,17 @@ export class MfAtelierCreateDialog extends LitElement {
               <ix-icon-button
                 ghost
                 icon="refresh"
-                title="Générer automatiquement"
+                title=${localize(MSG.create.generateAuto)}
                 @click=${this.regenerate}
               ></ix-icon-button>
             </div>
             ${taken
-              ? html`<div class="err">Cet identifiant existe déjà — choisissez-en un autre.</div>`
-              : html`<div class="hint">Sert de nom du datapoint (MachineFleet3D_&lt;id&gt;).</div>`}
+              ? html`<div class="err">${localizeDir(MSG.create.idTaken)}</div>`
+              : html`<div class="hint">${localizeDir(MSG.create.idHint)}</div>`}
           </div>
           <div class="panel-foot">
-            <ix-button variant="secondary" @click=${this.cancel}>Annuler</ix-button>
-            <ix-button ?disabled=${invalid || !this.canEdit} @click=${this.submit}>Créer</ix-button>
+            <ix-button variant="secondary" @click=${this.cancel}>${localizeDir(MSG.create.cancel)}</ix-button>
+            <ix-button ?disabled=${invalid || !this.canEdit} @click=${this.submit}>${localizeDir(MSG.create.create)}</ix-button>
           </div>
         </div>
       </div>

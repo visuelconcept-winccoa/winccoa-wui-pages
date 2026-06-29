@@ -25,6 +25,13 @@ import {
   type MachineState
 } from '../types.js';
 import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
+import {
+  MSG,
+  confirmDeleteMachineMsg,
+  localize,
+  localizeDir,
+  machinesCountMsg
+} from '../i18n.js';
 
 export type { DisplayConfig } from '../types.js';
 
@@ -58,8 +65,8 @@ export class MfConfigPanel extends LitElement {
     const m = this.machines.find((x) => x.id === this.confirmId);
     return html`
       <wui-confirm-dialog
-        heading="Supprimer la machine"
-        message=${`Supprimer la machine « ${m?.name ?? ''} » de cet atelier ?`}
+        heading=${localize(MSG.configPanel.deleteMachineHeading)}
+        message=${confirmDeleteMachineMsg(m?.name ?? '')}
         @wui:confirm=${this.confirmDelete}
         @wui:cancel=${() => (this.confirmId = null)}
       ></wui-confirm-dialog>
@@ -70,10 +77,10 @@ export class MfConfigPanel extends LitElement {
     const filtered = this.filteredMachines();
     return html`
       <section class="machines">
-        <div class="section-title">Machines (${filtered.length}/${this.machines.length})</div>
+        <div class="section-title">${machinesCountMsg(filtered.length, this.machines.length)}</div>
         <ix-input
           class="search"
-          placeholder="Rechercher une machine…"
+          placeholder=${localize(MSG.configPanel.searchMachine)}
           .value=${this.query}
           @valueChange=${(e: IxValueEvent) => (this.query = String(e.detail))}
         >
@@ -82,7 +89,7 @@ export class MfConfigPanel extends LitElement {
         <div class="list">${filtered.map((m) => this.renderRow(m))}</div>
         ${this.canEdit
           ? html`<ix-button class="add" variant="secondary" @click=${this.emitAdd}>
-              <ix-icon name="plus" slot="icon"></ix-icon>Ajouter une machine
+              <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.configPanel.addMachine)}
             </ix-button>`
           : ''}
       </section>
@@ -111,7 +118,7 @@ export class MfConfigPanel extends LitElement {
           ghost
           size="16"
           icon=${this.canEdit ? 'pen' : 'eye'}
-          title=${this.canEdit ? 'Éditer' : 'Visualiser'}
+          title=${this.canEdit ? localize(MSG.configPanel.edit) : localize(MSG.configPanel.viewOnly)}
           @click=${(e: Event) => this.onEdit(e, m.id)}
         ></ix-icon-button>
         ${this.canEdit
@@ -119,7 +126,7 @@ export class MfConfigPanel extends LitElement {
               ghost
               size="16"
               icon="trashcan"
-              title="Supprimer"
+              title=${localize(MSG.configPanel.delete)}
               @click=${(e: Event) => this.onDelete(e, m.id)}
             ></ix-icon-button>`
           : ''}

@@ -38,6 +38,15 @@ import {
   type AnalysisMachine,
   type CauseRow
 } from '@visuelconcept/wui-fleet-core/engine.js';
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
+import {
+  MSG,
+  localize,
+  localizeDir,
+  ml,
+  noStopOfClassMsg,
+  rangeLabelMsg
+} from '../i18n.js';
 
 /** A piecewise-constant history sample (mirrors the engine's internal type). */
 interface HistorySample {
@@ -54,14 +63,14 @@ interface StateSegment {
 }
 
 type Period = 'today' | '24h' | '7d' | '30d' | 'week' | 'month' | 'custom';
-const PERIOD_LABEL: Record<Period, string> = {
-  today: "Aujourd'hui",
-  '24h': '24 heures',
-  '7d': '7 jours',
-  '30d': '30 jours',
-  week: 'Cette semaine',
-  month: 'Ce mois',
-  custom: 'Personnalisé…'
+const PERIOD_LABEL: Record<Period, MultiLangString> = {
+  today: MSG.machineDash.periodToday,
+  '24h': MSG.machineDash.period24h,
+  '7d': MSG.machineDash.period7d,
+  '30d': MSG.machineDash.period30d,
+  week: MSG.machineDash.periodWeek,
+  month: MSG.machineDash.periodMonth,
+  custom: MSG.machineDash.periodCustom
 };
 const PERIODS = Object.keys(PERIOD_LABEL) as Period[];
 const DAY_MS = 86_400_000;
@@ -69,23 +78,23 @@ const DATE_FORMAT = 'yyyy-MM-dd';
 const END_OF_DAY_MS = DAY_MS - 1;
 
 /** Pareto "show N causes" options (value 0 = all). */
-const PARETO_TOP_OPTIONS = [
-  { value: '5', label: 'Top 5' },
-  { value: '10', label: 'Top 10' },
-  { value: '0', label: 'Tous' }
+const PARETO_TOP_OPTIONS: { value: string; label: MultiLangString }[] = [
+  { value: '5', label: ml('Top 5', 'Top 5', 'Top 5') },
+  { value: '10', label: ml('Top 10', 'Top 10', 'Top 10') },
+  { value: '0', label: MSG.machineDash.paretoTopAll }
 ];
 const DEFAULT_PARETO_TOP = 5;
 /** Pareto metric: cumulated downtime vs. stop frequency (occurrences). */
 type ParetoMetric = 'downtime' | 'frequency';
-const PARETO_METRIC_OPTIONS: { value: ParetoMetric; label: string }[] = [
-  { value: 'downtime', label: "Temps d'arrêt cumulé" },
-  { value: 'frequency', label: "Fréquence d'arrêt" }
+const PARETO_METRIC_OPTIONS: { value: ParetoMetric; label: MultiLangString }[] = [
+  { value: 'downtime', label: MSG.machineDash.metricDowntime },
+  { value: 'frequency', label: MSG.machineDash.metricFrequency }
 ];
 /** Pareto stop-class filter: unplanned vs. planned stops. */
 type ParetoClass = 'unplanned' | 'planned';
-const PARETO_CLASS_OPTIONS: { value: ParetoClass; label: string }[] = [
-  { value: 'unplanned', label: 'Arrêts non planifiés' },
-  { value: 'planned', label: 'Arrêts planifiés' }
+const PARETO_CLASS_OPTIONS: { value: ParetoClass; label: MultiLangString }[] = [
+  { value: 'unplanned', label: MSG.machineDash.classOptUnplanned },
+  { value: 'planned', label: MSG.machineDash.classOptPlanned }
 ];
 /** Bar palette for the Pareto chart (cycled). */
 const BAR_COLORS = ['#f59e0b', '#ef4444', '#d4a5a5', '#9aa1ad', '#8b5cf6', '#10b981'];
@@ -136,19 +145,19 @@ export class MfMachineDashboard extends LitElement {
             <ix-typography format="h3">${m.name}</ix-typography>
             <ix-chip outline>${m.loc ?? m.type}</ix-chip>
             <span class="grow"></span>
-            <ix-icon-button ghost icon="close" title="Fermer" @click=${this.close}></ix-icon-button>
+            <ix-icon-button ghost icon="close" title=${localize(MSG.machineDash.close)} @click=${this.close}></ix-icon-button>
           </div>
           <div class="grid">
             <section class="q q-params">
-              <h4>Paramètres Process</h4>
+              <h4>${localizeDir(MSG.machineDash.processParams)}</h4>
               ${this.renderParams()}
             </section>
             ${this.renderToolbar()}
             <section class="q q-alarms">
-              <h4>Suivi Alarmes</h4>
+              <h4>${localizeDir(MSG.machineDash.alarmTracking)}</h4>
               <div class="placeholder">
                 <ix-icon name="bell" size="24"></ix-icon>
-                <span>Suivi des alarmes — non disponible (à venir).</span>
+                <span>${localizeDir(MSG.machineDash.alarmTrackingPlaceholder)}</span>
               </div>
             </section>
             <section class="q q-kpi">
@@ -219,31 +228,31 @@ export class MfMachineDashboard extends LitElement {
         <ix-icon-button
           ghost
           icon="chevron-left"
-          title="Période précédente"
+          title=${localize(MSG.machineDash.prevPeriod)}
           @click=${() => this.shiftPeriod(1)}
         ></ix-icon-button>
         <label class="ctl">
-          <span>Période</span>
+          <span>${localizeDir(MSG.machineDash.period)}</span>
           <ix-select
             .value=${this.period}
             @valueChange=${(e: CustomEvent<string | string[]>) => this.onPeriod(e.detail)}
           >
             ${PERIODS.map(
-              (p) => html`<ix-select-item value=${p} label=${PERIOD_LABEL[p]}></ix-select-item>`
+              (p) => html`<ix-select-item value=${p} label=${localize(PERIOD_LABEL[p])}></ix-select-item>`
             )}
           </ix-select>
         </label>
         <ix-icon-button
           ghost
           icon="chevron-right"
-          title="Période suivante"
+          title=${localize(MSG.machineDash.nextPeriod)}
           ?disabled=${this.offsetMs === 0}
           @click=${() => this.shiftPeriod(-1)}
         ></ix-icon-button>
         ${this.period === 'custom'
           ? html`
               <label class="ctl">
-                <span>Début</span>
+                <span>${localizeDir(MSG.machineDash.start)}</span>
                 <ix-date-input
                   format=${DATE_FORMAT}
                   .value=${this.customStart}
@@ -251,7 +260,7 @@ export class MfMachineDashboard extends LitElement {
                 ></ix-date-input>
               </label>
               <label class="ctl">
-                <span>Fin</span>
+                <span>${localizeDir(MSG.machineDash.end)}</span>
                 <ix-date-input
                   format=${DATE_FORMAT}
                   .value=${this.customEnd}
@@ -269,12 +278,12 @@ export class MfMachineDashboard extends LitElement {
   /** "du <début> au <fin>" for the resolved period — always shown. */
   private rangeLabel(): string {
     const { start, end } = this.resolveRange();
-    return `du ${formatDateTime(start.getTime())} au ${formatDateTime(end.getTime())}`;
+    return rangeLabelMsg(formatDateTime(start.getTime()), formatDateTime(end.getTime()));
   }
 
   private renderParams(): TemplateResult {
     const kpis = this.machine.kpis ?? [];
-    if (kpis.length === 0) return html`<div class="muted">Aucun paramètre process configuré.</div>`;
+    if (kpis.length === 0) return html`<div class="muted">${localizeDir(MSG.machineDash.noProcessParams)}</div>`;
     return html`
       <div class="params">
         ${kpis.map((k) => {
@@ -306,20 +315,20 @@ export class MfMachineDashboard extends LitElement {
     const segs = this.segments;
     const head = html`
       <div class="block-head">
-        <div class="block-title">Gantt état machine</div>
+        <div class="block-title">${localizeDir(MSG.machineDash.ganttTitle)}</div>
         <span class="grow"></span>
         <ix-icon-button
           ghost
           size="16"
           icon="export"
-          title="Exporter le Gantt (CSV)"
+          title=${localize(MSG.machineDash.exportGanttCsv)}
           ?disabled=${segs.length === 0}
           @click=${this.exportGanttCsv}
         ></ix-icon-button>
       </div>
     `;
     if (segs.length === 0) {
-      return html`${head}<div class="muted small">Aucune donnée d'historique sur la période.</div>`;
+      return html`${head}<div class="muted small">${localizeDir(MSG.machineDash.noHistory)}</div>`;
     }
     const start = segs[0].startMs;
     const total = segs.at(-1)!.endMs - start || 1;
@@ -346,7 +355,14 @@ export class MfMachineDashboard extends LitElement {
   }
 
   private readonly exportGanttCsv = (): void => {
-    const rows: string[][] = [['Début', 'Fin', 'État', "Cause d'arrêt"]];
+    const rows: string[][] = [
+      [
+        localize(MSG.machineDash.csvStart),
+        localize(MSG.machineDash.csvEnd),
+        localize(MSG.machineDash.csvState),
+        localize(MSG.machineDash.csvStopCause)
+      ]
+    ];
     for (const s of this.segments) {
       rows.push([
         formatDateTime(s.startMs),
@@ -366,9 +382,9 @@ export class MfMachineDashboard extends LitElement {
     return html`
       <div class="gantt-tip" style="left:${tip.x}px;top:${tip.y}px">
         <div class="tip-state" style="color:${stateColor(this.mapping, s.state)}">${STATE_LABELS[s.state]}</div>
-        <div>Début : ${formatDateTime(s.startMs)}</div>
-        <div>Fin : ${formatDateTime(s.endMs)}</div>
-        ${s.causeLabel ? html`<div>Cause : ${s.causeLabel}</div>` : ''}
+        <div>${localizeDir(MSG.machineDash.tipStart)} ${formatDateTime(s.startMs)}</div>
+        <div>${localizeDir(MSG.machineDash.tipEnd)} ${formatDateTime(s.endMs)}</div>
+        ${s.causeLabel ? html`<div>${localizeDir(MSG.machineDash.tipCause)} ${s.causeLabel}</div>` : ''}
       </div>
     `;
   }
@@ -397,7 +413,7 @@ export class MfMachineDashboard extends LitElement {
     const rows = this.paretoTop > 0 ? sorted.slice(0, this.paretoTop) : sorted;
     const head = html`
       <div class="block-head">
-        <div class="block-title">Pareto des arrêts</div>
+        <div class="block-title">${localizeDir(MSG.machineDash.paretoTitle)}</div>
         <span class="grow"></span>
         <ix-select
           class="class-select"
@@ -405,7 +421,7 @@ export class MfMachineDashboard extends LitElement {
           @valueChange=${(e: CustomEvent<string | string[]>) => this.onParetoClass(e.detail)}
         >
           ${PARETO_CLASS_OPTIONS.map(
-            (o) => html`<ix-select-item value=${o.value} label=${o.label}></ix-select-item>`
+            (o) => html`<ix-select-item value=${o.value} label=${localize(o.label)}></ix-select-item>`
           )}
         </ix-select>
         <ix-select
@@ -414,7 +430,7 @@ export class MfMachineDashboard extends LitElement {
           @valueChange=${(e: CustomEvent<string | string[]>) => this.onParetoMetric(e.detail)}
         >
           ${PARETO_METRIC_OPTIONS.map(
-            (o) => html`<ix-select-item value=${o.value} label=${o.label}></ix-select-item>`
+            (o) => html`<ix-select-item value=${o.value} label=${localize(o.label)}></ix-select-item>`
           )}
         </ix-select>
         <ix-select
@@ -423,29 +439,31 @@ export class MfMachineDashboard extends LitElement {
           @valueChange=${(e: CustomEvent<string | string[]>) => this.onParetoTop(e.detail)}
         >
           ${PARETO_TOP_OPTIONS.map(
-            (o) => html`<ix-select-item value=${o.value} label=${o.label}></ix-select-item>`
+            (o) => html`<ix-select-item value=${o.value} label=${localize(o.label)}></ix-select-item>`
           )}
         </ix-select>
         <ix-icon-button
           ghost
           size="16"
           icon="export"
-          title="Exporter le Pareto (CSV)"
+          title=${localize(MSG.machineDash.exportParetoCsv)}
           ?disabled=${sorted.length === 0}
           @click=${this.exportParetoCsv}
         ></ix-icon-button>
         <ix-button
           variant="secondary"
-          title="Ouvrir l'analyse des causes d'arrêts filtrée sur cette machine"
+          title=${localize(MSG.machineDash.openAnalysisTitle)}
           @click=${this.openAnalysis}
         >
-          <ix-icon name="analysis" slot="icon"></ix-icon>Analyser
+          <ix-icon name="analysis" slot="icon"></ix-icon>${localizeDir(MSG.machineDash.analyse)}
         </ix-button>
       </div>
     `;
     if (rows.length === 0) {
-      const label = this.paretoClass === 'planned' ? 'planifié' : 'non planifié';
-      return html`${head}<div class="muted small">Aucun arrêt ${label} sur la période.</div>`;
+      const label = this.paretoClass === 'planned'
+        ? localize(MSG.machineDash.classPlanned)
+        : localize(MSG.machineDash.classUnplanned);
+      return html`${head}<div class="muted small">${noStopOfClassMsg(label)}</div>`;
     }
     return html`${head}${this.renderParetoChart(rows, sorted)}`;
   }
@@ -517,7 +535,14 @@ export class MfMachineDashboard extends LitElement {
     const sorted = this.paretoRows();
     const totalAll = sorted.reduce((s, r) => s + this.metricVal(r), 0) || 1;
     const rows: string[][] = [
-      ['Cause', 'Classification', "Temps d'arrêt (s)", "Temps d'arrêt", 'Occurrences', 'Cumul %']
+      [
+        localize(MSG.machineDash.csvCause),
+        localize(MSG.machineDash.csvClassification),
+        localize(MSG.machineDash.csvDowntimeSec),
+        localize(MSG.machineDash.csvDowntime),
+        localize(MSG.machineDash.csvOccurrences),
+        localize(MSG.machineDash.csvCumulPct)
+      ]
     ];
     let cum = 0;
     for (const r of sorted) {

@@ -20,6 +20,7 @@ import {
   type StateRule
 } from '../types.js';
 import { dialogStyles } from './dialog-styles.js';
+import { MSG, localize, localizeDir } from '../i18n.js';
 
 interface IxValueEvent {
   detail: string | number;
@@ -44,15 +45,15 @@ export class MfStateMappingDialog extends LitElement {
       <div class="overlay" @click=${this.close}>
         <div class="panel" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
-            <ix-typography format="h3">Mappings d'état</ix-typography>
+            <ix-typography format="h3">${localizeDir(MSG.stateMapping.title)}</ix-typography>
             <ix-icon-button ghost icon="close" @click=${this.close}></ix-icon-button>
           </div>
           <div class="panel-body">
             ${this.renderSelector()} ${mapping ? this.renderEditor(mapping) : ''}
           </div>
           <div class="panel-foot">
-            <ix-button variant="secondary" @click=${this.close}>${this.canEdit ? 'Annuler' : 'Fermer'}</ix-button>
-            ${this.canEdit ? html`<ix-button @click=${this.apply}>Enregistrer</ix-button>` : ''}
+            <ix-button variant="secondary" @click=${this.close}>${this.canEdit ? localizeDir(MSG.stateMapping.cancel) : localizeDir(MSG.stateMapping.close)}</ix-button>
+            ${this.canEdit ? html`<ix-button @click=${this.apply}>${localizeDir(MSG.stateMapping.save)}</ix-button>` : ''}
           </div>
         </div>
       </div>
@@ -70,7 +71,7 @@ export class MfStateMappingDialog extends LitElement {
     return html`
       <div class="selector">
         <ix-select
-          label="Mapping"
+          label=${localize(MSG.stateMapping.mapping)}
           .value=${this.working[this.selected]?.id ?? ''}
           @valueChange=${(e: IxValueEvent) => this.selectById(String(e.detail))}
         >
@@ -79,12 +80,12 @@ export class MfStateMappingDialog extends LitElement {
           )}
         </ix-select>
         <ix-button variant="secondary" @click=${this.addMapping}>
-          <ix-icon name="plus" slot="icon"></ix-icon>Nouveau
+          <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.stateMapping.newItem)}
         </ix-button>
         <ix-icon-button
           ghost
           icon="trashcan"
-          title="Supprimer ce mapping"
+          title=${localize(MSG.stateMapping.deleteMapping)}
           @click=${this.removeMapping}
         ></ix-icon-button>
       </div>
@@ -95,24 +96,24 @@ export class MfStateMappingDialog extends LitElement {
     return html`
       <div class="grid2">
         <ix-input
-          label="Nom"
+          label=${localize(MSG.stateMapping.name)}
           .value=${mapping.name}
           @valueChange=${(e: IxValueEvent) => this.patch({ name: String(e.detail) })}
         ></ix-input>
         <ix-select
-          label="État par défaut"
+          label=${localize(MSG.stateMapping.fallbackState)}
           .value=${mapping.fallback}
           @valueChange=${(e: IxValueEvent) => this.patch({ fallback: e.detail as MachineState })}
         >
           ${STATES.map((s) => html`<ix-select-item label=${s} value=${s}></ix-select-item>`)}
         </ix-select>
       </div>
-      <div class="subhead">Règles (première correspondance gagne)</div>
+      <div class="subhead">${localizeDir(MSG.stateMapping.rulesHeading)}</div>
       <div class="rules">${mapping.rules.map((r, i) => this.renderRule(r, i))}</div>
       <ix-button class="link" variant="secondary" @click=${this.addRule}>
-        <ix-icon name="plus" slot="icon"></ix-icon>Ajouter une règle
+        <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.stateMapping.addRule)}
       </ix-button>
-      <div class="subhead">Couleurs par état</div>
+      <div class="subhead">${localizeDir(MSG.stateMapping.colorsHeading)}</div>
       <div class="colors">${STATE_COLOR_KEYS.map((k) => this.renderColor(mapping, k))}</div>
     `;
   }
@@ -147,12 +148,12 @@ export class MfStateMappingDialog extends LitElement {
           ${STATES.map((s) => html`<ix-select-item label=${s} value=${s}></ix-select-item>`)}
         </ix-select>
         <ix-number-input
-          label="min"
+          label=${localize(MSG.stateMapping.min)}
           .value=${rule.min ?? 0}
           @valueChange=${(e: IxValueEvent) => this.patchRule(i, { min: Number(e.detail) })}
         ></ix-number-input>
         <ix-number-input
-          label="max"
+          label=${localize(MSG.stateMapping.max)}
           .value=${rule.max ?? 0}
           @valueChange=${(e: IxValueEvent) => this.patchRule(i, { max: Number(e.detail) })}
         ></ix-number-input>
@@ -194,7 +195,7 @@ export class MfStateMappingDialog extends LitElement {
     const id = `map-${Date.now()}`;
     this.working = [
       ...this.working,
-      { id, name: 'Nouveau mapping', fallback: 'ok', rules: [] }
+      { id, name: localize(MSG.stateMapping.newMappingName), fallback: 'ok', rules: [] }
     ];
     this.selected = this.working.length - 1;
   }

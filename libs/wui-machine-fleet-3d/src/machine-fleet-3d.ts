@@ -27,6 +27,7 @@ import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
 import { templateSeed } from './machine-fleet-3d/data/atelier-templates.js';
 import { normDp, toNumber } from './machine-fleet-3d/data/dp-utils.js';
+import { MSG, localizeDir } from './machine-fleet-3d/i18n.js';
 import { FleetStore } from '@visuelconcept/wui-fleet-core/data/fleet-store.js';
 import {
   DEFAULT_STATE_MAPPINGS,
@@ -169,8 +170,8 @@ export class WuiMachineFleet3d extends LitElement {
     if (this.loading) return html`<div class="loading"><ix-spinner></ix-spinner></div>`;
     if (!this.active) {
       return html`<div class="loading">
-        <ix-typography>Atelier introuvable.</ix-typography>
-        <ix-button @click=${() => this.back()}>Retour</ix-button>
+        <ix-typography>${localizeDir(MSG.shell.notFound)}</ix-typography>
+        <ix-button @click=${() => this.back()}>${localizeDir(MSG.shell.back)}</ix-button>
       </div>`;
     }
     return html`
