@@ -1,0 +1,23 @@
+// Menu fragment for @visuelconcept/wui-ampere.
+// Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
+[
+  {
+    "title": { "en_US": "Ampère (electrical)", "fr": "Ampère (électrique)", "de_AT": "Ampère (elektrisch)" },
+    "icon": "flash",
+    "path": "/ampere",
+    "module": "/data/dashboard-wc/pages/ampere.js",
+    "routeId": "ampere",
+    "component": "wui-ampere",
+    "permission": ["connected"]
+  },
+  {
+    "title": { "en_US": "Ampère (electrical)", "fr": "Ampère (électrique)", "de_AT": "Ampère (elektrisch)" },
+    "icon": "flash",
+    "path": "/ampere/:networkid",
+    "module": "/data/dashboard-wc/pages/ampere.js",
+    "routeId": "ampere-detail",
+    "component": "wui-ampere",
+    "permission": ["connected"],
+    "hidden": true
+  }
+]

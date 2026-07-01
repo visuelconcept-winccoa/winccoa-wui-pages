@@ -32,6 +32,13 @@
     "description": "Mosaic page — free drag/resize display wall embedding other dashboard views as chromeless same-origin iframes; 1 DP per board (Mosaic_Board) + an overview list."
   },
   {
+    "page": "ampere",
+    "name": "@visuelconcept/wui-ampere",
+    "title": "Ampère (electrical)",
+    "tier": 1,
+    "description": "Ampère pages (/ampere + /ampere/:networkid) — draw single-line (mono-filaire) electrical distribution networks (TGBT/switchboards, disconnectors, breakers, busbars, transformers…) with an in-place edit mode, an IEC 60617 symbol toolbox, free per-device DP binding, live wire energisation by graph traversal through closed switchgear, free/attached live measurement labels, and a proposal-only AI assistant that generates network models. Stored as Ampere_Network DPs."
+  },
+  {
     "page": "report-builder",
     "name": "@visuelconcept/wui-report-builder",
     "title": "Report Builder",
