@@ -157,14 +157,18 @@ export function rotatePoint(p: Point, center: Point, deg: Rotation): Point {
   const dx = p.x - center.x;
   const dy = p.y - center.y;
   switch (deg) {
-    case 90:
+    case 90: {
       return { x: center.x - dy, y: center.y + dx };
-    case 180:
+    }
+    case 180: {
       return { x: center.x - dx, y: center.y - dy };
-    case 270:
+    }
+    case 270: {
       return { x: center.x + dy, y: center.y - dx };
-    default:
+    }
+    default: {
       return { x: p.x, y: p.y };
+    }
   }
 }
 

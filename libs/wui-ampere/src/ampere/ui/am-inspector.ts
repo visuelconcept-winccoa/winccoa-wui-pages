@@ -91,16 +91,16 @@ export class AmInspector extends LitElement {
             )}
           `
         : nothing}
-      ${def.role !== 'source'
-        ? html`<label class="check">
+      ${def.role === 'source'
+        ? nothing
+        : html`<label class="check">
             <input
               type="checkbox"
               ?checked=${node.source}
               @change=${(e: Event) => this.patchNode(node.id, { source: (e.target as HTMLInputElement).checked })}
             />
             <span>${localizeDir(MSG.inspector.isSource)}</span>
-          </label>`
-        : nothing}
+          </label>`}
     `;
   }
 
@@ -170,6 +170,7 @@ export class AmInspector extends LitElement {
   }
 
   private emit(type: string, detail: unknown): void {
+    // eslint-disable-next-line no-restricted-syntax -- `type` is a fixed internal `wui:*` event name; the rule only validates string literals.
     this.dispatchEvent(new CustomEvent(type, { detail, bubbles: true, composed: true }));
   }
 }

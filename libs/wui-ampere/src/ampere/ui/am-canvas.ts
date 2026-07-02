@@ -51,6 +51,9 @@ export interface Selection {
   id: string;
 }
 
+/** Selection-changed event name (emitted with a {@link Selection} or `null` to clear). */
+const WUI_SELECT = 'wui:select';
+
 @customElement('am-canvas')
 export class AmCanvas extends LitElement {
   static override readonly styles = [IXCoreStyles, canvasStyles()];
@@ -254,7 +257,7 @@ export class AmCanvas extends LitElement {
       this.cancelWire();
       return;
     }
-    this.emit('wui:select', null);
+    this.emit(WUI_SELECT, null);
   }
 
   private onCanvasMove(e: PointerEvent): void {
@@ -264,21 +267,21 @@ export class AmCanvas extends LitElement {
   private onNodeDown(e: PointerEvent, node: Node): void {
     if (!this.editing || this.tool !== 'select') return;
     e.stopPropagation();
-    this.emit('wui:select', { kind: 'node', id: node.id });
+    this.emit(WUI_SELECT, { kind: 'node', id: node.id });
     this.beginDrag(e, node.id, 'node', { x: node.x, y: node.y });
   }
 
   private onMeasDown(e: PointerEvent, m: Measurement): void {
     if (!this.editing || this.tool !== 'select') return;
     e.stopPropagation();
-    this.emit('wui:select', { kind: 'measurement', id: m.id });
+    this.emit(WUI_SELECT, { kind: 'measurement', id: m.id });
     this.beginDrag(e, m.id, 'meas', { x: m.x, y: m.y });
   }
 
   private onEdgeDown(e: PointerEvent, id: string): void {
     if (!this.editing || this.tool !== 'select') return;
     e.stopPropagation();
-    this.emit('wui:select', { kind: 'edge', id });
+    this.emit(WUI_SELECT, { kind: 'edge', id });
   }
 
   private onPortDown(e: PointerEvent, ref: PortRef): void {
@@ -355,6 +358,7 @@ export class AmCanvas extends LitElement {
   }
 
   private emit(type: string, detail: unknown): void {
+    // eslint-disable-next-line no-restricted-syntax -- `type` is a fixed internal `wui:*` event name; the rule only validates string literals.
     this.dispatchEvent(new CustomEvent(type, { detail, bubbles: true, composed: true }));
   }
 }

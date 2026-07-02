@@ -73,6 +73,7 @@ export class AmNetworkTable extends LitElement {
   }
 
   private emit(type: string, id: string): void {
+    // eslint-disable-next-line no-restricted-syntax -- `type` is a fixed internal `wui:*` event name; the rule only validates string literals.
     this.dispatchEvent(new CustomEvent(type, { detail: { id }, bubbles: true, composed: true }));
   }
 }

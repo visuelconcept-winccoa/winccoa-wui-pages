@@ -82,7 +82,7 @@ function normDp(dp: string): string {
   const first = s.indexOf(':');
   if (first > 0 && !s.slice(0, first).includes('.')) s = s.slice(first + 1);
   const cfg = s.indexOf(':');
-  if (cfg >= 0) s = s.slice(0, cfg);
+  if (cfg !== -1) s = s.slice(0, cfg);
   return s.toLowerCase();
 }
 
@@ -147,6 +147,11 @@ export class WuiAmpere extends LitElement {
     `;
   }
 
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.dpSub.unsubscribe();
+  }
+
   protected override firstUpdated(): void {
     void this.refresh();
   }
@@ -160,11 +165,6 @@ export class WuiAmpere extends LitElement {
 
   protected override updated(): void {
     this.syncSubscription();
-  }
-
-  override disconnectedCallback(): void {
-    super.disconnectedCallback();
-    this.dpSub.unsubscribe();
   }
 
   // --- body ------------------------------------------------------------------
@@ -294,7 +294,7 @@ export class WuiAmpere extends LitElement {
   /** (Re)subscribe when the set of needed DPs changes. */
   private syncSubscription(): void {
     const dps = this.liveDps(this.selectedNetwork());
-    const key = dps.slice().sort().join('|');
+    const key = [...dps].sort().join('|');
     if (key === this.subscribedKey) return;
     this.subscribedKey = key;
     this.dpSub.unsubscribe();
@@ -306,7 +306,9 @@ export class WuiAmpere extends LitElement {
     try {
       this.dpSub = this.api.dpConnect(dps, true).subscribe({
         next: (e: { dp: string[]; value: unknown[] }) => this.onLive(e),
-        error: () => undefined
+        error: () => {
+          // dpConnect stream error (e.g. an unbound DP) — values stay at their last known.
+        }
       });
     } catch {
       // dpConnect failed (e.g. an unbound DP) — values stay at their last known.
@@ -315,11 +317,11 @@ export class WuiAmpere extends LitElement {
 
   private onLive(e: { dp: string[]; value: unknown[] }): void {
     const next = new Map(this.live);
-    e.dp.forEach((dp, i) => {
+    for (const [i, dp] of e.dp.entries()) {
       const raw = e.value[i];
       const v = typeof raw === 'number' || typeof raw === 'string' ? raw : Number(raw);
       next.set(normDp(dp), v as number | string);
-    });
+    }
     this.live = next;
   }
 

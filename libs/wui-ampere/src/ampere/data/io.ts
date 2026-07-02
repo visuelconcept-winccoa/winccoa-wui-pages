@@ -59,7 +59,7 @@ export function parseNetworks(text: string): Network[] {
     list = raw;
   } else if (raw && typeof raw === 'object') {
     const obj = raw as Record<string, unknown>;
-    if (Array.isArray(obj.networks)) list = obj.networks;
+    if (Array.isArray(obj['networks'])) list = obj['networks'];
     else if ('nodes' in obj || 'name' in obj) list = [obj];
   }
   if (!Array.isArray(list)) {
@@ -87,33 +87,33 @@ function asRotation(value: unknown): Rotation {
 }
 
 function normalizeNode(item: Record<string, unknown>, index: number): Node | null {
-  const symbol = asSymbol(item.symbol);
+  const symbol = asSymbol(item['symbol']);
   if (!symbol) return null;
   return {
-    id: asString(item.id) || `n-${index}`,
+    id: asString(item['id']) || `n-${index}`,
     symbol,
-    label: asString(item.label),
-    x: asNumber(item.x, 0),
-    y: asNumber(item.y, 0),
-    rotation: asRotation(item.rotation),
-    dp: asString(item.dp),
-    closedValue: asNumber(item.closedValue, 1),
-    source: Boolean(item.source)
+    label: asString(item['label']),
+    x: asNumber(item['x'], 0),
+    y: asNumber(item['y'], 0),
+    rotation: asRotation(item['rotation']),
+    dp: asString(item['dp']),
+    closedValue: asNumber(item['closedValue'], 1),
+    source: Boolean(item['source'])
   };
 }
 
 function normalizeEdge(item: Record<string, unknown>, index: number, portsById: Map<string, Set<string>>): Edge | null {
-  const from = item.from as Record<string, unknown> | undefined;
-  const to = item.to as Record<string, unknown> | undefined;
+  const from = item['from'] as Record<string, unknown> | undefined;
+  const to = item['to'] as Record<string, unknown> | undefined;
   if (!from || !to) return null;
-  const fromNode = asString(from.nodeId);
-  const toNode = asString(to.nodeId);
-  const fromPort = asString(from.port);
-  const toPort = asString(to.port);
+  const fromNode = asString(from['nodeId']);
+  const toNode = asString(to['nodeId']);
+  const fromPort = asString(from['port']);
+  const toPort = asString(to['port']);
   // Drop edges that reference an unknown node or a port the symbol does not have.
   if (!portsById.get(fromNode)?.has(fromPort) || !portsById.get(toNode)?.has(toPort)) return null;
   return {
-    id: asString(item.id) || `e-${index}`,
+    id: asString(item['id']) || `e-${index}`,
     from: { nodeId: fromNode, port: fromPort },
     to: { nodeId: toNode, port: toPort }
   };
@@ -123,21 +123,21 @@ function normalizeMeasurement(item: Record<string, unknown>, index: number): Mea
   const base = blankMeasurement();
   return {
     ...base,
-    id: asString(item.id) || `m-${index}`,
-    dp: asString(item.dp),
-    label: asString(item.label),
-    unit: asString(item.unit) || base.unit,
-    decimals: asNumber(item.decimals, base.decimals),
-    nodeId: asString(item.nodeId),
-    x: asNumber(item.x, 0),
-    y: asNumber(item.y, 0)
+    id: asString(item['id']) || `m-${index}`,
+    dp: asString(item['dp']),
+    label: asString(item['label']),
+    unit: asString(item['unit']) || base.unit,
+    decimals: asNumber(item['decimals'], base.decimals),
+    nodeId: asString(item['nodeId']),
+    x: asNumber(item['x'], 0),
+    y: asNumber(item['y'], 0)
   };
 }
 
 /** Coerce an arbitrary object into a valid {@link Network} (drops bad nodes/edges). */
 export function normalizeNetwork(item: Record<string, unknown>): Network {
   const base = blankNetwork();
-  const rawNodes = Array.isArray(item.nodes) ? item.nodes : [];
+  const rawNodes = Array.isArray(item['nodes']) ? item['nodes'] : [];
   const nodes = rawNodes
     .map((n, i) => normalizeNode(n as Record<string, unknown>, i))
     .filter((n): n is Node => n != null);
@@ -145,20 +145,20 @@ export function normalizeNetwork(item: Record<string, unknown>): Network {
   const portsById = new Map<string, Set<string>>(
     nodes.map((n) => [n.id, new Set(Object.keys(SYMBOLS[n.symbol].ports))])
   );
-  const rawEdges = Array.isArray(item.edges) ? item.edges : [];
+  const rawEdges = Array.isArray(item['edges']) ? item['edges'] : [];
   const edges = rawEdges
     .map((e, i) => normalizeEdge(e as Record<string, unknown>, i, portsById))
     .filter((e): e is Edge => e != null);
 
-  const rawMeas = Array.isArray(item.measurements) ? item.measurements : [];
+  const rawMeas = Array.isArray(item['measurements']) ? item['measurements'] : [];
   const measurements = rawMeas.map((m, i) => normalizeMeasurement(m as Record<string, unknown>, i));
 
   return {
     ...base,
-    id: asString(item.id),
-    name: asString(item.name),
-    description: asString(item.description),
-    updatedAt: asString(item.updatedAt),
+    id: asString(item['id']),
+    name: asString(item['name']),
+    description: asString(item['description']),
+    updatedAt: asString(item['updatedAt']),
     nodes,
     edges,
     measurements

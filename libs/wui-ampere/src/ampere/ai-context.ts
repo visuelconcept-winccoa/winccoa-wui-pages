@@ -79,8 +79,8 @@ function parseProposal(raw: string): Network | null {
   if (data == null || typeof data !== 'object') return null;
   // Tolerate either a bare Network or a { network: {...} } wrapper.
   const obj = data as Record<string, unknown>;
-  const candidate = (obj.network && typeof obj.network === 'object' ? obj.network : obj) as Record<string, unknown>;
-  if (!Array.isArray(candidate.nodes)) return null;
+  const candidate = (obj['network'] && typeof obj['network'] === 'object' ? obj['network'] : obj) as Record<string, unknown>;
+  if (!Array.isArray(candidate['nodes'])) return null;
   const network = normalizeNetwork(candidate);
   return network.nodes.length > 0 ? network : null;
 }
