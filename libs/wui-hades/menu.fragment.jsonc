@@ -1,0 +1,5 @@
+// Menu fragment for @visuelconcept/wui-hades. Merge into the host `entries` (idempotent by routeId).
+[
+  { "title": { "en_US": "Hades — Tunnel", "fr": "Hadès — Tunnel", "de_AT": "Hades — Tunnel" }, "icon": "location", "path": "/hades", "module": "/data/dashboard-wc/pages/hades.js", "routeId": "hades", "component": "wui-hades" },
+  { "path": "/hades/:tunnel", "module": "/data/dashboard-wc/pages/hades.js", "routeId": "hades-detail", "component": "wui-hades", "hidden": true }
+]

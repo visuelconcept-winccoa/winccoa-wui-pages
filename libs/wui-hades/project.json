@@ -1,0 +1,12 @@
+{
+  "name": "wui-hades",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/wui-hades/src",
+  "projectType": "library",
+  "tags": ["package", "standalone-page"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  }
+}

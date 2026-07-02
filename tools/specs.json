@@ -108,5 +108,13 @@
     "description": "Process Monitor page (/process-monitor) — pmon manager console with one tab per connected server (distributed via per-system ProcessMonitor_Node DPs): status + start/stop/restart + restart-all, plus project ZIP upload/deploy across all servers (optional folder purge, 7-Zip extraction into non-protected folders, config.env, optional restart) with GxP audit-trail tracing (session user). Bridged via /api/process-monitor to the processMonitor MSA manager (per-system agent + aggregator). DPL import handled elsewhere.",
     "backend": { "mount": "/api/process-monitor", "routeClass": "ProcessMonitorRoute", "routeFile": "processMonitorRoute", "srcFiles": ["processMonitorController.ts", "processMonitorRoute.ts"] },
     "managers": ["processMonitor"]
+  },
+  {
+    "page": "hades",
+    "name": "@visuelconcept/wui-hades",
+    "title": "Hades — Tunnel Management",
+    "tier": 2,
+    "description": "Hades road-tunnel management pages (/hades + /hades/:tunnel) — PK-referenced segment editor with a live regulatory-compliance advisor (EU 2004/54/EC / FR CETU / CH ASTRA profiles, selectable per tunnel), procedural 3D digital twin (three.js) of the tube(s), typed equipment catalog bound live to datapoints, linear PK synoptic, and operating modes whose reflex sequences send confirmed + audited dpSet commands. Tunnels stored as Hades_Tunnel DPs; commands traced to AuditTrail_Hades. Manager: hadesSim (plant simulation).",
+    "managers": ["hadesSim"]
   }
 ]

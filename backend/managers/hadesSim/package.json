@@ -1,0 +1,7 @@
+{
+  "name": "hades-tunnel-sim",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Road-tunnel plant simulator (WinCC OA JavaScript Manager) for the Hades page.",
+  "main": "index.js"
+}

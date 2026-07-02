@@ -1,0 +1,39 @@
+{
+  "name": "@visuelconcept/wui-hades",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Hades — standalone WinCC OA WebUI page: integrated road-tunnel management. PK-referenced segment editor with a built-in regulatory-compliance advisor (EU 2004/54/EC / FR CETU / CH ASTRA profiles, selectable per tunnel), procedurally generated 3D digital twin (Three.js) of the tube(s), typed equipment catalog (ventilation, lighting, SOS niches, sensors, VMS, barriers…) bound live to datapoints, linear PK synoptic, and operating modes with confirmed + audited field commands. Ships the hadesSim manager (traffic/air-quality/ventilation simulation).",
+  "author": { "name": "Visuel Concept" },
+  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page", "tunnel"],
+  "license": "MIT",
+  "dependencies": {
+    "@visuelconcept/wui-kit": "*"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "tsyringe": "*",
+    "three": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-data-selector-data": "*",
+    "@wincc-oa/wui-models": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-iam-data": "*",
+    "@wincc-oa/wui-i18n-shared": "*"
+  },
+  "exports": { "./*": { "types": "./types/*", "import": "./*" } },
+  "wuiPage": {
+    "route": "/hades",
+    "routes": ["/hades", "/hades/:tunnel"],
+    "routeId": "hades",
+    "component": "wui-hades",
+    "module": "/data/dashboard-wc/pages/hades.js",
+    "icon": "location",
+    "tier": 2,
+    "backend": {
+      "managers": ["hadesSim (optional, tunnel simulation)"]
+    }
+  }
+}
