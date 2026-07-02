@@ -15,26 +15,35 @@
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { kindLabel } from '../data/catalog.js';
+import { CATALOG_KINDS, kindLabel } from '../data/catalog.js';
 import { ALL_PROFILES, checkCompliance, profileLabel, type ComplianceIssue } from '../data/compliance.js';
-import { MSG, localize, localizeDir, zoneLabel } from '../i18n.js';
+import { fixIssue, isFixable, placeSeries, type SeriesOptions } from '../data/placement.js';
+import { MSG, dirLabel, localize, localizeDir, sideLabel, zoneLabel } from '../i18n.js';
 import {
   pkLabel,
   tubeEquipment,
   tubeLengthM,
   type EquipmentDef,
+  type EquipmentKind,
+  type EquipmentSide,
   type LightingZone,
   type RegulatoryProfileId,
   type SegmentDef,
   type Tunnel,
-  type TubeDef
+  type TubeDef,
+  type TubeDirection
 } from '../types.js';
+import { dialogStyles } from './dialog-styles.js';
 
 interface IxValueEvent {
   detail: string;
 }
 
 const ZONES: readonly LightingZone[] = ['entrance', 'transition', 'interior', 'exit'];
+const DIRECTIONS: readonly TubeDirection[] = ['unidirectional', 'bidirectional'];
+const SIDES: readonly EquipmentSide[] = ['left', 'right', 'ceiling', 'roadway'];
+/** Series-dialog defaults. */
+const DEFAULT_SERIES_EVERY_M = 200;
 const SEVERITY_ICON: Record<ComplianceIssue['severity'], string> = {
   error: 'warning',
   warning: 'info',
@@ -43,13 +52,16 @@ const SEVERITY_ICON: Record<ComplianceIssue['severity'], string> = {
 
 @customElement('hd-editor')
 export class HdEditor extends LitElement {
-  static override readonly styles = [IXCoreStyles, editorStyles()];
+  static override readonly styles = [IXCoreStyles, dialogStyles(), editorStyles()];
 
   @property({ attribute: false }) tunnel: Tunnel | null = null;
   @property({ type: Boolean }) canEdit = false;
 
   @state() private working: Tunnel | null = null;
   @state() private dirty = false;
+  /** Tube targeted by the open "place a series" dialog ('' = closed). */
+  @state() private seriesTubeId = '';
+  @state() private seriesDraft: Omit<SeriesOptions, 'tubeId'> = freshSeriesDraft(0);
 
   protected override willUpdate(changed: PropertyValues): void {
     if (changed.has('tunnel')) {
@@ -88,9 +100,19 @@ export class HdEditor extends LitElement {
                 (issue) => html`
                   <div class="issue ${issue.severity}">
                     <ix-icon name=${SEVERITY_ICON[issue.severity]} size="16"></ix-icon>
-                    <div>
+                    <div class="issue-body">
                       <div>${issue.message}</div>
                       <span class="ref">${issue.ref}</span>
+                      ${this.canEdit && isFixable(issue)
+                        ? html`<ix-button
+                            class="fix"
+                            variant="secondary"
+                            @click=${() => this.onFix(issue)}
+                          >
+                            <ix-icon name="cogwheel" slot="icon"></ix-icon>
+                            ${localizeDir(MSG.editor.fix)}
+                          </ix-button>`
+                        : nothing}
                     </div>
                   </div>
                 `
@@ -98,6 +120,7 @@ export class HdEditor extends LitElement {
           <div class="disclaimer">${localizeDir(MSG.editor.disclaimer)}</div>
         </aside>
       </div>
+      ${this.seriesTubeId !== '' ? this.renderSeriesDialog(working) : nothing}
     `;
   }
 
@@ -143,6 +166,15 @@ export class HdEditor extends LitElement {
             ?disabled=${!this.canEdit}
             @valueChange=${(e: IxValueEvent) => this.patchTube(tube.id, { name: e.detail })}
           ></ix-input>
+          <ix-select
+            label=${localize(MSG.editor.direction)}
+            .value=${tube.direction}
+            ?disabled=${!this.canEdit}
+            @valueChange=${(e: IxValueEvent) =>
+              this.patchTube(tube.id, { direction: String(e.detail) as TubeDirection })}
+          >
+            ${DIRECTIONS.map((d) => html`<ix-select-item label=${dirLabel(d)} value=${d}></ix-select-item>`)}
+          </ix-select>
           <ix-number-input
             label=${localize(MSG.editor.lanes)}
             .value=${tube.lanes}
@@ -184,9 +216,14 @@ export class HdEditor extends LitElement {
           <ix-typography format="h4">
             ${localizeDir(MSG.editor.equipmentTitle)} (${equipment.length})
           </ix-typography>
-          <ix-button variant="secondary" ?disabled=${!this.canEdit} @click=${() => this.addEquipment(tube.id)}>
-            <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.editor.addEquipment)}
-          </ix-button>
+          <div class="equipment-actions">
+            <ix-button variant="secondary" ?disabled=${!this.canEdit} @click=${() => this.openSeries(tube)}>
+              <ix-icon name="add-circle" slot="icon"></ix-icon>${localizeDir(MSG.editor.placeSeries)}
+            </ix-button>
+            <ix-button variant="secondary" ?disabled=${!this.canEdit} @click=${() => this.addEquipment(tube.id)}>
+              <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.editor.addEquipment)}
+            </ix-button>
+          </div>
         </div>
         <div class="equipment-list">
           ${equipment.map(
@@ -269,7 +306,98 @@ export class HdEditor extends LitElement {
     `;
   }
 
+  private renderSeriesDialog(working: Tunnel): TemplateResult | typeof nothing {
+    const tube = working.tubes.find((t) => t.id === this.seriesTubeId);
+    if (!tube) return nothing;
+    const draft = this.seriesDraft;
+    return html`
+      <div class="overlay" @click=${() => (this.seriesTubeId = '')}>
+        <div class="panel series" @click=${(e: Event) => e.stopPropagation()}>
+          <div class="panel-head">
+            <ix-typography format="h3">${localizeDir(MSG.editor.seriesTitle)} — ${tube.name}</ix-typography>
+          </div>
+          <div class="panel-body">
+            <div class="grid2">
+              <ix-select
+                label=${localize(MSG.equipment.kind)}
+                .value=${draft.kind}
+                @valueChange=${(e: IxValueEvent) => this.patchSeries({ kind: String(e.detail) as EquipmentKind })}
+              >
+                ${CATALOG_KINDS.map(
+                  (k) => html`<ix-select-item label=${kindLabel(k)} value=${k}></ix-select-item>`
+                )}
+              </ix-select>
+              <ix-select
+                label=${localize(MSG.equipment.side)}
+                .value=${draft.side}
+                @valueChange=${(e: IxValueEvent) => this.patchSeries({ side: String(e.detail) as EquipmentSide })}
+              >
+                ${SIDES.map((s) => html`<ix-select-item label=${sideLabel(s)} value=${s}></ix-select-item>`)}
+              </ix-select>
+            </div>
+            <div class="grid3">
+              <ix-number-input
+                label=${localize(MSG.editor.seriesStart)}
+                .value=${draft.startM}
+                @valueChange=${(e: IxValueEvent) => this.patchSeries({ startM: Math.max(0, Number(e.detail)) })}
+              ></ix-number-input>
+              <ix-number-input
+                label=${localize(MSG.editor.seriesEnd)}
+                .value=${draft.endM}
+                @valueChange=${(e: IxValueEvent) => this.patchSeries({ endM: Math.max(0, Number(e.detail)) })}
+              ></ix-number-input>
+              <ix-number-input
+                label=${localize(MSG.editor.seriesEvery)}
+                .value=${draft.everyM}
+                @valueChange=${(e: IxValueEvent) => this.patchSeries({ everyM: Math.max(1, Number(e.detail)) })}
+              ></ix-number-input>
+            </div>
+            <ix-input
+              label=${localize(MSG.editor.seriesPrefix)}
+              .value=${draft.prefix ?? ''}
+              @valueChange=${(e: IxValueEvent) => this.patchSeries({ prefix: e.detail || undefined })}
+            ></ix-input>
+            <div class="series-count">
+              ${seriesCount(draft)} ${localizeDir(MSG.editor.seriesCount)}
+            </div>
+          </div>
+          <div class="panel-foot">
+            <ix-button variant="secondary" @click=${() => (this.seriesTubeId = '')}>
+              ${localizeDir(MSG.overview.cancel)}
+            </ix-button>
+            <ix-button ?disabled=${seriesCount(draft) === 0} @click=${() => this.applySeries()}>
+              ${localizeDir(MSG.editor.seriesAdd)}
+            </ix-button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   // --- mutations ---------------------------------------------------------------
+
+  private openSeries(tube: TubeDef): void {
+    this.seriesDraft = freshSeriesDraft(Math.round(tubeLengthM(tube)));
+    this.seriesTubeId = tube.id;
+  }
+
+  private patchSeries(part: Partial<Omit<SeriesOptions, 'tubeId'>>): void {
+    this.seriesDraft = { ...this.seriesDraft, ...part };
+  }
+
+  private applySeries(): void {
+    if (!this.working || this.seriesTubeId === '') return;
+    const result = placeSeries(this.working, { ...this.seriesDraft, tubeId: this.seriesTubeId });
+    this.seriesTubeId = '';
+    if (result.added > 0) this.touch(result.tunnel);
+  }
+
+  /** Generate the equipment satisfying one advisor deviation (unsaved edit). */
+  private onFix(issue: ComplianceIssue): void {
+    if (!this.working) return;
+    const result = fixIssue(this.working, issue);
+    if (result.added > 0) this.touch(result.tunnel);
+  }
 
   private touch(next: Tunnel): void {
     this.working = next;
@@ -386,6 +514,23 @@ export class HdEditor extends LitElement {
   }
 }
 
+/** Fresh series draft for a tube of the given length. */
+function freshSeriesDraft(tubeLength: number): Omit<SeriesOptions, 'tubeId'> {
+  return {
+    kind: 'sos-niche',
+    side: 'right',
+    startM: DEFAULT_SERIES_EVERY_M,
+    endM: Math.max(0, tubeLength - DEFAULT_SERIES_EVERY_M / 2),
+    everyM: DEFAULT_SERIES_EVERY_M
+  };
+}
+
+/** How many units the current draft would generate. */
+function seriesCount(draft: Omit<SeriesOptions, 'tubeId'>): number {
+  if (draft.everyM <= 0 || draft.endM < draft.startM) return 0;
+  return Math.floor((draft.endM - draft.startM) / draft.everyM) + 1;
+}
+
 function editorStyles(): ReturnType<typeof css> {
   return css`
     :host {
@@ -414,10 +559,29 @@ function editorStyles(): ReturnType<typeof css> {
     }
     .tube-head {
       display: grid;
-      grid-template-columns: 2fr 6rem auto auto;
+      grid-template-columns: 2fr 1.4fr 6rem auto auto;
       gap: 0.75rem;
       align-items: end;
       margin-bottom: 0.6rem;
+    }
+    .equipment-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .panel.series {
+      width: 520px;
+    }
+    .panel.series .panel-body {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .series-count {
+      color: var(--theme-color-soft-text);
+      font-size: 0.85rem;
+    }
+    .issue-body .fix {
+      margin-top: 0.35rem;
     }
     .tube-length {
       color: var(--theme-color-soft-text);

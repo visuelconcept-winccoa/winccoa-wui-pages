@@ -16,12 +16,14 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { container } from 'tsyringe';
 import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
 import { CommandRunner, type CommandResult } from '../data/commands.js';
+import { exportTunnel } from '../data/io.js';
 import { LiveBinding } from '../data/live.js';
-import { MSG, localize, localizeDir, engageModeMsg, commandResultMsg } from '../i18n.js';
+import { MSG, localize, localizeDir, deleteModeMsg, engageModeMsg, commandResultMsg } from '../i18n.js';
 import { TunnelScene } from '../scene/tunnel-scene.js';
 import type { EquipmentDef, OperatingMode, Tunnel } from '../types.js';
 import './hd-editor.js';
 import './hd-equipment-dialog.js';
+import './hd-mode-dialog.js';
 import './hd-modes.js';
 import './hd-synoptic.js';
 import type { CommandRequest } from './hd-equipment-dialog.js';
@@ -46,6 +48,9 @@ export class HdTunnelView extends LitElement {
   @state() private modeResults: CommandResult[] = [];
   @state() private modeResultsId = '';
   @state() private confirmDelete = false;
+  /** Mode open in the editor dialog (a fresh one for "new"); null = closed. */
+  @state() private editingMode: OperatingMode | null = null;
+  @state() private deletingMode: OperatingMode | null = null;
 
   private scene: TunnelScene | null = null;
   private readonly live = new LiveBinding(() => this.onLive());
@@ -132,6 +137,13 @@ export class HdTunnelView extends LitElement {
               `
             : nothing}
           <ix-icon-button
+            icon="export"
+            variant="secondary"
+            ghost
+            title=${localize(MSG.view.exportTunnel)}
+            @click=${() => exportTunnel(tunnel)}
+          ></ix-icon-button>
+          <ix-icon-button
             icon="trashcan"
             variant="secondary"
             ghost
@@ -166,13 +178,24 @@ export class HdTunnelView extends LitElement {
             ? html`<hd-modes
                 .tunnel=${tunnel}
                 ?canOperate=${this.canEdit && !this.offline}
+                ?canEdit=${this.canEdit}
                 .results=${this.modeResults}
                 resultsModeId=${this.modeResultsId}
                 @wui:engage=${(e: CustomEvent<OperatingMode>) => (this.pendingMode = e.detail)}
+                @wui:create-mode=${() => (this.editingMode = freshMode())}
+                @wui:edit-mode=${(e: CustomEvent<OperatingMode>) => (this.editingMode = e.detail)}
+                @wui:delete-mode=${(e: CustomEvent<OperatingMode>) => (this.deletingMode = e.detail)}
               ></hd-modes>`
             : nothing}
         </div>
       </div>
+
+      <hd-mode-dialog
+        .tunnel=${tunnel}
+        .mode=${this.editingMode}
+        @wui:close=${() => (this.editingMode = null)}
+        @wui:save=${(e: CustomEvent<OperatingMode>) => this.saveMode(e.detail)}
+      ></hd-mode-dialog>
 
       <hd-equipment-dialog
         .tunnel=${tunnel}
@@ -208,6 +231,13 @@ export class HdTunnelView extends LitElement {
         @wui:cancel=${() => (this.pendingMode = null)}
       ></wui-confirm-dialog>`;
     }
+    if (this.deletingMode) {
+      return html`<wui-confirm-dialog
+        message=${deleteModeMsg(this.deletingMode.name)}
+        @wui:confirm=${() => this.removeMode()}
+        @wui:cancel=${() => (this.deletingMode = null)}
+      ></wui-confirm-dialog>`;
+    }
     if (this.confirmDelete) {
       return html`<wui-confirm-dialog
         message=${localize(MSG.confirm.deleteTunnel)}
@@ -216,6 +246,26 @@ export class HdTunnelView extends LitElement {
       ></wui-confirm-dialog>`;
     }
     return nothing;
+  }
+
+  /** Merge the edited/new mode into the tunnel and persist. */
+  private saveMode(mode: OperatingMode): void {
+    const tunnel = this.tunnel;
+    this.editingMode = null;
+    if (!tunnel) return;
+    const exists = tunnel.modes.some((m) => m.id === mode.id);
+    this.save({
+      ...tunnel,
+      modes: exists ? tunnel.modes.map((m) => (m.id === mode.id ? mode : m)) : [...tunnel.modes, mode]
+    });
+  }
+
+  private removeMode(): void {
+    const tunnel = this.tunnel;
+    const mode = this.deletingMode;
+    this.deletingMode = null;
+    if (!tunnel || !mode) return;
+    this.save({ ...tunnel, modes: tunnel.modes.filter((m) => m.id !== mode.id) });
   }
 
   // --- interactions -----------------------------------------------------------
@@ -311,6 +361,17 @@ export class HdTunnelView extends LitElement {
       return null;
     }
   }
+}
+
+/** Blank mode handed to the editor dialog by "New mode". */
+function freshMode(): OperatingMode {
+  return {
+    id: `mode-${Date.now().toString(36)}`,
+    name: '',
+    description: '',
+    severity: 'normal',
+    actions: []
+  };
 }
 
 function viewStyles(): ReturnType<typeof css> {

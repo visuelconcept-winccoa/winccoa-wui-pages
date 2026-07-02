@@ -13,7 +13,7 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import type { CommandResult } from '../data/commands.js';
-import { MSG, localizeDir } from '../i18n.js';
+import { MSG, localize, localizeDir } from '../i18n.js';
 import type { OperatingMode, Tunnel } from '../types.js';
 
 @customElement('hd-modes')
@@ -22,6 +22,8 @@ export class HdModes extends LitElement {
 
   @property({ attribute: false }) tunnel: Tunnel | null = null;
   @property({ type: Boolean }) canOperate = false;
+  /** Edit permission (create/edit/delete modes); operating is `canOperate`. */
+  @property({ type: Boolean }) canEdit = false;
   /** Results of the last engaged mode (set by the tunnel view). */
   @property({ attribute: false }) results: CommandResult[] = [];
   @property() resultsModeId = '';
@@ -29,11 +31,15 @@ export class HdModes extends LitElement {
   override render(): TemplateResult | typeof nothing {
     const tunnel = this.tunnel;
     if (!tunnel) return nothing;
-    if (tunnel.modes.length === 0) {
-      return html`<div class="empty">${localizeDir(MSG.modes.empty)}</div>`;
-    }
     return html`
-      <div class="grid">${tunnel.modes.map((mode) => this.renderMode(mode))}</div>
+      <div class="toolbar">
+        <ix-button ?disabled=${!this.canEdit} @click=${() => this.create()}>
+          <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.modes.newMode)}
+        </ix-button>
+      </div>
+      ${tunnel.modes.length === 0
+        ? html`<div class="empty">${localizeDir(MSG.modes.empty)}</div>`
+        : html`<div class="grid">${tunnel.modes.map((mode) => this.renderMode(mode))}</div>`}
     `;
   }
 
@@ -43,9 +49,27 @@ export class HdModes extends LitElement {
       <div class="mode ${mode.severity}">
         <div class="mode-head">
           <ix-typography format="h4">${mode.name}</ix-typography>
-          <ix-button ?disabled=${!this.canOperate} @click=${() => this.engage(mode)}>
-            <ix-icon name="play" slot="icon"></ix-icon>${localizeDir(MSG.modes.engage)}
-          </ix-button>
+          <div class="mode-buttons">
+            <ix-icon-button
+              icon="pen"
+              variant="secondary"
+              ghost
+              ?disabled=${!this.canEdit}
+              title=${localize(MSG.modes.editMode)}
+              @click=${() => this.edit(mode)}
+            ></ix-icon-button>
+            <ix-icon-button
+              icon="trashcan"
+              variant="secondary"
+              ghost
+              ?disabled=${!this.canEdit}
+              title=${localize(MSG.modes.deleteMode)}
+              @click=${() => this.requestDelete(mode)}
+            ></ix-icon-button>
+            <ix-button ?disabled=${!this.canOperate} @click=${() => this.engage(mode)}>
+              <ix-icon name="play" slot="icon"></ix-icon>${localizeDir(MSG.modes.engage)}
+            </ix-button>
+          </div>
         </div>
         <div class="description">${mode.description}</div>
         <div class="count">${mode.actions.length} ${localizeDir(MSG.modes.actionCount)}</div>
@@ -72,6 +96,18 @@ export class HdModes extends LitElement {
   private engage(mode: OperatingMode): void {
     this.dispatchEvent(new CustomEvent<OperatingMode>('wui:engage', { detail: mode }));
   }
+
+  private create(): void {
+    this.dispatchEvent(new CustomEvent('wui:create-mode'));
+  }
+
+  private edit(mode: OperatingMode): void {
+    this.dispatchEvent(new CustomEvent<OperatingMode>('wui:edit-mode', { detail: mode }));
+  }
+
+  private requestDelete(mode: OperatingMode): void {
+    this.dispatchEvent(new CustomEvent<OperatingMode>('wui:delete-mode', { detail: mode }));
+  }
 }
 
 function modesStyles(): ReturnType<typeof css> {
@@ -81,12 +117,21 @@ function modesStyles(): ReturnType<typeof css> {
       height: 100%;
       overflow: auto;
     }
+    .toolbar {
+      display: flex;
+      padding: 1rem 1rem 0;
+    }
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
       gap: 1rem;
       padding: 1rem;
       align-items: start;
+    }
+    .mode-buttons {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
     }
     .empty {
       padding: 2rem;

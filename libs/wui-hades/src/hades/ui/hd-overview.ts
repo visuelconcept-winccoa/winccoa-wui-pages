@@ -11,6 +11,7 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { ALL_PROFILES, checkCompliance, profileLabel } from '../data/compliance.js';
+import { exportTunnel, parseTunnel, readFileText } from '../data/io.js';
 import { MSG, localize, localizeDir } from '../i18n.js';
 import { tunnelLengthM, type RegulatoryProfileId, type Tunnel } from '../types.js';
 import { dialogStyles } from './dialog-styles.js';
@@ -36,6 +37,7 @@ export class HdOverview extends LitElement {
   @state() private creating = false;
   @state() private draftName = '';
   @state() private draftProfile: RegulatoryProfileId = 'eu-2004-54';
+  @state() private importError = '';
 
   override render(): TemplateResult {
     return html`
@@ -51,6 +53,17 @@ export class HdOverview extends LitElement {
         <ix-button variant="secondary" ?disabled=${!this.canEdit} @click=${() => this.importDemo()}>
           <ix-icon name="download" slot="icon"></ix-icon>${localizeDir(MSG.overview.importDemo)}
         </ix-button>
+        <ix-button variant="secondary" ?disabled=${!this.canEdit} @click=${() => this.pickImportFile()}>
+          <ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.overview.importJson)}
+        </ix-button>
+        <input
+          class="import-input"
+          type="file"
+          accept="application/json,.json"
+          hidden
+          @change=${(e: Event) => void this.onImportFile(e)}
+        />
+        ${this.importError ? html`<span class="import-error">${this.importError}</span>` : nothing}
       </div>
       ${this.tunnels.length === 0
         ? html`<div class="empty">${localizeDir(MSG.overview.empty)}</div>`
@@ -78,7 +91,26 @@ export class HdOverview extends LitElement {
           <span>${tunnel.tubes.length} ${localizeDir(MSG.overview.tubes)}</span>
           <span>${tunnel.equipment.length} ${localizeDir(MSG.overview.equipmentCount)}</span>
         </div>
-        <div class="profile">${profileLabel(tunnel.profile)}</div>
+        <div class="card-foot">
+          <div class="profile">${profileLabel(tunnel.profile)}</div>
+          <div class="card-actions">
+            <ix-icon-button
+              icon="export"
+              variant="secondary"
+              ghost
+              title=${localize(MSG.view.exportTunnel)}
+              @click=${(e: Event) => this.onExport(e, tunnel)}
+            ></ix-icon-button>
+            <ix-icon-button
+              icon="add-circle"
+              variant="secondary"
+              ghost
+              ?disabled=${!this.canEdit}
+              title=${localize(MSG.overview.duplicate)}
+              @click=${(e: Event) => this.onDuplicate(e, tunnel)}
+            ></ix-icon-button>
+          </div>
+        </div>
       </button>
     `;
   }
@@ -136,6 +168,34 @@ export class HdOverview extends LitElement {
 
   private importDemo(): void {
     this.dispatchEvent(new CustomEvent('wui:import-demo'));
+  }
+
+  private onExport(event: Event, tunnel: Tunnel): void {
+    event.stopPropagation();
+    exportTunnel(tunnel);
+  }
+
+  private onDuplicate(event: Event, tunnel: Tunnel): void {
+    event.stopPropagation();
+    this.dispatchEvent(new CustomEvent<Tunnel>('wui:duplicate', { detail: tunnel }));
+  }
+
+  private pickImportFile(): void {
+    this.importError = '';
+    this.renderRoot.querySelector<HTMLInputElement>('.import-input')?.click();
+  }
+
+  private async onImportFile(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    try {
+      const tunnel = parseTunnel(await readFileText(file));
+      this.dispatchEvent(new CustomEvent<Tunnel>('wui:import', { detail: tunnel }));
+    } catch (error) {
+      this.importError = `${localize(MSG.overview.importFailed)} (${error instanceof Error ? error.message : String(error)})`;
+    }
   }
 
   private open(id: string): void {
@@ -218,9 +278,24 @@ function overviewStyles(): ReturnType<typeof css> {
       color: var(--theme-color-soft-text);
       font-variant-numeric: tabular-nums;
     }
+    .card-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+    .card-actions {
+      display: flex;
+      gap: 0.15rem;
+    }
     .profile {
       color: var(--theme-color-weak-text);
       font-size: 0.8rem;
+    }
+    .import-error {
+      color: var(--theme-color-alarm);
+      font-size: 0.85rem;
+      align-self: center;
     }
     .panel.create {
       width: 420px;

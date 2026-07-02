@@ -13,6 +13,7 @@
 import {
   AmbientLight,
   Color,
+  ConeGeometry,
   DirectionalLight,
   Fog,
   Group,
@@ -57,6 +58,8 @@ const TUBE_GAP_M = 10;
 const ACCENT_EVERY_M = 180;
 const ACCENT_MAX = 20;
 const DRIVE_SPEED_M_S = 14;
+/** Interval between painted lane-direction arrows (m). */
+const ARROW_EVERY_M = 120;
 const DRIVE_EYE_HEIGHT_M = 2.2;
 const DRIVE_LOOK_AHEAD_M = 30;
 
@@ -158,6 +161,7 @@ export class TunnelScene {
       const group = new Group();
       group.position.copy(offset);
       this.buildBore(group, frames, section, tube.lanes);
+      this.buildDirectionArrows(group, frames, section, tube.lanes, tube.direction === 'bidirectional');
       this.buildAccents(group, frames, section);
       for (const equipment of tubeEquipment(tunnel, tube.id)) {
         this.placeEquipment(group, frames, section, equipment);
@@ -280,6 +284,37 @@ export class TunnelScene {
         new MeshStandardMaterial({ color: MARKING_HEX, roughness: 0.6, side: DoubleSide })
       );
       group.add(marking);
+    }
+  }
+
+  /**
+   * Painted direction arrows per lane: cones lying on the roadway, pointing
+   * along the tube in a unidirectional bore and half/half in a bidirectional
+   * one (left lanes flow against the PK axis, like a real counter-flow tube).
+   */
+  private buildDirectionArrows(
+    group: Group,
+    frames: Frame[],
+    section: CrossSection,
+    lanes: number,
+    bidirectional: boolean
+  ): void {
+    const lengthM = frames.at(-1)?.pkM ?? 0;
+    const roadHalf = section.halfWidthM - 1;
+    const material = new MeshStandardMaterial({ color: MARKING_HEX, roughness: 0.6 });
+    for (let lane = 0; lane < lanes; lane++) {
+      const lateral = -roadHalf + (roadHalf * (2 * lane + 1)) / lanes;
+      // In a bidirectional tube the left half flows backwards (counter-flow).
+      const backwards = bidirectional && lane < lanes / 2;
+      for (let pk = ARROW_EVERY_M / 2; pk < lengthM; pk += ARROW_EVERY_M) {
+        const arrow = new Mesh(new ConeGeometry(0.35, 1.6, 8), material);
+        const frame = frameAt(frames, pk);
+        arrow.position.copy(worldAt(frames, pk, lateral, 0.06));
+        // A cone points +Y by default; lay it flat along (±) the local tangent.
+        const along = frame.tangent.clone().multiplyScalar(backwards ? -1 : 1);
+        arrow.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), along);
+        group.add(arrow);
+      }
     }
   }
 

@@ -14,7 +14,7 @@
  */
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { localize } from '@wincc-oa/wui-i18n-shared/localize-multilang.js';
-import type { EquipmentSide, LightingZone } from './types.js';
+import type { EquipmentSide, LightingZone, OperatingMode, TubeDirection } from './types.js';
 
 export { localize, localizeDir } from '@wincc-oa/wui-i18n-shared/localize-multilang.js';
 
@@ -47,7 +47,15 @@ export const MSG = {
     name: ml('Name', 'Nom', 'Name'),
     profile: ml('Regulatory profile', 'Référentiel réglementaire', 'Regelwerk'),
     cancel: ml('Cancel', 'Annuler', 'Abbrechen'),
-    create: ml('Create', 'Créer', 'Erstellen')
+    create: ml('Create', 'Créer', 'Erstellen'),
+    importJson: ml('Import a tunnel (JSON)', 'Importer un tunnel (JSON)', 'Tunnel importieren (JSON)'),
+    importFailed: ml(
+      'Import failed — not a valid tunnel export',
+      'Échec de l’import — fichier de tunnel invalide',
+      'Import fehlgeschlagen — keine gültige Tunnel-Datei'
+    ),
+    duplicate: ml('Duplicate the tunnel', 'Dupliquer le tunnel', 'Tunnel duplizieren'),
+    copySuffix: ml('(copy)', '(copie)', '(Kopie)')
   },
   view: {
     back: ml('Back to the tunnels', 'Retour aux tunnels', 'Zurück zu den Tunneln'),
@@ -59,6 +67,7 @@ export const MSG = {
     orbitMode: ml('Free camera', 'Caméra libre', 'Freie Kamera'),
     resetView: ml('Reset the view', 'Réinitialiser la vue', 'Ansicht zurücksetzen'),
     deleteTunnel: ml('Delete the tunnel', 'Supprimer le tunnel', 'Tunnel löschen'),
+    exportTunnel: ml('Export the tunnel (JSON)', 'Exporter le tunnel (JSON)', 'Tunnel exportieren (JSON)'),
     sceneHint: ml(
       'Left-drag: rotate · right-drag: pan · wheel: zoom · click an equipment to open it',
       'Glisser gauche : pivoter · glisser droit : déplacer · molette : zoom · cliquer un équipement pour l’ouvrir',
@@ -70,6 +79,7 @@ export const MSG = {
     profile: ml('Regulatory profile', 'Référentiel réglementaire', 'Regelwerk'),
     traffic: ml('Traffic (veh/day/lane)', 'Trafic (véh/j/voie)', 'Verkehr (Fz/Tag/Spur)'),
     tubeName: ml('Tube', 'Tube', 'Röhre'),
+    direction: ml('Direction', 'Sens de circulation', 'Verkehrsführung'),
     lanes: ml('Lanes', 'Voies', 'Fahrstreifen'),
     removeTube: ml('Delete this tube', 'Supprimer ce tube', 'Diese Röhre löschen'),
     addTube: ml('Add a tube', 'Ajouter un tube', 'Röhre hinzufügen'),
@@ -94,6 +104,15 @@ export const MSG = {
       'Lecture simplifiée des textes de référence — une aide à la conception, pas une certification. L’agent de sécurité reste l’autorité.',
       'Vereinfachte Auslegung der Referenztexte — eine Planungshilfe, keine Zertifizierung. Der Sicherheitsbeauftragte bleibt maßgebend.'
     ),
+    fix: ml('Fix', 'Corriger', 'Beheben'),
+    placeSeries: ml('Place a series…', 'Poser en série…', 'Serie platzieren…'),
+    seriesTitle: ml('Place a series', 'Poser en série', 'Serie platzieren'),
+    seriesStart: ml('First PK (m)', 'Premier PK (m)', 'Erster PK (m)'),
+    seriesEnd: ml('Last PK (m)', 'Dernier PK (m)', 'Letzter PK (m)'),
+    seriesEvery: ml('Interval (m)', 'Intervalle (m)', 'Abstand (m)'),
+    seriesPrefix: ml('Name prefix (optional)', 'Préfixe de nom (optionnel)', 'Namenspräfix (optional)'),
+    seriesAdd: ml('Add the series', 'Ajouter la série', 'Serie hinzufügen'),
+    seriesCount: ml('unit(s) will be created', 'unité(s) seront créées', 'Einheit(en) werden erstellt'),
     newTubeName: ml('New tube', 'Nouveau tube', 'Neue Röhre'),
     newSegmentName: ml('New segment', 'Nouveau segment', 'Neues Segment'),
     newEquipmentName: ml('New equipment', 'Nouvel équipement', 'Neue Anlage')
@@ -114,7 +133,28 @@ export const MSG = {
     engage: ml('Engage', 'Engager', 'Aktivieren'),
     actionCount: ml('command(s) in the sequence', 'commande(s) dans la séquence', 'Befehl(e) in der Sequenz'),
     unbound: ml('(not bound)', '(non lié)', '(nicht verknüpft)'),
-    failed: ml('(write failed)', "(échec d'écriture)", '(Schreibfehler)')
+    failed: ml('(write failed)', "(échec d'écriture)", '(Schreibfehler)'),
+    newMode: ml('New mode', 'Nouveau mode', 'Neue Betriebsart'),
+    editMode: ml('Edit the mode', 'Éditer le mode', 'Betriebsart bearbeiten'),
+    deleteMode: ml('Delete the mode', 'Supprimer le mode', 'Betriebsart löschen')
+  },
+  modeDialog: {
+    title: ml('Operating mode', "Mode d'exploitation", 'Betriebsart'),
+    name: ml('Name', 'Nom', 'Name'),
+    severity: ml('Kind', 'Nature', 'Art'),
+    description: ml('Description', 'Description', 'Beschreibung'),
+    actions: ml('Reflex sequence', 'Séquence réflexe', 'Reflexsequenz'),
+    addAction: ml('Add a command', 'Ajouter une commande', 'Befehl hinzufügen'),
+    noCommandEquipment: ml(
+      'No commandable equipment in this tunnel — place fans, barriers, VMS… first.',
+      "Aucun équipement commandable dans ce tunnel — posez d'abord des accélérateurs, barrières, PMV….",
+      'Keine steuerbare Anlage in diesem Tunnel — zuerst Ventilatoren, Schranken, WVZ… platzieren.'
+    ),
+    moveUp: ml('Move up', 'Monter', 'Nach oben'),
+    moveDown: ml('Move down', 'Descendre', 'Nach unten'),
+    removeAction: ml('Remove this command', 'Retirer cette commande', 'Diesen Befehl entfernen'),
+    cancel: ml('Cancel', 'Annuler', 'Abbrechen'),
+    save: ml('Save', 'Enregistrer', 'Speichern')
   },
   equipment: {
     identity: ml('Identity', 'Identité', 'Identität'),
@@ -127,6 +167,17 @@ export const MSG = {
     state: ml('State', 'État', 'Zustand'),
     commands: ml('Commands', 'Commandes', 'Befehle'),
     bindings: ml('Datapoint bindings', 'Liaisons datapoints', 'Datapoint-Verknüpfungen'),
+    archiving: ml('NGA archiving', 'Archivage NGA', 'NGA-Archivierung'),
+    noArchiveGroup: ml(
+      'No active archive group discovered (type _NGA_Group) — backend unavailable or NGA not configured.',
+      "Aucun groupe d'archive actif découvert (type _NGA_Group) — backend indisponible ou NGA non configuré.",
+      'Keine aktive Archivgruppe gefunden (Typ _NGA_Group) — Backend nicht verfügbar oder NGA nicht konfiguriert.'
+    ),
+    aksHint: ml(
+      'Indicative AKS-CH designation (Swiss ASTRA plant classification)',
+      'Désignation AKS-CH indicative (classification des installations ASTRA/OFROU)',
+      'Indikative AKS-CH-Bezeichnung (ASTRA-Anlagenkennzeichnung)'
+    ),
     delete: ml('Delete', 'Supprimer', 'Löschen'),
     cancel: ml('Cancel', 'Annuler', 'Abbrechen'),
     save: ml('Save', 'Enregistrer', 'Speichern'),
@@ -167,6 +218,39 @@ const ZONE_LABELS: Record<LightingZone, MultiLangString> = {
 /** Localized label of a CIE 88 lighting zone. */
 export function zoneLabel(zone: LightingZone): string {
   return localize(ZONE_LABELS[zone]);
+}
+
+const DIRECTION_LABELS: Record<TubeDirection, MultiLangString> = {
+  unidirectional: ml('Unidirectional', 'Unidirectionnel', 'Richtungsverkehr'),
+  bidirectional: ml('Bidirectional', 'Bidirectionnel', 'Gegenverkehr')
+};
+
+/** Localized label of a tube's traffic direction. */
+export function dirLabel(direction: TubeDirection): string {
+  return localize(DIRECTION_LABELS[direction]);
+}
+
+const SEVERITY_LABELS: Record<OperatingMode['severity'], MultiLangString> = {
+  normal: ml('Normal operation', 'Exploitation normale', 'Normalbetrieb'),
+  degraded: ml('Degraded', 'Dégradé', 'Eingeschränkt'),
+  closure: ml('Closure', 'Fermeture', 'Sperrung'),
+  fire: ml('Fire', 'Incendie', 'Brand')
+};
+
+/** Localized label of an operating-mode severity. */
+export function severityLabel(severity: OperatingMode['severity']): string {
+  return localize(SEVERITY_LABELS[severity]);
+}
+
+/** Confirm-delete message for an operating mode (plain string). */
+export function deleteModeMsg(name: string): string {
+  return localize(
+    ml(
+      `Delete the operating mode « ${name} »?`,
+      `Supprimer le mode d'exploitation « ${name} » ?`,
+      `Betriebsart « ${name} » löschen?`
+    )
+  );
 }
 
 /** Confirmation message before engaging a mode's reflex sequence. */

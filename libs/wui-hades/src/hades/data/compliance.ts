@@ -43,11 +43,13 @@ export interface ComplianceIssue {
 }
 
 /** Numeric thresholds of one regulatory profile (simplified, see module docs). */
-interface ProfileRules {
+export interface ProfileRules {
   /** Directive scope: rules below apply from this tunnel length on. */
   scopeMinLengthM: number;
-  /** Max spacing between emergency exits (bidirectional/congested case). */
-  exitSpacingM: number;
+  /** Max spacing between emergency exits in a UNIDIRECTIONAL tube. */
+  exitSpacingUniM: number;
+  /** Max spacing between emergency exits in a BIDIRECTIONAL tube (stricter). */
+  exitSpacingBidiM: number;
   /** Max spacing between SOS emergency stations inside the tunnel. */
   sosSpacingM: number;
   /** Mechanical ventilation required above this length … */
@@ -66,7 +68,8 @@ interface ProfileRules {
 const PROFILES: Record<RegulatoryProfileId, ProfileRules> = {
   'eu-2004-54': {
     scopeMinLengthM: 500,
-    exitSpacingM: 500,
+    exitSpacingUniM: 500,
+    exitSpacingBidiM: 400,
     sosSpacingM: 150,
     ventilationMinLengthM: 1000,
     ventilationMinTraffic: 2000,
@@ -83,7 +86,8 @@ const PROFILES: Record<RegulatoryProfileId, ProfileRules> = {
   },
   'fr-cetu': {
     scopeMinLengthM: 300,
-    exitSpacingM: 400,
+    exitSpacingUniM: 400,
+    exitSpacingBidiM: 200,
     sosSpacingM: 200,
     ventilationMinLengthM: 800,
     ventilationMinTraffic: 2000,
@@ -100,7 +104,8 @@ const PROFILES: Record<RegulatoryProfileId, ProfileRules> = {
   },
   'ch-astra': {
     scopeMinLengthM: 300,
-    exitSpacingM: 300,
+    exitSpacingUniM: 300,
+    exitSpacingBidiM: 300,
     sosSpacingM: 150,
     ventilationMinLengthM: 600,
     ventilationMinTraffic: 2000,
@@ -116,6 +121,11 @@ const PROFILES: Record<RegulatoryProfileId, ProfileRules> = {
     }
   }
 };
+
+/** Read-only thresholds of a profile (used by the auto-fix generator). */
+export function profileRules(profile: RegulatoryProfileId): ProfileRules {
+  return PROFILES[profile];
+}
 
 /** Localized display name of a regulatory profile. */
 export function profileLabel(profile: RegulatoryProfileId): string {
@@ -196,9 +206,15 @@ function checkTube(tunnel: Tunnel, tube: TubeDef, rules: ProfileRules, issues: C
   checkGeometry(tube, rules, issues);
 }
 
+/** Exit-spacing threshold of a tube (bidirectional tubes are stricter). */
+export function exitSpacingOf(rules: ProfileRules, tube: TubeDef): number {
+  return tube.direction === 'bidirectional' ? rules.exitSpacingBidiM : rules.exitSpacingUniM;
+}
+
 function checkSpacings(tunnel: Tunnel, tube: TubeDef, rules: ProfileRules, issues: ComplianceIssue[]): void {
+  const exitSpacing = exitSpacingOf(rules, tube);
   const exitGap = maxSpacing(tunnel, tube, 'emergency-exit');
-  if (exitGap > rules.exitSpacingM) {
+  if (exitGap > exitSpacing) {
     issues.push({
       severity: 'error',
       ruleId: 'exit-spacing',
@@ -206,9 +222,9 @@ function checkSpacings(tunnel: Tunnel, tube: TubeDef, rules: ProfileRules, issue
       tubeId: tube.id,
       message: issueMsg(
         ml(
-          `${tube.name}: emergency exits more than ${rules.exitSpacingM} m apart (widest gap ${Math.round(exitGap)} m).`,
-          `${tube.name} : issues de secours espacées de plus de ${rules.exitSpacingM} m (plus grand intervalle ${Math.round(exitGap)} m).`,
-          `${tube.name}: Notausgänge mehr als ${rules.exitSpacingM} m auseinander (größte Lücke ${Math.round(exitGap)} m).`
+          `${tube.name} (${tube.direction === 'bidirectional' ? 'bidirectional' : 'unidirectional'}): emergency exits more than ${exitSpacing} m apart (widest gap ${Math.round(exitGap)} m).`,
+          `${tube.name} (${tube.direction === 'bidirectional' ? 'bidirectionnel' : 'unidirectionnel'}) : issues de secours espacées de plus de ${exitSpacing} m (plus grand intervalle ${Math.round(exitGap)} m).`,
+          `${tube.name} (${tube.direction === 'bidirectional' ? 'Gegenverkehr' : 'Richtungsverkehr'}): Notausgänge mehr als ${exitSpacing} m auseinander (größte Lücke ${Math.round(exitGap)} m).`
         )
       )
     });

@@ -11,15 +11,29 @@ bound to datapoints, operating modes — rendered four ways from ONE config:
 - **Editor + compliance advisor** — segments and equipment are edited in
   place; every edit is re-checked against the tunnel's **regulatory
   profile** (selectable: EU directive 2004/54/EC, France CETU/IT 2000-63,
-  Switzerland ASTRA/OFROU) and deviations (exit/SOS spacing, missing
-  ventilation, gradients…) appear immediately with the clause reference.
-  The thresholds are a simplified reading — a design aid, not a
-  certification (see `src/hades/data/compliance.ts`).
+  Switzerland ASTRA/OFROU) and deviations (exit/SOS spacing — direction
+  aware, missing ventilation, gradients…) appear immediately with the
+  clause reference and, where possible, a **Fix** button that generates the
+  missing equipment at compliant spacings. Bulk placement via
+  **"Place a series…"** (one SOS niche every 200 m). The thresholds are a
+  simplified reading — a design aid, not a certification (see
+  `src/hades/data/compliance.ts`).
 - **Linear synoptic** — the tunnel unrolled on its PK axis (SVG), glyphs
   coloured by live state; the control-room scan view.
 - **Operating modes** — reflex sequences (normal / closure / fire) whose
   actions are real field commands: each `dpSet` is **confirmed** in the UI
-  and **GxP-traced** into `AuditTrail_Hades` (action `COMMAND`).
+  and **GxP-traced** into `AuditTrail_Hades` (action `COMMAND`). Modes are
+  **composed in the UI** (mode dialog: identity + ordered command list over
+  the commandable equipment).
+
+Also: tunnel **export/import as JSON** and one-click **duplication**
+(overview cards + workspace toolbar), **NGA archiving** of the bound DPEs
+from the equipment dialog (group discovery + audited switches), painted
+**lane-direction arrows** in the 3D roadway (counter-flow in bidirectional
+tubes), and an indicative **AKS-CH designation** per equipment kind when the
+Swiss profile is selected. See [INTEGRATION.md](./INTEGRATION.md) for the
+backend coupling and [the unit specs](../../libs/wui-hades/src/hades/data/compliance.spec.ts)
+for the rule-by-rule behaviour.
 
 ## Persistence & data model
 

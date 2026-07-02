@@ -41,6 +41,37 @@ const KIND_LABELS: Record<EquipmentKind, MultiLangString> = {
 /** All catalog kinds in display order. */
 export const CATALOG_KINDS: readonly EquipmentKind[] = Object.keys(KIND_LABELS) as EquipmentKind[];
 
+/**
+ * INDICATIVE AKS-CH designation per equipment kind (Swiss ASTRA/OFROU plant
+ * classification for operating & safety equipment, BSA). Shown as a naming
+ * hint when the tunnel's regulatory profile is `ch-astra` — the project's
+ * real AKS-CH structure (levels, numbering) remains the integrator's call.
+ */
+const AKS_CH: Record<EquipmentKind, string> = {
+  'jet-fan': 'LUE',
+  lighting: 'BEL',
+  'sos-niche': 'SOS',
+  'emergency-exit': 'FLW',
+  camera: 'VID',
+  'co-sensor': 'MES',
+  'no2-sensor': 'MES',
+  'opacity-sensor': 'MES',
+  anemometer: 'MES',
+  'fire-detection': 'BMA',
+  vms: 'SIG',
+  'lane-signal': 'SIG',
+  barrier: 'ABS',
+  pump: 'ENT',
+  power: 'ENE',
+  radio: 'FUN',
+  hydrant: 'LOE'
+};
+
+/** Indicative AKS-CH group of a kind (see {@link AKS_CH}). */
+export function aksChOf(kind: EquipmentKind): string {
+  return AKS_CH[kind];
+}
+
 function statePoint(): PointDef {
   return {
     key: 'state',

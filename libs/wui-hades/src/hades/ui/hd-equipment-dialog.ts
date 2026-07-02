@@ -13,7 +13,8 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import '@visuelconcept/wui-kit/ui/wui-dp-input.js';
-import { kindLabel, pointsOf, CATALOG_KINDS } from '../data/catalog.js';
+import { ArchiveService, type ArchiveStatus } from '../data/archive.js';
+import { aksChOf, kindLabel, pointsOf, CATALOG_KINDS } from '../data/catalog.js';
 import { MSG, localize, localizeDir, sideLabel } from '../i18n.js';
 import {
   pkLabel,
@@ -51,14 +52,33 @@ export class HdEquipmentDialog extends LitElement {
   @property({ type: Number }) liveTick = 0;
 
   @state() private working: EquipmentDef | null = null;
+  @state() private archiveGroups: string[] = [];
+  /** DPE → current NGA archive status (loaded when the dialog opens). */
+  @state() private archiveStatus: Record<string, ArchiveStatus> = {};
+
+  private readonly archive = new ArchiveService();
 
   protected override willUpdate(changed: PropertyValues): void {
     // Re-snapshot only when ANOTHER equipment opens: live telemetry mutates the
     // prop object in place and must not wipe the operator's pending edits.
     if (changed.has('equipment') && this.equipment?.id !== this.working?.id) {
       this.working = this.equipment ? structuredClone(this.equipment) : null;
+      if (this.equipment) void this.loadArchive(this.equipment);
     }
     if (changed.has('equipment') && !this.equipment) this.working = null;
+  }
+
+  /** Load the archive groups (once) + the current status of every bound DPE. */
+  private async loadArchive(equipment: EquipmentDef): Promise<void> {
+    if (this.archiveGroups.length === 0) {
+      this.archiveGroups = await this.archive.listArchiveGroups();
+    }
+    const status: Record<string, ArchiveStatus> = {};
+    for (const dpe of Object.values(equipment.bindings)) {
+      const clean = dpe.trim();
+      if (clean) status[clean] = await this.archive.readArchiveStatus(clean);
+    }
+    this.archiveStatus = status;
   }
 
   override render(): TemplateResult | typeof nothing {
@@ -72,6 +92,11 @@ export class HdEquipmentDialog extends LitElement {
             <ix-typography format="h3">
               ${working.name} — ${kindLabel(working.kind)}
               <span class="pk-chip">${pkLabel(working.pkM)}</span>
+              ${this.tunnel?.profile === 'ch-astra'
+                ? html`<span class="pk-chip aks" title=${localize(MSG.equipment.aksHint)}>
+                    AKS-CH · ${aksChOf(working.kind)}
+                  </span>`
+                : nothing}
             </ix-typography>
           </div>
           <div class="panel-body">
@@ -79,6 +104,7 @@ export class HdEquipmentDialog extends LitElement {
             ${this.renderLive(working, points)}
             ${this.renderCommands(working, points)}
             ${this.renderBindings(working, points)}
+            ${this.renderArchiving(working)}
           </div>
           <div class="panel-foot">
             ${this.canEdit
@@ -209,6 +235,53 @@ export class HdEquipmentDialog extends LitElement {
     `;
   }
 
+  /** NGA archiving of the bound DPEs (enables the future incident replay). */
+  private renderArchiving(working: EquipmentDef): TemplateResult | typeof nothing {
+    const bound = Object.values(working.bindings)
+      .map((dpe) => dpe.trim())
+      .filter((dpe) => dpe !== '');
+    if (bound.length === 0) return nothing;
+    return html`
+      <div class="section-title">${localizeDir(MSG.equipment.archiving)}</div>
+      ${this.archiveGroups.length === 0
+        ? html`<div class="archive-note">${localizeDir(MSG.equipment.noArchiveGroup)}</div>`
+        : bound.map((dpe) => this.renderArchiveRow(dpe))}
+    `;
+  }
+
+  private renderArchiveRow(dpe: string): TemplateResult {
+    const status = this.archiveStatus[dpe] ?? { enabled: false, group: '' };
+    const group = status.group || this.archiveGroups[0] || '';
+    return html`
+      <div class="archive-row">
+        <code title=${dpe}>${dpe}</code>
+        <ix-select
+          ?disabled=${!this.canEdit}
+          .value=${group}
+          @valueChange=${(e: IxValueEvent) => void this.onArchive(dpe, status.enabled, String(e.detail))}
+        >
+          ${this.archiveGroups.map((g) => html`<ix-select-item label=${g} value=${g}></ix-select-item>`)}
+        </ix-select>
+        <ix-toggle
+          hide-text
+          ?disabled=${!this.canEdit}
+          ?checked=${status.enabled}
+          @checkedChange=${(e: CustomEvent<boolean>) => void this.onArchive(dpe, e.detail, group)}
+        ></ix-toggle>
+      </div>
+    `;
+  }
+
+  private async onArchive(dpe: string, enabled: boolean, group: string): Promise<void> {
+    const ok = await this.archive.setArchive(dpe, enabled, group);
+    if (ok) {
+      this.archiveStatus = { ...this.archiveStatus, [dpe]: { enabled, group } };
+      return;
+    }
+    // Failed write (rights / backend) — re-read so the toggle snaps back.
+    this.archiveStatus = { ...this.archiveStatus, [dpe]: await this.archive.readArchiveStatus(dpe) };
+  }
+
   private patch(part: Partial<EquipmentDef>): void {
     if (this.working) this.working = { ...this.working, ...part };
   }
@@ -300,6 +373,25 @@ function extraStyles(): ReturnType<typeof css> {
       align-items: center;
       gap: 0.6rem;
       margin-bottom: 0.4rem;
+    }
+    .pk-chip.aks {
+      color: var(--theme-color-info);
+    }
+    .archive-row {
+      display: grid;
+      grid-template-columns: 1fr 12rem auto;
+      align-items: center;
+      gap: 0.6rem;
+      margin-bottom: 0.35rem;
+    }
+    .archive-row code {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .archive-note {
+      color: var(--theme-color-soft-text);
+      font-size: 0.85rem;
     }
   `;
 }

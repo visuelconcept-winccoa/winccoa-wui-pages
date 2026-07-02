@@ -28,7 +28,8 @@ import { Subscription } from 'rxjs';
 import { canEditFleet, canEditFleet$ } from '@visuelconcept/wui-kit/data/permissions.js';
 import { demoTunnel } from './hades/data/demo-tunnel.js';
 import { HadesStore } from './hades/data/hades-store.js';
-import { MSG, localizeDir } from './hades/i18n.js';
+import { duplicateTunnel } from './hades/data/io.js';
+import { MSG, localize, localizeDir } from './hades/i18n.js';
 import type { RegulatoryProfileId, Tunnel } from './hades/types.js';
 import './hades/ui/hd-overview.js';
 import './hades/ui/hd-tunnel-view.js';
@@ -95,6 +96,8 @@ export class WuiHades extends LitElement {
               @wui:open=${(e: CustomEvent<{ id: string }>) => this.navigate(e.detail.id)}
               @wui:create=${(e: CustomEvent<CreateTunnelDetail>) => this.onCreate(e.detail)}
               @wui:import-demo=${() => this.onImportDemo()}
+              @wui:import=${(e: CustomEvent<Tunnel>) => this.onImport(e.detail)}
+              @wui:duplicate=${(e: CustomEvent<Tunnel>) => this.onDuplicate(e.detail)}
             ></hd-overview>`}
       </div>
     `;
@@ -140,6 +143,21 @@ export class WuiHades extends LitElement {
     this.tunnels = [...this.tunnels, tunnel];
     this.offline = this.store.offline;
     this.navigate(tunnel.id);
+  }
+
+  /** Import a tunnel parsed from an exported JSON file (new DP, new id). */
+  private async onImport(parsed: Tunnel): Promise<void> {
+    const tunnel = await this.store.createTunnel(parsed);
+    this.tunnels = [...this.tunnels, tunnel];
+    this.offline = this.store.offline;
+    this.navigate(tunnel.id);
+  }
+
+  private async onDuplicate(source: Tunnel): Promise<void> {
+    const copy = duplicateTunnel(source, localize(MSG.overview.copySuffix));
+    const tunnel = await this.store.createTunnel(copy);
+    this.tunnels = [...this.tunnels, tunnel];
+    this.offline = this.store.offline;
   }
 
   private async onSave(tunnel: Tunnel): Promise<void> {
