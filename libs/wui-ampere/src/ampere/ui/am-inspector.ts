@@ -21,10 +21,10 @@ import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
-import { SYMBOLS, isSwitchgear } from '../symbols/catalog.js';
+import { SYMBOLS, isResizable, isSwitchgear, nativeExitSide, type ExitSide } from '../symbols/catalog.js';
 import type { Selection } from './am-canvas.js';
 import { MSG, localize, localizeDir, selectedCountMsg } from '../i18n.js';
-import { ROTATIONS, type Measurement, type Network, type Node, type Rotation } from '../types.js';
+import { ROTATIONS, nodeSize, snap, type Measurement, type Network, type Node, type Rotation } from '../types.js';
 
 @customElement('am-inspector')
 export class AmInspector extends LitElement {
@@ -66,6 +66,7 @@ export class AmInspector extends LitElement {
   private renderNode(node: Node): TemplateResult {
     const def = SYMBOLS[node.symbol];
     const sw = isSwitchgear(node.symbol);
+    const seed = def.role === 'source' || node.source;
     return html`
       <div class="head">
         <span class="kind">${localize(def.label)}</span>
@@ -91,6 +92,7 @@ export class AmInspector extends LitElement {
           </select>
         </div>`
       )}
+      ${this.renderExitSide(node)} ${this.renderSizeFields(node)}
       ${sw
         ? html`
             ${this.field(
@@ -113,6 +115,28 @@ export class AmInspector extends LitElement {
             )}
           `
         : nothing}
+      ${!sw && seed
+        ? html`
+            ${this.field(
+              MSG.inspector.sourceDp,
+              html`<wui-dp-input
+                  placeholder="System1:Grid.available"
+                  .value=${node.dp}
+                  @wui:change=${(e: CustomEvent<{ value: string }>) => this.patchNode(node.id, { dp: e.detail.value })}
+                ></wui-dp-input>
+                <div class="hint">${localizeDir(MSG.inspector.sourceDpHint)}</div>`
+            )}
+            ${this.field(
+              MSG.inspector.poweredValue,
+              html`<input
+                class="in short"
+                type="number"
+                .value=${String(node.closedValue)}
+                @input=${(e: Event) => this.patchNode(node.id, { closedValue: Number(value(e)) || 0 })}
+              />`
+            )}
+          `
+        : nothing}
       ${def.role === 'source'
         ? nothing
         : html`<label class="check">
@@ -124,6 +148,54 @@ export class AmInspector extends LitElement {
             <span>${localizeDir(MSG.inspector.isSource)}</span>
           </label>`}
     `;
+  }
+
+  /** Wire-exit selector — only single-port symbols can flip their exit side. */
+  private renderExitSide(node: Node): TemplateResult {
+    const native = nativeExitSide(node.symbol);
+    if (!native) return html``;
+    const current: ExitSide = node.exitSide ?? native;
+    return this.field(
+      MSG.inspector.exitSide,
+      html`<select
+        class="in short"
+        .value=${current}
+        @change=${(e: Event) => this.patchNode(node.id, { exitSide: readExit(e, native) })}
+      >
+        <option value="top" ?selected=${current === 'top'}>${localize(MSG.inspector.exitTop)}</option>
+        <option value="bottom" ?selected=${current === 'bottom'}>${localize(MSG.inspector.exitBottom)}</option>
+      </select>`
+    );
+  }
+
+  /** Width/height fields — only port-less frames (switchboard) are resizable. */
+  private renderSizeFields(node: Node): TemplateResult {
+    if (!isResizable(node.symbol)) return html``;
+    const size = nodeSize(node);
+    return html`<div class="row">
+      ${this.field(
+        MSG.inspector.width,
+        html`<input
+          class="in short"
+          type="number"
+          min="60"
+          step="20"
+          .value=${String(size.w)}
+          @change=${(e: Event) => this.patchNode(node.id, { w: readSize(e, size.w) })}
+        />`
+      )}
+      ${this.field(
+        MSG.inspector.height,
+        html`<input
+          class="in short"
+          type="number"
+          min="60"
+          step="20"
+          .value=${String(size.h)}
+          @change=${(e: Event) => this.patchNode(node.id, { h: readSize(e, size.h) })}
+        />`
+      )}
+    </div>`;
   }
 
   private renderMeasurement(m: Measurement): TemplateResult {
@@ -214,6 +286,21 @@ function clampDecimals(raw: string): number {
 function readRotation(e: Event): Rotation {
   const n = Number((e.target as HTMLSelectElement).value);
   return (ROTATIONS.find((r) => r === n) ?? 0);
+}
+
+function readExit(e: Event, fallback: ExitSide): ExitSide {
+  const v = (e.target as HTMLSelectElement).value;
+  return v === 'top' || v === 'bottom' ? v : fallback;
+}
+
+const SIZE_MIN = 60;
+const SIZE_MAX = 2000;
+
+/** Grid-snapped, clamped box dimension from a number input. */
+function readSize(e: Event, fallback: number): number {
+  const n = Number((e.target as HTMLInputElement).value);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(Math.max(snap(n), SIZE_MIN), SIZE_MAX);
 }
 
 // eslint-disable-next-line max-lines-per-function -- single stylesheet literal

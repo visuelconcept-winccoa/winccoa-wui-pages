@@ -23,9 +23,9 @@
  * Each network is persisted as one WinCC OA datapoint of type `Ampere_Network`
  * (a Struct with String elements `name` + `json`) — see {@link ./data/ampere-store.ts}.
  */
-import { SYMBOLS, type SymbolId } from './symbols/catalog.js';
+import { SYMBOLS, nativeExitSide, type ExitSide, type SymbolId } from './symbols/catalog.js';
 
-export type { SymbolId } from './symbols/catalog.js';
+export type { ExitSide, SymbolId } from './symbols/catalog.js';
 
 /** A point in canvas units. */
 export interface Point {
@@ -88,6 +88,15 @@ export interface Node {
   /** Top-left position of the symbol box, in canvas units (grid-snapped). */
   x: number;
   y: number;
+  /**
+   * Wire-exit side override for single-port symbols (grid supply, generator,
+   * motor, load…): absent ⇒ the symbol's native side. The glyph stays upright;
+   * only the lead/arrow flips.
+   */
+  exitSide?: ExitSide;
+  /** Box-size override, only honored for port-less symbols (switchboard frame). */
+  w?: number;
+  h?: number;
   /** Quarter-turn rotation of the symbol. */
   rotation: Rotation;
   /**
@@ -188,17 +197,34 @@ export function rotatePoint(p: Point, center: Point, deg: Rotation): Point {
   }
 }
 
+/** Effective box size of a placed node (size override honored for port-less symbols). */
+export function nodeSize(node: Node): { w: number; h: number } {
+  const def = SYMBOLS[node.symbol];
+  if (Object.keys(def.ports).length > 0) return { w: def.w, h: def.h };
+  return { w: node.w && node.w > 0 ? node.w : def.w, h: node.h && node.h > 0 ? node.h : def.h };
+}
+
+/** Effective wire-exit side of a single-port node (its override, else the native side). */
+export function nodeExit(node: Node): ExitSide | null {
+  const native = nativeExitSide(node.symbol);
+  if (!native) return null;
+  return node.exitSide ?? native;
+}
+
 /** World position of a symbol's local box center (invariant under rotation). */
 export function nodeCenter(node: Node): Point {
-  const def = SYMBOLS[node.symbol];
-  return { x: node.x + def.w / 2, y: node.y + def.h / 2 };
+  const size = nodeSize(node);
+  return { x: node.x + size.w / 2, y: node.y + size.h / 2 };
 }
 
 /** World position of one named port of a placed node (undefined if unknown). */
 export function portWorld(node: Node, portKey: string): Point | undefined {
   const def = SYMBOLS[node.symbol];
-  const port = def.ports[portKey];
+  let port = def.ports[portKey];
   if (!port) return undefined;
+  // Single-port symbols may flip their wire exit to the opposite box edge.
+  const exit = nodeExit(node);
+  if (exit) port = { x: port.x, y: exit === 'top' ? 0 : def.h };
   const center = { x: def.w / 2, y: def.h / 2 };
   const r = rotatePoint(port, center, node.rotation);
   return { x: node.x + r.x, y: node.y + r.y };
@@ -255,8 +281,8 @@ export function contentBounds(network: Network, pad = 40): { x: number; y: numbe
   };
   const byId = new Map(network.nodes.map((n) => [n.id, n]));
   for (const n of network.nodes) {
-    const def = SYMBOLS[n.symbol];
-    grow(n.x, n.y, n.x + def.w, n.y + def.h + (n.label ? 24 : 0));
+    const size = nodeSize(n);
+    grow(n.x, n.y, n.x + size.w, n.y + size.h + (n.label ? 24 : 0));
   }
   for (const m of network.measurements) {
     const p = measurementPos(m, byId);

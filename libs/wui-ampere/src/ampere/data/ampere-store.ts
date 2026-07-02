@@ -41,8 +41,9 @@ export class AmpereStore extends DpJsonStore<Network> {
     return this.create(network);
   }
 
-  saveNetwork(network: Network): Promise<void> {
-    return this.save(network);
+  /** Persist a network; see DpJsonStore.save for the per-call audit options. */
+  saveNetwork(network: Network, opts: { audit?: boolean; auditBaseline?: Network } = {}): Promise<void> {
+    return this.save(network, opts);
   }
 
   deleteNetwork(id: string): Promise<void> {

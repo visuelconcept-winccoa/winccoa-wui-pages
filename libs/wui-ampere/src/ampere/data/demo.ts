@@ -66,8 +66,8 @@ function demoSourceSubstation(): Network {
     ),
     updatedAt: '',
     nodes: [
-      node('g1', GRID_SOURCE, t('Line 1 — 63 kV', 'Ligne 1 — 63 kV', 'Leitung 1 — 63 kV'), 200, 40, { source: true }),
-      node('g2', GRID_SOURCE, t('Line 2 — 63 kV', 'Ligne 2 — 63 kV', 'Leitung 2 — 63 kV'), 900, 40, { source: true }),
+      node('g1', GRID_SOURCE, t('Line 1 — 63 kV', 'Ligne 1 — 63 kV', 'Leitung 1 — 63 kV'), 200, 40, { source: true, dp: 'Demo:Line1.voltagePresent' }),
+      node('g2', GRID_SOURCE, t('Line 2 — 63 kV', 'Ligne 2 — 63 kV', 'Leitung 2 — 63 kV'), 900, 40, { source: true, dp: 'Demo:Line2.voltagePresent' }),
       node('qs1', DISCONNECTOR, 'QS1', 210, 170, { dp: 'Demo:Incomer1.disconnector' }),
       node('qs2', DISCONNECTOR, 'QS2', 910, 170, { dp: 'Demo:Incomer2.disconnector' }),
       node('q1', 'breaker', 'Q1', 210, 290, { dp: 'Demo:Incomer1.breaker' }),
@@ -189,8 +189,8 @@ function demoBackedUpBoard(): Network {
     ),
     updatedAt: '',
     nodes: [
-      node('g1', GRID_SOURCE, t('Grid', 'Réseau', 'Netz'), 200, 40, { source: true }),
-      node('ge1', 'generator', t('Generator', 'Groupe électrogène', 'Notstromaggregat'), 560, 40, { source: true }),
+      node('g1', GRID_SOURCE, t('Grid', 'Réseau', 'Netz'), 200, 40, { source: true, dp: 'Demo:Grid.available' }),
+      node('ge1', 'generator', t('Generator', 'Groupe électrogène', 'Notstromaggregat'), 560, 40, { source: true, dp: 'Demo:Genset.running' }),
       node('kn', 'contactor', t('KN — normal', 'KN — normal', 'KN — Netz'), 210, 190, { dp: 'Demo:Changeover.normal' }),
       node('ks', 'contactor', t('KS — backup', 'KS — secours', 'KS — Ersatz'), 570, 190, { dp: 'Demo:Changeover.backup' }),
       node('bb', 'busbar', t('Busbar', 'Jeu de barres', 'Sammelschiene'), 240, 330),

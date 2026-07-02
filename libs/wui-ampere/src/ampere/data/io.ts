@@ -89,6 +89,9 @@ function asRotation(value: unknown): Rotation {
 function normalizeNode(item: Record<string, unknown>, index: number): Node | null {
   const symbol = asSymbol(item['symbol']);
   if (!symbol) return null;
+  const exitSide = item['exitSide'] === 'top' || item['exitSide'] === 'bottom' ? item['exitSide'] : undefined;
+  const w = asNumber(item['w'], 0);
+  const h = asNumber(item['h'], 0);
   return {
     id: asString(item['id']) || `n-${index}`,
     symbol,
@@ -100,7 +103,10 @@ function normalizeNode(item: Record<string, unknown>, index: number): Node | nul
     rotation: asRotation(item['rotation']),
     dp: asString(item['dp']),
     closedValue: asNumber(item['closedValue'], 1),
-    source: Boolean(item['source'])
+    source: Boolean(item['source']),
+    ...(exitSide ? { exitSide } : {}),
+    ...(w > 0 ? { w } : {}),
+    ...(h > 0 ? { h } : {})
   };
 }
 

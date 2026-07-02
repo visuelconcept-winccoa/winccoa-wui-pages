@@ -127,7 +127,15 @@ export class DpJsonStore<T extends DpEntity> {
     return created;
   }
 
-  async save(item: T): Promise<void> {
+  /**
+   * Persist an entity. Audit behaviour is tunable per call for pages that edit
+   * in a "session" (many incremental saves, one Done):
+   * - default — diff against the stored state and trace an UPDATE (historic behaviour);
+   * - `audit: false` — silent save (no read-back, no trace);
+   * - `auditBaseline` — diff against the GIVEN baseline instead of the stored
+   *   state (one session-wide trace on Done; empty diff ⇒ no row).
+   */
+  async save(item: T, opts: { audit?: boolean; auditBaseline?: T } = {}): Promise<void> {
     if (this.offline) {
       const list = this.mem();
       const i = list.findIndex((x) => x.id === item.id);
@@ -135,10 +143,11 @@ export class DpJsonStore<T extends DpEntity> {
       else list[i] = item;
       return;
     }
+    const withAudit = opts.audit !== false && this.audit != null;
     // Capture the previous state for the audit diff before overwriting it.
-    const previous = this.audit ? await this.read(this.prefix + item.id) : undefined;
+    const previous = withAudit ? (opts.auditBaseline ?? (await this.read(this.prefix + item.id))) : undefined;
     await this.writeValues(item);
-    this.traceUpdate(previous, item);
+    if (withAudit) this.traceUpdate(previous, item);
   }
 
   async remove(id: string): Promise<void> {

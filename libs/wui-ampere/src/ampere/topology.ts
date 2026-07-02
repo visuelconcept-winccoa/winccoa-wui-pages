@@ -80,11 +80,14 @@ export function computeEnergy(network: Network, closed: Map<string, boolean>): E
     }
   }
 
-  // BFS from every source's ports.
+  // BFS from every source's ports — a source only seeds when its live
+  // supply-state says "powered" (bound DP equal to closedValue; unbound or no
+  // value yet ⇒ powered, mirroring the switchgear "assume closed" rule).
   const energised = new Set<string>();
   const queue: string[] = [];
   for (const node of network.nodes) {
     if (!isSource(node)) continue;
+    if (!(closed.get(node.id) ?? true)) continue;
     for (const port of Object.keys(SYMBOLS[node.symbol].ports)) {
       const key = portKey(node.id, port);
       if (!energised.has(key)) {

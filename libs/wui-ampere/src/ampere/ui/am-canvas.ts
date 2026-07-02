@@ -33,6 +33,8 @@ import {
   edgeEnds,
   measurementPos,
   nodeCenter,
+  nodeExit,
+  nodeSize,
   orthPath,
   portWorld,
   snap,
@@ -192,8 +194,9 @@ export class AmCanvas extends LitElement {
 
   private renderNode(node: Node): SVGTemplateResult {
     const def = SYMBOLS[node.symbol];
-    const cx = def.w / 2;
-    const cy = def.h / 2;
+    const size = nodeSize(node);
+    const cx = size.w / 2;
+    const cy = size.h / 2;
     const live = this.energy?.node(node.id) ?? false;
     const sel = this.isSelected('node', node.id);
     const isClosed = this.closed.get(node.id) ?? true;
@@ -201,17 +204,17 @@ export class AmCanvas extends LitElement {
     const center = nodeCenter(node);
     const drag = this.labelDrag?.id === node.id ? this.labelDrag : null;
     const lx = center.x + (drag ? drag.dx : (node.labelDx ?? 0));
-    const ly = node.y + def.h + LABEL_GAP + (drag ? drag.dy : (node.labelDy ?? 0));
+    const ly = node.y + size.h + LABEL_GAP + (drag ? drag.dy : (node.labelDy ?? 0));
     return svg`
       <g class="sym ${live ? 'live' : ''} ${sel ? 'selected' : ''}">
         <g
           transform="translate(${node.x} ${node.y}) rotate(${node.rotation} ${cx} ${cy})"
           @pointerdown=${(e: PointerEvent) => this.onNodeDown(e, node)}
         >
-          ${alarmColor ? svg`<rect class="alarm-frame" x="-8" y="-8" width=${def.w + 16} height=${def.h + 16} rx="8" style=${`stroke:${alarmColor}`} />` : nothing}
-          ${sel ? svg`<rect class="halo" x="-6" y="-6" width=${def.w + 12} height=${def.h + 12} rx="6" />` : nothing}
-          <rect class="hit" x="0" y="0" width=${def.w} height=${def.h} />
-          ${def.render({ closed: isClosed })}
+          ${alarmColor ? svg`<rect class="alarm-frame" x="-8" y="-8" width=${size.w + 16} height=${size.h + 16} rx="8" style=${`stroke:${alarmColor}`} />` : nothing}
+          ${sel ? svg`<rect class="halo" x="-6" y="-6" width=${size.w + 12} height=${size.h + 12} rx="6" />` : nothing}
+          <rect class="hit" x="0" y="0" width=${size.w} height=${size.h} />
+          ${def.render({ closed: isClosed, exit: nodeExit(node) ?? undefined, w: size.w, h: size.h })}
         </g>
         ${node.label
           ? svg`<text
@@ -450,8 +453,8 @@ export class AmCanvas extends LitElement {
     const out: Selection[] = [];
     const nodeIds = new Set<string>();
     for (const n of this.network.nodes) {
-      const def = SYMBOLS[n.symbol];
-      if (n.x < x1 && n.x + def.w > x0 && n.y < y1 && n.y + def.h > y0) {
+      const size = nodeSize(n);
+      if (n.x < x1 && n.x + size.w > x0 && n.y < y1 && n.y + size.h > y0) {
         out.push({ kind: 'node', id: n.id });
         nodeIds.add(n.id);
       }

@@ -31,7 +31,7 @@ import { demoNetworks } from './ampere/data/demo.js';
 import { exportJson, exportNetwork, parseNetworks } from './ampere/data/io.js';
 import { autoLayout } from './ampere/layout.js';
 import { computeEnergy, type EnergyState } from './ampere/topology.js';
-import { isSwitchgear, type SymbolId } from './ampere/symbols/catalog.js';
+import { SYMBOLS, isSwitchgear, type SymbolId } from './ampere/symbols/catalog.js';
 import {
   CANVAS_H,
   CANVAS_W,
@@ -179,6 +179,8 @@ export class WuiAmpere extends LitElement {
   private readonly api = this.resolveApi();
   private dpSub = new Subscription();
   private subscribedKey = '';
+  /** Network state captured when entering edit mode — audit baseline for the "Done" trace. */
+  private auditBaseline: Network | null = null;
 
   override render(): TemplateResult {
     if (isEmbedded()) return this.renderEmbedded();
@@ -328,11 +330,13 @@ export class WuiAmpere extends LitElement {
               </ix-button>
             `
           : nothing}
-        <div class="zoom">
-          <ix-icon-button ghost size="16" icon="minus" title=${localize(MSG.toolbar.zoomOut)} @click=${() => this.setZoom(this.zoom - ZOOM_STEP)}></ix-icon-button>
-          <button class="zoom-val" type="button" title=${localize(MSG.toolbar.zoomReset)} @click=${() => this.setZoom(1)}>${Math.round(this.zoom * 100)}%</button>
-          <ix-icon-button ghost size="16" icon="plus" title=${localize(MSG.toolbar.zoomIn)} @click=${() => this.setZoom(this.zoom + ZOOM_STEP)}></ix-icon-button>
-        </div>
+        ${this.editing
+          ? html`<div class="zoom">
+              <ix-icon-button ghost size="16" icon="minus" title=${localize(MSG.toolbar.zoomOut)} @click=${() => this.setZoom(this.zoom - ZOOM_STEP)}></ix-icon-button>
+              <button class="zoom-val" type="button" title=${localize(MSG.toolbar.zoomReset)} @click=${() => this.setZoom(1)}>${Math.round(this.zoom * 100)}%</button>
+              <ix-icon-button ghost size="16" icon="plus" title=${localize(MSG.toolbar.zoomIn)} @click=${() => this.setZoom(this.zoom + ZOOM_STEP)}></ix-icon-button>
+            </div>`
+          : nothing}
         <wui-ampere-ai-assistant
           .contextSummary=${this.contextSummary(network)}
           @wui:applynetwork=${(e: CustomEvent<Network>) => this.onApplyNetwork(network, e.detail)}
@@ -347,6 +351,7 @@ export class WuiAmpere extends LitElement {
           class="canvas"
           .network=${network}
           ?editing=${this.editing}
+          ?fit=${!this.editing}
           .tool=${this.tool}
           .zoom=${this.zoom}
           .energy=${energy}
@@ -377,11 +382,16 @@ export class WuiAmpere extends LitElement {
 
   // --- live data -------------------------------------------------------------
 
-  /** DP elements the current network needs live (switchgear states + measurements). */
+  /** Whether a node binds a live state DP: switchgear position, or a source's supply state. */
+  private bindsStateDp(n: Node): boolean {
+    return (isSwitchgear(n.symbol) || SYMBOLS[n.symbol].role === 'source' || n.source) && n.dp.trim() !== '';
+  }
+
+  /** DP elements the current network needs live (switchgear/source states + measurements). */
   private liveDps(network: Network | undefined): string[] {
     if (!network) return [];
     const set = new Set<string>();
-    for (const n of network.nodes) if (isSwitchgear(n.symbol) && n.dp.trim()) set.add(n.dp.trim());
+    for (const n of network.nodes) if (this.bindsStateDp(n)) set.add(n.dp.trim());
     for (const m of network.measurements) if (m.dp.trim()) set.add(m.dp.trim());
     return [...set];
   }
@@ -446,11 +456,15 @@ export class WuiAmpere extends LitElement {
     this.alertColors = next;
   }
 
-  /** Map of switchgear node id → closed (undefined when unbound / no live value). */
+  /**
+   * Map of node id → closed/powered (absent when unbound / no live value yet):
+   * switchgear conduction state, and for sources whether they energise the
+   * network (both compare the live value to `closedValue`).
+   */
   private closedMap(network: Network): Map<string, boolean> {
     const map = new Map<string, boolean>();
     for (const n of network.nodes) {
-      if (!isSwitchgear(n.symbol) || !n.dp.trim()) continue;
+      if (!this.bindsStateDp(n)) continue;
       const v = this.live.get(normDp(n.dp));
       if (v !== undefined) map.set(n.id, Number(v) === n.closedValue);
     }
@@ -485,11 +499,25 @@ export class WuiAmpere extends LitElement {
 
   // --- editing operations ----------------------------------------------------
 
+  /**
+   * Enter/leave edit mode. Every in-session persist is audit-SILENT; the whole
+   * editing session is traced as ONE audit-trail UPDATE when the user clicks
+   * "Done" (diff between the state at edit start and the final state — no
+   * change ⇒ no row).
+   */
   private setEditing(on: boolean): void {
     this.editing = on;
-    if (!on) {
-      this.selection = [];
-      this.tool = 'select';
+    if (on) {
+      this.auditBaseline = structuredClone(this.selectedNetwork() ?? null);
+      return;
+    }
+    this.selection = [];
+    this.tool = 'select';
+    const current = this.selectedNetwork();
+    const baseline = this.auditBaseline;
+    this.auditBaseline = null;
+    if (current && baseline && baseline.id === current.id) {
+      void this.store.saveNetwork(current, { auditBaseline: baseline });
     }
   }
 
@@ -606,8 +634,8 @@ export class WuiAmpere extends LitElement {
       edges: proposal.edges,
       measurements: proposal.measurements
     };
+    if (!this.editing) this.setEditing(true); // captures the audit baseline before the apply
     this.selection = [];
-    this.editing = true;
     void this.persist(merged);
   }
 
@@ -642,7 +670,9 @@ export class WuiAmpere extends LitElement {
   private async persist(network: Network): Promise<void> {
     const stamped: Network = { ...network, updatedAt: nowLocal() };
     this.networks = this.networks.map((n) => (n.id === stamped.id ? stamped : n));
-    await this.store.saveNetwork(stamped);
+    // In-session edits save silently; the audit row is written once on "Done"
+    // (see setEditing). Out-of-session saves (rename, import) audit normally.
+    await this.store.saveNetwork(stamped, this.editing ? { audit: false } : {});
     this.offline = this.store.offline;
   }
 
@@ -816,7 +846,9 @@ function pageStyles(): ReturnType<typeof css> {
     }
     am-canvas.embedded {
       display: block;
-      height: 100%;
+      /* Embedded tile (iframe): 100vh = the tile's viewport, regardless of the
+         shell outlet's own height chain — the diagram always fills the tile. */
+      height: 100vh;
     }
     .notice {
       display: flex;

@@ -105,6 +105,18 @@ export const MSG = {
     ),
     closedValue: ml('“Closed” value', 'Valeur « fermé »', '„Geschlossen“-Wert'),
     isSource: ml('Energy source (seeds the network)', 'Source d’énergie (amorce le réseau)', 'Energiequelle (speist das Netz)'),
+    sourceDp: ml('Supply-state datapoint (source)', 'Datapoint d’alimentation (source)', 'Versorgungszustands-Datenpunkt (Quelle)'),
+    sourceDpHint: ml(
+      'Element read live; equals the "powered" value ⇒ the source energises the network. Unbound ⇒ always powered.',
+      'Élément lu en direct ; égal à la valeur « alimenté » ⇒ la source alimente le réseau. Non lié ⇒ toujours alimentée.',
+      'Live gelesenes Element; gleich dem „versorgt“-Wert ⇒ die Quelle speist das Netz. Ungebunden ⇒ immer versorgt.'
+    ),
+    poweredValue: ml('“Powered” value', 'Valeur « alimenté »', '„Versorgt“-Wert'),
+    exitSide: ml('Wire exit', 'Sortie du fil', 'Leitungsabgang'),
+    exitTop: ml('Top', 'Haut', 'Oben'),
+    exitBottom: ml('Bottom', 'Bas', 'Unten'),
+    width: ml('Width', 'Largeur', 'Breite'),
+    height: ml('Height', 'Hauteur', 'Höhe'),
     delete: ml('Delete', 'Supprimer', 'Löschen'),
     measDp: ml('Measurement datapoint', 'Datapoint de mesure', 'Mess-Datenpunkt'),
     measLabel: ml('Caption', 'Libellé', 'Beschriftung'),

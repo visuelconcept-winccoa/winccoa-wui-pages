@@ -57,10 +57,21 @@ export interface SymbolPort {
   y: number;
 }
 
+/** Which side of the symbol box the wire leaves from (single-port symbols). */
+export type ExitSide = 'top' | 'bottom';
+
 /** Drawing context passed to a symbol's `render`. */
 export interface GlyphCtx {
   /** Whether the device is currently closed (only used by `switch` symbols). */
   closed: boolean;
+  /**
+   * Resolved wire-exit side for single-port symbols (the node's choice, or the
+   * symbol's native side). Multi-port symbols ignore it.
+   */
+  exit?: ExitSide;
+  /** Resolved box size — only symbols without ports (switchboard frame) are resizable. */
+  w?: number;
+  h?: number;
 }
 
 /** One symbol definition. */
@@ -105,14 +116,33 @@ function switchGlyph(closed: boolean, marker: SVGTemplateResult | null): SVGTemp
   `;
 }
 
-function circleDevice(w: number, h: number, glyph: SVGTemplateResult): SVGTemplateResult {
+/**
+ * A circle-bodied device (G/M/A/V…): the circle, its letter, and the lead
+ * line(s) between the box edge and the circle on the requested side(s) — so a
+ * single-port device can exit top OR bottom while its letter stays upright.
+ */
+function circleDevice(w: number, h: number, glyph: SVGTemplateResult, leads: ExitSide | 'both'): SVGTemplateResult {
   const cx = w / 2;
   const r = Math.min(w, h) / 2 - SW;
   return svg`
-    <line x1=${cx} y1="0" x2=${cx} y2=${h / 2 - r} stroke="currentColor" stroke-width=${SW} />
+    ${leads === 'bottom' ? nothingSvg() : svg`<line x1=${cx} y1="0" x2=${cx} y2=${h / 2 - r} stroke="currentColor" stroke-width=${SW} />`}
+    ${leads === 'top' ? nothingSvg() : svg`<line x1=${cx} y1=${h / 2 + r} x2=${cx} y2=${h} stroke="currentColor" stroke-width=${SW} />`}
     <circle cx=${cx} cy=${h / 2} r=${r} fill="none" stroke="currentColor" stroke-width=${SW} />
     ${glyph}
   `;
+}
+
+function nothingSvg(): SVGTemplateResult {
+  return svg``;
+}
+
+/**
+ * Mirror a (text-free) glyph vertically inside its box — used by single-port
+ * symbols whose drawing is directional (feeder arrows, load triangle, earth)
+ * when the wire exits on the opposite side of the native one.
+ */
+function mirrorY(h: number, inner: SVGTemplateResult, flip: boolean): SVGTemplateResult {
+  return flip ? svg`<g transform="translate(0 ${h}) scale(1 -1)">${inner}</g>` : inner;
 }
 
 /** A device letter (G/M/A/V…) optically centered on (cx, cy) — pairs with {@link circleDevice}. */
@@ -214,10 +244,15 @@ export const SYMBOLS: Record<SymbolId, SymbolDef> = {
     h: 60,
     ports: { b: { x: 20, y: 60 } },
     role: 'source',
-    render: () => svg`
-      <line x1="20" y1="14" x2="20" y2="60" stroke="currentColor" stroke-width=${SW} />
-      <path d="M 20 0 L 12 16 L 28 16 Z" fill="currentColor" />
-    `
+    render: ({ exit = 'bottom' }) =>
+      mirrorY(
+        60,
+        svg`
+          <line x1="20" y1="14" x2="20" y2="60" stroke="currentColor" stroke-width=${SW} />
+          <path d="M 20 0 L 12 16 L 28 16 Z" fill="currentColor" />
+        `,
+        exit === 'top'
+      )
   },
   'feeder-out': {
     id: 'feeder-out',
@@ -227,10 +262,15 @@ export const SYMBOLS: Record<SymbolId, SymbolDef> = {
     h: 60,
     ports: { a: { x: 20, y: 0 } },
     role: 'load',
-    render: () => svg`
-      <line x1="20" y1="0" x2="20" y2="46" stroke="currentColor" stroke-width=${SW} />
-      <path d="M 20 60 L 12 44 L 28 44 Z" fill="currentColor" />
-    `
+    render: ({ exit = 'top' }) =>
+      mirrorY(
+        60,
+        svg`
+          <line x1="20" y1="0" x2="20" y2="46" stroke="currentColor" stroke-width=${SW} />
+          <path d="M 20 60 L 12 44 L 28 44 Z" fill="currentColor" />
+        `,
+        exit === 'bottom'
+      )
   },
   switchboard: {
     id: 'switchboard',
@@ -240,8 +280,8 @@ export const SYMBOLS: Record<SymbolId, SymbolDef> = {
     h: 150,
     ports: {},
     role: 'passive',
-    render: () => svg`
-      <rect x="2" y="2" width="216" height="146" rx="6" fill="none"
+    render: ({ w = 220, h = 150 }) => svg`
+      <rect x="2" y="2" width=${w - 4} height=${h - 4} rx="6" fill="none"
         stroke="currentColor" stroke-width="3" stroke-dasharray="10 6" opacity="0.7" />
     `
   },
@@ -268,9 +308,11 @@ export const SYMBOLS: Record<SymbolId, SymbolDef> = {
     h: 90,
     ports: { b: { x: 30, y: 90 } },
     role: 'source',
-    render: () =>
+    render: ({ exit = 'bottom' }) =>
       svg`
-        <line x1="30" y1="60" x2="30" y2="90" stroke="currentColor" stroke-width=${SW} />
+        ${exit === 'bottom'
+          ? svg`<line x1="30" y1="56" x2="30" y2="90" stroke="currentColor" stroke-width=${SW} />`
+          : svg`<line x1="30" y1="0" x2="30" y2="4" stroke="currentColor" stroke-width=${SW} />`}
         <circle cx="30" cy="30" r="26" fill="none" stroke="currentColor" stroke-width=${SW} />
         <path d="M 16 30 Q 23 18 30 30 T 44 30" fill="none" stroke="currentColor" stroke-width="3" />
       `
@@ -283,7 +325,7 @@ export const SYMBOLS: Record<SymbolId, SymbolDef> = {
     h: 90,
     ports: { b: { x: 30, y: 90 } },
     role: 'source',
-    render: () => circleDevice(60, 90, centeredLetter(30, 45, 26, 'G'))
+    render: ({ exit = 'bottom' }) => circleDevice(60, 90, centeredLetter(30, 45, 26, 'G'), exit)
   },
   ammeter: {
     id: 'ammeter',
@@ -293,7 +335,7 @@ export const SYMBOLS: Record<SymbolId, SymbolDef> = {
     h: 80,
     ports: vertical2(40, 80),
     role: 'meter',
-    render: () => circleDevice(40, 80, centeredLetter(20, 40, 20, 'A'))
+    render: () => circleDevice(40, 80, centeredLetter(20, 40, 20, 'A'), 'both')
   },
   voltmeter: {
     id: 'voltmeter',
@@ -303,7 +345,7 @@ export const SYMBOLS: Record<SymbolId, SymbolDef> = {
     h: 80,
     ports: { a: { x: 20, y: 0 } },
     role: 'meter',
-    render: () => circleDevice(40, 80, centeredLetter(20, 40, 20, 'V'))
+    render: ({ exit = 'top' }) => circleDevice(40, 80, centeredLetter(20, 40, 20, 'V'), exit)
   },
   meter: {
     id: 'meter',
@@ -328,10 +370,15 @@ export const SYMBOLS: Record<SymbolId, SymbolDef> = {
     h: 60,
     ports: { a: { x: 20, y: 0 } },
     role: 'load',
-    render: () => svg`
-      <line x1="20" y1="0" x2="20" y2="20" stroke="currentColor" stroke-width=${SW} />
-      <path d="M 20 60 L 6 20 L 34 20 Z" fill="none" stroke="currentColor" stroke-width=${SW} stroke-linejoin="round" />
-    `
+    render: ({ exit = 'top' }) =>
+      mirrorY(
+        60,
+        svg`
+          <line x1="20" y1="0" x2="20" y2="20" stroke="currentColor" stroke-width=${SW} />
+          <path d="M 20 60 L 6 20 L 34 20 Z" fill="none" stroke="currentColor" stroke-width=${SW} stroke-linejoin="round" />
+        `,
+        exit === 'bottom'
+      )
   },
   motor: {
     id: 'motor',
@@ -341,7 +388,7 @@ export const SYMBOLS: Record<SymbolId, SymbolDef> = {
     h: 90,
     ports: { a: { x: 30, y: 0 } },
     role: 'load',
-    render: () => circleDevice(60, 90, centeredLetter(30, 45, 26, 'M'))
+    render: ({ exit = 'top' }) => circleDevice(60, 90, centeredLetter(30, 45, 26, 'M'), exit)
   },
   ground: {
     id: 'ground',
@@ -351,12 +398,17 @@ export const SYMBOLS: Record<SymbolId, SymbolDef> = {
     h: 50,
     ports: { a: { x: 20, y: 0 } },
     role: 'passive',
-    render: () => svg`
-      <line x1="20" y1="0" x2="20" y2="26" stroke="currentColor" stroke-width=${SW} />
-      <line x1="6" y1="26" x2="34" y2="26" stroke="currentColor" stroke-width=${SW} />
-      <line x1="12" y1="34" x2="28" y2="34" stroke="currentColor" stroke-width=${SW} />
-      <line x1="16" y1="42" x2="24" y2="42" stroke="currentColor" stroke-width=${SW} />
-    `
+    render: ({ exit = 'top' }) =>
+      mirrorY(
+        50,
+        svg`
+          <line x1="20" y1="0" x2="20" y2="26" stroke="currentColor" stroke-width=${SW} />
+          <line x1="6" y1="26" x2="34" y2="26" stroke="currentColor" stroke-width=${SW} />
+          <line x1="12" y1="34" x2="28" y2="34" stroke="currentColor" stroke-width=${SW} />
+          <line x1="16" y1="42" x2="24" y2="42" stroke="currentColor" stroke-width=${SW} />
+        `,
+        exit === 'bottom'
+      )
   },
   'surge-arrester': {
     id: 'surge-arrester',
@@ -386,4 +438,16 @@ export function symbolsOf(category: Category): SymbolDef[] {
 /** Whether a symbol is switchgear (has an open/closed position bindable to a DP). */
 export function isSwitchgear(id: SymbolId): boolean {
   return SYMBOLS[id].role === 'switch';
+}
+
+/** Native wire-exit side of a single-port symbol (null for multi-/port-less symbols). */
+export function nativeExitSide(id: SymbolId): ExitSide | null {
+  const ports = Object.values(SYMBOLS[id].ports);
+  if (ports.length !== 1) return null;
+  return ports[0].y === 0 ? 'top' : 'bottom';
+}
+
+/** Whether a symbol box is user-resizable (port-less frames only — the switchboard). */
+export function isResizable(id: SymbolId): boolean {
+  return Object.keys(SYMBOLS[id].ports).length === 0;
 }
