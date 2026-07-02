@@ -86,6 +86,29 @@ function normDp(dp: string): string {
   return s.toLowerCase();
 }
 
+/** Subscribable DPE name: a bare DP (no element part) needs a trailing dot. */
+function dpeName(dp: string): string {
+  const v = dp.trim();
+  return v.includes('.') ? v : `${v}.`;
+}
+
+/**
+ * Coerce a live emission into a comparable/displayable primitive: unwrap a
+ * `{value}` envelope, map booleans (and 'true'/'false' strings — e.g. a bool
+ * DPE serialised as text) to 1/0 so `closedValue` comparisons keep working.
+ */
+function liveValue(raw: unknown): number | string {
+  const v = raw && typeof raw === 'object' && 'value' in raw ? (raw as { value: unknown }).value : raw;
+  if (typeof v === 'boolean') return v ? 1 : 0;
+  if (typeof v === 'string') {
+    const t = v.trim().toLowerCase();
+    if (t === 'true') return 1;
+    if (t === 'false') return 0;
+    return v;
+  }
+  return typeof v === 'number' ? v : Number(v);
+}
+
 export class WuiAmpere extends LitElement {
   static override readonly styles = [IXCoreStyles, pageStyles()];
 
@@ -291,7 +314,14 @@ export class WuiAmpere extends LitElement {
     return [...set];
   }
 
-  /** (Re)subscribe when the set of needed DPs changes. */
+  /**
+   * (Re)subscribe when the set of needed DPs changes — with ONE subscription
+   * PER DP. `dpConnect` fails the whole subscription as soon as ANY name in the
+   * array is invalid (see the oa-rx-js-api README), so batching all bindings
+   * together froze the entire animation on the first typo'd, not-yet-created or
+   * demo DP. Isolated subscriptions confine the failure to its own device
+   * (which then falls back to "closed") while every other binding stays live.
+   */
   private syncSubscription(): void {
     const dps = this.liveDps(this.selectedNetwork());
     const key = [...dps].sort().join('|');
@@ -299,29 +329,28 @@ export class WuiAmpere extends LitElement {
     this.subscribedKey = key;
     this.dpSub.unsubscribe();
     this.dpSub = new Subscription();
-    if (!this.api || dps.length === 0) {
-      this.live = new Map();
-      return;
-    }
-    try {
-      this.dpSub = this.api.dpConnect(dps, true).subscribe({
-        next: (e: { dp: string[]; value: unknown[] }) => this.onLive(e),
-        error: () => {
-          // dpConnect stream error (e.g. an unbound DP) — values stay at their last known.
-        }
-      });
-    } catch {
-      // dpConnect failed (e.g. an unbound DP) — values stay at their last known.
+    this.live = new Map();
+    if (!this.api || dps.length === 0) return;
+    for (const dp of dps) {
+      try {
+        this.dpSub.add(
+          this.api.dpConnect(dpeName(dp), true).subscribe({
+            next: (e: { dp: string[]; value: unknown[] }) => this.onLive(dp, e.value?.[0]),
+            error: () => {
+              // Unknown/unreadable DP — this device falls back to "closed"; the others stay live.
+            }
+          })
+        );
+      } catch {
+        // Same as above — never let one bad binding break the rest.
+      }
     }
   }
 
-  private onLive(e: { dp: string[]; value: unknown[] }): void {
+  /** Record one live emission, keyed by the BOUND name (immune to emission-name variants). */
+  private onLive(boundDp: string, raw: unknown): void {
     const next = new Map(this.live);
-    for (const [i, dp] of e.dp.entries()) {
-      const raw = e.value[i];
-      const v = typeof raw === 'number' || typeof raw === 'string' ? raw : Number(raw);
-      next.set(normDp(dp), v as number | string);
-    }
+    next.set(normDp(boundDp), liveValue(raw));
     this.live = next;
   }
 

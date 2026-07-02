@@ -11,10 +11,12 @@
  *   Emits `wui:update-meas`.
  * - **Wire**: read-only info.
  *
- * Any selection can be removed (`wui:delete`). Datapoint binding is deliberately
- * a free text field (per the "free DP selector per symbol" design), so it works
- * against any WinCC OA project without a naming convention.
+ * Any selection can be removed (`wui:delete`). Datapoint binding stays free-form
+ * (per the "free DP selector per symbol" design — no naming convention imposed):
+ * the shared `wui-dp-input` keeps free text but adds live `dpNames` autocomplete
+ * and a browse button, like the machine-fleet dialogs.
  */
+import '@visuelconcept/wui-kit/ui/wui-dp-input.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
@@ -72,12 +74,11 @@ export class AmInspector extends LitElement {
         ? html`
             ${this.field(
               MSG.inspector.stateDp,
-              html`<input
-                  class="in"
+              html`<wui-dp-input
                   placeholder="System1:Q1.state"
                   .value=${node.dp}
-                  @input=${(e: Event) => this.patchNode(node.id, { dp: value(e) })}
-                />
+                  @wui:change=${(e: CustomEvent<{ value: string }>) => this.patchNode(node.id, { dp: e.detail.value })}
+                ></wui-dp-input>
                 <div class="hint">${localizeDir(MSG.inspector.stateDpHint)}</div>`
             )}
             ${this.field(
@@ -112,7 +113,11 @@ export class AmInspector extends LitElement {
       </div>
       ${this.field(
         MSG.inspector.measDp,
-        html`<input class="in" placeholder="System1:Feeder1.value" .value=${m.dp} @input=${(e: Event) => this.patchMeas(m.id, { dp: value(e) })} />`
+        html`<wui-dp-input
+          placeholder="System1:Feeder1.value"
+          .value=${m.dp}
+          @wui:change=${(e: CustomEvent<{ value: string }>) => this.patchMeas(m.id, { dp: e.detail.value })}
+        ></wui-dp-input>`
       )}
       ${this.field(
         MSG.inspector.measLabel,

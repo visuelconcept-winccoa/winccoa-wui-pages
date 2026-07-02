@@ -115,6 +115,12 @@ function circleDevice(w: number, h: number, glyph: SVGTemplateResult): SVGTempla
   `;
 }
 
+/** A device letter (G/M/A/V…) optically centered on (cx, cy) — pairs with {@link circleDevice}. */
+function centeredLetter(cx: number, cy: number, size: number, letter: string): SVGTemplateResult {
+  return svg`<text x=${cx} y=${cy} text-anchor="middle" dominant-baseline="central"
+    font-size=${size} fill="currentColor" font-family="sans-serif">${letter}</text>`;
+}
+
 /** The full symbol catalog, keyed by id. */
 export const SYMBOLS: Record<SymbolId, SymbolDef> = {
   breaker: {
@@ -277,8 +283,7 @@ export const SYMBOLS: Record<SymbolId, SymbolDef> = {
     h: 90,
     ports: { b: { x: 30, y: 90 } },
     role: 'source',
-    render: () =>
-      circleDevice(60, 90, svg`<text x="30" y="40" text-anchor="middle" font-size="26" fill="currentColor" font-family="sans-serif">G</text>`)
+    render: () => circleDevice(60, 90, centeredLetter(30, 45, 26, 'G'))
   },
   ammeter: {
     id: 'ammeter',
@@ -288,8 +293,7 @@ export const SYMBOLS: Record<SymbolId, SymbolDef> = {
     h: 80,
     ports: vertical2(40, 80),
     role: 'meter',
-    render: () =>
-      circleDevice(40, 80, svg`<text x="20" y="49" text-anchor="middle" font-size="20" fill="currentColor" font-family="sans-serif">A</text>`)
+    render: () => circleDevice(40, 80, centeredLetter(20, 40, 20, 'A'))
   },
   voltmeter: {
     id: 'voltmeter',
@@ -299,8 +303,7 @@ export const SYMBOLS: Record<SymbolId, SymbolDef> = {
     h: 80,
     ports: { a: { x: 20, y: 0 } },
     role: 'meter',
-    render: () =>
-      circleDevice(40, 80, svg`<text x="20" y="49" text-anchor="middle" font-size="20" fill="currentColor" font-family="sans-serif">V</text>`)
+    render: () => circleDevice(40, 80, centeredLetter(20, 40, 20, 'V'))
   },
   meter: {
     id: 'meter',
@@ -338,8 +341,7 @@ export const SYMBOLS: Record<SymbolId, SymbolDef> = {
     h: 90,
     ports: { a: { x: 30, y: 0 } },
     role: 'load',
-    render: () =>
-      circleDevice(60, 90, svg`<text x="30" y="40" text-anchor="middle" font-size="26" fill="currentColor" font-family="sans-serif">M</text>`)
+    render: () => circleDevice(60, 90, centeredLetter(30, 45, 26, 'M'))
   },
   ground: {
     id: 'ground',
