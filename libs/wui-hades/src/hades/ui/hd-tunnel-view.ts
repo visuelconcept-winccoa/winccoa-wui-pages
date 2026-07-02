@@ -15,21 +15,43 @@ import { LitElement, css, html, nothing, type PropertyValues, type TemplateResul
 import { customElement, property, state } from 'lit/decorators.js';
 import { container } from 'tsyringe';
 import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
+import { currentAuditUser } from '@visuelconcept/wui-kit/data/audit-trail.js';
 import { CommandRunner, type CommandResult } from '../data/commands.js';
+import { ExerciseEngine, type ExerciseReport, type Scenario } from '../data/exercise.js';
 import { exportTunnel } from '../data/io.js';
-import { LiveBinding } from '../data/live.js';
-import { MSG, localize, localizeDir, deleteModeMsg, engageModeMsg, commandResultMsg } from '../i18n.js';
+import { LiveBinding, type StateTransition } from '../data/live.js';
+import { LogbookStore, type Incident, type LogEntry } from '../data/logbook.js';
+import { openSafetyReport } from '../data/safety-report.js';
+import {
+  MSG,
+  localize,
+  localizeDir,
+  alarmTransitionMsg,
+  commandResultMsg,
+  deleteModeMsg,
+  engageModeMsg,
+  exerciseEndMsg,
+  exerciseStartMsg,
+  modeEngagedMsg,
+  simulatedCommandMsg
+} from '../i18n.js';
 import { TunnelScene } from '../scene/tunnel-scene.js';
 import type { EquipmentDef, OperatingMode, Tunnel } from '../types.js';
+import { STATE_FAULT, STATE_RUN, STATE_WARNING } from '../types.js';
 import './hd-editor.js';
 import './hd-equipment-dialog.js';
+import './hd-exercise.js';
+import './hd-logbook.js';
 import './hd-mode-dialog.js';
 import './hd-modes.js';
 import './hd-synoptic.js';
 import type { CommandRequest } from './hd-equipment-dialog.js';
+import type { OpenIncidentDetail } from './hd-logbook.js';
 
-type Tab = '3d' | 'editor' | 'synoptic' | 'modes';
-const TABS: readonly Tab[] = ['3d', 'editor', 'synoptic', 'modes'];
+type Tab = '3d' | 'editor' | 'synoptic' | 'modes' | 'logbook' | 'exercise';
+const TABS: readonly Tab[] = ['3d', 'editor', 'synoptic', 'modes', 'logbook', 'exercise'];
+/** Exercise clock tick (ms). */
+const EXERCISE_TICK_MS = 1000;
 
 @customElement('hd-tunnel-view')
 export class HdTunnelView extends LitElement {
@@ -51,14 +73,33 @@ export class HdTunnelView extends LitElement {
   /** Mode open in the editor dialog (a fresh one for "new"); null = closed. */
   @state() private editingMode: OperatingMode | null = null;
   @state() private deletingMode: OperatingMode | null = null;
+  // Logbook (main courante).
+  @state() private logEntries: LogEntry[] = [];
+  @state() private activeIncident: Incident | null = null;
+  // Exercise (drill).
+  @state() private exerciseScenario: Scenario | null = null;
+  @state() private exerciseElapsedS = 0;
+  @state() private exerciseSatisfied: string[] = [];
+  @state() private exerciseReport: ExerciseReport | null = null;
 
   private scene: TunnelScene | null = null;
-  private readonly live = new LiveBinding(() => this.onLive());
+  private readonly live = new LiveBinding(
+    () => this.onLive(),
+    (t) => this.onTransition(t)
+  );
   private readonly commands = new CommandRunner();
   private resizeObserver: ResizeObserver | null = null;
+  private logbook: LogbookStore | null = null;
+  private logbookTunnelId = '';
+  private exercise: ExerciseEngine | null = null;
+  private exerciseStartMs = 0;
+  private exerciseTimer = 0;
+  /** Pre-exercise live snapshot, restored when the drill ends. */
+  private exerciseSnapshot = new Map<string, { state?: number; measures?: Record<string, number> }>();
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
+    window.clearInterval(this.exerciseTimer);
     this.live.disconnect();
     this.resizeObserver?.disconnect();
     this.scene?.dispose();
@@ -89,14 +130,50 @@ export class HdTunnelView extends LitElement {
   }
 
   private applyTunnel(): void {
-    if (!this.tunnel) return;
-    this.scene?.setTunnel(this.tunnel);
-    this.live.connect(this.tunnel);
+    const tunnel = this.tunnel;
+    if (!tunnel) return;
+    this.scene?.setTunnel(tunnel);
+    // Live binding stays frozen while a drill drives the twin.
+    if (!this.exercise) this.live.connect(tunnel);
+    if (this.logbookTunnelId !== tunnel.id) {
+      this.logbookTunnelId = tunnel.id;
+      this.logbook = new LogbookStore(tunnel.id);
+      void this.refreshLogbook(true);
+    }
+  }
+
+  private async refreshLogbook(load = false): Promise<void> {
+    if (!this.logbook) return;
+    const data = load ? await this.logbook.load() : this.logbook.current;
+    this.logEntries = [...data.entries];
+    this.activeIncident = this.logbook.activeIncident ?? null;
+  }
+
+  /** Whether operator commands are allowed right now (drills always are). */
+  private get canOperate(): boolean {
+    if (this.exercise) return this.canEdit;
+    return this.canEdit && !this.offline && this.tunnel?.shadowMode !== true;
   }
 
   private onLive(): void {
     if (this.tunnel) this.scene?.updateStates(this.tunnel);
     this.liveTick += 1;
+  }
+
+  /** Alarm edges → logbook (fault/warning onset and return to service). */
+  private onTransition(transition: StateTransition): void {
+    const { equipment, previous, next } = transition;
+    const relevant =
+      next === STATE_FAULT ||
+      next === STATE_WARNING ||
+      ((previous === STATE_FAULT || previous === STATE_WARNING) && next === STATE_RUN);
+    if (!relevant || previous === undefined) return;
+    void this.logbook
+      ?.addEntry('alarm', alarmTransitionMsg(equipment.name, next), {
+        equipmentId: equipment.id,
+        pkM: equipment.pkM
+      })
+      .then(() => this.refreshLogbook());
   }
 
   override render(): TemplateResult | typeof nothing {
@@ -119,7 +196,19 @@ export class HdTunnelView extends LitElement {
             <ix-tab-item>${localizeDir(MSG.view.tabEditor)}</ix-tab-item>
             <ix-tab-item>${localizeDir(MSG.view.tabSynoptic)}</ix-tab-item>
             <ix-tab-item>${localizeDir(MSG.view.tabModes)}</ix-tab-item>
+            <ix-tab-item>${localizeDir(MSG.view.tabLogbook)}</ix-tab-item>
+            <ix-tab-item>${localizeDir(MSG.view.tabExercise)}</ix-tab-item>
           </ix-tabs>
+          ${tunnel.shadowMode && !this.exercise
+            ? html`<span class="shadow-chip" title=${localize(MSG.view.shadowHint)}>
+                <ix-icon name="eye" size="16"></ix-icon>${localizeDir(MSG.view.shadowChip)}
+              </span>`
+            : nothing}
+          ${this.exercise
+            ? html`<span class="drill-chip">
+                <ix-icon name="analysis" size="16"></ix-icon>${localizeDir(MSG.exercise.runningTag)}
+              </span>`
+            : nothing}
           <div class="spacer"></div>
           ${this.tab === '3d'
             ? html`
@@ -136,6 +225,13 @@ export class HdTunnelView extends LitElement {
                 ></ix-icon-button>
               `
             : nothing}
+          <ix-icon-button
+            icon="document"
+            variant="secondary"
+            ghost
+            title=${localize(MSG.view.safetyReport)}
+            @click=${() => this.onSafetyReport(tunnel)}
+          ></ix-icon-button>
           <ix-icon-button
             icon="export"
             variant="secondary"
@@ -177,7 +273,7 @@ export class HdTunnelView extends LitElement {
           ${this.tab === 'modes'
             ? html`<hd-modes
                 .tunnel=${tunnel}
-                ?canOperate=${this.canEdit && !this.offline}
+                ?canOperate=${this.canOperate}
                 ?canEdit=${this.canEdit}
                 .results=${this.modeResults}
                 resultsModeId=${this.modeResultsId}
@@ -186,6 +282,27 @@ export class HdTunnelView extends LitElement {
                 @wui:edit-mode=${(e: CustomEvent<OperatingMode>) => (this.editingMode = e.detail)}
                 @wui:delete-mode=${(e: CustomEvent<OperatingMode>) => (this.deletingMode = e.detail)}
               ></hd-modes>`
+            : nothing}
+          ${this.tab === 'logbook'
+            ? html`<hd-logbook
+                .entries=${this.logEntries}
+                .activeIncident=${this.activeIncident}
+                ?canEdit=${this.canEdit}
+                @wui:note=${(e: CustomEvent<string>) => this.onNote(e.detail)}
+                @wui:open-incident=${(e: CustomEvent<OpenIncidentDetail>) => this.onOpenIncident(e.detail)}
+                @wui:close-incident=${() => this.onCloseIncident()}
+              ></hd-logbook>`
+            : nothing}
+          ${this.tab === 'exercise'
+            ? html`<hd-exercise
+                ?canRun=${this.canEdit}
+                .scenario=${this.exerciseScenario}
+                .elapsedS=${this.exerciseElapsedS}
+                .satisfied=${this.exerciseSatisfied}
+                .report=${this.exerciseReport}
+                @wui:start-exercise=${(e: CustomEvent<Scenario>) => this.startExercise(e.detail)}
+                @wui:stop-exercise=${() => this.finishExercise()}
+              ></hd-exercise>`
             : nothing}
         </div>
       </div>
@@ -202,6 +319,7 @@ export class HdTunnelView extends LitElement {
         .equipment=${selected}
         .liveTick=${this.liveTick}
         ?canEdit=${this.canEdit}
+        ?canOperate=${this.canOperate}
         @wui:close=${() => (this.selectedId = '')}
         @wui:save=${(e: CustomEvent<EquipmentDef>) => this.saveEquipment(e.detail)}
         @wui:remove=${(e: CustomEvent<string>) => this.removeEquipment(e.detail)}
@@ -324,6 +442,12 @@ export class HdTunnelView extends LitElement {
     if (!request || !tunnel) return;
     const equipment = tunnel.equipment.find((e) => e.id === request.equipmentId);
     if (!equipment) return;
+    // Drill: intercept — record against the expectations, never dpSet.
+    if (this.exercise) {
+      this.interceptDrillCommand(equipment, request.pointKey, request.value, request.label);
+      return;
+    }
+    if (!this.canOperate) return;
     const result = await this.commands.runCommand(
       equipment,
       request.pointKey,
@@ -331,6 +455,10 @@ export class HdTunnelView extends LitElement {
       request.label,
       tunnel.name
     );
+    void this.logbook?.addEntry('command', request.label, {
+      equipmentId: equipment.id,
+      pkM: equipment.pkM
+    }).then(() => this.refreshLogbook());
     this.notify([result]);
   }
 
@@ -339,10 +467,134 @@ export class HdTunnelView extends LitElement {
     const tunnel = this.tunnel;
     this.pendingMode = null;
     if (!mode || !tunnel) return;
+    // Drill: every action of the sequence is simulated and scored.
+    if (this.exercise) {
+      for (const action of mode.actions) {
+        const equipment = tunnel.equipment.find((e) => e.id === action.equipmentId);
+        if (equipment) this.interceptDrillCommand(equipment, action.pointKey, action.value, action.label);
+      }
+      this.modeResults = mode.actions.map((a) => ({ label: a.label, dpe: '', ok: true }));
+      this.modeResultsId = mode.id;
+      return;
+    }
+    if (!this.canOperate) return;
     const results = await this.commands.runActions(tunnel, mode.actions, `${tunnel.name} / ${mode.name}`);
     this.modeResults = results;
     this.modeResultsId = mode.id;
+    void this.logbook?.addEntry('mode', modeEngagedMsg(mode.name), {}).then(() => this.refreshLogbook());
     this.notify(results);
+  }
+
+  // --- logbook -----------------------------------------------------------------
+
+  private onNote(text: string): void {
+    void this.logbook?.addEntry('note', text).then(() => this.refreshLogbook());
+  }
+
+  private onOpenIncident(detail: OpenIncidentDetail): void {
+    void this.logbook?.openIncident(detail.title, detail.severity).then(() => this.refreshLogbook());
+  }
+
+  private onCloseIncident(): void {
+    void this.logbook?.closeIncident(localize(MSG.logbook.closedNote)).then(() => this.refreshLogbook());
+  }
+
+  private async onSafetyReport(tunnel: Tunnel): Promise<void> {
+    let user = '—';
+    try {
+      user = (await currentAuditUser()).name || '—';
+    } catch {
+      // keep the placeholder
+    }
+    openSafetyReport(tunnel, this.logbook?.current, user);
+  }
+
+  // --- exercise (drill) ----------------------------------------------------------
+
+  private startExercise(scenario: Scenario): void {
+    const tunnel = this.tunnel;
+    if (!tunnel || this.exercise) return;
+    // Freeze the real telemetry and snapshot the current states for restore.
+    this.live.disconnect();
+    this.exerciseSnapshot = new Map(
+      tunnel.equipment.map((e) => [e.id, { state: e.state, measures: e.measures ? { ...e.measures } : undefined }])
+    );
+    this.exercise = new ExerciseEngine(scenario, tunnel);
+    this.exerciseScenario = scenario;
+    this.exerciseReport = null;
+    this.exerciseSatisfied = [];
+    this.exerciseElapsedS = 0;
+    this.exerciseStartMs = Date.now();
+    void this.logbook?.addEntry('exercise', exerciseStartMsg(localize(scenario.name)), { exercise: true })
+      .then(() => this.refreshLogbook());
+    this.exerciseTimer = window.setInterval(() => this.tickExercise(), EXERCISE_TICK_MS);
+  }
+
+  private tickExercise(): void {
+    const engine = this.exercise;
+    const tunnel = this.tunnel;
+    if (!engine || !tunnel) return;
+    const elapsedS = (Date.now() - this.exerciseStartMs) / 1000;
+    this.exerciseElapsedS = Math.floor(elapsedS);
+    for (const fired of engine.tick(elapsedS)) {
+      const { injection, equipment } = fired;
+      if (injection.state !== undefined) equipment.state = injection.state;
+      if (injection.measures) equipment.measures = { ...equipment.measures, ...injection.measures };
+      if (injection.smoke !== undefined) this.scene?.setSmoke(injection.pkM, injection.smoke);
+      void this.logbook?.addEntry('exercise', fired.text, {
+        equipmentId: equipment.id,
+        pkM: equipment.pkM,
+        exercise: true
+      }).then(() => this.refreshLogbook());
+    }
+    this.scene?.updateStates(tunnel);
+    this.liveTick += 1;
+    if (engine.isOver(elapsedS)) this.finishExercise();
+  }
+
+  /** Drill command: score it, journal it, reflect it on the twin — no dpSet. */
+  private interceptDrillCommand(equipment: EquipmentDef, pointKey: string, value: number, label: string): void {
+    const engine = this.exercise;
+    if (!engine) return;
+    const elapsedS = (Date.now() - this.exerciseStartMs) / 1000;
+    engine.recordAction(equipment.kind, pointKey, value, elapsedS);
+    this.exerciseSatisfied = engine.progress().satisfied;
+    void this.logbook?.addEntry('exercise', simulatedCommandMsg(label), {
+      equipmentId: equipment.id,
+      pkM: equipment.pkM,
+      exercise: true
+    }).then(() => this.refreshLogbook());
+    const toast = this.resolveToast();
+    if (toast) void toast.success(simulatedCommandMsg(label));
+  }
+
+  private finishExercise(): void {
+    const engine = this.exercise;
+    const tunnel = this.tunnel;
+    if (!engine) return;
+    window.clearInterval(this.exerciseTimer);
+    const elapsedS = (Date.now() - this.exerciseStartMs) / 1000;
+    const report = engine.report(elapsedS);
+    this.exercise = null;
+    this.exerciseScenario = null;
+    this.exerciseReport = report;
+    this.exerciseSatisfied = [];
+    this.scene?.clearSmoke();
+    if (tunnel) {
+      // Restore the pre-drill states, then let the live binding refresh them.
+      for (const equipment of tunnel.equipment) {
+        const snapshot = this.exerciseSnapshot.get(equipment.id);
+        if (snapshot) {
+          equipment.state = snapshot.state;
+          equipment.measures = snapshot.measures;
+        }
+      }
+      this.scene?.updateStates(tunnel);
+      this.live.connect(tunnel);
+    }
+    void this.logbook?.addEntry('exercise', exerciseEndMsg(report.score), { exercise: true })
+      .then(() => this.refreshLogbook());
+    this.tab = 'exercise';
   }
 
   private notify(results: CommandResult[]): void {
@@ -398,6 +650,29 @@ function viewStyles(): ReturnType<typeof css> {
     }
     .toolbar .spacer {
       flex: 1;
+    }
+    .shadow-chip,
+    .drill-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.15rem 0.6rem;
+      border-radius: 1rem;
+      font-size: 0.78rem;
+      white-space: nowrap;
+    }
+    .shadow-chip {
+      border: 1px solid var(--theme-color-warning);
+      color: var(--theme-color-warning);
+    }
+    .drill-chip {
+      border: 1px solid var(--theme-color-info);
+      color: var(--theme-color-info);
+    }
+    hd-logbook,
+    hd-exercise {
+      position: absolute;
+      inset: 0;
     }
     .content {
       flex: 1;

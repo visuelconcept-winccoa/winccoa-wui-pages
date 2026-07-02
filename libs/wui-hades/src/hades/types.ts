@@ -151,6 +151,13 @@ export interface Tunnel {
   profile: RegulatoryProfileId;
   /** Average daily traffic per lane (vehicles/day), used by compliance rules. */
   trafficPerLane: number;
+  /**
+   * Observation (shadow/retrofit) mode: Hades reads the existing plant's
+   * datapoints but NEVER writes — commands, mode engagement and archive
+   * switches are disabled in the UI. The safe posture when Hades overlays an
+   * in-service GTC (see docs/wui-hades/RETROFIT.md).
+   */
+  shadowMode?: boolean;
   tubes: TubeDef[];
   equipment: EquipmentDef[];
   modes: OperatingMode[];

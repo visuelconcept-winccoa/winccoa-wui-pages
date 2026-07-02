@@ -20,6 +20,8 @@ permissions. Read this before deploying or wiring the page to a real plant.
   (`itemType: Tunnel`), every field command (`itemType: Command`, action
   `COMMAND`, item = target DPE, reason = mode/equipment context), and archive
   switches (`itemType: ArchiveConfig`).
+- **`Hades_Logbook_<tunnelId>`** (auto-created, one JSON blob per tunnel):
+  the operator logbook — capped at the newest 500 entries.
 - **`HadesSim_*`** (created by the manager): one per equipment when simulating.
 - The real plant keeps its own DP types — Hades only **references** DPEs via
   each equipment's `bindings` (point key → DPE).
@@ -33,6 +35,15 @@ permissions. Read this before deploying or wiring the page to a real plant.
   **audited**. Unbound actions are skipped and reported in the mode card.
 - Commands are plain `dpSet`s: interlocks/priority handling remain the
   responsibility of the target PLC/CTRL logic, as for any SCADA HMI.
+
+## Observation (retrofit) & drills
+
+- Per-tunnel **observation mode** (editor toggle) disables every write path
+  (commands, modes, archive switches) — the recommended posture when Hades
+  overlays an in-service GTC; see [RETROFIT.md](./RETROFIT.md).
+- **Drills** never write to the field even outside observation mode: while an
+  exercise runs, the live binding is frozen, injected states drive the twin
+  and every command is intercepted, journalled (flagged « drill ») and scored.
 
 ## Regulatory profiles
 

@@ -26,6 +26,22 @@ bound to datapoints, operating modes — rendered four ways from ONE config:
   **composed in the UI** (mode dialog: identity + ordered command list over
   the commandable equipment).
 
+- **Logbook ("main courante")** — the timestamped operations journal,
+  auto-fed (alarm transitions, commands, mode engagements) plus operator
+  notes, with the **incident lifecycle** (open → attach entries → close).
+  Stored per tunnel in a capped `Hades_Logbook_<id>` DP.
+- **Safety-file report** — one click generates a dated, printable HTML
+  report (geometry, inventory with binding status, compliance findings with
+  clause references, modes, incident record) for the periodic safety
+  documentation.
+- **Exercise mode (drills)** — built-in scenarios (HGV fire, accident + SOS,
+  ventilation failure) injected into the twin (smoke in the 3D); every
+  operator command is **intercepted and simulated** (safe on a live plant),
+  timed against the expected-actions checklist and **scored**.
+- **Observation (retrofit) mode** — per-tunnel read-only toggle: live
+  reading of an existing GTC's datapoints, zero writes (see
+  [RETROFIT.md](./RETROFIT.md)).
+
 Also: tunnel **export/import as JSON** and one-click **duplication**
 (overview cards + workspace toolbar), **NGA archiving** of the bound DPEs
 from the equipment dialog (group discovery + audited switches), painted

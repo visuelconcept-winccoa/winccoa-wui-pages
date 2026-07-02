@@ -48,6 +48,8 @@ export class HdEquipmentDialog extends LitElement {
   @property({ attribute: false }) tunnel: Tunnel | null = null;
   @property({ attribute: false }) equipment: EquipmentDef | null = null;
   @property({ type: Boolean }) canEdit = false;
+  /** Commands allowed (false in shadow/observation mode outside a drill). */
+  @property({ type: Boolean }) canOperate = false;
   /** Bumped by the tunnel view on every live emission (re-renders the values). */
   @property({ type: Number }) liveTick = 0;
 
@@ -205,7 +207,7 @@ export class HdEquipmentDialog extends LitElement {
             ${(p.commandValues ?? []).map(
               (cv) => html`<ix-button
                 variant="secondary"
-                ?disabled=${!working.bindings[p.key]?.trim()}
+                ?disabled=${!this.canOperate || !working.bindings[p.key]?.trim()}
                 @click=${() => this.command(working, p, cv.value, cv.label)}
                 >${cv.label}</ix-button
               >`

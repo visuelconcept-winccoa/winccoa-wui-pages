@@ -14,6 +14,7 @@
  */
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { localize } from '@wincc-oa/wui-i18n-shared/localize-multilang.js';
+import { STATE_FAULT, STATE_RUN, STATE_WARNING } from './types.js';
 import type { EquipmentSide, LightingZone, OperatingMode, TubeDirection } from './types.js';
 
 export { localize, localizeDir } from '@wincc-oa/wui-i18n-shared/localize-multilang.js';
@@ -68,6 +69,19 @@ export const MSG = {
     resetView: ml('Reset the view', 'Réinitialiser la vue', 'Ansicht zurücksetzen'),
     deleteTunnel: ml('Delete the tunnel', 'Supprimer le tunnel', 'Tunnel löschen'),
     exportTunnel: ml('Export the tunnel (JSON)', 'Exporter le tunnel (JSON)', 'Tunnel exportieren (JSON)'),
+    safetyReport: ml(
+      'Generate the safety file (report)',
+      'Générer le dossier de sécurité (rapport)',
+      'Sicherheitsdossier erzeugen (Bericht)'
+    ),
+    tabLogbook: ml('Logbook', 'Main courante', 'Betriebstagebuch'),
+    tabExercise: ml('Exercise', 'Exercice', 'Übung'),
+    shadowChip: ml('Observation', 'Observation', 'Beobachtung'),
+    shadowHint: ml(
+      'Observation (read-only) mode: live reading of the existing plant, no command is sent.',
+      'Mode observation (lecture seule) : lecture temps réel de l’installation existante, aucune commande émise.',
+      'Beobachtungsmodus (nur lesend): Echtzeitlesen der bestehenden Anlage, keine Befehle.'
+    ),
     sceneHint: ml(
       'Left-drag: rotate · right-drag: pan · wheel: zoom · click an equipment to open it',
       'Glisser gauche : pivoter · glisser droit : déplacer · molette : zoom · cliquer un équipement pour l’ouvrir',
@@ -103,6 +117,16 @@ export const MSG = {
       'Simplified reading of the reference texts — a design aid, not a certification. The safety officer remains the authority.',
       'Lecture simplifiée des textes de référence — une aide à la conception, pas une certification. L’agent de sécurité reste l’autorité.',
       'Vereinfachte Auslegung der Referenztexte — eine Planungshilfe, keine Zertifizierung. Der Sicherheitsbeauftragte bleibt maßgebend.'
+    ),
+    shadowMode: ml(
+      'Observation mode (read-only — retrofit over an existing control system)',
+      'Mode observation (lecture seule — pose sur une GTC existante)',
+      'Beobachtungsmodus (nur lesend — Aufsatz auf ein bestehendes Leitsystem)'
+    ),
+    shadowModeHint: ml(
+      'Commands, mode engagement and archive switches are disabled; drills stay available.',
+      'Commandes, engagement de modes et bascules d’archivage désactivés ; les exercices restent disponibles.',
+      'Befehle, Betriebsarten und Archivierungsschalter deaktiviert; Übungen bleiben verfügbar.'
     ),
     fix: ml('Fix', 'Corriger', 'Beheben'),
     placeSeries: ml('Place a series…', 'Poser en série…', 'Serie platzieren…'),
@@ -183,6 +207,54 @@ export const MSG = {
     save: ml('Save', 'Enregistrer', 'Speichern'),
     close: ml('Close', 'Fermer', 'Schließen')
   },
+  logbook: {
+    notePlaceholder: ml('Add an operator note…', 'Ajouter une note d’exploitation…', 'Betriebsnotiz hinzufügen…'),
+    addNote: ml('Note', 'Noter', 'Notieren'),
+    openIncident: ml('Open an incident', 'Ouvrir un incident', 'Ereignis eröffnen'),
+    closeIncident: ml('Close the incident', 'Clore l’incident', 'Ereignis schließen'),
+    incidentTitlePlaceholder: ml(
+      'Incident title (e.g. « Stopped HGV PK 1+200 »)',
+      'Titre de l’incident (ex. « PL arrêté PK 1+200 »)',
+      'Ereignistitel (z. B. « LKW-Stillstand PK 1+200 »)'
+    ),
+    open: ml('Open', 'Ouvrir', 'Eröffnen'),
+    cancel: ml('Cancel', 'Annuler', 'Abbrechen'),
+    empty: ml('No entry yet.', 'Aucune entrée pour l’instant.', 'Noch keine Einträge.'),
+    openedAt: ml('opened at', 'ouvert à', 'eröffnet um'),
+    closedNote: ml('Incident closed.', 'Incident clos.', 'Ereignis geschlossen.'),
+    drillTag: ml('Drill', 'Exercice', 'Übung'),
+    filters: {
+      all: ml('All', 'Tout', 'Alle'),
+      alarm: ml('Alarms', 'Alarmes', 'Alarme'),
+      command: ml('Commands', 'Commandes', 'Befehle'),
+      mode: ml('Modes', 'Modes', 'Betriebsarten'),
+      note: ml('Notes', 'Notes', 'Notizen'),
+      incident: ml('Incidents', 'Incidents', 'Ereignisse'),
+      exercise: ml('Drills', 'Exercices', 'Übungen')
+    }
+  },
+  exercise: {
+    title: ml('Safety drills', 'Exercices de sécurité', 'Sicherheitsübungen'),
+    hint: ml(
+      'Run a scenario on the digital twin: injected events drive the 3D and the synoptic, and EVERY command you send is intercepted and simulated — nothing reaches the field. Your reactions are timed and scored.',
+      'Lancez un scénario sur le jumeau numérique : les événements injectés animent la 3D et le synoptique, et TOUTES vos commandes sont interceptées et simulées — rien ne part vers le terrain. Vos réactions sont chronométrées et notées.',
+      'Starten Sie ein Szenario auf dem digitalen Zwilling: injizierte Ereignisse steuern 3D und Übersicht, und JEDER Befehl wird abgefangen und simuliert — nichts erreicht das Feld. Ihre Reaktionen werden gemessen und bewertet.'
+    ),
+    expectedCount: ml('expected action(s)', 'action(s) attendue(s)', 'erwartete Aktion(en)'),
+    start: ml('Start the drill', 'Lancer l’exercice', 'Übung starten'),
+    runningTag: ml('DRILL IN PROGRESS', 'EXERCICE EN COURS', 'ÜBUNG LÄUFT'),
+    remaining: ml('remaining', 'restant', 'verbleibend'),
+    finish: ml('End the drill', 'Terminer l’exercice', 'Übung beenden'),
+    runningHint: ml(
+      'Act from the 3D twin, the synoptic or the operating modes — commands are simulated and scored below.',
+      'Agissez depuis le jumeau 3D, le synoptique ou les modes d’exploitation — les commandes sont simulées et notées ci-dessous.',
+      'Handeln Sie über den 3D-Zwilling, die Übersicht oder die Betriebsarten — Befehle werden simuliert und unten bewertet.'
+    ),
+    reportTitle: ml('Drill report', 'Rapport d’exercice', 'Übungsbericht'),
+    missed: ml('not done', 'non réalisée', 'nicht ausgeführt'),
+    onTime: ml('on time', 'dans les temps', 'rechtzeitig'),
+    late: ml('late', 'en retard', 'verspätet')
+  },
   confirm: {
     commandHeading: ml('Send the command?', 'Envoyer la commande ?', 'Befehl senden?'),
     execute: ml('Execute', 'Exécuter', 'Ausführen'),
@@ -240,6 +312,57 @@ const SEVERITY_LABELS: Record<OperatingMode['severity'], MultiLangString> = {
 /** Localized label of an operating-mode severity. */
 export function severityLabel(severity: OperatingMode['severity']): string {
   return localize(SEVERITY_LABELS[severity]);
+}
+
+const INCIDENT_SEVERITY_LABELS: Record<'minor' | 'major' | 'critical', MultiLangString> = {
+  minor: ml('Minor', 'Mineur', 'Gering'),
+  major: ml('Major', 'Majeur', 'Erheblich'),
+  critical: ml('Critical', 'Critique', 'Kritisch')
+};
+
+/** Localized label of an incident severity. */
+export function incidentSeverityLabel(severity: 'minor' | 'major' | 'critical'): string {
+  return localize(INCIDENT_SEVERITY_LABELS[severity]);
+}
+
+/** Logbook line for an equipment alarm transition. */
+export function alarmTransitionMsg(name: string, next: number): string {
+  if (next === STATE_FAULT) {
+    return localize(ml(`${name}: FAULT`, `${name} : DÉFAUT`, `${name}: STÖRUNG`));
+  }
+  if (next === STATE_WARNING) {
+    return localize(ml(`${name}: warning`, `${name} : avertissement`, `${name}: Warnung`));
+  }
+  if (next === STATE_RUN) {
+    return localize(ml(`${name}: back in service`, `${name} : retour en service`, `${name}: wieder in Betrieb`));
+  }
+  return localize(ml(`${name}: state ${next}`, `${name} : état ${next}`, `${name}: Zustand ${next}`));
+}
+
+/** Logbook line for a mode engagement. */
+export function modeEngagedMsg(name: string): string {
+  return localize(
+    ml(`Operating mode engaged: ${name}`, `Mode d'exploitation engagé : ${name}`, `Betriebsart aktiviert: ${name}`)
+  );
+}
+
+/** Logbook line at drill start. */
+export function exerciseStartMsg(name: string): string {
+  return localize(ml(`Drill started: ${name}`, `Exercice lancé : ${name}`, `Übung gestartet: ${name}`));
+}
+
+/** Logbook line at drill end. */
+export function exerciseEndMsg(score: number): string {
+  return localize(
+    ml(`Drill finished — score ${score}/100`, `Exercice terminé — score ${score}/100`, `Übung beendet — Ergebnis ${score}/100`)
+  );
+}
+
+/** Toast/logbook line for an intercepted (simulated) drill command. */
+export function simulatedCommandMsg(label: string): string {
+  return localize(
+    ml(`Simulated command: ${label}`, `Commande simulée : ${label}`, `Simulierter Befehl: ${label}`)
+  );
 }
 
 /** Confirm-delete message for an operating mode (plain string). */

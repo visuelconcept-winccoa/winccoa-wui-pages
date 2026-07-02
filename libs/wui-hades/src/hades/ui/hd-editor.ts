@@ -151,6 +151,15 @@ export class HdEditor extends LitElement {
             @valueChange=${(e: IxValueEvent) => this.patch({ trafficPerLane: Number(e.detail) })}
           ></ix-number-input>
         </div>
+        <div class="row shadow-row">
+          <ix-toggle
+            ?checked=${working.shadowMode === true}
+            ?disabled=${!this.canEdit}
+            @checkedChange=${(e: CustomEvent<boolean>) => this.patch({ shadowMode: e.detail })}
+          ></ix-toggle>
+          <span>${localizeDir(MSG.editor.shadowMode)}</span>
+          <span class="shadow-hint">${localizeDir(MSG.editor.shadowModeHint)}</span>
+        </div>
       </div>
     `;
   }
@@ -556,6 +565,13 @@ function editorStyles(): ReturnType<typeof css> {
       display: grid;
       grid-template-columns: 2fr 2fr 1fr;
       gap: 0.75rem;
+    }
+    .shadow-row {
+      margin-top: 0.7rem;
+    }
+    .shadow-hint {
+      color: var(--theme-color-weak-text);
+      font-size: 0.78rem;
     }
     .tube-head {
       display: grid;

@@ -29,11 +29,22 @@ interface Target {
   role: 'state' | 'measure';
 }
 
+/** One equipment state transition (old → new code), for the logbook feed. */
+export interface StateTransition {
+  equipment: EquipmentDef;
+  previous: number | undefined;
+  next: number;
+}
+
 export class LiveBinding {
   private subscription = new Subscription();
   private targets = new Map<string, Target[]>();
 
-  constructor(private readonly onUpdate: () => void) {}
+  constructor(
+    private readonly onUpdate: () => void,
+    /** Optional edge callback fired once per equipment state CHANGE. */
+    private readonly onTransition?: (transition: StateTransition) => void
+  ) {}
 
   /** (Re)subscribe to every bound state/measure DPE of the tunnel. */
   connect(tunnel: Tunnel): void {
@@ -76,7 +87,12 @@ export class LiveBinding {
       const value = toNumber(data.value[i]);
       for (const target of targets) {
         if (target.role === 'state') {
-          target.equipment.state = Math.round(value);
+          const next = Math.round(value);
+          const previous = target.equipment.state;
+          target.equipment.state = next;
+          if (previous !== next && this.onTransition) {
+            this.onTransition({ equipment: target.equipment, previous, next });
+          }
         } else {
           target.equipment.measures = { ...target.equipment.measures, [target.pointKey]: value };
         }

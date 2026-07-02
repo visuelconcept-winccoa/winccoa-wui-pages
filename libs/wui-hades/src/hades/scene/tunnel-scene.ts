@@ -26,6 +26,7 @@ import {
   PointLight,
   Raycaster,
   Scene,
+  SphereGeometry,
   Vector2,
   Vector3,
   WebGLRenderer
@@ -60,6 +61,9 @@ const ACCENT_MAX = 20;
 const DRIVE_SPEED_M_S = 14;
 /** Interval between painted lane-direction arrows (m). */
 const ARROW_EVERY_M = 120;
+/** Spheres composing the drill smoke cloud. */
+const SMOKE_PUFFS = 9;
+const SMOKE_LERP = 0.8;
 const DRIVE_EYE_HEIGHT_M = 2.2;
 const DRIVE_LOOK_AHEAD_M = 30;
 
@@ -97,6 +101,11 @@ export class TunnelScene {
   private readonly root = new Group();
   private tubes: TubeScene[] = [];
   private readonly equipmentGroups = new Map<string, Group>();
+
+  // Exercise smoke (drill visualisation).
+  private smokeGroup: Group | null = null;
+  private smokeIntensity = 0;
+  private smokeTarget = 0;
 
   // Orbit state.
   private readonly target = new Vector3(0, 3, 60);
@@ -216,6 +225,43 @@ export class TunnelScene {
     this.theta = Math.PI / 3;
     this.phi = 1.1;
     this.applyOrbit();
+  }
+
+  /**
+   * Drill smoke at a PK of the first tube: a cluster of dark, semi-transparent
+   * spheres whose size/opacity follow `intensity` (0 clears the cloud).
+   */
+  setSmoke(pkM: number, intensity: number): void {
+    this.smokeTarget = Math.min(1, Math.max(0, intensity));
+    if (this.smokeTarget === 0) return;
+    if (!this.smokeGroup) {
+      this.smokeGroup = new Group();
+      for (let i = 0; i < SMOKE_PUFFS; i++) {
+        const puff = new Mesh(
+          new SphereGeometry(1, 10, 10),
+          new MeshStandardMaterial({ color: 0x14_16_1a, transparent: true, opacity: 0, roughness: 1 })
+        );
+        // Deterministic pseudo-random spread (no Math.random: stable scenes).
+        puff.position.set(((i * 37) % 11) - 5, 1.5 + ((i * 13) % 5) * 0.8, ((i * 53) % 17) - 8);
+        this.smokeGroup.add(puff);
+      }
+      this.root.add(this.smokeGroup);
+    }
+    const tube = this.tubes[0];
+    if (tube) {
+      const anchor = worldAt(tube.frames, pkM, 0, 1);
+      this.smokeGroup.position.copy(anchor).add(tube.offset);
+    }
+  }
+
+  clearSmoke(): void {
+    this.smokeTarget = 0;
+    this.smokeIntensity = 0;
+    if (this.smokeGroup) {
+      this.root.remove(this.smokeGroup);
+      disposeObject(this.smokeGroup);
+      this.smokeGroup = null;
+    }
   }
 
   start(): void {
@@ -378,6 +424,7 @@ export class TunnelScene {
 
   private tick(dt: number): void {
     this.spinFans(dt);
+    this.animateSmoke(dt);
     if (!this.driving) return;
     const tube = this.tubes[this.driveTubeIndex] ?? this.tubes[0];
     if (!tube) return;
@@ -393,6 +440,18 @@ export class TunnelScene {
       .add(lane)
       .add(new Vector3(0, DRIVE_EYE_HEIGHT_M, 0));
     this.camera.lookAt(look.position.clone().add(tube.offset).add(new Vector3(0, DRIVE_EYE_HEIGHT_M, 0)));
+  }
+
+  private animateSmoke(dt: number): void {
+    if (!this.smokeGroup) return;
+    this.smokeIntensity += (this.smokeTarget - this.smokeIntensity) * Math.min(1, dt * SMOKE_LERP);
+    for (const [i, puff] of this.smokeGroup.children.entries()) {
+      const mesh = puff as Mesh;
+      const pulse = 1 + 0.15 * Math.sin(performance.now() / 900 + i);
+      const scale = (1.5 + i * 0.5) * this.smokeIntensity * pulse;
+      mesh.scale.setScalar(Math.max(0.001, scale));
+      (mesh.material as MeshStandardMaterial).opacity = 0.55 * this.smokeIntensity;
+    }
   }
 
   private spinFans(dt: number): void {
