@@ -108,5 +108,14 @@
     "description": "Process Monitor page (/process-monitor) — pmon manager console with one tab per connected server (distributed via per-system ProcessMonitor_Node DPs): status + start/stop/restart + restart-all, plus project ZIP upload/deploy across all servers (optional folder purge, 7-Zip extraction into non-protected folders, config.env, optional restart) with GxP audit-trail tracing (session user). Bridged via /api/process-monitor to the processMonitor MSA manager (per-system agent + aggregator). DPL import handled elsewhere.",
     "backend": { "mount": "/api/process-monitor", "routeClass": "ProcessMonitorRoute", "routeFile": "processMonitorRoute", "srcFiles": ["processMonitorController.ts", "processMonitorRoute.ts"] },
     "managers": ["processMonitor"]
+  },
+  {
+    "page": "poseidon",
+    "name": "@visuelconcept/wui-poseidon",
+    "title": "Poseidon",
+    "tier": 3,
+    "description": "Poseidon wastewater-treatment-plant supervision page (/poseidon) — activated-sludge plant (water line: screening → lift station → aeration/biology → clarifier → UV → outfall; sludge line: RAS/WAS + dewatering). Tabs: process synoptic, KPI dashboard (removal efficiencies + discharge conformity + specific energy), historical trends (dpGetPeriod), threshold alarms with acknowledgement, and equipment control (start/stop/auto-manual with confirmation + GxP audit-trail tracing). Live values from the poseidon simulator manager; equipment control + KPI/report summaries bridged via /api/poseidon.",
+    "backend": { "mount": "/api/poseidon", "routeClass": "PoseidonRoute", "routeFile": "poseidonRoute", "srcFiles": ["poseidonController.ts", "poseidonRoute.ts"] },
+    "managers": ["poseidon"]
   }
 ]

@@ -1,0 +1,12 @@
+// Menu fragment for @visuelconcept/wui-poseidon.
+[
+  {
+    "title": { "en_US": "Poseidon", "fr": "Poséidon", "de_AT": "Poseidon" },
+    "icon": "droplet",
+    "path": "/poseidon",
+    "module": "/data/dashboard-wc/pages/poseidon.js",
+    "routeId": "poseidon",
+    "component": "wui-poseidon",
+    "permission": ["connected"]
+  }
+]

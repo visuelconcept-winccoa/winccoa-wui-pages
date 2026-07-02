@@ -1,0 +1,7 @@
+{
+  "name": "poseidon-sim",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Wastewater-treatment-plant simulator (WinCC OA JavaScript Manager) for the Poseidon supervision page.",
+  "main": "index.js"
+}

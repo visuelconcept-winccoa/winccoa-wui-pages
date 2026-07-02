@@ -1,0 +1,36 @@
+{
+  "name": "@visuelconcept/wui-poseidon",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Poseidon — standalone WinCC OA WebUI page for wastewater-treatment-plant (WWTP) supervision: activated-sludge process synoptic, KPI dashboard (removal efficiencies + discharge conformity + specific energy), historical trends, threshold alarms with acknowledgement, and equipment control (start/stop/auto-manual with confirmation + GxP audit-trail tracing). Live values from the poseidon simulator manager; control + KPI/report summaries via /api/poseidon.",
+  "author": { "name": "Visuel Concept" },
+  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page", "wastewater", "scada"],
+  "license": "MIT",
+  "dependencies": {
+    "@visuelconcept/wui-kit": "*"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "tsyringe": "*",
+    "echarts": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-oarxjs-context": "*"
+  },
+  "exports": { "./*": { "types": "./types/*", "import": "./*" } },
+  "wuiPage": {
+    "route": "/poseidon",
+    "routeId": "poseidon",
+    "component": "wui-poseidon",
+    "module": "/data/dashboard-wc/pages/poseidon.js",
+    "icon": "droplet",
+    "permission": ["connected"],
+    "tier": 3,
+    "backend": {
+      "managers": ["poseidon"],
+      "routes": ["/api/poseidon/*"]
+    }
+  }
+}
