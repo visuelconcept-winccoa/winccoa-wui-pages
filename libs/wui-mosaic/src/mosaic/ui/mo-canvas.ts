@@ -256,7 +256,7 @@ export class MoCanvas extends LitElement {
     for (const id of this.timers.keys()) this.clearTimer(id);
     for (const tile of this.tiles) {
       if (tile.refresh > 0) {
-        const handle = globalThis.setInterval(() => this.reload(tile.id), tile.refresh * SECOND_MS);
+        const handle = window.setInterval(() => this.reload(tile.id), tile.refresh * SECOND_MS);
         this.timers.set(tile.id, handle);
       }
     }
@@ -305,7 +305,7 @@ export class MoCanvas extends LitElement {
     // The routed page (and its nested components) render asynchronously after
     // load, so re-apply for a few seconds to catch lazily-created shadow roots.
     let ticks = 0;
-    const id = globalThis.setInterval(() => {
+    const id = window.setInterval(() => {
       ticks += 1;
       if (this.applyFrameStyles(frame, readonly) || ticks >= FRAME_POLL_MAX) {
         globalThis.clearInterval(id);

@@ -3,7 +3,7 @@
 [
   {
     "title": { "en_US": "Ampère (electrical)", "fr": "Ampère (électrique)", "de_AT": "Ampère (elektrisch)" },
-    "icon": "flash",
+    "icon": "electrical-energy",
     "path": "/ampere",
     "module": "/data/dashboard-wc/pages/ampere.js",
     "routeId": "ampere",
@@ -12,7 +12,7 @@
   },
   {
     "title": { "en_US": "Ampère (electrical)", "fr": "Ampère (électrique)", "de_AT": "Ampère (elektrisch)" },
-    "icon": "flash",
+    "icon": "electrical-energy",
     "path": "/ampere/:networkid",
     "module": "/data/dashboard-wc/pages/ampere.js",
     "routeId": "ampere-detail",

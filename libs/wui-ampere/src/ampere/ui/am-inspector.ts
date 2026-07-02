@@ -23,20 +23,21 @@ import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { SYMBOLS, isSwitchgear } from '../symbols/catalog.js';
 import type { Selection } from './am-canvas.js';
-import { MSG, localize, localizeDir } from '../i18n.js';
-import type { Measurement, Network, Node } from '../types.js';
+import { MSG, localize, localizeDir, selectedCountMsg } from '../i18n.js';
+import { ROTATIONS, type Measurement, type Network, type Node, type Rotation } from '../types.js';
 
 @customElement('am-inspector')
 export class AmInspector extends LitElement {
   static override readonly styles = [IXCoreStyles, inspectorStyles()];
 
   @property({ attribute: false }) network: Network | null = null;
-  @property({ attribute: false }) selection: Selection | null = null;
+  @property({ attribute: false }) selection: Selection[] = [];
 
   override render(): TemplateResult {
-    const sel = this.selection;
     const net = this.network;
-    if (!sel || !net) return html`<div class="empty">${localizeDir(MSG.inspector.none)}</div>`;
+    if (this.selection.length === 0 || !net) return html`<div class="empty">${localizeDir(MSG.inspector.none)}</div>`;
+    if (this.selection.length > 1) return this.renderMulti();
+    const sel = this.selection[0];
     if (sel.kind === 'node') {
       const node = net.nodes.find((n) => n.id === sel.id);
       return node ? this.renderNode(node) : this.renderEmpty();
@@ -46,6 +47,16 @@ export class AmInspector extends LitElement {
       return meas ? this.renderMeasurement(meas) : this.renderEmpty();
     }
     return this.renderEdge(sel.id);
+  }
+
+  private renderMulti(): TemplateResult {
+    return html`
+      <div class="head">
+        <span class="kind">${selectedCountMsg(this.selection.length)}</span>
+        <ix-icon-button ghost size="16" icon="trashcan" title=${localize(MSG.inspector.deleteSelection)} @click=${() => this.del()}></ix-icon-button>
+      </div>
+      <div class="hint">${localizeDir(MSG.inspector.multiHint)}</div>
+    `;
   }
 
   private renderEmpty(): TemplateResult {
@@ -66,9 +77,19 @@ export class AmInspector extends LitElement {
       )}
       ${this.field(
         MSG.inspector.rotation,
-        html`<button class="btn" type="button" @click=${() => this.rotate(node.id)}>
-          <ix-icon name="undo" size="14"></ix-icon>${localizeDir(MSG.inspector.rotate)} · ${node.rotation}°
-        </button>`
+        html`<div class="rot-row">
+          <button class="btn" type="button" @click=${() => this.rotate(node.id)}>
+            <ix-icon name="undo" size="14"></ix-icon>${localizeDir(MSG.inspector.rotate)}
+          </button>
+          <select
+            class="in short"
+            title=${localize(MSG.inspector.rotationFine)}
+            .value=${String(node.rotation)}
+            @change=${(e: Event) => this.patchNode(node.id, { rotation: readRotation(e) })}
+          >
+            ${ROTATIONS.map((r) => html`<option value=${String(r)} ?selected=${node.rotation === r}>${r}°</option>`)}
+          </select>
+        </div>`
       )}
       ${sw
         ? html`
@@ -171,7 +192,7 @@ export class AmInspector extends LitElement {
   }
 
   private del(): void {
-    if (this.selection) this.emit('wui:delete', this.selection);
+    if (this.selection.length > 0) this.emit('wui:delete', this.selection);
   }
 
   private emit(type: string, detail: unknown): void {
@@ -188,6 +209,11 @@ function clampDecimals(raw: string): number {
   const n = Math.round(Number(raw));
   if (!Number.isFinite(n)) return 0;
   return Math.min(Math.max(n, 0), 6);
+}
+
+function readRotation(e: Event): Rotation {
+  const n = Number((e.target as HTMLSelectElement).value);
+  return (ROTATIONS.find((r) => r === n) ?? 0);
 }
 
 // eslint-disable-next-line max-lines-per-function -- single stylesheet literal
@@ -229,6 +255,14 @@ function inspectorStyles(): ReturnType<typeof css> {
     .row {
       display: flex;
       gap: 0.6rem;
+    }
+    .rot-row {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .rot-row .in.short {
+      width: 5rem;
     }
     .row .fld {
       flex: 1;

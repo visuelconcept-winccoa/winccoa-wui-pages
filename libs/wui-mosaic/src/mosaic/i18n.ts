@@ -141,18 +141,22 @@ export const MSG = {
       'Vue d’ensemble (tous les ateliers)',
       'Übersicht (alle Werkstätten)'
     ),
-    // --- pick-source (VNC / camera) ---
+    // --- pick-source (VNC / camera / Ampère) ---
     vncLabel: ml('VNC connection', 'Connexion VNC', 'VNC-Verbindung'),
     vncLower: ml('VNC connection', 'connexion VNC', 'VNC-Verbindung'),
     vncPage: ml('Remote VNC connections', 'Connexions VNC distantes', 'Remote-VNC-Verbindungen'),
     cameraLabel: ml('Camera', 'Caméra', 'Kamera'),
     cameraLower: ml('camera', 'caméra', 'Kamera'),
-    cameraPage: ml('Camera streams (RTSP)', 'Flux caméras (RTSP)', 'Kamera-Streams (RTSP)')
+    cameraPage: ml('Camera streams (RTSP)', 'Flux caméras (RTSP)', 'Kamera-Streams (RTSP)'),
+    ampereLabel: ml('Ampère network', 'Réseau Ampère', 'Ampère-Netz'),
+    ampereLower: ml('Ampère network', 'réseau Ampère', 'Ampère-Netz'),
+    amperePage: ml('Ampère (electrical)', 'Ampère (électrique)', 'Ampère (elektrisch)')
   },
   kind: {
     fleet3d: ml('Machine fleet', 'Parc machine', 'Maschinenpark'),
     vnc: ml('VNC (read-only)', 'VNC (lecture seule)', 'VNC (schreibgeschützt)'),
     camera: ml('Camera (video stream)', 'Caméra (flux vidéo)', 'Kamera (Videostream)'),
+    ampere: ml('Ampère (single-line diagram)', 'Ampère (schéma unifilaire)', 'Ampère (einpoliges Schema)'),
     url: ml('URL', 'URL', 'URL')
   }
 } as const;

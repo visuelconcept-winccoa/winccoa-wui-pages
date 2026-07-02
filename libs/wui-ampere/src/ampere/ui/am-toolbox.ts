@@ -24,7 +24,7 @@ export class AmToolbox extends LitElement {
   override render(): TemplateResult {
     return html`
       <div class="head">
-        <ix-icon name="tool" size="16"></ix-icon>
+        <ix-icon name="configure" size="16"></ix-icon>
         <span class="title">${localizeDir(MSG.toolbox.title)}</span>
       </div>
       <button
@@ -33,7 +33,7 @@ export class AmToolbox extends LitElement {
         title=${localize(MSG.toolbox.select)}
         @click=${() => this.pick('select')}
       >
-        <ix-icon name="cursor" size="16"></ix-icon>
+        <ix-icon name="control-select" size="16"></ix-icon>
         <span>${localizeDir(MSG.toolbox.select)}</span>
       </button>
       ${CATEGORY_ORDER.map((cat) => this.renderCategory(cat))}

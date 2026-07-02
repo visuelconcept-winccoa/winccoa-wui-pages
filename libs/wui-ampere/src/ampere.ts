@@ -27,14 +27,19 @@ import { property, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
 import { AmpereStore } from './ampere/data/ampere-store.js';
-import { DEMO_NETWORKS } from './ampere/data/demo.js';
+import { demoNetworks } from './ampere/data/demo.js';
 import { exportJson, exportNetwork, parseNetworks } from './ampere/data/io.js';
+import { autoLayout } from './ampere/layout.js';
 import { computeEnergy, type EnergyState } from './ampere/topology.js';
 import { isSwitchgear, type SymbolId } from './ampere/symbols/catalog.js';
 import {
+  CANVAS_H,
+  CANVAS_W,
   blankMeasurement,
   blankNetwork,
+  clamp,
   measurementPos,
+  snap,
   type Measurement,
   type Network,
   type Node,
@@ -93,6 +98,17 @@ function dpeName(dp: string): string {
 }
 
 /**
+ * Chromeless embedded mode (e.g. a Mosaic tile): the `embed=1` flag travels
+ * INSIDE the hash, after the route (`…#/ampere/x?embed=1`) — same contract as
+ * the app shell's own chrome hiding. Latched once at module load (the SPA
+ * router may rewrite the URL later) with a live re-check as fallback.
+ */
+const EMBEDDED_AT_LOAD = /[?&]embed=1/.test(globalThis.location?.hash ?? '') || /[?&]embed=1/.test(globalThis.location?.search ?? '');
+function isEmbedded(): boolean {
+  return EMBEDDED_AT_LOAD || /[?&]embed=1/.test(globalThis.location?.hash ?? '');
+}
+
+/**
  * Coerce a live emission into a comparable/displayable primitive: unwrap a
  * `{value}` envelope, map booleans (and 'true'/'false' strings — e.g. a bool
  * DPE serialised as text) to 1/0 so `closedValue` comparisons keep working.
@@ -109,6 +125,33 @@ function liveValue(raw: unknown): number | string {
   return typeof v === 'number' ? v : Number(v);
 }
 
+/**
+ * Map a WinCC OA colour value (`_act_state_color`) to CSS: `{r,g,b}` /
+ * `{r,g,b,a}` tuples and `#hex` pass through; a named colour-DB entry cannot be
+ * resolved in the browser, so it falls back to the theme alarm colour. Empty ⇒
+ * no alarm (returns '').
+ */
+function oaColorToCss(raw: string): string {
+  const v = raw.trim();
+  if (!v) return '';
+  const rgb = /^\{(\d+),(\d+),(\d+)(?:,(\d+))?\}$/.exec(v);
+  if (rgb) {
+    return rgb[4] === undefined
+      ? `rgb(${rgb[1]},${rgb[2]},${rgb[3]})`
+      : `rgba(${rgb[1]},${rgb[2]},${rgb[3]},${Number(rgb[4]) / 255})`;
+  }
+  if (/^#[\da-f]{3,8}$/i.test(v)) return v;
+  return 'var(--theme-color-alarm, #ff2640)';
+}
+
+/** Group-move commit payload from the canvas (grid-snapped delta + moved ids). */
+interface MoveMulti {
+  dx: number;
+  dy: number;
+  nodes: string[];
+  measurements: string[];
+}
+
 export class WuiAmpere extends LitElement {
   static override readonly styles = [IXCoreStyles, pageStyles()];
 
@@ -121,7 +164,7 @@ export class WuiAmpere extends LitElement {
   @state() private editing = false;
   @state() private tool: Tool = 'select';
   @state() private zoom = 1;
-  @state() private selection: Selection | null = null;
+  @state() private selection: Selection[] = [];
   @state() private editingNetwork: Network | null | undefined = undefined;
   @state() private deletingId: string | null = null;
   @state() private importError = '';
@@ -129,12 +172,16 @@ export class WuiAmpere extends LitElement {
   /** Live DP values keyed by normalised name. */
   @state() private live: Map<string, number | string> = new Map();
 
+  /** Live alert-state colours (`_alert_hdl.._act_state_color`) keyed by normalised DP. */
+  @state() private alertColors: Map<string, string> = new Map();
+
   private readonly store = new AmpereStore();
   private readonly api = this.resolveApi();
   private dpSub = new Subscription();
   private subscribedKey = '';
 
   override render(): TemplateResult {
+    if (isEmbedded()) return this.renderEmbedded();
     return html`
       <div class="page">
         <wui-context-generator
@@ -182,7 +229,7 @@ export class WuiAmpere extends LitElement {
   protected override willUpdate(changed: PropertyValues): void {
     if (changed.has('networkId') && !this.networkId) {
       this.editing = false;
-      this.selection = null;
+      this.selection = [];
     }
   }
 
@@ -191,6 +238,27 @@ export class WuiAmpere extends LitElement {
   }
 
   // --- body ------------------------------------------------------------------
+
+  /**
+   * Chromeless embedded rendering (Mosaic tile): no header, no toolbar, no
+   * notices — just the live diagram stretched to the host box (display mode).
+   */
+  private renderEmbedded(): TemplateResult {
+    if (this.loading) return html`<div class="center"><ix-spinner></ix-spinner></div>`;
+    const network = this.selectedNetwork();
+    if (!network) return html`<div class="center empty"><ix-typography>${localizeDir(MSG.page.missing)}</ix-typography></div>`;
+    return html`
+      <am-canvas
+        class="embedded"
+        fit
+        .network=${network}
+        .energy=${computeEnergy(network, this.closedMap(network))}
+        .closed=${this.closedMap(network)}
+        .readout=${this.readoutMap(network)}
+        .alarm=${this.alarmMap(network)}
+      ></am-canvas>
+    `;
+  }
 
   private renderBody(): TemplateResult {
     if (this.loading) return html`<div class="center"><ix-spinner></ix-spinner></div>`;
@@ -255,6 +323,9 @@ export class WuiAmpere extends LitElement {
               <ix-button variant="secondary" @click=${() => this.addMeasurement(network)}>
                 <ix-icon name="add-circle" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.addMeasurement)}
               </ix-button>
+              <ix-button variant="secondary" title=${localize(MSG.toolbar.autoArrangeHint)} @click=${() => void this.persist(autoLayout(network))}>
+                <ix-icon name="hierarchy" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.autoArrange)}
+              </ix-button>
             `
           : nothing}
         <div class="zoom">
@@ -281,13 +352,14 @@ export class WuiAmpere extends LitElement {
           .energy=${energy}
           .closed=${closed}
           .readout=${readout}
+          .alarm=${this.alarmMap(network)}
           .selection=${this.selection}
           @wui:place=${(e: CustomEvent<{ symbol: SymbolId; x: number; y: number }>) => this.onPlace(network, e.detail)}
-          @wui:move=${(e: CustomEvent<{ id: string; x: number; y: number }>) => this.onMoveNode(network, e.detail)}
-          @wui:move-meas=${(e: CustomEvent<{ id: string; x: number; y: number }>) => this.onMoveMeas(network, e.detail)}
+          @wui:move-multi=${(e: CustomEvent<MoveMulti>) => this.onMoveMulti(network, e.detail)}
+          @wui:move-label=${(e: CustomEvent<{ id: string; dx: number; dy: number }>) => this.onMoveLabel(network, e.detail)}
           @wui:connect=${(e: CustomEvent<{ from: PortRef; to: PortRef }>) => this.onConnect(network, e.detail)}
-          @wui:select=${(e: CustomEvent<Selection | null>) => (this.selection = e.detail)}
-          @wui:delete=${(e: CustomEvent<Selection>) => this.onDelete(network, e.detail)}
+          @wui:select=${(e: CustomEvent<Selection[]>) => (this.selection = e.detail ?? [])}
+          @wui:delete=${(e: CustomEvent<Selection[]>) => this.onDelete(network, e.detail)}
         ></am-canvas>
         ${this.editing
           ? html`<am-inspector
@@ -296,7 +368,7 @@ export class WuiAmpere extends LitElement {
               @wui:update-node=${(e: CustomEvent<{ id: string; patch: Partial<Node> }>) => this.onUpdateNode(network, e.detail)}
               @wui:update-meas=${(e: CustomEvent<{ id: string; patch: Partial<Measurement> }>) => this.onUpdateMeas(network, e.detail)}
               @wui:rotate=${(e: CustomEvent<{ id: string }>) => this.onRotate(network, e.detail.id)}
-              @wui:delete=${(e: CustomEvent<Selection>) => this.onDelete(network, e.detail)}
+              @wui:delete=${(e: CustomEvent<Selection[]>) => this.onDelete(network, e.detail)}
             ></am-inspector>`
           : nothing}
       </div>
@@ -330,20 +402,30 @@ export class WuiAmpere extends LitElement {
     this.dpSub.unsubscribe();
     this.dpSub = new Subscription();
     this.live = new Map();
+    this.alertColors = new Map();
     if (!this.api || dps.length === 0) return;
     for (const dp of dps) {
-      try {
-        this.dpSub.add(
-          this.api.dpConnect(dpeName(dp), true).subscribe({
-            next: (e: { dp: string[]; value: unknown[] }) => this.onLive(dp, e.value?.[0]),
-            error: () => {
-              // Unknown/unreadable DP — this device falls back to "closed"; the others stay live.
-            }
-          })
-        );
-      } catch {
-        // Same as above — never let one bad binding break the rest.
-      }
+      this.subscribeOne(dpeName(dp), (raw) => this.onLive(dp, raw));
+      // Alarm framing: the bound DPE may carry an _alert_hdl config — follow its
+      // active state colour. DPs without the config just error (isolated, ignored).
+      this.subscribeOne(`${dpeName(dp)}:_alert_hdl.._act_state_color`, (raw) => this.onAlert(dp, raw));
+    }
+  }
+
+  /** One isolated dpConnect (a bad name/config must never break the other bindings). */
+  private subscribeOne(dpe: string, next: (raw: unknown) => void): void {
+    if (!this.api) return;
+    try {
+      this.dpSub.add(
+        this.api.dpConnect(dpe, true).subscribe({
+          next: (e: { dp: string[]; value: unknown[] }) => next(e.value?.[0]),
+          error: () => {
+            // Unknown/unreadable DP or missing config — this binding stays inert; the others stay live.
+          }
+        })
+      );
+    } catch {
+      // Same as above — never let one bad binding break the rest.
     }
   }
 
@@ -354,6 +436,16 @@ export class WuiAmpere extends LitElement {
     this.live = next;
   }
 
+  /** Record one alert-colour emission (empty colour = alarm gone). */
+  private onAlert(boundDp: string, raw: unknown): void {
+    const v = liveValue(raw);
+    const css = oaColorToCss(typeof v === 'string' ? v : '');
+    const next = new Map(this.alertColors);
+    if (css) next.set(normDp(boundDp), css);
+    else next.delete(normDp(boundDp));
+    this.alertColors = next;
+  }
+
   /** Map of switchgear node id → closed (undefined when unbound / no live value). */
   private closedMap(network: Network): Map<string, boolean> {
     const map = new Map<string, boolean>();
@@ -361,6 +453,17 @@ export class WuiAmpere extends LitElement {
       if (!isSwitchgear(n.symbol) || !n.dp.trim()) continue;
       const v = this.live.get(normDp(n.dp));
       if (v !== undefined) map.set(n.id, Number(v) === n.closedValue);
+    }
+    return map;
+  }
+
+  /** Map of node id → alarm frame colour (only nodes whose bound DP is in alarm). */
+  private alarmMap(network: Network): Map<string, string> {
+    const map = new Map<string, string>();
+    for (const n of network.nodes) {
+      if (!n.dp.trim()) continue;
+      const color = this.alertColors.get(normDp(n.dp));
+      if (color) map.set(n.id, color);
     }
     return map;
   }
@@ -385,7 +488,7 @@ export class WuiAmpere extends LitElement {
   private setEditing(on: boolean): void {
     this.editing = on;
     if (!on) {
-      this.selection = null;
+      this.selection = [];
       this.tool = 'select';
     }
   }
@@ -399,6 +502,8 @@ export class WuiAmpere extends LitElement {
       id: uid('n'),
       symbol: detail.symbol,
       label: '',
+      labelDx: 0,
+      labelDy: 0,
       x: detail.x,
       y: detail.y,
       rotation: 0,
@@ -406,17 +511,33 @@ export class WuiAmpere extends LitElement {
       closedValue: 1,
       source: false
     };
+    // Placing arms the select tool again and opens the new symbol's property
+    // sheet — so binding/labelling follows immediately, without a manual re-click.
+    this.tool = 'select';
+    this.selection = [{ kind: 'node', id: node.id }];
     void this.persist({ ...network, nodes: [...network.nodes, node] });
   }
 
-  private onMoveNode(network: Network, detail: { id: string; x: number; y: number }): void {
-    const nodes = network.nodes.map((n) => (n.id === detail.id ? { ...n, x: detail.x, y: detail.y } : n));
-    void this.persist({ ...network, nodes });
+  /** Commit a group drag: apply the snapped delta to every moved node/measurement. */
+  private onMoveMulti(network: Network, d: MoveMulti): void {
+    const nodeIds = new Set(d.nodes);
+    const measIds = new Set(d.measurements);
+    const nodes = network.nodes.map((n) =>
+      nodeIds.has(n.id)
+        ? { ...n, x: clamp(snap(n.x + d.dx), 0, CANVAS_W), y: clamp(snap(n.y + d.dy), 0, CANVAS_H) }
+        : n
+    );
+    // A measurement's x/y is absolute when free and node-relative when anchored —
+    // a delta is correct for both (the canvas already excludes anchored labels
+    // whose node moves too).
+    const measurements = network.measurements.map((m) => (measIds.has(m.id) ? { ...m, x: m.x + d.dx, y: m.y + d.dy } : m));
+    void this.persist({ ...network, nodes, measurements });
   }
 
-  private onMoveMeas(network: Network, detail: { id: string; x: number; y: number }): void {
-    const measurements = network.measurements.map((m) => (m.id === detail.id ? { ...m, x: detail.x, y: detail.y } : m));
-    void this.persist({ ...network, measurements });
+  /** Commit a label drag (offset from the label's default spot under the symbol). */
+  private onMoveLabel(network: Network, d: { id: string; dx: number; dy: number }): void {
+    const nodes = network.nodes.map((n) => (n.id === d.id ? { ...n, labelDx: d.dx, labelDy: d.dy } : n));
+    void this.persist({ ...network, nodes });
   }
 
   private onConnect(network: Network, detail: { from: PortRef; to: PortRef }): void {
@@ -447,32 +568,32 @@ export class WuiAmpere extends LitElement {
 
   private addMeasurement(network: Network): void {
     const meas: Measurement = { ...blankMeasurement(), id: uid('m'), x: PLACE_OFFSET, y: PLACE_OFFSET };
-    this.selection = { kind: 'measurement', id: meas.id };
+    this.selection = [{ kind: 'measurement', id: meas.id }];
     void this.persist({ ...network, measurements: [...network.measurements, meas] });
   }
 
-  private onDelete(network: Network, sel: Selection): void {
-    let next = network;
-    if (sel.kind === 'node') {
-      const byId = new Map(network.nodes.map((n) => [n.id, n]));
-      // Detach anchored measurements (keep them, at their last world position).
-      const measurements = network.measurements.map((m) => {
-        if (m.nodeId !== sel.id) return m;
+  /** Delete every selected object (nodes cascade their wires; anchored labels detach). */
+  private onDelete(network: Network, sels: Selection[]): void {
+    if (!sels || sels.length === 0) return;
+    const nodeIds = new Set(sels.filter((s) => s.kind === 'node').map((s) => s.id));
+    const edgeIds = new Set(sels.filter((s) => s.kind === 'edge').map((s) => s.id));
+    const measIds = new Set(sels.filter((s) => s.kind === 'measurement').map((s) => s.id));
+    const byId = new Map(network.nodes.map((n) => [n.id, n]));
+    // Detach surviving measurements anchored to a deleted node (keep them at their world spot).
+    const measurements = network.measurements
+      .filter((m) => !measIds.has(m.id))
+      .map((m) => {
+        if (!m.nodeId || !nodeIds.has(m.nodeId)) return m;
         const pos = measurementPos(m, byId);
         return { ...m, nodeId: '', x: pos.x, y: pos.y };
       });
-      next = {
-        ...network,
-        nodes: network.nodes.filter((n) => n.id !== sel.id),
-        edges: network.edges.filter((e) => e.from.nodeId !== sel.id && e.to.nodeId !== sel.id),
-        measurements
-      };
-    } else if (sel.kind === 'edge') {
-      next = { ...network, edges: network.edges.filter((e) => e.id !== sel.id) };
-    } else {
-      next = { ...network, measurements: network.measurements.filter((m) => m.id !== sel.id) };
-    }
-    this.selection = null;
+    const next: Network = {
+      ...network,
+      nodes: network.nodes.filter((n) => !nodeIds.has(n.id)),
+      edges: network.edges.filter((e) => !edgeIds.has(e.id) && !nodeIds.has(e.from.nodeId) && !nodeIds.has(e.to.nodeId)),
+      measurements
+    };
+    this.selection = [];
     void this.persist(next);
   }
 
@@ -485,7 +606,7 @@ export class WuiAmpere extends LitElement {
       edges: proposal.edges,
       measurements: proposal.measurements
     };
-    this.selection = null;
+    this.selection = [];
     this.editing = true;
     void this.persist(merged);
   }
@@ -553,7 +674,7 @@ export class WuiAmpere extends LitElement {
 
   private async generateDemo(): Promise<void> {
     this.loading = true;
-    const created = await this.store.importDemo(DEMO_NETWORKS);
+    const created = await this.store.importDemo(demoNetworks());
     this.networks = this.offline ? await this.store.listNetworks() : [...this.networks, ...created];
     this.offline = this.store.offline;
     this.loading = false;
@@ -692,6 +813,10 @@ function pageStyles(): ReturnType<typeof css> {
     .canvas {
       min-width: 0;
       min-height: 0;
+    }
+    am-canvas.embedded {
+      display: block;
+      height: 100%;
     }
     .notice {
       display: flex;

@@ -10,7 +10,7 @@
  * graph arrays on legacy records that pre-date a field.
  */
 import { DpJsonStore } from '@visuelconcept/wui-kit/data/dp-json-store.js';
-import { DEMO_NETWORKS } from './demo.js';
+import { demoNetworks } from './demo.js';
 import type { Network } from '../types.js';
 
 export class AmpereStore extends DpJsonStore<Network> {
@@ -19,7 +19,7 @@ export class AmpereStore extends DpJsonStore<Network> {
       'Ampere_Network',
       'Ampere_',
       (network) => network.name,
-      () => DEMO_NETWORKS.map((n) => structuredClone(n)),
+      () => demoNetworks(),
       {
         slugFallback: 'reseau',
         afterRead: (n) => {

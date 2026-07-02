@@ -14,6 +14,7 @@
 import { JSON_INDENT, download, timestampSlug } from '@visuelconcept/wui-kit/data/io.js';
 import { SYMBOLS, type SymbolId } from '../symbols/catalog.js';
 import {
+  ROTATIONS,
   blankMeasurement,
   blankNetwork,
   type Edge,
@@ -25,7 +26,6 @@ import {
 
 const KIND = 'ampere-networks';
 const SLUG_MAX = 40;
-const ROTATIONS: readonly Rotation[] = [0, 90, 180, 270];
 
 function slug(name: string): string {
   return (
@@ -93,6 +93,8 @@ function normalizeNode(item: Record<string, unknown>, index: number): Node | nul
     id: asString(item['id']) || `n-${index}`,
     symbol,
     label: asString(item['label']),
+    labelDx: asNumber(item['labelDx'], 0),
+    labelDy: asNumber(item['labelDy'], 0),
     x: asNumber(item['x'], 0),
     y: asNumber(item['y'], 0),
     rotation: asRotation(item['rotation']),

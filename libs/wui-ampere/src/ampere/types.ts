@@ -33,8 +33,15 @@ export interface Point {
   y: number;
 }
 
-/** Quarter-turn rotation applied to a placed symbol. */
-export type Rotation = 0 | 90 | 180 | 270;
+/**
+ * Rotation applied to a placed symbol, in 30° steps. Quarter turns cover most
+ * devices; the finer steps let transformers be arranged in a star around a
+ * common point (HV substation single-line convention).
+ */
+export type Rotation = 0 | 30 | 60 | 90 | 120 | 150 | 180 | 210 | 240 | 270 | 300 | 330;
+
+/** All valid rotations, ascending. */
+export const ROTATIONS: readonly Rotation[] = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
 
 /** A reference to one named connection port of a placed node. */
 export interface PortRef {
@@ -75,6 +82,9 @@ export interface Node {
   symbol: SymbolId;
   /** User label shown under the symbol (e.g. `Q1`, `TGBT-A`). */
   label: string;
+  /** Label offset from its default spot (under the symbol) — user-draggable. */
+  labelDx?: number;
+  labelDy?: number;
   /** Top-left position of the symbol box, in canvas units (grid-snapped). */
   x: number;
   y: number;
@@ -152,11 +162,14 @@ export function blankNetwork(): Network {
 
 // --- geometry ----------------------------------------------------------------
 
-/** Rotate a local point around a center by a quarter-turn (exact, no float drift). */
+/** Rotate a local point around a center (exact for quarter turns, trig for 30° steps). */
 export function rotatePoint(p: Point, center: Point, deg: Rotation): Point {
   const dx = p.x - center.x;
   const dy = p.y - center.y;
   switch (deg) {
+    case 0: {
+      return { x: p.x, y: p.y };
+    }
     case 90: {
       return { x: center.x - dy, y: center.y + dx };
     }
@@ -167,7 +180,10 @@ export function rotatePoint(p: Point, center: Point, deg: Rotation): Point {
       return { x: center.x + dy, y: center.y - dx };
     }
     default: {
-      return { x: p.x, y: p.y };
+      const rad = (deg * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      return { x: center.x + dx * cos - dy * sin, y: center.y + dx * sin + dy * cos };
     }
   }
 }
@@ -219,4 +235,33 @@ export function measurementPos(m: Measurement, byId: Map<string, Node>): Point {
     }
   }
   return { x: m.x, y: m.y };
+}
+
+/**
+ * Bounding box of the drawn content (symbols + measurements), padded — used by
+ * the embedded "fit" view (e.g. a Mosaic tile) to stretch the diagram to the
+ * available space. `null` when the network is empty.
+ */
+export function contentBounds(network: Network, pad = 40): { x: number; y: number; w: number; h: number } | null {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  const grow = (x0: number, y0: number, x1: number, y1: number): void => {
+    minX = Math.min(minX, x0);
+    minY = Math.min(minY, y0);
+    maxX = Math.max(maxX, x1);
+    maxY = Math.max(maxY, y1);
+  };
+  const byId = new Map(network.nodes.map((n) => [n.id, n]));
+  for (const n of network.nodes) {
+    const def = SYMBOLS[n.symbol];
+    grow(n.x, n.y, n.x + def.w, n.y + def.h + (n.label ? 24 : 0));
+  }
+  for (const m of network.measurements) {
+    const p = measurementPos(m, byId);
+    grow(p.x - 8, p.y - 20, p.x + 96, p.y + 12);
+  }
+  if (!Number.isFinite(minX)) return null;
+  return { x: minX - pad, y: minY - pad, w: maxX - minX + pad * 2, h: maxY - minY + pad * 2 };
 }

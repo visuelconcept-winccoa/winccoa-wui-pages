@@ -34,7 +34,13 @@ export const MSG = {
     zoomIn: ml('Zoom in', 'Zoom avant', 'Vergrößern'),
     zoomOut: ml('Zoom out', 'Zoom arrière', 'Verkleinern'),
     zoomReset: ml('Reset zoom', 'Réinitialiser le zoom', 'Zoom zurücksetzen'),
-    addMeasurement: ml('Add a measurement', 'Ajouter une mesure', 'Messwert hinzufügen')
+    addMeasurement: ml('Add a measurement', 'Ajouter une mesure', 'Messwert hinzufügen'),
+    autoArrange: ml('Auto-arrange', 'Agencer auto', 'Automatisch anordnen'),
+    autoArrangeHint: ml(
+      'Re-place the symbols top → bottom (sources first) and left → right by branch.',
+      'Replace les symboles de haut en bas (sources d’abord) et de gauche à droite par branche.',
+      'Ordnet die Symbole von oben nach unten (Quellen zuerst) und je Zweig von links nach rechts an.'
+    )
   },
   page: {
     offline: ml(
@@ -90,6 +96,7 @@ export const MSG = {
     label: ml('Label', 'Repère', 'Kennzeichnung'),
     rotation: ml('Rotation', 'Rotation', 'Drehung'),
     rotate: ml('Rotate 90°', 'Pivoter 90°', 'Um 90° drehen'),
+    rotationFine: ml('Exact angle (30° steps — e.g. star-arranged transformers)', 'Angle exact (pas de 30° — ex. transfos en étoile)', 'Exakter Winkel (30°-Schritte — z. B. Trafos in Sternanordnung)'),
     stateDp: ml('State datapoint (open/closed)', 'Datapoint d’état (ouvert/fermé)', 'Zustands-Datenpunkt (offen/geschlossen)'),
     stateDpHint: ml(
       'Element read live; equals the "closed" value ⇒ the device conducts.',
@@ -104,7 +111,13 @@ export const MSG = {
     measUnit: ml('Unit', 'Unité', 'Einheit'),
     measDecimals: ml('Decimals', 'Décimales', 'Dezimalstellen'),
     measAnchor: ml('Anchored to the selected symbol', 'Ancrée au symbole sélectionné', 'Am ausgewählten Symbol verankert'),
-    wireInfo: ml('Wire', 'Fil', 'Leitung')
+    wireInfo: ml('Wire', 'Fil', 'Leitung'),
+    deleteSelection: ml('Delete selection', 'Supprimer la sélection', 'Auswahl löschen'),
+    multiHint: ml(
+      'Drag any selected item to move the whole selection — Del deletes it. Shift+click adds/removes an item.',
+      'Glissez un élément sélectionné pour déplacer toute la sélection — Suppr la supprime. Maj+clic ajoute/retire un élément.',
+      'Ziehen Sie ein ausgewähltes Element, um die gesamte Auswahl zu verschieben — Entf löscht sie. Umschalt+Klick fügt hinzu/entfernt.'
+    )
   },
   networkDialog: {
     newTitle: ml('New network', 'Nouveau réseau', 'Neues Netz'),
@@ -176,4 +189,9 @@ export function networkCountMsg(count: number): string {
 /** "Rename — <name>" dialog title (plain string). */
 export function renameTitleMsg(name: string): string {
   return localize(ml(`Rename — ${name}`, `Renommer — ${name}`, `Umbenennen — ${name}`));
+}
+
+/** "<N> selected items" heading (plain string — inspector, multi-selection). */
+export function selectedCountMsg(count: number): string {
+  return localize(ml(`${count} selected items`, `${count} éléments sélectionnés`, `${count} ausgewählte Elemente`));
 }

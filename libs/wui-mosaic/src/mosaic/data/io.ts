@@ -54,7 +54,7 @@ export function parseMosaics(text: string): Mosaic[] {
     list = raw;
   } else if (raw && typeof raw === 'object') {
     const obj = raw as Record<string, unknown>;
-    if (Array.isArray(obj.mosaics)) list = obj.mosaics;
+    if (Array.isArray(obj['mosaics'])) list = obj['mosaics'];
     else if ('tiles' in obj || 'name' in obj) list = [obj];
   }
   if (!Array.isArray(list)) {
@@ -74,36 +74,36 @@ function asNumber(value: unknown, fallback: number): number {
 
 function normalizeMosaic(item: Record<string, unknown>): Mosaic {
   const base = blankMosaic();
-  const rawTiles = Array.isArray(item.tiles) ? item.tiles : [];
+  const rawTiles = Array.isArray(item['tiles']) ? item['tiles'] : [];
   const tiles = rawTiles.map((t, i) => {
     const tile = normalizeTile(t as Record<string, unknown>);
     return tile.id ? tile : { ...tile, id: `t-${i}` };
   });
   return {
     ...base,
-    id: asString(item.id),
-    name: asString(item.name),
-    description: asString(item.description),
-    updatedAt: asString(item.updatedAt),
+    id: asString(item['id']),
+    name: asString(item['name']),
+    description: asString(item['description']),
+    updatedAt: asString(item['updatedAt']),
     tiles
   };
 }
 
 function normalizeTile(item: Record<string, unknown>): Tile {
   const base = blankTile();
-  const kind = TILE_KINDS.has(asString(item.kind)) ? (item.kind as TileKind) : base.kind;
+  const kind = TILE_KINDS.has(asString(item['kind'])) ? (item['kind'] as TileKind) : base.kind;
   return {
     ...base,
-    id: asString(item.id),
+    id: asString(item['id']),
     kind,
-    title: asString(item.title),
-    ref: asString(item.ref),
-    url: asString(item.url),
-    x: asNumber(item.x, base.x),
-    y: asNumber(item.y, base.y),
-    w: asNumber(item.w, base.w),
-    h: asNumber(item.h, base.h),
-    interactive: Boolean(item.interactive),
-    refresh: asNumber(item.refresh, 0)
+    title: asString(item['title']),
+    ref: asString(item['ref']),
+    url: asString(item['url']),
+    x: asNumber(item['x'], base.x),
+    y: asNumber(item['y'], base.y),
+    w: asNumber(item['w'], base.w),
+    h: asNumber(item['h'], base.h),
+    interactive: Boolean(item['interactive']),
+    refresh: asNumber(item['refresh'], 0)
   };
 }
