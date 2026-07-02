@@ -70,6 +70,17 @@ const PURGEABLE_FOLDERS = new Set(['data/dashboard-wc', 'scripts', 'panels', 'pi
 // Top-level project folders a ZIP may NEVER be extracted into (protected).
 const DENY_EXTRACT_FOLDERS = new Set(['logs', 'log', 'db', 'config', 'images', 'bin']);
 
+// Scratch area for uploaded ZIPs + extraction staging, kept UNDER the project
+// (created on demand). WinCC OA may run under a service account (e.g. a GMSA)
+// that has no user profile — os.tmpdir() then resolves to a missing/unwritable
+// path — whereas the service account always has write access to its own project
+// tree. `temp` is neither a protected nor a purgeable folder.
+const TEMP_DIR = path.join(PROJ_PATH, 'temp');
+function ensureTempDir() {
+  fs.mkdirSync(TEMP_DIR, { recursive: true });
+  return TEMP_DIR;
+}
+
 let OWN_SYSTEM = ''; // e.g. "System1:" — filled at startup
 const HOSTNAME = os.hostname();
 
@@ -194,7 +205,7 @@ async function extract7z(zipPath, dest) {
  * root. This guarantees a ZIP can never overwrite a protected folder.
  */
 async function extractZip(zipPath) {
-  const stage = path.join(os.tmpdir(), `pm-stage-${crypto.randomUUID()}`);
+  const stage = path.join(ensureTempDir(), `pm-stage-${crypto.randomUUID()}`);
   await fsp.mkdir(stage, { recursive: true });
   try {
     const ex = await extract7z(zipPath, stage);
@@ -334,7 +345,7 @@ async function onCmd(cmd) {
 async function onDeployCmd(cmd) {
   if (!cmd || !cmd.reqId || cmd.reqId === lastDeployId) return;
   lastDeployId = cmd.reqId;
-  const tmp = path.join(os.tmpdir(), `pm-deploy-${cmd.reqId}.zip`);
+  const tmp = path.join(ensureTempDir(), `pm-deploy-${cmd.reqId}.zip`);
   let result;
   try {
     const b64 = asStr((await winccoa.dpGet([`${NODE_DP}.deployData`]))[0]);

@@ -17,7 +17,6 @@
 // -----------------------------------------------------------------------------
 
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { Request, Response } from 'ultimate-express';
@@ -44,6 +43,38 @@ function getStub(): Promise<any> {
 
 /** In-flight chunked uploads: id -> temp ZIP path. */
 const uploads = new Map<string, { tmpPath: string }>();
+
+/**
+ * Resolve `<project>/temp` (created on demand) for assembling uploaded ZIPs.
+ *
+ * We deliberately avoid `os.tmpdir()`: WinCC OA may run under a service account
+ * (e.g. a GMSA) that has no user profile, so the OS user-temp path is missing or
+ * unwritable — while the service account always has write access to its own
+ * project tree. The project root is the nearest ancestor of this deployed module
+ * (`<project>/javascript/customer-webserver/…`) that contains `config/config`;
+ * `PVSS_II` (the config-file path WinCC OA exports) is used as a fallback.
+ */
+function projectTempDir(): string {
+  let root = '';
+  let dir = __dirname;
+  for (let i = 0; i < 12; i++) {
+    if (fs.existsSync(path.join(dir, 'config', 'config'))) {
+      root = dir;
+      break;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  if (!root) {
+    const cfg = process.env.PVSS_II;
+    if (cfg && fs.existsSync(cfg)) root = path.dirname(path.dirname(cfg));
+  }
+  if (!root) throw new Error('impossible de localiser la racine du projet WinCC OA (config/config introuvable)');
+  const tmp = path.join(root, 'temp');
+  fs.mkdirSync(tmp, { recursive: true });
+  return tmp;
+}
 
 export class ProcessMonitorController {
   /** GET /health */
@@ -85,8 +116,8 @@ export class ProcessMonitorController {
       return;
     }
     const uploadId = crypto.randomUUID();
-    const tmpPath = path.join(os.tmpdir(), `process-monitor-${uploadId}.zip`);
     try {
+      const tmpPath = path.join(projectTempDir(), `process-monitor-${uploadId}.zip`);
       fs.writeFileSync(tmpPath, Buffer.alloc(0)); // truncate/create
       uploads.set(uploadId, { tmpPath });
       res.status(200).json({ ok: true, uploadId });
