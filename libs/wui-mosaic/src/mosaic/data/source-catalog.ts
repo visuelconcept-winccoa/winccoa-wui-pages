@@ -21,8 +21,10 @@ const VNC_TYPE = 'RemoteVnc_Connection';
 const VNC_PREFIX = 'RemoteVnc_';
 const CAMERA_TYPE = 'RtspCamera_Stream';
 const CAMERA_PREFIX = 'RtspCamera_';
+const AMPERE_TYPE = 'Ampere_Network';
+const AMPERE_PREFIX = 'Ampere_';
 
-/** One selectable source (a fleet atelier, a VNC connection or a camera stream). */
+/** One selectable source (a fleet atelier, a VNC connection, a camera stream or an Ampère network). */
 export interface SourceOption {
   /** Source id (atelier id, connection id or camera id). */
   ref: string;
@@ -47,6 +49,11 @@ export class SourceCatalog {
   /** List RTSP camera streams (by display name). */
   async listCameras(): Promise<SourceOption[]> {
     return this.listType(CAMERA_TYPE, CAMERA_PREFIX);
+  }
+
+  /** List Ampère single-line networks (by display name). */
+  async listAmpereNetworks(): Promise<SourceOption[]> {
+    return this.listType(AMPERE_TYPE, AMPERE_PREFIX);
   }
 
   // --- internals -------------------------------------------------------------

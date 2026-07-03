@@ -75,6 +75,7 @@ export class WuiMosaic extends LitElement {
   @state() private ateliers: SourceOption[] = [];
   @state() private vncConnections: SourceOption[] = [];
   @state() private cameras: SourceOption[] = [];
+  @state() private ampereNetworks: SourceOption[] = [];
   @state() private importError = '';
 
   @query('.import-input') private importInput!: HTMLInputElement;
@@ -124,6 +125,7 @@ export class WuiMosaic extends LitElement {
             .ateliers=${this.ateliers}
             .vncConnections=${this.vncConnections}
             .cameras=${this.cameras}
+            .ampereNetworks=${this.ampereNetworks}
             @wui:save=${this.onTileSave}
             @wui:cancel=${() => (this.editingTile = undefined)}
           ></mo-tile-dialog>`}
@@ -245,14 +247,16 @@ export class WuiMosaic extends LitElement {
   }
 
   private async loadCatalog(): Promise<void> {
-    const [ateliers, vnc, cameras] = await Promise.all([
+    const [ateliers, vnc, cameras, ampereNetworks] = await Promise.all([
       this.catalog.listAteliers(),
       this.catalog.listVncConnections(),
-      this.catalog.listCameras()
+      this.catalog.listCameras(),
+      this.catalog.listAmpereNetworks()
     ]);
     this.ateliers = ateliers;
     this.vncConnections = vnc;
     this.cameras = cameras;
+    this.ampereNetworks = ampereNetworks;
   }
 
   private selectedMosaic(): Mosaic | undefined {

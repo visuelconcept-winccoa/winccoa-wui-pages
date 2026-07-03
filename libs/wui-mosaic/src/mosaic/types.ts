@@ -24,7 +24,7 @@
 import { MSG, localize } from './i18n.js';
 
 /** Source kind backing a tile. */
-export type TileKind = 'fleet-3d' | 'remote-vnc' | 'camera' | 'url';
+export type TileKind = 'fleet-3d' | 'remote-vnc' | 'camera' | 'ampere' | 'url';
 
 /** A single tile (one embedded source) on a mosaic canvas. */
 export interface Tile {
@@ -38,6 +38,8 @@ export interface Tile {
    * Source reference:
    * - `fleet-3d`: atelier id (empty = the ateliers overview);
    * - `remote-vnc`: connection id;
+   * - `camera`: camera stream id;
+   * - `ampere`: single-line network id;
    * - `url`: unused (see {@link url}).
    */
   ref: string;
@@ -134,6 +136,7 @@ const KIND_LABELS: Record<TileKind, import('@wincc-oa/wui-models/interfaces/mult
   'fleet-3d': MSG.kind.fleet3d,
   'remote-vnc': MSG.kind.vnc,
   camera: MSG.kind.camera,
+  ampere: MSG.kind.ampere,
   url: MSG.kind.url
 };
 
@@ -165,11 +168,12 @@ export function blankMosaic(): Mosaic {
 }
 
 /**
- * Whether a tile forwards pointer/keyboard events in display mode. VNC and camera
- * tiles can never be interactive (read-only wall: VNC sessions, one-way video).
+ * Whether a tile forwards pointer/keyboard events in display mode. VNC, camera
+ * and Ampère tiles can never be interactive (read-only wall: VNC sessions,
+ * one-way video, live diagram).
  */
 export function isInteractive(tile: Tile): boolean {
-  return tile.interactive && tile.kind !== 'remote-vnc' && tile.kind !== 'camera';
+  return tile.interactive && tile.kind !== 'remote-vnc' && tile.kind !== 'camera' && tile.kind !== 'ampere';
 }
 
 /**
@@ -203,6 +207,9 @@ export function tileSrc(tile: Tile): string {
     }
     case 'camera': {
       return tile.ref ? embeddedViewUrl(`/camera-streams/${encodeURIComponent(tile.ref)}`) : '';
+    }
+    case 'ampere': {
+      return tile.ref ? embeddedViewUrl(`/ampere/${encodeURIComponent(tile.ref)}`) : '';
     }
     case 'url': {
       return isInternalUrl(tile.url) ? tile.url.trim() : '';

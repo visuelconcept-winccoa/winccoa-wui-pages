@@ -1,0 +1,35 @@
+{
+  "name": "@visuelconcept/wui-ampere",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Ampère — standalone WinCC OA WebUI page (/ampere + /ampere/:networkid): draw single-line (mono-filaire) electrical distribution networks (switchboards/TGBT, disconnectors, circuit breakers, busbars, transformers…) with an in-place edit mode, an IEC 60617 symbol toolbox, free DP binding per device, live wire energisation computed by graph traversal through closed switchgear, free/attached live measurement labels, and a proposal-only AI assistant that generates network models. Frontend-only, 1 DP per network (Ampere_Network).",
+  "author": { "name": "Visuel Concept" },
+  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page", "electrical", "single-line-diagram"],
+  "license": "MIT",
+  "dependencies": {
+    "@visuelconcept/wui-kit": "*",
+    "@visuelconcept/wui-ai-kit": "*"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "tsyringe": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-data-selector-data": "*",
+    "@wincc-oa/wui-models": "*"
+  },
+  "exports": { "./*": { "types": "./types/*", "import": "./*" } },
+  "wuiPage": {
+    "route": "/ampere",
+    "routes": ["/ampere", "/ampere/:networkid"],
+    "routeId": "ampere",
+    "component": "wui-ampere",
+    "module": "/data/dashboard-wc/pages/ampere.js",
+    "icon": "flash",
+    "permission": ["connected"],
+    "tier": 1
+  }
+}
