@@ -56,6 +56,7 @@ export const MSG = {
       'Import fehlgeschlagen — keine gültige Tunnel-Datei'
     ),
     duplicate: ml('Duplicate the tunnel', 'Dupliquer le tunnel', 'Tunnel duplizieren'),
+    demoTitle: ml('Import a demo tunnel', 'Importer un tunnel de démonstration', 'Demo-Tunnel importieren'),
     copySuffix: ml('(copy)', '(copie)', '(Kopie)')
   },
   view: {
@@ -75,6 +76,9 @@ export const MSG = {
       'Sicherheitsdossier erzeugen (Bericht)'
     ),
     tabLogbook: ml('Logbook', 'Main courante', 'Betriebstagebuch'),
+    styleModern: ml('Modern rendering', 'Rendu moderne', 'Modernes Rendering'),
+    styleSimple: ml('Simple rendering', 'Rendu simple', 'Einfaches Rendering'),
+    toggleLabels: ml('Equipment labels', 'Étiquettes des équipements', 'Anlagenbeschriftungen'),
     tabExercise: ml('Exercise', 'Exercice', 'Übung'),
     shadowChip: ml('Observation', 'Observation', 'Beobachtung'),
     shadowHint: ml(
@@ -146,7 +150,9 @@ export const MSG = {
     legendRun: ml('In service', 'En service', 'In Betrieb'),
     legendWarning: ml('Warning', 'Avertissement', 'Warnung'),
     legendFault: ml('Fault', 'Défaut', 'Störung'),
-    legendOff: ml('Off / unbound', 'Arrêt / non lié', 'Aus / nicht verknüpft')
+    legendOff: ml('Off / unbound', 'Arrêt / non lié', 'Aus / nicht verknüpft'),
+    allKinds: ml('All types', 'Tous les types', 'Alle Typen'),
+    showNames: ml('Show the names', 'Afficher les noms', 'Namen anzeigen')
   },
   modes: {
     empty: ml(
@@ -197,6 +203,13 @@ export const MSG = {
       "Aucun groupe d'archive actif découvert (type _NGA_Group) — backend indisponible ou NGA non configuré.",
       'Keine aktive Archivgruppe gefunden (Typ _NGA_Group) — Backend nicht verfügbar oder NGA nicht konfiguriert.'
     ),
+    video: ml('Live video (RTSP)', 'Vidéo temps réel (RTSP)', 'Live-Video (RTSP)'),
+    noStreams: ml(
+      'No RTSP stream configured (camera-streams module absent or empty).',
+      'Aucun flux RTSP configuré (module camera-streams absent ou vide).',
+      'Kein RTSP-Stream konfiguriert (camera-streams-Modul fehlt oder ist leer).'
+    ),
+    noStream: ml('— no stream —', '— aucun flux —', '— kein Stream —'),
     aksHint: ml(
       'Indicative AKS-CH designation (Swiss ASTRA plant classification)',
       'Désignation AKS-CH indicative (classification des installations ASTRA/OFROU)',

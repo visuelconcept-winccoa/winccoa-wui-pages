@@ -11,6 +11,7 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { ALL_PROFILES, checkCompliance, profileLabel } from '../data/compliance.js';
+import { demoCatalog } from '../data/demo-tunnel.js';
 import { exportTunnel, parseTunnel, readFileText } from '../data/io.js';
 import { MSG, localize, localizeDir } from '../i18n.js';
 import { tunnelLengthM, type RegulatoryProfileId, type Tunnel } from '../types.js';
@@ -35,6 +36,7 @@ export class HdOverview extends LitElement {
   @property({ type: Boolean }) canEdit = false;
 
   @state() private creating = false;
+  @state() private choosingDemo = false;
   @state() private draftName = '';
   @state() private draftProfile: RegulatoryProfileId = 'eu-2004-54';
   @state() private importError = '';
@@ -50,7 +52,7 @@ export class HdOverview extends LitElement {
         <ix-button ?disabled=${!this.canEdit} @click=${() => this.openCreate()}>
           <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.overview.newTunnel)}
         </ix-button>
-        <ix-button variant="secondary" ?disabled=${!this.canEdit} @click=${() => this.importDemo()}>
+        <ix-button variant="secondary" ?disabled=${!this.canEdit} @click=${() => (this.choosingDemo = true)}>
           <ix-icon name="download" slot="icon"></ix-icon>${localizeDir(MSG.overview.importDemo)}
         </ix-button>
         <ix-button variant="secondary" ?disabled=${!this.canEdit} @click=${() => this.pickImportFile()}>
@@ -69,6 +71,35 @@ export class HdOverview extends LitElement {
         ? html`<div class="empty">${localizeDir(MSG.overview.empty)}</div>`
         : html`<div class="grid">${this.tunnels.map((t) => this.renderCard(t))}</div>`}
       ${this.creating ? this.renderCreateDialog() : nothing}
+      ${this.choosingDemo ? this.renderDemoDialog() : nothing}
+    `;
+  }
+
+  /** Pick one of the built-in demo tunnels to import. */
+  private renderDemoDialog(): TemplateResult {
+    return html`
+      <div class="overlay" @click=${() => (this.choosingDemo = false)}>
+        <div class="panel demo-picker" @click=${(e: Event) => e.stopPropagation()}>
+          <div class="panel-head">
+            <ix-typography format="h3">${localizeDir(MSG.overview.demoTitle)}</ix-typography>
+          </div>
+          <div class="panel-body">
+            ${demoCatalog().map(
+              (demo) => html`
+                <button class="demo-card" @click=${() => this.importDemo(demo.id)}>
+                  <b>${localizeDir(demo.name)}</b>
+                  <span>${localizeDir(demo.description)}</span>
+                </button>
+              `
+            )}
+          </div>
+          <div class="panel-foot">
+            <ix-button variant="secondary" @click=${() => (this.choosingDemo = false)}>
+              ${localizeDir(MSG.overview.cancel)}
+            </ix-button>
+          </div>
+        </div>
+      </div>
     `;
   }
 
@@ -166,8 +197,9 @@ export class HdOverview extends LitElement {
     );
   }
 
-  private importDemo(): void {
-    this.dispatchEvent(new CustomEvent('wui:import-demo'));
+  private importDemo(demoId: string): void {
+    this.choosingDemo = false;
+    this.dispatchEvent(new CustomEvent<string>('wui:import-demo', { detail: demoId }));
   }
 
   private onExport(event: Event, tunnel: Tunnel): void {
@@ -299,6 +331,32 @@ function overviewStyles(): ReturnType<typeof css> {
     }
     .panel.create {
       width: 420px;
+    }
+    .panel.demo-picker {
+      width: 480px;
+    }
+    .demo-card {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      width: 100%;
+      text-align: left;
+      font: inherit;
+      padding: 0.7rem 0.9rem;
+      border: 1px solid var(--theme-color-soft-bdr);
+      border-radius: var(--theme-default-border-radius);
+      background: transparent;
+      color: var(--theme-color-std-text);
+      cursor: pointer;
+    }
+    .demo-card:hover,
+    .demo-card:focus-visible {
+      border-color: var(--theme-color-primary);
+      outline: none;
+    }
+    .demo-card span {
+      color: var(--theme-color-soft-text);
+      font-size: 0.85rem;
     }
     .panel-body {
       display: flex;

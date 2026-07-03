@@ -109,6 +109,12 @@ export interface EquipmentDef {
   side: EquipmentSide;
   /** point key → datapoint element name (empty = unbound). */
   bindings: Record<string, string>;
+  /**
+   * For `camera` equipment: id of the linked RTSP stream (a `RtspCamera_*` DP
+   * of the camera-streams module, bare id without the prefix). The dialog
+   * embeds the live video via the chromeless `/camera-streams/<id>` route.
+   */
+  cameraStreamId?: string;
   // --- live runtime fields (driven by dpConnect, never audited) --------------
   /** Resolved state code (see STATE_*), driven by the bound `state` point. */
   state?: number;

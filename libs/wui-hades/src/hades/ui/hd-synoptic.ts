@@ -11,15 +11,20 @@
  */
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, svg, type SVGTemplateResult, type TemplateResult } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
-import { kindLabel } from '../data/catalog.js';
+import { customElement, property, state } from 'lit/decorators.js';
+import { CATALOG_KINDS, kindLabel } from '../data/catalog.js';
 import { MSG, localizeDir } from '../i18n.js';
 import {
+  STATE_FAULT,
+  STATE_OFF,
+  STATE_RUN,
+  STATE_WARNING,
   pkLabel,
   stateColor,
   tubeEquipment,
   tubeLengthM,
   type EquipmentDef,
+  type EquipmentKind,
   type Tunnel,
   type TubeDef
 } from '../types.js';
@@ -46,18 +51,66 @@ export class HdSynoptic extends LitElement {
   /** Bumped by the tunnel view on every live emission (recolours the glyphs). */
   @property({ type: Number }) liveTick = 0;
 
+  /** '' = every kind. */
+  @state() private kindFilter: EquipmentKind | '' = '';
+  /** null = every state; a code filters to that state (undefined→off bucket). */
+  @state() private stateFilter: number | null = null;
+  @state() private showNames = false;
+
   override render(): TemplateResult | typeof nothing {
     const tunnel = this.tunnel;
     if (!tunnel) return nothing;
     return html`
       <div class="wrap">
+        ${this.renderToolbar(tunnel)}
         ${tunnel.tubes.map((tube) => this.renderTube(tunnel, tube))}
-        <div class="legend">
-          <span><i class="dot run"></i>${localizeDir(MSG.synoptic.legendRun)}</span>
-          <span><i class="dot warn"></i>${localizeDir(MSG.synoptic.legendWarning)}</span>
-          <span><i class="dot fault"></i>${localizeDir(MSG.synoptic.legendFault)}</span>
-          <span><i class="dot off"></i>${localizeDir(MSG.synoptic.legendOff)}</span>
-        </div>
+      </div>
+    `;
+  }
+
+  /** Bucket an equipment state for counting/filtering (undefined → off). */
+  private bucketOf(equipment: EquipmentDef): number {
+    return equipment.state ?? STATE_OFF;
+  }
+
+  private countByState(tunnel: Tunnel, bucket: number): number {
+    return tunnel.equipment.filter((e) => this.bucketOf(e) === bucket).length;
+  }
+
+  /** Clickable state counters + kind filter + name toggle. */
+  private renderToolbar(tunnel: Tunnel): TemplateResult {
+    const buckets: { code: number; cls: string; label: unknown }[] = [
+      { code: STATE_FAULT, cls: 'fault', label: localizeDir(MSG.synoptic.legendFault) },
+      { code: STATE_WARNING, cls: 'warn', label: localizeDir(MSG.synoptic.legendWarning) },
+      { code: STATE_RUN, cls: 'run', label: localizeDir(MSG.synoptic.legendRun) },
+      { code: STATE_OFF, cls: 'off', label: localizeDir(MSG.synoptic.legendOff) }
+    ];
+    return html`
+      <div class="toolbar">
+        ${buckets.map(
+          (b) => html`<button
+            class="state-chip ${b.cls} ${this.stateFilter === b.code ? 'on' : ''}"
+            @click=${() => (this.stateFilter = this.stateFilter === b.code ? null : b.code)}
+          >
+            <i class="dot ${b.cls}"></i>${this.countByState(tunnel, b.code)} ${b.label}
+          </button>`
+        )}
+        <span class="spacer"></span>
+        <ix-select
+          class="kind-filter"
+          .value=${this.kindFilter}
+          @valueChange=${(e: CustomEvent<string>) => (this.kindFilter = String(e.detail) as EquipmentKind | '')}
+        >
+          <ix-select-item label=${String(localizeDir(MSG.synoptic.allKinds))} value=""></ix-select-item>
+          ${CATALOG_KINDS.map((k) => html`<ix-select-item label=${kindLabel(k)} value=${k}></ix-select-item>`)}
+        </ix-select>
+        <ix-icon-button
+          icon="label"
+          variant=${this.showNames ? 'primary' : 'secondary'}
+          ghost
+          title=${String(localizeDir(MSG.synoptic.showNames))}
+          @click=${() => (this.showNames = !this.showNames)}
+        ></ix-icon-button>
       </div>
     `;
   }
@@ -74,7 +127,10 @@ export class HdSynoptic extends LitElement {
         </div>
         <svg viewBox="0 0 ${VIEW_W} ${BAND_H}" role="img">
           ${this.renderSegments(tube, x)} ${this.renderTicks(lengthM, x)}
-          ${tubeEquipment(tunnel, tube.id).map((e) => this.renderEquipment(e, x))}
+          ${tubeEquipment(tunnel, tube.id)
+            .filter((e) => this.kindFilter === '' || e.kind === this.kindFilter)
+            .filter((e) => this.stateFilter === null || this.bucketOf(e) === this.stateFilter)
+            .map((e) => this.renderEquipment(e, x))}
         </svg>
       </div>
     `;
@@ -112,19 +168,23 @@ export class HdSynoptic extends LitElement {
     const cx = x(equipment.pkM);
     const cy = SIDE_Y[equipment.side];
     const color = stateColor(equipment.state);
+    const pulse = equipment.state === STATE_FAULT ? 'pulse' : '';
     const title = `${equipment.name} — ${kindLabel(equipment.kind)} (${pkLabel(equipment.pkM)})`;
+    const name = this.showNames
+      ? svg`<text class="glyph-name" x=${cx} y=${cy - 10} text-anchor="middle">${equipment.name}</text>`
+      : nothing;
     // Exits are squares, SOS niches diamonds, the rest dots — shape carries kind.
     if (equipment.kind === 'emergency-exit') {
-      return svg`<rect class="glyph" x=${cx - 5} y=${cy - 5} width="10" height="10" fill=${color}
+      return svg`${name}<rect class="glyph ${pulse}" x=${cx - 5} y=${cy - 5} width="10" height="10" fill=${color}
         tabindex="0" @click=${() => this.select(equipment)} @keydown=${(e: KeyboardEvent) => this.key(e, equipment)}>
         <title>${title}</title></rect>`;
     }
     if (equipment.kind === 'sos-niche') {
-      return svg`<rect class="glyph" x=${cx - 5} y=${cy - 5} width="10" height="10" fill=${color}
+      return svg`${name}<rect class="glyph ${pulse}" x=${cx - 5} y=${cy - 5} width="10" height="10" fill=${color}
         transform="rotate(45 ${cx} ${cy})" tabindex="0" @click=${() => this.select(equipment)}
         @keydown=${(e: KeyboardEvent) => this.key(e, equipment)}><title>${title}</title></rect>`;
     }
-    return svg`<circle class="glyph" cx=${cx} cy=${cy} r="6" fill=${color} tabindex="0"
+    return svg`${name}<circle class="glyph ${pulse}" cx=${cx} cy=${cy} r="6" fill=${color} tabindex="0"
       @click=${() => this.select(equipment)} @keydown=${(e: KeyboardEvent) => this.key(e, equipment)}>
       <title>${title}</title></circle>`;
   }
@@ -199,13 +259,59 @@ function synopticStyles(): ReturnType<typeof css> {
       stroke-width: 2;
       outline: none;
     }
-    .legend {
+    .toolbar {
       display: flex;
-      gap: 1.2rem;
-      color: var(--theme-color-soft-text);
-      font-size: 0.85rem;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
     }
-    .legend .dot {
+    .toolbar .spacer {
+      flex: 1;
+    }
+    .state-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font: inherit;
+      font-size: 0.85rem;
+      padding: 0.2rem 0.7rem;
+      border: 1px solid var(--theme-color-soft-bdr);
+      border-radius: 1rem;
+      background: transparent;
+      color: var(--theme-color-soft-text);
+      cursor: pointer;
+      font-variant-numeric: tabular-nums;
+    }
+    .state-chip.on {
+      border-color: var(--theme-color-primary);
+      color: var(--theme-color-std-text);
+    }
+    .state-chip:focus-visible {
+      outline: 1px solid var(--theme-color-primary);
+    }
+    .kind-filter {
+      min-width: 13rem;
+    }
+    .glyph-name {
+      fill: var(--theme-color-soft-text);
+      font-size: 9px;
+      pointer-events: none;
+    }
+    .glyph.pulse {
+      animation: hd-pulse 1.1s ease-in-out infinite;
+    }
+    @keyframes hd-pulse {
+      50% {
+        opacity: 0.25;
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .glyph.pulse {
+        animation: none;
+      }
+    }
+    .legend .dot,
+    .toolbar .dot {
       display: inline-block;
       width: 0.7rem;
       height: 0.7rem;

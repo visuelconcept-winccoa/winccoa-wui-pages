@@ -14,6 +14,7 @@ import { LitElement, css, html, nothing, type PropertyValues, type TemplateResul
 import { customElement, property, state } from 'lit/decorators.js';
 import '@visuelconcept/wui-kit/ui/wui-dp-input.js';
 import { ArchiveService, type ArchiveStatus } from '../data/archive.js';
+import { cameraEmbedUrl, listCameraStreams } from '../data/camera-link.js';
 import { aksChOf, kindLabel, pointsOf, CATALOG_KINDS } from '../data/catalog.js';
 import { MSG, localize, localizeDir, sideLabel } from '../i18n.js';
 import {
@@ -54,6 +55,9 @@ export class HdEquipmentDialog extends LitElement {
   @property({ type: Number }) liveTick = 0;
 
   @state() private working: EquipmentDef | null = null;
+  /** Configured RTSP streams (loaded once when a camera equipment opens). */
+  @state() private cameraStreams: string[] = [];
+  @state() private cameraStreamsLoaded = false;
   @state() private archiveGroups: string[] = [];
   /** DPE → current NGA archive status (loaded when the dialog opens). */
   @state() private archiveStatus: Record<string, ArchiveStatus> = {};
@@ -66,6 +70,10 @@ export class HdEquipmentDialog extends LitElement {
     if (changed.has('equipment') && this.equipment?.id !== this.working?.id) {
       this.working = this.equipment ? structuredClone(this.equipment) : null;
       if (this.equipment) void this.loadArchive(this.equipment);
+      if (this.equipment?.kind === 'camera' && !this.cameraStreamsLoaded) {
+        this.cameraStreamsLoaded = true;
+        void listCameraStreams().then((streams) => (this.cameraStreams = streams));
+      }
     }
     if (changed.has('equipment') && !this.equipment) this.working = null;
   }
@@ -106,6 +114,7 @@ export class HdEquipmentDialog extends LitElement {
             ${this.renderLive(working, points)}
             ${this.renderCommands(working, points)}
             ${this.renderBindings(working, points)}
+            ${this.renderVideo(working)}
             ${this.renderArchiving(working)}
           </div>
           <div class="panel-foot">
@@ -234,6 +243,38 @@ export class HdEquipmentDialog extends LitElement {
           </div>
         `
       )}
+    `;
+  }
+
+  /** RTSP live video of a camera equipment (embeds the camera-streams page). */
+  private renderVideo(working: EquipmentDef): TemplateResult | typeof nothing {
+    if (working.kind !== 'camera') return nothing;
+    return html`
+      <div class="section-title">${localizeDir(MSG.equipment.video)}</div>
+      ${this.cameraStreams.length === 0
+        ? html`<div class="archive-note">${localizeDir(MSG.equipment.noStreams)}</div>`
+        : html`
+            <div class="row">
+              <ix-select
+                class="stream-select"
+                ?disabled=${!this.canEdit}
+                .value=${working.cameraStreamId ?? ''}
+                @valueChange=${(e: IxValueEvent) => this.patch({ cameraStreamId: String(e.detail) || undefined })}
+              >
+                <ix-select-item label=${localize(MSG.equipment.noStream)} value=""></ix-select-item>
+                ${this.cameraStreams.map(
+                  (id) => html`<ix-select-item label=${id} value=${id}></ix-select-item>`
+                )}
+              </ix-select>
+            </div>
+            ${working.cameraStreamId
+              ? html`<iframe
+                  class="camera-frame"
+                  src=${cameraEmbedUrl(working.cameraStreamId)}
+                  title=${working.name}
+                ></iframe>`
+              : nothing}
+          `}
     `;
   }
 
@@ -394,6 +435,17 @@ function extraStyles(): ReturnType<typeof css> {
     .archive-note {
       color: var(--theme-color-soft-text);
       font-size: 0.85rem;
+    }
+    .stream-select {
+      min-width: 16rem;
+    }
+    .camera-frame {
+      width: 100%;
+      height: 280px;
+      border: 1px solid var(--theme-color-soft-bdr);
+      border-radius: var(--theme-default-border-radius);
+      background: var(--theme-color-1);
+      margin-top: 0.4rem;
     }
   `;
 }

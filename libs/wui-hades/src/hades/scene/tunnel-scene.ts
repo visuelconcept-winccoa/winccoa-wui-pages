@@ -9,6 +9,13 @@
  * wheel zoom) and a DRIVE mode that glides the camera along the centerline
  * like a vehicle. Left-click raycasts an equipment and reports its id to the
  * page. The Lit view is a thin driver over this class.
+ *
+ * Two render STYLES (selectable, persisted by the view):
+ *  - `simple` — the sober engineering look, tuned bright enough to read;
+ *  - `modern` — the marketing look: light concrete, cool white lighting and
+ *    continuous cyan LED light-lines swept along both walls and the crown.
+ * Optional HTML overlay LABELS (name + state dot) are projected per frame
+ * from the equipment anchors; faulty equipment pulses in both styles.
  */
 import {
   AmbientLight,
@@ -31,7 +38,7 @@ import {
   Vector3,
   WebGLRenderer
 } from 'three';
-import { STATE_RUN, tubeEquipment, type EquipmentDef, type Tunnel } from '../types.js';
+import { STATE_FAULT, STATE_RUN, stateColor, tubeEquipment, type EquipmentDef, type Tunnel } from '../types.js';
 import { disposeObject } from './dispose.js';
 import { applyState, buildEquipmentMesh, type EquipmentSceneData } from './equipment-meshes.js';
 import {
@@ -46,12 +53,62 @@ import {
   type Frame
 } from './tunnel-geometry.js';
 
-const BACKGROUND_HEX = 0x10_14_1b;
-const FOG_NEAR_M = 60;
-const FOG_FAR_M = 900;
-const BORE_HEX = 0x4a_50_5c;
-const ROAD_HEX = 0x23_26_2c;
-const WALKWAY_HEX = 0x3a_3f_49;
+/** Render style of the twin (see class docs). */
+export type ViewStyle = 'simple' | 'modern';
+
+interface StylePreset {
+  background: number;
+  fogNear: number;
+  fogFar: number;
+  bore: number;
+  road: number;
+  walkway: number;
+  ambient: number;
+  hemisphere: number;
+  accentColor: number;
+  accentIntensity: number;
+  /** Cyan LED light-lines along the walls/crown (the Siemens-style look). */
+  ribbons: boolean;
+}
+
+const STYLES: Record<ViewStyle, StylePreset> = {
+  simple: {
+    background: 0x1a_20_2b,
+    fogNear: 90,
+    fogFar: 1500,
+    bore: 0x67_6e_7b,
+    road: 0x2e_32_3a,
+    walkway: 0x4a_50_5c,
+    ambient: 0.62,
+    hemisphere: 0.75,
+    accentColor: 0xff_df_a8,
+    accentIntensity: 16,
+    ribbons: false
+  },
+  modern: {
+    background: 0x0d_15_20,
+    fogNear: 120,
+    fogFar: 2000,
+    bore: 0x8d_95_a2,
+    road: 0x33_38_41,
+    walkway: 0x5a_62_70,
+    ambient: 0.7,
+    hemisphere: 0.85,
+    accentColor: 0xcf_ea_ff,
+    accentIntensity: 18,
+    ribbons: true
+  }
+};
+
+/** Cyan of the modern light-lines. */
+const RIBBON_HEX = 0x2f_d8_ff;
+/** Wall light-line heights (m) and the gap kept below the crown for the top line. */
+const RIBBON_HEIGHTS_M = [2.45, 2.75];
+const CROWN_RIBBON_GAP_M = 0.25;
+const RIBBON_WIDTH_M = 0.07;
+/** Lateral inset of the wall light-lines from the bore surface (m). */
+const RIBBON_INSET_M = 0.15;
+
 const MARKING_HEX = 0xd0_d4_da;
 /** Lateral gap between the bores of a multi-tube tunnel (m). */
 const TUBE_GAP_M = 10;
@@ -81,6 +138,9 @@ const WALL_MOUNT_M = 1.4;
 const CROWN_CLEARANCE_M = 0.7;
 /** Lateral inset of wall-mounted equipment from the bore wall (m). */
 const WALL_INSET_M = 0.7;
+/** Labels: anchor rise above the equipment and max display distance. */
+const LABEL_RISE_M = 1.2;
+const LABEL_MAX_DIST_M = 220;
 
 interface TubeScene {
   tubeId: string;
@@ -101,6 +161,16 @@ export class TunnelScene {
   private readonly root = new Group();
   private tubes: TubeScene[] = [];
   private readonly equipmentGroups = new Map<string, Group>();
+  private style: ViewStyle = 'modern';
+  private lastTunnel: Tunnel | null = null;
+  private readonly ambient = new AmbientLight(0xff_ff_ff, 0.35);
+  private readonly hemisphere = new HemisphereLight(0x9a_a8c0, 0x22_26_2e, 0.5);
+
+  // HTML overlay labels (name + state dot), projected per frame.
+  private labelHost: HTMLElement | null = null;
+  private labelsVisible = false;
+  private readonly labels = new Map<string, { el: HTMLElement; dot: HTMLElement; anchor: Vector3 }>();
+  private readonly projected = new Vector3();
 
   // Exercise smoke (drill visualisation).
   private smokeGroup: Group | null = null;
@@ -132,19 +202,18 @@ export class TunnelScene {
     private readonly host: HTMLElement,
     private readonly onSelect: (equipmentId: string) => void
   ) {
-    this.scene.background = new Color(BACKGROUND_HEX);
-    this.scene.fog = new Fog(BACKGROUND_HEX, FOG_NEAR_M, FOG_FAR_M);
     this.camera = new PerspectiveCamera(50, this.aspect(), 0.3, 4000);
 
     this.renderer = new WebGLRenderer({ canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-    this.scene.add(new AmbientLight(0xff_ff_ff, 0.35));
-    this.scene.add(new HemisphereLight(0x9a_a8c0, 0x22_26_2e, 0.5));
+    this.scene.add(this.ambient);
+    this.scene.add(this.hemisphere);
     const portal = new DirectionalLight(0xff_f2d0, 0.7);
     portal.position.set(40, 80, -60);
     this.scene.add(portal);
     this.scene.add(this.root);
+    this.applyStyleEnvironment();
 
     canvas.addEventListener('pointerdown', this.onPointerDown);
     canvas.addEventListener('click', this.onClick);
@@ -156,8 +225,41 @@ export class TunnelScene {
 
   // --- public API ------------------------------------------------------------
 
+  /** Switch the render style and rebuild (keeps camera pose). */
+  setStyle(style: ViewStyle): void {
+    if (style === this.style) return;
+    this.style = style;
+    this.applyStyleEnvironment();
+    if (this.lastTunnel) this.rebuild(this.lastTunnel);
+  }
+
+  get currentStyle(): ViewStyle {
+    return this.style;
+  }
+
+  /** Host element for the HTML overlay labels (positioned over the canvas). */
+  setLabelHost(host: HTMLElement): void {
+    this.labelHost = host;
+  }
+
+  /** Show/hide the equipment name labels. */
+  setLabelsVisible(visible: boolean): void {
+    this.labelsVisible = visible;
+    if (!visible) for (const label of this.labels.values()) label.el.style.display = 'none';
+  }
+
+  get areLabelsVisible(): boolean {
+    return this.labelsVisible;
+  }
+
   /** Rebuild the whole scene from the tunnel configuration. */
   setTunnel(tunnel: Tunnel): void {
+    this.lastTunnel = tunnel;
+    this.rebuild(tunnel);
+    this.frameTunnel();
+  }
+
+  private rebuild(tunnel: Tunnel): void {
     this.root.clear();
     for (const tube of this.tubes) disposeObject(tube.group);
     this.tubes = [];
@@ -178,11 +280,20 @@ export class TunnelScene {
       this.root.add(group);
       this.tubes.push({ tubeId: tube.id, frames, section, offset, group });
     }
-    this.frameTunnel();
+    this.rebuildLabels(tunnel);
     this.updateStates(tunnel);
   }
 
-  /** Recolour the equipment primitives from the live state codes. */
+  /** (Re)apply background, fog and light intensities from the style preset. */
+  private applyStyleEnvironment(): void {
+    const preset = STYLES[this.style];
+    this.scene.background = new Color(preset.background);
+    this.scene.fog = new Fog(preset.background, preset.fogNear, preset.fogFar);
+    this.ambient.intensity = preset.ambient;
+    this.hemisphere.intensity = preset.hemisphere;
+  }
+
+  /** Recolour the equipment primitives + label dots from the live state codes. */
   updateStates(tunnel: Tunnel): void {
     for (const equipment of tunnel.equipment) {
       const group = this.equipmentGroups.get(equipment.id);
@@ -190,6 +301,59 @@ export class TunnelScene {
       applyState(group, equipment.state);
       const data = group.userData as Partial<EquipmentSceneData> & { state?: number };
       data.state = equipment.state;
+      const label = this.labels.get(equipment.id);
+      if (label) label.dot.style.background = stateColor(equipment.state);
+    }
+  }
+
+  /** One overlay label (name + state dot) per equipment, anchored above it. */
+  private rebuildLabels(tunnel: Tunnel): void {
+    const host = this.labelHost;
+    for (const label of this.labels.values()) label.el.remove();
+    this.labels.clear();
+    if (!host) return;
+    for (const equipment of tunnel.equipment) {
+      const group = this.equipmentGroups.get(equipment.id);
+      if (!group) continue;
+      const el = document.createElement('button');
+      el.className = 'hd-3d-label';
+      el.style.display = 'none';
+      const dot = document.createElement('span');
+      dot.className = 'hd-3d-label-dot';
+      dot.style.background = stateColor(equipment.state);
+      el.append(dot, document.createTextNode(equipment.name));
+      el.addEventListener('click', () => this.onSelect(equipment.id));
+      host.append(el);
+      const anchor = new Vector3();
+      group.getWorldPosition(anchor);
+      anchor.y += LABEL_RISE_M;
+      this.labels.set(equipment.id, { el, dot, anchor });
+    }
+  }
+
+  /** Project every label to screen space (called each rendered frame). */
+  private updateLabels(): void {
+    if (!this.labelsVisible || !this.labelHost) return;
+    const width = this.host.clientWidth;
+    const height = this.host.clientHeight;
+    const cameraPos = this.camera.position;
+    for (const label of this.labels.values()) {
+      const distance = label.anchor.distanceTo(cameraPos);
+      this.projected.copy(label.anchor).project(this.camera);
+      const visible =
+        distance < LABEL_MAX_DIST_M &&
+        this.projected.z < 1 &&
+        Math.abs(this.projected.x) < 1 &&
+        Math.abs(this.projected.y) < 1;
+      if (!visible) {
+        label.el.style.display = 'none';
+        continue;
+      }
+      label.el.style.display = '';
+      label.el.style.left = `${((this.projected.x + 1) / 2) * width}px`;
+      label.el.style.top = `${((1 - this.projected.y) / 2) * height}px`;
+      // Fade with distance so far labels don't clutter the view.
+      label.el.style.opacity = String(Math.max(0.35, 1 - distance / LABEL_MAX_DIST_M));
     }
   }
 
@@ -294,6 +458,8 @@ export class TunnelScene {
 
   dispose(): void {
     this.stop();
+    for (const label of this.labels.values()) label.el.remove();
+    this.labels.clear();
     this.canvas.removeEventListener('pointerdown', this.onPointerDown);
     this.canvas.removeEventListener('click', this.onClick);
     this.canvas.removeEventListener('wheel', this.onWheel);
@@ -306,23 +472,25 @@ export class TunnelScene {
   // --- construction ----------------------------------------------------------
 
   private buildBore(group: Group, frames: Frame[], section: CrossSection, lanes: number): void {
+    const preset = STYLES[this.style];
     const bore = new Mesh(
       buildBoreGeometry(frames, section),
-      new MeshStandardMaterial({ color: BORE_HEX, roughness: 0.92, metalness: 0.02, side: BackSide })
+      new MeshStandardMaterial({ color: preset.bore, roughness: 0.92, metalness: 0.02, side: BackSide })
     );
     const roadHalf = section.halfWidthM - 1;
     const road = new Mesh(
       buildRibbonGeometry(frames, roadHalf, 0.02),
-      new MeshStandardMaterial({ color: ROAD_HEX, roughness: 0.95, side: DoubleSide })
+      new MeshStandardMaterial({ color: preset.road, roughness: 0.95, side: DoubleSide })
     );
     group.add(bore, road);
     for (const side of [-1, 1]) {
       const walkway = new Mesh(
         buildRibbonGeometry(frames, 0.5, 0.14, side * (section.halfWidthM - 0.5)),
-        new MeshStandardMaterial({ color: WALKWAY_HEX, roughness: 0.9, side: DoubleSide })
+        new MeshStandardMaterial({ color: preset.walkway, roughness: 0.9, side: DoubleSide })
       );
       group.add(walkway);
     }
+    if (preset.ribbons) this.buildLightLines(group, frames, section);
     for (let lane = 1; lane < lanes; lane++) {
       const offset = -roadHalf + (2 * roadHalf * lane) / lanes;
       const marking = new Mesh(
@@ -331,6 +499,36 @@ export class TunnelScene {
       );
       group.add(marking);
     }
+  }
+
+  /**
+   * The « modern » signature: continuous cyan LED light-lines swept along both
+   * walls (two heights) and under the crown — emissive, fog-free, unlit
+   * materials so they read as light sources without post-processing.
+   */
+  private buildLightLines(group: Group, frames: Frame[], section: CrossSection): void {
+    const material = new MeshStandardMaterial({
+      color: RIBBON_HEX,
+      emissive: RIBBON_HEX,
+      emissiveIntensity: 2.2,
+      roughness: 0.3,
+      metalness: 0,
+      fog: false,
+      side: DoubleSide
+    });
+    const lateral = section.halfWidthM - RIBBON_INSET_M;
+    for (const side of [-1, 1]) {
+      for (const height of RIBBON_HEIGHTS_M) {
+        group.add(new Mesh(buildRibbonGeometry(frames, RIBBON_WIDTH_M, height, side * lateral), material));
+      }
+    }
+    // Crown line, centred under the vault.
+    group.add(
+      new Mesh(
+        buildRibbonGeometry(frames, RIBBON_WIDTH_M * 1.6, section.crownHeightM - CROWN_RIBBON_GAP_M, 0),
+        material
+      )
+    );
   }
 
   /**
@@ -370,7 +568,8 @@ export class TunnelScene {
     const count = Math.min(ACCENT_MAX, Math.floor(lengthM / ACCENT_EVERY_M) + 1);
     for (let i = 0; i <= count; i++) {
       const pk = (lengthM * i) / Math.max(1, count);
-      const light = new PointLight(0xff_dfa8, 14, 90, 1.6);
+      const preset = STYLES[this.style];
+      const light = new PointLight(preset.accentColor, preset.accentIntensity, 90, 1.6);
       light.position.copy(worldAt(frames, pk, 0, section.crownHeightM - 1));
       group.add(light);
     }
@@ -425,6 +624,8 @@ export class TunnelScene {
   private tick(dt: number): void {
     this.spinFans(dt);
     this.animateSmoke(dt);
+    this.pulseFaults();
+    this.updateLabels();
     if (!this.driving) return;
     const tube = this.tubes[this.driveTubeIndex] ?? this.tubes[0];
     if (!tube) return;
@@ -458,6 +659,16 @@ export class TunnelScene {
     for (const group of this.equipmentGroups.values()) {
       const data = group.userData as Partial<EquipmentSceneData> & { state?: number };
       if (data.spin && data.state === STATE_RUN) data.spin.rotation.z += dt * 12;
+    }
+  }
+
+  /** Faulty equipment pulses (emissive breathing) so it catches the eye. */
+  private pulseFaults(): void {
+    const pulse = 0.55 + 0.45 * Math.sin(performance.now() / 260);
+    for (const group of this.equipmentGroups.values()) {
+      const data = group.userData as Partial<EquipmentSceneData> & { state?: number };
+      if (!data.statusMaterial) continue;
+      data.statusMaterial.emissiveIntensity = data.state === STATE_FAULT ? 0.4 + pulse : 0.55;
     }
   }
 

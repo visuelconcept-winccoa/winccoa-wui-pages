@@ -7,7 +7,12 @@ bound to datapoints, operating modes — rendered four ways from ONE config:
 - **3D twin** — the bore is generated procedurally (three.js) from the
   segment list (length / gradient / curve radius / lanes); equipment
   primitives sit at their PK/side and recolour live from the bound state
-  DPEs. Free orbit camera + a "drive through" mode along the centerline.
+  DPEs (faults pulse). Free orbit camera + a "drive through" mode along the
+  centerline. Two selectable render styles (persisted per browser):
+  **modern** — light concrete, cool lighting and continuous cyan LED
+  light-lines along both walls and the crown — and **simple** — the sober
+  engineering look. Optional projected **name labels** (state dot, click to
+  open) via the toolbar toggle.
 - **Editor + compliance advisor** — segments and equipment are edited in
   place; every edit is re-checked against the tunnel's **regulatory
   profile** (selectable: EU directive 2004/54/EC, France CETU/IT 2000-63,
@@ -19,7 +24,9 @@ bound to datapoints, operating modes — rendered four ways from ONE config:
   simplified reading — a design aid, not a certification (see
   `src/hades/data/compliance.ts`).
 - **Linear synoptic** — the tunnel unrolled on its PK axis (SVG), glyphs
-  coloured by live state; the control-room scan view.
+  coloured by live state (faults pulse); clickable **state counters**
+  (fault/warning/run/off) that filter the band, a **kind filter** and an
+  optional name layer — the control-room scan view.
 - **Operating modes** — reflex sequences (normal / closure / fire) whose
   actions are real field commands: each `dpSet` is **confirmed** in the UI
   and **GxP-traced** into `AuditTrail_Hades` (action `COMMAND`). Modes are
@@ -41,6 +48,13 @@ bound to datapoints, operating modes — rendered four ways from ONE config:
 - **Observation (retrofit) mode** — per-tunnel read-only toggle: live
   reading of an existing GTC's datapoints, zero writes (see
   [RETROFIT.md](./RETROFIT.md)).
+
+Camera equipment can be **linked to an RTSP stream** of the
+`wui-camera-streams` module (tier 3: rtspProxy manager + `/api/rtsp`): the
+equipment dialog then embeds the live video through the chromeless
+`/camera-streams/<id>` route. Three importable **demo tunnels** (Styx —
+EU reference, Léthé — Swiss twin-tube motorway, Achéron — French short
+urban bidirectional) exercise every profile and direction.
 
 Also: tunnel **export/import as JSON** and one-click **duplication**
 (overview cards + workspace toolbar), **NGA archiving** of the bound DPEs

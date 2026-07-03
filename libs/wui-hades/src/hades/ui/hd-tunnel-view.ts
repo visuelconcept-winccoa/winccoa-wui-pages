@@ -35,7 +35,7 @@ import {
   modeEngagedMsg,
   simulatedCommandMsg
 } from '../i18n.js';
-import { TunnelScene } from '../scene/tunnel-scene.js';
+import { TunnelScene, type ViewStyle } from '../scene/tunnel-scene.js';
 import type { EquipmentDef, OperatingMode, Tunnel } from '../types.js';
 import { STATE_FAULT, STATE_RUN, STATE_WARNING } from '../types.js';
 import './hd-editor.js';
@@ -52,6 +52,12 @@ type Tab = '3d' | 'editor' | 'synoptic' | 'modes' | 'logbook' | 'exercise';
 const TABS: readonly Tab[] = ['3d', 'editor', 'synoptic', 'modes', 'logbook', 'exercise'];
 /** Exercise clock tick (ms). */
 const EXERCISE_TICK_MS = 1000;
+/** localStorage key of the preferred 3D render style. */
+const STYLE_STORAGE_KEY = 'hades.viewStyle';
+
+function storedStyle(): ViewStyle {
+  return localStorage.getItem(STYLE_STORAGE_KEY) === 'simple' ? 'simple' : 'modern';
+}
 
 @customElement('hd-tunnel-view')
 export class HdTunnelView extends LitElement {
@@ -62,6 +68,8 @@ export class HdTunnelView extends LitElement {
   @property({ type: Boolean }) offline = false;
 
   @state() private tab: Tab = '3d';
+  @state() private viewStyle: ViewStyle = storedStyle();
+  @state() private labelsOn = false;
   @state() private selectedId = '';
   /** Bumped on every live emission so the open dialog re-renders its values. */
   @state() private liveTick = 0;
@@ -111,6 +119,9 @@ export class HdTunnelView extends LitElement {
     const host = this.renderRoot.querySelector<HTMLElement>('.scene-host');
     if (!canvas || !host) return;
     this.scene = new TunnelScene(canvas, host, (id) => this.onSelect(id));
+    const labelHost = this.renderRoot.querySelector<HTMLElement>('.scene-labels');
+    if (labelHost) this.scene.setLabelHost(labelHost);
+    this.scene.setStyle(this.viewStyle);
     this.resizeObserver = new ResizeObserver(() => this.scene?.resize());
     this.resizeObserver.observe(host);
     this.applyTunnel();
@@ -212,6 +223,21 @@ export class HdTunnelView extends LitElement {
           <div class="spacer"></div>
           ${this.tab === '3d'
             ? html`
+                <ix-select
+                  class="style-select"
+                  .value=${this.viewStyle}
+                  @valueChange=${(e: CustomEvent<string>) => this.onStyle(String(e.detail) as ViewStyle)}
+                >
+                  <ix-select-item label=${localize(MSG.view.styleModern)} value="modern"></ix-select-item>
+                  <ix-select-item label=${localize(MSG.view.styleSimple)} value="simple"></ix-select-item>
+                </ix-select>
+                <ix-icon-button
+                  icon="label"
+                  variant=${this.labelsOn ? 'primary' : 'secondary'}
+                  ghost
+                  title=${localize(MSG.view.toggleLabels)}
+                  @click=${() => this.toggleLabels()}
+                ></ix-icon-button>
                 <ix-button variant="secondary" @click=${() => this.toggleDrive()}>
                   <ix-icon name=${this.scene?.isDriving ? 'eye' : 'play'} slot="icon"></ix-icon>
                   ${this.scene?.isDriving ? localizeDir(MSG.view.orbitMode) : localizeDir(MSG.view.driveMode)}
@@ -252,6 +278,7 @@ export class HdTunnelView extends LitElement {
         <div class="content">
           <div class="scene-host" ?hidden=${this.tab !== '3d'}>
             <canvas class="scene"></canvas>
+            <div class="scene-labels"></div>
             <div class="scene-hint">${localizeDir(MSG.view.sceneHint)}</div>
           </div>
           ${this.tab === 'editor'
@@ -390,6 +417,17 @@ export class HdTunnelView extends LitElement {
 
   private onTab(index: number): void {
     this.tab = TABS[index] ?? '3d';
+  }
+
+  private onStyle(style: ViewStyle): void {
+    this.viewStyle = style;
+    localStorage.setItem(STYLE_STORAGE_KEY, style);
+    this.scene?.setStyle(style);
+  }
+
+  private toggleLabels(): void {
+    this.labelsOn = !this.labelsOn;
+    this.scene?.setLabelsVisible(this.labelsOn);
   }
 
   private toggleDrive(): void {
@@ -690,6 +728,43 @@ function viewStyles(): ReturnType<typeof css> {
       width: 100%;
       height: 100%;
       display: block;
+    }
+    .scene-labels {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    .scene-labels .hd-3d-label {
+      position: absolute;
+      transform: translate(-50%, -100%);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.1rem 0.45rem;
+      border: 1px solid var(--theme-color-soft-bdr);
+      border-radius: 1rem;
+      background: var(--theme-color-1);
+      color: var(--theme-color-std-text);
+      font: inherit;
+      font-size: 0.72rem;
+      white-space: nowrap;
+      cursor: pointer;
+      pointer-events: auto;
+    }
+    .scene-labels .hd-3d-label:hover,
+    .scene-labels .hd-3d-label:focus-visible {
+      border-color: var(--theme-color-primary);
+      outline: none;
+    }
+    .scene-labels .hd-3d-label-dot {
+      width: 0.55rem;
+      height: 0.55rem;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .style-select {
+      width: 11rem;
     }
     .scene-hint {
       position: absolute;

@@ -26,7 +26,7 @@ import { LitElement, css, html, type PropertyValues, type TemplateResult } from 
 import { customElement, property, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { canEditFleet, canEditFleet$ } from '@visuelconcept/wui-kit/data/permissions.js';
-import { demoTunnel } from './hades/data/demo-tunnel.js';
+import { demoCatalog } from './hades/data/demo-tunnel.js';
 import { HadesStore } from './hades/data/hades-store.js';
 import { duplicateTunnel } from './hades/data/io.js';
 import { MSG, localize, localizeDir } from './hades/i18n.js';
@@ -95,7 +95,7 @@ export class WuiHades extends LitElement {
               ?canEdit=${this.canEdit}
               @wui:open=${(e: CustomEvent<{ id: string }>) => this.navigate(e.detail.id)}
               @wui:create=${(e: CustomEvent<CreateTunnelDetail>) => this.onCreate(e.detail)}
-              @wui:import-demo=${() => this.onImportDemo()}
+              @wui:import-demo=${(e: CustomEvent<string>) => this.onImportDemo(e.detail)}
               @wui:import=${(e: CustomEvent<Tunnel>) => this.onImport(e.detail)}
               @wui:duplicate=${(e: CustomEvent<Tunnel>) => this.onDuplicate(e.detail)}
             ></hd-overview>`}
@@ -138,8 +138,10 @@ export class WuiHades extends LitElement {
     this.navigate(tunnel.id);
   }
 
-  private async onImportDemo(): Promise<void> {
-    const tunnel = await this.store.createTunnel(demoTunnel());
+  private async onImportDemo(demoId: string): Promise<void> {
+    const preset = demoCatalog().find((d) => d.id === demoId);
+    if (!preset) return;
+    const tunnel = await this.store.createTunnel(preset.build());
     this.tunnels = [...this.tunnels, tunnel];
     this.offline = this.store.offline;
     this.navigate(tunnel.id);
