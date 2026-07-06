@@ -8,7 +8,7 @@
  */
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { firstValueFrom } from 'rxjs';
-import type { AuditColumn, AuditRow } from './types.js';
+import { AUDIT_FIELDS, type AuditColumn, type AuditRow } from './types.js';
 
 /** Archived-value attribute appended to a DPE for dpGetPeriod. */
 const VALUE_ATTR = ':_original.._value';
@@ -114,4 +114,36 @@ export async function buildPivot(
     values: histories.map((h) => valueAt(h, t))
   }));
   return { rows, truncated, hasData };
+}
+
+/** Fixed `_AuditTrail` columns of one DP, in display order. */
+export function auditColumns(dpName: string): AuditColumn[] {
+  return AUDIT_FIELDS.map((f) => ({ dpe: `${dpName}.${f.key}`, label: f.label }));
+}
+
+/**
+ * Merged multi-DP pivot: build the pivot of EVERY selected datapoint, tag each
+ * row with its source DP, then interleave everything by timestamp (most recent
+ * first, capped to `maxRows`) — the "mixed" audit log across datapoints.
+ */
+export async function buildMergedPivot(
+  api: OaRxJsApi | null,
+  dpNames: string[],
+  start: Date,
+  end: Date,
+  maxRows: number
+): Promise<PivotResult> {
+  if (dpNames.length === 0) return { rows: [], truncated: false, hasData: false };
+  const results = await Promise.all(dpNames.map((dp) => buildPivot(api, auditColumns(dp), start, end, maxRows)));
+  const merged: AuditRow[] = [];
+  for (const [i, res] of results.entries()) {
+    for (const row of res.rows) merged.push({ ...row, source: dpNames[i] });
+  }
+  merged.sort((a, b) => b.t - a.t);
+  const truncated = merged.length > maxRows || results.some((r) => r.truncated);
+  return {
+    rows: merged.slice(0, maxRows),
+    truncated,
+    hasData: results.some((r) => r.hasData)
+  };
 }

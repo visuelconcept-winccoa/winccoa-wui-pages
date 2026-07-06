@@ -12,12 +12,16 @@ import { MSG, colLabel, dateLocale, localize, recordsMsg } from './i18n.js';
 import { AUDIT_FIELDS } from './types.js';
 
 /** Localized column headers (resolved at call time → matches the active UI language). */
-function headers(): string[] {
-  return AUDIT_FIELDS.map((f) => localize(colLabel(f.key as keyof typeof MSG.col)));
+function headers(withSource: boolean): string[] {
+  const cols = AUDIT_FIELDS.map((f) => localize(colLabel(f.key as keyof typeof MSG.col)));
+  return withSource ? [localize(colLabel('source')), ...cols] : cols;
 }
 
 /** `_AuditTrail` element names — JSON export keys (data contract, never translated). */
-const KEYS = AUDIT_FIELDS.map((f) => f.key);
+function keys(withSource: boolean): string[] {
+  const cols = AUDIT_FIELDS.map((f) => f.key);
+  return withSource ? ['datapoint', ...cols] : cols;
+}
 
 /**
  * Print column widths (% of page width). With `table-layout: fixed` these are
@@ -25,6 +29,7 @@ const KEYS = AUDIT_FIELDS.map((f) => f.key);
  * long `oldval`/`newval`/`reason` values never blow the table past the page.
  */
 const PRINT_COL_WIDTH: Record<string, string> = {
+  source: '9%',
   time: '10%',
   username: '8%',
   action: '9%',
@@ -52,25 +57,27 @@ function escapeHtml(value: string): string {
 }
 
 /** Download the rows as a `;`-separated CSV (UTF-8 BOM for Excel). */
-export function exportAuditCsv(dpName: string, rows: string[][]): void {
-  const header = headers().map((h) => csvCell(h)).join(';');
+export function exportAuditCsv(dpName: string, rows: string[][], withSource = false): void {
+  const header = headers(withSource).map((h) => csvCell(h)).join(';');
   const lines = rows.map((r) => r.map((c) => csvCell(c)).join(';'));
   download(`${fileBase(dpName)}.csv`, CSV_BOM + [header, ...lines].join('\r\n'), 'text/csv;charset=utf-8');
 }
 
 /** Download the rows as a JSON document keyed by the `_AuditTrail` element names. */
-export function exportAuditJson(dpName: string, rows: string[][]): void {
+export function exportAuditJson(dpName: string, rows: string[][], withSource = false): void {
+  const KEYS = keys(withSource);
   const records = rows.map((r) => Object.fromEntries(KEYS.map((k, i) => [k, r[i] ?? ''])));
   const payload = { datapoint: dpName, exportedAt: new Date().toISOString(), count: records.length, rows: records };
   download(`${fileBase(dpName)}.json`, JSON.stringify(payload, null, JSON_INDENT), 'application/json');
 }
 
 /** Open a print-friendly window with the audit table and trigger the print dialog. */
-export function printAudit(dpName: string, subtitle: string, rows: string[][]): void {
+export function printAudit(dpName: string, subtitle: string, rows: string[][], withSource = false): void {
   const win = window.open('', '_blank');
   if (!win) return;
-  const cols = AUDIT_FIELDS.map((f) => `<col style="width:${PRINT_COL_WIDTH[f.key] ?? 'auto'}" />`).join('');
-  const head = headers().map((h) => `<th>${escapeHtml(h)}</th>`).join('');
+  const colKeys = withSource ? ['source', ...AUDIT_FIELDS.map((f) => f.key)] : AUDIT_FIELDS.map((f) => f.key);
+  const cols = colKeys.map((k) => `<col style="width:${PRINT_COL_WIDTH[k] ?? 'auto'}" />`).join('');
+  const head = headers(withSource).map((h) => `<th>${escapeHtml(h)}</th>`).join('');
   const body = rows
     .map((r) => `<tr>${r.map((c) => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`)
     .join('');

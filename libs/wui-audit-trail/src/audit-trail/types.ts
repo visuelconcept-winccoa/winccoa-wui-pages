@@ -50,8 +50,14 @@ export interface AuditColumn {
 
 /** Persisted per-user view configuration (one `AuditTrail_Config` DP). */
 export interface AuditConfig {
-  /** Selected `_AuditTrail` datapoint shown in the viewer. */
+  /**
+   * Selected `_AuditTrail` datapoint (LEGACY, single). Kept so configs saved by
+   * older bundles keep working; superseded by {@link dpNames} (migrated on load,
+   * mirrored on save).
+   */
   dpName: string;
+  /** Selected `_AuditTrail` datapoints — their records are displayed MERGED. */
+  dpNames: string[];
   /** Live mode: rolling last-24h window with auto-refresh. */
   live: boolean;
   /** `datetime-local` bounds for the custom interval (used when `live === false`). */
@@ -63,6 +69,7 @@ export interface AuditConfig {
 
 export const DEFAULT_AUDIT_CONFIG: AuditConfig = {
   dpName: '',
+  dpNames: [],
   live: true,
   rangeStart: '',
   rangeEnd: '',
@@ -73,4 +80,6 @@ export const DEFAULT_AUDIT_CONFIG: AuditConfig = {
 export interface AuditRow {
   t: number;
   values: (string | number | null)[];
+  /** Source datapoint of the record (set by the merged multi-DP query). */
+  source?: string;
 }

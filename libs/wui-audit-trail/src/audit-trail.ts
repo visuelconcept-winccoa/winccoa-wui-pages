@@ -28,9 +28,9 @@ import { container } from 'tsyringe';
 import './audit-trail/at-manage-dialog.js';
 import { AuditConfigStore } from './audit-trail/config-store.js';
 import { listAuditDps } from './audit-trail/dp-admin.js';
-import { buildPivot, type PivotResult } from './audit-trail/engine.js';
+import { auditColumns, buildMergedPivot, type PivotResult } from './audit-trail/engine.js';
 import { exportAuditCsv, exportAuditJson, printAudit } from './audit-trail/export.js';
-import { MSG, colLabel, liveSuffixMsg, localizeDir, recordsMsg, truncatedMsg } from './audit-trail/i18n.js';
+import { MSG, colLabel, liveSuffixMsg, localize, localizeDir, recordsMsg, truncatedMsg } from './audit-trail/i18n.js';
 import {
   AUDIT_DP_TYPE,
   AUDIT_FIELDS,
@@ -71,8 +71,9 @@ function toMsLoose(v: unknown): number | null {
   return Number.isNaN(d.getTime()) ? null : d.getTime();
 }
 
-function asString(detail: string | string[]): string {
-  return Array.isArray(detail) ? (detail[0] ?? '') : detail;
+function asStrings(detail: string | string[]): string[] {
+  if (Array.isArray(detail)) return detail.filter((s) => s !== '');
+  return detail === '' ? [] : [detail];
 }
 
 @customElement('wui-audit-trail')
@@ -134,10 +135,12 @@ export class WuiAuditTrail extends LitElement {
           <span>${localizeDir(MSG.toolbar.datapoint)}</span>
           <ix-select
             class="dp-select"
-            mode="single"
+            mode="multiple"
+            allow-clear
+            i18n-placeholder=${localize(MSG.toolbar.datapointPlaceholder)}
             ?disabled=${this.dps.length === 0}
-            .value=${this.config.dpName}
-            @valueChange=${(e: CustomEvent<string | string[]>) => void this.patchConfig({ dpName: asString(e.detail) })}
+            .value=${this.config.dpNames}
+            @valueChange=${(e: CustomEvent<string | string[]>) => this.onDpsChange(asStrings(e.detail))}
           >
             ${this.dps.map((dp) => html`<ix-select-item label=${dp} value=${dp}></ix-select-item>`)}
           </ix-select>
@@ -158,7 +161,7 @@ export class WuiAuditTrail extends LitElement {
         </ix-button>
         <ix-button
           variant="secondary"
-          ?disabled=${this.loading || this.config.dpName === ''}
+          ?disabled=${this.loading || this.config.dpNames.length === 0}
           @click=${() => void this.recompute()}
         >
           <ix-icon name="refresh" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.refresh)}
@@ -211,7 +214,7 @@ export class WuiAuditTrail extends LitElement {
         ${localizeDir(MSG.content.noDpsPrefix)} <code>${AUDIT_DP_TYPE}</code>${localizeDir(MSG.content.noDpsSuffix)}
       </div>`;
     }
-    if (this.config.dpName === '') {
+    if (this.config.dpNames.length === 0) {
       return html`<div class="center muted">${localizeDir(MSG.content.selectDp)}</div>`;
     }
     const rows = this.displayRows();
@@ -223,7 +226,14 @@ export class WuiAuditTrail extends LitElement {
     return this.renderTable(rows);
   }
 
+  /** Column keys in display order — a leading `source` column when several DPs are merged. */
+  private columnKeys(): { key: string; kind?: 'time' }[] {
+    const fields = AUDIT_FIELDS.map((f) => ({ key: f.key, kind: f.kind }));
+    return this.isMulti() ? [{ key: 'source' }, ...fields] : fields;
+  }
+
   private renderTable(rows: string[][]): TemplateResult {
+    const cols = this.columnKeys();
     return html`
       ${this.result?.truncated
         ? html`<div class="notice">
@@ -231,13 +241,13 @@ export class WuiAuditTrail extends LitElement {
           </div>`
         : ''}
       <div class="meta">
-        <strong>${this.config.dpName}</strong> · ${recordsMsg(rows.length)} · ${this.rangeLabel()}
+        <strong>${this.config.dpNames.join(' + ')}</strong> · ${recordsMsg(rows.length)} · ${this.rangeLabel()}
       </div>
       <div class="table-wrap">
         <table class="tbl">
           <thead>
             <tr>
-              ${AUDIT_FIELDS.map(
+              ${cols.map(
                 (f) =>
                   html`<th class=${f.kind === 'time' ? 'sticky' : ''}>
                     ${localizeDir(colLabel(f.key as keyof typeof MSG.col))}
@@ -250,7 +260,7 @@ export class WuiAuditTrail extends LitElement {
               (cells) => html`<tr>
                 ${cells.map(
                   (c, i) =>
-                    html`<td class=${AUDIT_FIELDS[i].kind === 'time' ? 'sticky nowrap' : ''}>${c}</td>`
+                    html`<td class=${cols[i]?.kind === 'time' ? 'sticky nowrap' : ''}>${c}</td>`
                 )}
               </tr>`
             )}
@@ -264,40 +274,49 @@ export class WuiAuditTrail extends LitElement {
 
   private async bootstrap(): Promise<void> {
     this.config = await this.store.load();
+    // Migration: configs saved by the single-DP bundle only carry `dpName`.
+    if (this.config.dpNames.length === 0 && this.config.dpName !== '') {
+      this.config = { ...this.config, dpNames: [this.config.dpName] };
+    }
     this.offline = this.store.offline;
     await this.reloadDps();
     await this.recompute();
   }
 
+  /** True when several DPs are merged (adds the source column). */
+  private isMulti(): boolean {
+    return this.config.dpNames.length > 1;
+  }
+
   /** Reload the `_AuditTrail` DP list and keep the selection valid. */
   private async reloadDps(): Promise<void> {
     this.dps = await listAuditDps(this.api);
-    if (this.config.dpName !== '' && this.dps.includes(this.config.dpName)) return;
-    const next = this.dps.includes(AUDIT_DP_TYPE) ? AUDIT_DP_TYPE : (this.dps[0] ?? '');
-    if (next !== this.config.dpName) {
-      this.config = { ...this.config, dpName: next };
+    const valid = this.config.dpNames.filter((dp) => this.dps.includes(dp));
+    const next = valid.length > 0 ? valid : [this.dps.includes(AUDIT_DP_TYPE) ? AUDIT_DP_TYPE : (this.dps[0] ?? '')].filter((s) => s !== '');
+    if (next.join('|') !== this.config.dpNames.join('|')) {
+      this.config = { ...this.config, dpNames: next, dpName: next[0] ?? '' };
       await this.store.save(this.config);
       this.offline = this.store.offline;
     }
   }
 
-  /** Fixed `_AuditTrail` columns of the selected DP. */
+  /** Live-connected leaves: the fixed columns of EVERY selected DP. */
   private columns(): AuditColumn[] {
-    const dp = this.config.dpName;
-    if (dp === '') return [];
-    return AUDIT_FIELDS.map((f) => ({ dpe: `${dp}.${f.key}`, label: f.label }));
+    return this.config.dpNames.flatMap((dp) => auditColumns(dp));
   }
 
-  /** Result rows as formatted display cells, aligned to `AUDIT_FIELDS`. */
+  /** Result rows as formatted display cells, aligned to {@link columnKeys}. */
   private displayRows(): string[][] {
     const rows = this.result?.rows ?? [];
-    return rows.map((row) =>
-      AUDIT_FIELDS.map((f, i) => {
+    const multi = this.isMulti();
+    return rows.map((row) => {
+      const cells = AUDIT_FIELDS.map((f, i) => {
         const v = row.values[i];
         if (f.kind === 'time') return formatDateTime(toMsLoose(v) ?? row.t);
         return v == null ? '' : String(v);
-      })
-    );
+      });
+      return multi ? [row.source ?? '', ...cells] : cells;
+    });
   }
 
   private resolveRange(): { start: Date; end: Date } {
@@ -318,14 +337,14 @@ export class WuiAuditTrail extends LitElement {
 
   private async recompute(): Promise<void> {
     const cols = this.columns();
-    if (this.config.dpName === '' || cols.length === 0) {
+    if (this.config.dpNames.length === 0) {
       this.result = null;
       this.connectLive([]);
       return;
     }
     this.loading = true;
     const { start, end } = this.resolveRange();
-    this.result = await buildPivot(this.api, cols, start, end, this.config.maxRows);
+    this.result = await buildMergedPivot(this.api, this.config.dpNames, start, end, this.config.maxRows);
     this.loading = false;
     this.connectLive(cols);
   }
@@ -352,10 +371,9 @@ export class WuiAuditTrail extends LitElement {
   }
 
   private async recomputeSilent(): Promise<void> {
-    const cols = this.columns();
-    if (cols.length === 0) return;
+    if (this.config.dpNames.length === 0) return;
     const { start, end } = this.resolveRange();
-    this.result = await buildPivot(this.api, cols, start, end, this.config.maxRows);
+    this.result = await buildMergedPivot(this.api, this.config.dpNames, start, end, this.config.maxRows);
   }
 
   // --- handlers --------------------------------------------------------------
@@ -365,6 +383,11 @@ export class WuiAuditTrail extends LitElement {
     await this.store.save(this.config);
     this.offline = this.store.offline;
     await this.recompute();
+  }
+
+  private onDpsChange(dpNames: string[]): void {
+    // `dpName` mirrors the first selection for configs read by older bundles.
+    void this.patchConfig({ dpNames, dpName: dpNames[0] ?? '' });
   }
 
   private onLiveToggle(on: boolean): void {
@@ -383,15 +406,15 @@ export class WuiAuditTrail extends LitElement {
   }
 
   private onExportCsv(): void {
-    exportAuditCsv(this.config.dpName, this.displayRows());
+    exportAuditCsv(this.config.dpNames.join('+'), this.displayRows(), this.isMulti());
   }
 
   private onExportJson(): void {
-    exportAuditJson(this.config.dpName, this.displayRows());
+    exportAuditJson(this.config.dpNames.join('+'), this.displayRows(), this.isMulti());
   }
 
   private onPrint(): void {
-    printAudit(this.config.dpName, this.rangeLabel(), this.displayRows());
+    printAudit(this.config.dpNames.join(' + '), this.rangeLabel(), this.displayRows(), this.isMulti());
   }
 
   private resolveApi(): OaRxJsApi | null {

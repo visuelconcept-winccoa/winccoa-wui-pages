@@ -11,14 +11,14 @@ Standalone **GxP Audit Trail** page over the **fixed `_AuditTrail`** datapoint t
 
 The page has two jobs:
 1. **Manage** the project's `_AuditTrail` datapoints — create new ones (always NGA-archived), reassign the archive group, delete them — via the `at-manage-dialog` popup ("Gérer" / manage button).
-2. **View** the archived history of the selected `_AuditTrail` DP as a **log table** (one row per archived record, newest first). Default = rolling **last 24 h in live mode** (auto-refresh); a **start/end `datetime-local`** range selects an arbitrary interval. Export to **CSV / JSON** and **print**.
+2. **View** the archived history of the selected `_AuditTrail` DPs as a **log table** (one row per archived record, newest first). **Several DPs can be selected** (multi-select): their records are **merged/interleaved by timestamp**, with a leading **Datapoint** column showing each record's source (also in CSV/JSON exports — key `datapoint` — and print). Default = rolling **last 24 h in live mode** (auto-refresh); a **start/end `datetime-local`** range selects an arbitrary interval. Export to **CSV / JSON** and **print**.
 
 > Records are **written by WinCC OA's audit mechanism / panels / scripts**, not by this page. The page only creates/archives the DPs and visualizes them.
 
 ## Data model (DPs)
 
 - **Audit DPs**: instances of the fixed type **`_AuditTrail`** (the system DP `_AuditTrail` plus user-created ones, prefixed `AuditTrail_…`). Listed via `OaRxJsApi.dpNames('*', '_AuditTrail')`.
-- **Config persistence**: a single DP `AuditTrail_Config` (Struct, String `json`) holding the serialized `AuditConfig`, via `AuditConfigStore` → shared `DpSingleJsonStore` (object mode merges over defaults, so the config-shape change is backward-safe). `AuditConfig` holds: selected `dpName`, `live` flag, `rangeStart`/`rangeEnd` (`datetime-local`), `maxRows`.
+- **Config persistence**: a single DP `AuditTrail_Config` (Struct, String `json`) holding the serialized `AuditConfig`, via `AuditConfigStore` → shared `DpSingleJsonStore` (object mode merges over defaults, so the config-shape change is backward-safe). `AuditConfig` holds: selected `dpNames` (array — merged view), `live` flag, `rangeStart`/`rangeEnd` (`datetime-local`), `maxRows`. The legacy single `dpName` is kept: migrated into `dpNames` on load, mirrored (`dpNames[0]`) on save so configs written by older bundles keep working both ways.
 
 ## DP management & archiving (`dp-admin.ts`, `at-manage-dialog.ts`)
 
@@ -37,6 +37,7 @@ All through the existing **PARA REST** endpoints + `OaRxJsApi` — **no new back
 - **Columns** = the fixed `_AuditTrail` leaves of the selected DP (`<dp>.<field>` for each `AUDIT_FIELDS` entry). No type-structure traversal / element enumeration anymore.
 - **History**: per column, `queryHistory` = `api.dpGetPeriod(start, end, 0, dpe + ':_original.._value')`. Parses `{data, dataTime}` → samples.
 - **Pivot** (`buildPivot`): union of all change timestamps (descending, capped at `maxRows`); each cell = last value ≤ `t` via binary search. Because an audit record writes its elements atomically, every record yields one row; carry-forward correctly fills fields that didn't change that record.
+- **Merged multi-DP view** (`buildMergedPivot`): one `buildPivot` per selected DP (each capped at `maxRows`), each row tagged with its `source` DP, then interleaved by timestamp (descending) and re-capped at `maxRows`; `truncated` is true when the merge or any per-DP pivot truncated. The carry-forward stays PER DP (records of different DPs never bleed into each other's columns).
 - **Timestamp column**: rendered from the record's own `time` value (`toMsLoose` tolerant parse: epoch s/ms or date string), falling back to the archive change time `row.t`.
 
 ## Export / print (`export.ts`)

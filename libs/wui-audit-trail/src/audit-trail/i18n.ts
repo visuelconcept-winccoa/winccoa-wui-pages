@@ -37,7 +37,8 @@ export function dateLocale(): string {
 /** Static UI strings, grouped by area. */
 export const MSG = {
   toolbar: {
-    datapoint: ml('Datapoint', 'Datapoint', 'Datenpunkt'),
+    datapoint: ml('Datapoints', 'Datapoints', 'Datenpunkte'),
+    datapointPlaceholder: ml('Select one or more…', 'Sélectionnez un ou plusieurs…', 'Einen oder mehrere wählen…'),
     manage: ml('Manage', 'Gérer', 'Verwalten'),
     csv: ml('CSV', 'CSV', 'CSV'),
     json: ml('JSON', 'JSON', 'JSON'),
@@ -48,6 +49,7 @@ export const MSG = {
   // On-screen / export column labels, keyed by the fixed `_AuditTrail` element
   // name. The element name (`key`) itself is a data contract and is NOT translated.
   col: {
+    source: ml('Datapoint', 'Datapoint', 'Datenpunkt'),
     time: ml('Timestamp', 'Horodatage', 'Zeitstempel'),
     username: ml('User', 'Utilisateur', 'Benutzer'),
     action: ml('Action', 'Action', 'Aktion'),
