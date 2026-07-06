@@ -89,6 +89,13 @@ export class WuiParaArchive extends LitElement {
   private readonly dpe = container.resolve<WuiDpeService>(WuiDpeService);
   private roleSub = new Subscription();
 
+  private get navKey(): string | null {
+    if (this.selectedType != null) {
+      return `type:${this.selectedType}`;
+    }
+    return this.selectedDp == null ? null : `path:${this.selectedDp}`;
+  }
+
   override connectedCallback(): void {
     super.connectedCallback();
     this.roleSub = hasRole$('para', 'edit-values').subscribe((granted) => (this.canWrite = granted));
@@ -97,13 +104,6 @@ export class WuiParaArchive extends LitElement {
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.roleSub.unsubscribe();
-  }
-
-  private get navKey(): string | null {
-    if (this.selectedType != null) {
-      return `type:${this.selectedType}`;
-    }
-    return this.selectedDp == null ? null : `path:${this.selectedDp}`;
   }
 
   override render(): TemplateResult {
