@@ -211,6 +211,39 @@ export function pageMenuMergePlugin({
       logger.info(
         `[page-menu-merge] ${target} written with +${added} page menu entr${added === 1 ? 'y' : 'ies'}`
       );
+
+      touchIndexHtml(outDirectory, logger);
     }
   };
+}
+
+/**
+ * Bump the mtime of `<outDir>/index.html` (content and md5 untouched, so the
+ * SW precache stays coherent) after every deploy build.
+ *
+ * Why: the WebUI service worker has a built-in self-invalidation — on each app
+ * load it compares index.html's Last-Modified (cached copy vs network, via an
+ * anti-cache `?_sw_check=` request) and, on mismatch, purges ALL its runtime
+ * caches (menuconfig, page scripts, …) and shows the native "new version"
+ * toast. A pages-only deploy never rewrites index.html, so the mismatch never
+ * fired and stale bundles survived a plain reload (Clear site data was the
+ * workaround). Touching index.html makes the webserver serve a fresh
+ * Last-Modified → the SW purges by itself on the next load; a simple F5 is
+ * enough after a deploy and the session/localStorage stays intact.
+ */
+function touchIndexHtml(outDirectory, logger) {
+  const indexPath = path.join(outDirectory, 'index.html');
+  if (!fs.existsSync(indexPath)) {
+    // Pages-only build into a bare dir (no shell) — dev/scratch case, nothing to do.
+    return;
+  }
+  try {
+    const now = new Date();
+    fs.utimesSync(indexPath, now, now);
+    logger.info(
+      `[page-menu-merge] touched ${indexPath} (Last-Modified bumped → the WebUI SW self-purges its runtime caches on next load)`
+    );
+  } catch (error) {
+    logger.warn(`[page-menu-merge] cannot touch ${indexPath}: ${error.message}`);
+  }
 }
