@@ -14,6 +14,7 @@
  * "Modèle" tab's wui-para-type-editor, not here.)
  */
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
+import { hasRole$ } from '@visuelconcept/wui-kit/data/app-security.js';
 import { WuiDpeService } from '@wincc-oa/wui-data-selector-data/wui-dpe/wui-dpe.service.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type TemplateResult } from 'lit';
@@ -235,6 +236,8 @@ export class WuiParaNav extends LitElement {
   @state() private error = '';
   /** Keys (`type:<name>` / `dp:<name>`) checked for DPL export. */
   @state() private exportSel = new Set<string>();
+  /** Application-Security grant for DP management (open until groups are assigned). */
+  @state() private canManageDps = true;
 
   private readonly dpeService = container.resolve<WuiDpeService>(WuiDpeService);
   private readonly api = container.resolve<OaRxJsApi>(OaRxJsApi);
@@ -242,6 +245,7 @@ export class WuiParaNav extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
+    this.subs.add(hasRole$('para', 'edit-values').subscribe((granted) => (this.canManageDps = granted)));
     this.loadTypes();
   }
 
@@ -348,6 +352,7 @@ export class WuiParaNav extends LitElement {
   }
 
   private renderActions(node: TreeNode): TemplateResult | string {
+    if (!this.canManageDps) return '';
     if (node.kind === 'type') {
       return html`
         <span class="node-actions">

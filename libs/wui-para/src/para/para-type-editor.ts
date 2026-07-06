@@ -20,6 +20,7 @@
  * each editor node therefore remembers the name it was loaded with (origName).
  */
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
+import { hasRole$ } from '@visuelconcept/wui-kit/data/app-security.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
@@ -116,6 +117,8 @@ export class WuiParaTypeEditor extends LitElement {
   @state() private loadingType = false;
   @state() private busy = false;
   @state() private confirmDelete = false;
+  /** Application-Security grant for type editing (open until groups are assigned). */
+  @state() private canEdit = true;
 
   @state() private error = '';
   @state() private status = '';
@@ -129,6 +132,7 @@ export class WuiParaTypeEditor extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
+    this.subs.add(hasRole$('para', 'edit-types').subscribe((granted) => (this.canEdit = granted)));
     this.loadTypes();
   }
 
@@ -162,7 +166,9 @@ export class WuiParaTypeEditor extends LitElement {
   private renderTypeList(): TemplateResult {
     return html`
       <div class="types-toolbar">
-        <ix-button icon="plus" variant="primary" @click=${this.startNewType}>${localizeDir(MSG.typeEditor.newType)}</ix-button>
+        ${this.canEdit
+          ? html`<ix-button icon="plus" variant="primary" @click=${this.startNewType}>${localizeDir(MSG.typeEditor.newType)}</ix-button>`
+          : nothing}
         <ix-input
           .value=${this.filter}
           placeholder=${localize(MSG.typeEditor.filterTypes)}
@@ -225,10 +231,12 @@ export class WuiParaTypeEditor extends LitElement {
     if (isStructType(root.type)) {
       return html`
         <div class="tree">${root.children.map((child) => this.renderNode(child, 0))}</div>
-        <div class="tree-add">
-          <ix-button outline icon="plus" @click=${() => this.addChild(root.uid, false)}>${localizeDir(MSG.typeEditor.addElement)}</ix-button>
-          <ix-button outline icon="add-circle" @click=${() => this.addChild(root.uid, true)}>${localizeDir(MSG.typeEditor.addSubstruct)}</ix-button>
-        </div>
+        ${this.canEdit
+          ? html`<div class="tree-add">
+              <ix-button outline icon="plus" @click=${() => this.addChild(root.uid, false)}>${localizeDir(MSG.typeEditor.addElement)}</ix-button>
+              <ix-button outline icon="add-circle" @click=${() => this.addChild(root.uid, true)}>${localizeDir(MSG.typeEditor.addSubstruct)}</ix-button>
+            </div>`
+          : nothing}
       `;
     }
     return html`
@@ -275,7 +283,7 @@ export class WuiParaTypeEditor extends LitElement {
               </ix-select>
             </label>`}
         <span class="spacer"></span>
-        ${this.isNew
+        ${this.isNew || !this.canEdit
           ? nothing
           : html`<ix-button
               outline
@@ -284,9 +292,11 @@ export class WuiParaTypeEditor extends LitElement {
               ?disabled=${this.busy}
               @click=${() => (this.confirmDelete = true)}
             >${localizeDir(MSG.shared.delete)}</ix-button>`}
-        <ix-button variant="primary" icon="upload" ?disabled=${this.busy} .loading=${this.busy} @click=${this.save}>
-          ${this.isNew ? localizeDir(MSG.typeEditor.createType) : localizeDir(MSG.typeEditor.save)}
-        </ix-button>
+        ${this.canEdit
+          ? html`<ix-button variant="primary" icon="upload" ?disabled=${this.busy} .loading=${this.busy} @click=${this.save}>
+              ${this.isNew ? localizeDir(MSG.typeEditor.createType) : localizeDir(MSG.typeEditor.save)}
+            </ix-button>`
+          : nothing}
       </div>
     `;
   }
@@ -319,15 +329,17 @@ export class WuiParaTypeEditor extends LitElement {
               @valueChange=${(e: Event) => this.patch(node.uid, { refName: (e.target as HTMLInputElement).value })}
             ></ix-input>`
           : nothing}
-        <span class="node-actions">
-          ${struct
-            ? html`
-                <ix-icon-button size="16" ghost icon="plus" title=${localize(MSG.typeEditor.addElement)} @click=${() => this.addChild(node.uid, false)}></ix-icon-button>
-                <ix-icon-button size="16" ghost icon="add-circle" title=${localize(MSG.typeEditor.addSubstruct)} @click=${() => this.addChild(node.uid, true)}></ix-icon-button>
-              `
-            : nothing}
-          <ix-icon-button size="16" ghost icon="trashcan" title=${localize(MSG.shared.delete)} @click=${() => this.removeNode(node.uid)}></ix-icon-button>
-        </span>
+        ${this.canEdit
+          ? html`<span class="node-actions">
+              ${struct
+                ? html`
+                    <ix-icon-button size="16" ghost icon="plus" title=${localize(MSG.typeEditor.addElement)} @click=${() => this.addChild(node.uid, false)}></ix-icon-button>
+                    <ix-icon-button size="16" ghost icon="add-circle" title=${localize(MSG.typeEditor.addSubstruct)} @click=${() => this.addChild(node.uid, true)}></ix-icon-button>
+                  `
+                : nothing}
+              <ix-icon-button size="16" ghost icon="trashcan" title=${localize(MSG.shared.delete)} @click=${() => this.removeNode(node.uid)}></ix-icon-button>
+            </span>`
+          : nothing}
       </div>
       ${struct ? node.children.map((child) => this.renderNode(child, level + 1)) : nothing}
     `;

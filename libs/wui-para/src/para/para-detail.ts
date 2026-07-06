@@ -9,6 +9,7 @@
  * units and descriptions, and lets the user write new values back (dpSet).
  */
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
+import { hasRole$ } from '@visuelconcept/wui-kit/data/app-security.js';
 import { WuiDpeService } from '@wincc-oa/wui-data-selector-data/wui-dpe/wui-dpe.service.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
@@ -230,12 +231,19 @@ export class WuiParaDetail extends LitElement {
   @state() private drafts = new Map<string, string>();
   /** Element names whose config-attribute detail panel is expanded. */
   @state() private expanded = new Set<string>();
+  /** Application-Security grant for value writes (open until groups are assigned). */
+  @state() private canWrite = true;
 
   private readonly api = container.resolve<OaRxJsApi>(OaRxJsApi);
   private readonly dpeService = container.resolve<WuiDpeService>(WuiDpeService);
   private detailSubs = new Subscription();
   /** Path prefix stripped from element names for display ('' in type view). */
   private displayBase = '';
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    this.detailSubs.add(hasRole$('para', 'edit-values').subscribe((granted) => (this.canWrite = granted)));
+  }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
@@ -394,6 +402,7 @@ export class WuiParaDetail extends LitElement {
   }
 
   private renderSetButton(el: ElementMeta): TemplateResult {
+    if (!this.canWrite) return html``;
     const dirty = this.drafts.has(el.valuePath);
     return html`
       <ix-icon-button

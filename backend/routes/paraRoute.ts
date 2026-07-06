@@ -16,6 +16,7 @@
 
 import { Router, json } from 'ultimate-express';
 
+import { requireRole } from './appSecurityGuard';
 import { DplController } from './dplController';
 import { ParaController } from './paraController';
 
@@ -46,19 +47,25 @@ export class ParaRoute {
 
     router.use(json({ limit: '25mb' }));
 
+    // Application Security: only the PARA-specific mutations are role-gated.
+    // dptype/create, dp/create, dp/set and DELETE /dp/:name stay OPEN at the
+    // API level on purpose: they are the SHARED persistence API every DP-JSON
+    // page store uses (mosaic, ampere, app-security, …) — gating them with
+    // PARA's roles would 403 an operator saving another page's data. Those
+    // affordances are gated in the PARA UI instead (edit-values role).
     router.get('/health', controller.health);
     router.get('/dptype/:name', controller.getDpType);
     router.post('/dptype/create', controller.createDpType);
-    router.post('/dptype/change', controller.changeDpType);
+    router.post('/dptype/change', requireRole('para', 'edit-types'), controller.changeDpType);
     router.post('/dp/create', controller.createDp);
     router.post('/dp/set', controller.setValue);
-    router.post('/dp/rename', controller.renameDp);
+    router.post('/dp/rename', requireRole('para', 'edit-values'), controller.renameDp);
     router.delete('/dp/:name', controller.deleteDp);
-    router.delete('/dptype/:name', controller.deleteDpType);
+    router.delete('/dptype/:name', requireRole('para', 'edit-types'), controller.deleteDpType);
 
     router.get('/dpl/health', dpl.health);
     router.post('/dpl/export', dpl.export);
-    router.post('/dpl/import', dpl.import);
+    router.post('/dpl/import', requireRole('para', 'dpl-import'), dpl.import);
 
     return router;
   }

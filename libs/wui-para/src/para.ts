@@ -25,6 +25,8 @@ import '@wincc-oa/wui-oarxjs-context/components/wui-context-generator/wui-contex
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { state } from 'lit/decorators.js';
+import { Subscription } from 'rxjs';
+import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
 import './para/para-ai-assistant.js';
 import type { TypeProposal } from './para/para-ai-context.js';
 import { exportDpl, importDpl, pickDplFile } from './para/para-dpl.js';
@@ -147,6 +149,33 @@ export class WuiPara extends LitElement {
   @state() private dplOk = false;
   @state() private dplDialogOpen = false;
 
+  /** Application-Security grant for DPL import (open until groups are assigned). */
+  @state() private roleDplImport = true;
+
+  private roleSub = new Subscription();
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    // Application Security: declare this module's roles (docs/wui-app-security/INTEGRATION.md).
+    // edit-types/edit-values are followed by the child editors; dpl-import here.
+    registerModuleRoles({
+      module: 'para',
+      title: ml('Parametrization (PARA)', 'Paramétrage (PARA)', 'Parametrierung (PARA)'),
+      roles: [
+        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
+        { id: 'edit-types', label: ml('Edit DP types', 'Éditer les types de DP', 'DP-Typen bearbeiten') },
+        { id: 'edit-values', label: ml('Write values & configs', 'Écrire valeurs & configs', 'Werte & Configs schreiben') },
+        { id: 'dpl-import', label: ml('DPL import/export', 'Import/export DPL', 'DPL-Import/-Export') }
+      ]
+    });
+    this.roleSub = hasRole$('para', 'dpl-import').subscribe((granted) => (this.roleDplImport = granted));
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.roleSub.unsubscribe();
+  }
+
   override render(): TemplateResult {
     return html`
       ${this.renderTopbar()}
@@ -194,7 +223,9 @@ export class WuiPara extends LitElement {
         </wui-context-generator>
         <div class="dpl-bar">
           ${this.dplMsg === '' ? nothing : html`<span class="dpl-msg ${this.dplOk ? 'ok' : 'err'}">${this.dplMsg}</span>`}
-          <ix-button outline icon="upload" ?disabled=${this.dplBusy} @click=${this.doImport}>${localizeDir(MSG.page.importDpl)}</ix-button>
+          ${this.roleDplImport
+            ? html`<ix-button outline icon="upload" ?disabled=${this.dplBusy} @click=${this.doImport}>${localizeDir(MSG.page.importDpl)}</ix-button>`
+            : nothing}
           <ix-button
             variant="primary"
             icon="download"

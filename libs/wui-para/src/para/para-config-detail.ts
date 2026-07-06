@@ -11,6 +11,7 @@
  * `<name>:<config>..<attr>`); reads stay on the WebSocket dpGet.
  */
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
+import { hasRole$ } from '@visuelconcept/wui-kit/data/app-security.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
@@ -204,9 +205,16 @@ export class WuiParaConfigDetail extends LitElement {
   @state() private statusOk = false;
   /** Pending edits per attribute path (string-encoded). */
   @state() private drafts = new Map<string, string>();
+  /** Application-Security grant for config writes (open until groups are assigned). */
+  @state() private canWrite = true;
 
   private readonly api = container.resolve<OaRxJsApi>(OaRxJsApi);
   private subs = new Subscription();
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    this.subs.add(hasRole$('para', 'edit-values').subscribe((granted) => (this.canWrite = granted)));
+  }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
@@ -286,16 +294,18 @@ export class WuiParaConfigDetail extends LitElement {
 
   private renderEditable(path: string, entry: ResolvedAttr): TemplateResult {
     const dirty = this.drafts.has(path);
-    const save = html`
-      <ix-icon-button
-        icon="upload"
-        size="16"
-        variant=${dirty ? 'primary' : 'secondary'}
-        ?disabled=${!dirty}
-        title=${`${localize(MSG.detail.writeValue)} · ${entry.spec.attr}`}
-        @click=${() => this.write(path, entry.spec)}
-      ></ix-icon-button>
-    `;
+    const save = this.canWrite
+      ? html`
+          <ix-icon-button
+            icon="upload"
+            size="16"
+            variant=${dirty ? 'primary' : 'secondary'}
+            ?disabled=${!dirty}
+            title=${`${localize(MSG.detail.writeValue)} · ${entry.spec.attr}`}
+            @click=${() => this.write(path, entry.spec)}
+          ></ix-icon-button>
+        `
+      : html``;
     return html`
       <div class="attr ${entry.spec.kind === 'dyn' ? 'dyn' : ''}">
         <span class="attr-label">${localizeDir(attrLabel(entry.spec.label))}</span>

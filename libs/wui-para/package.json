@@ -6,6 +6,9 @@
   "author": { "name": "Visuel Concept" },
   "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page"],
   "license": "MIT",
+  "dependencies": {
+    "@visuelconcept/wui-kit": "*"
+  },
   "peerDependencies": {
     "lit": "*",
     "rxjs": "*",

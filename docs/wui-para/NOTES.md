@@ -79,3 +79,26 @@ Deployment (dev): `npm run deploy:backend -- --project <root> --only para,machin
 the webserver. Then in pmon: **restart `customer-webserver`** so `/api/para/dpl/*`
 mounts, register/start the **`dplAscii`** manager. Skipping the restart leaves the
 new routes 404 even after a successful build.
+
+## Application Security (roles — added 2026-07)
+
+PARA declares 4 roles (self-registration in `para.ts` + mirrored in the
+app-security manifest): `view`, `edit-types`, `edit-values`, `dpl-import`.
+All OPEN until an admin assigns groups in `/app-security`
+(docs/wui-app-security/INTEGRATION.md).
+
+- **UI gating** (`hasRole$`, subscribed per component): `edit-types` hides the
+  model-tab mutations (new type, add element/substruct, node delete, save,
+  delete type — para-type-editor); `edit-values` hides the value/config write
+  buttons (para-detail / para-config-detail) and the DP create/rename/delete
+  node actions (para-nav); `dpl-import` hides the DPL import button (para.ts —
+  export stays open, it only reads).
+- **Server-side** (`requireRole` in paraRoute, guard shipped via
+  `appSecurityGuard.ts` in the para srcFiles): `dptype/change` +
+  `DELETE /dptype/:name` → `edit-types`; `dp/rename` → `edit-values`;
+  `dpl/import` → `dpl-import`.
+- ⚠️ **Deliberately NOT gated at the API level**: `dptype/create`, `dp/create`,
+  `dp/set`, `DELETE /dp/:name` — they are the SHARED persistence API used by
+  every DP-JSON page store (mosaic, ampère, app-security…); gating them with
+  PARA roles would 403 an operator saving another page's data. They are gated
+  in the PARA UI only.
