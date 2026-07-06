@@ -1,0 +1,13 @@
+// Menu fragment for @visuelconcept/wui-app-security.
+// Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
+[
+  {
+    "title": { "en_US": "Application Security", "fr": "Sécurité applicative", "de_AT": "Anwendungssicherheit" },
+    "icon": "shield",
+    "path": "/app-security",
+    "module": "/data/dashboard-wc/pages/app-security.js",
+    "routeId": "app-security",
+    "component": "wui-app-security",
+    "permission": ["connected"]
+  }
+]

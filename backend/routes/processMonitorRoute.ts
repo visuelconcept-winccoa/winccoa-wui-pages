@@ -12,6 +12,7 @@
 
 import { Router, json } from 'ultimate-express';
 
+import { requireRole } from './appSecurityGuard';
 import { ProcessMonitorController } from './processMonitorController';
 
 /**
@@ -33,13 +34,16 @@ export class ProcessMonitorRoute {
 
     router.use(json({ limit: '64mb' }));
 
+    // Application Security: manager control and project deploy are role-gated
+    // (open until the admin assigns groups — see appSecurityGuard).
+    const MODULE_ID = 'process-monitor';
     router.get('/health', controller.health);
     router.get('/managers', controller.managers);
-    router.post('/manager', controller.manager);
-    router.post('/restart', controller.restartAll);
-    router.post('/upload/init', controller.uploadInit);
-    router.post('/upload/chunk', controller.uploadChunk);
-    router.post('/upload/finalize', controller.uploadFinalize);
+    router.post('/manager', requireRole(MODULE_ID, 'control'), controller.manager);
+    router.post('/restart', requireRole(MODULE_ID, 'control'), controller.restartAll);
+    router.post('/upload/init', requireRole(MODULE_ID, 'deploy'), controller.uploadInit);
+    router.post('/upload/chunk', requireRole(MODULE_ID, 'deploy'), controller.uploadChunk);
+    router.post('/upload/finalize', requireRole(MODULE_ID, 'deploy'), controller.uploadFinalize);
 
     return router;
   }

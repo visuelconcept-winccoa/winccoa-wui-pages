@@ -112,8 +112,16 @@
     "name": "@visuelconcept/wui-process-monitor",
     "title": "Process Monitor",
     "tier": 3,
-    "description": "Process Monitor page (/process-monitor) — pmon manager console with one tab per connected server (distributed via per-system ProcessMonitor_Node DPs): status + start/stop/restart + restart-all, plus project ZIP upload/deploy across all servers (optional folder purge, 7-Zip extraction into non-protected folders, config.env, optional restart) with GxP audit-trail tracing (session user). Bridged via /api/process-monitor to the processMonitor MSA manager (per-system agent + aggregator). DPL import handled elsewhere.",
-    "backend": { "mount": "/api/process-monitor", "routeClass": "ProcessMonitorRoute", "routeFile": "processMonitorRoute", "srcFiles": ["processMonitorController.ts", "processMonitorRoute.ts"] },
+    "description": "Process Monitor page (/process-monitor) — pmon manager console with one tab per connected server (distributed via per-system ProcessMonitor_Node DPs): status + start/stop/restart + restart-all, plus project ZIP upload/deploy across all servers (optional folder purge, 7-Zip extraction into non-protected folders, config.env, optional restart) with GxP audit-trail tracing (session user). Bridged via /api/process-monitor to the processMonitor MSA manager (per-system agent + aggregator). Control/deploy routes are role-gated server-side (Application Security roles 'control'/'deploy' — open until groups are assigned). DPL import handled elsewhere.",
+    "backend": { "mount": "/api/process-monitor", "routeClass": "ProcessMonitorRoute", "routeFile": "processMonitorRoute", "srcFiles": ["processMonitorController.ts", "processMonitorRoute.ts", "appSecurityGuard.ts"] },
     "managers": ["processMonitor"]
+  },
+  {
+    "page": "app-security",
+    "name": "@visuelconcept/wui-app-security",
+    "title": "Application Security",
+    "tier": 3,
+    "description": "Application Security page (/app-security) — discover the roles each page module expects (declared in one AppSecurity_<module> DP per module: the module writes .roles, this page writes .assignments) and map every role to WinCC OA user groups. Open by default: a role with no group stays open to all connected users. Pages gate their UI live via the wui-kit hasRole$ primitive; sensitive backend routes enforce the same rules server-side (requireRole guard). /api/app-security resolves the session user's identity + OA groups server-side (_Users/_Groups). GxP audit trail (AuditTrail_AppSecurity) on every assignment change.",
+    "backend": { "mount": "/api/app-security", "routeClass": "AppSecurityRoute", "routeFile": "appSecurityRoute", "srcFiles": ["appSecurityController.ts", "appSecurityRoute.ts", "appSecurityGuard.ts"] }
   }
 ]

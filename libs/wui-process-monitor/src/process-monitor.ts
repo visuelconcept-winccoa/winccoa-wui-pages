@@ -25,9 +25,10 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
+import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
 import { canEditFleet, canEditFleet$ } from '@visuelconcept/wui-kit/data/permissions.js';
 import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
-import { MSG, confirmControlMsg, localize, localizeDir, serverLabel } from './process-monitor/i18n.js';
+import { MSG, confirmControlMsg, localize, localizeDir, ml, serverLabel } from './process-monitor/i18n.js';
 import { controlManager, listInstances, restartAll } from './process-monitor/data/api.js';
 import { ensureStores, loadHistory, traceOperation } from './process-monitor/data/stores.js';
 import type { DeployResult, HistoryEntry, Instance } from './process-monitor/types.js';
@@ -36,6 +37,9 @@ import './process-monitor/ui/pm-upload.js';
 import './process-monitor/ui/pm-history.js';
 
 type Tab = 'console' | 'upload' | 'history';
+
+/** Application-Security module id of this page. */
+const MODULE_ID = 'process-monitor';
 type ControlIntent = { action: 'start' | 'stop' | 'restart'; index: number; name: string };
 const REFRESH_MS = 5000;
 
@@ -49,6 +53,9 @@ export class WuiProcessMonitor extends LitElement {
   @state() private history: HistoryEntry[] = [];
   @state() private lastUpdate = '';
   @state() private canEdit = canEditFleet();
+  /** Application-Security grants (open until the admin assigns groups). */
+  @state() private roleControl = true;
+  @state() private roleDeploy = true;
   @state() private restartAllPending = false;
   @state() private controlPending: ControlIntent | null = null;
 
@@ -63,6 +70,19 @@ export class WuiProcessMonitor extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     this.permSub = canEditFleet$().subscribe((allowed) => (this.canEdit = allowed));
+    // Application Security: declare this module's roles and follow the grants
+    // (the same rules are ENFORCED server-side on /api/process-monitor).
+    registerModuleRoles({
+      module: MODULE_ID,
+      title: ml('Process Monitor', 'Moniteur de processus', 'Prozessmonitor'),
+      roles: [
+        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
+        { id: 'control', label: ml('Control managers', 'Piloter les managers', 'Manager steuern') },
+        { id: 'deploy', label: ml('Deploy projects', 'Déployer des projets', 'Projekte deployen') }
+      ]
+    });
+    this.permSub.add(hasRole$(MODULE_ID, 'control').subscribe((granted) => (this.roleControl = granted)));
+    this.permSub.add(hasRole$(MODULE_ID, 'deploy').subscribe((granted) => (this.roleDeploy = granted)));
     void ensureStores();
     void this.refreshInstances();
     void this.refreshHistory();
@@ -101,7 +121,7 @@ export class WuiProcessMonitor extends LitElement {
           ${this.tab === 'console' ? this.renderConsole() : nothing}
           ${this.tab === 'upload'
             ? html`<pm-upload
-                .canEdit=${this.canEdit}
+                .canEdit=${this.canEdit && this.roleDeploy}
                 .servers=${this.instances.map((i) => ({ system: i.system, hostname: i.hostname }))}
                 @wui:deployed=${(e: CustomEvent<DeployDetail>) => void this.onDeployed(e.detail)}
               ></pm-upload>`
@@ -121,7 +141,7 @@ export class WuiProcessMonitor extends LitElement {
       ${this.instances.length > 1 ? this.renderServerTabs() : nothing}
       <pm-console
         .managers=${active?.managers ?? []}
-        .canEdit=${this.canEdit}
+        .canEdit=${this.canEdit && this.roleControl}
         .lastUpdate=${this.lastUpdate}
         @wui:refresh=${() => void this.refreshInstances()}
         @wui:restartall=${() => (this.restartAllPending = true)}

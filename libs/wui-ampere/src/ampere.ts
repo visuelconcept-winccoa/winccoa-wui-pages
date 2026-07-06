@@ -26,6 +26,7 @@ import { LitElement, css, html, nothing, type PropertyValues, type TemplateResul
 import { property, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
+import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
 import { AmpereStore } from './ampere/data/ampere-store.js';
 import { demoNetworks } from './ampere/data/demo.js';
 import { exportJson, exportNetwork, parseNetworks } from './ampere/data/io.js';
@@ -46,7 +47,7 @@ import {
   type PortRef,
   type Rotation
 } from './ampere/types.js';
-import { MSG, confirmDeleteMsg, localize, localizeDir, networkCountMsg } from './ampere/i18n.js';
+import { MSG, confirmDeleteMsg, localize, localizeDir, ml, networkCountMsg } from './ampere/i18n.js';
 import type { Selection, Tool } from './ampere/ui/am-canvas.js';
 import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
 import './ampere/ui/am-canvas.js';
@@ -175,9 +176,13 @@ export class WuiAmpere extends LitElement {
   /** Live alert-state colours (`_alert_hdl.._act_state_color`) keyed by normalised DP. */
   @state() private alertColors: Map<string, string> = new Map();
 
+  /** Application-Security grant for the 'edit' role (open until assigned). */
+  @state() private canEdit = true;
+
   private readonly store = new AmpereStore();
   private readonly api = this.resolveApi();
   private dpSub = new Subscription();
+  private roleSub = new Subscription();
   private subscribedKey = '';
   /** Network state captured when entering edit mode — audit baseline for the "Done" trace. */
   private auditBaseline: Network | null = null;
@@ -219,9 +224,26 @@ export class WuiAmpere extends LitElement {
     `;
   }
 
+  override connectedCallback(): void {
+    super.connectedCallback();
+    registerModuleRoles({
+      module: 'ampere',
+      title: ml('Ampère (electrical)', 'Ampère (électrique)', 'Ampère (elektrisch)'),
+      roles: [
+        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
+        { id: 'edit', label: ml('Edit networks', 'Éditer les réseaux', 'Netze bearbeiten') }
+      ]
+    });
+    this.roleSub = hasRole$('ampere', 'edit').subscribe((granted) => {
+      this.canEdit = granted;
+      if (!granted && this.editing) this.setEditing(false);
+    });
+  }
+
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.dpSub.unsubscribe();
+    this.roleSub.unsubscribe();
   }
 
   protected override firstUpdated(): void {
@@ -343,7 +365,9 @@ export class WuiAmpere extends LitElement {
         ></wui-ampere-ai-assistant>
         ${this.editing
           ? html`<ix-button @click=${() => this.setEditing(false)}><ix-icon name="check" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.done)}</ix-button>`
-          : html`<ix-button variant="secondary" @click=${() => this.setEditing(true)}><ix-icon name="pen" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.edit)}</ix-button>`}
+          : (this.canEdit
+              ? html`<ix-button variant="secondary" @click=${() => this.setEditing(true)}><ix-icon name="pen" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.edit)}</ix-button>`
+              : nothing)}
       </div>
       <div class="workspace ${this.editing ? 'editing' : ''}">
         ${this.editing ? html`<am-toolbox .tool=${this.tool} @wui:tool=${(e: CustomEvent<{ tool: Tool }>) => (this.tool = e.detail.tool)}></am-toolbox>` : nothing}
