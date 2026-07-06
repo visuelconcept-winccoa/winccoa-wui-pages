@@ -188,11 +188,14 @@ export class AppSecurityStore {
     try {
       const res = await fetch(GROUPS_URL);
       if (res.ok) {
-        const body = (await res.json()) as { ok?: boolean; groups?: OaGroup[] };
+        const body = (await res.json()) as { ok?: boolean; groups?: OaGroup[]; error?: string };
         if (body.ok !== false && Array.isArray(body.groups) && body.groups.length > 0) return body.groups;
+        console.info(`[app-security] ${GROUPS_URL} answered but lists no group`, body.error ?? '');
+      } else {
+        console.info(`[app-security] ${GROUPS_URL} → HTTP ${res.status} (backend module not mounted?)`);
       }
-    } catch {
-      // fall through to the direct read
+    } catch (error) {
+      console.info(`[app-security] ${GROUPS_URL} unreachable:`, (error as Error)?.message ?? error);
     }
     return this.groupsViaDp();
   }
@@ -209,8 +212,10 @@ export class AppSecurityStore {
       const ids = toArray(res[1]).map(Number);
       const out = names.map((name, i) => ({ id: Number.isFinite(ids[i]) ? ids[i] : i, name }));
       out.sort((a, b) => a.name.localeCompare(b.name));
+      if (out.length === 0) console.info('[app-security] direct _Groups read returned no name');
       return out.length > 0 ? out : null;
-    } catch {
+    } catch (error) {
+      console.info('[app-security] direct _Groups read failed:', (error as Error)?.message ?? error);
       return null;
     }
   }

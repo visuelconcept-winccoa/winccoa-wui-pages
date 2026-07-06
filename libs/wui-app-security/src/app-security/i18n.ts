@@ -73,7 +73,12 @@ export const MSG = {
     cancel: ml('Cancel', 'Annuler', 'Abbrechen'),
     clear: ml('Clear (open to all)', 'Vider (ouvert à tous)', 'Leeren (für alle offen)'),
     addGroupPlaceholder: ml('Add a group name…', 'Ajouter un nom de groupe…', 'Gruppennamen hinzufügen…'),
-    add: ml('Add', 'Ajouter', 'Hinzufügen')
+    add: ml('Add', 'Ajouter', 'Hinzufügen'),
+    noDirectory: ml(
+      'OA group directory unavailable — type the exact group name below (deploy the app-security backend for the list; details in the browser console).',
+      'Annuaire des groupes OA indisponible — saisissez le nom exact du groupe ci-dessous (déployez le backend app-security pour la liste ; détails dans la console du navigateur).',
+      'OA-Gruppenverzeichnis nicht verfügbar — geben Sie den exakten Gruppennamen unten ein (App-Security-Backend für die Liste bereitstellen; Details in der Browser-Konsole).'
+    )
   }
 } as const;
 

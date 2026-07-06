@@ -221,6 +221,9 @@ export class WuiAppSecurity extends LitElement {
     return html`
       <td colspan="2">
         <div class="editor">
+          ${this.oaGroups.length === 0 && extra.length === 0
+            ? html`<div class="hint-empty"><ix-icon name="info" size="14"></ix-icon>${localizeDir(MSG.table.noDirectory)}</div>`
+            : nothing}
           <div class="checks">
             ${this.oaGroups.map(
               (g) => html`<label class="check">
@@ -270,6 +273,11 @@ export class WuiAppSecurity extends LitElement {
   private beginEdit(entry: ModuleEntry, roleId: string): void {
     this.info = '';
     this.edit = { module: entry.module, roleId, groups: new Set(entry.assignments[roleId] ?? []), free: '' };
+    // The group directory may have become available since page load (backend
+    // deployed later) — retry when the picker is actually needed.
+    if (this.oaGroups.length === 0) {
+      void this.store.groups().then((groups) => (this.oaGroups = groups ?? []));
+    }
   }
 
   private toggleGroup(name: string, on: boolean): void {
@@ -457,6 +465,13 @@ function pageStyles(): ReturnType<typeof css> {
       display: flex;
       flex-direction: column;
       gap: 0.5rem;
+    }
+    .hint-empty {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      color: var(--theme-color-soft-text);
+      font-size: 0.8rem;
     }
     .checks {
       display: flex;
