@@ -447,7 +447,7 @@ async function main() {
       console.log(`  • redémarrer le manager "${opts.wsName}" pour recharger les modules webserver,`);
       console.log(`  • démarrer/redémarrer les managers : ${managers.join(', ')}.`);
     }
-    console.log(c('dim', '\nDans le navigateur : « Clear site data » + reload pour charger la nouvelle version.'));
+    console.log(c('dim', '\nDans le navigateur : un simple F5 suffit — index.html a été touché par le build, le service worker s\'auto-invalide et recharge la nouvelle version.'));
   } finally {
     rl.close();
   }
