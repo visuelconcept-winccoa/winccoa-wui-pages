@@ -68,17 +68,18 @@ interface Directory {
 }
 
 /**
- * Element names of the `_Users` / `_Groups` system DPs, resolved ONCE by
- * introspecting the DP types (dpTypeGet) instead of hardcoding them — the
- * exact spelling varies across OA versions/projects, and a grouped dpGet with
- * one bad name fails wholesale ("9399, multiple errors").
+ * Element names of the user directory, resolved ONCE by introspecting the
+ * `_Users` DP TYPE (dpTypeGet) instead of hardcoding them.
+ *
+ * OA stores users AND groups as two DP INSTANCES of the same `_Users` type:
+ * the `_Users` DP holds the users, the `_Groups` DP holds the groups — where
+ * `UserName`/`UserId` then carry the GROUP names/ids. So one schema drives
+ * both reads (there is no `_Groups` DP type).
  */
 interface DirectorySchema {
   userName: string | null;
   userId: string | null;
   userGroupIds: string | null;
-  groupName: string | null;
-  groupId: string | null;
 }
 
 let schemaCache: DirectorySchema | null = null;
@@ -94,31 +95,21 @@ function pickElement(children: { name: string }[], candidates: string[]): string
 function directorySchema(): DirectorySchema {
   if (schemaCache) return schemaCache;
   let users: { name: string }[] = [];
-  let groups: { name: string }[] = [];
   try {
     users = (winccoa?.dpTypeGet('_Users')?.children ?? []) as { name: string }[];
   } catch (error) {
     console.warn('appSecurityGuard: dpTypeGet(_Users) failed:', (error as Error)?.message ?? error);
   }
-  try {
-    groups = (winccoa?.dpTypeGet('_Groups')?.children ?? []) as { name: string }[];
-  } catch (error) {
-    console.warn('appSecurityGuard: dpTypeGet(_Groups) failed:', (error as Error)?.message ?? error);
-  }
   // When introspection yields nothing (type unreadable), fall back to the
   // classic names and let the isolated per-element reads report what fails.
   const noUsers = users.length === 0;
-  const noGroups = groups.length === 0;
   schemaCache = {
     userName: pickElement(users, ['username', 'name']) ?? (noUsers ? 'UserName' : null),
     userId: pickElement(users, ['userid', 'id']) ?? (noUsers ? 'UserId' : null),
-    userGroupIds: pickElement(users, ['groupids', 'groups', 'groupid']) ?? (noUsers ? 'GroupIds' : null),
-    groupName: pickElement(groups, ['groupname', 'name']) ?? (noGroups ? 'GroupName' : null),
-    groupId: pickElement(groups, ['groupid', 'id']) ?? (noGroups ? 'GroupId' : null)
+    userGroupIds: pickElement(users, ['groupids', 'groups', 'groupid']) ?? (noUsers ? 'GroupIds' : null)
   };
   console.info(
-    `appSecurityGuard: directory schema — _Users(${users.map((c) => c.name).join(',') || '?'}) ` +
-      `_Groups(${groups.map((c) => c.name).join(',') || '?'}) → ${JSON.stringify(schemaCache)}`
+    `appSecurityGuard: directory schema — _Users type(${users.map((c) => c.name).join(',') || '?'}) → ${JSON.stringify(schemaCache)}`
   );
   return schemaCache;
 }
@@ -140,12 +131,14 @@ let directoryCache: { at: number; value: Directory } | null = null;
 async function directory(): Promise<Directory> {
   if (directoryCache && Date.now() - directoryCache.at < CACHE_MS) return directoryCache.value;
   const schema = directorySchema();
+  // `_Groups` is a DP INSTANCE of the `_Users` type: its UserName/UserId
+  // elements carry the GROUP names/ids (confirmed on 3.21).
   const [userNames, userIds, groupIdsPerUser, groupNames, groupIds] = await Promise.all([
     dpGetOne(schema.userName, '_Users'),
     dpGetOne(schema.userId, '_Users'),
     dpGetOne(schema.userGroupIds, '_Users'),
-    dpGetOne(schema.groupName, '_Groups'),
-    dpGetOne(schema.groupId, '_Groups')
+    dpGetOne(schema.userName, '_Groups'),
+    dpGetOne(schema.userId, '_Groups')
   ]);
   const gNames = userDirStrings(groupNames);
   const gIds = groupIds.map(Number);

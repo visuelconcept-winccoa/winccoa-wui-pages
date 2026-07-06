@@ -202,12 +202,16 @@ export class AppSecurityStore {
 
   // --- internals -------------------------------------------------------------
 
-  /** Direct `_Groups` read (frontend fallback). Null when unreadable. */
+  /**
+   * Direct `_Groups` read (frontend fallback). Null when unreadable.
+   * `_Groups` is a DP INSTANCE of the `_Users` type: its UserName/UserId
+   * elements carry the GROUP names/ids.
+   */
   private async groupsViaDp(): Promise<OaGroup[] | null> {
     const api = this.api;
     if (!api) return null;
     try {
-      const res = toArray(await firstValueFrom(api.dpGet(['_Groups.GroupName', '_Groups.GroupId'])));
+      const res = toArray(await firstValueFrom(api.dpGet(['_Groups.UserName', '_Groups.UserId'])));
       const names = toArray(res[0]).map(String).filter((n) => n.trim() !== '');
       const ids = toArray(res[1]).map(Number);
       const out = names.map((name, i) => ({ id: Number.isFinite(ids[i]) ? ids[i] : i, name }));
