@@ -29,8 +29,9 @@
  */
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
-import { Observable, catchError, combineLatest, from, map, of, shareReplay, startWith } from 'rxjs';
+import { Observable, catchError, combineLatest, firstValueFrom, from, map, of, shareReplay, startWith } from 'rxjs';
 import { container } from 'tsyringe';
+import { currentAuditUser } from './audit-trail.js';
 
 /** DP type holding one module's roles + assignments. */
 export const APP_SECURITY_TYPE = 'AppSecurity_Module';
@@ -159,23 +160,77 @@ export function registerModuleRoles(decl: AppModuleRoles): void {
 
 let identityPromise: Promise<AppSecurityIdentity | null> | null = null;
 
-/** Session identity, fetched once (null when the endpoint is unreachable). */
+async function identityViaMe(): Promise<AppSecurityIdentity | null> {
+  try {
+    const res = await fetch(APP_SECURITY_ME_URL);
+    if (!res.ok) return null;
+    const body = (await res.json()) as Partial<AppSecurityIdentity> & { ok?: boolean };
+    if (body.ok === false) return null;
+    return {
+      username: body.username ?? '',
+      userId: typeof body.userId === 'number' ? body.userId : -1,
+      admin: body.admin === true,
+      groups: Array.isArray(body.groups) ? body.groups.map(String) : []
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Unwrap a (possibly `{value}`-wrapped) dpGet result into a plain array. */
+function toArr(raw: unknown): unknown[] {
+  const v = raw && typeof raw === 'object' && 'value' in (raw as object) ? (raw as { value: unknown }).value : raw;
+  if (Array.isArray(v)) return v;
+  return v == null ? [] : [v];
+}
+
+/**
+ * Client-side identity fallback: the session user the SHELL already knows
+ * (WuiUserService, via the kit audit helper) + their groups resolved from the
+ * `_Users`/`_Groups` system DPs over the page's own datapoint connection.
+ * Used when `/me` is unreachable or answers anonymously (the webserver's HTTP
+ * layer has no session when server-side auth is disabled). UI-gating quality:
+ * server-side enforcement keeps its own resolution.
+ */
+async function identityViaDp(): Promise<AppSecurityIdentity | null> {
+  const api = resolveApi();
+  const user = await currentAuditUser();
+  // Guard against the helper's `{name:'', id:0}` fallback — id 0 is OA root,
+  // never grant that implicitly without a real user name.
+  if (!api || user.name === '') return null;
+  try {
+    const res = toArr(await firstValueFrom(api.dpGet(['_Users.UserName', '_Users.UserId', '_Users.GroupIds', '_Groups.UserName', '_Groups.UserId'])));
+    const names = toArr(res[0]).map(String);
+    const ids = toArr(res[1]).map(Number);
+    const groupIdsPerUser = toArr(res[2]);
+    const gNames = toArr(res[3]).map(String);
+    const gIds = toArr(res[4]).map(Number);
+    const groupById = new Map<number, string>();
+    for (const [i, name] of gNames.entries()) groupById.set(Number.isFinite(gIds[i]) ? gIds[i] : i, name);
+    const idx = names.indexOf(user.name);
+    if (idx === -1) return null;
+    const groups = String(groupIdsPerUser[idx] ?? '')
+      .split(/[;,]/)
+      .map((s) => Number(s.trim()))
+      .filter((n) => Number.isFinite(n))
+      .map((id) => groupById.get(id) ?? String(id));
+    const userId = Number.isFinite(ids[idx]) ? ids[idx] : user.id;
+    return { username: user.name, userId, admin: userId === 0, groups };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Session identity, resolved once: the app-security backend first (`/me`,
+ * server-side view), then the client-side `_Users`/`_Groups` fallback when the
+ * endpoint is unreachable or sees the request as anonymous.
+ */
 export function identity(): Promise<AppSecurityIdentity | null> {
   identityPromise ??= (async () => {
-    try {
-      const res = await fetch(APP_SECURITY_ME_URL);
-      if (!res.ok) return null;
-      const body = (await res.json()) as Partial<AppSecurityIdentity> & { ok?: boolean };
-      if (body.ok === false) return null;
-      return {
-        username: body.username ?? '',
-        userId: typeof body.userId === 'number' ? body.userId : -1,
-        admin: body.admin === true,
-        groups: Array.isArray(body.groups) ? body.groups.map(String) : []
-      };
-    } catch {
-      return null;
-    }
+    const viaMe = await identityViaMe();
+    if (viaMe && viaMe.username !== '') return viaMe;
+    return (await identityViaDp()) ?? viaMe;
   })();
   return identityPromise;
 }

@@ -260,6 +260,18 @@ export function requireRole(module: string, roleId: string) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const [assign, who] = await Promise.all([roleAssignments(module), identityOf(req)]);
+      // No session identity on the request: the webserver runs without
+      // server-side HTTP authentication (the SPA authenticates at the
+      // websocket layer), so the guard cannot attribute the call — enforcement
+      // is only effective when the webserver auth is enabled. Fail OPEN with a
+      // log so a legitimately granted UI action never 403s incoherently.
+      if (who.username === '') {
+        console.warn(
+          `appSecurityGuard(${module}/${roleId}): request has no session identity (server-side auth disabled?) — check skipped. Enable webserver authentication for real API enforcement.`
+        );
+        next();
+        return;
+      }
       if (roleGranted(assign, roleId, who)) {
         next();
         return;

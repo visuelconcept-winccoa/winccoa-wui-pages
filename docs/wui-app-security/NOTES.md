@@ -69,6 +69,15 @@ idea was rejected for that reason). Role/group direction is role → groups
   hint; the manifest + Discover is the authoritative seeding path.
 - Menu-entry gating by role is NOT covered (the shell guard only knows
   connected/canEdit/canPublish/canWrite) — page/feature-level gating only.
-- Frontend gating without the backend module deployed: unassigned roles stay
-  open, assigned roles **lock** (fail closed) because `/me` is unreachable.
-  Deploy the backend before assigning roles in production.
+- **Identity has two client paths**: `/me` first (server-side view); when it is
+  unreachable OR answers anonymously (the webserver's HTTP layer has no session
+  when server-side auth is disabled — the SPA authenticates at the websocket
+  layer), the kit falls back to the SHELL's session user (`WuiUserService`) +
+  a direct `_Users`/`_Groups` read. Only when BOTH paths fail does an assigned
+  role deny (fail closed).
+- **Server-side guard and anonymous requests**: when a request carries no
+  session identity, `requireRole` SKIPS the check (fail open, logged
+  `appSecurityGuard: … check skipped`) — otherwise a legitimately granted UI
+  action would 403 incoherently. Real API enforcement therefore requires the
+  webserver's own authentication (basic/OIDC session) to be enabled; without
+  it the roles are UI-level protection.
