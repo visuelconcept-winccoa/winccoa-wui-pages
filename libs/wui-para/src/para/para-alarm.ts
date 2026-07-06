@@ -15,11 +15,12 @@
  * (trailing dot, the WinCC OA alert-class reference notation).
  */
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
+import { hasRole$ } from '@visuelconcept/wui-kit/data/app-security.js';
 import { WuiDpeService } from '@wincc-oa/wui-data-selector-data/wui-dpe/wui-dpe.service.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
-import { firstValueFrom } from 'rxjs';
+import { Subscription, firstValueFrom } from 'rxjs';
 import { container } from 'tsyringe';
 import { type DpStruct, collectLeaves, leavesUnder, makeDpeName, splitDpPath, stripSystem } from './para-leaves.js';
 import './para-nav.js';
@@ -103,9 +104,22 @@ export class WuiParaAlarm extends LitElement {
   @state() private loading = false;
   @state() private message = '';
   @state() private messageOk = false;
+  /** Application-Security grant (edit-values) for alert-config writes. */
+  @state() private canWrite = true;
 
   private readonly api = container.resolve<OaRxJsApi>(OaRxJsApi);
   private readonly dpe = container.resolve<WuiDpeService>(WuiDpeService);
+  private roleSub = new Subscription();
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    this.roleSub = hasRole$('para', 'edit-values').subscribe((granted) => (this.canWrite = granted));
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.roleSub.unsubscribe();
+  }
 
   private get navKey(): string | null {
     if (this.selectedType != null) {
@@ -210,11 +224,11 @@ export class WuiParaAlarm extends LitElement {
           <ix-button
             size="16"
             variant="primary"
-            ?disabled=${row.busy || this.classes.length === 0}
+            ?disabled=${row.busy || this.classes.length === 0 || !this.canWrite}
             @click=${() => this.apply(row)}
           >${localizeDir(MSG.alarm.apply)}</ix-button>
           ${row.active
-            ? html`<ix-button size="16" outline ?disabled=${row.busy} @click=${() => this.disable(row)}>${localizeDir(MSG.alarm.disable)}</ix-button>`
+            ? html`<ix-button size="16" outline ?disabled=${row.busy || !this.canWrite} @click=${() => this.disable(row)}>${localizeDir(MSG.alarm.disable)}</ix-button>`
             : nothing}
         </td>
       </tr>

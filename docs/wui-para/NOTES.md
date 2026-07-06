@@ -102,3 +102,6 @@ All OPEN until an admin assigns groups in `/app-security`
   every DP-JSON page store (mosaic, ampère, app-security…); gating them with
   PARA roles would 403 an operator saving another page's data. They are gated
   in the PARA UI only.
+- `edit-values` also gates the **Archive** and **Alarm** tabs' writes (archive
+  group select + enable toggle in para-archive; Apply/Disable in para-alarm) —
+  they write `_archive` / `_alert_hdl` configs through the same dp/set API.

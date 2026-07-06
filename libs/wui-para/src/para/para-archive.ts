@@ -15,11 +15,12 @@
  * whose `.active` flag is set.
  */
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
+import { hasRole$ } from '@visuelconcept/wui-kit/data/app-security.js';
 import { WuiDpeService } from '@wincc-oa/wui-data-selector-data/wui-dpe/wui-dpe.service.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
-import { firstValueFrom } from 'rxjs';
+import { Subscription, firstValueFrom } from 'rxjs';
 import { container } from 'tsyringe';
 import { type DpStruct, collectLeaves, leavesUnder, makeDpeName, splitDpPath, stripSystem } from './para-leaves.js';
 import './para-nav.js';
@@ -81,9 +82,22 @@ export class WuiParaArchive extends LitElement {
   @state() private loading = false;
   @state() private message = '';
   @state() private messageOk = false;
+  /** Application-Security grant (edit-values) for archive-config writes. */
+  @state() private canWrite = true;
 
   private readonly api = container.resolve<OaRxJsApi>(OaRxJsApi);
   private readonly dpe = container.resolve<WuiDpeService>(WuiDpeService);
+  private roleSub = new Subscription();
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    this.roleSub = hasRole$('para', 'edit-values').subscribe((granted) => (this.canWrite = granted));
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.roleSub.unsubscribe();
+  }
 
   private get navKey(): string | null {
     if (this.selectedType != null) {
@@ -146,7 +160,7 @@ export class WuiParaArchive extends LitElement {
         <td>
           <ix-select
             mode="single"
-            ?disabled=${this.groups.length === 0}
+            ?disabled=${this.groups.length === 0 || !this.canWrite}
             .value=${group}
             @valueChange=${(e: CustomEvent) => this.changeGroup(row, String(e.detail))}
           >
@@ -156,7 +170,7 @@ export class WuiParaArchive extends LitElement {
         <td>
           <ix-toggle
             .checked=${row.enabled}
-            ?disabled=${this.groups.length === 0}
+            ?disabled=${this.groups.length === 0 || !this.canWrite}
             @checkedChange=${(e: Event) => this.toggle(row, (e.target as HTMLInputElement).checked, group)}
           ></ix-toggle>
         </td>
