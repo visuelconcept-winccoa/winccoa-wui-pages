@@ -86,7 +86,13 @@ export function appSecurityDp(module: string): string {
   return `${APP_SECURITY_PREFIX}${dpFragment(module)}`;
 }
 
-async function ensureType(): Promise<boolean> {
+/**
+ * Ensure the `AppSecurity_Module` DP type exists (probe, then create via the
+ * PARA REST API). False when `/api/para` is unreachable or the caller lacks
+ * rights — the para backend module is a PREREQUISITE, like for every
+ * DpJsonStore page.
+ */
+export async function ensureAppSecurityType(): Promise<boolean> {
   try {
     const probe = await fetch(`/api/para/dptype/${encodeURIComponent(APP_SECURITY_TYPE)}`);
     if (probe.ok) return true;
@@ -127,7 +133,7 @@ async function dpSet(dpeName: string, value: string): Promise<boolean> {
  * best-effort (the admin page's "Discover" seeding covers those cases).
  */
 export async function upsertModuleRoles(decl: AppModuleRoles): Promise<boolean> {
-  if (!(await ensureType())) return false;
+  if (!(await ensureAppSecurityType())) return false;
   const dp = appSecurityDp(decl.module);
   try {
     const created = await fetch(CREATE_DP_URL, jsonPost({ dpName: dp, dpType: APP_SECURITY_TYPE }));

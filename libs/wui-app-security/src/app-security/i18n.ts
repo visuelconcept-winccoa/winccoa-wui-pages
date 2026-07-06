@@ -25,9 +25,9 @@ export const MSG = {
       'Ordnen Sie die von jedem Modul erwarteten Rollen Ihren WinCC-OA-Benutzergruppen zu. Eine Rolle ohne Gruppe bleibt für alle verbundenen Benutzer offen.'
     ),
     offline: ml(
-      'Offline mode: assignments cannot be persisted (backend unavailable or missing write rights).',
-      'Mode hors-ligne : les associations ne peuvent pas être enregistrées (backend indisponible ou droits d’écriture manquants).',
-      'Offline-Modus: Zuordnungen können nicht gespeichert werden (Backend nicht verfügbar oder fehlende Schreibrechte).'
+      'Offline mode: assignments cannot be persisted — the PARA backend (/api/para) is unreachable or you lack write rights. Deploy the wui-para backend module, then Refresh.',
+      'Mode hors-ligne : les associations ne peuvent pas être enregistrées — le backend PARA (/api/para) est injoignable ou vous n’avez pas les droits d’écriture. Déployez le module backend wui-para, puis Actualiser.',
+      'Offline-Modus: Zuordnungen können nicht gespeichert werden — das PARA-Backend (/api/para) ist nicht erreichbar oder Schreibrechte fehlen. Das wui-para-Backend-Modul bereitstellen, dann Aktualisieren.'
     ),
     noIdentity: ml(
       'Identity service unreachable (/api/app-security) — deploy the app-security backend so assigned roles can be enforced.',

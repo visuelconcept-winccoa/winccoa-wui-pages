@@ -20,6 +20,7 @@ import { AuditTrailWriter } from '@visuelconcept/wui-kit/data/audit-trail.js';
 import {
   APP_SECURITY_TYPE,
   appSecurityDp,
+  ensureAppSecurityType,
   upsertModuleRoles,
   type AppModuleRoles,
   type AppRoleAssignments,
@@ -43,6 +44,13 @@ export interface ModuleEntry {
 export interface OaGroup {
   id: number;
   name: string;
+}
+
+/** Coerce a (possibly `{value}`-wrapped) dpGet result into a plain array. */
+function toArray(raw: unknown): unknown[] {
+  const v = raw && typeof raw === 'object' && 'value' in (raw as object) ? (raw as { value: unknown }).value : raw;
+  if (Array.isArray(v)) return v;
+  return v == null ? [] : [v];
 }
 
 function extractString(raw: unknown): string {
@@ -92,12 +100,22 @@ export class AppSecurityStore {
   private readonly audit = new AuditTrailWriter({ dpName: 'AuditTrail_AppSecurity', itemType: 'AppSecurity' });
   private memory: ModuleEntry[] | null = null;
 
-  /** Every declared module, sorted by module id. */
+  /**
+   * Every declared module, sorted by module id. Re-attempts the backend on
+   * every call (NO offline latch — a transient failure or a not-yet-created
+   * DP type must not stick the page in offline mode; Refresh recovers).
+   */
   async list(): Promise<ModuleEntry[]> {
     const api = this.api;
     const dpe = this.dpe;
-    if (this.offline || !api || !dpe) return this.mem();
+    if (!api || !dpe) return this.mem();
     try {
+      // The type only exists after the first registration/discover — create it
+      // first (like DpJsonStore) so listing a fresh system doesn't throw.
+      if (!(await ensureAppSecurityType())) {
+        this.offline = true;
+        return this.mem();
+      }
       const names = await firstValueFrom(dpe.listDatapoints(APP_SECURITY_TYPE));
       const out: ModuleEntry[] = [];
       for (const dp of names) {
@@ -109,6 +127,8 @@ export class AppSecurityStore {
         out.push({ module, dp, title: decl.title, roles: decl.roles, assignments: parseAssignments(extractString(assignRaw)) });
       }
       out.sort((a, b) => a.module.localeCompare(b.module));
+      this.offline = false;
+      this.memory = null;
       return out;
     } catch {
       this.offline = true;
@@ -148,23 +168,52 @@ export class AppSecurityStore {
     for (const decl of manifest) {
       if (await upsertModuleRoles(decl)) ok += 1;
     }
-    if (ok === 0) this.offline = true;
+    // A working seeding proves the backend is writable — clear the offline flag.
+    if (ok > 0) {
+      this.offline = false;
+      this.memory = null;
+    } else {
+      this.offline = true;
+    }
     return ok;
   }
 
-  /** OA group directory from the app-security backend (null when unreachable). */
+  /**
+   * OA group directory. Primary source: the app-security backend (server-side
+   * read of `_Groups`). Fallback when that module is not deployed yet: read
+   * `_Groups.GroupName` directly over the page's own datapoint connection —
+   * the picker keeps working, only the session-identity endpoint is missing.
+   */
   async groups(): Promise<OaGroup[] | null> {
     try {
       const res = await fetch(GROUPS_URL);
-      if (!res.ok) return null;
-      const body = (await res.json()) as { ok?: boolean; groups?: OaGroup[] };
-      return body.ok !== false && Array.isArray(body.groups) ? body.groups : null;
+      if (res.ok) {
+        const body = (await res.json()) as { ok?: boolean; groups?: OaGroup[] };
+        if (body.ok !== false && Array.isArray(body.groups) && body.groups.length > 0) return body.groups;
+      }
+    } catch {
+      // fall through to the direct read
+    }
+    return this.groupsViaDp();
+  }
+
+  // --- internals -------------------------------------------------------------
+
+  /** Direct `_Groups` read (frontend fallback). Null when unreadable. */
+  private async groupsViaDp(): Promise<OaGroup[] | null> {
+    const api = this.api;
+    if (!api) return null;
+    try {
+      const res = toArray(await firstValueFrom(api.dpGet(['_Groups.GroupName', '_Groups.GroupId'])));
+      const names = toArray(res[0]).map(String).filter((n) => n.trim() !== '');
+      const ids = toArray(res[1]).map(Number);
+      const out = names.map((name, i) => ({ id: Number.isFinite(ids[i]) ? ids[i] : i, name }));
+      out.sort((a, b) => a.name.localeCompare(b.name));
+      return out.length > 0 ? out : null;
     } catch {
       return null;
     }
   }
-
-  // --- internals -------------------------------------------------------------
 
   private mem(): ModuleEntry[] {
     this.offline = true;
