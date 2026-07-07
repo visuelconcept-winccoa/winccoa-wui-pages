@@ -222,6 +222,37 @@ function patchViteConfigPages() {
   );
 }
 
+// --- 4b. vite.config.pages.ts — content-hashed chunk names ---------------------
+// The pages build emits shared chunks (kit, stores…) with FIXED names
+// (pages/chunks/[name].js). When a deploy reshuffles the chunk graph, a browser
+// or the service worker can mix an OLD chunk with a NEW one under the same URL,
+// which throws `SyntaxError: The requested module './x.js' does not provide an
+// export named 'y'` and blank pages — intermittently, on any page, until every
+// cache expires. Content-hashed names make each build's graph atomic: old and
+// new chunks coexist, imports always resolve against the matching build.
+// Entry names ([name].js) stay stable — menuconfig references them.
+function patchViteConfigPagesChunkHash() {
+  patchFile(
+    'apps/dashboard-wc/vite.config.pages.ts',
+    (c) => c.includes(`chunkFileNames: 'pages/chunks/[name]-[hash].js'`),
+    (c) => {
+      let out = replaceAnchor(
+        c,
+        `chunkFileNames: 'pages/chunks/[name].js',`,
+        `chunkFileNames: 'pages/chunks/[name]-[hash].js',`,
+        'vite.config.pages.ts (chunkFileNames)'
+      );
+      out = replaceAnchor(
+        out,
+        `assetFileNames: 'pages/assets/[name].[ext]',`,
+        `assetFileNames: 'pages/assets/[name]-[hash].[ext]',`,
+        'vite.config.pages.ts (assetFileNames)'
+      );
+      return out;
+    }
+  );
+}
+
 // --- 5. tsconfig.base.json ----------------------------------------------------
 /** Build `@visuelconcept/wui-*\/*` -> `libs/wui-*\/src/*` from the libs dir. */
 function visuelconceptPaths() {
@@ -420,6 +451,7 @@ try {
   patchViteShared();
   patchViteConfig();
   patchViteConfigPages();
+  patchViteConfigPagesChunkHash();
   patchTsconfigPaths();
   patchWebuiAppEmbed();
   patchRouteModuleLoader();

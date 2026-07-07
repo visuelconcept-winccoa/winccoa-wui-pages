@@ -136,16 +136,33 @@ async function dpSet(dpeName: string, value: string): Promise<boolean> {
 export async function upsertModuleRoles(decl: AppModuleRoles): Promise<boolean> {
   if (!(await ensureAppSecurityType())) return false;
   const dp = appSecurityDp(decl.module);
-  try {
-    const created = await fetch(CREATE_DP_URL, jsonPost({ dpName: dp, dpType: APP_SECURITY_TYPE }));
-    // 400 = already exists — fine.
-    if (!created.ok && created.status !== HTTP_BAD_REQUEST) return false;
-  } catch {
-    return false;
+  // Probe existence over the datapoint connection first — POSTing dp/create on
+  // an existing DP answers 400, which the browser logs as a console error even
+  // though it is handled (noisy on every page load).
+  if (!(await dpExists(dp))) {
+    try {
+      const created = await fetch(CREATE_DP_URL, jsonPost({ dpName: dp, dpType: APP_SECURITY_TYPE }));
+      // 400 = already exists (raced with another client) — fine.
+      if (!created.ok && created.status !== HTTP_BAD_REQUEST) return false;
+    } catch {
+      return false;
+    }
   }
   const okModule = await dpSet(`${dp}.module`, decl.module);
   const okRoles = await dpSet(`${dp}.roles`, JSON.stringify({ title: decl.title, roles: decl.roles }));
   return okModule && okRoles;
+}
+
+/** Whether the module's app-security DP already exists (readable). */
+async function dpExists(dp: string): Promise<boolean> {
+  const api = resolveApi();
+  if (!api) return false;
+  try {
+    await firstValueFrom(api.dpGet(`${dp}.module`));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
