@@ -10,8 +10,8 @@
 //   1. asks for the target WinCC OA project root (data/, javascript/, config/),
 //   2. lets you SELECT which page modules to include (pre-checked default set),
 //   3. builds the standalone pages into <project>/data/dashboard-wc,
-//   4. filters the deployed menu to ONLY the selected modules (optionally prunes
-//      the other page bundles),
+//   4. filters the deployed menu to ONLY the selected modules AND prunes the
+//      non-selected page bundles from the deploy (use --no-prune to keep them),
 //   5. deploys the BACKENDS (webserver modules + managers) associated with the
 //      selected modules — via tools/scripts/deploy-backend.mjs, driven by
 //      tools/specs.json.
@@ -32,7 +32,9 @@
 //   --modules <a,b,...>   Page ids to include (else interactive selection).
 //   --name <dir>          Webserver dir under javascript/ (default customer-webserver).
 //   --full                Full rebuild (shared bundles + app + pages) instead of pages-only.
-//   --prune               Delete the non-selected page bundles from the deploy (strict version).
+//   --no-prune            Keep the non-selected page bundles in the deploy (menu-only
+//                         filtering). By default the non-selected bundles ARE removed so
+//                         only the selected modules are actually published/reachable.
 //   --install-webserver   Install the base customer-webserver into the project first
 //     (alias --webserver)  (copy + npm install + tsc + pmon line) — needed on a FRESH project
 //                          where <ws>/src/modules does not exist yet.
@@ -61,6 +63,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..'); // tools/scripts -> repo root
 const LIBS_DIR = path.join(ROOT, 'libs');
 const SPECS_FILE = path.join(ROOT, 'tools', 'specs.json');
+const BASE_MENU_FILE = path.join(ROOT, 'apps', 'dashboard-wc', 'config', 'menuconfig.jsonc');
+// Local (gitignored) cache remembering the last-used project root, offered as the
+// default on the next run. Mirrors the .license-cache.json convention.
+const STATE_FILE = path.join(ROOT, '.deploy-release-cache.json');
 
 /** Default pre-selected modules (the "fleet + ops" release). */
 const DEFAULT_MODULES = [
@@ -87,7 +93,10 @@ const opts = {
   modules: arg('modules')?.split(',').map((s) => s.trim()).filter(Boolean),
   wsName: arg('name') || 'customer-webserver',
   full: has('full'),
-  prune: has('prune'),
+  // Prune non-selected page bundles by DEFAULT so only the selected modules are
+  // published. --no-prune reverts to menu-only filtering (bundles stay on disk).
+  // --prune is still accepted (no-op) for backward compatibility.
+  prune: !has('no-prune'),
   noBackend: has('no-backend'),
   installWebserver: has('install-webserver') || has('webserver'),
   winccoa: arg('winccoa'),
@@ -160,13 +169,90 @@ function discoverModules() {
   return out.sort((a, b) => a.id.localeCompare(b.id));
 }
 
+/**
+ * Page bundle ids hardcoded in the base menuconfig (e.g. app-security,
+ * diagnosis). These are SHELL/system pages, not optional release modules: they
+ * must always ship, otherwise their (permanent) menu entry points at a bundle
+ * that was never built or got pruned → 404. Always force-included in the
+ * selection so they are kept in the menu AND never pruned.
+ */
+function baseMenuBundleIds() {
+  try {
+    const menu = readJsonc(BASE_MENU_FILE);
+    const ids = new Set();
+    const walk = (entries) => {
+      for (const e of entries ?? []) {
+        const bundle = moduleBundleId(e);
+        if (bundle) ids.add(bundle);
+        walk(e.entries);
+        walk(e.children);
+      }
+    };
+    walk(menu.entries);
+    return ids;
+  } catch {
+    return new Set(); // no/invalid base menu — nothing to force-include
+  }
+}
+
 // ---- interactive selection --------------------------------------------------
+
+/** Read the whole gitignored cache object ({} if none/unreadable). */
+function readState() {
+  try {
+    const s = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    return s && typeof s === 'object' ? s : {};
+  } catch {
+    return {}; // no cache yet / unreadable
+  }
+}
+
+/** Merge a partial update into the cache and persist it (best-effort). */
+function writeState(patch) {
+  try {
+    fs.writeFileSync(STATE_FILE, `${JSON.stringify({ ...readState(), ...patch }, null, 2)}\n`);
+  } catch {
+    /* non-fatal: caching the defaults is a convenience only */
+  }
+}
+
+/** Last-used project root, or null if none/invalid. */
+function readLastProject() {
+  const { lastProject } = readState();
+  return typeof lastProject === 'string' && lastProject ? lastProject : null;
+}
+
+/** Remember the chosen project root for next time. */
+function saveLastProject(project) {
+  writeState({ lastProject: project });
+}
+
+/** Module ids selected last time FOR THIS project, or null if none. */
+function readLastModules(project) {
+  const map = readState().modulesByProject;
+  const arr = map && typeof map === 'object' ? map[project] : null;
+  return Array.isArray(arr) && arr.length ? arr : null;
+}
+
+/** Remember the selected module ids for this project. */
+function saveLastModules(project, ids) {
+  const map = { ...readState().modulesByProject, [project]: ids };
+  writeState({ modulesByProject: map });
+}
 
 async function promptProject(rl) {
   if (opts.project) return validateProject(opts.project);
+  const last = readLastProject();
+  const hint = last ? c('dim', `\n  [Entrée = ${last}]`) : '';
   for (;;) {
-    const ans = (await rl.question(c('cyan', 'Dossier du projet WinCC OA (racine, contient data/ javascript/ config/) : '))).trim().replace(/^"|"$/g, '');
-    if (!ans) continue;
+    const ans = (await rl.question(c('cyan', 'Dossier du projet WinCC OA (racine, contient data/ javascript/ config/)') + hint + c('cyan', ' : '))).trim().replace(/^"|"$/g, '');
+    if (!ans) {
+      if (!last) continue; // no remembered default — keep asking
+      const v = validateProject(last, true);
+      if (v) return v;
+      console.log(c('yellow', `  ! Dernier projet "${last}" introuvable/invalide — saisissez un chemin.`));
+      continue;
+    }
     const v = validateProject(ans, true);
     if (v) return v;
     console.log(c('red', `  ✗ "${ans}" n'a pas l'air d'un projet WinCC OA (data/ + javascript/ + config/ requis).`));
@@ -184,8 +270,13 @@ function validateProject(p, soft = false) {
   return abs;
 }
 
-async function promptModules(rl, catalog) {
-  const selected = new Set(DEFAULT_MODULES.filter((id) => catalog.some((m) => m.id === id)));
+async function promptModules(rl, catalog, project) {
+  // Default selection: modules chosen last time for THIS project, else the
+  // built-in default set. Filtered to modules that still exist in the catalog.
+  const remembered = readLastModules(project);
+  const base = remembered ?? DEFAULT_MODULES;
+  const selected = new Set(base.filter((id) => catalog.some((m) => m.id === id)));
+  if (remembered) console.log(c('dim', '  · sélection par défaut reprise du dernier déploiement de ce projet.'));
   if (opts.modules) {
     const valid = new Set(catalog.map((m) => m.id));
     for (const id of opts.modules) {
@@ -369,8 +460,20 @@ async function main() {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   try {
     const project = await promptProject(rl);
-    const selected = await promptModules(rl, catalog);
+    saveLastProject(project); // remember it as the default for next time
+    const selected = await promptModules(rl, catalog, project);
     if (selected.size === 0) { console.error(c('red', '✗ Aucun module sélectionné.')); process.exit(1); }
+    saveLastModules(project, [...selected]); // remember this selection for this project
+
+    // Always include the shell/system pages hardcoded in the base menu
+    // (app-security, diagnosis) — they must ship regardless of the selection,
+    // else their permanent menu entry 404s (bundle never built / pruned).
+    const baseIds = baseMenuBundleIds();
+    const forced = [];
+    for (const id of baseIds) {
+      if (catalog.some((m) => m.id === id) && !selected.has(id)) { selected.add(id); forced.push(id); }
+    }
+    if (forced.length) console.log(c('dim', `  · pages système toujours incluses : ${forced.join(', ')}`));
 
     const chosen = catalog.filter((m) => selected.has(m.id));
     const startPage = await promptStartPage(rl, chosen);
@@ -386,7 +489,7 @@ async function main() {
     console.log(`  Modules     : ${chosen.map((m) => m.id).join(', ')}`);
     console.log(`  Démarrage   : ${startPage}`);
     console.log(`  Assistant IA: ${aiAssistant ? 'activé' : 'désactivé (défaut)'}`);
-    console.log(`  Élagage     : ${opts.prune ? 'oui (autres bundles supprimés)' : 'non (menu filtré seulement)'}`);
+    console.log(`  Élagage     : ${opts.prune ? 'oui, défaut (bundles non sélectionnés supprimés)' : 'non, --no-prune (menu filtré seulement)'}`);
     console.log(`  Webserver   : ${opts.installWebserver ? `installation "${opts.wsName}"${opts.winccoa ? ` (WinCC OA: ${opts.winccoa})` : ''}` : 'supposé déjà installé'}`);
     console.log(`  Backends    : ${opts.noBackend ? 'ignorés' : (backends.length ? backends.map((m) => `${m.id}[${[m.mount, ...m.managers].filter(Boolean).join(' ')}]`).join(', ') : 'aucun')}`);
 
@@ -416,7 +519,7 @@ async function main() {
       console.log(c('bold', '\n[3/4] Élagage des bundles non sélectionnés…'));
       pruneBundles(dwcDir, catalog, selected);
     } else {
-      console.log(c('dim', '\n[3/4] Élagage ignoré (--prune pour une version stricte).'));
+      console.log(c('dim', '\n[3/4] Élagage ignoré (--no-prune : le menu est filtré mais les bundles restent sur disque).'));
     }
 
     // 4) backend

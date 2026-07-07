@@ -20,6 +20,7 @@ out-tsc/
 *.tgz.bak
 *.tar.gz
 .license-cache.json
+.deploy-release-cache.json
 
 # -----------------------------------------------------------------------------
 # Vite / Vitest

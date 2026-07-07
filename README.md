@@ -147,7 +147,9 @@ node tools/scripts/deploy-release.mjs --project <project>
 It prompts for the project, lets you **select the modules** to include, the
 **default landing page**, and whether to enable the **AI assistant** (OFF by
 default), then: builds the pages into `<project>/data/dashboard-wc`, filters the
-menu to the selection, writes `dashboard-features.json` (the AI-assistant flag),
+menu to the selection **and removes the non-selected page bundles** so only the
+chosen modules are actually published (use `--no-prune` to keep them and filter
+the menu only), writes `dashboard-features.json` (the AI-assistant flag),
 and deploys the **backend modules + managers** of the selected pages (via
 `deploy-backend.mjs`; webserver module descriptors are generated from
 `tools/specs.json`).
@@ -159,7 +161,7 @@ and deploys the **backend modules + managers** of the selected pages (via
 | `--install-webserver` [`--winccoa <path>`] | install the customer-webserver first (fresh project) |
 | `--start-page <route\|id>` | landing page (redirect of `/`); default `/dashboard` |
 | `--ai-assistant` | enable the AI assistant in the pages (default **OFF**) |
-| `--prune` | remove the non-selected bundles (strict release) |
+| `--no-prune` | keep the non-selected bundles (menu-only filtering); by default they are removed |
 | `--yes` | no confirmation (non-interactive) |
 
 Fresh project in one command:
