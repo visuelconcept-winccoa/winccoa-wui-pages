@@ -166,13 +166,19 @@ export async function upsertModuleRoles(decl: AppModuleRoles): Promise<boolean> 
   return okModule && okRoles;
 }
 
-/** Whether the module's app-security DP already exists (readable). */
+/**
+ * Whether the module's app-security DP already exists. Probed with `dpNames`
+ * (returns an empty list for a missing DP) — NEVER with dpGet/dpConnect on the
+ * name: the webserver's CTRL handler throws "Invalid argument"
+ * (dpConnectUserData) for non-existent DPEs, and that error surfaces as an
+ * uncaught exception in the websocket layer, outside any catchError.
+ */
 async function dpExists(dp: string): Promise<boolean> {
   const api = resolveApi();
   if (!api) return false;
   try {
-    await firstValueFrom(api.dpGet(`${dp}.module`));
-    return true;
+    const names = (await firstValueFrom(api.dpNames(dp, APP_SECURITY_TYPE))) as string[];
+    return Array.isArray(names) && names.length > 0;
   } catch {
     return false;
   }
@@ -328,22 +334,36 @@ function parseAssignments(raw: unknown): AppRoleAssignments {
 
 const assignmentCache = new Map<string, Observable<AppRoleAssignments>>();
 
-/** Live assignments of one module (empty object when unbound/offline). */
+/**
+ * Live assignments of one module (empty object when unbound/offline).
+ *
+ * The DP's existence is probed FIRST (dpNames — errorless): a dpConnect on a
+ * not-yet-created `AppSecurity_<module>` DP makes the webserver's CTRL handler
+ * throw "Invalid argument in function … dpConnectUserData", which surfaces as
+ * an UNCAUGHT websocket-layer exception no catchError can intercept. A module
+ * whose DP appears later (first Discover) goes live after a page reload —
+ * fine, since an absent DP means every role is open anyway.
+ */
 export function assignments$(module: string): Observable<AppRoleAssignments> {
   let cached = assignmentCache.get(module);
   if (cached) return cached;
   const api = resolveApi();
   if (api) {
-    try {
-      cached = api.dpConnect(`${appSecurityDp(module)}.assignments`, true).pipe(
-        map((e: { value: unknown[] }) => parseAssignments(e.value?.[0])),
-        catchError(() => of({})),
-        startWith({}),
-        shareReplay({ bufferSize: 1, refCount: false })
-      );
-    } catch {
-      cached = of({});
-    }
+    cached = from(dpExists(appSecurityDp(module))).pipe(
+      switchMap((exists) => {
+        if (!exists) return of({});
+        try {
+          return api.dpConnect(`${appSecurityDp(module)}.assignments`, true).pipe(
+            map((e: { value: unknown[] }) => parseAssignments(e.value?.[0])),
+            catchError(() => of({}))
+          );
+        } catch {
+          return of({});
+        }
+      }),
+      startWith({}),
+      shareReplay({ bufferSize: 1, refCount: false })
+    );
   } else {
     cached = of({});
   }
