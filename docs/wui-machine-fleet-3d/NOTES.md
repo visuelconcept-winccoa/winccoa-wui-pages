@@ -243,3 +243,29 @@ All writes are best-effort (never throw into the edit), no-op when the store is 
   (Ctrl+Shift+R / Ctrl+F5) is often needed after redeployment. A pages-only deployment
   may leave the Siemens SW serving a stale snapshot → intermittent module/route resolution
   failures (blank page); the reliable fix = a full build that regenerates the SW.
+
+## Application Security (roles — added 2026-07)
+
+The page declares 3 roles (self-registration in `machine-fleet-3d.ts`, module id
+`machine-fleet-3d`, mirrored in the app-security manifest): `view`, `edit`, `ai`.
+All OPEN until an admin assigns groups in `/app-security`
+(docs/wui-app-security/INTEGRATION.md).
+
+- **`view`** gates the page body: when denied, the header/context-generator still
+  renders but both routes (overview and 3D view) are replaced by a muted
+  forbidden notice (`MSG.shell.roleForbidden`).
+- **`edit`** is combined at the PAGE level with the existing `canEditFleet()`
+  (canPublish) permission — `canEdit && roleEdit` — and passed down as the
+  `canEdit` boolean prop of `mf-atelier-overview` and `mf-atelier-view` (which no
+  longer subscribe to `canEditFleet$` themselves; the shell owns both
+  subscriptions). It hides every atelier mutation: create/import-demo (overview),
+  rename/delete atelier, move-machines edit mode, JSON import, viewpoint
+  save/rename/delete/default, machine add/edit/delete and the write side of the
+  dialogs (`.canEdit` prop chain). The 3D view drops out of a live edit-mode
+  session when the grant is revoked (`willUpdate` on `canEdit`).
+- **`ai`** gates the AI-assistant affordance: the `<mf-ai-prompt>` trigger in the
+  overview head and the 3D-view topbar is unrendered when denied (passed down as
+  the `roleAi` prop).
+
+Read-only data (3D scene, cards, machine popups, dashboards, exports) is never
+unrendered by `edit`/`ai` — only by `view`.

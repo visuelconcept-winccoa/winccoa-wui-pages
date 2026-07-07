@@ -27,7 +27,9 @@ import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
 import { templateSeed } from './machine-fleet-3d/data/atelier-templates.js';
 import { normDp, toNumber } from './machine-fleet-3d/data/dp-utils.js';
-import { MSG, localizeDir } from './machine-fleet-3d/i18n.js';
+import { MSG, localizeDir, ml } from './machine-fleet-3d/i18n.js';
+import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { canEditFleet, canEditFleet$ } from '@visuelconcept/wui-kit/data/permissions.js';
 import { FleetStore } from '@visuelconcept/wui-fleet-core/data/fleet-store.js';
 import {
   DEFAULT_STATE_MAPPINGS,
@@ -51,6 +53,15 @@ interface DpEmission {
 
 /** Shared GxP audit DP for the whole fleet feature (atelier CRUD + the KPI / stop-cause sub-pages). */
 const AUDIT_DP = 'AuditTrail_Fleet';
+/** Application-Security module id of this page. */
+const MODULE_ID = 'machine-fleet-3d';
+/** Page header (context-generator) config — shared by the overview and the forbidden notice. */
+const HEADER_CONFIG = {
+  headerTitle: {
+    context: 'translate',
+    config: { 'en_US.utf8': 'Machine Fleet', 'fr.utf8': 'Parc machine', 'de_AT.utf8': 'Maschinenpark' }
+  }
+} as const;
 /**
  * Machine fields driven live by `dpConnect` (not by a user edit) — stripped before
  * auditing so live-value churn never produces a spurious atelier UPDATE row.
@@ -116,21 +127,49 @@ export class WuiMachineFleet3d extends LitElement {
   @state() private active: Atelier | null = null;
   @state() private loading = true;
   @state() private offline = false;
+  /** Edit permission (canPublish); combined with the 'edit' role grant below. */
+  @state() private canEdit = canEditFleet();
+  /** Application-Security grants (open until the admin assigns groups). */
+  @state() private canView = true;
+  @state() private roleEdit = true;
+  @state() private roleAi = true;
 
   private readonly store = new FleetStore();
   /** Traces atelier create/update/delete into the shared `AuditTrail_Fleet` DP. */
   private readonly audit = new AuditTrailWriter({ dpName: AUDIT_DP, itemType: 'Atelier' });
   private readonly api = this.resolveApi();
   private overviewSub = new Subscription();
+  /** canPublish + Application-Security grant subscriptions. */
+  private permSub = new Subscription();
   /** normalized stateDp → machines (across ateliers) it drives, for the overview. */
   private overviewTargets = new Map<string, { atelier: Atelier; machineIndex: number }[]>();
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    this.permSub = canEditFleet$().subscribe((allowed) => (this.canEdit = allowed));
+    // Application Security: declare this module's roles and follow the grants.
+    registerModuleRoles({
+      module: MODULE_ID,
+      title: ml('Machine Fleet', 'Parc machine', 'Maschinenpark'),
+      roles: [
+        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
+        { id: 'edit', label: ml('Edit workshops', 'Éditer les ateliers', 'Werkstätten bearbeiten') },
+        { id: 'ai', label: ml('AI assistant', 'Assistant IA', 'KI-Assistent') }
+      ]
+    });
+    this.permSub.add(hasRole$(MODULE_ID, 'view').subscribe((granted) => (this.canView = granted)));
+    this.permSub.add(hasRole$(MODULE_ID, 'edit').subscribe((granted) => (this.roleEdit = granted)));
+    this.permSub.add(hasRole$(MODULE_ID, 'ai').subscribe((granted) => (this.roleAi = granted)));
+  }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.overviewSub.unsubscribe();
+    this.permSub.unsubscribe();
   }
 
   override render(): TemplateResult {
+    if (!this.canView) return this.renderForbidden();
     if (this.atelierId) return this.renderDetail();
     return this.renderOverview();
   }
@@ -139,22 +178,31 @@ export class WuiMachineFleet3d extends LitElement {
     void this.refresh();
   }
 
+  /** Body replaced by a notice when the 'view' role is assigned and not granted. */
+  private renderForbidden(): TemplateResult {
+    return html`
+      <div class="page">
+        <wui-context-generator .config=${HEADER_CONFIG}>
+          <wui-content-header></wui-content-header>
+        </wui-context-generator>
+        <div class="forbidden">
+          <ix-typography>${localizeDir(MSG.shell.roleForbidden)}</ix-typography>
+        </div>
+      </div>
+    `;
+  }
+
   private renderOverview(): TemplateResult {
     return html`
       <div class="page">
-        <wui-context-generator
-          .config=${{
-            headerTitle: {
-              context: 'translate',
-              config: { 'en_US.utf8': 'Machine Fleet', 'fr.utf8': 'Parc machine', 'de_AT.utf8': 'Maschinenpark' }
-            }
-          }}
-        >
+        <wui-context-generator .config=${HEADER_CONFIG}>
           <wui-content-header></wui-content-header>
         </wui-context-generator>
         <mf-atelier-overview
           .ateliers=${this.ateliers}
           .store=${this.store}
+          .canEdit=${this.canEdit && this.roleEdit}
+          .roleAi=${this.roleAi}
           ?offline=${this.offline}
           @wui:open=${(e: CustomEvent<{ id: string }>) => this.navigate(e.detail.id)}
           @wui:create=${(e: CustomEvent<{ name: string; id?: string; seed?: string }>) => this.onCreate(e.detail)}
@@ -178,6 +226,8 @@ export class WuiMachineFleet3d extends LitElement {
       <mf-atelier-view
         .atelier=${this.active}
         .store=${this.store}
+        .canEdit=${this.canEdit && this.roleEdit}
+        .roleAi=${this.roleAi}
         @wui:save=${(e: CustomEvent<Atelier>) => this.onSave(e.detail)}
         @wui:remove=${() => this.onRemoveActive()}
         @wui:back=${() => this.back()}
@@ -342,6 +392,13 @@ function shellStyles(): ReturnType<typeof css> {
       justify-content: center;
       gap: 1rem;
       height: 100%;
+    }
+    .forbidden {
+      display: flex;
+      flex: 1;
+      align-items: center;
+      justify-content: center;
+      color: var(--theme-color-soft-text);
     }
   `;
 }

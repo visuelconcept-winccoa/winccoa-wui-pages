@@ -19,12 +19,15 @@ import '@wincc-oa/wui-ix-wrappers/wui-content-header/wui-content-header.js';
 import '@wincc-oa/wui-oarxjs-context/components/wui-context-generator/wui-context-generator.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { RouterEvent } from '@wincc-oa/wui-models/events/router-event.js';
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { property, query, state } from 'lit/decorators.js';
+import { Subscription } from 'rxjs';
+import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
 import { ConnectionStore } from './remote-vnc/data/connection-store.js';
 import { DEMO_CONNECTIONS } from './remote-vnc/data/demo-connections.js';
 import { exportConnection, exportJson, parseConnections } from './remote-vnc/data/io.js';
-import { MSG, confirmDeleteMsg, localize, localizeDir } from './remote-vnc/i18n.js';
+import { MSG, confirmDeleteMsg, localize, localizeDir, ml } from './remote-vnc/i18n.js';
 import type { VncConnection, VncStatus } from './remote-vnc/types.js';
 import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
 import './remote-vnc/ui/rv-connection-dialog.js';
@@ -34,6 +37,8 @@ import './remote-vnc/ui/rv-viewer.js';
 const PAD_LEN = 2;
 /** How often to refresh the per-connection TCP reachability indicators. */
 const STATUS_POLL_MS = 5000;
+/** Application-Security module id (the specs/menuconfig page id). */
+const MODULE_ID = 'remote-vnc';
 
 function pad(n: number): string {
   return String(n).padStart(PAD_LEN, '0');
@@ -61,10 +66,18 @@ export class WuiRemoteVnc extends LitElement {
   /** Live TCP reachability per connection id (polled from /api/vnc/status). */
   @state() private statusById: Record<string, VncStatus> = {};
 
+  /** Application-Security grant for the 'view' role (open until assigned). */
+  @state() private canView = true;
+  /** Application-Security grant for the 'connect' role (open until assigned). */
+  @state() private canConnect = true;
+  /** Application-Security grant for the 'edit' role (open until assigned). */
+  @state() private canEdit = true;
+
   @query('.import-input') private importInput!: HTMLInputElement;
 
   private readonly store = new ConnectionStore();
   private statusTimer = 0;
+  private roleSub = new Subscription();
 
   override render(): TemplateResult {
     return html`
@@ -85,15 +98,19 @@ export class WuiRemoteVnc extends LitElement {
         </wui-context-generator>
 
         <div class="body">
-          ${this.importError
-            ? html`<div class="notice error"><ix-icon name="warning"></ix-icon>${this.importError}</div>`
-            : nothing}
-          ${this.offline
-            ? html`<div class="notice">
-                <ix-icon name="info"></ix-icon>${localizeDir(MSG.page.offline)}
-              </div>`
-            : nothing}
-          ${this.renderBody()}
+          ${this.canView
+            ? html`
+                ${this.importError
+                  ? html`<div class="notice error"><ix-icon name="warning"></ix-icon>${this.importError}</div>`
+                  : nothing}
+                ${this.offline
+                  ? html`<div class="notice">
+                      <ix-icon name="info"></ix-icon>${localizeDir(MSG.page.offline)}
+                    </div>`
+                  : nothing}
+                ${this.renderBody()}
+              `
+            : this.renderForbidden(MSG.page.roleForbidden)}
         </div>
       </div>
 
@@ -116,12 +133,43 @@ export class WuiRemoteVnc extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
+    registerModuleRoles({
+      module: MODULE_ID,
+      title: ml('Remote VNC', 'VNC distant', 'Remote-VNC'),
+      roles: [
+        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
+        {
+          id: 'connect',
+          label: ml('Open sessions', 'Ouvrir des sessions', 'Sitzungen öffnen'),
+          description: ml('Connect to remote desktops.', 'Se connecter aux postes distants.', 'Mit entfernten Desktops verbinden.')
+        },
+        {
+          id: 'edit',
+          label: ml('Edit', 'Éditer', 'Bearbeiten'),
+          description: ml('Manage the connection list.', 'Gérer la liste des connexions.', 'Verbindungsliste verwalten.')
+        }
+      ]
+    });
+    this.roleSub = new Subscription();
+    this.roleSub.add(hasRole$(MODULE_ID, 'view').subscribe((granted) => (this.canView = granted)));
+    this.roleSub.add(hasRole$(MODULE_ID, 'connect').subscribe((granted) => (this.canConnect = granted)));
+    this.roleSub.add(
+      hasRole$(MODULE_ID, 'edit').subscribe((granted) => {
+        this.canEdit = granted;
+        if (!granted) {
+          // Drop out of a live edit/delete dialog when the grant is revoked.
+          this.editing = undefined;
+          this.deletingId = null;
+        }
+      })
+    );
     void this.refreshStatus();
     this.statusTimer = window.setInterval(() => void this.refreshStatus(), STATUS_POLL_MS);
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
+    this.roleSub.unsubscribe();
     if (this.statusTimer) {
       window.clearInterval(this.statusTimer);
       this.statusTimer = 0;
@@ -132,10 +180,20 @@ export class WuiRemoteVnc extends LitElement {
     void this.refresh();
   }
 
+  /** Muted centered notice shown in place of role-gated content. */
+  private renderForbidden(message: MultiLangString): TemplateResult {
+    return html`<div class="center empty">
+      <ix-typography>${localizeDir(message)}</ix-typography>
+    </div>`;
+  }
+
   private renderBody(): TemplateResult {
     if (this.loading) return html`<div class="center"><ix-spinner></ix-spinner></div>`;
     const selected = this.selectedConnection();
     if (selected) {
+      // 'connect' role: deep-linking to /remote-vnc/:id without the grant shows
+      // the forbidden notice instead of opening a session.
+      if (!this.canConnect) return this.renderForbidden(MSG.page.connectForbidden);
       return html`<rv-viewer
         .connection=${selected}
         @wui:back=${this.goToList}
@@ -145,9 +203,11 @@ export class WuiRemoteVnc extends LitElement {
       <div class="toolbar">
         <span class="count">${localizeDir(MSG.page.connectionsCount(this.connections.length))}</span>
         <span class="grow"></span>
-        <ix-button variant="secondary" @click=${this.triggerImport}>
-          <ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.page.import)}
-        </ix-button>
+        ${this.canEdit
+          ? html`<ix-button variant="secondary" @click=${this.triggerImport}>
+              <ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.page.import)}
+            </ix-button>`
+          : nothing}
         <ix-button
           variant="secondary"
           ?disabled=${this.connections.length === 0}
@@ -155,9 +215,11 @@ export class WuiRemoteVnc extends LitElement {
         >
           <ix-icon name="download" slot="icon"></ix-icon>${localizeDir(MSG.page.exportAll)}
         </ix-button>
-        <ix-button @click=${this.openCreate}>
-          <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.page.newConnection)}
-        </ix-button>
+        ${this.canEdit
+          ? html`<ix-button @click=${this.openCreate}>
+              <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.page.newConnection)}
+            </ix-button>`
+          : nothing}
       </div>
       <input
         class="import-input"
@@ -175,9 +237,11 @@ export class WuiRemoteVnc extends LitElement {
       return html`
         <div class="center empty">
           <ix-typography>${localizeDir(MSG.page.empty)}</ix-typography>
-          <ix-button variant="secondary" @click=${this.generateDemo}>
-            <ix-icon name="add" slot="icon"></ix-icon>${localizeDir(MSG.page.generateDemo)}
-          </ix-button>
+          ${this.canEdit
+            ? html`<ix-button variant="secondary" @click=${this.generateDemo}>
+                <ix-icon name="add" slot="icon"></ix-icon>${localizeDir(MSG.page.generateDemo)}
+              </ix-button>`
+            : nothing}
         </div>
       `;
     }
@@ -201,8 +265,9 @@ export class WuiRemoteVnc extends LitElement {
     this.connections = await this.store.listConnections();
     this.offline = this.store.offline;
     this.loading = false;
-    // Deep-link: arriving directly on /remote-vnc/<id> records the connection.
-    if (this.connectionId) void this.stamp(this.connectionId);
+    // Deep-link: arriving directly on /remote-vnc/<id> records the connection
+    // (only when the 'connect' role grants opening a session).
+    if (this.connectionId && this.canConnect) void this.stamp(this.connectionId);
   }
 
   /** Poll the cyclic server-side TCP reachability test (independent of sessions). */
@@ -222,6 +287,7 @@ export class WuiRemoteVnc extends LitElement {
 
   /** Open a connection → navigate to its own route `/remote-vnc/<id>`. */
   private onOpen(id: string): void {
+    if (!this.canConnect) return;
     this.navigate(id);
     void this.stamp(id);
   }

@@ -29,6 +29,7 @@ import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
 import { pageStyles } from '@visuelconcept/wui-fleet-core/styles.js';
 import { FleetStore } from '@visuelconcept/wui-fleet-core/data/fleet-store.js';
+import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
 import { canEditFleet, canEditFleet$ } from '@visuelconcept/wui-kit/data/permissions.js';
 import '@visuelconcept/wui-fleet-core/ui/mf-stop-causes.js';
 import {
@@ -55,7 +56,7 @@ import {
   type ClosureConfig
 } from '@visuelconcept/wui-fleet-core/closures.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
-import { MSG, localize, localizeDir, rawStopCountMsg } from './i18n.js';
+import { MSG, localize, localizeDir, ml, rawStopCountMsg } from './i18n.js';
 
 const TAB_TABLE = 0;
 const TAB_CHART = 1;
@@ -140,6 +141,8 @@ export class WuiFleetStopAnalysis extends LitElement {
   @state() private stopCausesOpen = false;
   /** Edit permission (canPublish); when false the catalog editor is view-only. */
   @state() private canEdit = canEditFleet();
+  /** Application-Security grant for the 'view' role (open until assigned). */
+  @state() private canView = true;
 
   private readonly store = new FleetStore();
   private readonly api = this.resolveApi();
@@ -147,11 +150,20 @@ export class WuiFleetStopAnalysis extends LitElement {
   private chart: echarts.ECharts | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private permSub = new Subscription();
+  private roleSub = new Subscription();
 
   override connectedCallback(): void {
     super.connectedCallback();
     this.initDefaultRange();
     this.permSub = canEditFleet$().subscribe((allowed) => (this.canEdit = allowed));
+    registerModuleRoles({
+      module: 'fleet-stop-analysis',
+      title: ml('Stop-Cause Analysis', "Analyse des causes d'arrêts", 'Stoppursachen-Analyse'),
+      roles: [{ id: 'view', label: ml('View', 'Consulter', 'Ansehen') }]
+    });
+    this.roleSub = hasRole$('fleet-stop-analysis', 'view').subscribe((granted) => {
+      this.canView = granted;
+    });
   }
 
   override disconnectedCallback(): void {
@@ -161,6 +173,7 @@ export class WuiFleetStopAnalysis extends LitElement {
     this.chart?.dispose();
     this.chart = null;
     this.permSub.unsubscribe();
+    this.roleSub.unsubscribe();
   }
 
   override render(): TemplateResult {
@@ -176,9 +189,11 @@ export class WuiFleetStopAnalysis extends LitElement {
         <wui-content-header></wui-content-header>
       </wui-context-generator>
       <div class="body">
-        ${this.renderToolbar()} ${this.renderOffline()} ${this.renderTabs()} ${this.renderContent()}
+        ${this.canView
+          ? html`${this.renderToolbar()} ${this.renderOffline()} ${this.renderTabs()} ${this.renderContent()}`
+          : html`<div class="center muted">${localizeDir(MSG.roleForbidden)}</div>`}
       </div>
-      ${this.stopCausesOpen
+      ${this.canView && this.stopCausesOpen
         ? html`<mf-stop-causes
             .store=${this.store}
             .canEdit=${this.canEdit}

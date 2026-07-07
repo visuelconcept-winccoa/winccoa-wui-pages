@@ -62,7 +62,7 @@ export function parseConnections(text: string): VncConnection[] {
     list = raw;
   } else if (raw && typeof raw === 'object') {
     const obj = raw as Record<string, unknown>;
-    if (Array.isArray(obj.connections)) list = obj.connections;
+    if (Array.isArray(obj['connections'])) list = obj['connections'];
     else if ('host' in obj || 'name' in obj) list = [obj];
   }
   if (!Array.isArray(list)) {
@@ -76,7 +76,7 @@ function normalize(item: Partial<VncConnection>): VncConnection {
   const out: VncConnection = { ...base };
   for (const key of Object.keys(base) as (keyof VncConnection)[]) {
     if (item[key] !== undefined && item[key] !== null) {
-      (out as Record<string, unknown>)[key] = item[key];
+      (out as unknown as Record<string, unknown>)[key] = item[key];
     }
   }
   out.port = Number(out.port) || DEFAULT_VNC_PORT;

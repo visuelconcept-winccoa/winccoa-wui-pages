@@ -26,7 +26,6 @@ import {
 import { AliAssetReader, type AliAssetInfo } from '../data/ali-assets.js';
 import { normDp, toNumber } from '../data/dp-utils.js';
 import type { FleetStore } from '../data/fleet-store.js';
-import { canEditFleet, canEditFleet$ } from '../data/permissions.js';
 import { MSG, confirmDeleteAtelierMsg, localize, localizeDir } from '../i18n.js';
 import { SceneController } from '../scene/scene-controller.js';
 import {
@@ -134,6 +133,10 @@ export class MfAtelierView extends LitElement {
 
   @property({ attribute: false }) atelier!: Atelier;
   @property({ attribute: false }) store: FleetStore | null = null;
+  /** Combined edit grant (canPublish && 'edit' role), provided by the page shell. */
+  @property({ type: Boolean }) canEdit = true;
+  /** Application-Security 'ai' grant — gates the AI-assistant affordance. */
+  @property({ type: Boolean }) roleAi = true;
 
   @query('canvas') private canvasEl!: HTMLCanvasElement;
   @query('.overlay-layer') private overlayEl!: HTMLElement;
@@ -172,12 +175,9 @@ export class MfAtelierView extends LitElement {
   @state() private stopCauses: StopCause[] = [];
   /** Assets from the Asset Lifecycle Intelligence module (machine link + obsolescence). */
   @state() private aliAssets: AliAssetInfo[] = [];
-  /** Edit permission (canPublish); when false the UI is view-only. */
-  @state() private canEdit = canEditFleet();
 
   private scene: SceneController | null = null;
   private readonly aliReader = new AliAssetReader();
-  private permSub = new Subscription();
   private resizeObserver: ResizeObserver | null = null;
   private visibility: IntersectionObserver | null = null;
   private readonly api = this.resolveApi();
@@ -196,7 +196,6 @@ export class MfAtelierView extends LitElement {
     this.resizeObserver?.disconnect();
     this.visibility?.disconnect();
     this.dpSubscription.unsubscribe();
-    this.permSub.unsubscribe();
     this.scene?.dispose();
     this.scene = null;
   }
@@ -224,7 +223,7 @@ export class MfAtelierView extends LitElement {
           ${this.canEdit
             ? html`<ix-icon-button ghost icon="trashcan" title=${localize(MSG.view.deleteAtelier)} @click=${() => (this.confirmDeleteOpen = true)}></ix-icon-button>`
             : ''}
-          <mf-ai-prompt></mf-ai-prompt>
+          ${this.roleAi ? html`<mf-ai-prompt></mf-ai-prompt>` : ''}
         </div>
         <div class="stage">
           <div class="viewport">
@@ -241,6 +240,8 @@ export class MfAtelierView extends LitElement {
   }
 
   protected override willUpdate(changed: PropertyValues): void {
+    // Edit grant revoked live (role assignment / canPublish) → drop out of edit mode.
+    if (changed.has('canEdit') && !this.canEdit && this.editMode) this.toggleEditMode();
     if (changed.has('atelier') && this.atelier && !this.loaded) {
       this.loaded = true;
       this.atelierName = this.atelier.name;
@@ -287,12 +288,6 @@ export class MfAtelierView extends LitElement {
       else this.scene?.stop();
     });
     this.visibility.observe(this.viewportEl);
-
-    // Re-evaluate the edit permission once the user settings load (canPublish).
-    this.permSub = canEditFleet$().subscribe((allowed) => {
-      this.canEdit = allowed;
-      if (!allowed && this.editMode) this.toggleEditMode();
-    });
   }
 
   private renderToolbar(): TemplateResult {

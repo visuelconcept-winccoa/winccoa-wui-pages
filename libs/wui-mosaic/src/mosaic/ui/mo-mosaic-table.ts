@@ -3,13 +3,16 @@
 
 /**
  * Table of mosaics shown on the overview. Each row opens the mosaic (display
- * mode), or renames / deletes it.
+ * mode), or renames / deletes it. Rename/delete follow the Application-Security
+ * 'edit' role of the mosaic module (subscribed here — disabled when not granted).
  *
  * Emits: `wui:open` / `wui:edit` / `wui:export` / `wui:delete` (all `{ id }`).
  */
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type TemplateResult } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { customElement, property, state } from 'lit/decorators.js';
+import { Subscription } from 'rxjs';
+import { hasRole$ } from '@visuelconcept/wui-kit/data/app-security.js';
 import { tileKindLabel, type Mosaic } from '../types.js';
 import { MSG, localize, localizeDir } from '../i18n.js';
 
@@ -25,6 +28,21 @@ export class MoMosaicTable extends LitElement {
   static override readonly styles = [IXCoreStyles, tableStyles()];
 
   @property({ attribute: false }) mosaics: Mosaic[] = [];
+
+  /** Application-Security grant for the 'edit' role (open until assigned). */
+  @state() private canEdit = true;
+
+  private roleSub = new Subscription();
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    this.roleSub = hasRole$('mosaic', 'edit').subscribe((granted) => (this.canEdit = granted));
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.roleSub.unsubscribe();
+  }
 
   override render(): TemplateResult {
     const rows = [...this.mosaics].sort((a, b) => a.name.localeCompare(b.name));
@@ -70,6 +88,7 @@ export class MoMosaicTable extends LitElement {
             size="16"
             icon="pen"
             title=${localize(MSG.table.rename)}
+            ?disabled=${!this.canEdit}
             @click=${() => this.requestEdit(mosaic.id)}
           ></ix-icon-button>
           <ix-icon-button
@@ -84,6 +103,7 @@ export class MoMosaicTable extends LitElement {
             size="16"
             icon="trashcan"
             title=${localize(MSG.table.remove)}
+            ?disabled=${!this.canEdit}
             @click=${() => this.requestDelete(mosaic.id)}
           ></ix-icon-button>
         </td>

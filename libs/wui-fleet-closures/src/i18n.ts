@@ -43,6 +43,11 @@ export const MSG = {
     'Mode hors-ligne : la configuration ne peut pas être lue ni enregistrée (backend non connecté).',
     'Offline-Modus: Die Konfiguration kann nicht gelesen oder gespeichert werden (Backend nicht verbunden).'
   ),
+  roleForbidden: ml(
+    'Your groups do not hold the "view" role of this page.',
+    'Vos groupes ne possèdent pas le rôle « consulter » de cette page.',
+    'Ihre Gruppen besitzen die Rolle „Ansehen“ dieser Seite nicht.'
+  ),
   table: {
     scope: ml('Scope', 'Périmètre', 'Geltungsbereich'),
     start: ml('Start', 'Début', 'Beginn'),

@@ -1,0 +1,14 @@
+// Menu fragment for @visuelconcept/wui-audit-trail.
+// Merge these object(s) into the host dashboard's `entries` array
+// (apps/dashboard-wc/config/menuconfig.jsonc). Idempotent by `routeId`.
+[
+  {
+    "title": { "en_US": "Audit Trail", "fr": "Audit Trail", "de_AT": "Audit Trail" },
+    "icon": "document",
+    "path": "/audit-trail",
+    "module": "/data/dashboard-wc/pages/audit-trail.js",
+    "routeId": "audit-trail",
+    "component": "wui-audit-trail",
+    "permission": ["connected"]
+  }
+]

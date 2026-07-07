@@ -10,8 +10,10 @@
  */
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
-import { LitElement, css, html, type TemplateResult } from 'lit';
+import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { Subscription } from 'rxjs';
+import { hasRole$ } from '@visuelconcept/wui-kit/data/app-security.js';
 import { MSG, checkedAtMsg, localize, localizeDir } from '../i18n.js';
 import { endpoint, type VncConnection, type VncStatus } from '../types.js';
 
@@ -33,6 +35,25 @@ export class RvConnectionTable extends LitElement {
 
   @state() private sortKey: SortKey = 'name';
   @state() private sortAsc = true;
+
+  /** Application-Security grant for the 'connect' role (open until assigned). */
+  @state() private canConnect = true;
+  /** Application-Security grant for the 'edit' role (open until assigned). */
+  @state() private canEdit = true;
+
+  private roleSub = new Subscription();
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    this.roleSub = new Subscription();
+    this.roleSub.add(hasRole$('remote-vnc', 'connect').subscribe((granted) => (this.canConnect = granted)));
+    this.roleSub.add(hasRole$('remote-vnc', 'edit').subscribe((granted) => (this.canEdit = granted)));
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.roleSub.unsubscribe();
+  }
 
   override render(): TemplateResult {
     const rows = this.sortedConnections();
@@ -60,7 +81,7 @@ export class RvConnectionTable extends LitElement {
   // eslint-disable-next-line max-lines-per-function -- single table-row template
   private renderRow(conn: VncConnection): TemplateResult {
     return html`
-      <tr class="clickable" @click=${() => this.requestOpen(conn.id)}>
+      <tr class=${this.canConnect ? 'clickable' : ''} @click=${() => this.requestOpen(conn.id)}>
         <td class="star-col" @click=${(e: Event) => e.stopPropagation()}>
           <button
             class="star ${conn.favorite ? 'on' : ''}"
@@ -84,20 +105,24 @@ export class RvConnectionTable extends LitElement {
         </td>
         <td class="mono">${this.fmtDate(conn.lastConnectedAt)}</td>
         <td class="actions-col" @click=${(e: Event) => e.stopPropagation()}>
-          <ix-icon-button
-            ghost
-            size="16"
-            icon="play"
-            title=${localize(MSG.table.connect)}
-            @click=${() => this.requestOpen(conn.id)}
-          ></ix-icon-button>
-          <ix-icon-button
-            ghost
-            size="16"
-            icon="pen"
-            title=${localize(MSG.table.edit)}
-            @click=${() => this.requestEdit(conn.id)}
-          ></ix-icon-button>
+          ${this.canConnect
+            ? html`<ix-icon-button
+                ghost
+                size="16"
+                icon="play"
+                title=${localize(MSG.table.connect)}
+                @click=${() => this.requestOpen(conn.id)}
+              ></ix-icon-button>`
+            : nothing}
+          ${this.canEdit
+            ? html`<ix-icon-button
+                ghost
+                size="16"
+                icon="pen"
+                title=${localize(MSG.table.edit)}
+                @click=${() => this.requestEdit(conn.id)}
+              ></ix-icon-button>`
+            : nothing}
           <ix-icon-button
             ghost
             size="16"
@@ -105,13 +130,15 @@ export class RvConnectionTable extends LitElement {
             title=${localize(MSG.table.exportOne)}
             @click=${() => this.requestExport(conn.id)}
           ></ix-icon-button>
-          <ix-icon-button
-            ghost
-            size="16"
-            icon="trashcan"
-            title=${localize(MSG.table.remove)}
-            @click=${() => this.requestDelete(conn.id)}
-          ></ix-icon-button>
+          ${this.canEdit
+            ? html`<ix-icon-button
+                ghost
+                size="16"
+                icon="trashcan"
+                title=${localize(MSG.table.remove)}
+                @click=${() => this.requestDelete(conn.id)}
+              ></ix-icon-button>`
+            : nothing}
         </td>
       </tr>
     `;
@@ -199,6 +226,7 @@ export class RvConnectionTable extends LitElement {
   }
 
   private requestOpen(id: string): void {
+    if (!this.canConnect) return; // row click stays inert without the 'connect' role
     this.dispatchEvent(new CustomEvent('wui:open', { detail: { id }, bubbles: true, composed: true }));
   }
 

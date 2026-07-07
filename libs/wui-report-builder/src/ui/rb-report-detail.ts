@@ -44,6 +44,10 @@ export class RbReportDetail extends LitElement {
 
   @property({ attribute: false }) report!: Report;
   @property({ type: Boolean }) canPublish = false;
+  /** Application-Security 'fill' grant: data entry / recompute / save (open until assigned). */
+  @property({ type: Boolean }) canFill = true;
+  /** Application-Security 'sign' grant: workflow sign/reject actions (open until assigned). */
+  @property({ type: Boolean }) canSign = true;
   @property() signerName = '';
   @property() signerId = '';
 
@@ -56,6 +60,8 @@ export class RbReportDetail extends LitElement {
   override render(): TemplateResult {
     if (!this.working) return html``;
     const locked = isLocked(this.working);
+    // Data entry is read-only both on a final-state report and without the 'fill' grant.
+    const readOnly = locked || !this.canFill;
     const state = currentState(this.working);
     return html`
       <div class="wrap">
@@ -67,7 +73,7 @@ export class RbReportDetail extends LitElement {
           </div>
           <span class="chip solid" style="--c:${state?.color ?? '#888'}">${state?.label ?? '—'}</span>
           <span class="grow"></span>
-          <ix-button variant="secondary" ?disabled=${locked} @click=${this.save}>
+          <ix-button variant="secondary" ?disabled=${readOnly} @click=${this.save}>
             <ix-icon name="floppy-disk" slot="icon"></ix-icon>${localizeDir(MSG.detail.save)}
           </ix-button>
           <ix-button variant="secondary" @click=${this.print}>
@@ -76,12 +82,12 @@ export class RbReportDetail extends LitElement {
         </div>
 
         <div class="sheet">
-          ${this.renderHeader(locked)} ${this.renderWorkflow(locked)}
-          ${this.working.sections.map((s) => this.renderSection(s, locked))}
+          ${this.renderHeader(readOnly)} ${this.renderWorkflow(locked)}
+          ${this.working.sections.map((s) => this.renderSection(s, readOnly))}
           ${this.renderSignatures()}
         </div>
       </div>
-      ${this.signOpen && state?.advance
+      ${this.signOpen && this.canSign && state?.advance
         ? html`<rb-signature-dialog
             .signOff=${state.advance}
             signerName=${this.signerName}
@@ -128,17 +134,17 @@ export class RbReportDetail extends LitElement {
     const check = canAdvance(this.working, this.canPublish);
     return html`
       <div class="wf-bar">
-        ${state.advance
+        ${state.advance && this.canSign
           ? html`<ix-button ?disabled=${!check.ok} title=${check.ok ? '' : check.reason} @click=${() => (this.signOpen = true)}>
               <ix-icon name="pen" slot="icon"></ix-icon>${state.advance.actionLabel}
             </ix-button>`
           : html`${locked ? html`<span class="locked-note"><ix-icon name="lock-closed"></ix-icon>${localizeDir(MSG.detail.lockedNote)}</span>` : ''}`}
-        ${state.reject
+        ${state.reject && this.canSign
           ? html`<ix-button variant="secondary" @click=${this.reject}>
               <ix-icon name="undo" slot="icon"></ix-icon>${state.reject.actionLabel}
             </ix-button>`
           : ''}
-        ${state.advance && !check.ok ? html`<span class="wf-reason">${check.reason}</span>` : ''}
+        ${state.advance && this.canSign && !check.ok ? html`<span class="wf-reason">${check.reason}</span>` : ''}
       </div>
     `;
   }

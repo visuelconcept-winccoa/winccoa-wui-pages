@@ -49,7 +49,12 @@ export const MSG = {
     ),
     missing: ml('Mosaic not found.', 'Mosaïque introuvable.', 'Mosaik nicht gefunden.'),
     backToList: ml('Back to the list', 'Retour à la liste', 'Zurück zur Liste'),
-    importFailed: ml('Import failed.', 'Import échoué.', 'Import fehlgeschlagen.')
+    importFailed: ml('Import failed.', 'Import échoué.', 'Import fehlgeschlagen.'),
+    roleForbidden: ml(
+      'Your groups do not hold the “View” role of this page.',
+      'Vos groupes ne possèdent pas le rôle « Consulter » de cette page.',
+      'Ihre Gruppen besitzen die Rolle „Ansehen“ dieser Seite nicht.'
+    )
   },
   table: {
     name: ml('Name', 'Nom', 'Name'),

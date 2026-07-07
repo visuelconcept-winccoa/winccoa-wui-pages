@@ -36,6 +36,11 @@ export const MSG = {
     allMachines: ml('All machines', 'Toutes les machines', 'Alle Maschinen'),
     refresh: ml('Refresh', 'Actualiser', 'Aktualisieren')
   },
+  roleForbidden: ml(
+    'Your groups do not hold the "view" role of this page.',
+    'Vos groupes ne possèdent pas le rôle « consulter » de cette page.',
+    'Ihre Gruppen besitzen die Rolle „Ansehen" dieser Seite nicht.'
+  ),
   offline: ml(
     'Offline mode: workshop configuration unavailable (backend not connected). History data cannot be read.',
     "Mode hors-ligne : configuration des ateliers indisponible (backend non connecté). Les données d'historique ne peuvent pas être lues.",

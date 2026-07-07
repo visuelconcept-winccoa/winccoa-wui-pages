@@ -65,3 +65,23 @@ The **RFB protocol and VNC auth are end-to-end**: the relay is just a byte pipe,
 - Resolved-parameter helpers = **private methods, not getters** (typescript-eslint member-ordering forbids private accessors after public methods).
 - The dialog's `willUpdate` back-fills the defaults of old records via `{...blankConnection(), ...clone}`.
 - After modifying the manager: restart `vncProxy`. To activate or refresh `/api/vnc/*` (relay, `/health`, `/status`): the customer webserver must be restarted (the backend module only serves its routes after a restart).
+
+## Application Security (roles — added 2026-07)
+
+The page declares 3 roles (self-registration in `remote-vnc.ts` + mirrored in
+the app-security manifest): `view`, `connect`, `edit`. All OPEN until an admin
+assigns groups in `/app-security` (docs/wui-app-security/INTEGRATION.md).
+
+- **`view`** gates the page body: without it the header/context-generator stays
+  but the body is replaced by the `roleForbidden` notice.
+- **`connect`** ("Open sessions") gates OPENING a session: the row click and the
+  play button in `rv-connection-table` (subscribed inside the child), the deep-link
+  `lastConnectedAt` stamping, and the direct viewer on `/remote-vnc/:id` — when
+  denied the `connectForbidden` notice renders instead of `rv-viewer`.
+- **`edit`** (manage the connection list) hides New connection, Import,
+  Generate-demo, and the per-row edit/delete buttons; a revoke while an
+  edit/delete dialog is open closes it. Export (all / one) and the favourite
+  star stay open — export only reads, the star is a personal preference.
+- UI gating only (best-effort UX): `/api/vnc/*` remains unauthenticated
+  (`fullAccess`, see the Security pitfall above) — server-side hardening of the
+  relay is still the pre-production TODO.

@@ -42,7 +42,12 @@ export const MSG = {
       'Générer des caméras de démonstration',
       'Demo-Kameras erzeugen'
     ),
-    importFailed: ml('Import failed.', 'Import échoué.', 'Import fehlgeschlagen.')
+    importFailed: ml('Import failed.', 'Import échoué.', 'Import fehlgeschlagen.'),
+    roleForbidden: ml(
+      'Your groups do not hold the "view" role of this page.',
+      'Vos groupes ne possèdent pas le rôle « consulter » de cette page.',
+      'Ihre Gruppen besitzen die Rolle „Ansehen“ dieser Seite nicht.'
+    )
   },
   table: {
     stateTitle: ml(

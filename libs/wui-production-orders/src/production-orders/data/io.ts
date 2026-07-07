@@ -82,7 +82,7 @@ function normalize(item: Partial<ProductionOrder>): ProductionOrder {
   const out: ProductionOrder = { ...base };
   for (const key of Object.keys(base) as (keyof ProductionOrder)[]) {
     if (item[key] !== undefined && item[key] !== null) {
-      (out as Record<string, unknown>)[key] = item[key];
+      (out as unknown as Record<string, unknown>)[key] = item[key];
     }
   }
   out.qtyOrdered = Number(out.qtyOrdered) || 0;

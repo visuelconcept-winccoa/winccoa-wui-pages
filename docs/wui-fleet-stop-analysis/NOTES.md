@@ -36,3 +36,16 @@ Core in `engine.ts` (`analyseStopCauses`, a pure history-query + interval algori
 - **echarts not bundled**: bare import `import * as echarts from 'echarts'`, externalized via the shared-bundle import map (in `export-echarts-entry`), resolved at runtime by the shell. `@siemens/ix-echarts` only exports theme helpers (`registerTheme`), not a component → the page initializes echarts directly in a `<div #chart>`.
 - **Lit recreates `#chart` on tab change**: `renderChart()` must `dispose()` then re-initialize when `chart.getDom() !== host`, otherwise the chart re-attaches to a detached node.
 - **Shared chunks**: the page reuses `FleetStore` / `types.ts` (and, via the `mf-stop-causes` dialog, `dialog-styles` / `router-event`) from machine-fleet-3d; rollup extracts **shared chunks** from them, imported by both pages. Their names are **content-derived and change between builds** → never hardcode them; check each deployed page's `./chunks/...` references. `three` is NOT in this page's bundle (present in `npmDeps` because shared/transitive via the fleet store).
+
+## Application Security (roles — added 2026-07)
+
+The page declares 1 role (self-registration in `fleet-stop-analysis.ts`, module id
+`fleet-stop-analysis`): `view`. OPEN until an admin assigns groups in `/app-security`
+(docs/wui-app-security/INTEGRATION.md).
+
+- **`view`** gates the page BODY: when denied, the header/context-generator still
+  renders but the toolbar, tabs, tables/chart and the stop-cause catalog dialog are
+  replaced by a centered "role forbidden" notice (`MSG.roleForbidden`).
+- Read-only analysis page (tier 1, no backend of its own) → no capability roles and
+  no server-side guard. The stop-cause catalog editor's write access is already
+  governed by the existing `canEditFleet` (canPublish) permission, unchanged here.

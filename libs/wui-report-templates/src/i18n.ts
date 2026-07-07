@@ -45,6 +45,11 @@ export const MSG = {
     "Mode hors-ligne : modifications non persistées (backend indisponible ou droits d'écriture manquants).",
     'Offline-Modus: Änderungen werden nicht gespeichert (Backend nicht verfügbar oder fehlende Schreibrechte).'
   ),
+  roleForbidden: ml(
+    'Your groups do not hold the "view" role of this page.',
+    'Vos groupes ne possèdent pas le rôle « consulter » de cette page.',
+    'Ihre Gruppen besitzen die Rolle „Ansehen" dieser Seite nicht.'
+  ),
   msg: {
     importFailed: ml('Import failed.', 'Import échoué.', 'Import fehlgeschlagen.'),
     copySuffix: ml('copy', 'copie', 'Kopie')

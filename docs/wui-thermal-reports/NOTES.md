@@ -54,3 +54,22 @@ Core in `engine.ts`:
 - DE/EN i18n of the in-component FR labels.
 - Richer auto-derivation of conformity (today a manual field + computed indicators).
 - NGA archiving of report DPs for trending.
+
+## Application Security (roles — added 2026-07)
+
+The page declares 2 roles (self-registration in `thermal-reports.ts` +
+mirrored in the app-security manifest): `view`, `edit`. All OPEN until an
+admin assigns groups in `/app-security` (docs/wui-app-security/INTEGRATION.md).
+
+- **`view`** — gates the page BODY: without the grant the header stays but the
+  list/detail is replaced by a "role missing" notice.
+- **`edit`** (create/validate treatment reports) — hides every mutation
+  affordance (`hasRole$`, subscribed per component): the "New report" +
+  "Import JSON" buttons and the demo-generation empty-state button
+  (`thermal-reports.ts` — a revoke also closes an open editor dialog / pending
+  delete confirm), the row edit/delete icon buttons (`tt-report-table`), and
+  the Edit / Reject / Validate actions (`tt-report-detail`). Viewing, opening
+  a report, printing and JSON/CSV **export stay open** (read-only).
+- Tier 1 module (no dedicated backend routes) → no server-side `requireRole`
+  guard; persistence goes through the shared PARA REST API, which is
+  deliberately not gated per-module (see docs/wui-para/NOTES.md).

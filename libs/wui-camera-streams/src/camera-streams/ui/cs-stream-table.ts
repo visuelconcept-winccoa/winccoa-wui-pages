@@ -8,9 +8,11 @@
  *
  * Emits: `wui:open` / `wui:edit` / `wui:delete` / `wui:export` / `wui:fav` (all `{ id }`).
  */
+import { hasRole$ } from '@visuelconcept/wui-kit/data/app-security.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
-import { LitElement, css, html, type TemplateResult } from 'lit';
+import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { Subscription } from 'rxjs';
 import { streamHost, type CameraStatus, type CameraStream } from '../types.js';
 import { MSG, checkedAtMsg, clientsConnectedMsg, localize, localizeDir } from '../i18n.js';
 
@@ -34,6 +36,20 @@ export class CsStreamTable extends LitElement {
 
   @state() private sortKey: SortKey = 'name';
   @state() private sortAsc = true;
+  /** Application-Security grant for the 'edit' role (open until assigned). */
+  @state() private canEdit = true;
+
+  private roleSub = new Subscription();
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    this.roleSub = hasRole$('camera-streams', 'edit').subscribe((granted) => (this.canEdit = granted));
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.roleSub.unsubscribe();
+  }
 
   override render(): TemplateResult {
     const rows = this.sortedStreams();
@@ -93,13 +109,15 @@ export class CsStreamTable extends LitElement {
             title=${localize(MSG.table.view)}
             @click=${() => this.requestOpen(cam.id)}
           ></ix-icon-button>
-          <ix-icon-button
-            ghost
-            size="16"
-            icon="pen"
-            title=${localize(MSG.table.edit)}
-            @click=${() => this.requestEdit(cam.id)}
-          ></ix-icon-button>
+          ${this.canEdit
+            ? html`<ix-icon-button
+                ghost
+                size="16"
+                icon="pen"
+                title=${localize(MSG.table.edit)}
+                @click=${() => this.requestEdit(cam.id)}
+              ></ix-icon-button>`
+            : nothing}
           <ix-icon-button
             ghost
             size="16"
@@ -107,13 +125,15 @@ export class CsStreamTable extends LitElement {
             title=${localize(MSG.table.exportOne)}
             @click=${() => this.requestExport(cam.id)}
           ></ix-icon-button>
-          <ix-icon-button
-            ghost
-            size="16"
-            icon="trashcan"
-            title=${localize(MSG.table.remove)}
-            @click=${() => this.requestDelete(cam.id)}
-          ></ix-icon-button>
+          ${this.canEdit
+            ? html`<ix-icon-button
+                ghost
+                size="16"
+                icon="trashcan"
+                title=${localize(MSG.table.remove)}
+                @click=${() => this.requestDelete(cam.id)}
+              ></ix-icon-button>`
+            : nothing}
         </td>
       </tr>
     `;

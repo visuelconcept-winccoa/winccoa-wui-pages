@@ -25,7 +25,8 @@ import { LitElement, css, html, nothing, type PropertyValues, type TemplateResul
 import { property, query, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
-import { MSG, confirmDeleteReportMsg, localize, localizeDir } from './i18n.js';
+import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { MSG, confirmDeleteReportMsg, localize, localizeDir, ml } from './i18n.js';
 import { buildDemoReports, buildDemoTemplates } from './data/demo.js';
 import { exportReportsCsv, exportReportsJson, parseReports } from './data/io.js';
 import { ReportStore } from './data/report-store.js';
@@ -39,6 +40,7 @@ import './ui/rb-report-table.js';
 
 const REPORTS_ROUTE = '/report-builder';
 const TEMPLATES_ROUTE = '/report-templates';
+const MODULE_ID = 'report-builder';
 
 export class WuiReportBuilder extends LitElement {
   static override readonly styles = [IXCoreStyles, pageStyles()];
@@ -57,22 +59,52 @@ export class WuiReportBuilder extends LitElement {
   @state() private signerName = '';
   @state() private signerId = '';
 
+  /** Application-Security grants (open until a group is assigned in /app-security). */
+  @state() private roleView = true;
+  @state() private roleFill = true;
+  @state() private roleSign = true;
+
   @query('.import-input') private importInput!: HTMLInputElement;
 
   private readonly reportStore = new ReportStore();
   private readonly templateStore = new TemplateStore();
   private readonly user = this.resolveUser();
   private userSub = new Subscription();
+  private roleSub = new Subscription();
 
   override connectedCallback(): void {
     super.connectedCallback();
     this.readUser();
     if (this.user) this.userSub = this.user.user$.subscribe(() => this.readUser());
+    // Application Security: declare this module's roles and follow the grants live.
+    registerModuleRoles({
+      module: MODULE_ID,
+      title: ml('Reports', 'Rapports', 'Berichte'),
+      roles: [
+        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
+        { id: 'fill', label: ml('Fill reports', 'Remplir les rapports', 'Berichte ausfüllen') },
+        { id: 'sign', label: ml('Sign reports', 'Signer les rapports', 'Berichte signieren') }
+      ]
+    });
+    this.roleSub = new Subscription();
+    this.roleSub.add(hasRole$(MODULE_ID, 'view').subscribe((granted) => (this.roleView = granted)));
+    this.roleSub.add(
+      hasRole$(MODULE_ID, 'fill').subscribe((granted) => {
+        this.roleFill = granted;
+        if (!granted) {
+          // Drop out of a live creation/deletion flow when the grant is revoked.
+          this.creatingReport = false;
+          this.deletingId = null;
+        }
+      })
+    );
+    this.roleSub.add(hasRole$(MODULE_ID, 'sign').subscribe((granted) => (this.roleSign = granted)));
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.userSub.unsubscribe();
+    this.roleSub.unsubscribe();
   }
 
   override render(): TemplateResult {
@@ -124,12 +156,15 @@ export class WuiReportBuilder extends LitElement {
   }
 
   private renderBody(): TemplateResult {
+    if (!this.roleView) return this.renderForbidden();
     if (this.loading) return html`<div class="center"><ix-spinner></ix-spinner></div>`;
     const selected = this.selectedReport();
     if (selected) {
       return html`<rb-report-detail
         .report=${selected}
         .canPublish=${this.canPublish}
+        .canFill=${this.roleFill}
+        .canSign=${this.roleSign}
         signerName=${this.signerName}
         signerId=${this.signerId}
         @wui:back=${this.goToList}
@@ -143,20 +178,30 @@ export class WuiReportBuilder extends LitElement {
           <ix-button variant="secondary" @click=${() => this.dispatchEvent(new RouterEvent(TEMPLATES_ROUTE))}>
             <ix-icon name="document" slot="icon"></ix-icon>${localizeDir(MSG.page.templates)}
           </ix-button>
-          <ix-button variant="secondary" @click=${this.triggerImport}><ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.page.import)}</ix-button>
+          ${this.roleFill
+            ? html`<ix-button variant="secondary" @click=${this.triggerImport}><ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.page.import)}</ix-button>`
+            : nothing}
           <ix-button variant="secondary" ?disabled=${this.reports.length === 0} @click=${() => exportReportsJson(this.reports)}><ix-icon name="download" slot="icon"></ix-icon>JSON</ix-button>
           <ix-button variant="secondary" ?disabled=${this.reports.length === 0} @click=${() => exportReportsCsv(this.reports)}><ix-icon name="download" slot="icon"></ix-icon>CSV</ix-button>
-          <ix-button ?disabled=${this.templates.length === 0} @click=${() => (this.creatingReport = true)}><ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.page.newReport)}</ix-button>
+          ${this.roleFill
+            ? html`<ix-button ?disabled=${this.templates.length === 0} @click=${() => (this.creatingReport = true)}><ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.page.newReport)}</ix-button>`
+            : nothing}
         </div>
       </div>
       <input class="import-input" type="file" accept="application/json,.json" hidden @change=${this.onImportFile} />
       ${this.reports.length === 0 ? this.renderEmpty() : html`<rb-report-table
             .reports=${this.reports}
-            .canEdit=${this.canPublish}
+            .canEdit=${this.canPublish && this.roleFill}
             @wui:open=${(e: CustomEvent<{ id: string }>) => this.open(e.detail.id)}
             @wui:delete=${(e: CustomEvent<{ id: string }>) => (this.deletingId = e.detail.id)}
           ></rb-report-table>`}
     `;
+  }
+
+  private renderForbidden(): TemplateResult {
+    return html`<div class="center empty">
+      <ix-typography>${localizeDir(MSG.page.roleForbidden)}</ix-typography>
+    </div>`;
   }
 
   private renderEmpty(): TemplateResult {
@@ -165,7 +210,9 @@ export class WuiReportBuilder extends LitElement {
       ${this.templates.length === 0
         ? html`<ix-typography>${localizeDir(MSG.page.emptyNoTemplate)}</ix-typography>`
         : nothing}
-      <ix-button variant="secondary" @click=${this.generateDemo}><ix-icon name="add" slot="icon"></ix-icon>${localizeDir(MSG.page.generateDemo)}</ix-button>
+      ${this.roleFill
+        ? html`<ix-button variant="secondary" @click=${this.generateDemo}><ix-icon name="add" slot="icon"></ix-icon>${localizeDir(MSG.page.generateDemo)}</ix-button>`
+        : nothing}
     </div>`;
   }
 

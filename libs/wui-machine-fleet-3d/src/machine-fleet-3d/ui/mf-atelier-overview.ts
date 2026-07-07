@@ -11,9 +11,7 @@
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, svg, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { Subscription } from 'rxjs';
 import type { FleetStore } from '../data/fleet-store.js';
-import { canEditFleet, canEditFleet$ } from '../data/permissions.js';
 import { MSG, localize, localizeDir } from '../i18n.js';
 import { STATE_COLORS, type Atelier, type MachineState } from '../types.js';
 import './mf-ai-prompt.js';
@@ -33,25 +31,15 @@ export class MfAtelierOverview extends LitElement {
   @property({ attribute: false }) ateliers: Atelier[] = [];
   @property({ attribute: false }) store: FleetStore | null = null;
   @property({ type: Boolean }) offline = false;
+  /** Combined edit grant (canPublish && 'edit' role), provided by the page shell. */
+  @property({ type: Boolean }) canEdit = true;
+  /** Application-Security 'ai' grant — gates the AI-assistant affordance. */
+  @property({ type: Boolean }) roleAi = true;
 
   @state() private createOpen = false;
   @state() private createTemplate = '';
   @state() private createDefaultName = '';
   @state() private resourcesOpen = false;
-  /** Edit permission (canPublish); when false the overview is view-only. */
-  @state() private canEdit = canEditFleet();
-
-  private permSub = new Subscription();
-
-  override connectedCallback(): void {
-    super.connectedCallback();
-    this.permSub = canEditFleet$().subscribe((allowed) => (this.canEdit = allowed));
-  }
-
-  override disconnectedCallback(): void {
-    super.disconnectedCallback();
-    this.permSub.unsubscribe();
-  }
 
   override render(): TemplateResult {
     return html`
@@ -74,7 +62,7 @@ export class MfAtelierOverview extends LitElement {
               <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.overview.newEllipsis)}
             </ix-button>`
           : ''}
-        <mf-ai-prompt></mf-ai-prompt>
+        ${this.roleAi ? html`<mf-ai-prompt></mf-ai-prompt>` : ''}
       </div>
       ${this.offline
         ? html`<div class="notice">

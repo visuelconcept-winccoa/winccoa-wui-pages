@@ -19,7 +19,7 @@
  * the browser blocks it — a notice is shown in that case.
  */
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
-import JSMpeg from '@cycjimmy/jsmpeg-player';
+import JSMpeg, { type Player } from '@cycjimmy/jsmpeg-player';
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import {
@@ -69,7 +69,7 @@ export class CsViewer extends LitElement {
 
   @query('.screen') private canvas!: HTMLCanvasElement;
 
-  private player: JSMpeg.Player | null = null;
+  private player: Player | null = null;
   private connectedId = '';
   private manualStop = false;
   private lastFrameAt = 0;

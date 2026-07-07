@@ -55,7 +55,7 @@ export function parseStreams(text: string): CameraStream[] {
     list = raw;
   } else if (raw && typeof raw === 'object') {
     const obj = raw as Record<string, unknown>;
-    if (Array.isArray(obj.streams)) list = obj.streams;
+    if (Array.isArray(obj['streams'])) list = obj['streams'];
     else if ('url' in obj || 'name' in obj) list = [obj];
   }
   if (!Array.isArray(list)) {
@@ -66,12 +66,11 @@ export function parseStreams(text: string): CameraStream[] {
 
 function normalize(item: Partial<CameraStream>): CameraStream {
   const base = blankStream();
-  const out: CameraStream = { ...base };
-  for (const key of Object.keys(base) as (keyof CameraStream)[]) {
-    if (item[key] !== undefined && item[key] !== null) {
-      (out as Record<string, unknown>)[key] = item[key];
-    }
-  }
+  const keys = Object.keys(base) as (keyof CameraStream)[];
+  const defined = Object.fromEntries(
+    keys.filter((key) => item[key] !== undefined && item[key] !== null).map((key) => [key, item[key]])
+  ) as Partial<CameraStream>;
+  const out: CameraStream = { ...base, ...defined };
   out.transport = out.transport === 'udp' ? 'udp' : 'tcp';
   out.audio = Boolean(out.audio);
   out.maxWidth = Math.max(0, Number(out.maxWidth) || 0);

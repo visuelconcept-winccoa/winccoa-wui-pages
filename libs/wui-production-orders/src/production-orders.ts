@@ -26,15 +26,17 @@ import '@wincc-oa/wui-oarxjs-context/components/wui-context-generator/wui-contex
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { query, state } from 'lit/decorators.js';
+import { Subscription } from 'rxjs';
 import type { Atelier } from '@visuelconcept/wui-fleet-core/types.js';
 import { FleetStore } from '@visuelconcept/wui-fleet-core/data/fleet-store.js';
+import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
 import { buildDemoOrders } from './production-orders/data/demo-orders.js';
 import { clearOrderFromFleet, pushOrderToFleet } from './production-orders/data/fleet-link.js';
 import { exportCsv, exportJson, parseOrders } from './production-orders/data/io.js';
 import { OrderStore } from './production-orders/data/order-store.js';
 import type { OrderStatus, ProductionOrder } from './production-orders/types.js';
 import { applyTransition } from './production-orders/workflow.js';
-import { MSG, confirmDeleteMsg, localize, localizeDir } from './production-orders/i18n.js';
+import { MSG, confirmDeleteMsg, localize, localizeDir, ml } from './production-orders/i18n.js';
 import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
 import './production-orders/ui/po-gantt.js';
 import './production-orders/ui/po-kpi-bar.js';
@@ -44,6 +46,8 @@ import './production-orders/ui/po-order-table.js';
 type View = 'table' | 'gantt';
 const ID_RADIX = 36;
 const SLUG_MAX = 24;
+/** Application-Security module id (= the page's routeId). */
+const MODULE_ID = 'production-orders';
 
 export class WuiProductionOrders extends LitElement {
   static override readonly styles = [IXCoreStyles, pageStyles()];
@@ -58,12 +62,16 @@ export class WuiProductionOrders extends LitElement {
   @state() private deletingId: string | null = null;
   @state() private importError = '';
 
+  /** Application-Security grants (open until an admin assigns groups). */
+  @state() private canView = true;
+  @state() private canEdit = true;
+
   @query('.import-input') private importInput!: HTMLInputElement;
 
   private readonly store = new OrderStore();
   private readonly fleet = new FleetStore();
+  private roleSub = new Subscription();
 
-  // eslint-disable-next-line max-lines-per-function -- single page template
   override render(): TemplateResult {
     return html`
       <div class="page">
@@ -83,64 +91,11 @@ export class WuiProductionOrders extends LitElement {
         </wui-context-generator>
 
         <div class="body">
-          <div class="toolbar">
-            <po-kpi-bar class="grow" .orders=${this.orders}></po-kpi-bar>
-            <div class="actions">
-              <div class="seg">
-                <ix-button
-                  variant=${this.view === 'table' ? 'primary' : 'secondary'}
-                  @click=${() => (this.view = 'table')}
-                >
-                  <ix-icon name="table" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.table)}
-                </ix-button>
-                <ix-button
-                  variant=${this.view === 'gantt' ? 'primary' : 'secondary'}
-                  @click=${() => (this.view = 'gantt')}
-                >
-                  <ix-icon name="barchart-horizontal" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.planning)}
-                </ix-button>
-              </div>
-              <ix-button variant="secondary" @click=${this.triggerImport}>
-                <ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.importJson)}
-              </ix-button>
-              <ix-button
-                variant="secondary"
-                ?disabled=${this.orders.length === 0}
-                @click=${this.onExportJson}
-              >
-                <ix-icon name="download" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.exportJson)}
-              </ix-button>
-              <ix-button
-                variant="secondary"
-                ?disabled=${this.orders.length === 0}
-                @click=${this.onExportCsv}
-              >
-                <ix-icon name="download" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.exportCsv)}
-              </ix-button>
-              <ix-button @click=${this.openCreate}>
-                <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.newOrder)}
-              </ix-button>
-            </div>
-          </div>
-          <input
-            class="import-input"
-            type="file"
-            accept="application/json,.json"
-            hidden
-            @change=${this.onImportFile}
-          />
-
-          ${this.importError
-            ? html`<div class="notice error">
-                <ix-icon name="warning"></ix-icon>${this.importError}
-              </div>`
-            : nothing}
-          ${this.offline
-            ? html`<div class="notice">
-                <ix-icon name="info"></ix-icon>${localizeDir(MSG.notice.offline)}
-              </div>`
-            : nothing}
-          ${this.renderContent()}
+          ${this.canView
+            ? this.renderPageBody()
+            : html`<div class="center empty">
+                <ix-typography>${localizeDir(MSG.notice.roleForbidden)}</ix-typography>
+              </div>`}
         </div>
       </div>
 
@@ -162,8 +117,115 @@ export class WuiProductionOrders extends LitElement {
     `;
   }
 
+  override connectedCallback(): void {
+    super.connectedCallback();
+    registerModuleRoles({
+      module: MODULE_ID,
+      title: ml('Production Orders', 'Ordres de production', 'Fertigungsaufträge'),
+      roles: [
+        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
+        {
+          id: 'edit',
+          label: ml('Edit', 'Éditer', 'Bearbeiten'),
+          description: ml(
+            'Manage orders and their workflow',
+            'Gérer les ordres et leur cycle de vie',
+            'Aufträge und ihren Statusablauf verwalten'
+          )
+        }
+      ]
+    });
+    this.roleSub = new Subscription();
+    this.roleSub.add(
+      hasRole$(MODULE_ID, 'view').subscribe((granted) => (this.canView = granted))
+    );
+    this.roleSub.add(
+      hasRole$(MODULE_ID, 'edit').subscribe((granted) => {
+        this.canEdit = granted;
+        if (!granted) {
+          // Drop any live edit affordance when the grant is revoked.
+          this.editing = undefined;
+          this.deletingId = null;
+        }
+      })
+    );
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.roleSub.unsubscribe();
+  }
+
   protected override firstUpdated(_changed: PropertyValues): void {
     void this.refresh();
+  }
+
+  // eslint-disable-next-line max-lines-per-function -- single toolbar + content template
+  private renderPageBody(): TemplateResult {
+    return html`
+      <div class="toolbar">
+        <po-kpi-bar class="grow" .orders=${this.orders}></po-kpi-bar>
+        <div class="actions">
+          <div class="seg">
+            <ix-button
+              variant=${this.view === 'table' ? 'primary' : 'secondary'}
+              @click=${() => (this.view = 'table')}
+            >
+              <ix-icon name="table" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.table)}
+            </ix-button>
+            <ix-button
+              variant=${this.view === 'gantt' ? 'primary' : 'secondary'}
+              @click=${() => (this.view = 'gantt')}
+            >
+              <ix-icon name="barchart-horizontal" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.planning)}
+            </ix-button>
+          </div>
+          ${this.canEdit
+            ? html`<ix-button variant="secondary" @click=${this.triggerImport}>
+                <ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.importJson)}
+              </ix-button>`
+            : nothing}
+          <ix-button
+            variant="secondary"
+            ?disabled=${this.orders.length === 0}
+            @click=${this.onExportJson}
+          >
+            <ix-icon name="download" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.exportJson)}
+          </ix-button>
+          <ix-button
+            variant="secondary"
+            ?disabled=${this.orders.length === 0}
+            @click=${this.onExportCsv}
+          >
+            <ix-icon name="download" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.exportCsv)}
+          </ix-button>
+          ${this.canEdit
+            ? html`<ix-button @click=${this.openCreate}>
+                <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.newOrder)}
+              </ix-button>`
+            : nothing}
+        </div>
+      </div>
+      <input
+        class="import-input"
+        type="file"
+        accept="application/json,.json"
+        hidden
+        @change=${this.onImportFile}
+      />
+
+      ${this.importError
+        ? html`<div class="notice error">
+            <ix-icon name="warning"></ix-icon>${this.importError}
+          </div>`
+        : nothing}
+      ${this.offline
+        ? html`<div class="notice">
+            <ix-icon name="info"></ix-icon>${localizeDir(MSG.notice.offline)}
+          </div>`
+        : nothing}
+      ${this.renderContent()}
+    `;
   }
 
   private renderContent(): TemplateResult {
@@ -172,9 +234,11 @@ export class WuiProductionOrders extends LitElement {
       return html`
         <div class="center empty">
           <ix-typography>${localizeDir(MSG.empty.none)}</ix-typography>
-          <ix-button variant="secondary" @click=${this.generateDemo}>
-            <ix-icon name="add" slot="icon"></ix-icon>${localizeDir(MSG.empty.generateDemo)}
-          </ix-button>
+          ${this.canEdit
+            ? html`<ix-button variant="secondary" @click=${this.generateDemo}>
+                <ix-icon name="add" slot="icon"></ix-icon>${localizeDir(MSG.empty.generateDemo)}
+              </ix-button>`
+            : nothing}
         </div>
       `;
     }

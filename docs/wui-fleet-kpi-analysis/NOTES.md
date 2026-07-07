@@ -55,3 +55,15 @@ Manager `manager/kpiCalc` (`kpiCalc/index.js`, plain JS, winccoa-manager; pmon `
 - **Unified "Display" tab** (machine dialog): single source of truth `MachineDef.display?: DisplayEntry[]` (`{ref, inBubble, inPopup}`, order = index). `ref` = `state | stopCause | workOrder | operation | param:<key> | kpi:<id>`. `resolveDisplaySlots(m)` builds the ordered catalog; items absent from `display` are appended at the end (new params/KPIs appear automatically). The old per-tab visibility toggles have been REMOVED.
 - **Opaque closures on the store side**: the `FleetStore` keeps `MachineFleet3D_Closures` as an `unknown` blob to avoid a back-dependency on the page; any shape change happens in `closures.ts`, not in the store.
 - **Machines with no data**: show "—" (`hasData=false`), never 100%.
+
+## Application Security (roles — added 2026-07)
+
+The page declares 1 role (self-registration in `fleet-kpi-analysis.ts`, module id
+`fleet-kpi-analysis`): `view`. OPEN until an admin assigns groups in
+`/app-security` (docs/wui-app-security/INTEGRATION.md).
+
+- **`view`** gates the page BODY (toolbar, filters, tabs, table/chart): when the
+  grant is denied the header/context-generator still renders but the body is
+  replaced by a trilingual forbidden notice (`MSG.roleForbidden`). Read-only
+  analysis page — no other affordance to gate, and no server-side guard (the
+  `kpiCalc` manager exposes no mutating API for this page).

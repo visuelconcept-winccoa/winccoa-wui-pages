@@ -72,6 +72,11 @@ export const MSG = {
       'Generate the demonstration',
       'Générer la démonstration',
       'Demonstration erzeugen'
+    ),
+    roleForbidden: ml(
+      'Your groups do not hold the "view" role of this page.',
+      'Vos groupes ne possèdent pas le rôle « consulter » de cette page.',
+      'Ihre Gruppen besitzen die Rolle „Ansehen“ dieser Seite nicht.'
     )
   },
   kpi: {

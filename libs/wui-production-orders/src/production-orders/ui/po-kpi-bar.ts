@@ -94,11 +94,11 @@ export class PoKpiBar extends LitElement {
   private counts(): { total: number; planned: number; running: number; done: number; late: number } {
     if (this.live) {
       return {
-        total: this.live.total ?? 0,
-        planned: this.live.planned ?? 0,
-        running: (this.live.running ?? 0) + (this.live.paused ?? 0),
-        done: this.live.done ?? 0,
-        late: this.live.late ?? 0
+        total: this.live['total'] ?? 0,
+        planned: this.live['planned'] ?? 0,
+        running: (this.live['running'] ?? 0) + (this.live['paused'] ?? 0),
+        done: this.live['done'] ?? 0,
+        late: this.live['late'] ?? 0
       };
     }
     return this.localCounts();

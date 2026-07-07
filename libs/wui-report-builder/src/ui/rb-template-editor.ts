@@ -216,12 +216,12 @@ export class RbTemplateEditor extends LitElement {
         <ix-toggle ?checked=${section.chart !== false} ?disabled=${!this.canEdit} @checkedChange=${(e: IxCheckedEvent) => this.patchSection(si, { chart: e.detail })}></ix-toggle>
         ${localizeDir(MSG.editor.showChart)}
       </label>
-      ${datasets.map((d, di) => this.renderDatasetRow(section, si, d, di))}
+      ${datasets.map((d, di) => this.renderDatasetRow(si, d, di))}
       <ix-button variant="secondary" ?disabled=${!this.canEdit} @click=${() => this.addDataset(si)}><ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.editor.addMeasure)}</ix-button>
     `;
   }
 
-  private renderDatasetRow(section: TemplateSection, si: number, d: DatasetDef, di: number): TemplateResult {
+  private renderDatasetRow(si: number, d: DatasetDef, di: number): TemplateResult {
     return html`<div class="ds-row">
       <div class="ds-top">
         <ix-input class="grow" placeholder=${localize(MSG.editor.measureLabelPlaceholder)} .value=${d.label} ?disabled=${!this.canEdit} @valueChange=${(e: IxValueEvent) => this.patchDataset(si, di, { label: String(e.detail) })}></ix-input>

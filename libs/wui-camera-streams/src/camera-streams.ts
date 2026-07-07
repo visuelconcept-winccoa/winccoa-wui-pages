@@ -23,11 +23,13 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { RouterEvent } from '@wincc-oa/wui-models/events/router-event.js';
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { property, query, state } from 'lit/decorators.js';
+import { Subscription } from 'rxjs';
+import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
 import { StreamStore } from './camera-streams/data/stream-store.js';
 import { DEMO_STREAMS } from './camera-streams/data/demo-streams.js';
 import { exportJson, exportStream, parseStreams } from './camera-streams/data/io.js';
 import type { CameraStatus, CameraStream } from './camera-streams/types.js';
-import { MSG, cameraCountMsg, confirmDeleteCameraMsg, localize, localizeDir } from './camera-streams/i18n.js';
+import { MSG, cameraCountMsg, confirmDeleteCameraMsg, localize, localizeDir, ml } from './camera-streams/i18n.js';
 import {
   AuditTrailWriter,
   auditDiff,
@@ -42,6 +44,9 @@ import './camera-streams/ui/cs-viewer.js';
 const PAD_LEN = 2;
 /** How often to refresh the per-camera connected-client counts. */
 const CLIENTS_POLL_MS = 4000;
+
+/** Application-Security module id (the specs/menuconfig page id). */
+const MODULE_ID = 'camera-streams';
 
 /** Dedicated `_AuditTrail` datapoint that traces every camera edit (GxP). */
 const AUDIT_DP = 'AuditTrail_CameraStreams';
@@ -93,12 +98,18 @@ export class WuiCameraStreams extends LitElement {
   /** Live RTSP reachability per camera id (polled from /api/rtsp/status). */
   @state() private statusById: Record<string, CameraStatus> = {};
 
+  /** Application-Security grant for the 'view' role (open until assigned). */
+  @state() private canView = true;
+  /** Application-Security grant for the 'edit' role (open until assigned). */
+  @state() private canEdit = true;
+
   @query('.import-input') private importInput!: HTMLInputElement;
 
   private readonly store = new StreamStore();
   /** Traces every camera edit into a dedicated `_AuditTrail` DP (auto-provisioned). */
   private readonly audit = new AuditTrailWriter({ dpName: AUDIT_DP, itemType: 'RtspCamera' });
   private clientsTimer = 0;
+  private roleSubs = new Subscription();
 
   override render(): TemplateResult {
     return html`
@@ -150,12 +161,41 @@ export class WuiCameraStreams extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
+    registerModuleRoles({
+      module: MODULE_ID,
+      title: MSG.page.headerTitle,
+      roles: [
+        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
+        {
+          id: 'edit',
+          label: ml('Edit', 'Éditer', 'Bearbeiten'),
+          description: ml(
+            'Manage cameras and stream options.',
+            'Gérer les caméras et options de flux.',
+            'Kameras und Stream-Optionen verwalten.'
+          )
+        }
+      ]
+    });
+    this.roleSubs = new Subscription();
+    this.roleSubs.add(hasRole$(MODULE_ID, 'view').subscribe((granted) => (this.canView = granted)));
+    this.roleSubs.add(
+      hasRole$(MODULE_ID, 'edit').subscribe((granted) => {
+        this.canEdit = granted;
+        if (!granted) {
+          // Drop out of any live edit session: close the editor / delete confirm.
+          this.editing = undefined;
+          this.deletingId = null;
+        }
+      })
+    );
     void this.refreshLive();
     this.clientsTimer = window.setInterval(() => void this.refreshLive(), CLIENTS_POLL_MS);
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
+    this.roleSubs.unsubscribe();
     if (this.clientsTimer) {
       window.clearInterval(this.clientsTimer);
       this.clientsTimer = 0;
@@ -167,6 +207,11 @@ export class WuiCameraStreams extends LitElement {
   }
 
   private renderBody(): TemplateResult {
+    if (!this.canView) {
+      return html`<div class="center empty">
+        <ix-typography>${localizeDir(MSG.page.roleForbidden)}</ix-typography>
+      </div>`;
+    }
     if (this.loading) return html`<div class="center"><ix-spinner></ix-spinner></div>`;
     const selected = this.selectedStream();
     if (selected) {
@@ -176,15 +221,19 @@ export class WuiCameraStreams extends LitElement {
       <div class="toolbar">
         <span class="count">${cameraCountMsg(this.streams.length)}</span>
         <span class="grow"></span>
-        <ix-button variant="secondary" @click=${this.triggerImport}>
-          <ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.page.import)}
-        </ix-button>
+        ${this.canEdit
+          ? html`<ix-button variant="secondary" @click=${this.triggerImport}>
+              <ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.page.import)}
+            </ix-button>`
+          : nothing}
         <ix-button variant="secondary" ?disabled=${this.streams.length === 0} @click=${this.onExportAll}>
           <ix-icon name="download" slot="icon"></ix-icon>${localizeDir(MSG.page.exportAll)}
         </ix-button>
-        <ix-button @click=${this.openCreate}>
-          <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.page.newCamera)}
-        </ix-button>
+        ${this.canEdit
+          ? html`<ix-button @click=${this.openCreate}>
+              <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.page.newCamera)}
+            </ix-button>`
+          : nothing}
       </div>
       <input
         class="import-input"
@@ -202,9 +251,11 @@ export class WuiCameraStreams extends LitElement {
       return html`
         <div class="center empty">
           <ix-typography>${localizeDir(MSG.page.empty)}</ix-typography>
-          <ix-button variant="secondary" @click=${this.generateDemo}>
-            <ix-icon name="add" slot="icon"></ix-icon>${localizeDir(MSG.page.generateDemo)}
-          </ix-button>
+          ${this.canEdit
+            ? html`<ix-button variant="secondary" @click=${this.generateDemo}>
+                <ix-icon name="add" slot="icon"></ix-icon>${localizeDir(MSG.page.generateDemo)}
+              </ix-button>`
+            : nothing}
         </div>
       `;
     }

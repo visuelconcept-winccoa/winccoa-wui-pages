@@ -55,6 +55,11 @@ export const MSG = {
       'Offline mode: changes are not persisted to the datapoints (backend unavailable or missing write rights).',
       "Mode hors-ligne : modifications non persistées dans les datapoints (backend indisponible ou droits d'écriture manquants).",
       'Offline-Modus: Änderungen werden nicht in den Datenpunkten gespeichert (Backend nicht verfügbar oder fehlende Schreibrechte).'
+    ),
+    roleForbidden: ml(
+      'Your groups do not hold the "view" role of this page.',
+      'Vos groupes ne possèdent pas le rôle « consulter » de cette page.',
+      'Ihre Gruppen besitzen die Rolle „Ansehen“ dieser Seite nicht.'
     )
   },
   empty: {

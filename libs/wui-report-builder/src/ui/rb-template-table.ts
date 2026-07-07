@@ -58,7 +58,7 @@ export class RbTemplateTable extends LitElement {
             @click=${() => this.edit(t.id)}
           ></ix-icon-button>
           <ix-icon-button ghost size="16" icon="copy" title=${localize(MSG.templateTable.duplicate)} ?disabled=${!this.canEdit} @click=${() => this.duplicate(t.id)}></ix-icon-button>
-          <ix-icon-button ghost size="16" icon="trashcan" title=${localize(MSG.templateTable.remove)} ?disabled=${!this.canEdit} @click=${() => this.remove(t.id)}></ix-icon-button>
+          <ix-icon-button ghost size="16" icon="trashcan" title=${localize(MSG.templateTable.remove)} ?disabled=${!this.canEdit} @click=${() => this.requestDelete(t.id)}></ix-icon-button>
         </td>
       </tr>
     `;
@@ -72,7 +72,8 @@ export class RbTemplateTable extends LitElement {
     this.dispatchEvent(new CustomEvent('wui:duplicate', { detail: { id }, bubbles: true, composed: true }));
   }
 
-  private remove(id: string): void {
+  /** Named to avoid shadowing Element.remove(). */
+  private requestDelete(id: string): void {
     this.dispatchEvent(new CustomEvent('wui:delete', { detail: { id }, bubbles: true, composed: true }));
   }
 }

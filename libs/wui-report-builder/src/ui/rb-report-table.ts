@@ -55,7 +55,7 @@ export class RbReportTable extends LitElement {
         <td>${r.signatures.length}</td>
         <td class="actions-col" @click=${(e: Event) => e.stopPropagation()}>
           <ix-icon-button ghost size="16" icon="eye" title=${localize(MSG.reportTable.open)} @click=${() => this.open(r.id)}></ix-icon-button>
-          <ix-icon-button ghost size="16" icon="trashcan" title=${localize(MSG.reportTable.remove)} ?disabled=${!this.canEdit} @click=${() => this.remove(r.id)}></ix-icon-button>
+          <ix-icon-button ghost size="16" icon="trashcan" title=${localize(MSG.reportTable.remove)} ?disabled=${!this.canEdit} @click=${() => this.requestDelete(r.id)}></ix-icon-button>
         </td>
       </tr>
     `;
@@ -65,7 +65,8 @@ export class RbReportTable extends LitElement {
     this.dispatchEvent(new CustomEvent('wui:open', { detail: { id }, bubbles: true, composed: true }));
   }
 
-  private remove(id: string): void {
+  /** Named to avoid shadowing Element.remove(). */
+  private requestDelete(id: string): void {
     this.dispatchEvent(new CustomEvent('wui:delete', { detail: { id }, bubbles: true, composed: true }));
   }
 }

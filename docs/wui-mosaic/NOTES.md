@@ -89,3 +89,23 @@ User constraint: "don't change the WebUI Runtime source code, only options for m
 - **Chromeless mode touches the shared bundle** (`webui-app-ix.ts` → `entry/wui.js`): any change to this flag requires a coherent app+SW rebuild and a **hard-refresh (Ctrl+F5) / service worker clear** on the client side after deployment, since `entry/wui.js` has changed.
 - **Edge auth**: an unauthenticated embedded iframe would show the login inside the tile, then `handleLogin` may redirect to `POST_LOGIN_HOME`, losing the deep-link. OK for the normal logged-in case.
 - **Repo lint rules** (same as machine-fleet-3d): CustomEvent names as string literals `^wui:[a-z]{3,}$` (so separate `emitEdit`/`emitRemove`, no variable event name); public `disconnectedCallback` before protected `updated` (member-ordering); avoid the `[...map.keys()]` spread (delete during Map iteration is safe); extract duplicated strings into consts (`KIND_FLEET`/`KIND_VNC`/`KIND_URL`).
+
+## Application Security (roles — added 2026-07)
+
+Mosaic declares 2 roles (self-registration in `mosaic.ts` + mirrored in the
+app-security manifest): `view` and `edit`. All OPEN until an admin assigns
+groups in `/app-security` (docs/wui-app-security/INTEGRATION.md).
+
+- **`view`** gates the page body: without the grant the header stays but the
+  body is replaced by a "role missing" notice (`MSG.page.roleForbidden`).
+- **`edit`** (compose display walls) hides every composition affordance:
+  overview toolbar **Import** + **New mosaic** and the empty-state
+  **Generate demo mosaics** button (mosaic.ts), the rename/delete row actions
+  of `mo-mosaic-table` (`?disabled`, subscribed in the child), and the detail
+  view's **Edit** toggle — which also removes tile add/edit/delete/move/resize
+  since `mo-canvas` only shows them in edit mode. A live revocation drops an
+  open edit session and closes the mosaic/tile/delete dialogs. Display,
+  **Export all** / per-row export and tile viewing stay open (read-only).
+- No backend gating: the page is tier 1, frontend-only (persistence goes
+  through the shared PARA REST API, deliberately not gated per-module — see
+  docs/wui-para/NOTES.md).

@@ -24,6 +24,8 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { RouterEvent } from '@wincc-oa/wui-models/events/router-event.js';
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { property, query, state } from 'lit/decorators.js';
+import { Subscription } from 'rxjs';
+import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
 import { MosaicStore } from './mosaic/data/mosaic-store.js';
 import { DEMO_MOSAICS } from './mosaic/data/demo-mosaics.js';
 import { exportJson, exportMosaic, parseMosaics } from './mosaic/data/io.js';
@@ -34,6 +36,7 @@ import {
   confirmDeleteMsg,
   localize,
   localizeDir,
+  ml,
   mosaicCountMsg,
   tileCountMsg
 } from './mosaic/i18n.js';
@@ -78,10 +81,16 @@ export class WuiMosaic extends LitElement {
   @state() private ampereNetworks: SourceOption[] = [];
   @state() private importError = '';
 
+  /** Application-Security grant for the 'view' role (open until assigned). */
+  @state() private roleView = true;
+  /** Application-Security grant for the 'edit' role (open until assigned). */
+  @state() private canEdit = true;
+
   @query('.import-input') private importInput!: HTMLInputElement;
 
   private readonly store = new MosaicStore();
   private readonly catalog = new SourceCatalog();
+  private roleSub = new Subscription();
 
   // eslint-disable-next-line max-lines-per-function -- single page template with dialogs
   override render(): TemplateResult {
@@ -99,15 +108,19 @@ export class WuiMosaic extends LitElement {
         </wui-context-generator>
 
         <div class="body">
-          ${this.importError
-            ? html`<div class="notice error"><ix-icon name="warning"></ix-icon>${this.importError}</div>`
-            : nothing}
-          ${this.offline
-            ? html`<div class="notice">
-                <ix-icon name="info"></ix-icon>${localizeDir(MSG.page.offline)}
-              </div>`
-            : nothing}
-          ${this.renderBody()}
+          ${this.roleView
+            ? html`
+                ${this.importError
+                  ? html`<div class="notice error"><ix-icon name="warning"></ix-icon>${this.importError}</div>`
+                  : nothing}
+                ${this.offline
+                  ? html`<div class="notice">
+                      <ix-icon name="info"></ix-icon>${localizeDir(MSG.page.offline)}
+                    </div>`
+                  : nothing}
+                ${this.renderBody()}
+              `
+            : this.renderForbidden()}
         </div>
       </div>
 
@@ -139,6 +152,41 @@ export class WuiMosaic extends LitElement {
     `;
   }
 
+  override connectedCallback(): void {
+    super.connectedCallback();
+    // Application Security: declare this module's roles (docs/wui-app-security/INTEGRATION.md).
+    registerModuleRoles({
+      module: 'mosaic',
+      title: ml('Mosaic', 'Mosaïque', 'Mosaik'),
+      roles: [
+        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
+        {
+          id: 'edit',
+          label: ml('Edit', 'Éditer', 'Bearbeiten'),
+          description: ml('Compose display walls', "Composer les murs d'écrans", 'Bildschirmwände zusammenstellen')
+        }
+      ]
+    });
+    this.roleSub = new Subscription();
+    this.roleSub.add(
+      hasRole$('mosaic', 'view').subscribe((granted) => {
+        this.roleView = granted;
+        if (!granted) this.dropEditingSession();
+      })
+    );
+    this.roleSub.add(
+      hasRole$('mosaic', 'edit').subscribe((granted) => {
+        this.canEdit = granted;
+        if (!granted) this.dropEditingSession();
+      })
+    );
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.roleSub.unsubscribe();
+  }
+
   protected override firstUpdated(_changed: PropertyValues): void {
     void this.refresh();
     void this.loadCatalog();
@@ -164,15 +212,19 @@ export class WuiMosaic extends LitElement {
       <div class="toolbar">
         <span class="count">${mosaicCountMsg(this.mosaics.length)}</span>
         <span class="grow"></span>
-        <ix-button variant="secondary" @click=${this.triggerImport}>
-          <ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.import)}
-        </ix-button>
+        ${this.canEdit
+          ? html`<ix-button variant="secondary" @click=${this.triggerImport}>
+              <ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.import)}
+            </ix-button>`
+          : nothing}
         <ix-button variant="secondary" ?disabled=${this.mosaics.length === 0} @click=${this.onExportAll}>
           <ix-icon name="download" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.exportAll)}
         </ix-button>
-        <ix-button @click=${this.openCreate}>
-          <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.newMosaic)}
-        </ix-button>
+        ${this.canEdit
+          ? html`<ix-button @click=${this.openCreate}>
+              <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.newMosaic)}
+            </ix-button>`
+          : nothing}
       </div>
       <input
         class="import-input"
@@ -184,9 +236,11 @@ export class WuiMosaic extends LitElement {
       ${this.mosaics.length === 0
         ? html`<div class="center empty">
             <ix-typography>${localizeDir(MSG.page.emptyList)}</ix-typography>
-            <ix-button variant="secondary" @click=${this.generateDemo}>
-              <ix-icon name="add" slot="icon"></ix-icon>${localizeDir(MSG.page.generateDemo)}
-            </ix-button>
+            ${this.canEdit
+              ? html`<ix-button variant="secondary" @click=${this.generateDemo}>
+                  <ix-icon name="add" slot="icon"></ix-icon>${localizeDir(MSG.page.generateDemo)}
+                </ix-button>`
+              : nothing}
           </div>`
         : html`<mo-mosaic-table
             .mosaics=${this.mosaics}
@@ -203,6 +257,21 @@ export class WuiMosaic extends LitElement {
       <ix-typography>${localizeDir(MSG.page.missing)}</ix-typography>
       <ix-button variant="secondary" @click=${this.goToList}>${localizeDir(MSG.page.backToList)}</ix-button>
     </div>`;
+  }
+
+  /** Body shown instead of the mosaics when the 'view' role is not granted. */
+  private renderForbidden(): TemplateResult {
+    return html`<div class="center empty">
+      <ix-typography>${localizeDir(MSG.page.roleForbidden)}</ix-typography>
+    </div>`;
+  }
+
+  /** Leave edit mode and close every composition dialog (role revoked live). */
+  private dropEditingSession(): void {
+    this.editing = false;
+    this.editingMosaic = undefined;
+    this.editingTile = undefined;
+    this.deletingId = null;
   }
 
   // --- display / edit --------------------------------------------------------
@@ -222,9 +291,11 @@ export class WuiMosaic extends LitElement {
               <ix-button @click=${() => (this.editing = false)}>
                 <ix-icon name="check" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.done)}
               </ix-button>`
-          : html`<ix-button variant="secondary" @click=${() => (this.editing = true)}>
-              <ix-icon name="pen" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.edit)}
-            </ix-button>`}
+          : (this.canEdit
+              ? html`<ix-button variant="secondary" @click=${() => (this.editing = true)}>
+                  <ix-icon name="pen" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.edit)}
+                </ix-button>`
+              : nothing)}
       </div>
       <mo-canvas
         class="canvas"

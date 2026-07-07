@@ -29,7 +29,12 @@ export function ml(en: string, fr: string, de: string): MultiLangString {
 export const MSG = {
   shell: {
     notFound: ml('Atelier not found.', 'Atelier introuvable.', 'Werkstatt nicht gefunden.'),
-    back: ml('Back', 'Retour', 'Zurück')
+    back: ml('Back', 'Retour', 'Zurück'),
+    roleForbidden: ml(
+      'Your groups do not hold the "view" role of this page.',
+      'Vos groupes ne possèdent pas le rôle « consulter » de cette page.',
+      'Ihre Gruppen besitzen die Rolle „Ansehen" dieser Seite nicht.'
+    )
   },
   overview: {
     graphicsCatalog: ml('Graphics catalog', 'Catalogue graphiques', 'Grafikkatalog'),

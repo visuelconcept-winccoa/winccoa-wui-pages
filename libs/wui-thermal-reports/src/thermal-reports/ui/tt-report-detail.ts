@@ -16,7 +16,9 @@ import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
+import { hasRole$ } from '@visuelconcept/wui-kit/data/app-security.js';
 import { MSG, localize, localizeDir } from '../i18n.js';
 import {
   buildProfile,
@@ -62,9 +64,24 @@ export class TtReportDetail extends LitElement {
   @state() private simulated = false;
   @state() private curveLoading = false;
 
+  /** Application-Security grant for the 'edit' role (open until assigned). */
+  @state() private canEdit = true;
+
   private readonly api = this.resolveApi();
   private lastSig = '';
   private loadToken = 0;
+  private roleSub = new Subscription();
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    this.roleSub = hasRole$('thermal-reports', 'edit').subscribe((granted) => (this.canEdit = granted));
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.roleSub.unsubscribe();
+    this.roleSub = new Subscription();
+  }
 
   override render(): TemplateResult {
     const r = this.report;
@@ -112,19 +129,23 @@ export class TtReportDetail extends LitElement {
         <ix-button variant="secondary" @click=${this.print}>
           <ix-icon name="document" slot="icon"></ix-icon>${localizeDir(MSG.detail.print)}
         </ix-button>
-        <ix-button variant="secondary" @click=${this.edit}>
-          <ix-icon name="pen" slot="icon"></ix-icon>${localizeDir(MSG.detail.edit)}
-        </ix-button>
-        ${r.status === 'validated'
-          ? nothing
-          : html`
-              <ix-button variant="secondary" @click=${() => this.setStatus('rejected')}>
-                <ix-icon name="close" slot="icon"></ix-icon>${localizeDir(MSG.detail.reject)}
+        ${this.canEdit
+          ? html`
+              <ix-button variant="secondary" @click=${this.edit}>
+                <ix-icon name="pen" slot="icon"></ix-icon>${localizeDir(MSG.detail.edit)}
               </ix-button>
-              <ix-button @click=${() => this.setStatus('validated')}>
-                <ix-icon name="check" slot="icon"></ix-icon>${localizeDir(MSG.detail.validate)}
-              </ix-button>
-            `}
+              ${r.status === 'validated'
+                ? nothing
+                : html`
+                    <ix-button variant="secondary" @click=${() => this.setStatus('rejected')}>
+                      <ix-icon name="close" slot="icon"></ix-icon>${localizeDir(MSG.detail.reject)}
+                    </ix-button>
+                    <ix-button @click=${() => this.setStatus('validated')}>
+                      <ix-icon name="check" slot="icon"></ix-icon>${localizeDir(MSG.detail.validate)}
+                    </ix-button>
+                  `}
+            `
+          : nothing}
       </div>
     `;
   }

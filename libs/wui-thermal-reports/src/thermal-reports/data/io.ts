@@ -91,7 +91,7 @@ function normalize(item: Partial<ThermalReport>): ThermalReport {
   const out: ThermalReport = { ...base };
   for (const key of Object.keys(base) as (keyof ThermalReport)[]) {
     if (item[key] !== undefined && item[key] !== null) {
-      (out as Record<string, unknown>)[key] = item[key];
+      (out as unknown as Record<string, unknown>)[key] = item[key];
     }
   }
   out.quantity = Number(out.quantity) || 0;

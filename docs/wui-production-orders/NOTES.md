@@ -54,3 +54,24 @@ WinCC OA manager `productionOrdersKpi` (`manager/productionOrdersKpi/index.js`, 
 - **Lint**: `no-magic-numbers` non-blocking; `unicorn/consistent-function-scoping` flags the internal `pad`/`fmt` arrows → hoist them to module scope.
 - **Labels**: currently hard-coded in FR in the components (no FR/DE i18n yet).
 - **Not done yet**: order import from ERP/MES, archiving of the order history (the Kpi DP could be NGA-archived for trending), live binding of `qtyProduced` from the machine counters.
+
+## Application Security (roles — added 2026-07)
+
+The page declares 2 roles (self-registration in `production-orders.ts` +
+mirrored in the app-security manifest): `view` and `edit`. All OPEN until an
+admin assigns groups in `/app-security` (docs/wui-app-security/INTEGRATION.md).
+
+- **`view`** — gates the page BODY: without the grant the header renders as
+  usual but the body is replaced by a "role forbidden" notice (`MSG.notice.roleForbidden`).
+  KPI bar, table, Gantt and exports all live inside the body, so they follow.
+- **`edit`** (description: manage orders and their workflow) — hides every
+  order CRUD affordance: "New order" + "Import JSON" toolbar buttons and the
+  empty-state "Generate demo orders" button (`production-orders.ts`), and the
+  per-row actions cell — status-workflow buttons (start/pause/resume/complete/
+  cancel) + edit/delete icon-buttons (`po-order-table.ts`, own `hasRole$`
+  subscription, para-type-editor pattern). Revoking the grant live also closes
+  an open `po-order-dialog` / delete confirm. Viewing (table, Gantt, KPIs) and
+  the JSON/CSV exports stay open — they only read.
+- No server-side guard: the page persists through the SHARED PARA REST API
+  (`/api/para/dp/set`), which is deliberately not gated with module roles
+  (see the PARA notes) — gating is UI-level, like the other DP-JSON pages.

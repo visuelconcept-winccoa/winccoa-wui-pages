@@ -36,7 +36,8 @@ export class RbReportDialog extends LitElement {
 
   @state() private templateId = '';
   @state() private reportNo = '';
-  @state() private title = '';
+  /** Report title (named to avoid shadowing HTMLElement.title). */
+  @state() private reportTitle = '';
   @state() private subject = '';
   @state() private start = localStamp(new Date(Date.now() - DAY_MS));
   @state() private end = localStamp(new Date());
@@ -66,7 +67,7 @@ export class RbReportDialog extends LitElement {
                   </ix-select>
                   <div class="grid2" style="margin-top:0.75rem">
                     <ix-input label=${localize(MSG.reportDialog.reportNo)} .value=${this.reportNo} @valueChange=${(e: IxValueEvent) => (this.reportNo = String(e.detail))}></ix-input>
-                    <ix-input label=${localize(MSG.reportDialog.fTitle)} .value=${this.title} @valueChange=${(e: IxValueEvent) => (this.title = String(e.detail))}></ix-input>
+                    <ix-input label=${localize(MSG.reportDialog.fTitle)} .value=${this.reportTitle} @valueChange=${(e: IxValueEvent) => (this.reportTitle = String(e.detail))}></ix-input>
                   </div>
                   <ix-input style="margin-top:0.75rem" label=${localize(MSG.reportDialog.subject)} .value=${this.subject} @valueChange=${(e: IxValueEvent) => (this.subject = String(e.detail))}></ix-input>
                   <div class="grid2" style="margin-top:0.75rem">
@@ -99,7 +100,7 @@ export class RbReportDialog extends LitElement {
     const report: Report = {
       ...instantiateReport(template),
       reportNo: this.reportNo,
-      title: this.title,
+      title: this.reportTitle,
       subject: this.subject,
       period: { start: this.start, end: this.end },
       createdAt: nowLocal()

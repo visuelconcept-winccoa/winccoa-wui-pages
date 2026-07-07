@@ -91,3 +91,26 @@ Generic storage: `data/dp-json-store.ts` = base `DpJsonStore<T extends {id;dp}>`
 - **Not (yet) done**: i18n of the FR labels; scheduled server-side aggregation; PDF / email;
   cryptographic electronic signature (signatures = name + timestamp + permission, with no
   cryptographic proof).
+
+## Application Security (roles — added 2026-07)
+
+The **Reports** page (`report-builder`) declares 3 roles (self-registration in
+`report-builder.ts`): `view`, `fill`, `sign`. All OPEN until an admin assigns
+groups in `/app-security` (docs/wui-app-security/INTEGRATION.md). Tier 1 — no
+backend of its own, so UI gating only (persistence goes through the shared
+PARA-REST DP-JSON API, deliberately not gated per module).
+
+- **`view`** — page body. Without it the header stays, the body shows a
+  "role missing" notice (`MSG.page.roleForbidden`).
+- **`fill`** — creating report instances (New report button + dialog, Import,
+  the empty-state demo generator), deletion (`rb-report-table .canEdit`,
+  composed with `canPublish`), and data entry in `rb-report-detail`
+  (`.canFill` prop → period/fields/table/checklist inputs, add/remove row,
+  dataset "Refresh", Save — all via the same `?disabled` path as a locked
+  report).
+- **`sign`** — the workflow actions in `rb-report-detail` (`.canSign` prop):
+  the sign/advance button (the `rb-signature-dialog` trigger) and the reject
+  button are hidden without it.
+- Reading/opening a report, printing and JSON/CSV export stay open (read-only).
+- The Templates page (`report-templates`) is a separate module with its own
+  declaration.

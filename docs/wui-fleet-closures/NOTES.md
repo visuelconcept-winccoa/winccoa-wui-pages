@@ -53,3 +53,23 @@ Behavior on import:
   - `member-ordering`: `render` (public) must come before `firstUpdated` (protected)
   - `sonarjs/prefer-single-boolean-return`: combine the filter guards into a single boolean `return`
   - `unicorn/no-array-for-each`: prefer a `for...of` over `.entries()` (with index) rather than `.forEach`
+
+## Application Security (roles — added 2026-07)
+
+The page declares 2 roles (self-registration in `fleet-closures.ts`,
+`module: 'fleet-closures'`): `view` and `edit`. Both are OPEN until an admin
+assigns groups in `/app-security` (see docs/wui-app-security/INTEGRATION.md).
+
+- **`view`** — gates the page body: without the grant, the header/context
+  generator still renders but the body is replaced by the `roleForbidden`
+  notice (muted, centered). No data is shown.
+- **`edit`** ("manage non-working periods") — gates every mutation affordance:
+  the **Import** (JSON) and **Save** toolbar buttons and the **Add a period**
+  footer (button + scope select) are hidden; the per-row delete trashcan is
+  hidden; the per-row scope select and start/end date/time inputs are
+  `disabled`. **Export stays open** (read-only). A pending import-overlap
+  dialog is dismissed live if the grant is revoked.
+
+No backend to guard (Tier 1, frontend-only — persistence goes through the
+shared fleet-store DP-JSON API, deliberately not gated per-module; see the
+para NOTES for the rationale).

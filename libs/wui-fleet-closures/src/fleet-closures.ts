@@ -23,10 +23,13 @@ import { RouterEvent } from '@wincc-oa/wui-models/events/router-event.js';
 import '@wincc-oa/wui-ix-wrappers/wui-content-header/wui-content-header.js';
 import '@wincc-oa/wui-oarxjs-context/components/wui-context-generator/wui-context-generator.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
-import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
+import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
+import { Subscription } from 'rxjs';
+import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
 import {
   MSG,
+  ml,
   localize,
   localizeDir,
   atelierScopeLabel,
@@ -48,6 +51,9 @@ import {
   type ClosureConfig,
   type ClosureRange
 } from '@visuelconcept/wui-fleet-core/closures.js';
+
+/** Application-Security module id of this page. */
+const MODULE_ID = 'fleet-closures';
 
 const DATE_FORMAT = 'yyyy-MM-dd';
 const TIME_FORMAT = 'HH:mm';
@@ -109,11 +115,48 @@ export class WuiFleetClosures extends LitElement {
   /** Pending import awaiting an overlap decision. */
   @state() private pendingImport: ClosureConfig | null = null;
 
+  /** Application-Security grants — open until an admin assigns groups. */
+  @state() private canView = true;
+  @state() private canEdit = true;
+
   private readonly store = new FleetStore();
+  private roleSubs = new Subscription();
 
   override connectedCallback(): void {
     super.connectedCallback();
     this.year = new Date().getFullYear();
+    registerModuleRoles({
+      module: MODULE_ID,
+      title: ml('Non-Worked Periods', 'Jours non travaillés', 'Arbeitsfreie Zeiträume'),
+      roles: [
+        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
+        {
+          id: 'edit',
+          label: ml('Edit', 'Éditer', 'Bearbeiten'),
+          description: ml(
+            'Manage the non-working periods',
+            'Gérer les périodes non travaillées',
+            'Arbeitsfreie Zeiträume verwalten'
+          )
+        }
+      ]
+    });
+    this.roleSubs = new Subscription();
+    this.roleSubs.add(
+      hasRole$(MODULE_ID, 'view').subscribe((granted) => (this.canView = granted))
+    );
+    this.roleSubs.add(
+      hasRole$(MODULE_ID, 'edit').subscribe((granted) => {
+        this.canEdit = granted;
+        // Drop a pending import decision if the grant is revoked mid-dialog.
+        if (!granted) this.pendingImport = null;
+      })
+    );
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.roleSubs.unsubscribe();
   }
 
   override render(): TemplateResult {
@@ -129,8 +172,10 @@ export class WuiFleetClosures extends LitElement {
         <wui-content-header></wui-content-header>
       </wui-context-generator>
       <div class="body">
-        ${this.renderToolbar()} ${this.renderOffline()} ${this.renderTable()}
-        ${this.renderOverlapDialog()} ${this.renderToast()}
+        ${this.canView
+          ? html`${this.renderToolbar()} ${this.renderOffline()} ${this.renderTable()}
+            ${this.renderOverlapDialog()} ${this.renderToast()}`
+          : this.renderForbidden()}
       </div>
     `;
   }
@@ -148,15 +193,19 @@ export class WuiFleetClosures extends LitElement {
         <span class="sep"></span>
         ${this.renderYearField()} ${this.renderAtelierField()} ${this.renderMachineField()}
         <span class="grow"></span>
-        <ix-button variant="secondary" outline @click=${this.triggerImport}>
-          <ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.import)}
-        </ix-button>
+        ${this.canEdit
+          ? html`<ix-button variant="secondary" outline @click=${this.triggerImport}>
+              <ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.import)}
+            </ix-button>`
+          : nothing}
         <ix-button variant="secondary" outline @click=${this.exportJson}>
           <ix-icon name="download" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.export)}
         </ix-button>
-        <ix-button @click=${() => void this.save()} ?disabled=${!this.dirty || this.saving}>
-          <ix-icon name="save" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.save)}
-        </ix-button>
+        ${this.canEdit
+          ? html`<ix-button @click=${() => void this.save()} ?disabled=${!this.dirty || this.saving}>
+              <ix-icon name="save" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.save)}
+            </ix-button>`
+          : nothing}
       </div>
       <input
         id="import-file"
@@ -233,6 +282,11 @@ export class WuiFleetClosures extends LitElement {
     </div>`;
   }
 
+  /** Body shown when the session user lacks the 'view' role (header stays). */
+  private renderForbidden(): TemplateResult {
+    return html`<div class="center muted">${localizeDir(MSG.roleForbidden)}</div>`;
+  }
+
   private renderTable(): TemplateResult {
     if (this.loading) return html`<div class="center"><ix-spinner></ix-spinner></div>`;
     const rows = this.visibleRows();
@@ -258,13 +312,15 @@ export class WuiFleetClosures extends LitElement {
           <tfoot>
             <tr>
               <td colspan="5">
-                <ix-button variant="secondary" @click=${this.addRange}>
-                  <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.table.addRange)}
-                </ix-button>
-                <span class="foot-scope">
-                  <span class="lbl">${localizeDir(MSG.table.addFor)}</span>
-                  ${this.renderScopeSelect(this.currentAddScope(), (v) => (this.addScope = v))}
-                </span>
+                ${this.canEdit
+                  ? html`<ix-button variant="secondary" @click=${this.addRange}>
+                        <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.table.addRange)}
+                      </ix-button>
+                      <span class="foot-scope">
+                        <span class="lbl">${localizeDir(MSG.table.addFor)}</span>
+                        ${this.renderScopeSelect(this.currentAddScope(), (v) => (this.addScope = v))}
+                      </span>`
+                  : nothing}
                 <span class="grow"></span>
                 <span class="count">${periodCountMsg(rows.length)}</span>
               </td>
@@ -290,17 +346,19 @@ export class WuiFleetClosures extends LitElement {
                 title=${covered}
               ></ix-icon>`
             : ''}
-          ${this.renderScopeSelect(r.scope, (v) => this.moveScope(r, v))}
+          ${this.renderScopeSelect(r.scope, (v) => this.moveScope(r, v), !this.canEdit)}
         </td>
         <td class="nowrap">
           <ix-date-input
             format=${DATE_FORMAT}
             .value=${start.date}
+            ?disabled=${!this.canEdit}
             @valueChange=${(e: IxValueEvent) => this.patchBound(r, 'start', 'date', e.detail)}
           ></ix-date-input>
           <ix-time-input
             format=${TIME_FORMAT}
             .value=${start.time}
+            ?disabled=${!this.canEdit}
             @valueChange=${(e: IxValueEvent) => this.patchBound(r, 'start', 'time', e.detail)}
           ></ix-time-input>
         </td>
@@ -308,32 +366,41 @@ export class WuiFleetClosures extends LitElement {
           <ix-date-input
             format=${DATE_FORMAT}
             .value=${end.date}
+            ?disabled=${!this.canEdit}
             @valueChange=${(e: IxValueEvent) => this.patchBound(r, 'end', 'date', e.detail)}
           ></ix-date-input>
           <ix-time-input
             format=${TIME_FORMAT}
             .value=${end.time}
+            ?disabled=${!this.canEdit}
             @valueChange=${(e: IxValueEvent) => this.patchBound(r, 'end', 'time', e.detail)}
           ></ix-time-input>
         </td>
         <td class="num">${formatSpan(r.range)}</td>
         <td class="num">
-          <ix-icon-button
-            ghost
-            icon="trashcan"
-            title=${localize(MSG.table.delete)}
-            @click=${() => this.removeRange(r)}
-          ></ix-icon-button>
+          ${this.canEdit
+            ? html`<ix-icon-button
+                ghost
+                icon="trashcan"
+                title=${localize(MSG.table.delete)}
+                @click=${() => this.removeRange(r)}
+              ></ix-icon-button>`
+            : nothing}
         </td>
       </tr>
     `;
   }
 
-  private renderScopeSelect(value: string, onChange: (v: string) => void): TemplateResult {
+  private renderScopeSelect(
+    value: string,
+    onChange: (v: string) => void,
+    disabled = false
+  ): TemplateResult {
     return html`
       <ix-select
         class="scope-select"
         .value=${value}
+        ?disabled=${disabled}
         @valueChange=${(e: IxValueEvent) => onChange(firstOf(e.detail))}
       >
         ${this.scopeOptions().map(

@@ -58,6 +58,11 @@ export const MSG = {
     "Mode hors-ligne : configuration des ateliers indisponible (backend non connecté). Les données d'historique ne peuvent pas être lues.",
     'Offline-Modus: Werkstattkonfiguration nicht verfügbar (Backend nicht verbunden). Verlaufsdaten können nicht gelesen werden.'
   ),
+  roleForbidden: ml(
+    'Your groups do not hold the "view" role of this page.',
+    'Vos groupes ne possèdent pas le rôle « consulter » de cette page.',
+    'Ihre Gruppen besitzen die Rolle „Ansehen" dieser Seite nicht.'
+  ),
   tabs: {
     table: ml('Table', 'Tableau', 'Tabelle'),
     chart: ml('Chart', 'Graphique', 'Diagramm'),

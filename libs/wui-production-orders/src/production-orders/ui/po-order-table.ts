@@ -10,10 +10,12 @@
  * Emits: `wui:edit` / `wui:delete` (`{ id }`) and `wui:status`
  * (`{ id, target }`).
  */
+import { hasRole$ } from '@visuelconcept/wui-kit/data/app-security.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
-import { LitElement, css, html, type TemplateResult } from 'lit';
+import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { Subscription } from 'rxjs';
 import {
   PRIORITY_COLORS,
   PRIORITY_RANK,
@@ -41,6 +43,22 @@ export class PoOrderTable extends LitElement {
 
   @state() private sortKey: SortKey = 'plannedStart';
   @state() private sortAsc = true;
+  /** Application-Security 'edit' grant — hides the row actions (open until assigned). */
+  @state() private canEdit = true;
+
+  private roleSub = new Subscription();
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    this.roleSub = hasRole$('production-orders', 'edit').subscribe(
+      (granted) => (this.canEdit = granted)
+    );
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.roleSub.unsubscribe();
+  }
 
   override render(): TemplateResult {
     const rows = this.sortedOrders();
@@ -90,7 +108,7 @@ export class PoOrderTable extends LitElement {
             ${localizeDir(statusLabel(order.status))}
           </span>
         </td>
-        <td class="actions-col">${this.renderActions(order)}</td>
+        <td class="actions-col">${this.canEdit ? this.renderActions(order) : nothing}</td>
       </tr>
     `;
   }

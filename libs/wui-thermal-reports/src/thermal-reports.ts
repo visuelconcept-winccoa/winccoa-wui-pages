@@ -26,9 +26,11 @@ import '@wincc-oa/wui-oarxjs-context/components/wui-context-generator/wui-contex
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { query, state } from 'lit/decorators.js';
+import { Subscription } from 'rxjs';
 import type { Atelier } from '@visuelconcept/wui-fleet-core/types.js';
 import { FleetStore } from '@visuelconcept/wui-fleet-core/data/fleet-store.js';
-import { MSG, confirmDeleteMsg, localize, localizeDir } from './thermal-reports/i18n.js';
+import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { MSG, confirmDeleteMsg, localize, localizeDir, ml } from './thermal-reports/i18n.js';
 import { buildDemoReports } from './thermal-reports/data/demo-reports.js';
 import { exportCsv, exportJson, parseReports } from './thermal-reports/data/io.js';
 import { ReportStore } from './thermal-reports/data/report-store.js';
@@ -40,6 +42,9 @@ import './thermal-reports/ui/tt-report-dialog.js';
 import './thermal-reports/ui/tt-report-table.js';
 
 const PAD_LEN = 2;
+
+/** Application-Security module id (= the page's routeId in specs/menuconfig). */
+const MODULE_ID = 'thermal-reports';
 
 function pad(n: number): string {
   return String(n).padStart(PAD_LEN, '0');
@@ -86,10 +91,17 @@ export class WuiThermalReports extends LitElement {
   @state() private deletingId: string | null = null;
   @state() private importError = '';
 
+  /** Application-Security grant for the 'view' role (open until assigned). */
+  @state() private canView = true;
+
+  /** Application-Security grant for the 'edit' role (open until assigned). */
+  @state() private canEdit = true;
+
   @query('.import-input') private importInput!: HTMLInputElement;
 
   private readonly store = new ReportStore();
   private readonly fleet = new FleetStore();
+  private roleSubs = new Subscription();
 
   override render(): TemplateResult {
     return html`
@@ -110,15 +122,19 @@ export class WuiThermalReports extends LitElement {
         </wui-context-generator>
 
         <div class="body">
-          ${this.importError
-            ? html`<div class="notice error"><ix-icon name="warning"></ix-icon>${this.importError}</div>`
-            : nothing}
-          ${this.offline
-            ? html`<div class="notice">
-                <ix-icon name="info"></ix-icon>${localizeDir(MSG.page.offline)}
-              </div>`
-            : nothing}
-          ${this.renderBody()}
+          ${this.canView
+            ? html`
+                ${this.importError
+                  ? html`<div class="notice error"><ix-icon name="warning"></ix-icon>${this.importError}</div>`
+                  : nothing}
+                ${this.offline
+                  ? html`<div class="notice">
+                      <ix-icon name="info"></ix-icon>${localizeDir(MSG.page.offline)}
+                    </div>`
+                  : nothing}
+                ${this.renderBody()}
+              `
+            : this.renderForbidden()}
         </div>
       </div>
 
@@ -138,6 +154,42 @@ export class WuiThermalReports extends LitElement {
           ></wui-confirm-dialog>`
         : nothing}
     `;
+  }
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    registerModuleRoles({
+      module: MODULE_ID,
+      title: ml('Thermal Treatment Reports', 'Rapports de traitement thermique', 'Wärmebehandlungsberichte'),
+      roles: [
+        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
+        {
+          id: 'edit',
+          label: ml('Edit', 'Éditer', 'Bearbeiten'),
+          description: ml(
+            'Create / validate treatment reports',
+            'Créer / valider des rapports de traitement',
+            'Behandlungsberichte erstellen / validieren'
+          )
+        }
+      ]
+    });
+    this.roleSubs.add(hasRole$(MODULE_ID, 'view').subscribe((granted) => (this.canView = granted)));
+    this.roleSubs.add(
+      hasRole$(MODULE_ID, 'edit').subscribe((granted) => {
+        this.canEdit = granted;
+        if (!granted) {
+          this.editing = undefined; // drop out of a live create/edit dialog
+          this.deletingId = null; // cancel a pending delete confirmation
+        }
+      })
+    );
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.roleSubs.unsubscribe();
+    this.roleSubs = new Subscription();
   }
 
   protected override firstUpdated(_changed: PropertyValues): void {
@@ -160,18 +212,22 @@ export class WuiThermalReports extends LitElement {
       <div class="toolbar">
         <tt-kpi-bar class="grow" .reports=${this.reports}></tt-kpi-bar>
         <div class="actions">
-          <ix-button variant="secondary" @click=${this.triggerImport}>
-            <ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.page.importJson)}
-          </ix-button>
+          ${this.canEdit
+            ? html`<ix-button variant="secondary" @click=${this.triggerImport}>
+                <ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.page.importJson)}
+              </ix-button>`
+            : nothing}
           <ix-button variant="secondary" ?disabled=${this.reports.length === 0} @click=${this.onExportJson}>
             <ix-icon name="download" slot="icon"></ix-icon>${localizeDir(MSG.page.exportJson)}
           </ix-button>
           <ix-button variant="secondary" ?disabled=${this.reports.length === 0} @click=${this.onExportCsv}>
             <ix-icon name="download" slot="icon"></ix-icon>${localizeDir(MSG.page.exportCsv)}
           </ix-button>
-          <ix-button @click=${this.openCreate}>
-            <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.page.newReport)}
-          </ix-button>
+          ${this.canEdit
+            ? html`<ix-button @click=${this.openCreate}>
+                <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.page.newReport)}
+              </ix-button>`
+            : nothing}
         </div>
       </div>
       <input class="import-input" type="file" accept="application/json,.json" hidden @change=${this.onImportFile} />
@@ -184,9 +240,11 @@ export class WuiThermalReports extends LitElement {
       return html`
         <div class="center empty">
           <ix-typography>${localizeDir(MSG.page.empty)}</ix-typography>
-          <ix-button variant="secondary" @click=${this.generateDemo}>
-            <ix-icon name="add" slot="icon"></ix-icon>${localizeDir(MSG.page.generateDemo)}
-          </ix-button>
+          ${this.canEdit
+            ? html`<ix-button variant="secondary" @click=${this.generateDemo}>
+                <ix-icon name="add" slot="icon"></ix-icon>${localizeDir(MSG.page.generateDemo)}
+              </ix-button>`
+            : nothing}
         </div>
       `;
     }
@@ -197,6 +255,15 @@ export class WuiThermalReports extends LitElement {
         @wui:edit=${(e: CustomEvent<{ id: string }>) => this.openEdit(e.detail.id)}
         @wui:delete=${(e: CustomEvent<{ id: string }>) => (this.deletingId = e.detail.id)}
       ></tt-report-table>
+    `;
+  }
+
+  /** Body shown when the user's groups do not hold the 'view' role. */
+  private renderForbidden(): TemplateResult {
+    return html`
+      <div class="center empty">
+        <ix-typography>${localizeDir(MSG.page.roleForbidden)}</ix-typography>
+      </div>
     `;
   }
 

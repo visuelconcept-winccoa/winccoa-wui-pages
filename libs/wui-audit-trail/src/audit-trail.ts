@@ -10,7 +10,11 @@
  *     history of the selected one as a log table (one row per archived record);
  *   • defaults to the rolling last 24 h in live mode (auto-refresh) and offers a
  *     start/end datetime range for an arbitrary interval;
- *   • exports the displayed log to CSV / JSON and prints it;
+ *   • filters the log client-side: a global search across all columns, a text
+ *     filter per column, and click-to-sort headers (asc → desc → default order).
+ *     This view state is transient (NOT persisted to `AuditTrail_Config`);
+ *   • exports the displayed log to CSV / JSON and prints it (WYSIWYG: exports
+ *     reflect the current search/filters/sort);
  *   • manages the `_AuditTrail` datapoints (create — always archived — reassign
  *     archive group, delete) via the `at-manage-dialog` popup.
  *
@@ -25,12 +29,13 @@ import { LitElement, css, html, type PropertyValues, type TemplateResult } from 
 import { customElement, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
+import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
 import './audit-trail/at-manage-dialog.js';
 import { AuditConfigStore } from './audit-trail/config-store.js';
 import { listAuditDps } from './audit-trail/dp-admin.js';
 import { auditColumns, buildMergedPivot, type PivotResult } from './audit-trail/engine.js';
 import { exportAuditCsv, exportAuditJson, printAudit } from './audit-trail/export.js';
-import { MSG, colLabel, liveSuffixMsg, localize, localizeDir, recordsMsg, truncatedMsg } from './audit-trail/i18n.js';
+import { MSG, colLabel, liveSuffixMsg, localize, localizeDir, ml, recordsMsg, shownOfMsg, truncatedMsg } from './audit-trail/i18n.js';
 import {
   AUDIT_DP_TYPE,
   AUDIT_FIELDS,
@@ -42,6 +47,10 @@ import {
 
 const REFRESH_DEBOUNCE_MS = 1500;
 const SECONDS_THRESHOLD = 1e12;
+/** Application-Security module id (= the page id). */
+const MODULE_ID = 'audit-trail';
+/** Page title — a proper noun, identical in all three languages. */
+const PAGE_TITLE = 'Audit Trail';
 
 function pad(n: number): string {
   return `${n}`.padStart(2, '0');
@@ -76,6 +85,43 @@ function asStrings(detail: string | string[]): string[] {
   return detail === '' ? [] : [detail];
 }
 
+/** One display column (a `columnKeys()` entry). */
+interface ColumnKey {
+  key: string;
+  kind?: 'time';
+}
+
+/** Transient column sort — header clicks cycle asc → desc → none (engine order). */
+interface ColumnSort {
+  key: string;
+  dir: 'asc' | 'desc';
+}
+
+/** A display row paired with its sortable record timestamp (epoch ms). */
+interface ViewRow {
+  cells: string[];
+  t: number;
+}
+
+/** Locale/numeric-aware cell comparison (`"9" < "10"`, accents folded). */
+function compareCells(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+}
+
+/** `aria-sort` value for a header cell. */
+function ariaSortValue(dir: ColumnSort['dir'] | null): 'ascending' | 'descending' | 'none' {
+  if (dir === 'asc') return 'ascending';
+  if (dir === 'desc') return 'descending';
+  return 'none';
+}
+
+/** Header sort indicator glyph. */
+function sortGlyph(dir: ColumnSort['dir'] | null): string {
+  if (dir === 'asc') return '▲';
+  if (dir === 'desc') return '▼';
+  return '';
+}
+
 @customElement('wui-audit-trail')
 export class WuiAuditTrail extends LitElement {
   static override readonly styles = [IXCoreStyles, pageStyles()];
@@ -87,19 +133,56 @@ export class WuiAuditTrail extends LitElement {
   @state() private offline = false;
   @state() private manageOpen = false;
 
+  /** Application-Security grant for the 'view' role (open until assigned). */
+  @state() private roleView = true;
+
+  /** Application-Security grant for the 'manage' role (open until assigned). */
+  @state() private roleManage = true;
+
+  /** Global search across all columns (transient — not persisted). */
+  @state() private search = '';
+
+  /** Per-column substring filters, keyed by column key (transient — not persisted). */
+  @state() private colFilters: Record<string, string> = {};
+
+  /** Active column sort, `null` = engine order (newest first). Transient. */
+  @state() private sort: ColumnSort | null = null;
+
   private readonly store = new AuditConfigStore();
   private readonly api = this.resolveApi();
   private dpSub = new Subscription();
+  private roleSub = new Subscription();
   private refreshDebounce = 0;
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    // Application Security: declare this module's roles (docs/wui-app-security/INTEGRATION.md).
+    registerModuleRoles({
+      module: MODULE_ID,
+      title: ml(PAGE_TITLE, PAGE_TITLE, PAGE_TITLE),
+      roles: [
+        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
+        { id: 'manage', label: ml('Manage audit DPs', 'Gérer les DP d’audit', 'Audit-DPs verwalten') }
+      ]
+    });
+    this.roleSub = hasRole$(MODULE_ID, 'view').subscribe((granted) => (this.roleView = granted));
+    this.roleSub.add(
+      hasRole$(MODULE_ID, 'manage').subscribe((granted) => {
+        this.roleManage = granted;
+        if (!granted) this.manageOpen = false; // close a manage dialog opened before the revoke
+      })
+    );
+  }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.dpSub.unsubscribe();
+    this.roleSub.unsubscribe();
     window.clearTimeout(this.refreshDebounce);
   }
 
   override render(): TemplateResult {
-    const title = 'Audit Trail';
+    const title = PAGE_TITLE;
     return html`
       <wui-context-generator
         .config=${{
@@ -112,7 +195,9 @@ export class WuiAuditTrail extends LitElement {
         <wui-content-header></wui-content-header>
       </wui-context-generator>
       <div class="body">
-        ${this.renderToolbar()} ${this.renderOffline()} ${this.renderContent()}
+        ${this.roleView
+          ? html`${this.renderToolbar()} ${this.renderOffline()} ${this.renderContent()}`
+          : html`<div class="center muted">${localizeDir(MSG.content.roleForbidden)}</div>`}
       </div>
       ${this.manageOpen
         ? html`<at-manage-dialog
@@ -145,11 +230,14 @@ export class WuiAuditTrail extends LitElement {
             ${this.dps.map((dp) => html`<ix-select-item label=${dp} value=${dp}></ix-select-item>`)}
           </ix-select>
         </label>
-        <ix-button variant="secondary" @click=${() => (this.manageOpen = true)}>
-          <ix-icon name="cogwheel" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.manage)}
-        </ix-button>
+        ${this.roleManage
+          ? html`<ix-button variant="secondary" @click=${() => (this.manageOpen = true)}>
+              <ix-icon name="cogwheel" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.manage)}
+            </ix-button>`
+          : ''}
         ${this.renderRangeControls()}
         <span class="grow"></span>
+        ${this.renderSearch(hasRows)}
         <ix-button variant="secondary" ?disabled=${!hasRows} @click=${this.onExportCsv}>
           <ix-icon name="export" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.csv)}
         </ix-button>
@@ -168,6 +256,18 @@ export class WuiAuditTrail extends LitElement {
         </ix-button>
       </div>
     `;
+  }
+
+  /** Global search input — filters the displayed rows across ALL columns. */
+  private renderSearch(hasRows: boolean): TemplateResult {
+    return html`<input
+      class="dt search"
+      type="search"
+      placeholder=${localize(MSG.toolbar.search)}
+      ?disabled=${!hasRows && this.search === ''}
+      .value=${this.search}
+      @input=${(e: Event) => (this.search = (e.target as HTMLInputElement).value)}
+    />`;
   }
 
   private renderRangeControls(): TemplateResult {
@@ -217,22 +317,22 @@ export class WuiAuditTrail extends LitElement {
     if (this.config.dpNames.length === 0) {
       return html`<div class="center muted">${localizeDir(MSG.content.selectDp)}</div>`;
     }
-    const rows = this.displayRows();
-    if (rows.length === 0) {
+    const total = this.result?.rows.length ?? 0;
+    if (total === 0) {
       return html`<div class="center muted">
         ${localizeDir(MSG.content.noRecords)}
       </div>`;
     }
-    return this.renderTable(rows);
+    return this.renderTable(this.visibleRows(), total);
   }
 
   /** Column keys in display order — a leading `source` column when several DPs are merged. */
-  private columnKeys(): { key: string; kind?: 'time' }[] {
+  private columnKeys(): ColumnKey[] {
     const fields = AUDIT_FIELDS.map((f) => ({ key: f.key, kind: f.kind }));
     return this.isMulti() ? [{ key: 'source' }, ...fields] : fields;
   }
 
-  private renderTable(rows: string[][]): TemplateResult {
+  private renderTable(rows: string[][], total: number): TemplateResult {
     const cols = this.columnKeys();
     return html`
       ${this.result?.truncated
@@ -241,33 +341,51 @@ export class WuiAuditTrail extends LitElement {
           </div>`
         : ''}
       <div class="meta">
-        <strong>${this.config.dpNames.join(' + ')}</strong> · ${recordsMsg(rows.length)} · ${this.rangeLabel()}
+        <strong>${this.config.dpNames.join(' + ')}</strong> ·
+        ${rows.length === total ? recordsMsg(total) : shownOfMsg(rows.length, total)} · ${this.rangeLabel()}
       </div>
       <div class="table-wrap">
         <table class="tbl">
           <thead>
             <tr>
-              ${cols.map(
-                (f) =>
-                  html`<th class=${f.kind === 'time' ? 'sticky' : ''}>
-                    ${localizeDir(colLabel(f.key as keyof typeof MSG.col))}
-                  </th>`
-              )}
+              ${cols.map((f) => this.renderHeaderCell(f))}
             </tr>
           </thead>
           <tbody>
-            ${rows.map(
-              (cells) => html`<tr>
-                ${cells.map(
-                  (c, i) =>
-                    html`<td class=${cols[i]?.kind === 'time' ? 'sticky nowrap' : ''}>${c}</td>`
+            ${rows.length === 0
+              ? html`<tr>
+                  <td class="no-match" colspan=${cols.length}>${localizeDir(MSG.content.noMatch)}</td>
+                </tr>`
+              : rows.map(
+                  (cells) => html`<tr>
+                    ${cells.map(
+                      (c, i) =>
+                        html`<td class=${cols[i]?.kind === 'time' ? 'sticky nowrap' : ''}>${c}</td>`
+                    )}
+                  </tr>`
                 )}
-              </tr>`
-            )}
           </tbody>
         </table>
       </div>
     `;
+  }
+
+  /** Sortable header cell: click-to-sort label + per-column filter input. */
+  private renderHeaderCell(col: ColumnKey): TemplateResult {
+    const dir = this.sort?.key === col.key ? this.sort.dir : null;
+    return html`<th class=${col.kind === 'time' ? 'sticky' : ''} aria-sort=${ariaSortValue(dir)}>
+      <button class="th-sort" title=${localize(MSG.table.sortHint)} @click=${() => this.onSort(col.key)}>
+        ${localizeDir(colLabel(col.key as keyof typeof MSG.col))}
+        <span class="sort-ind">${sortGlyph(dir)}</span>
+      </button>
+      <input
+        class="th-filter"
+        type="search"
+        placeholder=${localize(MSG.table.filterPlaceholder)}
+        .value=${this.colFilters[col.key] ?? ''}
+        @input=${(e: Event) => this.onColFilter(col.key, (e.target as HTMLInputElement).value)}
+      />
+    </th>`;
   }
 
   // --- data flow -------------------------------------------------------------
@@ -317,6 +435,59 @@ export class WuiAuditTrail extends LitElement {
       });
       return multi ? [row.source ?? '', ...cells] : cells;
     });
+  }
+
+  /**
+   * Display rows after the global search, per-column filters and column sort —
+   * what the table shows AND what CSV/JSON/print get (WYSIWYG).
+   */
+  private visibleRows(): string[][] {
+    const cols = this.columnKeys();
+    return this.sortRows(cols, this.filterRows(cols, this.pairedRows())).map((r) => r.cells);
+  }
+
+  /**
+   * Display rows paired with the record's sortable timestamp — same value as
+   * the rendered `time` cell (a dd/mm/yyyy string, whose string order would be
+   * wrong): the record's own `time`, falling back to the archive change time.
+   */
+  private pairedRows(): ViewRow[] {
+    const raw = this.result?.rows ?? [];
+    const timeIdx = AUDIT_FIELDS.findIndex((f) => f.kind === 'time');
+    return this.displayRows().map((cells, i) => ({
+      cells,
+      t: toMsLoose(raw[i]?.values[timeIdx]) ?? raw[i]?.t ?? 0
+    }));
+  }
+
+  /** Case-insensitive substring match: global search first, then per-column filters. */
+  private filterRows(cols: ColumnKey[], rows: ViewRow[]): ViewRow[] {
+    let out = rows;
+    const q = this.search.trim().toLowerCase();
+    if (q !== '') {
+      out = out.filter((r) => r.cells.some((c) => c.toLowerCase().includes(q)));
+    }
+    for (const [key, value] of Object.entries(this.colFilters)) {
+      const f = value.trim().toLowerCase();
+      if (f === '') continue;
+      const i = cols.findIndex((c) => c.key === key);
+      if (i === -1) continue; // e.g. a `source` filter while a single DP is selected
+      out = out.filter((r) => (r.cells[i] ?? '').toLowerCase().includes(f));
+    }
+    return out;
+  }
+
+  /** Applies {@link sort}; `null` (or an absent column) keeps the engine order. */
+  private sortRows(cols: ColumnKey[], rows: ViewRow[]): ViewRow[] {
+    const sort = this.sort;
+    if (sort === null) return rows;
+    const i = cols.findIndex((c) => c.key === sort.key);
+    if (i === -1) return rows;
+    const dir = sort.dir === 'asc' ? 1 : -1;
+    const byTime = cols[i]?.kind === 'time';
+    return [...rows].sort(
+      (a, b) => dir * (byTime ? a.t - b.t : compareCells(a.cells[i] ?? '', b.cells[i] ?? ''))
+    );
   }
 
   private resolveRange(): { start: Date; end: Date } {
@@ -405,16 +576,29 @@ export class WuiAuditTrail extends LitElement {
     await this.recompute();
   }
 
+  /** Header click: asc → desc → back to the default order (newest first). */
+  private onSort(key: string): void {
+    if (this.sort?.key !== key) {
+      this.sort = { key, dir: 'asc' };
+      return;
+    }
+    this.sort = this.sort.dir === 'asc' ? { key, dir: 'desc' } : null;
+  }
+
+  private onColFilter(key: string, value: string): void {
+    this.colFilters = { ...this.colFilters, [key]: value };
+  }
+
   private onExportCsv(): void {
-    exportAuditCsv(this.config.dpNames.join('+'), this.displayRows(), this.isMulti());
+    exportAuditCsv(this.config.dpNames.join('+'), this.visibleRows(), this.isMulti());
   }
 
   private onExportJson(): void {
-    exportAuditJson(this.config.dpNames.join('+'), this.displayRows(), this.isMulti());
+    exportAuditJson(this.config.dpNames.join('+'), this.visibleRows(), this.isMulti());
   }
 
   private onPrint(): void {
-    printAudit(this.config.dpNames.join(' + '), this.rangeLabel(), this.displayRows(), this.isMulti());
+    printAudit(this.config.dpNames.join(' + '), this.rangeLabel(), this.visibleRows(), this.isMulti());
   }
 
   private resolveApi(): OaRxJsApi | null {
@@ -480,6 +664,9 @@ function pageStyles(): ReturnType<typeof css> {
     .arrow {
       color: var(--theme-color-soft-text);
     }
+    .search {
+      min-width: 13rem;
+    }
     .meta {
       font-size: 0.85rem;
       color: var(--theme-color-soft-text);
@@ -538,6 +725,46 @@ function pageStyles(): ReturnType<typeof css> {
       z-index: 1;
       background: var(--theme-color-2);
       font-weight: 600;
+      vertical-align: top;
+    }
+    .th-sort {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      width: 100%;
+      background: none;
+      border: 0;
+      padding: 0;
+      font: inherit;
+      font-weight: 600;
+      color: inherit;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .sort-ind {
+      min-width: 0.8rem;
+      font-size: 0.6rem;
+      color: var(--theme-color-primary);
+    }
+    .th-filter {
+      display: block;
+      box-sizing: border-box;
+      width: 100%;
+      min-width: 5.5rem;
+      margin-top: 0.25rem;
+      font: inherit;
+      font-size: 0.75rem;
+      font-weight: 400;
+      color: var(--theme-color-std-text);
+      background: var(--theme-color-1);
+      border: 1px solid var(--theme-color-soft-bdr);
+      border-radius: var(--theme-default-border-radius);
+      padding: 0.1rem 0.3rem;
+    }
+    .no-match {
+      text-align: center;
+      color: var(--theme-color-soft-text);
+      padding: 1.5rem 1rem;
     }
     .tbl .sticky {
       position: sticky;

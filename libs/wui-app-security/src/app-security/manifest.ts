@@ -156,6 +156,16 @@ export const MODULE_MANIFEST: AppModuleRoles[] = [
     ]
   },
   {
+    module: 'fleet-stop-analysis',
+    title: ml('Fleet Stop-Cause Analysis', 'Analyse des causes d’arrêts', 'Stillstandsursachen-Analyse'),
+    roles: [view]
+  },
+  {
+    module: 'fleet-kpi-analysis',
+    title: ml('Fleet KPI Analysis', 'Analyse des KPI', 'KPI-Analyse'),
+    roles: [view]
+  },
+  {
     module: 'fleet-closures',
     title: ml('Fleet Closures', 'Fermetures du parc', 'Betriebsschließungen'),
     roles: [view, { ...edit, description: ml('Manage non-working periods.', 'Gérer les périodes non travaillées.', 'Nichtarbeitszeiten verwalten.') }]

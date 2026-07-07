@@ -44,3 +44,24 @@ On the shared-code side: generic base `DpJsonStore<T extends {id; dp}>` (`data/d
 - **Snapshot at report creation**: later edits to a template never alter an already-created/signed report (the instance freezes `sections`+`workflow`). Keep this in mind for any evolution of the data model.
 - **Reused shared components**: `rb-template-editor` is tabbed (Sections | Workflow), reuses `mf-dp-input` (from machine-fleet-3d) to enter a dataset's DP, and a `move()` / patch-by-index pattern for add/remove/reorder. Shared styles `dialog-styles.ts` / `table-styles.ts`.
 - **Not done / known limits**: i18n of the FR labels; scheduled server-side aggregation; PDF / email export; cryptographic electronic signature.
+
+## Application Security (roles — added 2026-07)
+
+The page declares 2 roles (self-registration in `report-templates.ts`
+`connectedCallback` + mirrored in the app-security manifest): `view`, `edit`.
+All OPEN until an admin assigns groups in `/app-security`
+(docs/wui-app-security/INTEGRATION.md).
+
+- **`view`** — gates the page body: without the grant the header stays but the
+  body is replaced by a muted forbidden notice (`MSG.roleForbidden`, i18n.ts);
+  the editor modal and delete dialog are not rendered either.
+- **`edit`** — gates the template mutations: hides the toolbar **Import** and
+  **New template** buttons and the empty-state **Generate demo** button, and
+  composes with the existing `canPublish` permission into the `canEdit` prop of
+  `rb-template-table` (duplicate/delete actions, edit icon becomes view-only)
+  and `rb-template-editor` (read-only editor, no Save). JSON **export** and the
+  Reports navigation stay open — they only read. A live revocation closes a
+  new-template editor and any pending delete confirmation.
+- Tier 1 module (no backend manager) → UI gating only; persistence goes through
+  the shared PARA REST DP-JSON API, which is deliberately not gated per-module
+  (see docs/wui-para/NOTES.md).

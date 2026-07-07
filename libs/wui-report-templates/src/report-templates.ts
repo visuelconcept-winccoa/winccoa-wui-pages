@@ -22,6 +22,7 @@ import { LitElement, css, html, nothing, type PropertyValues, type TemplateResul
 import { query, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
+import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
 import { buildDemoTemplates } from '@visuelconcept/wui-report-builder/data/demo.js';
 import { exportTemplatesJson, parseTemplates } from '@visuelconcept/wui-report-builder/data/io.js';
 import { TemplateStore } from '@visuelconcept/wui-report-builder/data/template-store.js';
@@ -29,9 +30,11 @@ import { blankTemplate, nowLocal, type ReportTemplate } from '@visuelconcept/wui
 import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
 import '@visuelconcept/wui-report-builder/ui/rb-template-editor.js';
 import '@visuelconcept/wui-report-builder/ui/rb-template-table.js';
-import { MSG, confirmDeleteMsg, localize, localizeDir } from './i18n.js';
+import { MSG, confirmDeleteMsg, localize, localizeDir, ml } from './i18n.js';
 
 const REPORTS_ROUTE = '/report-builder';
+/** Application-Security module id — the specs/menuconfig page id. */
+const MODULE_ID = 'report-templates';
 
 export class WuiReportTemplates extends LitElement {
   static override readonly styles = [IXCoreStyles, pageStyles()];
@@ -45,22 +48,52 @@ export class WuiReportTemplates extends LitElement {
   @state() private importError = '';
   @state() private canPublish = false;
   @state() private signerName = '';
+  /** Application-Security grant for the 'view' role (open until assigned). */
+  @state() private roleView = true;
+  /** Application-Security grant for the 'edit' role (open until assigned). */
+  @state() private roleEdit = true;
 
   @query('.import-input') private importInput!: HTMLInputElement;
 
   private readonly store = new TemplateStore();
   private readonly user = this.resolveUser();
   private userSub = new Subscription();
+  private roleSub = new Subscription();
 
   override connectedCallback(): void {
     super.connectedCallback();
     this.readUser();
     if (this.user) this.userSub = this.user.user$.subscribe(() => this.readUser());
+    // Application Security: declare this module's roles and follow the grants.
+    registerModuleRoles({
+      module: MODULE_ID,
+      title: ml('Report Templates', 'Modèles de rapports', 'Berichtsvorlagen'),
+      roles: [
+        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
+        {
+          id: 'edit',
+          label: ml('Edit', 'Éditer', 'Bearbeiten'),
+          description: ml('Design report templates.', 'Concevoir les modèles de rapports.', 'Berichtsvorlagen gestalten.')
+        }
+      ]
+    });
+    this.roleSub = new Subscription();
+    this.roleSub.add(hasRole$(MODULE_ID, 'view').subscribe((granted) => (this.roleView = granted)));
+    this.roleSub.add(
+      hasRole$(MODULE_ID, 'edit').subscribe((granted) => {
+        this.roleEdit = granted;
+        if (granted) return;
+        // Revoked live: close any mutation surface still open.
+        if (this.editing === null) this.editing = undefined;
+        this.deletingId = null;
+      })
+    );
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.userSub.unsubscribe();
+    this.roleSub.unsubscribe();
   }
 
   override render(): TemplateResult {
@@ -82,27 +115,19 @@ export class WuiReportTemplates extends LitElement {
         </wui-context-generator>
 
         <div class="body">
-          ${this.importError
-            ? html`<div class="notice error"><ix-icon name="warning"></ix-icon>${this.importError}</div>`
-            : nothing}
-          ${this.offline
-            ? html`<div class="notice">
-                <ix-icon name="info"></ix-icon>${localizeDir(MSG.offline)}
-              </div>`
-            : nothing}
-          ${this.renderBody()}
+          ${this.roleView ? this.renderGrantedBody() : html`<div class="center empty"><ix-typography>${localizeDir(MSG.roleForbidden)}</ix-typography></div>`}
         </div>
       </div>
 
-      ${this.editing === undefined
-        ? nothing
-        : html`<rb-template-editor
+      ${this.roleView && this.editing !== undefined
+        ? html`<rb-template-editor
             .template=${this.editing ?? blankTemplate()}
-            .canEdit=${this.canPublish}
+            .canEdit=${this.canPublish && this.roleEdit}
             @wui:save=${(e: CustomEvent<ReportTemplate>) => this.onSave(e.detail)}
             @wui:close=${() => (this.editing = undefined)}
-          ></rb-template-editor>`}
-      ${this.deletingId
+          ></rb-template-editor>`
+        : nothing}
+      ${this.roleView && this.deletingId
         ? html`<wui-confirm-dialog
             message=${confirmDeleteMsg(this.templateName(this.deletingId))}
             @wui:confirm=${this.onDeleteConfirm}
@@ -116,6 +141,21 @@ export class WuiReportTemplates extends LitElement {
     void this.refresh();
   }
 
+  /** Notices + list/toolbar — only rendered when the 'view' role is granted. */
+  private renderGrantedBody(): TemplateResult {
+    return html`
+      ${this.importError
+        ? html`<div class="notice error"><ix-icon name="warning"></ix-icon>${this.importError}</div>`
+        : nothing}
+      ${this.offline
+        ? html`<div class="notice">
+            <ix-icon name="info"></ix-icon>${localizeDir(MSG.offline)}
+          </div>`
+        : nothing}
+      ${this.renderBody()}
+    `;
+  }
+
   private renderBody(): TemplateResult {
     if (this.loading) return html`<div class="center"><ix-spinner></ix-spinner></div>`;
     return html`
@@ -125,20 +165,26 @@ export class WuiReportTemplates extends LitElement {
           <ix-button variant="secondary" @click=${() => this.dispatchEvent(new RouterEvent(REPORTS_ROUTE))}>
             <ix-icon name="list" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.reports)}
           </ix-button>
-          <ix-button variant="secondary" @click=${this.triggerImport}><ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.import)}</ix-button>
+          ${this.roleEdit
+            ? html`<ix-button variant="secondary" @click=${this.triggerImport}><ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.import)}</ix-button>`
+            : nothing}
           <ix-button variant="secondary" ?disabled=${this.templates.length === 0} @click=${() => exportTemplatesJson(this.templates)}><ix-icon name="download" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.json)}</ix-button>
-          <ix-button ?disabled=${!this.canPublish} @click=${this.newTemplate}><ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.newTemplate)}</ix-button>
+          ${this.roleEdit
+            ? html`<ix-button ?disabled=${!this.canPublish} @click=${this.newTemplate}><ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.newTemplate)}</ix-button>`
+            : nothing}
         </div>
       </div>
       <input class="import-input" type="file" accept="application/json,.json" hidden @change=${this.onImportFile} />
       ${this.templates.length === 0
         ? html`<div class="center empty">
             <ix-typography>${localizeDir(MSG.empty.none)}</ix-typography>
-            <ix-button variant="secondary" ?disabled=${!this.canPublish} @click=${this.generateDemo}><ix-icon name="add" slot="icon"></ix-icon>${localizeDir(MSG.empty.generateDemo)}</ix-button>
+            ${this.roleEdit
+              ? html`<ix-button variant="secondary" ?disabled=${!this.canPublish} @click=${this.generateDemo}><ix-icon name="add" slot="icon"></ix-icon>${localizeDir(MSG.empty.generateDemo)}</ix-button>`
+              : nothing}
           </div>`
         : html`<rb-template-table
             .templates=${this.templates}
-            .canEdit=${this.canPublish}
+            .canEdit=${this.canPublish && this.roleEdit}
             @wui:edit=${(e: CustomEvent<{ id: string }>) => this.openTemplate(e.detail.id)}
             @wui:duplicate=${(e: CustomEvent<{ id: string }>) => this.duplicate(e.detail.id)}
             @wui:delete=${(e: CustomEvent<{ id: string }>) => (this.deletingId = e.detail.id)}

@@ -11,8 +11,10 @@
  */
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
-import { LitElement, css, html, type TemplateResult } from 'lit';
+import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { Subscription } from 'rxjs';
+import { hasRole$ } from '@visuelconcept/wui-kit/data/app-security.js';
 import { MSG, localize, localizeDir } from '../i18n.js';
 import {
   CONFORMITY_COLORS,
@@ -39,6 +41,22 @@ export class TtReportTable extends LitElement {
 
   @state() private sortKey: SortKey = 'startTime';
   @state() private sortAsc = false;
+
+  /** Application-Security grant for the 'edit' role (open until assigned). */
+  @state() private canEdit = true;
+
+  private roleSub = new Subscription();
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    this.roleSub = hasRole$('thermal-reports', 'edit').subscribe((granted) => (this.canEdit = granted));
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.roleSub.unsubscribe();
+    this.roleSub = new Subscription();
+  }
 
   override render(): TemplateResult {
     const rows = this.sortedReports();
@@ -86,30 +104,39 @@ export class TtReportTable extends LitElement {
             ${localizeDir(CONFORMITY_LABELS[report.conformity])}
           </span>
         </td>
-        <td class="actions-col" @click=${(e: Event) => e.stopPropagation()}>
-          <ix-icon-button
-            ghost
-            size="16"
-            icon="eye"
-            title=${localize(MSG.table.openReport)}
-            @click=${() => this.requestOpen(report.id)}
-          ></ix-icon-button>
-          <ix-icon-button
-            ghost
-            size="16"
-            icon="pen"
-            title=${localize(MSG.table.edit)}
-            @click=${() => this.requestEdit(report.id)}
-          ></ix-icon-button>
-          <ix-icon-button
-            ghost
-            size="16"
-            icon="trashcan"
-            title=${localize(MSG.table.remove)}
-            @click=${() => this.requestDelete(report.id)}
-          ></ix-icon-button>
-        </td>
+        <td class="actions-col" @click=${(e: Event) => e.stopPropagation()}>${this.renderRowActions(report)}</td>
       </tr>
+    `;
+  }
+
+  /** Row action buttons — edit/delete only with the 'edit' role grant. */
+  private renderRowActions(report: ThermalReport): TemplateResult {
+    return html`
+      <ix-icon-button
+        ghost
+        size="16"
+        icon="eye"
+        title=${localize(MSG.table.openReport)}
+        @click=${() => this.requestOpen(report.id)}
+      ></ix-icon-button>
+      ${this.canEdit
+        ? html`
+            <ix-icon-button
+              ghost
+              size="16"
+              icon="pen"
+              title=${localize(MSG.table.edit)}
+              @click=${() => this.requestEdit(report.id)}
+            ></ix-icon-button>
+            <ix-icon-button
+              ghost
+              size="16"
+              icon="trashcan"
+              title=${localize(MSG.table.remove)}
+              @click=${() => this.requestDelete(report.id)}
+            ></ix-icon-button>
+          `
+        : nothing}
     `;
   }
 

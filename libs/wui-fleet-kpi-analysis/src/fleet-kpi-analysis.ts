@@ -22,7 +22,9 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import * as echarts from 'echarts';
 import { LitElement, html, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
+import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
+import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
 import { pageStyles } from '@visuelconcept/wui-fleet-core/styles.js';
 import { FleetStore } from '@visuelconcept/wui-fleet-core/data/fleet-store.js';
 import {
@@ -47,7 +49,7 @@ import {
   normaliseClosures,
   type ClosureConfig
 } from '@visuelconcept/wui-fleet-core/closures.js';
-import { MSG, localize, localizeDir } from './fleet-kpi-analysis/i18n.js';
+import { MSG, localize, localizeDir, ml } from './fleet-kpi-analysis/i18n.js';
 
 const TAB_TABLE = 0;
 const TAB_CHART = 1;
@@ -85,22 +87,34 @@ export class WuiFleetKpiAnalysis extends LitElement {
   @state() private offline = false;
   /** Loaded for the TRS computation; edited on the dedicated /fleet-closures page. */
   @state() private closures: ClosureConfig = emptyClosureConfig();
+  /** Application-Security grant for the 'view' role (open until assigned). */
+  @state() private canView = true;
   /** machineId → its TRS threshold config (resolved from the atelier configs). */
   private trsConfigByMachine = new Map<string, TrsThresholds>();
 
   private readonly store = new FleetStore();
   private readonly api = this.resolveApi();
+  private roleSub = new Subscription();
   private debounceId = 0;
   private chart: echarts.ECharts | null = null;
   private resizeObserver: ResizeObserver | null = null;
 
   override connectedCallback(): void {
     super.connectedCallback();
+    registerModuleRoles({
+      module: 'fleet-kpi-analysis',
+      title: ml('KPI Analysis', 'Analyse des KPI', 'KPI-Analyse'),
+      roles: [{ id: 'view', label: ml('View', 'Consulter', 'Ansehen') }]
+    });
+    this.roleSub = hasRole$('fleet-kpi-analysis', 'view').subscribe((granted) => {
+      this.canView = granted;
+    });
     this.initDefaultRange();
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
+    this.roleSub.unsubscribe();
     if (this.debounceId) window.clearTimeout(this.debounceId);
     this.resizeObserver?.disconnect();
     this.chart?.dispose();
@@ -120,7 +134,9 @@ export class WuiFleetKpiAnalysis extends LitElement {
         <wui-content-header></wui-content-header>
       </wui-context-generator>
       <div class="body">
-        ${this.renderToolbar()} ${this.renderOffline()} ${this.renderTabs()} ${this.renderContent()}
+        ${this.canView
+          ? html`${this.renderToolbar()} ${this.renderOffline()} ${this.renderTabs()} ${this.renderContent()}`
+          : html`<div class="center muted">${localizeDir(MSG.roleForbidden)}</div>`}
       </div>
     `;
   }

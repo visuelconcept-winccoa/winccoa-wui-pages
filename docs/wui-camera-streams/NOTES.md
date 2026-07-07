@@ -92,3 +92,23 @@ way (each module owns one `AuditTrail_<Module>` DP).
 - **ACL**: the `/api/rtsp/*` routes are currently `fullAccess` like the other bridges (to be tightened).
 - **Audit trail unarchived on WebDemo2**: that project's only `_NGA_Group` is `_NGA_G_ALERT` (`isAlert` set), so there's no usable value-archive group → `AuditTrail_CameraStreams` is provisioned **unarchived**. Records are written as live values but **won't appear in the Audit-trail page's history table** until value archiving is enabled (the table reads NGA history via `dpGetPeriod`). Create a non-alert NGA group and re-enable archiving on the DP to capture history.
 - **Local test source**: MediaMTX (`bluenviron/mediamtx`) in RTSP-only mode (`rtspTransports:[tcp]`, `:8554`, `paths: { all_others: }`, `user: any`) + publishing a test pattern via the embedded ffmpeg (`testsrc2 ... -c:v libx264 -tune zerolatency -g 50 -f rtsp`). The public streamlock BigBuckBunny stream is **dead** (ffmpeg reads 0 bytes).
+
+## Application Security (roles — added 2026-07)
+
+The page declares 2 roles (self-registration in `camera-streams.ts` + mirrored
+in the app-security manifest): `view` and `edit`. Both OPEN until an admin
+assigns groups in `/app-security` (docs/wui-app-security/INTEGRATION.md).
+
+- **`view`** gates the page body: without the grant the header renders as usual
+  but the body (camera table AND viewer) is replaced by a muted forbidden
+  notice (`MSG.page.roleForbidden`).
+- **`edit`** ("Manage cameras and stream options") hides the mutations: the
+  "New camera" and "Import" toolbar buttons, the empty-state "Generate demo
+  cameras" button, and the per-row edit/delete actions (`cs-stream-table`
+  subscribes `hasRole$('camera-streams','edit')` itself — para-type-editor
+  pattern). If the grant drops while the editor dialog / delete confirm is
+  open, it closes. Viewing/opening a stream and export (all / per-row) stay
+  open — they only read.
+- No server-side guard yet: the camera CRUD goes through the SHARED PARA
+  persistence API (deliberately not gated per module — see the para notes);
+  the `/api/rtsp/*` bridge is read/relay only.
