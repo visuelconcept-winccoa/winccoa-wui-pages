@@ -18,7 +18,8 @@ manager, no webserver rebuild.
 ## Features
 
 - **In-place edit mode** with a symbol **Toolbox** grouped by family
-  (sources & substations, busbars & links, switchgear, measures/loads/earth).
+  (sources & substations, busbars & links, switchgear, **railway
+  electrification**, measures/loads/earth).
   Pick a symbol → click to place; drag on a magnetic grid; click a port (○) then
   another to draw a wire; `Esc` cancels a wire; `Del`/`⌫` removes the selection.
 - **Properties inspector**: label, 90° rotation, and — for switchgear — the
@@ -35,6 +36,51 @@ manager, no webserver rebuild.
   and applies it to the editor. Hidden unless enabled at deploy time
   (`dashboard-features.json` → `aiAssistant: true`).
 
+## Railway electrification
+
+The `railway` toolbox family models traction power supply, in single-line form:
+
+| Symbol             | Role      | Use                                                                 |
+| ------------------ | --------- | ------------------------------------------------------------------- |
+| `rectifier`        | passive   | AC→DC traction rectifier (750 V / 1.5 kV / 3 kV substations)         |
+| `catenary`         | busbar    | overhead contact-line section (messenger + contact wire, 6 ports)    |
+| `track`            | busbar    | running rails / return circuit (6 ports)                             |
+| `section-switch`   | switch    | catenary sectioning — horizontal blade, bindable open/closed DP      |
+| `autotransformer`  | passive   | 2×25 kV AC scheme (a = catenary, c = feeder, b = rail)               |
+| `train`            | load      | pantograph (port a, top) to wheels/rail (port b, bottom)             |
+
+Typical chain: grid → `transformer` → `rectifier` → `breaker` → `catenary`
+sections joined by `section-switch`; the `train` bridges catenary → `track`,
+which returns to `ground`/substation. Opening a sectioning switch de-energises
+the downstream catenary section live.
+
+- Four worked **railway demo networks** of rising complexity are in the offline
+  seed (`data/demo.ts`): *Simple DC feed* → *DC traction substation* →
+  *Double-track substation* → *2×25 kV AC (autotransformers)*. The overview
+  groups networks by their `category` chip (Power distribution / Railway).
+- An importable **2×25 kV example** with autotransformers is provided in
+  [`examples/reseau-ferroviaire-2x25kv.json`](./examples/reseau-ferroviaire-2x25kv.json)
+  (Import button on the `/ampere` overview).
+- The AI assistant knows the railway symbols and the modelling chain (see
+  `ai-context.ts`), with a dedicated starter prompt.
+
+## Snippets (one-click circuit fragments)
+
+The toolbox has a **Snippets** section below the symbols: pre-wired fragments you
+drop in one click, then edit like any drawn content (`data/snippets.ts`). Each
+instantiation gets fresh unique ids and labels localized to the active UI
+language, so a snippet can be inserted any number of times.
+
+- **Power distribution**: protected feeder, motor feeder, transformer incomer,
+  busbar + 3 feeders, grid/generator changeover.
+- **Railway electrification**: DC traction substation, sectioned catenary,
+  powered track (train), autotransformer cell.
+
+Adding a snippet is data-only: extend `SnippetId` and the `SNIPPETS` map (nodes
+at positions relative to the fragment origin + edges by local node id). The
+toolbox arms it as a `snippet:<id>` tool; the canvas emits `wui:place-snippet`
+and the page stamps + selects the new elements.
+
 ## Architecture
 
 ```
@@ -48,7 +94,8 @@ src/ampere/
   symbols/catalog.ts          IEC 60617-inspired inline-SVG symbol library + ports
   data/ampere-store.ts        DpJsonStore<Network> (type Ampere_Network)
   data/io.ts                  import/export + normalisation (reused by the AI)
-  data/demo.ts                offline demo TGBT
+  data/demo.ts                offline demo networks (distribution + railway)
+  data/snippets.ts            one-click circuit fragments (distribution + railway)
   ui/am-canvas.ts             SVG drawing surface (edit + runtime)
   ui/am-toolbox.ts            symbol palette + tool switcher
   ui/am-inspector.ts          properties panel

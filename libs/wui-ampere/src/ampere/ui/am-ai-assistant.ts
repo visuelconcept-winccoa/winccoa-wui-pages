@@ -127,7 +127,7 @@ export class WuiAmpereAiAssistant extends LitElement {
     return html`
       <div class="placeholder">${localizeDir(MSG.ai.placeholder)}</div>
       <div class="suggestions">
-        ${[MSG.suggestions.s1, MSG.suggestions.s2, MSG.suggestions.s3, MSG.suggestions.s4].map((s) => {
+        ${[MSG.suggestions.s1, MSG.suggestions.s2, MSG.suggestions.s3, MSG.suggestions.s4, MSG.suggestions.s5].map((s) => {
           const text = localize(s);
           return html`<button class="suggestion" type="button" ?disabled=${this.busy} @click=${() => void this.sendPrompt(text)}>${text}</button>`;
         })}

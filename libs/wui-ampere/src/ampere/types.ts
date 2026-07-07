@@ -133,6 +133,11 @@ export interface Network {
   name: string;
   /** Free-text description / notes. */
   description: string;
+  /**
+   * Free-text grouping label shown as a chip on the overview and used to sort
+   * it (e.g. "Distribution", "Ferroviaire") — plain string, empty = none.
+   */
+  category?: string;
   /** Placed symbols. */
   nodes: Node[];
   /** Conductors between symbol ports. */

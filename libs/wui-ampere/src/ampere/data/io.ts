@@ -161,11 +161,13 @@ export function normalizeNetwork(item: Record<string, unknown>): Network {
   const rawMeas = Array.isArray(item['measurements']) ? item['measurements'] : [];
   const measurements = rawMeas.map((m, i) => normalizeMeasurement(m as Record<string, unknown>, i));
 
+  const category = asString(item['category']);
   return {
     ...base,
     id: asString(item['id']),
     name: asString(item['name']),
     description: asString(item['description']),
+    ...(category ? { category } : {}),
     updatedAt: asString(item['updatedAt']),
     nodes,
     edges,

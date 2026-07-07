@@ -24,6 +24,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { ifDefined } from 'lit/directives/if-defined.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { SYMBOLS, type SymbolId } from '../symbols/catalog.js';
+import { isSnippetTool, snippetOf, type SnippetTool } from '../data/snippets.js';
 import type { EnergyState } from '../topology.js';
 import { MSG, localizeDir } from '../i18n.js';
 import {
@@ -45,8 +46,12 @@ import {
   type Point
 } from '../types.js';
 
-/** Current pointer tool: pick a symbol to place, `select` to move, `wire` implied by clicking ports. */
-export type Tool = 'select' | SymbolId;
+/**
+ * Current pointer tool: `select` to move/marquee, a {@link SymbolId} to drop one
+ * symbol, or a {@link SnippetTool} (`snippet:<id>`) to drop a ready-made circuit
+ * fragment. Ports still wire regardless of the armed tool.
+ */
+export type Tool = 'select' | SymbolId | SnippetTool;
 
 /** One selected object on the canvas (the page holds an array of these). */
 export interface Selection {
@@ -290,7 +295,13 @@ export class AmCanvas extends LitElement {
 
   private onCanvasDown(e: PointerEvent): void {
     if (!this.editing) return;
-    // A symbol tool places on empty space; the select tool starts a marquee.
+    // A snippet/symbol tool drops on empty space; the select tool starts a marquee.
+    if (isSnippetTool(this.tool)) {
+      const p = this.toUser(e);
+      const def = snippetOf(this.tool);
+      this.emit('wui:place-snippet', { snippet: def.id, x: snap(p.x - def.w / 2), y: snap(p.y - def.h / 2) });
+      return;
+    }
     if (this.tool !== 'select') {
       const p = this.toUser(e);
       const def = SYMBOLS[this.tool];

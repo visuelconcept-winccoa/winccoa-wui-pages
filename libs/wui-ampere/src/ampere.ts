@@ -29,6 +29,7 @@ import { container } from 'tsyringe';
 import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
 import { AmpereStore } from './ampere/data/ampere-store.js';
 import { demoNetworks } from './ampere/data/demo.js';
+import { SNIPPETS, instantiateSnippet, type SnippetId } from './ampere/data/snippets.js';
 import { exportJson, exportNetwork, parseNetworks } from './ampere/data/io.js';
 import { autoLayout } from './ampere/layout.js';
 import { computeEnergy, type EnergyState } from './ampere/topology.js';
@@ -384,6 +385,7 @@ export class WuiAmpere extends LitElement {
           .alarm=${this.alarmMap(network)}
           .selection=${this.selection}
           @wui:place=${(e: CustomEvent<{ symbol: SymbolId; x: number; y: number }>) => this.onPlace(network, e.detail)}
+          @wui:place-snippet=${(e: CustomEvent<{ snippet: SnippetId; x: number; y: number }>) => this.onPlaceSnippet(network, e.detail)}
           @wui:move-multi=${(e: CustomEvent<MoveMulti>) => this.onMoveMulti(network, e.detail)}
           @wui:move-label=${(e: CustomEvent<{ id: string; dx: number; dy: number }>) => this.onMoveLabel(network, e.detail)}
           @wui:connect=${(e: CustomEvent<{ from: PortRef; to: PortRef }>) => this.onConnect(network, e.detail)}
@@ -568,6 +570,15 @@ export class WuiAmpere extends LitElement {
     this.tool = 'select';
     this.selection = [{ kind: 'node', id: node.id }];
     void this.persist({ ...network, nodes: [...network.nodes, node] });
+  }
+
+  /** Drop a snippet: insert its cloned nodes/edges and select them for editing. */
+  private onPlaceSnippet(network: Network, detail: { snippet: SnippetId; x: number; y: number }): void {
+    const def = SNIPPETS[detail.snippet];
+    const { nodes, edges } = instantiateSnippet(def, { x: detail.x, y: detail.y });
+    this.tool = 'select';
+    this.selection = nodes.map((n) => ({ kind: 'node' as const, id: n.id }));
+    void this.persist({ ...network, nodes: [...network.nodes, ...nodes], edges: [...network.edges, ...edges] });
   }
 
   /** Commit a group drag: apply the snapped delta to every moved node/measurement. */

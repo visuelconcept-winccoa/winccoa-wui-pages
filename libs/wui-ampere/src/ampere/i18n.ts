@@ -49,7 +49,7 @@ export const MSG = {
       'Offline-Modus: Änderungen werden nicht in Datenpunkten gespeichert (Backend nicht verfügbar oder fehlende Schreibrechte).'
     ),
     emptyList: ml('No saved network.', 'Aucun réseau enregistré.', 'Kein gespeichertes Netz.'),
-    generateDemo: ml('Generate a demo network', 'Générer un réseau de démonstration', 'Demo-Netz erzeugen'),
+    generateDemo: ml('Generate demo networks', 'Générer des réseaux de démonstration', 'Demo-Netze erzeugen'),
     missing: ml('Network not found.', 'Réseau introuvable.', 'Netz nicht gefunden.'),
     backToList: ml('Back to the list', 'Retour à la liste', 'Zurück zur Liste'),
     importFailed: ml('Import failed.', 'Import échoué.', 'Import fehlgeschlagen.')
@@ -82,13 +82,24 @@ export const MSG = {
     title: ml('Toolbox', 'Boîte à outils', 'Werkzeugleiste'),
     hint: ml('Select then place', 'Sélectionner puis placer', 'Auswählen und platzieren'),
     wire: ml('Wire', 'Fil', 'Leitung'),
-    select: ml('Select / move', 'Sélectionner / déplacer', 'Auswählen / verschieben')
+    select: ml('Select / move', 'Sélectionner / déplacer', 'Auswählen / verschieben'),
+    snippets: ml('Snippets', 'Extraits', 'Bausteine'),
+    snippetsHint: ml(
+      'Pre-wired fragments — click one then click the canvas to drop it, then edit.',
+      'Fragments pré-câblés — cliquez-en un puis cliquez sur la zone pour le déposer, puis modifiez.',
+      'Vorverdrahtete Fragmente — eines anklicken, dann auf die Fläche klicken zum Ablegen, dann bearbeiten.'
+    )
   },
   category: {
     sources: ml('Sources & substations', 'Sources & postes', 'Quellen & Stationen'),
     busbar: ml('Busbars & links', 'Jeux de barres & liaisons', 'Sammelschienen & Verbindungen'),
     switchgear: ml('Switchgear', 'Appareillage de coupure', 'Schaltgeräte'),
+    railway: ml('Railway electrification', 'Électrification ferroviaire', 'Bahnelektrifizierung'),
     measure: ml('Measures, loads & earth', 'Mesures, charges & terre', 'Messungen, Lasten & Erde')
+  },
+  snippetCategory: {
+    distribution: ml('Power distribution', 'Distribution électrique', 'Stromverteilung'),
+    railway: ml('Railway electrification', 'Électrification ferroviaire', 'Bahnelektrifizierung')
   },
   inspector: {
     title: ml('Properties', 'Propriétés', 'Eigenschaften'),
@@ -184,6 +195,11 @@ export const MSG = {
       'Add an ammeter and a voltmeter on the main incomer.',
       'Ajoute un ampèremètre et un voltmètre sur l’arrivée principale.',
       'Füge ein Amperemeter und ein Voltmeter an der Haupteinspeisung hinzu.'
+    ),
+    s5: ml(
+      'A railway traction feed: grid → transformer → rectifier → breaker → two catenary sections with a sectioning switch, a train on section 1, track return to earth.',
+      'Une alimentation de traction ferroviaire : réseau → transformateur → redresseur → disjoncteur → deux sections de caténaire avec sectionnement, un train sous la section 1, retour rail à la terre.',
+      'Eine Bahnstrom-Einspeisung: Netz → Trafo → Gleichrichter → Schalter → zwei Fahrleitungsabschnitte mit Streckentrenner, ein Zug auf Abschnitt 1, Gleisrückführung zur Erde.'
     )
   }
 } as const;
