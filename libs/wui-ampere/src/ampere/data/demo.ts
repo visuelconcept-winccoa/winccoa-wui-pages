@@ -37,6 +37,10 @@ const GRID_SOURCE: SymbolId = 'grid-source';
 const DISCONNECTOR: SymbolId = 'disconnector';
 const FEEDER_OUT: SymbolId = 'feeder-out';
 
+/** Overview grouping labels, localized at generation time. */
+const CAT_DISTRIB = (): string => t('Power distribution', 'Distribution électrique', 'Stromverteilung');
+const CAT_RAIL = (): string => t('Railway electrification', 'Électrification ferroviaire', 'Bahnelektrifizierung');
+
 /** Compact node literal (defaults: no rotation, unbound, closed=1, not a source). */
 function node(
   id: string,
@@ -61,6 +65,7 @@ function meas(id: string, dp: string, label: string, unit: string, decimals: num
 function demoSourceSubstation(): Network {
   return {
     id: 'demo-poste-source',
+    category: CAT_DISTRIB(),
     name: t('Source substation 63/20 kV', 'Poste source 63/20 kV', 'Umspannwerk 63/20 kV'),
     description: t(
       'Two 63 kV incomers, HV/MV transformers, two coupled 20 kV half-busbars and four feeders.',
@@ -127,6 +132,7 @@ function demoSourceSubstation(): Network {
 function demoMvLvSubstation(): Network {
   return {
     id: 'demo-poste-htabt',
+    category: CAT_DISTRIB(),
     name: t('MV/LV substation 20 kV / 400 V', 'Poste HTA/BT 20 kV / 400 V', 'MS/NS-Station 20 kV / 400 V'),
     description: t(
       'Ring-main with two loop feeders, fused transformer protection and a LV board (meter, surge arrester, earth, three feeders).',
@@ -184,6 +190,7 @@ function demoMvLvSubstation(): Network {
 function demoBackedUpBoard(): Network {
   return {
     id: 'demo-tgbt-secouru',
+    category: CAT_DISTRIB(),
     name: t('Backed-up LV board', 'TGBT secouru', 'NS-Verteilung mit Ersatz'),
     description: t(
       'Grid and standby generator through a normal/backup changeover, one busbar and three feeders.',
@@ -227,7 +234,8 @@ function demoBackedUpBoard(): Network {
 function demoRailwayTraction(): Network {
   return {
     id: 'demo-ferroviaire',
-    name: t('Railway traction feed', 'Traction ferroviaire', 'Bahnstrom-Einspeisung'),
+    category: CAT_RAIL(),
+    name: t('DC traction substation', 'Sous-station de traction DC', 'DC-Unterwerk'),
     description: t(
       'DC traction substation: grid → transformer → rectifier → breaker → two catenary sections with a sectioning switch, a train on section 1, track return to earth.',
       'Sous-station de traction DC : réseau → transformateur → redresseur → disjoncteur → deux sections de caténaire (sectionnement), train sous la section 1, retour rail à la terre.',
@@ -264,10 +272,158 @@ function demoRailwayTraction(): Network {
   };
 }
 
+/** 5 — Simple DC feed (single catenary section, one train) — the minimal railway diagram. */
+function demoRailwaySimpleFeed(): Network {
+  return {
+    id: 'demo-ferro-simple',
+    category: CAT_RAIL(),
+    name: t('Simple DC feed', 'Alimentation DC simple', 'Einfache DC-Speisung'),
+    description: t(
+      'The minimal railway diagram: rectifier substation → breaker → one catenary → a train → track return to earth.',
+      'Le schéma ferroviaire minimal : sous-station redresseuse → disjoncteur → une caténaire → un train → retour rail à la terre.',
+      'Das minimale Bahndiagramm: Gleichrichter-Unterwerk → Schalter → eine Fahrleitung → ein Zug → Gleisrückführung zur Erde.'
+    ),
+    updatedAt: '',
+    nodes: [
+      node('g1', GRID_SOURCE, t('MV grid', 'Réseau HTA', 'MS-Netz'), 120, 40, { source: true }),
+      node('t1', 'transformer', t('Transformer', 'Transformateur', 'Trafo'), 120, 160),
+      node('r1', 'rectifier', t('Rectifier', 'Redresseur', 'Gleichrichter'), 128, 310),
+      node('q1', 'breaker', 'DJ', 130, 410, { dp: 'Demo:Feed.breaker' }),
+      node('c1', 'catenary', t('Catenary', 'Caténaire', 'Fahrleitung'), 40, 520),
+      node('tr1', 'train', t('Train', 'Train', 'Zug'), 140, 600),
+      node('k1', 'track', t('Track (return)', 'Rail (retour)', 'Gleis (Rückleitung)'), 40, 740),
+      node('gnd1', 'ground', '', 20, 780)
+    ],
+    edges: [
+      edge('e1', 'g1', 'b', 't1', 'a'),
+      edge('e2', 't1', 'b', 'r1', 'a'),
+      edge('e3', 'r1', 'b', 'q1', 'a'),
+      edge('e4', 'q1', 'b', 'c1', 'p3'),
+      edge('e5', 'c1', 'p4', 'tr1', 'a'),
+      edge('e6', 'tr1', 'b', 'k1', 'p4'),
+      edge('e7', 'k1', 'p1', 'gnd1', 'a')
+    ],
+    measurements: [meas('mea1', 'Demo:Catenary.voltage', 'U', 'V', 0, 'c1', -40, -46)]
+  };
+}
+
+/** 6 — Double-track substation: two feeder breakers, a track paralleling switch, two trains. */
+function demoRailwayDoubleTrack(): Network {
+  return {
+    id: 'demo-ferro-double-voie',
+    category: CAT_RAIL(),
+    name: t('Double-track substation', 'Sous-station double voie', 'Zweigleisiges Unterwerk'),
+    description: t(
+      'One rectifier substation feeding two tracks through separate feeder breakers, a normally-open track paralleling switch, a train on each track.',
+      'Une sous-station redresseuse alimentant deux voies par disjoncteurs de départ séparés, un sectionnement de mise en parallèle normalement ouvert, un train par voie.',
+      'Ein Gleichrichter-Unterwerk speist zwei Gleise über getrennte Abgangsschalter, ein normal offener Gleiskuppelschalter, je ein Zug pro Gleis.'
+    ),
+    updatedAt: '',
+    nodes: [
+      node('g1', GRID_SOURCE, t('MV grid', 'Réseau HTA', 'MS-Netz'), 360, 20, { source: true }),
+      node('t1', 'transformer', t('Transformer', 'Transformateur', 'Trafo'), 360, 140),
+      node('r1', 'rectifier', t('Rectifier', 'Redresseur', 'Gleichrichter'), 368, 290),
+      node('bb', 'busbar', t('DC busbar', 'Barre DC', 'DC-Sammelschiene'), 260, 400, { rotation: 0 }),
+      node('q1', 'breaker', 'DJ V1', 220, 470, { dp: 'Demo:Track1.breaker' }),
+      node('q2', 'breaker', 'DJ V2', 460, 470, { dp: 'Demo:Track2.breaker' }),
+      node('c1', 'catenary', t('Catenary V1', 'Caténaire V1', 'Fahrleitung G1'), 60, 580),
+      node('c2', 'catenary', t('Catenary V2', 'Caténaire V2', 'Fahrleitung G2'), 380, 580),
+      node('sp', 'section-switch', t('Paralleling (N/O)', 'Mise en parallèle (N/O)', 'Kupplung (N/O)'), 320, 591, { dp: 'Demo:Track.paralleling', closedValue: 1 }),
+      node('tr1', 'train', t('Train A', 'Train A', 'Zug A'), 140, 660),
+      node('tr2', 'train', t('Train B', 'Train B', 'Zug B'), 460, 660),
+      node('k1', 'track', t('Track V1', 'Rail V1', 'Gleis G1'), 60, 800),
+      node('k2', 'track', t('Track V2', 'Rail V2', 'Gleis G2'), 380, 800),
+      node('gnd1', 'ground', '', 40, 840)
+    ],
+    edges: [
+      edge('e1', 'g1', 'b', 't1', 'a'),
+      edge('e2', 't1', 'b', 'r1', 'a'),
+      edge('e3', 'r1', 'b', 'bb', 'p3'),
+      edge('e4', 'bb', 'p1', 'q1', 'a'),
+      edge('e5', 'bb', 'p6', 'q2', 'a'),
+      edge('e6', 'q1', 'b', 'c1', 'p3'),
+      edge('e7', 'q2', 'b', 'c2', 'p3'),
+      edge('e8', 'c1', 'p6', 'sp', 'a'),
+      edge('e9', 'sp', 'b', 'c2', 'p1'),
+      edge('e10', 'c1', 'p4', 'tr1', 'a'),
+      edge('e11', 'c2', 'p5', 'tr2', 'a'),
+      edge('e12', 'tr1', 'b', 'k1', 'p4'),
+      edge('e13', 'tr2', 'b', 'k2', 'p5'),
+      edge('e14', 'k1', 'p6', 'k2', 'p1'),
+      edge('e15', 'k1', 'p1', 'gnd1', 'a')
+    ],
+    measurements: [
+      meas('mea1', 'Demo:Track1.current', 'I1', 'A', 0, 'q1', -70, 0),
+      meas('mea2', 'Demo:Track2.current', 'I2', 'A', 0, 'q2', 60, 0)
+    ]
+  };
+}
+
+/** 7 — 2×25 kV AC autotransformer feed (complex): line + feeder + rail, three AT cells, a train. */
+function demoRailway2x25(): Network {
+  return {
+    id: 'demo-ferro-2x25kv',
+    category: CAT_RAIL(),
+    name: t('2×25 kV AC (autotransformers)', '2×25 kV AC (autotransformateurs)', '2×25 kV AC (Autotrafos)'),
+    description: t(
+      'High-speed 2×25 kV AC scheme: substation transformer and breaker feed the catenary; autotransformer cells along the line balance catenary/feeder/rail; a train draws from the catenary.',
+      'Schéma 2×25 kV AC grande vitesse : transformateur de sous-station et disjoncteur alimentent la caténaire ; des cellules autotransformateur le long de la ligne équilibrent caténaire/feeder/rail ; un train soutire sur la caténaire.',
+      'Hochgeschwindigkeits-2×25-kV-AC: Unterwerkstrafo und Schalter speisen die Fahrleitung; Autotrafo-Zellen entlang der Strecke gleichen Fahrleitung/Feeder/Schiene aus; ein Zug bezieht aus der Fahrleitung.'
+    ),
+    updatedAt: '',
+    nodes: [
+      node('g1', GRID_SOURCE, t('HV grid 225 kV', 'Réseau HTB 225 kV', 'HS-Netz 225 kV'), 120, 20, { source: true }),
+      node('qs', DISCONNECTOR, 'QS', 130, 130, { dp: 'Demo:Line.disconnector' }),
+      node('t1', 'transformer', t('225/2×25 kV', '225/2×25 kV', '225/2×25 kV'), 120, 240),
+      node('q1', 'breaker', 'DJ', 130, 400, { dp: 'Demo:Line.breaker' }),
+      node('c1', 'catenary', t('Catenary', 'Caténaire', 'Fahrleitung'), 40, 520),
+      node('c2', 'catenary', t('Catenary', 'Caténaire', 'Fahrleitung'), 420, 520),
+      node('sp', 'section-switch', t('Sectioning', 'Sectionnement', 'Streckentrenner'), 320, 531, { dp: 'Demo:Catenary.sectioning' }),
+      node('at1', 'autotransformer', 'AT1', 200, 620),
+      node('at2', 'autotransformer', 'AT2', 560, 620),
+      node('tr1', 'train', t('High-speed train', 'Train grande vitesse', 'Hochgeschwindigkeitszug'), 60, 690),
+      node('k1', 'track', t('Track (return)', 'Rail (retour)', 'Gleis (Rückleitung)'), 40, 820),
+      node('k2', 'track', t('Track (return)', 'Rail (retour)', 'Gleis (Rückleitung)'), 420, 820),
+      node('gnd1', 'ground', '', 20, 860)
+    ],
+    edges: [
+      edge('e1', 'g1', 'b', 'qs', 'a'),
+      edge('e2', 'qs', 'b', 't1', 'a'),
+      edge('e3', 't1', 'b', 'q1', 'a'),
+      edge('e4', 'q1', 'b', 'c1', 'p3'),
+      edge('e5', 'c1', 'p6', 'sp', 'a'),
+      edge('e6', 'sp', 'b', 'c2', 'p1'),
+      edge('e7', 'c1', 'p2', 'at1', 'a'),
+      edge('e8', 'at1', 'b', 'k1', 'p2'),
+      edge('e9', 'c2', 'p5', 'at2', 'a'),
+      edge('e10', 'at2', 'b', 'k2', 'p5'),
+      edge('e11', 'c1', 'p4', 'tr1', 'a'),
+      edge('e12', 'tr1', 'b', 'k1', 'p4'),
+      edge('e13', 'k1', 'p6', 'k2', 'p1'),
+      edge('e14', 'k1', 'p1', 'gnd1', 'a')
+    ],
+    measurements: [
+      meas('mea1', 'Demo:Catenary.voltage', 'U cat.', 'kV', 1, 'c1', -60, -46),
+      meas('mea2', 'Demo:Line.current', 'I', 'A', 0, 'q1', 60, 0)
+    ]
+  };
+}
+
 /**
  * Build the demo networks — labels localized to the active UI language at
  * generation time. A fresh deep structure on every call (safe to persist/mutate).
+ * Ordered by family then by rising complexity (the overview groups by category).
  */
 export function demoNetworks(): Network[] {
-  return [demoSourceSubstation(), demoMvLvSubstation(), demoBackedUpBoard(), demoRailwayTraction()];
+  return [
+    // Power distribution
+    demoBackedUpBoard(),
+    demoMvLvSubstation(),
+    demoSourceSubstation(),
+    // Railway electrification — simple → complex
+    demoRailwaySimpleFeed(),
+    demoRailwayTraction(),
+    demoRailwayDoubleTrack(),
+    demoRailway2x25()
+  ];
 }

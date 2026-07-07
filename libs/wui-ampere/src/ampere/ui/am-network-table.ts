@@ -26,7 +26,11 @@ export class AmNetworkTable extends LitElement {
   @property({ attribute: false }) networks: Network[] = [];
 
   override render(): TemplateResult {
-    const rows = [...this.networks].sort((a, b) => a.name.localeCompare(b.name));
+    // Group by category (uncategorized last), then by name.
+    const rows = [...this.networks].sort(
+      (a, b) =>
+        (a.category || '￿').localeCompare(b.category || '￿') || a.name.localeCompare(b.name)
+    );
     return html`
       <table>
         <thead>
@@ -49,7 +53,10 @@ export class AmNetworkTable extends LitElement {
     return html`
       <tr class="clickable" @click=${() => this.emit('wui:open', network.id)}>
         <td>
-          <div class="strong">${network.name || '—'}</div>
+          <div class="strong">
+            ${network.name || '—'}
+            ${network.category ? html`<span class="chip">${network.category}</span>` : ''}
+          </div>
           <div class="muted">${network.description}</div>
         </td>
         <td class="num">${network.nodes.length}</td>
@@ -121,6 +128,18 @@ function tableStyles(): ReturnType<typeof css> {
     }
     .strong {
       font-weight: 600;
+    }
+    .chip {
+      display: inline-block;
+      vertical-align: middle;
+      margin-left: 0.4rem;
+      white-space: nowrap;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--theme-color-soft-text);
+      border: 1px solid var(--theme-color-soft-bdr);
+      border-radius: 999px;
+      padding: 0 0.45rem;
     }
     .muted {
       color: var(--theme-color-soft-text);

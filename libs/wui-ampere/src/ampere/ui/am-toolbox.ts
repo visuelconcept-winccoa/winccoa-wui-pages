@@ -11,7 +11,14 @@
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, svg, type TemplateResult } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
-import { CATEGORY_ORDER, symbolsOf, type SymbolDef } from '../symbols/catalog.js';
+import { CATEGORY_ORDER, SYMBOLS, symbolsOf, type SymbolDef } from '../symbols/catalog.js';
+import {
+  SNIPPET_CATEGORY_ORDER,
+  snippetTool,
+  snippetsOf,
+  type SnippetCategory,
+  type SnippetDef
+} from '../data/snippets.js';
 import type { Tool } from './am-canvas.js';
 import { MSG, localize, localizeDir } from '../i18n.js';
 
@@ -37,6 +44,12 @@ export class AmToolbox extends LitElement {
         <span>${localizeDir(MSG.toolbox.select)}</span>
       </button>
       ${CATEGORY_ORDER.map((cat) => this.renderCategory(cat))}
+      <div class="head snippets-head">
+        <ix-icon name="add-circle" size="16"></ix-icon>
+        <span class="title">${localizeDir(MSG.toolbox.snippets)}</span>
+      </div>
+      <div class="group-hint">${localizeDir(MSG.toolbox.snippetsHint)}</div>
+      ${SNIPPET_CATEGORY_ORDER.map((cat) => this.renderSnippetCategory(cat))}
     `;
   }
 
@@ -46,6 +59,33 @@ export class AmToolbox extends LitElement {
         <div class="group-title">${localizeDir(MSG.category[cat])}</div>
         <div class="grid">${symbolsOf(cat).map((def) => this.renderSymbol(def))}</div>
       </div>
+    `;
+  }
+
+  private renderSnippetCategory(cat: SnippetCategory): TemplateResult {
+    return html`
+      <div class="group">
+        <div class="group-title">${localizeDir(MSG.snippetCategory[cat])}</div>
+        <div class="snip-list">${snippetsOf(cat).map((def) => this.renderSnippet(def))}</div>
+      </div>
+    `;
+  }
+
+  private renderSnippet(def: SnippetDef): TemplateResult {
+    const tool = snippetTool(def.id);
+    const active = this.tool === tool;
+    // Preview: render each fragment symbol at its relative spot, fit to the box.
+    const pad = 8;
+    return html`
+      <button class="snip ${active ? 'active' : ''}" type="button" title=${localize(def.label)} @click=${() => this.pick(tool)}>
+        <svg viewBox="${-pad} ${-pad} ${def.w + 2 * pad} ${def.h + 2 * pad}" preserveAspectRatio="xMidYMid meet">
+          ${def.nodes.map((n) => {
+            const s = SYMBOLS[n.symbol];
+            return svg`<g transform="translate(${n.x} ${n.y})">${s.render({ closed: true })}</g>`;
+          })}
+        </svg>
+        <span class="cap">${localize(def.label)}</span>
+      </button>
     `;
   }
 
@@ -140,12 +180,53 @@ function toolboxStyles(): ReturnType<typeof css> {
       text-align: center;
       color: var(--theme-color-soft-text);
     }
+    .snippets-head {
+      margin-top: 0.4rem;
+      padding-top: 0.6rem;
+      border-top: 1px solid var(--theme-color-soft-bdr);
+    }
+    .group-hint {
+      font-size: 0.72rem;
+      color: var(--theme-color-soft-text);
+      margin: -0.2rem 0 0.1rem;
+    }
+    .snip-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    .snip {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0.45rem;
+      border: 1px solid var(--theme-color-soft-bdr);
+      border-radius: var(--theme-default-border-radius);
+      background: var(--theme-color-1);
+      color: var(--theme-color-std-text);
+      font: inherit;
+      cursor: pointer;
+      text-align: left;
+    }
+    .snip svg {
+      flex: 0 0 auto;
+      width: 40px;
+      height: 40px;
+      color: var(--theme-color-std-text);
+    }
+    .snip .cap {
+      text-align: left;
+      font-size: 0.74rem;
+      color: var(--theme-color-std-text);
+    }
     .select:hover,
-    .cell:hover {
+    .cell:hover,
+    .snip:hover {
       border-color: var(--theme-color-primary, #0ea5e9);
     }
     .select.active,
-    .cell.active {
+    .cell.active,
+    .snip.active {
       border-color: var(--theme-color-primary, #0ea5e9);
       background: color-mix(in srgb, var(--theme-color-primary, #0ea5e9) 14%, transparent);
     }

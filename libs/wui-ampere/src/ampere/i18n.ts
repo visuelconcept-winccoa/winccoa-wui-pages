@@ -82,7 +82,13 @@ export const MSG = {
     title: ml('Toolbox', 'Boîte à outils', 'Werkzeugleiste'),
     hint: ml('Select then place', 'Sélectionner puis placer', 'Auswählen und platzieren'),
     wire: ml('Wire', 'Fil', 'Leitung'),
-    select: ml('Select / move', 'Sélectionner / déplacer', 'Auswählen / verschieben')
+    select: ml('Select / move', 'Sélectionner / déplacer', 'Auswählen / verschieben'),
+    snippets: ml('Snippets', 'Extraits', 'Bausteine'),
+    snippetsHint: ml(
+      'Pre-wired fragments — click one then click the canvas to drop it, then edit.',
+      'Fragments pré-câblés — cliquez-en un puis cliquez sur la zone pour le déposer, puis modifiez.',
+      'Vorverdrahtete Fragmente — eines anklicken, dann auf die Fläche klicken zum Ablegen, dann bearbeiten.'
+    )
   },
   category: {
     sources: ml('Sources & substations', 'Sources & postes', 'Quellen & Stationen'),
@@ -90,6 +96,10 @@ export const MSG = {
     switchgear: ml('Switchgear', 'Appareillage de coupure', 'Schaltgeräte'),
     railway: ml('Railway electrification', 'Électrification ferroviaire', 'Bahnelektrifizierung'),
     measure: ml('Measures, loads & earth', 'Mesures, charges & terre', 'Messungen, Lasten & Erde')
+  },
+  snippetCategory: {
+    distribution: ml('Power distribution', 'Distribution électrique', 'Stromverteilung'),
+    railway: ml('Railway electrification', 'Électrification ferroviaire', 'Bahnelektrifizierung')
   },
   inspector: {
     title: ml('Properties', 'Propriétés', 'Eigenschaften'),
