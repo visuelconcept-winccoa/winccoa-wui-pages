@@ -156,7 +156,7 @@ export class MfMachineDashboard extends LitElement {
             <section class="q q-alarms">
               <h4>${localizeDir(MSG.machineDash.alarmTracking)}</h4>
               <div class="placeholder">
-                <ix-icon name="bell" size="24"></ix-icon>
+                <ix-icon name="alarm-bell" size="24"></ix-icon>
                 <span>${localizeDir(MSG.machineDash.alarmTrackingPlaceholder)}</span>
               </div>
             </section>

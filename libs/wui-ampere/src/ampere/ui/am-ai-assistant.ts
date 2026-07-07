@@ -148,7 +148,7 @@ export class WuiAmpereAiAssistant extends LitElement {
   private renderProposal(proposal: Network): TemplateResult {
     const count = proposal.nodes.length;
     return html`<div class="proposal">
-      <ix-icon name="flash" size="16"></ix-icon>
+      <ix-icon name="electrical-energy" size="16"></ix-icon>
       <span class="proposal-label"
         >${localizeDir(MSG.ai.proposed)} <strong>${proposal.name || '—'}</strong> (${count}
         ${localizeDir(count > 1 ? MSG.ai.nodeMany : MSG.ai.nodeOne)})

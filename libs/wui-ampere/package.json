@@ -28,7 +28,7 @@
     "routeId": "ampere",
     "component": "wui-ampere",
     "module": "/data/dashboard-wc/pages/ampere.js",
-    "icon": "flash",
+    "icon": "electrical-energy",
     "permission": ["connected"],
     "tier": 1
   }

@@ -80,7 +80,7 @@ export class PmUpload extends LitElement {
         ${this.restart ? html`<div class="warn">${localizeDir(MSG.upload.restartWarn)}</div>` : nothing}
 
         <div class="target">
-          <ix-icon name="host" size="16"></ix-icon>
+          <ix-icon name="network-device" size="16"></ix-icon>
           <span>${localizeDir(MSG.upload.targetAll)}${this.servers.length > 0 ? html` (${this.servers.length})` : nothing}</span>
           ${this.servers.map((s) => html`<span class="chip">${serverLabel(s)}</span>`)}
         </div>

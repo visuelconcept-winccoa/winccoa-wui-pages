@@ -170,7 +170,7 @@ export class WuiProcessMonitor extends LitElement {
           class="server-tab ${i.dp === current ? 'active' : ''}"
           @click=${() => (this.activeDp = i.dp)}
         >
-          <ix-icon name="host" size="16"></ix-icon>${serverLabel(i)}
+          <ix-icon name="network-device" size="16"></ix-icon>${serverLabel(i)}
           <span class="count">${i.managers.length}</span>
         </button>`
       )}

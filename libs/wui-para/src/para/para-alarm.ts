@@ -152,7 +152,7 @@ export class WuiParaAlarm extends LitElement {
     }
     return html`
       <div class="panel-head">
-        <ix-icon name="bell" size="20"></ix-icon>
+        <ix-icon name="alarm-bell" size="20"></ix-icon>
         <span class="sel">${this.selectedDp ?? this.selectedType}</span>
         ${this.classes.length === 0
           ? html`<span class="warn">${localizeDir(MSG.alarm.noClasses)}</span>`

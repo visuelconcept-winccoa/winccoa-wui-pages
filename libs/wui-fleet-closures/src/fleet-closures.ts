@@ -203,7 +203,7 @@ export class WuiFleetClosures extends LitElement {
         </ix-button>
         ${this.canEdit
           ? html`<ix-button @click=${() => void this.save()} ?disabled=${!this.dirty || this.saving}>
-              <ix-icon name="save" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.save)}
+              <ix-icon name="disk" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.save)}
             </ix-button>`
           : nothing}
       </div>

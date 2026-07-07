@@ -74,7 +74,7 @@ export class RbReportDetail extends LitElement {
           <span class="chip solid" style="--c:${state?.color ?? '#888'}">${state?.label ?? '—'}</span>
           <span class="grow"></span>
           <ix-button variant="secondary" ?disabled=${readOnly} @click=${this.save}>
-            <ix-icon name="floppy-disk" slot="icon"></ix-icon>${localizeDir(MSG.detail.save)}
+            <ix-icon name="disk" slot="icon"></ix-icon>${localizeDir(MSG.detail.save)}
           </ix-button>
           <ix-button variant="secondary" @click=${this.print}>
             <ix-icon name="print" slot="icon"></ix-icon>${localizeDir(MSG.detail.print)}
@@ -138,7 +138,7 @@ export class RbReportDetail extends LitElement {
           ? html`<ix-button ?disabled=${!check.ok} title=${check.ok ? '' : check.reason} @click=${() => (this.signOpen = true)}>
               <ix-icon name="pen" slot="icon"></ix-icon>${state.advance.actionLabel}
             </ix-button>`
-          : html`${locked ? html`<span class="locked-note"><ix-icon name="lock-closed"></ix-icon>${localizeDir(MSG.detail.lockedNote)}</span>` : ''}`}
+          : html`${locked ? html`<span class="locked-note"><ix-icon name="lock"></ix-icon>${localizeDir(MSG.detail.lockedNote)}</span>` : ''}`}
         ${state.reject && this.canSign
           ? html`<ix-button variant="secondary" @click=${this.reject}>
               <ix-icon name="undo" slot="icon"></ix-icon>${state.reject.actionLabel}
