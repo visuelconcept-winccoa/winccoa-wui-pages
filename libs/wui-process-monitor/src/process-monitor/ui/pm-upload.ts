@@ -11,7 +11,7 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { MSG, localize, localizeDir, serverLabel } from '../i18n.js';
-import { PROTECTED_FOLDERS, PURGEABLE_FOLDERS } from '../types.js';
+import { PROTECTED_FOLDERS, PURGEABLE_FOLDERS, SELF_HOSTING_FOLDERS } from '../types.js';
 import type { DeployServerResult } from '../types.js';
 import { deployZip } from '../data/api.js';
 
@@ -66,6 +66,9 @@ export class PmUpload extends LitElement {
             )}
           </div>
           <span class="muted">${localizeDir(MSG.upload.purgeHint)}</span>
+          ${SELF_HOSTING_FOLDERS.some((f) => this.clearFolders.has(f))
+            ? html`<div class="warn">${localizeDir(MSG.upload.purgeSelfWarn)}</div>`
+            : nothing}
           <span class="lbl protected-lbl">${localizeDir(MSG.upload.protectedTitle)}</span>
           <div class="purge-list">
             ${PROTECTED_FOLDERS.map((f) => html`<code class="protected">${f}</code>`)}

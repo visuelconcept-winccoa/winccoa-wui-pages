@@ -69,7 +69,10 @@ const PUBLISH_MS = 3000;
 // <PROJ>/javascript/processMonitor/index.js -> project root is two levels up.
 const PROJ_PATH = path.resolve(__dirname, '..', '..');
 // Folders whose CONTENTS may be purged before a deploy (allow-list).
-const PURGEABLE_FOLDERS = new Set(['data/dashboard-wc', 'scripts', 'panels', 'pictures']);
+// NOTE: `javascript` hosts THIS manager and the customer-webserver. Purging it
+// mid-deploy removes the running code — only safe when the ZIP restores a working
+// `javascript/` and the project is restarted afterwards (esp. for remote nodes).
+const PURGEABLE_FOLDERS = new Set(['data/dashboard-wc', 'scripts', 'javascript', 'panels', 'pictures']);
 // Top-level project folders a ZIP may NEVER be extracted into (protected).
 const DENY_EXTRACT_FOLDERS = new Set(['logs', 'log', 'db', 'config', 'images', 'bin']);
 

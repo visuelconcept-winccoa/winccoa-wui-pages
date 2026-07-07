@@ -88,6 +88,11 @@ export const MSG = {
       'Supprime le contenu des dossiers sélectionnés avant l’extraction du ZIP.',
       'Löscht den Inhalt der ausgewählten Ordner vor dem Entpacken des ZIP.'
     ),
+    purgeSelfWarn: ml(
+      'Purging "javascript" clears the running webserver and this monitor — deploy a ZIP that restores javascript/ and restart, or the servers become unmanageable.',
+      'Vider « javascript » supprime le webserver en cours et ce moniteur — déployez un ZIP qui restaure javascript/ et redémarrez, sinon les serveurs deviennent ingérables.',
+      'Das Leeren von „javascript“ entfernt den laufenden Webserver und diesen Monitor — stellen Sie ein ZIP bereit, das javascript/ wiederherstellt, und starten Sie neu, sonst werden die Server unsteuerbar.'
+    ),
     protectedTitle: ml('Protected folders (never overwritten)', 'Dossiers protégés (jamais écrasés)', 'Geschützte Ordner (nie überschrieben)'),
     protectedHint: ml(
       'The ZIP can never be extracted into these folders — any such content is skipped.',

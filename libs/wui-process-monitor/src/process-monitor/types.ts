@@ -47,9 +47,17 @@ export interface Instance {
 }
 
 /** Project folders whose contents may be purged before a deploy. */
-export type PurgeableFolder = 'data/dashboard-wc' | 'scripts' | 'panels' | 'pictures';
+export type PurgeableFolder = 'data/dashboard-wc' | 'scripts' | 'javascript' | 'panels' | 'pictures';
 
-export const PURGEABLE_FOLDERS: PurgeableFolder[] = ['data/dashboard-wc', 'scripts', 'panels', 'pictures'];
+export const PURGEABLE_FOLDERS: PurgeableFolder[] = ['data/dashboard-wc', 'scripts', 'javascript', 'panels', 'pictures'];
+
+/**
+ * Purgeable folders that host the RUNNING webserver + processMonitor manager
+ * (`javascript/`). Clearing them mid-deploy wipes the code executing the deploy
+ * — only safe if the ZIP restores a working `javascript/` and the project is
+ * restarted. The UI surfaces an extra warning for these.
+ */
+export const SELF_HOSTING_FOLDERS: string[] = ['javascript'];
 
 /** Top-level project folders a ZIP can NEVER be extracted into (backend-enforced). */
 export const PROTECTED_FOLDERS: string[] = ['logs', 'log', 'db', 'config', 'images', 'bin'];
