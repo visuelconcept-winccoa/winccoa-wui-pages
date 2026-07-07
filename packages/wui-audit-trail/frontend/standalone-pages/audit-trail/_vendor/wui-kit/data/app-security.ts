@@ -348,25 +348,23 @@ export function assignments$(module: string): Observable<AppRoleAssignments> {
   let cached = assignmentCache.get(module);
   if (cached) return cached;
   const api = resolveApi();
-  if (api) {
-    cached = from(dpExists(appSecurityDp(module))).pipe(
-      switchMap((exists) => {
-        if (!exists) return of({});
-        try {
-          return api.dpConnect(`${appSecurityDp(module)}.assignments`, true).pipe(
-            map((e: { value: unknown[] }) => parseAssignments(e.value?.[0])),
-            catchError(() => of({}))
-          );
-        } catch {
-          return of({});
-        }
-      }),
-      startWith({}),
-      shareReplay({ bufferSize: 1, refCount: false })
-    );
-  } else {
-    cached = of({});
-  }
+  cached = api
+    ? from(dpExists(appSecurityDp(module))).pipe(
+        switchMap((exists) => {
+          if (!exists) return of({});
+          try {
+            return api.dpConnect(`${appSecurityDp(module)}.assignments`, true).pipe(
+              map((e: { value: unknown[] }) => parseAssignments(e.value?.[0])),
+              catchError(() => of({}))
+            );
+          } catch {
+            return of({});
+          }
+        }),
+        startWith({}),
+        shareReplay({ bufferSize: 1, refCount: false })
+      )
+    : of({});
   assignmentCache.set(module, cached);
   return cached;
 }
