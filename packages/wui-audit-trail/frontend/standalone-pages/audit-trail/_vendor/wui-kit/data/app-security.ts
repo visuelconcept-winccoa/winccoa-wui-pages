@@ -28,8 +28,21 @@
  * API routes (see `backend/routes/appSecurityGuard.ts`).
  */
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
+import { WuiUserService } from '@wincc-oa/wui-iam-data/user-service.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
-import { Observable, catchError, combineLatest, firstValueFrom, from, map, of, shareReplay, startWith } from 'rxjs';
+import {
+  Observable,
+  catchError,
+  combineLatest,
+  distinctUntilChanged,
+  firstValueFrom,
+  from,
+  map,
+  of,
+  shareReplay,
+  startWith,
+  switchMap
+} from 'rxjs';
 import { container } from 'tsyringe';
 import { currentAuditUser } from './audit-trail.js';
 
@@ -175,8 +188,6 @@ export function registerModuleRoles(decl: AppModuleRoles): void {
 
 // --- role resolution ---------------------------------------------------------
 
-let identityPromise: Promise<AppSecurityIdentity | null> | null = null;
-
 async function identityViaMe(): Promise<AppSecurityIdentity | null> {
   try {
     const res = await fetch(APP_SECURITY_ME_URL);
@@ -238,18 +249,56 @@ async function identityViaDp(): Promise<AppSecurityIdentity | null> {
   }
 }
 
+function resolveUserService(): WuiUserService | null {
+  try {
+    return container.resolve(WuiUserService);
+  } catch {
+    return null;
+  }
+}
+
+/** Cache key tied to the SHELL's session user — a login/logout invalidates it. */
+function shellUserKey(): string {
+  const svc = resolveUserService();
+  return `${svc?.id ?? ''}|${svc?.name ?? ''}`;
+}
+
+let identityCache: { key: string; value: Promise<AppSecurityIdentity | null> } | null = null;
+
 /**
- * Session identity, resolved once: the app-security backend first (`/me`,
- * server-side view), then the client-side `_Users`/`_Groups` fallback when the
- * endpoint is unreachable or sees the request as anonymous.
+ * Session identity: the app-security backend first (`/me`, server-side view),
+ * then the client-side `_Users`/`_Groups` fallback when the endpoint is
+ * unreachable or sees the request as anonymous. Cached PER SHELL USER — the
+ * SPA is not reloaded on logout/login, so a plain module-level cache would
+ * keep showing the previous user (prefer {@link identity$} in UIs).
  */
 export function identity(): Promise<AppSecurityIdentity | null> {
-  identityPromise ??= (async () => {
-    const viaMe = await identityViaMe();
-    if (viaMe && viaMe.username !== '') return viaMe;
-    return (await identityViaDp()) ?? viaMe;
-  })();
-  return identityPromise;
+  const key = shellUserKey();
+  if (!identityCache || identityCache.key !== key) {
+    identityCache = {
+      key,
+      value: (async () => {
+        const viaMe = await identityViaMe();
+        if (viaMe && viaMe.username !== '') return viaMe;
+        return (await identityViaDp()) ?? viaMe;
+      })()
+    };
+  }
+  return identityCache.value;
+}
+
+/**
+ * Reactive identity: re-resolves whenever the shell session user changes
+ * (login, logout, late user-settings load) — so a banner or a role gate never
+ * sticks to the previous user or to the "not loaded yet" state.
+ */
+export function identity$(): Observable<AppSecurityIdentity | null> {
+  const svc = resolveUserService();
+  const trigger: Observable<unknown> = svc ? svc.user$.pipe(startWith(null)) : of(null);
+  return trigger.pipe(
+    switchMap(() => from(identity())),
+    distinctUntilChanged((a, b) => JSON.stringify(a) === JSON.stringify(b))
+  );
 }
 
 function resolveApi(): OaRxJsApi | null {
@@ -313,11 +362,13 @@ export function roleGranted(assign: AppRoleAssignments, roleId: string, who: App
 
 /**
  * Live grant flag for one role of one module — subscribe and gate the UI.
- * Emits immediately (open) and re-emits when the identity loads or an admin
- * changes the assignments.
+ * Emits immediately (open) and re-emits when the identity loads, when the
+ * SHELL session user changes (login/logout — the SPA is not reloaded), or
+ * when an admin changes the assignments.
  */
 export function hasRole$(module: string, roleId: string): Observable<boolean> {
-  return combineLatest([assignments$(module), from(identity()).pipe(startWith(null))]).pipe(
-    map(([assign, who]) => roleGranted(assign, roleId, who))
+  return combineLatest([assignments$(module), identity$().pipe(startWith(null))]).pipe(
+    map(([assign, who]) => roleGranted(assign, roleId, who)),
+    distinctUntilChanged()
   );
 }

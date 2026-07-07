@@ -24,7 +24,7 @@ import { state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import {
   hasRole$,
-  identity,
+  identity$,
   registerModuleRoles,
   type AppRoleAssignments,
   type AppSecurityIdentity
@@ -63,6 +63,15 @@ export class WuiAppSecurity extends LitElement {
     const self = MODULE_MANIFEST.find((m) => m.module === 'app-security');
     if (self) registerModuleRoles(self);
     this.roleSub = hasRole$('app-security', 'manage').subscribe((granted) => (this.canManage = granted));
+    // Reactive identity: re-emits when the shell session user changes
+    // (login/logout without a SPA reload) or loads late — the banner always
+    // shows the CURRENT user, never a stale or not-yet-loaded one.
+    this.roleSub.add(
+      identity$().subscribe((who) => {
+        this.me = who;
+        this.meLoaded = true;
+      })
+    );
   }
 
   override disconnectedCallback(): void {
@@ -102,10 +111,6 @@ export class WuiAppSecurity extends LitElement {
 
   protected override firstUpdated(): void {
     void this.refresh();
-    void identity().then((who) => {
-      this.me = who;
-      this.meLoaded = true;
-    });
     void this.store.groups().then((groups) => (this.oaGroups = groups ?? []));
   }
 

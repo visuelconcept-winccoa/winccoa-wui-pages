@@ -81,3 +81,8 @@ idea was rejected for that reason). Role/group direction is role → groups
   action would 403 incoherently. Real API enforcement therefore requires the
   webserver's own authentication (basic/OIDC session) to be enabled; without
   it the roles are UI-level protection.
+- **Identity is REACTIVE** (`identity$`): cached per SHELL user and re-resolved
+  whenever `WuiUserService.user$` emits (login/logout without a SPA reload,
+  late user-settings load). `hasRole$` consumes it, so every module's gates
+  re-evaluate on a user switch; the page banner subscribes to it too. Never
+  cache `identity()` yourself at module scope.
