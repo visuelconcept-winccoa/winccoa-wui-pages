@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Console panel: live pmon manager list with per-manager start/stop/restart and
- * a restart-all action. Presentational — it renders the `managers` passed by the
- * page and emits intent events (`pm:refresh`, `pm:restart-all`,
- * `pm:control {action,index,name}`); the page performs the API call + tracing.
+ * Console panel: live pmon manager list with per-manager start/stop/restart, a
+ * restart-all action, and — with the `edit-managers` grant (`canConfig`) — an
+ * add-manager entry point plus per-row removal from the pmon configuration.
+ * Presentational — it renders the `managers` passed by the page and emits
+ * intent events (`wui:refresh`, `wui:restartall`, `wui:control
+ * {action,index,name}`, `wui:addmanager`, `wui:removemanager {index,name}`);
+ * the page performs the API call + tracing.
  */
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
@@ -21,6 +24,8 @@ export class PmConsole extends LitElement {
 
   @property({ attribute: false }) managers: ManagerInfo[] = [];
   @property({ type: Boolean }) canEdit = false;
+  /** Application-Security 'edit-managers' grant: add/remove pmon config entries. */
+  @property({ type: Boolean }) canConfig = false;
   @property({ type: String }) lastUpdate = '';
 
   override render(): TemplateResult {
@@ -38,6 +43,15 @@ export class PmConsole extends LitElement {
         >
           <ix-icon name="refresh" slot="icon"></ix-icon>${localizeDir(MSG.console.refresh)}
         </ix-button>
+        ${this.canConfig
+          ? html`<ix-button
+              variant="secondary"
+              outline
+              @click=${() => this.dispatchEvent(new CustomEvent('wui:addmanager', { bubbles: true, composed: true }))}
+            >
+              <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.console.addManager)}
+            </ix-button>`
+          : nothing}
         ${this.canEdit
           ? html`<ix-button
               variant="secondary"
@@ -105,6 +119,18 @@ export class PmConsole extends LitElement {
                 ></ix-icon-button>
               `
             : nothing}
+          ${this.canConfig && m.index >= 1
+            ? html`
+                <ix-icon-button
+                  ghost
+                  size="16"
+                  icon="trashcan"
+                  title=${localize(running ? MSG.console.removeStopFirst : MSG.console.remove)}
+                  ?disabled=${running}
+                  @click=${() => this.requestRemove(m)}
+                ></ix-icon-button>
+              `
+            : nothing}
         </td>
       </tr>
     `;
@@ -114,6 +140,21 @@ export class PmConsole extends LitElement {
     this.dispatchEvent(
       new CustomEvent('wui:control', {
         detail: { action, index: m.index, name: m.name },
+        bubbles: true,
+        composed: true
+      })
+    );
+  }
+
+  /**
+   * NOT named `remove`: that would override the native `Element.remove()`,
+   * which Lit calls with NO argument when the component is unmounted (e.g.
+   * switching to the Upload tab) — crashing on `m.index`.
+   */
+  private requestRemove(m: ManagerInfo): void {
+    this.dispatchEvent(
+      new CustomEvent('wui:removemanager', {
+        detail: { index: m.index, name: m.name },
         bubbles: true,
         composed: true
       })

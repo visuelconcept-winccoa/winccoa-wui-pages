@@ -70,6 +70,11 @@ export const MODULE_MANIFEST: AppModuleRoles[] = [
         description: ml('Start/stop/restart managers (enforced server-side).', 'Démarrer/arrêter/redémarrer les managers (contrôlé côté serveur).', 'Manager starten/stoppen/neu starten (serverseitig erzwungen).')
       },
       {
+        id: 'edit-managers',
+        label: ml('Edit manager configuration', 'Éditer la configuration des managers', 'Manager-Konfiguration bearbeiten'),
+        description: ml('Add/remove pmon configuration entries — config/progs (enforced server-side).', 'Ajouter/supprimer des entrées de la configuration pmon — config/progs (contrôlé côté serveur).', 'pmon-Konfigurationseinträge hinzufügen/entfernen — config/progs (serverseitig erzwungen).')
+      },
+      {
         id: 'deploy',
         label: ml('Deploy projects', 'Déployer des projets', 'Projekte deployen'),
         description: ml('Upload and deploy project ZIPs (enforced server-side).', 'Téléverser et déployer des ZIP projet (contrôlé côté serveur).', 'Projekt-ZIPs hochladen und deployen (serverseitig erzwungen).')

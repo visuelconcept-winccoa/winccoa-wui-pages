@@ -7,8 +7,10 @@
  * Operator features, modelled on the `winccoa_projectmanager` HTML app
  * (`proj.html`) but rebuilt natively (Lit + iX):
  *  - **Console**: live pmon manager list with start/stop/restart + restart-all,
- *    with **one tab per connected server** (distributed/redundant systems) —
- *    sourced from the per-system `ProcessMonitor_Node` datapoints.
+ *    plus add/remove of pmon configuration entries (config/progs, role
+ *    'edit-managers'), with **one tab per connected server**
+ *    (distributed/redundant systems) — sourced from the per-system
+ *    `ProcessMonitor_Node` datapoints.
  *  - **Project upload**: deploy a ZIP into the project across ALL connected
  *    servers (optional folder purge, 7-Zip extraction into non-protected folders,
  *    config.env, optional restart) — DPL import is NOT here.
@@ -28,11 +30,12 @@ import { Subscription } from 'rxjs';
 import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
 import { canEditFleet, canEditFleet$ } from '@visuelconcept/wui-kit/data/permissions.js';
 import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
-import { MSG, confirmControlMsg, localize, localizeDir, ml, serverLabel } from './process-monitor/i18n.js';
-import { controlManager, listInstances, restartAll } from './process-monitor/data/api.js';
+import { MSG, confirmControlMsg, confirmRemoveMsg, localize, localizeDir, ml, serverLabel } from './process-monitor/i18n.js';
+import { addManager, controlManager, listInstances, removeManager, restartAll } from './process-monitor/data/api.js';
 import { ensureStores, loadHistory, traceOperation } from './process-monitor/data/stores.js';
-import type { DeployResult, HistoryEntry, Instance } from './process-monitor/types.js';
+import type { DeployResult, HistoryEntry, Instance, ManagerSpec } from './process-monitor/types.js';
 import './process-monitor/ui/pm-console.js';
+import './process-monitor/ui/pm-manager-dialog.js';
 import './process-monitor/ui/pm-upload.js';
 import './process-monitor/ui/pm-history.js';
 
@@ -41,6 +44,7 @@ type Tab = 'console' | 'upload' | 'history';
 /** Application-Security module id of this page. */
 const MODULE_ID = 'process-monitor';
 type ControlIntent = { action: 'start' | 'stop' | 'restart'; index: number; name: string };
+type RemoveIntent = { index: number; name: string };
 const REFRESH_MS = 5000;
 
 export class WuiProcessMonitor extends LitElement {
@@ -56,8 +60,11 @@ export class WuiProcessMonitor extends LitElement {
   /** Application-Security grants (open until the admin assigns groups). */
   @state() private roleControl = true;
   @state() private roleDeploy = true;
+  @state() private roleEditManagers = true;
   @state() private restartAllPending = false;
   @state() private controlPending: ControlIntent | null = null;
+  @state() private addDialogOpen = false;
+  @state() private removePending: RemoveIntent | null = null;
 
   private permSub = new Subscription();
   private timer: ReturnType<typeof globalThis.setInterval> | undefined;
@@ -78,10 +85,12 @@ export class WuiProcessMonitor extends LitElement {
       roles: [
         { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
         { id: 'control', label: ml('Control managers', 'Piloter les managers', 'Manager steuern') },
+        { id: 'edit-managers', label: ml('Edit manager configuration', 'Éditer la configuration des managers', 'Manager-Konfiguration bearbeiten') },
         { id: 'deploy', label: ml('Deploy projects', 'Déployer des projets', 'Projekte deployen') }
       ]
     });
     this.permSub.add(hasRole$(MODULE_ID, 'control').subscribe((granted) => (this.roleControl = granted)));
+    this.permSub.add(hasRole$(MODULE_ID, 'edit-managers').subscribe((granted) => (this.roleEditManagers = granted)));
     this.permSub.add(hasRole$(MODULE_ID, 'deploy').subscribe((granted) => (this.roleDeploy = granted)));
     void ensureStores();
     void this.refreshInstances();
@@ -142,10 +151,13 @@ export class WuiProcessMonitor extends LitElement {
       <pm-console
         .managers=${active?.managers ?? []}
         .canEdit=${this.canEdit && this.roleControl}
+        .canConfig=${this.canEdit && this.roleEditManagers}
         .lastUpdate=${this.lastUpdate}
         @wui:refresh=${() => void this.refreshInstances()}
         @wui:restartall=${() => (this.restartAllPending = true)}
         @wui:control=${(e: CustomEvent<ControlIntent>) => (this.controlPending = e.detail)}
+        @wui:addmanager=${() => (this.addDialogOpen = true)}
+        @wui:removemanager=${(e: CustomEvent<RemoveIntent>) => (this.removePending = e.detail)}
       ></pm-console>
     `;
   }
@@ -179,6 +191,19 @@ export class WuiProcessMonitor extends LitElement {
             message=${confirmControlMsg(this.controlPending.action, this.controlPending.name)}
             @wui:confirm=${() => void this.onControlConfirm()}
             @wui:cancel=${() => (this.controlPending = null)}
+          ></wui-confirm-dialog>`
+        : nothing}
+      ${this.addDialogOpen
+        ? html`<pm-manager-dialog
+            @wui:save=${(e: CustomEvent<ManagerSpec>) => void this.onAddManager(e.detail)}
+            @wui:cancel=${() => (this.addDialogOpen = false)}
+          ></pm-manager-dialog>`
+        : nothing}
+      ${this.removePending
+        ? html`<wui-confirm-dialog
+            message=${confirmRemoveMsg(this.removePending.name, this.removePending.index)}
+            @wui:confirm=${() => void this.onRemoveConfirm()}
+            @wui:cancel=${() => (this.removePending = null)}
           ></wui-confirm-dialog>`
         : nothing}
     `;
@@ -236,6 +261,62 @@ export class WuiProcessMonitor extends LitElement {
         system: label
       },
       { action: d.action.toUpperCase(), item: d.name, newval: d.action, reason: label }
+    );
+    await this.refreshInstances();
+    void this.refreshHistory();
+  }
+
+  private async onAddManager(spec: ManagerSpec): Promise<void> {
+    this.addDialogOpen = false;
+    const target = this.active;
+    const label = nodeLabel(target);
+    let ok = false;
+    try {
+      const res = await addManager(target?.dp ?? '', spec);
+      ok = res.ok !== false;
+    } catch {
+      ok = false;
+    }
+    const parts = [spec.startMode, spec.options, spec.index === undefined ? '' : `#${spec.index}`].filter(Boolean);
+    const detail = `${spec.name} — add (${parts.join(', ')})`;
+    await traceOperation(
+      {
+        time: new Date().toISOString(),
+        action: 'manager',
+        detail,
+        status: ok ? 'success' : 'failed',
+        host: hostName(),
+        system: label
+      },
+      { action: 'ADD', item: spec.name, newval: JSON.stringify(spec), reason: label }
+    );
+    await this.refreshInstances();
+    void this.refreshHistory();
+  }
+
+  private async onRemoveConfirm(): Promise<void> {
+    const d = this.removePending;
+    this.removePending = null;
+    if (!d) return;
+    const target = this.active;
+    const label = nodeLabel(target);
+    let ok = false;
+    try {
+      const res = await removeManager(target?.dp ?? '', d.index);
+      ok = res.ok !== false;
+    } catch {
+      ok = false;
+    }
+    await traceOperation(
+      {
+        time: new Date().toISOString(),
+        action: 'manager',
+        detail: `${d.name} — remove (#${d.index})`,
+        status: ok ? 'success' : 'failed',
+        host: hostName(),
+        system: label
+      },
+      { action: 'REMOVE', item: d.name, oldval: `#${d.index}`, reason: label }
     );
     await this.refreshInstances();
     void this.refreshHistory();

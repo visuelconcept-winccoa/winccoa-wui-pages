@@ -22,6 +22,8 @@ import { ProcessMonitorController } from './processMonitorController';
  *   GET  /health
  *   GET  /managers                        -> { ok, managers }
  *   POST /manager   { action, index }      -> { ok, action, index }
+ *   POST /manager/add    { name, startMode?, options?, index?, node? } -> { ok }
+ *   POST /manager/remove { index, node? }  -> { ok }   (index ≥ 1, manager stopped)
  *   POST /restart                          -> { ok }   (restart all)
  *   POST /upload/init     { fileName }     -> { ok, uploadId }
  *   POST /upload/chunk    { uploadId, data(base64) }
@@ -40,6 +42,10 @@ export class ProcessMonitorRoute {
     router.get('/health', controller.health);
     router.get('/managers', controller.managers);
     router.post('/manager', requireRole(MODULE_ID, 'control'), controller.manager);
+    // Editing the pmon configuration (add/remove entries in config/progs) is a
+    // separate, more sensitive capability than start/stop → its own role.
+    router.post('/manager/add', requireRole(MODULE_ID, 'edit-managers'), controller.managerAdd);
+    router.post('/manager/remove', requireRole(MODULE_ID, 'edit-managers'), controller.managerRemove);
     router.post('/restart', requireRole(MODULE_ID, 'control'), controller.restartAll);
     router.post('/upload/init', requireRole(MODULE_ID, 'deploy'), controller.uploadInit);
     router.post('/upload/chunk', requireRole(MODULE_ID, 'deploy'), controller.uploadChunk);

@@ -47,7 +47,36 @@ export const MSG = {
       'Restart ALL managers? This may interrupt production.',
       'Redémarrer TOUS les managers ? Cela peut interrompre la production.',
       'ALLE Manager neu starten? Dies kann die Produktion unterbrechen.'
+    ),
+    addManager: ml('Add manager', 'Ajouter un manager', 'Manager hinzufügen'),
+    remove: ml('Remove from configuration', 'Supprimer de la configuration', 'Aus der Konfiguration entfernen'),
+    removeStopFirst: ml(
+      'Stop the manager before removing it',
+      'Arrêtez le manager avant de le supprimer',
+      'Manager vor dem Entfernen stoppen'
     )
+  },
+  managerDialog: {
+    title: ml('Add a manager', 'Ajouter un manager', 'Manager hinzufügen'),
+    fName: ml('Manager (without .exe)', 'Manager (sans .exe)', 'Manager (ohne .exe)'),
+    fStartMode: ml('Start mode', 'Mode de démarrage', 'Startmodus'),
+    modeAlways: ml('always — auto-start & restart', 'always — démarrage/redémarrage auto', 'always — Auto-Start & Neustart'),
+    modeOnce: ml('once — at project start only', 'once — au démarrage du projet uniquement', 'once — nur beim Projektstart'),
+    modeManual: ml('manual — started by hand', 'manual — démarrage manuel', 'manual — manueller Start'),
+    fOptions: ml('Command line options', 'Options de ligne de commande', 'Kommandozeilenoptionen'),
+    fPosition: ml('Position (empty = end)', 'Position (vide = fin)', 'Position (leer = Ende)'),
+    positionHint: ml(
+      'Insert position in the pmon list; inserting between running managers may be refused by pmon.',
+      'Position d’insertion dans la liste pmon ; une insertion entre des managers en cours peut être refusée par pmon.',
+      'Einfügeposition in der pmon-Liste; das Einfügen zwischen laufenden Managern kann von pmon abgelehnt werden.'
+    ),
+    hint: ml(
+      'The manager is added to the pmon configuration (config/progs) of the selected server. It is NOT started automatically.',
+      'Le manager est ajouté à la configuration pmon (config/progs) du serveur sélectionné. Il n’est PAS démarré automatiquement.',
+      'Der Manager wird der pmon-Konfiguration (config/progs) des ausgewählten Servers hinzugefügt. Er wird NICHT automatisch gestartet.'
+    ),
+    add: ml('Add', 'Ajouter', 'Hinzufügen'),
+    cancel: ml('Cancel', 'Annuler', 'Abbrechen')
   },
   upload: {
     title: ml('Deploy a project', 'Déployer un projet', 'Projekt bereitstellen'),
@@ -111,6 +140,17 @@ export const MSG = {
 export function serverLabel(instance: { hostname?: string; system?: string }): string {
   const sys = (instance.system ?? '').replace(/:$/, '');
   return instance.hostname || sys || localize(ml('local', 'local', 'lokal'));
+}
+
+/** Confirm prompt for removing one manager from the pmon configuration. */
+export function confirmRemoveMsg(name: string, index: number): string {
+  return localize(
+    ml(
+      `Remove manager "${name}" (#${index}) from the pmon configuration? The config/progs entry is deleted.`,
+      `Supprimer le manager « ${name} » (#${index}) de la configuration pmon ? L'entrée config/progs est supprimée.`,
+      `Manager „${name}" (#${index}) aus der pmon-Konfiguration entfernen? Der config/progs-Eintrag wird gelöscht.`
+    )
+  );
 }
 
 /** Confirm prompt for a start/stop/restart action on one manager. */

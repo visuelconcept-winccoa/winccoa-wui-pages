@@ -35,6 +35,9 @@
  * vRPC methods (each: Variant<string JSON> -> Variant<string JSON>):
  *   ListManagers()                          -> { ok, instances: [{system,hostname,updated,managers,dp}] }
  *   ControlManager({systemName,action,index}) -> { ok, action, index, system, error? }
+ *   AddManager({node,manager:{name,startMode,secKill,restartCount,resetMin,options},index?})
+ *                                           -> { ok, system, error? }   (INS into config/progs; append when index omitted)
+ *   RemoveManager({node,index})             -> { ok, index, system, error? }   (DEL a stopped manager, index ≥ 1)
  *   RestartAll({systemName})                -> { ok, system, error? }
  *   Deploy({zipPath,clearFolders,restart,target}) -> { ok, results:[{system,hostname,ok,cleared,skipped,error}] }
  *
@@ -319,6 +322,54 @@ async function publishOnce() {
   }
 }
 
+/**
+ * Validate + normalize an AddManager spec — the values end up on one pmon TCP
+ * protocol line, so the name is restricted to safe characters and line breaks
+ * are stripped from the options.
+ */
+function normalizeManagerSpec(spec) {
+  const s = spec && typeof spec === 'object' ? spec : {};
+  const name = String(s.name || '').trim().replace(/\.exe$/i, '');
+  if (!/^[A-Za-z0-9_.-]+$/.test(name)) throw new Error(`nom de manager invalide : "${name}"`);
+  const startMode = ['manual', 'once', 'always'].includes(s.startMode) ? s.startMode : 'always';
+  const num = (v, def, min, max) => {
+    const n = Number.parseInt(v, 10);
+    return Number.isInteger(n) && n >= min && n <= max ? n : def;
+  };
+  return {
+    name,
+    startMode,
+    secKill: num(s.secKill, 30, 1, 3600),
+    restartCount: num(s.restartCount, 3, 1, 100),
+    resetMin: num(s.resetMin, 1, 1, 1440),
+    options: String(s.options || '').replace(/[\r\n]+/g, ' ').trim()
+  };
+}
+
+/**
+ * Execute one control / config action against the LOCAL pmon (shared by the
+ * agent's `.cmd` handler and the aggregator's own-node shortcut).
+ */
+async function execPmonCmd(cmd) {
+  if (cmd.action === 'start') return pmonClient.startManager(cmd.index);
+  if (cmd.action === 'stop') return pmonClient.stopManager(cmd.index);
+  if (cmd.action === 'restart') return pmonClient.restartManager(cmd.index);
+  if (cmd.action === 'restart-all') return pmonClient.restartAll();
+  if (cmd.action === 'add') {
+    const spec = normalizeManagerSpec(cmd.manager);
+    // Default (index omitted / out of range): append at the end of the LOCAL
+    // list — always a legal INS slot (index 0 is pmon itself).
+    const list = await pmonClient.listManagers();
+    const index = Number.isInteger(cmd.index) && cmd.index >= 1 && cmd.index <= list.length ? cmd.index : list.length;
+    return pmonClient.addManager({ index, ...spec });
+  }
+  if (cmd.action === 'remove') {
+    if (!Number.isInteger(cmd.index) || cmd.index < 1) throw new Error('index invalide (≥ 1 requis — 0 est pmon)');
+    return pmonClient.removeManager(cmd.index);
+  }
+  throw new Error(`action invalide: ${cmd.action}`);
+}
+
 /** Track last handled command ids so reconnect / repeat values are ignored. */
 let lastCmdId = '';
 let lastDeployId = '';
@@ -329,11 +380,7 @@ async function onCmd(cmd) {
   let ok = false;
   let error = '';
   try {
-    if (cmd.action === 'start') await pmonClient.startManager(cmd.index);
-    else if (cmd.action === 'stop') await pmonClient.stopManager(cmd.index);
-    else if (cmd.action === 'restart') await pmonClient.restartManager(cmd.index);
-    else if (cmd.action === 'restart-all') await pmonClient.restartAll();
-    else throw new Error(`action invalide: ${cmd.action}`);
+    await execPmonCmd(cmd);
     ok = true;
   } catch (e) {
     error = e.message;
@@ -450,6 +497,8 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
     super(SERVICE_NAME);
     this.registerFunction('ListManagers', (ctx, req) => this.listManagers(ctx, req));
     this.registerFunction('ControlManager', (ctx, req) => this.controlManager(ctx, req));
+    this.registerFunction('AddManager', (ctx, req) => this.addManager(ctx, req));
+    this.registerFunction('RemoveManager', (ctx, req) => this.removeManager(ctx, req));
     this.registerFunction('RestartAll', (ctx, req) => this.restartAll(ctx, req));
     this.registerFunction('Deploy', (ctx, req) => this.deploy(ctx, req));
   }
@@ -494,6 +543,23 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
     return reply(await this.routeCommand(node ?? systemName ?? '', { action, index }));
   }
 
+  /** Insert a manager into a target node's pmon configuration (append by default). */
+  async addManager(ctx, request) {
+    ctx.cancelSignal.throwIfAborted();
+    const { node, systemName, manager, index } = parseReq(request);
+    normalizeManagerSpec(manager); // fail fast on an invalid spec (re-validated at execution)
+    const at = Number.isInteger(index) && index >= 1 ? index : -1; // -1 → append on the target node
+    return reply(await this.routeCommand(node ?? systemName ?? '', { action: 'add', index: at, manager }));
+  }
+
+  /** Remove a (stopped) manager from a target node's pmon configuration. */
+  async removeManager(ctx, request) {
+    ctx.cancelSignal.throwIfAborted();
+    const { node, systemName, index } = parseReq(request);
+    if (!Number.isInteger(index) || index < 1) throw vrpcError('InvalidArgument', 'index (pmon, ≥ 1) requis — 0 est pmon');
+    return reply(await this.routeCommand(node ?? systemName ?? '', { action: 'remove', index }));
+  }
+
   async restartAll(ctx, request) {
     ctx.cancelSignal.throwIfAborted();
     const { node, systemName } = parseReq(request);
@@ -503,10 +569,7 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
   /** Execute a control command on the LOCAL pmon (this computer). */
   async localPmon(cmd, system) {
     try {
-      if (cmd.action === 'restart-all') await pmonClient.restartAll();
-      else if (cmd.action === 'start') await pmonClient.startManager(cmd.index);
-      else if (cmd.action === 'stop') await pmonClient.stopManager(cmd.index);
-      else await pmonClient.restartManager(cmd.index);
+      await execPmonCmd(cmd);
       return { ok: true, ...cmd, system: system || OWN_SYSTEM };
     } catch (e) {
       return { ok: false, error: e.message, ...cmd, system: system || OWN_SYSTEM };

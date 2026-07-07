@@ -18,6 +18,20 @@ export interface ManagerInfo {
   manNum: number;
 }
 
+/** pmon start modes for a configured manager. */
+export type ManagerStartMode = 'manual' | 'once' | 'always';
+
+/** Spec of a manager to ADD to the pmon configuration (config/progs). */
+export interface ManagerSpec {
+  /** Executable name without .exe (e.g. WCCOActrl, node). */
+  name: string;
+  startMode: ManagerStartMode;
+  /** Command line options (e.g. "-f script.ctl"). */
+  options: string;
+  /** Insert position in the pmon list (0 is pmon itself); omit to append. */
+  index?: number;
+}
+
 /** One connected server/system and its live manager list (one tab per instance). */
 export interface Instance {
   /** WinCC OA system name, e.g. "System1:" (empty on a standalone system). */

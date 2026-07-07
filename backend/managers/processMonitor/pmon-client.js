@@ -3,8 +3,10 @@
 
 /**
  * Pmon TCP client (ported from the WinCC OA MCP server's PmonClient) — talks to
- * the local Process Monitor over TCP (default localhost:4999) to list managers
- * and start / stop / restart them, plus restart the whole project.
+ * the local Process Monitor over TCP (default localhost:4999) to list managers,
+ * start / stop / restart them, add / remove entries in the pmon configuration
+ * (SINGLE_MGR:INS / SINGLE_MGR:DEL, persisted to config/progs by pmon), plus
+ * restart the whole project.
  */
 'use strict';
 const net = require('node:net');
@@ -144,6 +146,20 @@ class PmonClient {
   async restartAll() {
     return interpretControl(await this.sendControl('RESTART_ALL:'));
   }
+  /**
+   * Insert a manager into the pmon configuration at `index` (same 0-based list
+   * index space as MGRLIST — index 0 is pmon itself, so `index` must be ≥ 1;
+   * `index === list length` appends). pmon persists the change to config/progs.
+   */
+  async addManager({ index, name, startMode = 'always', secKill = 30, restartCount = 3, resetMin = 1, options = '' }) {
+    return interpretConfig(
+      await this.sendControl(`SINGLE_MGR:INS ${index} ${name} ${startMode} ${secKill} ${restartCount} ${resetMin} ${options}`.trimEnd())
+    );
+  }
+  /** Remove a (stopped) manager from the pmon configuration (index ≥ 1). */
+  async removeManager(index) {
+    return interpretConfig(await this.sendControl(`SINGLE_MGR:DEL ${index}`));
+  }
 }
 
 /**
@@ -155,6 +171,19 @@ class PmonClient {
 function interpretControl(raw) {
   const text = String(raw || '').replace(/\s+/g, ' ').trim();
   if (/\berror\b/i.test(text) && !/not possible|already/i.test(text)) {
+    throw new Error(text.slice(0, 200));
+  }
+  return text;
+}
+
+/**
+ * Interpret a SINGLE_MGR:INS / SINGLE_MGR:DEL reply. Unlike start/stop, a
+ * "not possible" refusal is a REAL failure here (e.g. deleting a running
+ * manager, inserting at an occupied running slot) — any ERROR text is raised.
+ */
+function interpretConfig(raw) {
+  const text = String(raw || '').replace(/\s+/g, ' ').trim();
+  if (/\berror\b/i.test(text) || /not possible/i.test(text)) {
     throw new Error(text.slice(0, 200));
   }
   return text;

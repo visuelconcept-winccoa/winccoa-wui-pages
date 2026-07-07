@@ -6,7 +6,7 @@
  * MSA vRPC to the processMonitor manager). Manager list/control + chunked ZIP
  * upload & deploy. DPL import is handled by another module, not here.
  */
-import type { DeployResult, Instance } from '../types.js';
+import type { DeployResult, Instance, ManagerSpec } from '../types.js';
 
 const BASE = '/api/process-monitor';
 /** Raw bytes per upload chunk (base64-expanded ~1.33× on the wire). */
@@ -43,6 +43,16 @@ export function controlManager(node: string, action: 'start' | 'stop' | 'restart
 
 export function restartAll(node: string): Promise<{ ok: boolean }> {
   return postJson(`${BASE}/restart`, { node });
+}
+
+/** Add a manager to the target node's pmon configuration (appended when `spec.index` is omitted). */
+export function addManager(node: string, spec: ManagerSpec): Promise<{ ok: boolean }> {
+  return postJson(`${BASE}/manager/add`, { node, ...spec });
+}
+
+/** Remove a STOPPED manager from the target node's pmon configuration (index ≥ 1). */
+export function removeManager(node: string, index: number): Promise<{ ok: boolean }> {
+  return postJson(`${BASE}/manager/remove`, { node, index });
 }
 
 /** Sub-batch size for stack-safe base64 (each byte 0–255 maps 1:1 to a code point). */

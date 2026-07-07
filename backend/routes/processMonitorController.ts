@@ -6,10 +6,11 @@
 // -----------------------------------------------------------------------------
 // HTTP -> MSA (Manager Service API) vRPC bridge for the "Process Monitor" page.
 // Forwards to the "ProcessMonitor" service hosted by the processMonitor JS
-// manager: list/control pmon managers, restart-all, and deploy an uploaded
-// project ZIP (chunked upload assembled to a temp file, then handed to the
-// manager which purges selected folders, extracts via 7-Zip, runs config.env
-// and optionally restarts all). DPL import is intentionally NOT handled here.
+// manager: list/control pmon managers, add/remove pmon configuration entries,
+// restart-all, and deploy an uploaded project ZIP (chunked upload assembled to
+// a temp file, then handed to the manager which purges selected folders,
+// extracts via 7-Zip, runs config.env and optionally restarts all). DPL import
+// is intentionally NOT handled here.
 //
 // winccoa-manager (the MSA `Vrpc` namespace) is supplied by the WinCC OA node
 // bootstrap at runtime; loaded via a guarded require so only /api/process-monitor
@@ -100,6 +101,44 @@ export class ProcessMonitorController {
       return;
     }
     await this.call('ControlManager', { action, index, node: node ?? systemName ?? '' }, res);
+  };
+
+  /** POST /manager/add { name, startMode?, options?, secKill?, restartCount?, resetMin?, index?, node? } */
+  public managerAdd = async (req: Request, res: Response): Promise<void> => {
+    const { name, startMode, options, secKill, restartCount, resetMin, index, node, systemName } = (req.body ?? {}) as {
+      name?: string;
+      startMode?: string;
+      options?: string;
+      secKill?: number;
+      restartCount?: number;
+      resetMin?: number;
+      index?: number;
+      node?: string;
+      systemName?: string;
+    };
+    if (typeof name !== 'string' || name.trim() === '') {
+      res.status(400).json({ ok: false, error: 'name (manager, sans .exe) requis' });
+      return;
+    }
+    await this.call(
+      'AddManager',
+      {
+        node: node ?? systemName ?? '',
+        index: typeof index === 'number' ? index : -1,
+        manager: { name, startMode, options, secKill, restartCount, resetMin }
+      },
+      res
+    );
+  };
+
+  /** POST /manager/remove { index, node? } — index ≥ 1 (0 is pmon itself) */
+  public managerRemove = async (req: Request, res: Response): Promise<void> => {
+    const { index, node, systemName } = (req.body ?? {}) as { index?: number; node?: string; systemName?: string };
+    if (typeof index !== 'number' || index < 1) {
+      res.status(400).json({ ok: false, error: 'index (number ≥ 1) requis — 0 est pmon' });
+      return;
+    }
+    await this.call('RemoveManager', { node: node ?? systemName ?? '', index }, res);
   };
 
   /** POST /restart { node? } -> restart all managers of one node (computer), or local */
