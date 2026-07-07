@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Offline/demo seeds — three realistic single-line diagrams, generated on
+ * Offline/demo seeds — four realistic single-line diagrams, generated on
  * demand so names, descriptions and equipment labels are localized to the
  * ACTIVE UI language at creation time (they are then persisted as plain
  * strings, like any user-entered label):
@@ -15,6 +15,9 @@
  *     energy meter, surge arrester, earth and three feeders.
  *  3. Backed-up LV board — grid + standby generator through a changeover pair
  *     of contactors, one busbar, three outgoing feeders.
+ *  4. DC railway traction feed — grid → transformer → rectifier → traction
+ *     breaker → two catenary sections joined by a sectioning switch, a train
+ *     bridging catenary to the track return, earthed.
  *
  * Coordinates are canvas units (grid-snapped). Datapoint bindings are
  * placeholder `Demo:*` names that stay unbound offline (the switchgear then
@@ -29,7 +32,7 @@ function t(en: string, fr: string, de: string): string {
   return localize(ml(en, fr, de));
 }
 
-// Symbol ids reused across the three demos (hoisted per lint no-duplicate-string).
+// Symbol ids reused across the demos (hoisted per lint no-duplicate-string).
 const GRID_SOURCE: SymbolId = 'grid-source';
 const DISCONNECTOR: SymbolId = 'disconnector';
 const FEEDER_OUT: SymbolId = 'feeder-out';
@@ -220,10 +223,51 @@ function demoBackedUpBoard(): Network {
   };
 }
 
+/** 4 — DC railway traction feed (rectifier substation, sectioned catenary, train, track return). */
+function demoRailwayTraction(): Network {
+  return {
+    id: 'demo-ferroviaire',
+    name: t('Railway traction feed', 'Traction ferroviaire', 'Bahnstrom-Einspeisung'),
+    description: t(
+      'DC traction substation: grid → transformer → rectifier → breaker → two catenary sections with a sectioning switch, a train on section 1, track return to earth.',
+      'Sous-station de traction DC : réseau → transformateur → redresseur → disjoncteur → deux sections de caténaire (sectionnement), train sous la section 1, retour rail à la terre.',
+      'DC-Unterwerk: Netz → Trafo → Gleichrichter → Schalter → zwei Fahrleitungsabschnitte mit Streckentrenner, ein Zug auf Abschnitt 1, Gleisrückführung zur Erde.'
+    ),
+    updatedAt: '',
+    nodes: [
+      node('g1', GRID_SOURCE, t('MV grid', 'Réseau HTA', 'MS-Netz'), 140, 40, { source: true, dp: 'Demo:Traction.gridAvailable' }),
+      node('t1', 'transformer', t('Traction transformer', 'Transfo traction', 'Bahnstrom-Trafo'), 140, 160),
+      node('r1', 'rectifier', t('Rectifier', 'Redresseur', 'Gleichrichter'), 148, 310),
+      node('q1', 'breaker', t('Traction breaker', 'DJ traction', 'Bahnstromschalter'), 150, 410, { dp: 'Demo:Traction.breaker' }),
+      node('c1', 'catenary', t('Catenary — section 1', 'Caténaire — section 1', 'Fahrleitung — Abschnitt 1'), 60, 520),
+      node('s1', 'section-switch', t('Sectioning S1', 'Sectionnement S1', 'Streckentrenner S1'), 320, 531, { dp: 'Demo:Catenary.section1' }),
+      node('c2', 'catenary', t('Catenary — section 2', 'Caténaire — section 2', 'Fahrleitung — Abschnitt 2'), 420, 520),
+      node('tr1', 'train', t('Train 4712', 'Train 4712', 'Zug 4712'), 160, 600),
+      node('k1', 'track', t('Track (return)', 'Rail (retour)', 'Gleis (Rückleitung)'), 60, 740),
+      node('gnd1', 'ground', '', 40, 780)
+    ],
+    edges: [
+      edge('e1', 'g1', 'b', 't1', 'a'),
+      edge('e2', 't1', 'b', 'r1', 'a'),
+      edge('e3', 'r1', 'b', 'q1', 'a'),
+      edge('e4', 'q1', 'b', 'c1', 'p3'),
+      edge('e5', 'c1', 'p6', 's1', 'a'),
+      edge('e6', 's1', 'b', 'c2', 'p1'),
+      edge('e7', 'c1', 'p4', 'tr1', 'a'),
+      edge('e8', 'tr1', 'b', 'k1', 'p4'),
+      edge('e9', 'k1', 'p1', 'gnd1', 'a')
+    ],
+    measurements: [
+      meas('mea1', 'Demo:Catenary.voltage', 'U', 'V', 0, 'c1', -40, -46),
+      meas('mea2', 'Demo:Traction.current', 'I', 'A', 0, 'q1', 60, 0)
+    ]
+  };
+}
+
 /**
  * Build the demo networks — labels localized to the active UI language at
  * generation time. A fresh deep structure on every call (safe to persist/mutate).
  */
 export function demoNetworks(): Network[] {
-  return [demoSourceSubstation(), demoMvLvSubstation(), demoBackedUpBoard()];
+  return [demoSourceSubstation(), demoMvLvSubstation(), demoBackedUpBoard(), demoRailwayTraction()];
 }

@@ -18,7 +18,8 @@ manager, no webserver rebuild.
 ## Features
 
 - **In-place edit mode** with a symbol **Toolbox** grouped by family
-  (sources & substations, busbars & links, switchgear, measures/loads/earth).
+  (sources & substations, busbars & links, switchgear, **railway
+  electrification**, measures/loads/earth).
   Pick a symbol → click to place; drag on a magnetic grid; click a port (○) then
   another to draw a wire; `Esc` cancels a wire; `Del`/`⌫` removes the selection.
 - **Properties inspector**: label, 90° rotation, and — for switchgear — the
@@ -34,6 +35,32 @@ manager, no webserver rebuild.
   toolless chat that generates a network model from a prompt; the user reviews
   and applies it to the editor. Hidden unless enabled at deploy time
   (`dashboard-features.json` → `aiAssistant: true`).
+
+## Railway electrification
+
+The `railway` toolbox family models traction power supply, in single-line form:
+
+| Symbol             | Role      | Use                                                                 |
+| ------------------ | --------- | ------------------------------------------------------------------- |
+| `rectifier`        | passive   | AC→DC traction rectifier (750 V / 1.5 kV / 3 kV substations)         |
+| `catenary`         | busbar    | overhead contact-line section (messenger + contact wire, 6 ports)    |
+| `track`            | busbar    | running rails / return circuit (6 ports)                             |
+| `section-switch`   | switch    | catenary sectioning — horizontal blade, bindable open/closed DP      |
+| `autotransformer`  | passive   | 2×25 kV AC scheme (a = catenary, c = feeder, b = rail)               |
+| `train`            | load      | pantograph (port a, top) to wheels/rail (port b, bottom)             |
+
+Typical chain: grid → `transformer` → `rectifier` → `breaker` → `catenary`
+sections joined by `section-switch`; the `train` bridges catenary → `track`,
+which returns to `ground`/substation. Opening a sectioning switch de-energises
+the downstream catenary section live.
+
+- A worked **demo network** ("Traction ferroviaire — démonstration") is included
+  in the offline seed (`data/demo.ts`).
+- An importable **2×25 kV example** with autotransformers is provided in
+  [`examples/reseau-ferroviaire-2x25kv.json`](./examples/reseau-ferroviaire-2x25kv.json)
+  (Import button on the `/ampere` overview).
+- The AI assistant knows the railway symbols and the modelling chain (see
+  `ai-context.ts`), with a dedicated starter prompt.
 
 ## Architecture
 

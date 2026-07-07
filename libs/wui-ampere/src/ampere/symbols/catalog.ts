@@ -43,10 +43,16 @@ export type SymbolId =
   | 'load'
   | 'motor'
   | 'ground'
-  | 'surge-arrester';
+  | 'surge-arrester'
+  | 'rectifier'
+  | 'catenary'
+  | 'track'
+  | 'section-switch'
+  | 'autotransformer'
+  | 'train';
 
-/** Toolbox group (the four families offered in edit mode). */
-export type Category = 'switchgear' | 'busbar' | 'sources' | 'measure';
+/** Toolbox group (the five families offered in edit mode). */
+export type Category = 'switchgear' | 'busbar' | 'sources' | 'railway' | 'measure';
 
 /** Electrical behaviour of a symbol for the energisation graph. */
 export type Role = 'switch' | 'passive' | 'busbar' | 'source' | 'meter' | 'load';
@@ -424,11 +430,131 @@ export const SYMBOLS: Record<SymbolId, SymbolDef> = {
       <rect x="10" y="20" width="20" height="40" fill="none" stroke="currentColor" stroke-width=${SW} />
       <path d="M 14 30 L 26 40 L 14 40 L 26 50" fill="none" stroke="currentColor" stroke-width="3" />
     `
+  },
+  rectifier: {
+    id: 'rectifier',
+    category: 'railway',
+    label: ml('Rectifier (AC/DC)', 'Redresseur (AC/DC)', 'Gleichrichter (AC/DC)'),
+    w: 44,
+    h: 80,
+    ports: vertical2(44, 80),
+    role: 'passive',
+    render: () => svg`
+      <line x1="22" y1="0" x2="22" y2="20" stroke="currentColor" stroke-width=${SW} />
+      <line x1="22" y1="60" x2="22" y2="80" stroke="currentColor" stroke-width=${SW} />
+      <rect x="6" y="20" width="32" height="40" fill="none" stroke="currentColor" stroke-width=${SW} />
+      <line x1="6" y1="60" x2="38" y2="20" stroke="currentColor" stroke-width="2.5" />
+      <path d="M 10 30 Q 13 26 16 30 T 22 30" fill="none" stroke="currentColor" stroke-width="2.5" />
+      <line x1="24" y1="48" x2="34" y2="48" stroke="currentColor" stroke-width="2.5" />
+      <line x1="24" y1="53" x2="34" y2="53" stroke="currentColor" stroke-width="2.5" stroke-dasharray="3 2.5" />
+    `
+  },
+  catenary: {
+    id: 'catenary',
+    category: 'railway',
+    label: ml('Catenary section', 'Section de caténaire', 'Fahrleitungsabschnitt'),
+    w: 240,
+    h: 36,
+    ports: {
+      p1: { x: 20, y: 26 },
+      p2: { x: 60, y: 26 },
+      p3: { x: 100, y: 26 },
+      p4: { x: 140, y: 26 },
+      p5: { x: 180, y: 26 },
+      p6: { x: 220, y: 26 }
+    },
+    role: 'busbar',
+    render: () => svg`
+      <path d="M 0 4 Q 30 12 60 4 Q 90 12 120 4 Q 150 12 180 4 Q 210 12 240 4"
+        fill="none" stroke="currentColor" stroke-width="2" />
+      <line x1="30" y1="8" x2="30" y2="26" stroke="currentColor" stroke-width="1.5" />
+      <line x1="90" y1="8" x2="90" y2="26" stroke="currentColor" stroke-width="1.5" />
+      <line x1="150" y1="8" x2="150" y2="26" stroke="currentColor" stroke-width="1.5" />
+      <line x1="210" y1="8" x2="210" y2="26" stroke="currentColor" stroke-width="1.5" />
+      <line x1="0" y1="26" x2="240" y2="26" stroke="currentColor" stroke-width="4" stroke-linecap="round" />
+    `
+  },
+  track: {
+    id: 'track',
+    category: 'railway',
+    label: ml('Track (return circuit)', 'Rail (circuit de retour)', 'Gleis (Rückstromkreis)'),
+    w: 240,
+    h: 24,
+    ports: {
+      p1: { x: 20, y: 8 },
+      p2: { x: 60, y: 8 },
+      p3: { x: 100, y: 8 },
+      p4: { x: 140, y: 8 },
+      p5: { x: 180, y: 8 },
+      p6: { x: 220, y: 8 }
+    },
+    role: 'busbar',
+    render: () => svg`
+      <line x1="0" y1="8" x2="240" y2="8" stroke="currentColor" stroke-width="5" stroke-linecap="round" />
+      ${Array.from({ length: 12 }, (_, i) => 10 + i * 20).map(
+        (x) => svg`<line x1=${x} y1="12" x2=${x} y2="20" stroke="currentColor" stroke-width="2.5" />`
+      )}
+    `
+  },
+  'section-switch': {
+    id: 'section-switch',
+    category: 'railway',
+    label: ml('Catenary sectioning switch', 'Sectionnement de caténaire', 'Streckentrennschalter'),
+    w: 80,
+    h: 30,
+    ports: { a: { x: 0, y: 15 }, b: { x: 80, y: 15 } },
+    role: 'switch',
+    render: ({ closed }) => {
+      // Horizontal blade pivoting at the left contact (30° up when open).
+      const tip = closed ? { x: 60, y: 15 } : { x: 54.6, y: -5 };
+      return svg`
+        <line x1="0" y1="15" x2="20" y2="15" stroke="currentColor" stroke-width=${SW} />
+        <line x1="60" y1="15" x2="80" y2="15" stroke="currentColor" stroke-width=${SW} />
+        <circle cx="20" cy="15" r="3.5" fill="currentColor" />
+        <circle cx="60" cy="15" r="3.5" fill="currentColor" />
+        <line x1="20" y1="15" x2=${tip.x} y2=${tip.y} stroke="currentColor" stroke-width=${SW} stroke-linecap="round" />
+        <line x1="36" y1="22" x2="44" y2="28" stroke="currentColor" stroke-width="2" />
+        <line x1="40" y1="22" x2="48" y2="28" stroke="currentColor" stroke-width="2" />
+      `;
+    }
+  },
+  autotransformer: {
+    id: 'autotransformer',
+    category: 'railway',
+    label: ml('Autotransformer (2×25 kV)', 'Autotransformateur (2×25 kV)', 'Autotransformator (2×25 kV)'),
+    w: 60,
+    h: 110,
+    ports: { a: { x: 30, y: 0 }, b: { x: 30, y: 110 }, c: { x: 60, y: 55 } },
+    role: 'passive',
+    render: () => svg`
+      <line x1="30" y1="0" x2="30" y2="28" stroke="currentColor" stroke-width=${SW} />
+      <line x1="30" y1="82" x2="30" y2="110" stroke="currentColor" stroke-width=${SW} />
+      <circle cx="30" cy="55" r="27" fill="none" stroke="currentColor" stroke-width=${SW} />
+      <line x1="57" y1="55" x2="60" y2="55" stroke="currentColor" stroke-width=${SW} />
+      <line x1="30" y1="42" x2="30" y2="68" stroke="currentColor" stroke-width="2.5" />
+    `
+  },
+  train: {
+    id: 'train',
+    category: 'railway',
+    label: ml('Train (pantograph)', 'Train (pantographe)', 'Zug (Stromabnehmer)'),
+    w: 80,
+    h: 96,
+    ports: { a: { x: 40, y: 0 }, b: { x: 40, y: 96 } },
+    role: 'load',
+    render: () => svg`
+      <line x1="40" y1="0" x2="40" y2="10" stroke="currentColor" stroke-width=${SW} />
+      <path d="M 24 26 L 40 10 L 56 26" fill="none" stroke="currentColor" stroke-width="3" />
+      <rect x="12" y="26" width="56" height="40" rx="6" fill="none" stroke="currentColor" stroke-width=${SW} />
+      <circle cx="26" cy="74" r="6" fill="none" stroke="currentColor" stroke-width="3" />
+      <circle cx="54" cy="74" r="6" fill="none" stroke="currentColor" stroke-width="3" />
+      <line x1="40" y1="80" x2="40" y2="96" stroke="currentColor" stroke-width=${SW} />
+    `
   }
 };
 
 /** Toolbox display order per category. */
-export const CATEGORY_ORDER: Category[] = ['sources', 'busbar', 'switchgear', 'measure'];
+export const CATEGORY_ORDER: Category[] = ['sources', 'busbar', 'switchgear', 'railway', 'measure'];
 
 /** Symbols of one category, in declaration order. */
 export function symbolsOf(category: Category): SymbolDef[] {

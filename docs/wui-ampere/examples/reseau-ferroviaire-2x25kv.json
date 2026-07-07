@@ -1,0 +1,42 @@
+{
+  "kind": "ampere-networks",
+  "version": 1,
+  "networks": [
+    {
+      "id": "",
+      "name": "Ligne 2×25 kV — exemple",
+      "description": "Alimentation AC 2×25 kV : réseau → transformateur → disjoncteur → caténaire en deux sections (sectionnement), autotransformateur entre caténaire et rail, train sous la section 1, retour rail à la terre. Importable tel quel puis à lier aux datapoints du projet.",
+      "updatedAt": "",
+      "nodes": [
+        { "id": "g1", "symbol": "grid-source", "label": "Réseau 225 kV", "x": 140, "y": 40, "rotation": 0, "dp": "", "closedValue": 1, "source": true },
+        { "id": "t1", "symbol": "transformer", "label": "Transfo 225/2×25 kV", "x": 140, "y": 160, "rotation": 0, "dp": "", "closedValue": 1, "source": false },
+        { "id": "q1", "symbol": "breaker", "label": "DJ ligne", "x": 150, "y": 320, "rotation": 0, "dp": "", "closedValue": 1, "source": false },
+        { "id": "c1", "symbol": "catenary", "label": "Caténaire — section 1", "x": 60, "y": 440, "rotation": 0, "dp": "", "closedValue": 1, "source": false },
+        { "id": "s1", "symbol": "section-switch", "label": "Sectionnement", "x": 320, "y": 451, "rotation": 0, "dp": "", "closedValue": 1, "source": false },
+        { "id": "c2", "symbol": "catenary", "label": "Caténaire — section 2", "x": 420, "y": 440, "rotation": 0, "dp": "", "closedValue": 1, "source": false },
+        { "id": "at1", "symbol": "autotransformer", "label": "AT1", "x": 530, "y": 500, "rotation": 0, "dp": "", "closedValue": 1, "source": false },
+        { "id": "tr1", "symbol": "train", "label": "Train", "x": 160, "y": 520, "rotation": 0, "dp": "", "closedValue": 1, "source": false },
+        { "id": "k1", "symbol": "track", "label": "Rail (retour)", "x": 60, "y": 660, "rotation": 0, "dp": "", "closedValue": 1, "source": false },
+        { "id": "k2", "symbol": "track", "label": "Rail (retour)", "x": 420, "y": 660, "rotation": 0, "dp": "", "closedValue": 1, "source": false },
+        { "id": "gnd1", "symbol": "ground", "label": "", "x": 40, "y": 700, "rotation": 0, "dp": "", "closedValue": 1, "source": false }
+      ],
+      "edges": [
+        { "id": "e1", "from": { "nodeId": "g1", "port": "b" }, "to": { "nodeId": "t1", "port": "a" } },
+        { "id": "e2", "from": { "nodeId": "t1", "port": "b" }, "to": { "nodeId": "q1", "port": "a" } },
+        { "id": "e3", "from": { "nodeId": "q1", "port": "b" }, "to": { "nodeId": "c1", "port": "p3" } },
+        { "id": "e4", "from": { "nodeId": "c1", "port": "p6" }, "to": { "nodeId": "s1", "port": "a" } },
+        { "id": "e5", "from": { "nodeId": "s1", "port": "b" }, "to": { "nodeId": "c2", "port": "p1" } },
+        { "id": "e6", "from": { "nodeId": "c2", "port": "p5" }, "to": { "nodeId": "at1", "port": "a" } },
+        { "id": "e7", "from": { "nodeId": "at1", "port": "b" }, "to": { "nodeId": "k2", "port": "p5" } },
+        { "id": "e8", "from": { "nodeId": "c1", "port": "p4" }, "to": { "nodeId": "tr1", "port": "a" } },
+        { "id": "e9", "from": { "nodeId": "tr1", "port": "b" }, "to": { "nodeId": "k1", "port": "p4" } },
+        { "id": "e10", "from": { "nodeId": "k1", "port": "p6" }, "to": { "nodeId": "k2", "port": "p1" } },
+        { "id": "e11", "from": { "nodeId": "k1", "port": "p1" }, "to": { "nodeId": "gnd1", "port": "a" } }
+      ],
+      "measurements": [
+        { "id": "mea1", "dp": "", "label": "U cat.", "unit": "kV", "decimals": 1, "nodeId": "c1", "x": -40, "y": -46 },
+        { "id": "mea2", "dp": "", "label": "I ligne", "unit": "A", "decimals": 0, "nodeId": "q1", "x": 60, "y": 0 }
+      ]
+    }
+  ]
+}
