@@ -19,9 +19,11 @@
  *     breaker → two catenary sections joined by a sectioning switch, a train
  *     bridging catenary to the track return, earthed.
  *
- * Coordinates are canvas units (grid-snapped). Datapoint bindings are
- * placeholder `Demo:*` names that stay unbound offline (the switchgear then
- * reads as closed, so the whole diagram lights up).
+ * Coordinates are canvas units (grid-snapped). Every showcase binds its
+ * switchgear, sources and measurements to elements of ONE shared datapoint
+ * (`AmpereSim_Demo`, see {@link SIM}) created and driven live by the `ampereSim`
+ * JavaScript manager. Offline (no backend) the bindings stay unresolved, so the
+ * switchgear reads as closed and the whole diagram lights up.
  */
 import { localize } from '@wincc-oa/wui-i18n-shared/localize-multilang.js';
 import { ml } from '../i18n.js';
@@ -40,6 +42,20 @@ const FEEDER_OUT: SymbolId = 'feeder-out';
 /** Overview grouping labels, localized at generation time. */
 const CAT_DISTRIB = (): string => t('Power distribution', 'Distribution électrique', 'Stromverteilung');
 const CAT_RAIL = (): string => t('Railway electrification', 'Électrification ferroviaire', 'Bahnelektrifizierung');
+
+/**
+ * Shared simulator datapoint. Every showcase binds its switchgear, sources and
+ * measurements to elements of this ONE datapoint — created and driven live by
+ * the `ampereSim` JavaScript manager (`backend/managers/ampereSim`). The element
+ * names below are the contract between the demos and the simulator; keep them in
+ * sync with the manager's POSITIONS / SOURCES / ANALOG tables. No system prefix
+ * is stored (the page normalises it away), so it resolves on the local system.
+ */
+const SIM = 'AmpereSim_Demo.';
+/** Full DP-element name for a shared simulator signal. */
+function d(element: string): string {
+  return SIM + element;
+}
 
 /** Compact node literal (defaults: no rotation, unbound, closed=1, not a source). */
 function node(
@@ -74,24 +90,24 @@ function demoSourceSubstation(): Network {
     ),
     updatedAt: '',
     nodes: [
-      node('g1', GRID_SOURCE, t('Line 1 — 63 kV', 'Ligne 1 — 63 kV', 'Leitung 1 — 63 kV'), 200, 40, { source: true, dp: 'Demo:Line1.voltagePresent' }),
-      node('g2', GRID_SOURCE, t('Line 2 — 63 kV', 'Ligne 2 — 63 kV', 'Leitung 2 — 63 kV'), 900, 40, { source: true, dp: 'Demo:Line2.voltagePresent' }),
-      node('qs1', DISCONNECTOR, 'QS1', 210, 170, { dp: 'Demo:Incomer1.disconnector' }),
-      node('qs2', DISCONNECTOR, 'QS2', 910, 170, { dp: 'Demo:Incomer2.disconnector' }),
-      node('q1', 'breaker', 'Q1', 210, 290, { dp: 'Demo:Incomer1.breaker' }),
-      node('q2', 'breaker', 'Q2', 910, 290, { dp: 'Demo:Incomer2.breaker' }),
+      node('g1', GRID_SOURCE, t('Line 1 — 63 kV', 'Ligne 1 — 63 kV', 'Leitung 1 — 63 kV'), 200, 40, { source: true, dp: d('line1') }),
+      node('g2', GRID_SOURCE, t('Line 2 — 63 kV', 'Ligne 2 — 63 kV', 'Leitung 2 — 63 kV'), 900, 40, { source: true, dp: d('line2') }),
+      node('qs1', DISCONNECTOR, 'QS1', 210, 170, { dp: d('incomerDisc1') }),
+      node('qs2', DISCONNECTOR, 'QS2', 910, 170, { dp: d('incomerDisc2') }),
+      node('q1', 'breaker', 'Q1', 210, 290, { dp: d('incomerBreaker1') }),
+      node('q2', 'breaker', 'Q2', 910, 290, { dp: d('incomerBreaker2') }),
       node('t1', 'transformer', 'T1 — 63/20 kV', 200, 410),
       node('t2', 'transformer', 'T2 — 63/20 kV', 900, 410),
-      node('qa1', 'breaker', 'QA1', 210, 580, { dp: 'Demo:TrafoA.breaker' }),
-      node('qa2', 'breaker', 'QA2', 910, 580, { dp: 'Demo:TrafoB.breaker' }),
+      node('qa1', 'breaker', 'QA1', 210, 580, { dp: d('trafoBreaker1') }),
+      node('qa2', 'breaker', 'QA2', 910, 580, { dp: d('trafoBreaker2') }),
       node('bba', 'busbar', t('Half-busbar A', 'Demi-barre A', 'Halbschiene A'), 130, 700),
       node('bbb', 'busbar', t('Half-busbar B', 'Demi-barre B', 'Halbschiene B'), 830, 700),
       // Bus coupler between the two half-busbars — drawn horizontal (rotation 90°).
-      node('qc', 'breaker', t('Coupler QC', 'Couplage QC', 'Kupplung QC'), 560, 660, { rotation: 90, dp: 'Demo:Coupler.breaker', labelDy: -96 }),
-      node('qd1', 'breaker', 'QD1', 150, 800, { dp: 'Demo:FeederA1.breaker' }),
-      node('qd2', 'breaker', 'QD2', 290, 800, { dp: 'Demo:FeederA2.breaker' }),
-      node('qd3', 'breaker', 'QD3', 850, 800, { dp: 'Demo:FeederB1.breaker' }),
-      node('qd4', 'breaker', 'QD4', 990, 800, { dp: 'Demo:FeederB2.breaker' }),
+      node('qc', 'breaker', t('Coupler QC', 'Couplage QC', 'Kupplung QC'), 560, 660, { rotation: 90, dp: d('busCoupler'), labelDy: -96 }),
+      node('qd1', 'breaker', 'QD1', 150, 800, { dp: d('feeder1') }),
+      node('qd2', 'breaker', 'QD2', 290, 800, { dp: d('feeder2') }),
+      node('qd3', 'breaker', 'QD3', 850, 800, { dp: d('feeder3') }),
+      node('qd4', 'breaker', 'QD4', 990, 800, { dp: d('feeder4') }),
       node('f1', FEEDER_OUT, t('Feeder A1', 'Départ A1', 'Abgang A1'), 150, 920),
       node('m1', 'motor', t('Auxiliaries', 'Auxiliaires', 'Eigenbedarf'), 280, 920),
       node('f3', FEEDER_OUT, t('Feeder B1', 'Départ B1', 'Abgang B1'), 850, 920),
@@ -120,10 +136,10 @@ function demoSourceSubstation(): Network {
       edge('e20', 'qd4', 'b', 'f4', 'a')
     ],
     measurements: [
-      meas('mea1', 'Demo:Incomer1.current', 'I1', 'A', 0, 'q1', 60, 0),
-      meas('mea2', 'Demo:Incomer2.current', 'I2', 'A', 0, 'q2', 60, 0),
-      meas('mea3', 'Demo:BusbarA.voltage', 'U', 'kV', 1, '', 400, 668),
-      meas('mea4', 'Demo:BusbarB.voltage', 'U', 'kV', 1, '', 1120, 668)
+      meas('mea1', d('currentIncomer1'), 'I1', 'A', 0, 'q1', 60, 0),
+      meas('mea2', d('currentIncomer2'), 'I2', 'A', 0, 'q2', 60, 0),
+      meas('mea3', d('voltageMv'), 'U', 'kV', 1, '', 400, 668),
+      meas('mea4', d('voltageMv'), 'U', 'kV', 1, '', 1120, 668)
     ]
   };
 }
@@ -143,17 +159,17 @@ function demoMvLvSubstation(): Network {
     nodes: [
       node('fi1', 'feeder-in', t('Loop in', 'Arrivée boucle', 'Ring-Einspeisung'), 160, 40, { source: true }),
       node('fi2', 'feeder-in', t('Loop out', 'Retour boucle', 'Ring-Ausspeisung'), 420, 40, { source: true }),
-      node('is1', 'switch-disconnector', 'IS1', 170, 140, { dp: 'Demo:Loop1.switch' }),
-      node('is2', 'switch-disconnector', 'IS2', 430, 140, { dp: 'Demo:Loop2.switch' }),
+      node('is1', 'switch-disconnector', 'IS1', 170, 140, { dp: d('loopSwitch1') }),
+      node('is2', 'switch-disconnector', 'IS2', 430, 140, { dp: d('loopSwitch2') }),
       node('bbmt', 'busbar', t('20 kV busbar', 'Jeu de barres 20 kV', '20-kV-Sammelschiene'), 120, 260),
       node('fu1', 'fuse', 'F1', 270, 340, { dp: '' }),
       node('t1', 'transformer', 'T — 20 kV / 400 V', 260, 460),
       node('kwh', 'meter', 'kWh', 268, 620),
-      node('qg', 'breaker', t('Main breaker QG', 'Disjoncteur général QG', 'Hauptschalter QG'), 270, 740, { dp: 'Demo:LvMain.breaker' }),
+      node('qg', 'breaker', t('Main breaker QG', 'Disjoncteur général QG', 'Hauptschalter QG'), 270, 740, { dp: d('mainBreaker') }),
       node('bbbt', 'busbar', t('LV busbar', 'Jeu de barres BT', 'NS-Sammelschiene'), 170, 860),
-      node('qd1', 'breaker', 'QD1', 190, 940, { dp: 'Demo:LvLight.breaker' }),
-      node('qd2', 'breaker', 'QD2', 310, 940, { dp: 'Demo:LvMotor.breaker' }),
-      node('qd3', 'breaker', 'QD3', 430, 940, { dp: 'Demo:LvShop.breaker' }),
+      node('qd1', 'breaker', 'QD1', 190, 940, { dp: d('feeder1') }),
+      node('qd2', 'breaker', 'QD2', 310, 940, { dp: d('feeder2') }),
+      node('qd3', 'breaker', 'QD3', 430, 940, { dp: d('feeder3') }),
       node('l1', 'load', t('Lighting', 'Éclairage', 'Beleuchtung'), 190, 1060),
       node('m1', 'motor', t('Pump', 'Pompe', 'Pumpe'), 300, 1060),
       node('f1', FEEDER_OUT, t('Workshop', 'Atelier', 'Werkstatt'), 430, 1060),
@@ -180,8 +196,8 @@ function demoMvLvSubstation(): Network {
       edge('e17', 'sa1', 'b', 'gnd', 'a')
     ],
     measurements: [
-      meas('mea1', 'Demo:LvMain.current', 'I', 'A', 0, 'qg', 60, 0),
-      meas('mea2', 'Demo:LvBusbar.voltage', 'U', 'V', 0, '', 560, 868)
+      meas('mea1', d('currentMain'), 'I', 'A', 0, 'qg', 60, 0),
+      meas('mea2', d('voltageLv'), 'U', 'V', 0, '', 560, 868)
     ]
   };
 }
@@ -199,14 +215,14 @@ function demoBackedUpBoard(): Network {
     ),
     updatedAt: '',
     nodes: [
-      node('g1', GRID_SOURCE, t('Grid', 'Réseau', 'Netz'), 200, 40, { source: true, dp: 'Demo:Grid.available' }),
-      node('ge1', 'generator', t('Generator', 'Groupe électrogène', 'Notstromaggregat'), 560, 40, { source: true, dp: 'Demo:Genset.running' }),
-      node('kn', 'contactor', t('KN — normal', 'KN — normal', 'KN — Netz'), 210, 190, { dp: 'Demo:Changeover.normal' }),
-      node('ks', 'contactor', t('KS — backup', 'KS — secours', 'KS — Ersatz'), 570, 190, { dp: 'Demo:Changeover.backup' }),
+      node('g1', GRID_SOURCE, t('Grid', 'Réseau', 'Netz'), 200, 40, { source: true, dp: d('gridAvailable') }),
+      node('ge1', 'generator', t('Generator', 'Groupe électrogène', 'Notstromaggregat'), 560, 40, { source: true, dp: d('gensetRunning') }),
+      node('kn', 'contactor', t('KN — normal', 'KN — normal', 'KN — Netz'), 210, 190, { dp: d('changeoverNormal') }),
+      node('ks', 'contactor', t('KS — backup', 'KS — secours', 'KS — Ersatz'), 570, 190, { dp: d('changeoverBackup') }),
       node('bb', 'busbar', t('Busbar', 'Jeu de barres', 'Sammelschiene'), 240, 330),
-      node('qd1', 'breaker', 'QD1', 260, 410, { dp: 'Demo:Pump.breaker' }),
-      node('qd2', 'breaker', 'QD2', 380, 410, { dp: 'Demo:Light.breaker' }),
-      node('qd3', DISCONNECTOR, 'QD3', 500, 410, { dp: 'Demo:Shop.breaker' }),
+      node('qd1', 'breaker', 'QD1', 260, 410, { dp: d('feeder1') }),
+      node('qd2', 'breaker', 'QD2', 380, 410, { dp: d('feeder2') }),
+      node('qd3', DISCONNECTOR, 'QD3', 500, 410, { dp: d('feeder3') }),
       node('m1', 'motor', t('Pump', 'Pompe', 'Pumpe'), 250, 530),
       node('l1', 'load', t('Lighting', 'Éclairage', 'Beleuchtung'), 380, 530),
       node('f1', FEEDER_OUT, t('Workshop', 'Atelier', 'Werkstatt'), 500, 530)
@@ -224,8 +240,8 @@ function demoBackedUpBoard(): Network {
       edge('e10', 'qd3', 'b', 'f1', 'a')
     ],
     measurements: [
-      meas('mea1', 'Demo:Grid.current', 'I', 'A', 1, 'kn', 60, 0),
-      meas('mea2', 'Demo:Busbar.voltage', 'U', 'V', 0, '', 620, 338)
+      meas('mea1', d('currentMain'), 'I', 'A', 1, 'kn', 60, 0),
+      meas('mea2', d('voltageLv'), 'U', 'V', 0, '', 620, 338)
     ]
   };
 }
@@ -243,12 +259,12 @@ function demoRailwayTraction(): Network {
     ),
     updatedAt: '',
     nodes: [
-      node('g1', GRID_SOURCE, t('MV grid', 'Réseau HTA', 'MS-Netz'), 140, 40, { source: true, dp: 'Demo:Traction.gridAvailable' }),
+      node('g1', GRID_SOURCE, t('MV grid', 'Réseau HTA', 'MS-Netz'), 140, 40, { source: true, dp: d('gridAvailable') }),
       node('t1', 'transformer', t('Traction transformer', 'Transfo traction', 'Bahnstrom-Trafo'), 140, 160),
       node('r1', 'rectifier', t('Rectifier', 'Redresseur', 'Gleichrichter'), 148, 310),
-      node('q1', 'breaker', t('Traction breaker', 'DJ traction', 'Bahnstromschalter'), 150, 410, { dp: 'Demo:Traction.breaker' }),
+      node('q1', 'breaker', t('Traction breaker', 'DJ traction', 'Bahnstromschalter'), 150, 410, { dp: d('tractionBreaker') }),
       node('c1', 'catenary', t('Catenary — section 1', 'Caténaire — section 1', 'Fahrleitung — Abschnitt 1'), 60, 520),
-      node('s1', 'section-switch', t('Sectioning S1', 'Sectionnement S1', 'Streckentrenner S1'), 320, 531, { dp: 'Demo:Catenary.section1' }),
+      node('s1', 'section-switch', t('Sectioning S1', 'Sectionnement S1', 'Streckentrenner S1'), 320, 531, { dp: d('sectioning') }),
       node('c2', 'catenary', t('Catenary — section 2', 'Caténaire — section 2', 'Fahrleitung — Abschnitt 2'), 420, 520),
       node('tr1', 'train', t('Train 4712', 'Train 4712', 'Zug 4712'), 160, 600),
       node('k1', 'track', t('Track (return)', 'Rail (retour)', 'Gleis (Rückleitung)'), 60, 740),
@@ -266,8 +282,8 @@ function demoRailwayTraction(): Network {
       edge('e9', 'k1', 'p1', 'gnd1', 'a')
     ],
     measurements: [
-      meas('mea1', 'Demo:Catenary.voltage', 'U', 'V', 0, 'c1', -40, -46),
-      meas('mea2', 'Demo:Traction.current', 'I', 'A', 0, 'q1', 60, 0)
+      meas('mea1', d('voltageDc'), 'U', 'V', 0, 'c1', -40, -46),
+      meas('mea2', d('currentTraction'), 'I', 'A', 0, 'q1', 60, 0)
     ]
   };
 }
@@ -288,7 +304,7 @@ function demoRailwaySimpleFeed(): Network {
       node('g1', GRID_SOURCE, t('MV grid', 'Réseau HTA', 'MS-Netz'), 120, 40, { source: true }),
       node('t1', 'transformer', t('Transformer', 'Transformateur', 'Trafo'), 120, 160),
       node('r1', 'rectifier', t('Rectifier', 'Redresseur', 'Gleichrichter'), 128, 310),
-      node('q1', 'breaker', 'DJ', 130, 410, { dp: 'Demo:Feed.breaker' }),
+      node('q1', 'breaker', 'DJ', 130, 410, { dp: d('tractionBreaker') }),
       node('c1', 'catenary', t('Catenary', 'Caténaire', 'Fahrleitung'), 40, 520),
       node('tr1', 'train', t('Train', 'Train', 'Zug'), 140, 600),
       node('k1', 'track', t('Track (return)', 'Rail (retour)', 'Gleis (Rückleitung)'), 40, 740),
@@ -303,7 +319,7 @@ function demoRailwaySimpleFeed(): Network {
       edge('e6', 'tr1', 'b', 'k1', 'p4'),
       edge('e7', 'k1', 'p1', 'gnd1', 'a')
     ],
-    measurements: [meas('mea1', 'Demo:Catenary.voltage', 'U', 'V', 0, 'c1', -40, -46)]
+    measurements: [meas('mea1', d('voltageDc'), 'U', 'V', 0, 'c1', -40, -46)]
   };
 }
 
@@ -324,11 +340,11 @@ function demoRailwayDoubleTrack(): Network {
       node('t1', 'transformer', t('Transformer', 'Transformateur', 'Trafo'), 360, 140),
       node('r1', 'rectifier', t('Rectifier', 'Redresseur', 'Gleichrichter'), 368, 290),
       node('bb', 'busbar', t('DC busbar', 'Barre DC', 'DC-Sammelschiene'), 260, 400, { rotation: 0 }),
-      node('q1', 'breaker', 'DJ V1', 220, 470, { dp: 'Demo:Track1.breaker' }),
-      node('q2', 'breaker', 'DJ V2', 460, 470, { dp: 'Demo:Track2.breaker' }),
+      node('q1', 'breaker', 'DJ V1', 220, 470, { dp: d('feeder1') }),
+      node('q2', 'breaker', 'DJ V2', 460, 470, { dp: d('feeder2') }),
       node('c1', 'catenary', t('Catenary V1', 'Caténaire V1', 'Fahrleitung G1'), 60, 580),
       node('c2', 'catenary', t('Catenary V2', 'Caténaire V2', 'Fahrleitung G2'), 380, 580),
-      node('sp', 'section-switch', t('Paralleling (N/O)', 'Mise en parallèle (N/O)', 'Kupplung (N/O)'), 320, 591, { dp: 'Demo:Track.paralleling', closedValue: 1 }),
+      node('sp', 'section-switch', t('Paralleling (N/O)', 'Mise en parallèle (N/O)', 'Kupplung (N/O)'), 320, 591, { dp: d('paralleling'), closedValue: 1 }),
       node('tr1', 'train', t('Train A', 'Train A', 'Zug A'), 140, 660),
       node('tr2', 'train', t('Train B', 'Train B', 'Zug B'), 460, 660),
       node('k1', 'track', t('Track V1', 'Rail V1', 'Gleis G1'), 60, 800),
@@ -353,8 +369,8 @@ function demoRailwayDoubleTrack(): Network {
       edge('e15', 'k1', 'p1', 'gnd1', 'a')
     ],
     measurements: [
-      meas('mea1', 'Demo:Track1.current', 'I1', 'A', 0, 'q1', -70, 0),
-      meas('mea2', 'Demo:Track2.current', 'I2', 'A', 0, 'q2', 60, 0)
+      meas('mea1', d('currentTrack1'), 'I1', 'A', 0, 'q1', -70, 0),
+      meas('mea2', d('currentTrack2'), 'I2', 'A', 0, 'q2', 60, 0)
     ]
   };
 }
@@ -373,12 +389,12 @@ function demoRailway2x25(): Network {
     updatedAt: '',
     nodes: [
       node('g1', GRID_SOURCE, t('HV grid 225 kV', 'Réseau HTB 225 kV', 'HS-Netz 225 kV'), 120, 20, { source: true }),
-      node('qs', DISCONNECTOR, 'QS', 130, 130, { dp: 'Demo:Line.disconnector' }),
+      node('qs', DISCONNECTOR, 'QS', 130, 130, { dp: d('disconnector') }),
       node('t1', 'transformer', t('225/2×25 kV', '225/2×25 kV', '225/2×25 kV'), 120, 240),
-      node('q1', 'breaker', 'DJ', 130, 400, { dp: 'Demo:Line.breaker' }),
+      node('q1', 'breaker', 'DJ', 130, 400, { dp: d('tractionBreaker') }),
       node('c1', 'catenary', t('Catenary', 'Caténaire', 'Fahrleitung'), 40, 520),
       node('c2', 'catenary', t('Catenary', 'Caténaire', 'Fahrleitung'), 420, 520),
-      node('sp', 'section-switch', t('Sectioning', 'Sectionnement', 'Streckentrenner'), 320, 531, { dp: 'Demo:Catenary.sectioning' }),
+      node('sp', 'section-switch', t('Sectioning', 'Sectionnement', 'Streckentrenner'), 320, 531, { dp: d('sectioning') }),
       node('at1', 'autotransformer', 'AT1', 200, 620),
       node('at2', 'autotransformer', 'AT2', 560, 620),
       node('tr1', 'train', t('High-speed train', 'Train grande vitesse', 'Hochgeschwindigkeitszug'), 60, 690),
@@ -403,8 +419,8 @@ function demoRailway2x25(): Network {
       edge('e14', 'k1', 'p1', 'gnd1', 'a')
     ],
     measurements: [
-      meas('mea1', 'Demo:Catenary.voltage', 'U cat.', 'kV', 1, 'c1', -60, -46),
-      meas('mea2', 'Demo:Line.current', 'I', 'A', 0, 'q1', 60, 0)
+      meas('mea1', d('voltageAc'), 'U cat.', 'kV', 1, 'c1', -60, -46),
+      meas('mea2', d('currentTraction'), 'I', 'A', 0, 'q1', 60, 0)
     ]
   };
 }

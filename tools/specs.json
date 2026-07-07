@@ -36,7 +36,8 @@
     "name": "@visuelconcept/wui-ampere",
     "title": "Ampère (electrical)",
     "tier": 1,
-    "description": "Ampère pages (/ampere + /ampere/:networkid) — draw single-line (mono-filaire) electrical distribution networks (TGBT/switchboards, disconnectors, breakers, busbars, transformers…) incl. railway electrification (catenary, track return, rectifier, sectioning switch, autotransformer, train) with an in-place edit mode, an IEC 60617 symbol toolbox, free per-device DP binding, live wire energisation by graph traversal through closed switchgear, free/attached live measurement labels, and a proposal-only AI assistant that generates network models. Stored as Ampere_Network DPs."
+    "description": "Ampère pages (/ampere + /ampere/:networkid) — draw single-line (mono-filaire) electrical distribution networks (TGBT/switchboards, disconnectors, breakers, busbars, transformers…) incl. railway electrification (catenary, track return, rectifier, sectioning switch, autotransformer, train) with an in-place edit mode, an IEC 60617 symbol toolbox, free per-device DP binding, live wire energisation by graph traversal through closed switchgear, free/attached live measurement labels, and a proposal-only AI assistant that generates network models. Stored as Ampere_Network DPs. The ampereSim JavaScript manager creates and drives the shared AmpereSim_Demo datapoint that every showcase binds to (live switchgear + measurement animation).",
+    "managers": ["ampereSim"]
   },
   {
     "page": "report-builder",
