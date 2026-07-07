@@ -64,6 +64,35 @@ the downstream catenary section live.
 - The AI assistant knows the railway symbols and the modelling chain (see
   `ai-context.ts`), with a dedicated starter prompt.
 
+## Showcase simulator (`ampereSim` manager)
+
+All demo networks bind their switchgear, sources and measurements to elements of
+**one shared datapoint** `AmpereSim_Demo` (type `AmpereSim`). The WinCC OA
+JavaScript manager [`backend/managers/ampereSim`](../../backend/managers/ampereSim/index.js)
+**creates** that type + datapoint and **drives** it live:
+
+- switchgear positions (`feeder1`, `mainBreaker`, `sectioning`, `busCoupler`, …)
+  roll open/closed over time (with recovery, so the network mostly stays
+  energised) — you see the wire energisation animate;
+- source flags (`gridAvailable`, `line1`, `line2`, `gensetRunning`);
+- analog measurements (`voltageMv/Lv/Dc/Ac`, `currentMain`, `currentTraction`, …)
+  wander around nominal values.
+
+The element names are the contract between the demos (`data/demo.ts`, via the
+`SIM` prefix) and the manager (its `POSITIONS` / `SOURCES` / `ANALOG` tables) —
+keep the two in sync. No system prefix is stored, so the binding resolves on the
+local system and the page's `normDp` matches it against the emitted DP.
+
+Register it in the project's `config/progs` (deploy-release wires it from
+`tools/specs.json` `managers`):
+
+```
+node | manual | 30 | 2 | 2 |ampereSim/index.js
+```
+
+Offline (no backend) the bindings simply stay unresolved, so every showcase
+still displays fully energised — no simulator required to browse the demos.
+
 ## Snippets (one-click circuit fragments)
 
 The toolbox has a **Snippets** section below the symbols: pre-wired fragments you

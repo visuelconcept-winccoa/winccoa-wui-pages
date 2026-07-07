@@ -1,0 +1,7 @@
+{
+  "name": "ampere-sim",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Electrical/railway showcase simulator (WinCC OA JavaScript Manager) for the Ampère page — creates and drives the shared AmpereSim_Demo datapoint.",
+  "main": "index.js"
+}
