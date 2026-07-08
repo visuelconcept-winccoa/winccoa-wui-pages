@@ -3,9 +3,9 @@
 
 /**
  * Step 2 (online) — lazy OPC UA browse tree. Expands nodes on demand via the
- * backend `/browse`, and lets the operator pick ONE instance whose subtree
- * defines the datapoint type. Emits `wui:selection`
- * ({ primary: { nodeId, displayName }, parentNodeId }).
+ * backend `/browse`, and lets the operator TICK ONE OR MORE instances whose
+ * subtrees define the datapoint types. Emits `wui:selection`
+ * ({ nodes: { nodeId, displayName }[] }) whenever the ticked set changes.
  */
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
@@ -17,6 +17,11 @@ const ROOT = '__root__';
 /** Indentation per tree level, in rem. */
 const INDENT_REM = 1.2;
 
+interface PickedNode {
+  nodeId: string;
+  displayName: string;
+}
+
 export class TiBrowseTree extends LitElement {
   static override readonly styles = [IXCoreStyles, treeStyles()];
 
@@ -25,8 +30,7 @@ export class TiBrowseTree extends LitElement {
   @state() private childrenByParent = new Map<string, BrowseNode[]>();
   @state() private expanded = new Set<string>();
   @state() private loading = new Set<string>();
-  @state() private parentOf = new Map<string, string>();
-  @state() private selected = '';
+  @state() private picked = new Map<string, PickedNode>();
   @state() private error = '';
   private loadedConnection = '';
 
@@ -40,7 +44,10 @@ export class TiBrowseTree extends LitElement {
 
   override render(): TemplateResult {
     return html`
-      <div class="hint">${localizeDir(MSG.online.pickInstance)}</div>
+      <div class="hint">
+        ${localizeDir(MSG.online.pickInstance)}
+        ${this.picked.size > 0 ? html`<span class="count">${this.picked.size} ${localizeDir(MSG.online.selected)}</span>` : nothing}
+      </div>
       ${this.error ? html`<ix-message-bar type="alert" .dismissible=${false}>${this.error}</ix-message-bar>` : nothing}
       <div class="tree">${this.renderLevel(ROOT, 0)}</div>
     `;
@@ -50,8 +57,7 @@ export class TiBrowseTree extends LitElement {
     this.childrenByParent = new Map();
     this.expanded = new Set();
     this.loading = new Set();
-    this.parentOf = new Map();
-    this.selected = '';
+    this.picked = new Map();
     this.error = '';
   }
 
@@ -61,9 +67,6 @@ export class TiBrowseTree extends LitElement {
     try {
       const nodes = await browse(this.connection, nodeId);
       this.childrenByParent = new Map(this.childrenByParent).set(parentKey, nodes);
-      const parents = new Map(this.parentOf);
-      for (const n of nodes) parents.set(n.nodeId, nodeId ?? '');
-      this.parentOf = parents;
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
     } finally {
@@ -84,15 +87,15 @@ export class TiBrowseTree extends LitElement {
     this.expanded = ex;
   }
 
-  private select(node: BrowseNode): void {
-    this.selected = node.nodeId;
-    this.dispatchEvent(
-      new CustomEvent('wui:selection', {
-        detail: { primary: { nodeId: node.nodeId, displayName: node.displayName }, parentNodeId: this.parentOf.get(node.nodeId) ?? '' },
-        bubbles: true,
-        composed: true
-      })
-    );
+  private togglePick(node: BrowseNode): void {
+    const next = new Map(this.picked);
+    if (next.has(node.nodeId)) {
+      next.delete(node.nodeId);
+    } else {
+      next.set(node.nodeId, { nodeId: node.nodeId, displayName: node.displayName });
+    }
+    this.picked = next;
+    this.dispatchEvent(new CustomEvent('wui:selection', { detail: { nodes: [...next.values()] }, bubbles: true, composed: true }));
   }
 
   private iconFor(nodeClass: string): string {
@@ -112,20 +115,24 @@ export class TiBrowseTree extends LitElement {
     const isOpen = this.expanded.has(node.nodeId);
     const isObject = !node.nodeClass.includes('Variable') && !node.nodeClass.includes('Method');
     return html`
-      <div class="row ${node.nodeId === this.selected ? 'selected' : ''}" style="padding-left:${level * INDENT_REM}rem">
+      <div class="row ${this.picked.has(node.nodeId) ? 'picked' : ''}" style="padding-left:${level * INDENT_REM}rem">
         <button class="caret" ?disabled=${!node.hasChildren} @click=${() => this.toggle(node)}>
           ${node.hasChildren
             ? html`<ix-icon name=${isOpen ? 'chevron-down' : 'chevron-right'} size="16"></ix-icon>`
             : html`<span class="caret-spacer"></span>`}
         </button>
+        ${isObject
+          ? html`<input
+              type="checkbox"
+              class="pick"
+              .checked=${this.picked.has(node.nodeId)}
+              title=${node.nodeId}
+              @change=${() => this.togglePick(node)}
+            />`
+          : html`<span class="caret-spacer"></span>`}
         <ix-icon class="node-icon" name=${this.iconFor(node.nodeClass)} size="16"></ix-icon>
         <span class="label" title=${node.nodeId}>${node.displayName}</span>
         ${node.dataType ? html`<span class="dtype">${node.dataType}</span>` : nothing}
-        ${isObject
-          ? html`<ix-button variant=${node.nodeId === this.selected ? 'primary' : 'secondary'} outline @click=${() => this.select(node)}>
-              ${node.nodeId === this.selected ? '✓' : localizeDir(MSG.online.use)}
-            </ix-button>`
-          : nothing}
       </div>
       ${isOpen ? this.renderLevel(node.nodeId, level + 1) : nothing}
     `;
@@ -142,6 +149,14 @@ function treeStyles(): ReturnType<typeof css> {
       margin-bottom: 0.5rem;
       font-size: 0.85rem;
       opacity: 0.8;
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .hint .count {
+      font-weight: 600;
+      color: var(--theme-color-primary);
+      opacity: 1;
     }
     .tree {
       border: 1px solid var(--theme-color-soft-bdr);
@@ -158,7 +173,7 @@ function treeStyles(): ReturnType<typeof css> {
       padding-bottom: 0.15rem;
       min-height: 1.9rem;
     }
-    .row.selected {
+    .row.picked {
       background: var(--theme-color-2);
     }
     .caret {
@@ -176,6 +191,9 @@ function treeStyles(): ReturnType<typeof css> {
       display: inline-block;
       width: 16px;
       height: 16px;
+    }
+    .pick {
+      cursor: pointer;
     }
     .node-icon {
       opacity: 0.8;

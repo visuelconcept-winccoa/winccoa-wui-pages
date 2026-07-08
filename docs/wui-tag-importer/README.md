@@ -10,10 +10,11 @@ one protocol-agnostic pipeline that is designed to extend to other protocols.
   `UAObjectType` becomes a datapoint type; the repeated `UAObject` instances of
   a type become one datapoint each — i.e. the structure of repetitive nodes is
   *mutualised* into a single DPType.
-- **From a live OPC UA server** (online, browsed through the backend): a selected
-  instance's subtree becomes a datapoint type, the instance (and, optionally, its
-  same-level siblings) become datapoints, and the OPC UA **peripheral address
-  configs** (`_address`/`_distrib`) are written so the tags are live immediately.
+- **From a live OPC UA server** (online, browsed through the backend): tick one or
+  more instances — each selected instance's subtree becomes a datapoint type and
+  the instance a datapoint (instances of identical structure share one type), and
+  the OPC UA **peripheral address configs** (`_address`/`_distrib`) are written so
+  the tags are live immediately.
 
 A **dry-run preview** always precedes any write, and everything the operator will
 create is shown in a review screen first.
@@ -41,8 +42,10 @@ nesting cycles are broken by promoting a type to a reference (with a warning).
 4. **Source** — choose *NodeSet2 XML file* (drop a `.xml`, offline) or
    *Live OPC UA server* (browse the chosen connection).
 5. **Select** (live only) — browse the address space (with a live
-   connection-state banner) and pick the instance to model as a datapoint type;
-   optionally include same-level siblings.
+   connection-state banner) and **tick one or more instances** to model as
+   datapoint types; each selected instance's subtree becomes a type + a datapoint
+   (instances with an identical structure share one type — N pumps → 1 type + N
+   datapoints).
 6. **Review** — adjust the DPType name prefix, the hybrid option and the
    *Write address configs* toggle, inspect the datapoint types / datapoints /
    address configs to be created, and run a **Preview (dry-run)**.

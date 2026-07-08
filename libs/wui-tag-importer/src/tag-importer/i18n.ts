@@ -114,9 +114,12 @@ export const MSG = {
     disconnected: ml('disconnected', 'déconnectée', 'getrennt'),
     browse: ml('Browse', 'Parcourir', 'Durchsuchen'),
     browsing: ml('Browsing…', 'Parcours…', 'Durchsuchen…'),
-    pickInstance: ml('Select the instance to model as a datapoint type', 'Sélectionnez l’instance à modéliser en type de datapoint', 'Wählen Sie die als Datenpunkttyp zu modellierende Instanz'),
-    use: ml('Use', 'Utiliser', 'Verwenden'),
-    alsoSiblings: ml('Also create the sibling instances of the same type', 'Créer aussi les instances sœurs de même type', 'Auch die Geschwisterinstanzen desselben Typs anlegen'),
+    pickInstance: ml(
+      'Select one or more instances (tick the nodes) to model as datapoint types',
+      'Sélectionnez une ou plusieurs instances (cochez les nœuds) à modéliser en types de datapoint',
+      'Wählen Sie eine oder mehrere Instanzen (Knoten ankreuzen) als Datenpunkttypen'
+    ),
+    selected: ml('selected', 'sélectionné(s)', 'ausgewählt'),
     browseError: ml('Browsing the server failed.', 'Le parcours du serveur a échoué.', 'Das Durchsuchen des Servers ist fehlgeschlagen.')
   },
   options: {

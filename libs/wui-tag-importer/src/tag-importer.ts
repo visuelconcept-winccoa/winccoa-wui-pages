@@ -38,7 +38,7 @@ import { analyzeTypes, buildPlan, type GenerateOptions, type TypeDecision } from
 import { DEFAULT_POLL_GROUP } from './tag-importer/core/opcua-mapping.js';
 import { parseNodeSet } from './tag-importer/adapters/opcua-nodeset.js';
 import { buildOnlineModel, type OnlineNodeRef } from './tag-importer/adapters/opcua-online.js';
-import { apply as applyPlan, browse, createConnection, listConnections, listDrivers, updateConnection, type Connection, type NewConnection } from './tag-importer/data/api.js';
+import { apply as applyPlan, createConnection, listConnections, listDrivers, updateConnection, type Connection, type NewConnection } from './tag-importer/data/api.js';
 import { MSG, confirmApplyMsg, localize, localizeDir } from './tag-importer/i18n.js';
 import './tag-importer/ui/ti-driver.js';
 import './tag-importer/ui/ti-connection.js';
@@ -75,10 +75,8 @@ export class WuiTagImporter extends LitElement {
   @state() private confirmOpen = false;
   @state() private dryRunResult: ApplyResult | null = null;
   @state() private applyResult: ApplyResult | null = null;
-  // online selection
-  @state() private primary: OnlineNodeRef | null = null;
-  @state() private parentNodeId = '';
-  @state() private includeSiblings = false;
+  // online selection (one or more instances ticked in the browse tree)
+  @state() private selectedNodes: OnlineNodeRef[] = [];
   // roles (open by default until an admin assigns groups)
   @state() private roleImportFile = true;
   @state() private roleBrowse = true;
@@ -282,37 +280,22 @@ export class WuiTagImporter extends LitElement {
 
   // --- step 2: online selection ----------------------------------------------
 
-  private onSelection(detail: { primary: OnlineNodeRef; parentNodeId: string }): void {
-    this.primary = detail.primary;
-    this.parentNodeId = detail.parentNodeId;
+  private onSelection(detail: { nodes: OnlineNodeRef[] }): void {
+    this.selectedNodes = detail.nodes;
   }
 
   private async buildOnline(): Promise<void> {
-    if (!this.primary) return;
+    if (this.selectedNodes.length === 0) return;
     this.busy = true;
     this.error = '';
     try {
-      const siblings = await this.resolveSiblings();
-      this.model = await buildOnlineModel({ connection: this.connectionDp, primary: this.primary, siblings });
+      this.model = await buildOnlineModel({ connection: this.connectionDp, nodes: this.selectedNodes });
       this.recompute();
       this.step = 'review';
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
     } finally {
       this.busy = false;
-    }
-  }
-
-  /** Same-level Object siblings of the primary instance (when the option is on). */
-  private async resolveSiblings(): Promise<OnlineNodeRef[]> {
-    if (!this.includeSiblings || !this.primary) return [];
-    try {
-      const nodes = await browse(this.connectionDp, this.parentNodeId || undefined);
-      return nodes
-        .filter((n) => n.nodeId !== this.primary?.nodeId && !n.nodeClass.includes('Variable') && !n.nodeClass.includes('Method'))
-        .map((n) => ({ nodeId: n.nodeId, displayName: n.displayName }));
-    } catch {
-      return [];
     }
   }
 
@@ -386,9 +369,7 @@ export class WuiTagImporter extends LitElement {
     this.hybrid = true;
     this.forceKeep.clear();
     this.forceInline.clear();
-    this.primary = null;
-    this.parentNodeId = '';
-    this.includeSiblings = false;
+    this.selectedNodes = [];
     this.dryRunResult = null;
     this.applyResult = null;
     this.error = '';
@@ -472,16 +453,12 @@ export class WuiTagImporter extends LitElement {
           ${this.renderConnStatus()}
           <ti-browse-tree
             .connection=${this.connectionDp}
-            @wui:selection=${(e: CustomEvent<{ primary: OnlineNodeRef; parentNodeId: string }>) => this.onSelection(e.detail)}
+            @wui:selection=${(e: CustomEvent<{ nodes: OnlineNodeRef[] }>) => this.onSelection(e.detail)}
           ></ti-browse-tree>
           <div class="select-footer">
-            <label class="check">
-              <input type="checkbox" .checked=${this.includeSiblings} @change=${(e: Event) => (this.includeSiblings = (e.target as HTMLInputElement).checked)} />
-              <span>${localizeDir(MSG.online.alsoSiblings)}</span>
-            </label>
             <div class="grow"></div>
             <ix-button variant="secondary" @click=${() => (this.step = 'source')}>${localizeDir(MSG.actions.back)}</ix-button>
-            <ix-button variant="primary" ?disabled=${!this.primary || this.busy} @click=${() => void this.buildOnline()}>
+            <ix-button variant="primary" ?disabled=${this.selectedNodes.length === 0 || this.busy} @click=${() => void this.buildOnline()}>
               ${localizeDir(MSG.actions.next)}
             </ix-button>
           </div>

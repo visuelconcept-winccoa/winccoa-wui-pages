@@ -3,20 +3,21 @@
 
 /**
  * OPC UA online adapter — builds a {@link TagModel} from a live server by
- * browsing a selected instance's subtree (via the backend `/browse`). The
- * selected instance's subtree becomes ONE datapoint type (nested objects are
+ * browsing the subtree of each SELECTED instance (via the backend `/browse`).
+ * Every selected instance's subtree becomes a datapoint type (nested objects
  * flattened into `Struct` groups — the confirmed online behaviour, since a live
- * browse does not reliably expose shared type definitions); the instance itself
- * (and, optionally, its same-type siblings) become datapoints. Each leaf's live
- * NodeId is captured as its OPC UA address binding.
+ * browse does not reliably expose shared type definitions) and the instance
+ * itself becomes a datapoint; each leaf's live NodeId is captured as its OPC UA
+ * address binding. Selected instances with an identical structure share a single
+ * datapoint type (mutualisation) — N pumps → 1 type + N datapoints.
  */
 
-import type { InstanceDef, LeafMember, Member, ProtocolAddress, TagAccess, TagModel } from '../core/model.js';
+import type { InstanceDef, LeafMember, Member, ProtocolAddress, TagAccess, TagModel, TypeDef } from '../core/model.js';
 import { opcUaLeafType, isUnmappedOpcUaType } from '../core/opcua-mapping.js';
 import { stripBrowseNs } from '../core/naming.js';
 import { browse, type BrowseNode } from '../data/api.js';
 
-/** A node picked in the browse tree to model as (or instantiate) a type. */
+/** A node picked in the browse tree to model as (and instantiate) a type. */
 export interface OnlineNodeRef {
   nodeId: string;
   displayName: string;
@@ -24,10 +25,8 @@ export interface OnlineNodeRef {
 
 export interface OnlineOptions {
   connection: string;
-  /** The instance whose subtree defines the type. */
-  primary: OnlineNodeRef;
-  /** Optional same-type sibling instances to also create as datapoints. */
-  siblings?: OnlineNodeRef[];
+  /** The selected instances; each becomes a datapoint (types are deduped by structure). */
+  nodes: OnlineNodeRef[];
   /** Max subtree depth to browse (guards huge address spaces). */
   maxDepth?: number;
   /** Default access for browsed variables (online browse omits AccessLevel). */
@@ -93,66 +92,44 @@ async function walk(
   }
 }
 
-/** Collect only the leaf bindings of an instance subtree (for sibling instances). */
-async function collectBindings(
-  connection: string,
-  nodeId: string,
-  prefix: string,
-  depthLeft: number,
-  access: TagAccess,
-  bindings: Record<string, ProtocolAddress>,
-  warnings: string[]
-): Promise<void> {
-  const discard: Member[] = [];
-  await walk(connection, nodeId, prefix, depthLeft, access, discard, bindings, warnings);
+/** Structural signature of a member tree (names + leaf datatype/rank + nesting) — access excluded. */
+function memberSignature(members: Member[]): string {
+  const sig = (m: Member): unknown => {
+    if (m.kind === 'leaf') return ['l', m.name, m.dataType, m.arrayRank];
+    if (m.kind === 'group') return ['g', m.name, m.children.map((c) => sig(c))];
+    return ['r', m.name, m.typeId];
+  };
+  return JSON.stringify(members.map((m) => sig(m)));
 }
 
-/** Build a {@link TagModel} from a live-browsed instance (+ optional siblings). */
+/** Build a {@link TagModel} from the selected live instances (one type per distinct structure). */
 export async function buildOnlineModel(opts: OnlineOptions): Promise<TagModel> {
   const warnings: string[] = [];
   const maxDepth = opts.maxDepth ?? DEFAULT_MAX_DEPTH;
   const access = opts.defaultAccess ?? 'r';
-  const typeId = `online:${opts.primary.nodeId}`;
-  const displayName = stripBrowseNs(opts.primary.displayName);
+  const types: TypeDef[] = [];
+  const instances: InstanceDef[] = [];
+  const typeIdBySignature = new Map<string, string>();
 
-  // Primary instance → type members + its own bindings.
-  const members: Member[] = [];
-  const primaryBindings: Record<string, ProtocolAddress> = {};
-  await walk(opts.connection, opts.primary.nodeId, '', maxDepth, access, members, primaryBindings, warnings);
+  for (const node of opts.nodes) {
+    const displayName = stripBrowseNs(node.displayName);
+    const members: Member[] = [];
+    const bindings: Record<string, ProtocolAddress> = {};
+    await walk(opts.connection, node.nodeId, '', maxDepth, access, members, bindings, warnings);
+    if (members.length === 0) warnings.push(`No variables found under "${displayName}".`);
 
-  if (members.length === 0) warnings.push(`No variables found under "${displayName}".`);
-
-  const instances: InstanceDef[] = [
-    { name: displayName, displayName, typeId, bindings: primaryBindings, sourceNodeId: opts.primary.nodeId }
-  ];
-
-  const primaryPaths = Object.keys(primaryBindings);
-  for (const sib of opts.siblings ?? []) {
-    const sibName = stripBrowseNs(sib.displayName);
-    const sibBindings: Record<string, ProtocolAddress> = {};
-    await collectBindings(opts.connection, sib.nodeId, '', maxDepth, access, sibBindings, warnings);
-    // Only accept a sibling that is structurally compatible with the selected
-    // type (covers every leaf of the primary). A divergent sibling is a different
-    // type and would otherwise yield a wrong-type datapoint + address configs for
-    // elements that do not exist on it.
-    const missing = primaryPaths.filter((p) => !(p in sibBindings));
-    if (missing.length > 0) {
-      warnings.push(`Sibling "${sibName}" skipped — its structure differs from the selected type (missing ${missing.length} element(s)).`);
-      continue;
+    // Reuse a datapoint type when a previously-selected instance had the same structure.
+    const signature = memberSignature(members);
+    let typeId = typeIdBySignature.get(signature);
+    if (typeId === undefined) {
+      typeId = `online:${node.nodeId}`;
+      typeIdBySignature.set(signature, typeId);
+      types.push({ id: typeId, name: displayName, displayName, members, sourceNodeId: node.nodeId });
     }
-    const restricted: Record<string, ProtocolAddress> = {};
-    for (const p of primaryPaths) {
-      const addr = sibBindings[p];
-      if (addr) restricted[p] = addr;
-    }
-    instances.push({ name: sibName, displayName: sibName, typeId, bindings: restricted, sourceNodeId: sib.nodeId });
+    instances.push({ name: displayName, displayName, typeId, bindings, sourceNodeId: node.nodeId });
   }
 
-  return {
-    source: 'opcua-online',
-    namespaces: [],
-    types: [{ id: typeId, name: displayName, displayName, members, sourceNodeId: opts.primary.nodeId }],
-    instances,
-    warnings
-  };
+  if (opts.nodes.length === 0) warnings.push('No instance selected.');
+
+  return { source: 'opcua-online', namespaces: [], types, instances, warnings };
 }
