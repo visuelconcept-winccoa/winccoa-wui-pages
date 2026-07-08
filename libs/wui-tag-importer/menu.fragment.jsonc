@@ -1,0 +1,12 @@
+// Menu fragment for @visuelconcept/wui-tag-importer.
+[
+  {
+    "title": { "en_US": "Tag Importer", "fr": "Importateur de tags", "de_AT": "Tag-Import" },
+    "icon": "database",
+    "path": "/tag-importer",
+    "module": "/data/dashboard-wc/pages/tag-importer.js",
+    "routeId": "tag-importer",
+    "component": "wui-tag-importer",
+    "permission": ["connected"]
+  }
+]

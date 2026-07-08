@@ -1,0 +1,34 @@
+{
+  "module": "tag-importer",
+  "title": { "en_US.utf8": "Tag Importer", "fr.utf8": "Importateur de tags", "de.utf8": "Tag-Import" },
+  "roles": [
+    { "id": "view", "label": { "en_US.utf8": "View", "fr.utf8": "Consulter", "de.utf8": "Ansehen" } },
+    {
+      "id": "import-file",
+      "label": { "en_US.utf8": "Import file", "fr.utf8": "Importer un fichier", "de.utf8": "Datei importieren" },
+      "description": {
+        "en_US.utf8": "Load and preview an OPC UA NodeSet2 XML file (read-only, no project change).",
+        "fr.utf8": "Charger et prévisualiser un fichier XML NodeSet2 OPC UA (lecture seule, sans modification du projet).",
+        "de.utf8": "Eine OPC UA NodeSet2-XML-Datei laden und vorschauen (schreibgeschützt, keine Projektänderung)."
+      }
+    },
+    {
+      "id": "browse",
+      "label": { "en_US.utf8": "Browse server", "fr.utf8": "Parcourir le serveur", "de.utf8": "Server durchsuchen" },
+      "description": {
+        "en_US.utf8": "Browse a live OPC UA server's address space to build a type from a selected instance.",
+        "fr.utf8": "Parcourir l'espace d'adressage d'un serveur OPC UA en ligne pour construire un type à partir d'une instance sélectionnée.",
+        "de.utf8": "Den Adressraum eines aktiven OPC UA-Servers durchsuchen, um aus einer ausgewählten Instanz einen Typ zu erstellen."
+      }
+    },
+    {
+      "id": "create",
+      "label": { "en_US.utf8": "Create datapoints", "fr.utf8": "Créer les datapoints", "de.utf8": "Datenpunkte anlegen" },
+      "description": {
+        "en_US.utf8": "Apply the import: create the datapoint types, datapoints and (online) OPC UA address configs in the project.",
+        "fr.utf8": "Appliquer l'import : créer les types de datapoints, les datapoints et (en ligne) les configurations d'adresse OPC UA dans le projet.",
+        "de.utf8": "Den Import anwenden: Datenpunkttypen, Datenpunkte und (online) OPC UA-Adresskonfigurationen im Projekt anlegen."
+      }
+    }
+  ]
+}

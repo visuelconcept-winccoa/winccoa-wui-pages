@@ -1,0 +1,34 @@
+{
+  "name": "@visuelconcept/wui-tag-importer",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Tag Importer — standalone WinCC OA WebUI page: import device tags into datapoint types + datapoints from an OPC UA NodeSet2 XML file (mutualising repeated node instances into one DPType) or by browsing a live OPC UA server (a selected instance's subtree becomes the DPType). Protocol-agnostic core with pluggable source adapters (OPC UA today, extensible). Online import also writes the peripheral address configs. Engineering ops via the /api/tag-importer API.",
+  "author": { "name": "Visuel Concept" },
+  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page", "opcua", "nodeset"],
+  "license": "MIT",
+  "dependencies": {
+    "@visuelconcept/wui-kit": "*"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-oarxjs-context": "*"
+  },
+  "exports": { "./*": { "types": "./types/*", "import": "./*" } },
+  "wuiPage": {
+    "route": "/tag-importer",
+    "routeId": "tag-importer",
+    "component": "wui-tag-importer",
+    "module": "/data/dashboard-wc/pages/tag-importer.js",
+    "icon": "database",
+    "permission": ["connected"],
+    "tier": 3,
+    "backend": {
+      "mount": "/api/tag-importer",
+      "routes": ["/api/tag-importer/*"]
+    }
+  }
+}

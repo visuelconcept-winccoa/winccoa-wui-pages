@@ -1,0 +1,144 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
+/**
+ * Internationalisation for the Tag Importer page (EN / FR / DE), following the
+ * shared `lit-translate` singleton. `localizeDir(...)` in templates (reactive),
+ * `localize(...)` for plain-string attributes.
+ */
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
+import { localize } from '@wincc-oa/wui-i18n-shared/localize-multilang.js';
+
+export { localize, localizeDir } from '@wincc-oa/wui-i18n-shared/localize-multilang.js';
+
+export function ml(en: string, fr: string, de: string): MultiLangString {
+  return { 'en_US.utf8': en, 'fr.utf8': fr, 'de.utf8': de };
+}
+
+export const MSG = {
+  title: ml('Tag Importer', 'Importateur de tags', 'Tag-Import'),
+  subtitle: ml(
+    'Import device tags into datapoint types and datapoints',
+    'Importer des tags dans des types de datapoints et des datapoints',
+    'Gerätetags in Datenpunkttypen und Datenpunkte importieren'
+  ),
+  steps: {
+    source: ml('Source', 'Source', 'Quelle'),
+    select: ml('Select', 'Sélection', 'Auswahl'),
+    review: ml('Review', 'Revue', 'Prüfung'),
+    apply: ml('Apply', 'Application', 'Anwenden')
+  },
+  source: {
+    protocol: ml('Protocol', 'Protocole', 'Protokoll'),
+    opcua: ml('OPC UA', 'OPC UA', 'OPC UA'),
+    mode: ml('Import from', 'Importer depuis', 'Importieren aus'),
+    fromFile: ml('NodeSet2 XML file', 'Fichier XML NodeSet2', 'NodeSet2-XML-Datei'),
+    fromFileHint: ml(
+      'Offline import from a standard OPC UA NodeSet2 file. Repeated instances of a type are mutualised into one datapoint type.',
+      'Import hors ligne depuis un fichier OPC UA NodeSet2 standard. Les instances répétées d’un type sont mutualisées en un seul type de datapoint.',
+      'Offline-Import aus einer OPC UA-NodeSet2-Standarddatei. Wiederholte Instanzen eines Typs werden zu einem Datenpunkttyp zusammengefasst.'
+    ),
+    fromServer: ml('Live OPC UA server', 'Serveur OPC UA en ligne', 'Aktiver OPC UA-Server'),
+    fromServerHint: ml(
+      'Browse a connected server and build a datapoint type from a selected instance; the address configs are written too.',
+      'Parcourir un serveur connecté et construire un type de datapoint depuis une instance sélectionnée ; les configurations d’adresse sont écrites également.',
+      'Einen verbundenen Server durchsuchen und aus einer ausgewählten Instanz einen Datenpunkttyp erstellen; die Adresskonfigurationen werden ebenfalls geschrieben.'
+    )
+  },
+  file: {
+    drop: ml('Drop a NodeSet2 .xml here or click to browse', 'Déposez un .xml NodeSet2 ici ou cliquez', 'NodeSet2-.xml hier ablegen oder klicken'),
+    hint: ml('.xml files only (UANodeSet)', 'Fichiers .xml uniquement (UANodeSet)', 'Nur .xml-Dateien (UANodeSet)'),
+    parsing: ml('Parsing…', 'Analyse…', 'Analysieren…'),
+    parseError: ml('Could not parse this file as an OPC UA NodeSet2 document.', 'Impossible d’analyser ce fichier comme un document OPC UA NodeSet2.', 'Diese Datei konnte nicht als OPC UA-NodeSet2-Dokument analysiert werden.'),
+    typesFound: ml('object types', 'types d’objets', 'Objekttypen'),
+    instancesFound: ml('instances', 'instances', 'Instanzen')
+  },
+  online: {
+    connection: ml('Connection', 'Connexion', 'Verbindung'),
+    noConnections: ml(
+      'No OPC UA connection found. Create one in the OPC UA client configuration first.',
+      'Aucune connexion OPC UA trouvée. Créez-en une dans la configuration du client OPC UA.',
+      'Keine OPC UA-Verbindung gefunden. Erstellen Sie zuerst eine in der OPC UA-Client-Konfiguration.'
+    ),
+    connected: ml('connected', 'connectée', 'verbunden'),
+    disconnected: ml('disconnected', 'déconnectée', 'getrennt'),
+    browse: ml('Browse', 'Parcourir', 'Durchsuchen'),
+    browsing: ml('Browsing…', 'Parcours…', 'Durchsuchen…'),
+    pickInstance: ml('Select the instance to model as a datapoint type', 'Sélectionnez l’instance à modéliser en type de datapoint', 'Wählen Sie die als Datenpunkttyp zu modellierende Instanz'),
+    use: ml('Use', 'Utiliser', 'Verwenden'),
+    alsoSiblings: ml('Also create the sibling instances of the same type', 'Créer aussi les instances sœurs de même type', 'Auch die Geschwisterinstanzen desselben Typs anlegen'),
+    browseError: ml('Browsing the server failed.', 'Le parcours du serveur a échoué.', 'Das Durchsuchen des Servers ist fehlgeschlagen.')
+  },
+  options: {
+    title: ml('Options', 'Options', 'Optionen'),
+    prefix: ml('Datapoint-type name prefix', 'Préfixe des noms de type', 'Präfix für Typnamen'),
+    prefixHint: ml('Prepended to every generated type name to avoid collisions.', 'Ajouté devant chaque nom de type généré pour éviter les collisions.', 'Wird jedem generierten Typnamen vorangestellt, um Kollisionen zu vermeiden.'),
+    hybrid: ml('Share nested types (typeref)', 'Mutualiser les types imbriqués (typeref)', 'Verschachtelte Typen teilen (Typeref)'),
+    hybridHint: ml(
+      'A nested type used by two or more parents becomes its own datapoint type referenced by DPT_TYPEREF; one-off nesting is flattened. Turn off to always flatten.',
+      'Un type imbriqué utilisé par au moins deux parents devient un type de datapoint propre référencé par DPT_TYPEREF ; l’imbrication ponctuelle est aplatie. Désactivez pour toujours aplatir.',
+      'Ein von mindestens zwei Eltern verwendeter verschachtelter Typ wird zu einem eigenen, per DPT_TYPEREF referenzierten Datenpunkttyp; einmalige Verschachtelung wird abgeflacht. Ausschalten, um immer abzuflachen.'
+    )
+  },
+  review: {
+    types: ml('Datapoint types', 'Types de datapoints', 'Datenpunkttypen'),
+    dps: ml('Datapoints', 'Datapoints', 'Datenpunkte'),
+    addresses: ml('Address configs', 'Configurations d’adresse', 'Adresskonfigurationen'),
+    colName: ml('Name', 'Nom', 'Name'),
+    colType: ml('Type', 'Type', 'Typ'),
+    colDpe: ml('Element', 'Élément', 'Element'),
+    colNode: ml('NodeId', 'NodeId', 'NodeId'),
+    exists: ml('exists', 'existe', 'vorhanden'),
+    willCreate: ml('will create', 'sera créé', 'wird angelegt'),
+    flatten: ml('Flatten', 'Aplatir', 'Abflachen'),
+    keepRef: ml('Keep as reference', 'Garder en référence', 'Als Referenz behalten'),
+    empty: ml('Nothing to import yet — pick a source.', 'Rien à importer — choisissez une source.', 'Noch nichts zu importieren — wählen Sie eine Quelle.')
+  },
+  summary: {
+    typesNew: ml('new types', 'nouveaux types', 'neue Typen'),
+    typesExisting: ml('existing types (skipped)', 'types existants (ignorés)', 'vorhandene Typen (übersprungen)'),
+    dpsNew: ml('new datapoints', 'nouveaux datapoints', 'neue Datenpunkte'),
+    dpsExisting: ml('existing datapoints (skipped)', 'datapoints existants (ignorés)', 'vorhandene Datenpunkte (übersprungen)'),
+    addresses: ml('address configs', 'configs d’adresse', 'Adresskonfigurationen'),
+    warnings: ml('warnings', 'avertissements', 'Warnungen')
+  },
+  actions: {
+    back: ml('Back', 'Retour', 'Zurück'),
+    next: ml('Next', 'Suivant', 'Weiter'),
+    dryRun: ml('Preview (dry-run)', 'Aperçu (simulation)', 'Vorschau (Testlauf)'),
+    apply: ml('Create in project', 'Créer dans le projet', 'Im Projekt anlegen'),
+    applying: ml('Creating…', 'Création…', 'Anlegen…'),
+    reset: ml('Start over', 'Recommencer', 'Neu beginnen')
+  },
+  result: {
+    title: ml('Import result', 'Résultat de l’import', 'Importergebnis'),
+    created: ml('created', 'créé', 'angelegt'),
+    skipped: ml('skipped', 'ignoré', 'übersprungen'),
+    failed: ml('failed', 'échoué', 'fehlgeschlagen'),
+    allOk: ml('Import completed successfully.', 'Import terminé avec succès.', 'Import erfolgreich abgeschlossen.'),
+    someFailed: ml('Import completed with errors.', 'Import terminé avec des erreurs.', 'Import mit Fehlern abgeschlossen.')
+  },
+  confirm: {
+    apply: ml(
+      'Create these datapoint types, datapoints and address configs in the project?',
+      'Créer ces types de datapoints, datapoints et configurations d’adresse dans le projet ?',
+      'Diese Datenpunkttypen, Datenpunkte und Adresskonfigurationen im Projekt anlegen?'
+    ),
+    yes: ml('Yes, create', 'Oui, créer', 'Ja, anlegen'),
+    cancel: ml('Cancel', 'Annuler', 'Abbrechen')
+  },
+  common: {
+    forbidden: ml('You lack the permission for this action.', 'Permission manquante pour cette action.', 'Fehlende Berechtigung für diese Aktion.')
+  }
+} as const;
+
+/** Confirm prompt naming the counts about to be written. */
+export function confirmApplyMsg(typesNew: number, dpsNew: number, addresses: number): string {
+  return localize(
+    ml(
+      `Create ${typesNew} datapoint type(s), ${dpsNew} datapoint(s) and ${addresses} address config(s) in the project?`,
+      `Créer ${typesNew} type(s) de datapoint, ${dpsNew} datapoint(s) et ${addresses} configuration(s) d’adresse dans le projet ?`,
+      `${typesNew} Datenpunkttyp(en), ${dpsNew} Datenpunkt(e) und ${addresses} Adresskonfiguration(en) im Projekt anlegen?`
+    )
+  );
+}

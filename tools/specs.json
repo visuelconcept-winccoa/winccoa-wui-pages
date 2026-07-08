@@ -124,5 +124,13 @@
     "tier": 3,
     "description": "Application Security page (/app-security) — discover the roles each page module expects (declared in one AppSecurity_<module> DP per module: the module writes .roles, this page writes .assignments) and map every role to WinCC OA user groups. Open by default: a role with no group stays open to all connected users. Pages gate their UI live via the wui-kit hasRole$ primitive; sensitive backend routes enforce the same rules server-side (requireRole guard). /api/app-security resolves the session user's identity + OA groups server-side (_Users/_Groups). GxP audit trail (AuditTrail_AppSecurity) on every assignment change.",
     "backend": { "mount": "/api/app-security", "routeClass": "AppSecurityRoute", "routeFile": "appSecurityRoute", "srcFiles": ["appSecurityController.ts", "appSecurityRoute.ts", "appSecurityGuard.ts"] }
+  },
+  {
+    "page": "tag-importer",
+    "name": "@visuelconcept/wui-tag-importer",
+    "title": "Tag Importer",
+    "tier": 3,
+    "description": "Tag Importer page (/tag-importer) — import device tags into WinCC OA datapoint types + datapoints from an OPC UA NodeSet2 XML file (repeated node instances of one ObjectType are mutualised into a single DPType, one DP per instance) or by browsing a live OPC UA server (a selected instance's subtree becomes the DPType). Protocol-agnostic core (intermediate model + hybrid DPType generator + address binder) with pluggable source adapters — OPC UA today, extensible to other protocols. Nested ObjectTypes shared across ≥2 parents become DPT_TYPEREF references (hybrid), one-off nesting is flattened. A dry-run preview precedes every write. Online import also writes the peripheral address configs (_address/_distrib, reference <Conn>$$1$1$<NodeId>). All engineering ops go through /api/tag-importer (WsjServerGlobal.winccoa: dpTypeCreate/dpCreate/dpSetWait + OPC UA Browse.GetBranch); no dedicated manager. Sensitive routes are role-gated server-side (Application Security roles 'browse'/'create' — open until groups are assigned).",
+    "backend": { "mount": "/api/tag-importer", "routeClass": "TagImporterRoute", "routeFile": "tagImporterRoute", "srcFiles": ["tagImporterController.ts", "tagImporterRoute.ts", "appSecurityGuard.ts"] }
   }
 ]
