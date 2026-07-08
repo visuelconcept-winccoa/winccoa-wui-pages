@@ -48,12 +48,26 @@ export const MSG = {
     endpoint: ml('Endpoint URL', 'URL du endpoint', 'Endpoint-URL'),
     security: ml('Security policy', 'Politique de sécurité', 'Sicherheitsrichtlinie'),
     mode: ml('Message mode', 'Mode de message', 'Nachrichtenmodus'),
+    driver: ml('Driver number', 'Numéro de driver', 'Treibernummer'),
+    driverHint: ml('OPC UA client driver (-num). Auto-detected; change if needed.', 'Driver client OPC UA (-num). Détecté automatiquement ; modifiable.', 'OPC UA-Client-Treiber (-num). Automatisch erkannt; änderbar.'),
+    noDriver: ml(
+      'No OPC UA driver is running — start a WCCOAopcua driver before creating a connection.',
+      'Aucun driver OPC UA en cours — démarrez un driver WCCOAopcua avant de créer une connexion.',
+      'Kein OPC UA-Treiber läuft — starten Sie einen WCCOAopcua-Treiber, bevor Sie eine Verbindung erstellen.'
+    ),
     user: ml('User (optional)', 'Utilisateur (optionnel)', 'Benutzer (optional)'),
     password: ml('Password', 'Mot de passe', 'Passwort'),
     create: ml('Create and continue', 'Créer et continuer', 'Erstellen und fortfahren'),
     creating: ml('Creating connection…', 'Création de la connexion…', 'Verbindung wird erstellt…'),
     continue: ml('Continue', 'Continuer', 'Weiter'),
+    edit: ml('Edit', 'Éditer', 'Bearbeiten'),
+    editing: ml('Editing connection', 'Édition de la connexion', 'Verbindung bearbeiten'),
+    save: ml('Save and continue', 'Enregistrer et continuer', 'Speichern und fortfahren'),
+    saving: ml('Saving…', 'Enregistrement…', 'Speichern…'),
+    passwordKeep: ml('Password (leave blank to keep unchanged)', 'Mot de passe (laisser vide pour conserver)', 'Passwort (leer lassen, um es beizubehalten)'),
     createError: ml('Could not create the connection.', 'Impossible de créer la connexion.', 'Verbindung konnte nicht erstellt werden.'),
+    updateError: ml('Could not update the connection.', 'Impossible de mettre à jour la connexion.', 'Verbindung konnte nicht aktualisiert werden.'),
+    readError: ml('Could not read the connection configuration.', 'Impossible de lire la configuration de la connexion.', 'Verbindungskonfiguration konnte nicht gelesen werden.'),
     endpointRequired: ml('An endpoint URL is required.', 'Une URL de endpoint est requise.', 'Eine Endpoint-URL ist erforderlich.')
   },
   bind: {

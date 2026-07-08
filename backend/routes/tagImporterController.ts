@@ -134,7 +134,14 @@ function describeError(error: unknown): string {
 // Aes256Sha256RsaPss=6; MessageSecurityMode: None=0, Sign=1, SignAndEncrypt=2).
 const SECURITY_POLICY_CODE: Record<string, number> = { None: 0, Basic256Sha256: 4, Aes128_Sha256_RsaOaep: 5, Aes256_Sha256_RsaPss: 6 };
 const MESSAGE_MODE_CODE: Record<string, number> = { None: 0, Sign: 1, SignAndEncrypt: 2 };
-const DEFAULT_MANAGER_NUMBER = 2;
+const SECURITY_POLICY_NAME: Record<number, string> = { 0: 'None', 4: 'Basic256Sha256', 5: 'Aes128_Sha256_RsaOaep', 6: 'Aes256_Sha256_RsaPss' };
+const MESSAGE_MODE_NAME: Record<number, string> = { 0: 'None', 1: 'Sign', 2: 'SignAndEncrypt' };
+
+/** Unwrap a possibly array/`{value}`-wrapped dpGet result to a scalar. */
+function unwrap(raw: unknown): unknown {
+  const v = raw && typeof raw === 'object' && 'value' in (raw as object) ? (raw as { value: unknown }).value : raw;
+  return Array.isArray(v) ? v[0] : v;
+}
 const DEFAULT_RECONNECT_TIMER = 10;
 const DEFAULT_OPCUA_PORT = 4840;
 
@@ -145,6 +152,8 @@ interface NewConnectionBody {
   messageMode?: string;
   user?: string;
   password?: string;
+  /** OPC UA client manager (driver) number; auto-detected when omitted. */
+  managerNumber?: number;
 }
 
 /**
@@ -238,6 +247,102 @@ export class TagImporterController {
     try {
       const created = await this.doCreateConnection(parsed.host, parsed.port, body);
       res.status(200).json({ ok: true, connection: { name: created.name, dp: created.dp, connected: false }, warnings: created.warnings });
+    } catch (error) {
+      res.status(400).json({ ok: false, error: describeError(error) });
+    }
+  };
+
+  /**
+   * GET /api/tag-importer/drivers -> { drivers: number[] }
+   * Manager numbers of the OPC UA client drivers currently RUNNING — the form
+   * uses these to auto-fill/offer the driver number, and connection creation is
+   * refused when the list is empty.
+   */
+  public drivers = async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const drivers = await this.runningOpcUaDrivers();
+      res.status(200).json({ ok: true, drivers });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: describeError(error) });
+    }
+  };
+
+  /**
+   * POST /api/tag-importer/connection/read  body { dp }
+   * Read an existing connection's editable config (to pre-fill the edit form).
+   * The password is a blob and is never read back.
+   */
+  public readConnection = async (req: Request, res: Response): Promise<void> => {
+    const dp = String(((req.body ?? {}) as { dp?: string }).dp ?? '');
+    if (!dp) {
+      res.status(400).json({ ok: false, error: 'dp is required' });
+      return;
+    }
+    try {
+      const base = resolveConnDp(dp);
+      const [connInfo, access, policy, mode] = (await win().dpGet([
+        `${base}.Config.ConnInfo`,
+        `${base}.Config.AccessInfo`,
+        `${base}.Config.Security.Policy`,
+        `${base}.Config.Security.MessageMode`
+      ])) as unknown[];
+      res.status(200).json({
+        ok: true,
+        config: {
+          endpoint: String(unwrap(connInfo) ?? ''),
+          user: String(unwrap(access) ?? ''),
+          securityPolicy: SECURITY_POLICY_NAME[Number(unwrap(policy))] ?? 'None',
+          messageMode: MESSAGE_MODE_NAME[Number(unwrap(mode))] ?? 'None'
+        }
+      });
+    } catch (error) {
+      res.status(400).json({ ok: false, error: describeError(error) });
+    }
+  };
+
+  /**
+   * POST /api/tag-importer/connection/update  body { dp, endpoint, securityPolicy?, messageMode?, user?, password? }
+   * Update an existing connection's config in place (does not re-register with a
+   * manager). The password is written ONLY when a non-empty one is supplied.
+   */
+  public updateConnection = async (req: Request, res: Response): Promise<void> => {
+    const body = (req.body ?? {}) as NewConnectionBody & { dp?: string };
+    const dp = String(body.dp ?? '');
+    const parsed = parseEndpoint(body.endpoint ?? '');
+    if (!dp) {
+      res.status(400).json({ ok: false, error: 'dp is required' });
+      return;
+    }
+    if (!parsed) {
+      res.status(400).json({ ok: false, error: 'endpoint must be of the form opc.tcp://host:port' });
+      return;
+    }
+    try {
+      const w = win();
+      const base = resolveConnDp(dp);
+      if (!this.dpInstanceExists(base)) {
+        res.status(404).json({ ok: false, error: `connection '${dp}' does not exist` });
+        return;
+      }
+      const dpes = [
+        `${base}.Config.ConnInfo`,
+        `${base}.Config.AccessInfo`,
+        `${base}.Config.Security.Policy`,
+        `${base}.Config.Security.MessageMode`
+      ];
+      const values: unknown[] = [
+        `opc.tcp://${parsed.host}:${parsed.port}`,
+        String(body.user ?? ''),
+        SECURITY_POLICY_CODE[body.securityPolicy ?? 'None'] ?? 0,
+        MESSAGE_MODE_CODE[body.messageMode ?? 'None'] ?? 0
+      ];
+      if (typeof body.password === 'string' && body.password.length > 0) {
+        dpes.push(`${base}.Config.Password`);
+        values.push(Buffer.from(body.password, 'utf-8'));
+      }
+      await w.dpSetWait(dpes, values);
+      const { name } = splitConnection(base);
+      res.status(200).json({ ok: true, connection: { name, dp: base, connected: false } });
     } catch (error) {
       res.status(400).json({ ok: false, error: describeError(error) });
     }
@@ -426,9 +531,9 @@ export class TagImporterController {
   private async doCreateConnection(host: string, port: number, body: NewConnectionBody): Promise<{ name: string; dp: string; warnings: string[] }> {
     const w = win();
     const warnings: string[] = [];
-    const managerNumber = await this.pickManagerNumber(warnings);
+    const managerNumber = await this.resolveManagerNumber(body.managerNumber);
+    // A running driver already owns _OPCUA<n>/_Driver<n>; ensure defensively (idempotent).
     await this.ensureDp(`_OPCUA${managerNumber}`, '_OPCUA');
-    await this.ensureDp(`_Driver${managerNumber}`, '_DriverCommon');
 
     const requested = typeof body.name === 'string' ? body.name.trim() : '';
     const connDp = requested ? (requested.startsWith('_') ? requested : `_${requested}`) : this.generateConnectionName();
@@ -480,29 +585,56 @@ export class TagImporterController {
     return { name: bare, dp: connDp, warnings };
   }
 
-  /** Reuse an existing OPC UA manager number, else fall back to the default (with a warning). */
-  private async pickManagerNumber(warnings: string[]): Promise<number> {
-    const w = win();
-    const managers: string[] = w.dpNames('_OPCUA*', '_OPCUA') ?? [];
-    for (const dp of managers) {
-      const match = /_OPCUA(\d+)/.exec(dp);
-      if (match) return Number.parseInt(match[1], 10);
+  /**
+   * Resolve the OPC UA driver (manager) number for a new connection. A running
+   * OPC UA driver is REQUIRED: an explicit number must be a running OPC UA
+   * driver, and with no number the first running one is used — otherwise an
+   * error is thrown so the connection is not created.
+   */
+  private async resolveManagerNumber(requested?: number): Promise<number> {
+    const running = await this.runningOpcUaDrivers();
+    if (requested !== undefined && requested !== null) {
+      const n = Number(requested);
+      if (!Number.isInteger(n) || n < 1 || n > 99) {
+        throw new Error(`invalid driver number ${String(requested)} (must be between 1 and 99)`);
+      }
+      if (!running.includes(n)) {
+        throw new Error(`no running OPC UA driver with -num ${n}. Start the OPC UA client driver first.`);
+      }
+      return n;
     }
-    const drivers: string[] = w.dpNames('_Driver*', '_DriverCommon') ?? [];
-    for (const dp of drivers) {
+    if (running.length === 0) {
+      throw new Error('no OPC UA client driver is running. Start a WCCOAopcua driver (-num <n>) before creating a connection.');
+    }
+    return running[0];
+  }
+
+  /** Manager numbers of drivers currently connected (running), from `_Connections.Driver.ManNums`. */
+  private async runningDriverNums(): Promise<number[]> {
+    try {
+      const raw = await win().dpGet('_Connections.Driver.ManNums');
+      const v = raw && typeof raw === 'object' && 'value' in (raw as object) ? (raw as { value: unknown }).value : raw;
+      const arr = Array.isArray(v) ? v : v == null ? [] : [v];
+      return arr.map((x) => Number(x)).filter((n) => Number.isInteger(n));
+    } catch {
+      return [];
+    }
+  }
+
+  /** Manager numbers of OPC UA client drivers (`_Driver<n>.DT === "OPCUAC"`) that are currently running. */
+  private async runningOpcUaDrivers(): Promise<number[]> {
+    const w = win();
+    const out: number[] = [];
+    for (const num of await this.runningDriverNums()) {
       try {
-        const dt = await w.dpGet(`${dp.replace(/\.$/, '')}.DT`);
+        const dt = await w.dpGet(`_Driver${num}.DT`);
         const v = Array.isArray(dt) ? dt[0] : dt;
-        if (v === 'OPCUAC') {
-          const match = /_Driver(\d+)/.exec(dp);
-          if (match) return Number.parseInt(match[1], 10);
-        }
+        if (v === 'OPCUAC') out.push(num);
       } catch {
         continue;
       }
     }
-    warnings.push(`No OPC UA client manager found — created _OPCUA${DEFAULT_MANAGER_NUMBER}. Configure/start a WCCOAopcua driver with -num ${DEFAULT_MANAGER_NUMBER}.`);
-    return DEFAULT_MANAGER_NUMBER;
+    return out;
   }
 
   /** First free `_OpcUAConnection<n>` name. */

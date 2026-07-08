@@ -36,6 +36,16 @@ export interface NewConnection {
   /** Optional user for username/password authentication. */
   user?: string;
   password?: string;
+  /** OPC UA client driver (manager) number; auto-detected when omitted. */
+  managerNumber?: number;
+}
+
+/** Editable config of an existing connection (password is never read back). */
+export interface ConnectionConfig {
+  endpoint: string;
+  user: string;
+  securityPolicy: SecurityPolicy;
+  messageMode: MessageMode;
 }
 
 /** One node from a browse level. */
@@ -77,6 +87,24 @@ export async function listConnections(): Promise<Connection[]> {
 export async function createConnection(cfg: NewConnection): Promise<{ connection: Connection; warnings: string[] }> {
   const data = await postJson<{ connection: Connection; warnings?: string[] }>(`${BASE}/connection`, cfg);
   return { connection: data.connection, warnings: data.warnings ?? [] };
+}
+
+/** Read an existing connection's editable config (by DP path), to pre-fill the edit form. */
+export async function readConnection(dp: string): Promise<ConnectionConfig> {
+  const data = await postJson<{ config: ConnectionConfig }>(`${BASE}/connection/read`, { dp });
+  return data.config;
+}
+
+/** Update an existing connection's config in place. */
+export async function updateConnection(dp: string, cfg: NewConnection): Promise<{ connection: Connection; warnings: string[] }> {
+  const data = await postJson<{ connection: Connection; warnings?: string[] }>(`${BASE}/connection/update`, { dp, ...cfg });
+  return { connection: data.connection, warnings: data.warnings ?? [] };
+}
+
+/** Manager numbers of the OPC UA client drivers currently running. */
+export async function listDrivers(): Promise<number[]> {
+  const data = await getJson<{ drivers: number[] }>(`${BASE}/drivers`);
+  return data.drivers ?? [];
 }
 
 /** Browse one level (or `depth` levels) of a live server below `nodeId`. */

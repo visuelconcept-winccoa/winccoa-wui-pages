@@ -35,7 +35,10 @@ shared API `paraController` uses — `dpTypeCreate` / `dpCreate` / `dpSetWait` /
 |--------|----------------|----------|---------|
 | GET    | `/health`      | —        | liveness |
 | GET    | `/connections` | `browse` | list `_OPCUAServer` connections (`{name, dp, connected}`) — `name` is the bare server name (reference), `dp` the full DP path (may be system-qualified, e.g. `System1:_Simulator1`) used to browse/read |
-| POST   | `/connection`  | `create` | create + register a new connection (`{name?, endpoint, securityPolicy?, messageMode?, user?, password?}` → `{connection, warnings}`) |
+| GET    | `/drivers`     | `browse` | manager numbers of the OPC UA client drivers currently RUNNING (`{drivers: number[]}`) |
+| POST   | `/connection`  | `create` | create + register a new connection (`{name?, endpoint, securityPolicy?, messageMode?, user?, password?, managerNumber?}` → `{connection, warnings}`) |
+| POST   | `/connection/read`   | `browse` | read a connection's editable config (`{dp}` → `{config:{endpoint,user,securityPolicy,messageMode}}`) |
+| POST   | `/connection/update` | `create` | update a connection's config in place (`{dp, endpoint, securityPolicy?, messageMode?, user?, password?}` → `{connection}`; password written only when non-empty) |
 | POST   | `/browse`      | `browse` | one browse level of a live server (`{connection,nodeId?,depth?}` — `connection` is the `dp` path → `{nodes}`) |
 | POST   | `/apply`       | `create` | create the plan's types/DPs/addresses (`{plan,dryRun}` → `{ok,dryRun,results}`) |
 
@@ -45,13 +48,20 @@ shared API `paraController` uses — `dpTypeCreate` / `dpCreate` / `dpSetWait` /
 **DP path** (`System1:_Simulator1` — used to browse/read `.Browse.*`/`.State.*`).
 Browse must be given the DP path, never the bare name with a blind `_` prefix.
 
-**Create** ports the datapoint side of the ETM `opcua-add-connection`: ensure
-`_OPCUA<n>` / `_Driver<n>`, create `_OpcUAConnection<n>` (type `_OPCUAServer`),
-write `Config.*` (ConnInfo `opc.tcp://…`, AccessInfo, Password blob,
-Security.Policy/MessageMode, Active, ReconnectTimer, Separator), append to
-`_OPCUA<n>.Config.Servers` and trigger `Command.AddServer`. It reuses an existing
-OPC UA manager number when present; the physical driver is **not** started (no
-Pmon access in the webserver — a warning is returned if none is running).
+**Create** ports the datapoint side of the ETM `opcua-add-connection`: create
+`_OpcUAConnection<n>` (type `_OPCUAServer`), write `Config.*` (ConnInfo
+`opc.tcp://…`, AccessInfo, Password blob, Security.Policy/MessageMode, Active,
+ReconnectTimer, Separator), append to `_OPCUA<n>.Config.Servers` and trigger
+`Command.AddServer`.
+
+**Driver number.** Creation REQUIRES a running OPC UA client driver. The number
+is auto-detected — the running OPC UA drivers are read from
+`_Connections.Driver.ManNums` intersected with `_Driver<n>.DT === "OPCUAC"`
+(exposed via `/drivers`) — or supplied explicitly (`managerNumber`, validated to
+be a running OPC UA driver). If none is running, `/connection` returns an error
+and **no connection is created** (the physical driver must be started via the
+WinCC OA console / Process Monitor — the webserver has no Pmon access to start
+it). `_OPCUA<n>` is ensured defensively but not created from scratch.
 
 **Browse** writes a request id to `_<conn>.Browse.GetBranch:_original.._value`
 `[requestId, startNode, depth, eventSource]` and correlates the echoed

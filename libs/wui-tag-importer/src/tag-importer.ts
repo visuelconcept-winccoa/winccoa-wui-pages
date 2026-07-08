@@ -38,7 +38,7 @@ import { analyzeTypes, buildPlan, type GenerateOptions, type TypeDecision } from
 import { DEFAULT_POLL_GROUP } from './tag-importer/core/opcua-mapping.js';
 import { parseNodeSet } from './tag-importer/adapters/opcua-nodeset.js';
 import { buildOnlineModel, type OnlineNodeRef } from './tag-importer/adapters/opcua-online.js';
-import { apply as applyPlan, browse, createConnection, listConnections, type Connection, type NewConnection } from './tag-importer/data/api.js';
+import { apply as applyPlan, browse, createConnection, listConnections, listDrivers, updateConnection, type Connection, type NewConnection } from './tag-importer/data/api.js';
 import { MSG, confirmApplyMsg, localize, localizeDir } from './tag-importer/i18n.js';
 import './tag-importer/ui/ti-driver.js';
 import './tag-importer/ui/ti-connection.js';
@@ -61,6 +61,7 @@ export class WuiTagImporter extends LitElement {
   @state() private driver: DriverKind | '' = '';
   @state() private mode: Mode = '';
   @state() private connections: Connection[] = [];
+  @state() private drivers: number[] = [];
   @state() private connection = '';
   @state() private connectionDp = '';
   @state() private bindAddresses = true;
@@ -95,6 +96,7 @@ export class WuiTagImporter extends LitElement {
     this.permSub.add(hasRole$(MODULE_ID, 'browse').subscribe((g) => (this.roleBrowse = g)));
     this.permSub.add(hasRole$(MODULE_ID, 'create').subscribe((g) => (this.roleCreate = g)));
     void this.loadConnections();
+    void this.loadDrivers();
   }
 
   override disconnectedCallback(): void {
@@ -151,6 +153,14 @@ export class WuiTagImporter extends LitElement {
     }
   }
 
+  private async loadDrivers(): Promise<void> {
+    try {
+      this.drivers = await listDrivers();
+    } catch {
+      this.drivers = [];
+    }
+  }
+
   private currentOptions(): GenerateOptions {
     return {
       typePrefix: this.typePrefix,
@@ -180,6 +190,7 @@ export class WuiTagImporter extends LitElement {
   private onDriver(driver: DriverKind): void {
     this.driver = driver;
     this.error = '';
+    void this.loadDrivers();
     this.step = 'connection';
   }
 
@@ -204,6 +215,23 @@ export class WuiTagImporter extends LitElement {
       this.step = 'source';
     } catch (error) {
       this.error = error instanceof Error ? error.message : localize(MSG.connection.createError);
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  private async onUpdateConnection(detail: { dp: string; cfg: NewConnection }): Promise<void> {
+    this.busy = true;
+    this.error = '';
+    try {
+      const { connection, warnings } = await updateConnection(detail.dp, detail.cfg);
+      this.connection = connection.name;
+      this.connectionDp = connection.dp;
+      await this.loadConnections();
+      this.error = warnings.length > 0 ? warnings.join(' ') : '';
+      this.step = 'source';
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : localize(MSG.connection.updateError);
     } finally {
       this.busy = false;
     }
@@ -416,10 +444,12 @@ export class WuiTagImporter extends LitElement {
         return html`
           <ti-connection
             .connections=${this.connections}
+            .drivers=${this.drivers}
             .busy=${this.busy}
             .canCreate=${this.roleCreate}
             @wui:connection=${(e: CustomEvent<{ name: string; dp: string }>) => this.onConnectionSelected(e.detail)}
             @wui:createconnection=${(e: CustomEvent<NewConnection>) => void this.onCreateConnection(e.detail)}
+            @wui:updateconnection=${(e: CustomEvent<{ dp: string; cfg: NewConnection }>) => void this.onUpdateConnection(e.detail)}
           ></ti-connection>
           ${this.renderBack()}
         `;

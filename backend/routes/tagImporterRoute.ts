@@ -38,7 +38,10 @@ export class TagImporterRoute {
 
     router.get('/health', controller.health);
     router.get('/connections', requireRole('tag-importer', 'browse'), controller.connections);
+    router.get('/drivers', requireRole('tag-importer', 'browse'), controller.drivers);
     router.post('/connection', requireRole('tag-importer', 'create'), controller.createConnection);
+    router.post('/connection/read', requireRole('tag-importer', 'browse'), controller.readConnection);
+    router.post('/connection/update', requireRole('tag-importer', 'create'), controller.updateConnection);
     router.post('/browse', requireRole('tag-importer', 'browse'), controller.browse);
     router.post('/apply', requireRole('tag-importer', 'create'), controller.apply);
 
