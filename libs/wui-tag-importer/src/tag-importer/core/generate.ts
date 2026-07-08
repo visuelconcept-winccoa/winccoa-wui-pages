@@ -22,12 +22,20 @@
 
 import type { InstanceDef, Member, RefMember, TagModel, TypeDef } from './model.js';
 import type { DpTypeStructure, ImportPlan, PlanAddress, PlanDp, PlanType } from './plan.js';
-import { buildOpcUaReference, directionFor, isUnmappedOpcUaType, opcUaDatatypeCode, DEFAULT_POLL_GROUP } from './opcua-mapping.js';
+import { buildOpcUaReference, isUnmappedOpcUaType, opcUaDatatypeCode, DEFAULT_POLL_GROUP, DpAddressDirection } from './opcua-mapping.js';
 import { proposeDpName, proposeTypeName, uniqueName } from './naming.js';
+
+/** How a source type maps to a WinCC OA DPType: create a new one, or reuse an existing one. */
+export interface TypeMapping {
+  /** Existing DPType to reuse; when omitted a new type is created. */
+  target?: string;
+  /** When reusing: extend the existing type with the model's missing DPEs. */
+  extend: boolean;
+}
 
 /** Options driving generation (from the review UI). */
 export interface GenerateOptions {
-  /** Prepended to every generated DPType name. */
+  /** Prepended to every generated (created) DPType name. */
   typePrefix: string;
   /** Apply the hybrid typeref policy; when false every nested type is flattened. */
   hybrid: boolean;
@@ -35,10 +43,14 @@ export interface GenerateOptions {
   forceKeep?: ReadonlySet<string>;
   /** Type ids the operator forces to be flattened (ignored if the type is instantiated). */
   forceInline?: ReadonlySet<string>;
+  /** Per source-type mapping (keyed by TypeDef.id): create new (default) or reuse an existing DPType. */
+  typeMapping?: Record<string, TypeMapping>;
   /** OPC UA connection (server) name — presence enables online address binding. */
   connection?: string;
   /** Poll-group DP name for the address configs. */
   pollGroup?: string;
+  /** Per-DPE direction override (INPUT_POLL / IO_POLL); default is IO_POLL (IN/OUT). */
+  directionOverrides?: Record<string, number>;
 }
 
 /** Map a scalar WinCC OA element-type key to its one-dimensional `Dyn*` variant. */
@@ -198,19 +210,27 @@ function creationOrder(deps: Map<string, Set<string>>, warnings: string[]): stri
   return order;
 }
 
-/** Address configs for an instance's leaf bindings (online only). */
-function addressesForInstance(inst: InstanceDef, dpName: string, conn: string, pollGroup: string, warnings: string[]): PlanAddress[] {
+/** Address configs for an instance's leaf bindings (online only). Direction defaults to IN/OUT. */
+function addressesForInstance(
+  inst: InstanceDef,
+  dpName: string,
+  conn: string,
+  pollGroup: string,
+  directionOverrides: Record<string, number>,
+  warnings: string[]
+): PlanAddress[] {
   const out: PlanAddress[] = [];
   for (const [path, addr] of Object.entries(inst.bindings)) {
     if (addr.protocol !== 'opcua') continue;
     if (isUnmappedOpcUaType(addr.sourceDataType)) {
       warnings.push(`Leaf "${dpName}.${path}" has unsupported OPC UA type "${addr.sourceDataType ?? '?'}" — bound as default transformation.`);
     }
+    const dpe = `${dpName}.${path}`;
     out.push({
-      dpe: `${dpName}.${path}`,
+      dpe,
       nodeId: addr.nodeId,
       reference: buildOpcUaReference(conn, addr.nodeId),
-      direction: directionFor(addr.access),
+      direction: directionOverrides[dpe] ?? DpAddressDirection.IO_POLL,
       datatype: opcUaDatatypeCode(addr.sourceDataType),
       pollGroup
     });
@@ -264,12 +284,20 @@ export function buildPlan(model: TagModel, opts: GenerateOptions): ImportPlan {
   const keep = computeKeep(model, opts, parents);
   breakInlineCycles(model, keep, typeById, warnings);
 
-  // Resolve unique DPType names for every kept type.
+  // Resolve DPType names for every kept type: a mapped type reuses its existing
+  // target name; otherwise a unique prefixed name is generated. Reuse targets are
+  // reserved FIRST so a generated (created) name can never collide with one.
   const usedTypeNames = new Set<string>();
+  for (const id of keep) {
+    const target = opts.typeMapping?.[id]?.target;
+    if (target) usedTypeNames.add(target);
+  }
   const nameById = new Map<string, string>();
   for (const id of keep) {
     const t = typeById.get(id);
-    if (t) nameById.set(id, uniqueName(proposeTypeName(opts.typePrefix, t.name || t.displayName), usedTypeNames));
+    if (!t) continue;
+    const target = opts.typeMapping?.[id]?.target;
+    nameById.set(id, target ?? uniqueName(proposeTypeName(opts.typePrefix, t.name || t.displayName), usedTypeNames));
   }
 
   // Build each kept type's structure first, then order by the typeref edges the
@@ -288,7 +316,7 @@ export function buildPlan(model: TagModel, opts: GenerateOptions): ImportPlan {
     });
   }
   const idByName = new Map<string, string>();
-  for (const [id, name] of nameById) idByName.set(name, id);
+  for (const [id, name] of nameById) if (!idByName.has(name)) idByName.set(name, id);
   const deps = new Map<string, Set<string>>();
   for (const [id, struct] of structById) {
     const refNames = new Set<string>();
@@ -306,7 +334,12 @@ export function buildPlan(model: TagModel, opts: GenerateOptions): ImportPlan {
     const t = typeById.get(id);
     const struct = structById.get(id);
     if (!t || !struct) continue;
-    types.push({ typeName: struct.name, displayName: t.displayName, structure: struct });
+    const mapping = opts.typeMapping?.[id];
+    types.push(
+      mapping?.target
+        ? { typeName: struct.name, displayName: t.displayName, structure: struct, reuse: true, extend: mapping.extend }
+        : { typeName: struct.name, displayName: t.displayName, structure: struct }
+    );
   }
 
   // Instances → DPs (only for kept types; every instantiated type is kept).
@@ -315,6 +348,7 @@ export function buildPlan(model: TagModel, opts: GenerateOptions): ImportPlan {
   const addresses: PlanAddress[] = [];
   const conn = opts.connection;
   const pollGroup = opts.pollGroup ?? DEFAULT_POLL_GROUP;
+  const directionOverrides = opts.directionOverrides ?? {};
   for (const inst of model.instances) {
     const typeName = nameById.get(inst.typeId);
     if (!typeName) {
@@ -323,7 +357,7 @@ export function buildPlan(model: TagModel, opts: GenerateOptions): ImportPlan {
     }
     const dpName = uniqueName(proposeDpName(inst.name || inst.displayName), usedDpNames);
     dps.push({ dpName, displayName: inst.displayName, dpType: typeName });
-    if (conn) addresses.push(...addressesForInstance(inst, dpName, conn, pollGroup, warnings));
+    if (conn) addresses.push(...addressesForInstance(inst, dpName, conn, pollGroup, directionOverrides, warnings));
   }
 
   if (model.source === 'opcua-nodeset' && conn && addresses.length > 0) {

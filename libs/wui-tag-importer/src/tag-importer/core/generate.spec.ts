@@ -99,3 +99,20 @@ describe('DpTypeGenerator — nested types embedded, only top-level instances', 
     expect(plan.dps.map((d) => d.dpName).sort()).toEqual(['p1', 's1']);
   });
 });
+
+describe('DpTypeGenerator — reuse mapping', () => {
+  it('never lets a created type collide with a reuse-target name', () => {
+    // A is created (proposes name "A"); B reuses an existing type also named "A".
+    const m = model([type('A', [leaf('x')]), type('B', [leaf('y')])], { a1: 'A', b1: 'B' });
+    const plan = buildPlan(m, { typePrefix: '', hybrid: true, typeMapping: { B: { target: 'A', extend: false } } });
+
+    const reused = plan.types.filter((t) => t.reuse);
+    const created = plan.types.filter((t) => !t.reuse);
+    expect(reused.map((t) => t.typeName)).toContain('A');
+    // The created type must NOT reuse the reserved target name.
+    expect(created.every((t) => t.typeName !== 'A')).toBe(true);
+    // Each datapoint keeps its own type: b1 on the reused "A", a1 on the distinct created one.
+    expect(plan.dps.find((d) => d.dpName === 'b1')?.dpType).toBe('A');
+    expect(plan.dps.find((d) => d.dpName === 'a1')?.dpType).not.toBe('A');
+  });
+});

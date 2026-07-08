@@ -38,7 +38,8 @@ import { analyzeTypes, buildPlan, type GenerateOptions, type TypeDecision } from
 import { DEFAULT_POLL_GROUP } from './tag-importer/core/opcua-mapping.js';
 import { parseNodeSet } from './tag-importer/adapters/opcua-nodeset.js';
 import { buildOnlineModel, type OnlineNodeRef } from './tag-importer/adapters/opcua-online.js';
-import { apply as applyPlan, createConnection, listConnections, listDrivers, updateConnection, type Connection, type NewConnection } from './tag-importer/data/api.js';
+import { apply as applyPlan, createConnection, listConnections, listDpTypes, listDrivers, updateConnection, type Connection, type NewConnection } from './tag-importer/data/api.js';
+import { sanitizeIdentifier } from './tag-importer/core/naming.js';
 import { MSG, confirmApplyMsg, localize, localizeDir } from './tag-importer/i18n.js';
 import './tag-importer/ui/ti-driver.js';
 import './tag-importer/ui/ti-connection.js';
@@ -68,6 +69,9 @@ export class WuiTagImporter extends LitElement {
   @state() private model: TagModel | null = null;
   @state() private plan: ImportPlan | null = null;
   @state() private decisions: TypeDecision[] = [];
+  @state() private existingTypes: string[] = [];
+  @state() private typeMapping: Record<string, { target?: string; extend: boolean }> = {};
+  @state() private directionOverrides: Record<string, number> = {};
   @state() private typePrefix = '';
   @state() private hybrid = true;
   @state() private busy = false;
@@ -159,14 +163,24 @@ export class WuiTagImporter extends LitElement {
     }
   }
 
+  private async loadDpTypes(): Promise<void> {
+    try {
+      this.existingTypes = await listDpTypes();
+    } catch {
+      this.existingTypes = [];
+    }
+  }
+
   private currentOptions(): GenerateOptions {
     return {
       typePrefix: this.typePrefix,
       hybrid: this.hybrid,
       forceKeep: this.forceKeep,
       forceInline: this.forceInline,
+      typeMapping: this.typeMapping,
       connection: this.bindAddresses && this.connection ? this.connection : undefined,
-      pollGroup: DEFAULT_POLL_GROUP
+      pollGroup: DEFAULT_POLL_GROUP,
+      directionOverrides: this.directionOverrides
     };
   }
 
@@ -251,6 +265,7 @@ export class WuiTagImporter extends LitElement {
     }
     this.error = '';
     this.model = model;
+    void this.loadDpTypes();
     this.recompute();
     this.step = 'review';
   }
@@ -290,6 +305,9 @@ export class WuiTagImporter extends LitElement {
     this.error = '';
     try {
       this.model = await buildOnlineModel({ connection: this.connectionDp, nodes: this.selectedNodes });
+      // Default: a DPType prefixed with the connection name (editable in review).
+      this.typePrefix = `${sanitizeIdentifier(this.connection)}_`;
+      await this.loadDpTypes();
       this.recompute();
       this.step = 'review';
     } catch (error) {
@@ -313,6 +331,18 @@ export class WuiTagImporter extends LitElement {
 
   private onBind(value: boolean): void {
     this.bindAddresses = value;
+    this.recompute();
+  }
+
+  private onTypeMapping(detail: { id: string; target?: string; extend: boolean }): void {
+    this.typeMapping = { ...this.typeMapping, [detail.id]: { target: detail.target, extend: detail.extend } };
+    this.recompute();
+  }
+
+  private onSetDirection(detail: { dpes: string[]; direction: number }): void {
+    const next = { ...this.directionOverrides };
+    for (const dpe of detail.dpes) next[dpe] = detail.direction;
+    this.directionOverrides = next;
     this.recompute();
   }
 
@@ -369,6 +399,8 @@ export class WuiTagImporter extends LitElement {
     this.hybrid = true;
     this.forceKeep.clear();
     this.forceInline.clear();
+    this.typeMapping = {};
+    this.directionOverrides = {};
     this.selectedNodes = [];
     this.dryRunResult = null;
     this.applyResult = null;
@@ -468,6 +500,8 @@ export class WuiTagImporter extends LitElement {
         return html`<ti-review
           .plan=${this.plan}
           .decisions=${this.decisions}
+          .existingTypes=${this.existingTypes}
+          .typeMapping=${this.typeMapping}
           .typePrefix=${this.typePrefix}
           .hybrid=${this.hybrid}
           .hasConnection=${this.connection !== ''}
@@ -479,6 +513,8 @@ export class WuiTagImporter extends LitElement {
           @wui:hybrid=${(e: CustomEvent<boolean>) => this.onHybrid(e.detail)}
           @wui:bind=${(e: CustomEvent<boolean>) => this.onBind(e.detail)}
           @wui:typeoverride=${(e: CustomEvent<{ id: string; keep: boolean }>) => this.onTypeOverride(e.detail)}
+          @wui:typemapping=${(e: CustomEvent<{ id: string; target?: string; extend: boolean }>) => this.onTypeMapping(e.detail)}
+          @wui:setdirection=${(e: CustomEvent<{ dpes: string[]; direction: number }>) => this.onSetDirection(e.detail)}
           @wui:dryrun=${() => void this.onDryRun()}
           @wui:apply=${() => (this.confirmOpen = true)}
         ></ti-review>

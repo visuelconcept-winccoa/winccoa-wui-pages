@@ -145,7 +145,18 @@ export const MSG = {
     willCreate: ml('will create', 'sera créé', 'wird angelegt'),
     flatten: ml('Flatten', 'Aplatir', 'Abflachen'),
     keepRef: ml('Keep as reference', 'Garder en référence', 'Als Referenz behalten'),
-    empty: ml('Nothing to import yet — pick a source.', 'Rien à importer — choisissez une source.', 'Noch nichts zu importieren — wählen Sie eine Quelle.')
+    empty: ml('Nothing to import yet — pick a source.', 'Rien à importer — choisissez une source.', 'Noch nichts zu importieren — wählen Sie eine Quelle.'),
+    createNew: ml('Create new', 'Créer nouveau', 'Neu erstellen'),
+    mapTo: ml('Map to datapoint type', 'Associer au type de datapoint', 'Auf Datenpunkttyp abbilden'),
+    extendType: ml('Extend the type if elements are missing', 'Étendre le type si des éléments manquent', 'Typ erweitern, wenn Elemente fehlen'),
+    colDir: ml('Direction', 'Direction', 'Richtung'),
+    dirIn: ml('IN', 'IN', 'IN'),
+    dirIo: ml('IN/OUT', 'IN/OUT', 'IN/OUT'),
+    filter: ml('Filter elements…', 'Filtrer les éléments…', 'Elemente filtern…'),
+    checkFiltered: ml('Check filtered', 'Cocher les filtrés', 'Gefilterte markieren'),
+    uncheckAll: ml('Uncheck all', 'Tout décocher', 'Alle abwählen'),
+    setIn: ml('Set IN', 'Passer en IN', 'Auf IN setzen'),
+    setIo: ml('Set IN/OUT', 'Passer en IN/OUT', 'Auf IN/OUT setzen')
   },
   summary: {
     typesNew: ml('new types', 'nouveaux types', 'neue Typen'),

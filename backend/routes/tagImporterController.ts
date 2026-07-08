@@ -83,6 +83,9 @@ interface DpTypeStructure {
 interface PlanType {
   typeName: string;
   structure: DpTypeStructure;
+  /** Reuse an existing type (extend) instead of creating. */
+  reuse?: boolean;
+  extend?: boolean;
 }
 interface PlanDp {
   dpName: string;
@@ -195,6 +198,7 @@ function buildTypeNode(node: DpTypeStructure): WinccoaDpTypeNode {
   return new WinccoaDpTypeNode(node.name, elementType, node.refName ?? '', children);
 }
 
+
 export class TagImporterController {
   /** GET /api/tag-importer/health */
   public health = (_req: Request, res: Response): void => {
@@ -262,6 +266,24 @@ export class TagImporterController {
     try {
       const drivers = await this.runningOpcUaDrivers();
       res.status(200).json({ ok: true, drivers });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: describeError(error) });
+    }
+  };
+
+  /**
+   * GET /api/tag-importer/dptypes -> { types: string[] }
+   * Existing (non-internal) datapoint types, for the "reuse an existing DPType"
+   * choice in the review.
+   */
+  public dpTypes = (_req: Request, res: Response): void => {
+    try {
+      const all = (win().dpTypes('*') ?? []) as string[];
+      const types = all
+        .map(String)
+        .filter((n) => n.length > 0 && !n.startsWith('_'))
+        .sort((a, b) => a.localeCompare(b));
+      res.status(200).json({ ok: true, types });
     } catch (error) {
       res.status(500).json({ ok: false, error: describeError(error) });
     }
@@ -398,6 +420,24 @@ export class TagImporterController {
   private async applyTypes(types: PlanType[], dry: boolean, results: ApplyItemResult[]): Promise<void> {
     const w = win();
     for (const t of types) {
+      // Reuse an existing type: extend it with the model's missing DPEs (never create).
+      if (t.reuse) {
+        if (!this.typeExists(t.typeName)) {
+          results.push({ kind: 'type', name: t.typeName, status: 'failed', error: 'target datapoint type does not exist' });
+          continue;
+        }
+        if (dry || !t.extend) {
+          results.push({ kind: 'type', name: t.typeName, status: 'skipped' });
+          continue;
+        }
+        try {
+          const changed = await this.extendType(t.typeName, t.structure);
+          results.push({ kind: 'type', name: t.typeName, status: changed ? 'created' : 'skipped' });
+        } catch (error) {
+          results.push({ kind: 'type', name: t.typeName, status: 'failed', error: describeError(error) });
+        }
+        continue;
+      }
       if (this.typeExists(t.typeName)) {
         results.push({ kind: 'type', name: t.typeName, status: 'skipped' });
         continue;
@@ -414,6 +454,46 @@ export class TagImporterController {
         results.push({ kind: 'type', name: t.typeName, status: 'failed', error: describeError(error) });
       }
     }
+  }
+
+  /**
+   * Add the DPEs of `desired` that the existing `target` type lacks, IN PLACE on
+   * the `dpTypeGet` tree (existing elements are never retyped or removed — only
+   * new subtrees are built and appended), then `dpTypeChange`. Returns true when
+   * something was added.
+   */
+  private async extendType(target: string, desired: DpTypeStructure): Promise<boolean> {
+    const w = win();
+    const root = w.dpTypeGet(target);
+    const added = { v: false };
+    this.mergeInto(root, desired, added);
+    if (!added.v) return false;
+    const changed = await w.dpTypeChange(root);
+    if (!changed) throw new Error(`dpTypeChange('${target}') returned false`);
+    return true;
+  }
+
+  /**
+   * Recursively append `desired` children missing from the WinccoaDpTypeNode
+   * `node` (by name). Recurse ONLY when both the existing element and the desired
+   * member are containers (have children); a same-name element of a different
+   * kind (e.g. an existing scalar leaf vs a desired nested object) is left
+   * untouched — its model leaves are then skipped by the valid-DPE address guard.
+   */
+  private mergeInto(node: any, desired: DpTypeStructure, added: { v: boolean }): void {
+    const kids: any[] = node.children ?? [];
+    const byName = new Map<string, any>(kids.map((c) => [c.name, c]));
+    for (const d of desired.children ?? []) {
+      const existing = byName.get(d.name);
+      if (!existing) {
+        kids.push(buildTypeNode(d));
+        added.v = true;
+        continue;
+      }
+      const bothContainers = (existing.children?.length ?? 0) > 0 && (d.children?.length ?? 0) > 0;
+      if (bothContainers) this.mergeInto(existing, d, added);
+    }
+    node.children = kids;
   }
 
   private async applyDps(dps: PlanDp[], dry: boolean, results: ApplyItemResult[]): Promise<void> {
@@ -455,6 +535,12 @@ export class TagImporterController {
     }
     const pollGroups = new Map<string, string>();
     for (const a of plan.addresses) {
+      // Only configure addresses on DPEs that actually exist (e.g. a reused type
+      // that was not extended may lack some model leaves).
+      if (!this.dpeExists(a.dpe)) {
+        results.push({ kind: 'address', name: a.dpe, status: 'skipped' });
+        continue;
+      }
       try {
         let pg = pollGroups.get(a.pollGroup);
         if (pg === undefined) {
@@ -520,6 +606,15 @@ export class TagImporterController {
     const w = win();
     try {
       return Boolean(w.dpExists(name)) || Boolean(w.dpExists(`${name}.`));
+    } catch {
+      return false;
+    }
+  }
+
+  /** Whether a fully-qualified DPE (e.g. `Pump1.Motor.Speed`) exists. */
+  private dpeExists(dpe: string): boolean {
+    try {
+      return Boolean(win().dpExists(dpe));
     } catch {
       return false;
     }

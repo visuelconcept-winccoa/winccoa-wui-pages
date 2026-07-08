@@ -107,6 +107,12 @@ export async function listDrivers(): Promise<number[]> {
   return data.drivers ?? [];
 }
 
+/** Existing (non-internal) datapoint types, for "reuse an existing DPType". */
+export async function listDpTypes(): Promise<string[]> {
+  const data = await getJson<{ types: string[] }>(`${BASE}/dptypes`);
+  return data.types ?? [];
+}
+
 /** Browse one level (or `depth` levels) of a live server below `nodeId`. */
 export async function browse(connection: string, nodeId?: string, depth = 1): Promise<BrowseNode[]> {
   const data = await postJson<{ nodes: BrowseNode[] }>(`${BASE}/browse`, { connection, nodeId, depth });

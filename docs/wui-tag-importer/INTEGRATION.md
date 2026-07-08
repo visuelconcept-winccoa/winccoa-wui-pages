@@ -36,6 +36,7 @@ shared API `paraController` uses — `dpTypeCreate` / `dpCreate` / `dpSetWait` /
 | GET    | `/health`      | —        | liveness |
 | GET    | `/connections` | `browse` | list `_OPCUAServer` connections (`{name, dp, connected}`) — `name` is the bare server name (reference), `dp` the full DP path (may be system-qualified, e.g. `System1:_Simulator1`) used to browse/read |
 | GET    | `/drivers`     | `browse` | manager numbers of the OPC UA client drivers currently RUNNING (`{drivers: number[]}`) |
+| GET    | `/dptypes`     | `browse` | existing (non-internal) datapoint types, for "reuse an existing DPType" (`{types: string[]}`) |
 | POST   | `/connection`  | `create` | create + register a new connection (`{name?, endpoint, securityPolicy?, messageMode?, user?, password?, managerNumber?}` → `{connection, warnings}`) |
 | POST   | `/connection/read`   | `browse` | read a connection's editable config (`{dp}` → `{config:{endpoint,user,securityPolicy,messageMode}}`) |
 | POST   | `/connection/update` | `create` | update a connection's config in place (`{dp, endpoint, securityPolicy?, messageMode?, user?, password?}` → `{connection}`; password written only when non-empty) |
@@ -91,6 +92,17 @@ each address config atomically:
 
 The manager number is auto-detected from `_OPCUA<n>.Config.Servers` (fallback: a
 running `_Driver*` with `DT == "OPCUAC"`).
+
+**Type mapping (online).** By default each selected instance's type is CREATED
+under a name prefixed with the connection (editable in the review). A plan type
+may instead REUSE an existing datapoint type (`reuse`): the type is not created,
+and when `extend` is set the model's missing DPEs are appended IN PLACE on the
+`dpTypeGet` tree (new subtrees only — existing elements are never retyped or
+removed) via `dpTypeChange`. Address configs are written **only on DPEs that
+actually exist**, so a reused-without-extend type simply skips the missing leaves.
+
+**Direction.** Each address defaults to IN/OUT (`IO_POLL` 7) and can be set to IN
+(`INPUT_POLL` 4) per DPE or in bulk from the review's address list.
 
 ## Application Security
 

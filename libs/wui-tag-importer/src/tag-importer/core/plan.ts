@@ -27,14 +27,18 @@ export interface DpTypeStructure {
   children?: DpTypeStructure[];
 }
 
-/** One DPType to create, in dependency (creation) order. */
+/** One DPType to create (or reuse), in dependency (creation) order. */
 export interface PlanType {
-  /** DPType name to create (also the root node name). */
+  /** DPType name to create, or the existing type to reuse when `reuse` is set (also the root node name). */
   typeName: string;
   displayName: string;
   structure: DpTypeStructure;
   /** True when the type already exists — the backend then skips creation (dry-run diagnostic). */
   exists?: boolean;
+  /** When true, `typeName` is an EXISTING datapoint type to reuse rather than create. */
+  reuse?: boolean;
+  /** When `reuse`: add the DPEs from `structure` that the existing type is missing (dpTypeChange). */
+  extend?: boolean;
 }
 
 /** One datapoint instance to create. */
