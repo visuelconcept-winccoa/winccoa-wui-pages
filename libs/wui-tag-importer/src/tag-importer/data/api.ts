@@ -17,6 +17,24 @@ export interface Connection {
   connected: boolean;
 }
 
+/** OPC UA message security policy (subset offered by the create form). */
+export type SecurityPolicy = 'None' | 'Basic256Sha256' | 'Aes128_Sha256_RsaOaep' | 'Aes256_Sha256_RsaPss';
+/** OPC UA message security mode. */
+export type MessageMode = 'None' | 'Sign' | 'SignAndEncrypt';
+
+/** Parameters to create a new OPC UA connection (`_OPCUAServer`). */
+export interface NewConnection {
+  /** Optional connection name; the backend auto-generates one when empty. */
+  name?: string;
+  /** Endpoint URL, e.g. `opc.tcp://host:4840`. */
+  endpoint: string;
+  securityPolicy?: SecurityPolicy;
+  messageMode?: MessageMode;
+  /** Optional user for username/password authentication. */
+  user?: string;
+  password?: string;
+}
+
 /** One node from a browse level. */
 export interface BrowseNode {
   displayName: string;
@@ -50,6 +68,12 @@ async function postJson<T>(url: string, body: object): Promise<T> {
 export async function listConnections(): Promise<Connection[]> {
   const data = await getJson<{ connections: Connection[] }>(`${BASE}/connections`);
   return data.connections ?? [];
+}
+
+/** Create (and register) a new OPC UA connection; returns it + any non-fatal warnings. */
+export async function createConnection(cfg: NewConnection): Promise<{ connection: Connection; warnings: string[] }> {
+  const data = await postJson<{ connection: Connection; warnings?: string[] }>(`${BASE}/connection`, cfg);
+  return { connection: data.connection, warnings: data.warnings ?? [] };
 }
 
 /** Browse one level (or `depth` levels) of a live server below `nodeId`. */

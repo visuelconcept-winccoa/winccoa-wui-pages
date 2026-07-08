@@ -38,24 +38,29 @@ import { analyzeTypes, buildPlan, type GenerateOptions, type TypeDecision } from
 import { DEFAULT_POLL_GROUP } from './tag-importer/core/opcua-mapping.js';
 import { parseNodeSet } from './tag-importer/adapters/opcua-nodeset.js';
 import { buildOnlineModel, type OnlineNodeRef } from './tag-importer/adapters/opcua-online.js';
-import { apply as applyPlan, browse, listConnections, type Connection } from './tag-importer/data/api.js';
+import { apply as applyPlan, browse, createConnection, listConnections, type Connection, type NewConnection } from './tag-importer/data/api.js';
 import { MSG, confirmApplyMsg, localize, localizeDir } from './tag-importer/i18n.js';
+import './tag-importer/ui/ti-driver.js';
+import './tag-importer/ui/ti-connection.js';
 import './tag-importer/ui/ti-source.js';
 import './tag-importer/ui/ti-browse-tree.js';
 import './tag-importer/ui/ti-review.js';
 import './tag-importer/ui/ti-result.js';
+import type { DriverKind } from './tag-importer/ui/ti-driver.js';
 
 const MODULE_ID = 'tag-importer';
-type Step = 'source' | 'select' | 'review' | 'result';
+type Step = 'driver' | 'connection' | 'source' | 'select' | 'review' | 'result';
 type Mode = 'file' | 'online' | '';
 
 export class WuiTagImporter extends LitElement {
   static override readonly styles = [IXCoreStyles, pageStyles()];
 
-  @state() private step: Step = 'source';
+  @state() private step: Step = 'driver';
+  @state() private driver: DriverKind | '' = '';
   @state() private mode: Mode = '';
   @state() private connections: Connection[] = [];
   @state() private connection = '';
+  @state() private bindAddresses = true;
   @state() private model: TagModel | null = null;
   @state() private plan: ImportPlan | null = null;
   @state() private decisions: TypeDecision[] = [];
@@ -137,7 +142,7 @@ export class WuiTagImporter extends LitElement {
       hybrid: this.hybrid,
       forceKeep: this.forceKeep,
       forceInline: this.forceInline,
-      connection: this.model?.source === 'opcua-online' ? this.connection : undefined,
+      connection: this.bindAddresses && this.connection ? this.connection : undefined,
       pollGroup: DEFAULT_POLL_GROUP
     };
   }
@@ -155,11 +160,44 @@ export class WuiTagImporter extends LitElement {
     this.decisions = analyzeTypes(this.model, opts);
   }
 
-  // --- step 1: source ---------------------------------------------------------
+  // --- step 0: driver ---------------------------------------------------------
+
+  private onDriver(driver: DriverKind): void {
+    this.driver = driver;
+    this.error = '';
+    this.step = 'connection';
+  }
+
+  // --- step 1: connection -----------------------------------------------------
+
+  private onConnectionSelected(name: string): void {
+    this.connection = name;
+    this.error = '';
+    this.step = 'source';
+  }
+
+  private async onCreateConnection(cfg: NewConnection): Promise<void> {
+    this.busy = true;
+    this.error = '';
+    try {
+      const { connection, warnings } = await createConnection(cfg);
+      this.connection = connection.name;
+      await this.loadConnections();
+      this.error = warnings.length > 0 ? warnings.join(' ') : '';
+      this.step = 'source';
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : localize(MSG.connection.createError);
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  // --- step 2: source ---------------------------------------------------------
 
   private onMode(mode: Mode): void {
     this.mode = mode;
     this.error = '';
+    if (mode === 'online') this.step = 'select';
   }
 
   private onFile(detail: { name: string; text: string }): void {
@@ -174,11 +212,27 @@ export class WuiTagImporter extends LitElement {
     this.step = 'review';
   }
 
-  private onConnection(name: string): void {
-    this.connection = name;
-    this.primary = null;
-    this.parentNodeId = '';
-    this.step = 'select';
+  private onBack(): void {
+    this.error = '';
+    switch (this.step) {
+      case 'connection': {
+        this.step = 'driver';
+        break;
+      }
+      case 'source': {
+        this.step = 'connection';
+        break;
+      }
+      case 'select': {
+        this.step = 'source';
+        break;
+      }
+      case 'review': {
+        this.step = this.mode === 'online' ? 'select' : 'source';
+        break;
+      }
+      // No default — other steps have their own navigation.
+    }
   }
 
   // --- step 2: online selection ----------------------------------------------
@@ -229,6 +283,11 @@ export class WuiTagImporter extends LitElement {
     this.recompute();
   }
 
+  private onBind(value: boolean): void {
+    this.bindAddresses = value;
+    this.recompute();
+  }
+
   private onTypeOverride(detail: { id: string; keep: boolean }): void {
     if (detail.keep) {
       this.forceKeep.add(detail.id);
@@ -269,8 +328,11 @@ export class WuiTagImporter extends LitElement {
   }
 
   private reset(): void {
-    this.step = 'source';
+    this.step = 'driver';
+    this.driver = '';
     this.mode = '';
+    this.connection = '';
+    this.bindAddresses = true;
     this.model = null;
     this.plan = null;
     this.decisions = [];
@@ -288,38 +350,63 @@ export class WuiTagImporter extends LitElement {
 
   private renderStepper(): TemplateResult {
     const steps: { id: Step; label: typeof MSG.steps.source }[] = [
+      { id: 'driver', label: MSG.steps.driver },
+      { id: 'connection', label: MSG.steps.connection },
       { id: 'source', label: MSG.steps.source },
       { id: 'select', label: MSG.steps.select },
       { id: 'review', label: MSG.steps.review },
       { id: 'result', label: MSG.steps.apply }
     ];
-    const order: Step[] = ['source', 'select', 'review', 'result'];
+    const order: Step[] = ['driver', 'connection', 'source', 'select', 'review', 'result'];
     const current = order.indexOf(this.step);
     return html`<div class="stepper">
       ${steps.map((s, i) => {
-        // The "select" step only applies to the online source.
+        // The "select" step only applies to the live (online) source.
         const skipped = s.id === 'select' && this.mode !== 'online';
-        return html`<div class="crumb ${order.indexOf(s.id) === current ? 'active' : ''} ${order.indexOf(s.id) < current ? 'done' : ''} ${skipped ? 'muted' : ''}">
+        return html`<div
+          class="crumb ${order.indexOf(s.id) === current ? 'active' : ''} ${order.indexOf(s.id) < current ? 'done' : ''} ${skipped ? 'muted' : ''}"
+        >
           <span class="num">${i + 1}</span>${localizeDir(s.label)}
         </div>`;
       })}
     </div>`;
   }
 
+  private renderBack(): TemplateResult {
+    return html`<div class="back-row">
+      <ix-button variant="secondary" ?disabled=${this.busy} @click=${() => this.onBack()}>${localizeDir(MSG.actions.back)}</ix-button>
+    </div>`;
+  }
+
   private renderStep(): TemplateResult {
     switch (this.step) {
+      case 'driver': {
+        return html`<ti-driver .driver=${this.driver} @wui:driver=${(e: CustomEvent<DriverKind>) => this.onDriver(e.detail)}></ti-driver>`;
+      }
+      case 'connection': {
+        return html`
+          <ti-connection
+            .connections=${this.connections}
+            .busy=${this.busy}
+            .canCreate=${this.roleCreate}
+            @wui:connection=${(e: CustomEvent<{ name: string }>) => this.onConnectionSelected(e.detail.name)}
+            @wui:createconnection=${(e: CustomEvent<NewConnection>) => void this.onCreateConnection(e.detail)}
+          ></ti-connection>
+          ${this.renderBack()}
+        `;
+      }
       case 'source': {
-        return html`<ti-source
-          .mode=${this.mode}
-          .connections=${this.connections}
-          .connection=${this.connection}
-          .busy=${this.busy}
-          .canImportFile=${this.roleImportFile}
-          .canBrowse=${this.roleBrowse}
-          @wui:mode=${(e: CustomEvent<Mode>) => this.onMode(e.detail)}
-          @wui:file=${(e: CustomEvent<{ name: string; text: string }>) => this.onFile(e.detail)}
-          @wui:connection=${(e: CustomEvent<{ name: string }>) => this.onConnection(e.detail.name)}
-        ></ti-source>`;
+        return html`
+          <ti-source
+            .mode=${this.mode}
+            .busy=${this.busy}
+            .canImportFile=${this.roleImportFile}
+            .canBrowse=${this.roleBrowse}
+            @wui:mode=${(e: CustomEvent<Mode>) => this.onMode(e.detail)}
+            @wui:file=${(e: CustomEvent<{ name: string; text: string }>) => this.onFile(e.detail)}
+          ></ti-source>
+          ${this.renderBack()}
+        `;
       }
       case 'select': {
         return html`
@@ -346,16 +433,20 @@ export class WuiTagImporter extends LitElement {
           .decisions=${this.decisions}
           .typePrefix=${this.typePrefix}
           .hybrid=${this.hybrid}
-          .online=${this.model?.source === 'opcua-online'}
+          .hasConnection=${this.connection !== ''}
+          .bindAddresses=${this.bindAddresses}
           .busy=${this.busy}
           .canApply=${this.roleCreate}
           .dryRun=${this.dryRunResult}
           @wui:prefix=${(e: CustomEvent<string>) => this.onPrefix(e.detail)}
           @wui:hybrid=${(e: CustomEvent<boolean>) => this.onHybrid(e.detail)}
+          @wui:bind=${(e: CustomEvent<boolean>) => this.onBind(e.detail)}
           @wui:typeoverride=${(e: CustomEvent<{ id: string; keep: boolean }>) => this.onTypeOverride(e.detail)}
           @wui:dryrun=${() => void this.onDryRun()}
           @wui:apply=${() => (this.confirmOpen = true)}
-        ></ti-review>`;
+        ></ti-review>
+          ${this.renderBack()}
+        `;
       }
       case 'result': {
         return html`<ti-result .result=${this.applyResult} @wui:reset=${() => this.reset()}></ti-result>`;
@@ -432,6 +523,9 @@ function pageStyles(): ReturnType<typeof css> {
       display: flex;
       align-items: center;
       gap: 0.6rem;
+      padding-top: 0.75rem;
+    }
+    .back-row {
       padding-top: 0.75rem;
     }
     .select-footer .grow {

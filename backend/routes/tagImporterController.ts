@@ -128,6 +128,32 @@ function describeError(error: unknown): string {
   return message;
 }
 
+// --- OPC UA connection-create constants + helpers ----------------------------
+// Security policy / message mode string (from the create form) -> _OPCUAServer
+// config integer (SecurityPolicy: None=0, Basic256Sha256=4, Aes128Sha256RsaOaep=5,
+// Aes256Sha256RsaPss=6; MessageSecurityMode: None=0, Sign=1, SignAndEncrypt=2).
+const SECURITY_POLICY_CODE: Record<string, number> = { None: 0, Basic256Sha256: 4, Aes128_Sha256_RsaOaep: 5, Aes256_Sha256_RsaPss: 6 };
+const MESSAGE_MODE_CODE: Record<string, number> = { None: 0, Sign: 1, SignAndEncrypt: 2 };
+const DEFAULT_MANAGER_NUMBER = 2;
+const DEFAULT_RECONNECT_TIMER = 10;
+const DEFAULT_OPCUA_PORT = 4840;
+
+interface NewConnectionBody {
+  name?: string;
+  endpoint?: string;
+  securityPolicy?: string;
+  messageMode?: string;
+  user?: string;
+  password?: string;
+}
+
+/** Parse an OPC UA endpoint `opc.tcp://host:port` → {host, port}; null if invalid. */
+function parseEndpoint(endpoint: string): { host: string; port: number } | null {
+  const match = /^opc\.tcp:\/\/([^/:]+)(?::(\d+))?/i.exec(endpoint.trim());
+  if (!match) return null;
+  return { host: match[1], port: match[2] ? Number.parseInt(match[2], 10) : DEFAULT_OPCUA_PORT };
+}
+
 /** Recursively build a WinccoaDpTypeNode from an ImportPlan DpTypeStructure. */
 function buildTypeNode(node: DpTypeStructure): WinccoaDpTypeNode {
   const elementType = ELEMENT_TYPE_MAP[node.type];
@@ -170,6 +196,28 @@ export class TagImporterController {
       res.status(200).json({ ok: true, connections });
     } catch (error) {
       res.status(500).json({ ok: false, error: describeError(error) });
+    }
+  };
+
+  /**
+   * POST /api/tag-importer/connection   body { name?, endpoint, securityPolicy?, messageMode?, user?, password? }
+   * Create + register a new OPC UA connection (_OPCUAServer). Ports the datapoint
+   * part of the ETM `opcua-add-connection` (the physical driver is NOT started
+   * from here — no Pmon access in the webserver; an existing OPC UA manager
+   * number is reused when present, else _OPCUA<default> is created with a warning).
+   */
+  public createConnection = async (req: Request, res: Response): Promise<void> => {
+    const body = (req.body ?? {}) as NewConnectionBody;
+    const parsed = parseEndpoint(body.endpoint ?? '');
+    if (!parsed) {
+      res.status(400).json({ ok: false, error: 'endpoint must be of the form opc.tcp://host:port' });
+      return;
+    }
+    try {
+      const created = await this.doCreateConnection(parsed.host, parsed.port, body);
+      res.status(200).json({ ok: true, connection: { name: created.name, connected: false }, warnings: created.warnings });
+    } catch (error) {
+      res.status(400).json({ ok: false, error: describeError(error) });
     }
   };
 
@@ -351,6 +399,103 @@ export class TagImporterController {
   }
 
   // --- OPC UA manager number + poll group (ported) ----------------------------
+
+  /** Create + configure + register a new _OPCUAServer connection (datapoint-level). */
+  private async doCreateConnection(host: string, port: number, body: NewConnectionBody): Promise<{ name: string; warnings: string[] }> {
+    const w = win();
+    const warnings: string[] = [];
+    const managerNumber = await this.pickManagerNumber(warnings);
+    await this.ensureDp(`_OPCUA${managerNumber}`, '_OPCUA');
+    await this.ensureDp(`_Driver${managerNumber}`, '_DriverCommon');
+
+    const requested = typeof body.name === 'string' ? body.name.trim() : '';
+    const connDp = requested ? (requested.startsWith('_') ? requested : `_${requested}`) : this.generateConnectionName();
+    if (!this.dpInstanceExists(connDp)) {
+      const created = await w.dpCreate(connDp, '_OPCUAServer');
+      if (!created) throw new Error(`dpCreate('${connDp}','_OPCUAServer') returned false`);
+    }
+
+    const url = `opc.tcp://${host}:${port}`;
+    const policy = SECURITY_POLICY_CODE[body.securityPolicy ?? 'None'] ?? 0;
+    const mode = MESSAGE_MODE_CODE[body.messageMode ?? 'None'] ?? 0;
+    const password = typeof body.password === 'string' && body.password.length > 0 ? Buffer.from(body.password, 'utf-8') : Buffer.alloc(0);
+    const dpes = [
+      `${connDp}.Config.ConnInfo`,
+      `${connDp}.Config.AccessInfo`,
+      `${connDp}.Config.Password`,
+      `${connDp}.Config.Security.Policy`,
+      `${connDp}.Config.Security.MessageMode`,
+      `${connDp}.Config.Security.Certificate`,
+      `${connDp}.Config.Active`,
+      `${connDp}.Config.ReconnectTimer`,
+      `${connDp}.Config.Separator`,
+      `${connDp}.Config.Flags`,
+      `${connDp}.Redu.Config.ConnInfo`,
+      `${connDp}.Redu.Config.Active`
+    ];
+    const values = [url, String(body.user ?? ''), password, policy, mode, '', 1, DEFAULT_RECONNECT_TIMER, '.', 0, 'opc.tcp://', 0];
+    await w.dpSetWait(dpes, values);
+
+    // Register the connection with the manager (append to Config.Servers, then
+    // notify a running driver via Command.AddServer — non-fatal if none runs).
+    const bare = connDp.replace(/^_/, '');
+    let servers: string[] = [];
+    try {
+      const raw = await w.dpGet(`_OPCUA${managerNumber}.Config.Servers`);
+      servers = Array.isArray(raw) ? raw.map(String) : [];
+    } catch {
+      servers = [];
+    }
+    if (!servers.includes(bare)) {
+      servers.push(bare);
+      await w.dpSetWait(`_OPCUA${managerNumber}.Config.Servers`, servers);
+    }
+    try {
+      await w.dpSetWait(`_OPCUA${managerNumber}.Command.AddServer`, bare);
+    } catch {
+      warnings.push('Could not notify a running OPC UA driver (Command.AddServer). Start the OPC UA client driver for the connection to go live.');
+    }
+    return { name: bare, warnings };
+  }
+
+  /** Reuse an existing OPC UA manager number, else fall back to the default (with a warning). */
+  private async pickManagerNumber(warnings: string[]): Promise<number> {
+    const w = win();
+    const managers: string[] = w.dpNames('_OPCUA*', '_OPCUA') ?? [];
+    for (const dp of managers) {
+      const match = /_OPCUA(\d+)/.exec(dp);
+      if (match) return Number.parseInt(match[1], 10);
+    }
+    const drivers: string[] = w.dpNames('_Driver*', '_DriverCommon') ?? [];
+    for (const dp of drivers) {
+      try {
+        const dt = await w.dpGet(`${dp.replace(/\.$/, '')}.DT`);
+        const v = Array.isArray(dt) ? dt[0] : dt;
+        if (v === 'OPCUAC') {
+          const match = /_Driver(\d+)/.exec(dp);
+          if (match) return Number.parseInt(match[1], 10);
+        }
+      } catch {
+        continue;
+      }
+    }
+    warnings.push(`No OPC UA client manager found — created _OPCUA${DEFAULT_MANAGER_NUMBER}. Configure/start a WCCOAopcua driver with -num ${DEFAULT_MANAGER_NUMBER}.`);
+    return DEFAULT_MANAGER_NUMBER;
+  }
+
+  /** First free `_OpcUAConnection<n>` name. */
+  private generateConnectionName(): string {
+    let n = 1;
+    while (this.dpInstanceExists(`_OpcUAConnection${n}`)) n += 1;
+    return `_OpcUAConnection${n}`;
+  }
+
+  /** Create a datapoint of `type` if it does not already exist. */
+  private async ensureDp(dp: string, type: string): Promise<void> {
+    if (this.dpInstanceExists(dp)) return;
+    const created = await win().dpCreate(dp, type);
+    if (!created) throw new Error(`dpCreate('${dp}','${type}') returned false`);
+  }
 
   private async managerNumberForConnection(connectionName: string): Promise<number> {
     const w = win();

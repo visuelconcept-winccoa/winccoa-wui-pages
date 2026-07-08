@@ -25,7 +25,10 @@ export class TiReview extends LitElement {
   @property({ attribute: false }) decisions: TypeDecision[] = [];
   @property({ type: String }) typePrefix = '';
   @property({ type: Boolean }) hybrid = true;
-  @property({ type: Boolean }) online = false;
+  /** A connection is chosen, so addresses can be written (enables the bind toggle). */
+  @property({ type: Boolean }) hasConnection = false;
+  /** Whether to write OPC UA address configs for the created datapoints. */
+  @property({ type: Boolean }) bindAddresses = true;
   @property({ type: Boolean }) busy = false;
   /** Whether the operator may run the dry-run / apply (Application Security 'create'). */
   @property({ type: Boolean }) canApply = true;
@@ -42,7 +45,7 @@ export class TiReview extends LitElement {
       <div class="tables">
         ${this.renderTypes(plan)}
         ${this.renderDps(plan)}
-        ${this.online ? this.renderAddresses(plan) : nothing}
+        ${plan.addresses.length > 0 ? this.renderAddresses(plan) : nothing}
       </div>
       ${this.dryRun ? this.renderDryRun(this.dryRun) : nothing}
       ${this.canApply ? nothing : html`<div class="forbidden">${localizeDir(MSG.common.forbidden)}</div>`}
@@ -88,6 +91,16 @@ export class TiReview extends LitElement {
         />
         <span>${localizeDir(MSG.options.hybrid)}</span>
       </label>
+      ${this.hasConnection
+        ? html`<label class="check">
+            <input
+              type="checkbox"
+              .checked=${this.bindAddresses}
+              @change=${(e: Event) => this.fire(new CustomEvent('wui:bind', { detail: (e.target as HTMLInputElement).checked, bubbles: true, composed: true }))}
+            />
+            <span>${localizeDir(MSG.bind.label)}</span>
+          </label>`
+        : nothing}
     </div>`;
   }
 
@@ -97,7 +110,7 @@ export class TiReview extends LitElement {
     return html`<div class="summary">
       ${chip(tn, MSG.summary.typesNew, 'new')}${te > 0 ? chip(te, MSG.summary.typesExisting, 'skip') : nothing}
       ${chip(dn, MSG.summary.dpsNew, 'new')}${de > 0 ? chip(de, MSG.summary.dpsExisting, 'skip') : nothing}
-      ${this.online ? chip(addr, MSG.summary.addresses, 'addr') : nothing}
+      ${addr > 0 ? chip(addr, MSG.summary.addresses, 'addr') : nothing}
       ${warn > 0 ? chip(warn, MSG.summary.warnings, 'warn') : nothing}
     </div>`;
   }

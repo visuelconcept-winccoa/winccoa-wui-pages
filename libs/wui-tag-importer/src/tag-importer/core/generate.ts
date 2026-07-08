@@ -326,5 +326,11 @@ export function buildPlan(model: TagModel, opts: GenerateOptions): ImportPlan {
     if (conn) addresses.push(...addressesForInstance(inst, dpName, conn, pollGroup, warnings));
   }
 
+  if (model.source === 'opcua-nodeset' && conn && addresses.length > 0) {
+    warnings.push(
+      'NodeSet namespace indices are file-local and may differ from the live server — verify the NodeIds of the written address configs.'
+    );
+  }
+
   return { source: model.source, types, dps, addresses, connection: conn, warnings };
 }

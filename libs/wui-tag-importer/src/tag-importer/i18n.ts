@@ -23,10 +23,46 @@ export const MSG = {
     'Gerätetags in Datenpunkttypen und Datenpunkte importieren'
   ),
   steps: {
+    driver: ml('Driver', 'Driver', 'Treiber'),
+    connection: ml('Connection', 'Connexion', 'Verbindung'),
     source: ml('Source', 'Source', 'Quelle'),
     select: ml('Select', 'Sélection', 'Auswahl'),
     review: ml('Review', 'Revue', 'Prüfung'),
     apply: ml('Apply', 'Application', 'Anwenden')
+  },
+  driver: {
+    choose: ml('Choose the driver to import from', 'Choisissez le driver source', 'Wählen Sie den Quell-Treiber'),
+    opcua: ml('OPC UA', 'OPC UA', 'OPC UA'),
+    opcuaHint: ml(
+      'Import tags from OPC UA — a NodeSet2 file or a live server.',
+      'Importer des tags depuis OPC UA — un fichier NodeSet2 ou un serveur live.',
+      'Tags aus OPC UA importieren — eine NodeSet2-Datei oder ein Live-Server.'
+    ),
+    soon: ml('Other protocols — coming soon', 'Autres protocoles — à venir', 'Weitere Protokolle — folgen')
+  },
+  connection: {
+    title: ml('OPC UA connection', 'Connexion OPC UA', 'OPC UA-Verbindung'),
+    useExisting: ml('Use an existing connection', 'Utiliser une connexion existante', 'Vorhandene Verbindung verwenden'),
+    createNew: ml('Create a new connection', 'Créer une nouvelle connexion', 'Neue Verbindung erstellen'),
+    name: ml('Name (optional)', 'Nom (optionnel)', 'Name (optional)'),
+    endpoint: ml('Endpoint URL', 'URL du endpoint', 'Endpoint-URL'),
+    security: ml('Security policy', 'Politique de sécurité', 'Sicherheitsrichtlinie'),
+    mode: ml('Message mode', 'Mode de message', 'Nachrichtenmodus'),
+    user: ml('User (optional)', 'Utilisateur (optionnel)', 'Benutzer (optional)'),
+    password: ml('Password', 'Mot de passe', 'Passwort'),
+    create: ml('Create and continue', 'Créer et continuer', 'Erstellen und fortfahren'),
+    creating: ml('Creating connection…', 'Création de la connexion…', 'Verbindung wird erstellt…'),
+    continue: ml('Continue', 'Continuer', 'Weiter'),
+    createError: ml('Could not create the connection.', 'Impossible de créer la connexion.', 'Verbindung konnte nicht erstellt werden.'),
+    endpointRequired: ml('An endpoint URL is required.', 'Une URL de endpoint est requise.', 'Eine Endpoint-URL ist erforderlich.')
+  },
+  bind: {
+    label: ml('Write OPC UA address configs', 'Écrire les configurations d’adresse OPC UA', 'OPC UA-Adresskonfigurationen schreiben'),
+    nodesetNsWarn: ml(
+      'NodeSet namespace indices may differ from the live server — verify the NodeIds before relying on the bindings.',
+      'Les index de namespace du NodeSet peuvent différer du serveur live — vérifiez les NodeIds avant de vous fier aux liaisons.',
+      'Die Namespace-Indizes des NodeSets können vom Live-Server abweichen — prüfen Sie die NodeIds.'
+    )
   },
   source: {
     protocol: ml('Protocol', 'Protocole', 'Protokoll'),

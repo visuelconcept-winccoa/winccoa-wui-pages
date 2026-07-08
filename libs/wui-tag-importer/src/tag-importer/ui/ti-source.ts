@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Step 1 — pick the import source: an OPC UA NodeSet2 XML file (offline) or a
- * live OPC UA server connection. Emits `wui:mode`, `wui:file` ({ name, text })
- * and `wui:connection` ({ name }).
+ * Step 2 — pick the import source for the chosen connection: an OPC UA NodeSet2
+ * XML file (offline structure) or live browsing of the connection. Emits
+ * `wui:mode` and `wui:file` ({ name, text }); the connection is already selected
+ * in the previous step.
  */
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
-import type { Connection } from '../data/api.js';
-import { MSG, localize, localizeDir } from '../i18n.js';
+import { MSG, localizeDir } from '../i18n.js';
 
 type Mode = 'file' | 'online';
 
@@ -18,11 +18,9 @@ export class TiSource extends LitElement {
   static override readonly styles = [IXCoreStyles, sourceStyles()];
 
   @property({ type: String }) mode: Mode | '' = '';
-  @property({ attribute: false }) connections: Connection[] = [];
   @property({ type: Boolean }) busy = false;
   @property({ type: Boolean }) canImportFile = true;
   @property({ type: Boolean }) canBrowse = true;
-  @property({ type: String }) connection = '';
 
   @state() private dragOver = false;
 
@@ -33,7 +31,6 @@ export class TiSource extends LitElement {
         ${this.modeCard('online', MSG.source.fromServer, MSG.source.fromServerHint, 'connected', this.canBrowse)}
       </div>
       ${this.mode === 'file' ? this.renderFile() : nothing}
-      ${this.mode === 'online' ? this.renderOnline() : nothing}
     `;
   }
 
@@ -54,11 +51,7 @@ export class TiSource extends LitElement {
   }
 
   private modeCard(mode: Mode, title: typeof MSG.source.fromFile, hint: typeof MSG.source.fromFileHint, icon: string, enabled: boolean): TemplateResult {
-    return html`<button
-      class="mode ${this.mode === mode ? 'active' : ''}"
-      ?disabled=${!enabled}
-      @click=${() => enabled && this.emitMode(mode)}
-    >
+    return html`<button class="mode ${this.mode === mode ? 'active' : ''}" ?disabled=${!enabled} @click=${() => enabled && this.emitMode(mode)}>
       <ix-icon name=${icon} size="24"></ix-icon>
       <span class="mode-title">${localizeDir(title)}</span>
       <span class="mode-hint">${localizeDir(hint)}</span>
@@ -86,31 +79,6 @@ export class TiSource extends LitElement {
         hidden
         @change=${(e: Event) => void this.onFile((e.target as HTMLInputElement).files?.[0])}
       />
-    </div>`;
-  }
-
-  private renderOnline(): TemplateResult {
-    if (this.connections.length === 0) {
-      return html`<ix-message-bar type="warning" .dismissible=${false}>${localizeDir(MSG.online.noConnections)}</ix-message-bar>`;
-    }
-    return html`<div class="online">
-      <label for="conn">${localizeDir(MSG.online.connection)}</label>
-      <select id="conn" .value=${this.connection} @change=${(e: Event) => (this.connection = (e.target as HTMLSelectElement).value)}>
-        <option value="" disabled ?selected=${this.connection === ''}>—</option>
-        ${this.connections.map(
-          (c) => html`<option value=${c.name} ?selected=${c.name === this.connection}>
-            ${c.name} · ${c.connected ? localize(MSG.online.connected) : localize(MSG.online.disconnected)}
-          </option>`
-        )}
-      </select>
-      <ix-button
-        variant="primary"
-        ?disabled=${this.connection === '' || this.busy}
-        @click=${() =>
-          this.dispatchEvent(new CustomEvent('wui:connection', { detail: { name: this.connection }, bubbles: true, composed: true }))}
-      >
-        ${localizeDir(MSG.online.browse)}
-      </ix-button>
     </div>`;
   }
 }
@@ -174,21 +142,6 @@ function sourceStyles(): ReturnType<typeof css> {
     .drop .hint {
       font-size: 0.8rem;
       opacity: 0.7;
-    }
-    .online {
-      margin-top: 1rem;
-      display: flex;
-      align-items: center;
-      gap: 0.6rem;
-      flex-wrap: wrap;
-    }
-    select {
-      min-width: 16rem;
-      padding: 0.4rem;
-      background: var(--theme-color-1);
-      color: var(--theme-color-text);
-      border: 1px solid var(--theme-color-soft-bdr);
-      border-radius: 4px;
     }
   `;
 }

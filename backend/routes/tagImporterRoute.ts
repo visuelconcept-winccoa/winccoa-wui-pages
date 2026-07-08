@@ -25,6 +25,7 @@ import { TagImporterController } from './tagImporterController';
  * Route definitions for the Tag Importer API (relative to "/api/tag-importer"):
  *   GET  /health
  *   GET  /connections                          -> { connections: [{name, connected}] }
+ *   POST /connection { name?, endpoint, securityPolicy?, messageMode?, user?, password? } -> { connection, warnings }
  *   POST /browse   { connection, nodeId?, depth? } -> { nodes: [...] }
  *   POST /apply    { plan, dryRun }             -> { ok, dryRun, results: [...] }
  */
@@ -37,6 +38,7 @@ export class TagImporterRoute {
 
     router.get('/health', controller.health);
     router.get('/connections', requireRole('tag-importer', 'browse'), controller.connections);
+    router.post('/connection', requireRole('tag-importer', 'create'), controller.createConnection);
     router.post('/browse', requireRole('tag-importer', 'browse'), controller.browse);
     router.post('/apply', requireRole('tag-importer', 'create'), controller.apply);
 
