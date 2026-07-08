@@ -49,6 +49,8 @@ import './tag-importer/ui/ti-result.js';
 import type { DriverKind } from './tag-importer/ui/ti-driver.js';
 
 const MODULE_ID = 'tag-importer';
+/** Live-refresh interval of the connection state while on the browse step. */
+const CONN_STATE_POLL_MS = 4000;
 type Step = 'driver' | 'connection' | 'source' | 'select' | 'review' | 'result';
 type Mode = 'file' | 'online' | '';
 
@@ -60,6 +62,7 @@ export class WuiTagImporter extends LitElement {
   @state() private mode: Mode = '';
   @state() private connections: Connection[] = [];
   @state() private connection = '';
+  @state() private connectionDp = '';
   @state() private bindAddresses = true;
   @state() private model: TagModel | null = null;
   @state() private plan: ImportPlan | null = null;
@@ -83,6 +86,7 @@ export class WuiTagImporter extends LitElement {
   private readonly forceKeep = new Set<string>();
   private readonly forceInline = new Set<string>();
   private permSub = new Subscription();
+  private stateTimer?: ReturnType<typeof globalThis.setInterval>;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -96,6 +100,17 @@ export class WuiTagImporter extends LitElement {
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.permSub.unsubscribe();
+    if (this.stateTimer !== undefined) globalThis.clearInterval(this.stateTimer);
+  }
+
+  override updated(): void {
+    // Live-refresh the connection state only while the browse step is shown.
+    if (this.step === 'select' && this.stateTimer === undefined) {
+      this.stateTimer = globalThis.setInterval(() => void this.loadConnections(), CONN_STATE_POLL_MS);
+    } else if (this.step !== 'select' && this.stateTimer !== undefined) {
+      globalThis.clearInterval(this.stateTimer);
+      this.stateTimer = undefined;
+    }
   }
 
   override render(): TemplateResult {
@@ -170,8 +185,9 @@ export class WuiTagImporter extends LitElement {
 
   // --- step 1: connection -----------------------------------------------------
 
-  private onConnectionSelected(name: string): void {
-    this.connection = name;
+  private onConnectionSelected(detail: { name: string; dp: string }): void {
+    this.connection = detail.name;
+    this.connectionDp = detail.dp;
     this.error = '';
     this.step = 'source';
   }
@@ -182,6 +198,7 @@ export class WuiTagImporter extends LitElement {
     try {
       const { connection, warnings } = await createConnection(cfg);
       this.connection = connection.name;
+      this.connectionDp = connection.dp;
       await this.loadConnections();
       this.error = warnings.length > 0 ? warnings.join(' ') : '';
       this.step = 'source';
@@ -248,7 +265,7 @@ export class WuiTagImporter extends LitElement {
     this.error = '';
     try {
       const siblings = await this.resolveSiblings();
-      this.model = await buildOnlineModel({ connection: this.connection, primary: this.primary, siblings });
+      this.model = await buildOnlineModel({ connection: this.connectionDp, primary: this.primary, siblings });
       this.recompute();
       this.step = 'review';
     } catch (error) {
@@ -262,7 +279,7 @@ export class WuiTagImporter extends LitElement {
   private async resolveSiblings(): Promise<OnlineNodeRef[]> {
     if (!this.includeSiblings || !this.primary) return [];
     try {
-      const nodes = await browse(this.connection, this.parentNodeId || undefined);
+      const nodes = await browse(this.connectionDp, this.parentNodeId || undefined);
       return nodes
         .filter((n) => n.nodeId !== this.primary?.nodeId && !n.nodeClass.includes('Variable') && !n.nodeClass.includes('Method'))
         .map((n) => ({ nodeId: n.nodeId, displayName: n.displayName }));
@@ -332,6 +349,7 @@ export class WuiTagImporter extends LitElement {
     this.driver = '';
     this.mode = '';
     this.connection = '';
+    this.connectionDp = '';
     this.bindAddresses = true;
     this.model = null;
     this.plan = null;
@@ -378,6 +396,17 @@ export class WuiTagImporter extends LitElement {
     </div>`;
   }
 
+  /** Live connection-state banner for the browse step (refreshed by the state poll). */
+  private renderConnStatus(): TemplateResult {
+    const conn = this.connections.find((c) => c.dp === this.connectionDp);
+    const connected = conn?.connected ?? false;
+    return html`<div class="conn-status">
+      <span class="conn-dot ${connected ? 'up' : 'down'}"></span>
+      <span>${localizeDir(MSG.online.connection)}: <strong>${conn?.name ?? this.connection}</strong></span>
+      <span class="conn-state">${localizeDir(connected ? MSG.online.connected : MSG.online.disconnected)}</span>
+    </div>`;
+  }
+
   private renderStep(): TemplateResult {
     switch (this.step) {
       case 'driver': {
@@ -389,7 +418,7 @@ export class WuiTagImporter extends LitElement {
             .connections=${this.connections}
             .busy=${this.busy}
             .canCreate=${this.roleCreate}
-            @wui:connection=${(e: CustomEvent<{ name: string }>) => this.onConnectionSelected(e.detail.name)}
+            @wui:connection=${(e: CustomEvent<{ name: string; dp: string }>) => this.onConnectionSelected(e.detail)}
             @wui:createconnection=${(e: CustomEvent<NewConnection>) => void this.onCreateConnection(e.detail)}
           ></ti-connection>
           ${this.renderBack()}
@@ -410,8 +439,9 @@ export class WuiTagImporter extends LitElement {
       }
       case 'select': {
         return html`
+          ${this.renderConnStatus()}
           <ti-browse-tree
-            .connection=${this.connection}
+            .connection=${this.connectionDp}
             @wui:selection=${(e: CustomEvent<{ primary: OnlineNodeRef; parentNodeId: string }>) => this.onSelection(e.detail)}
           ></ti-browse-tree>
           <div class="select-footer">
@@ -527,6 +557,25 @@ function pageStyles(): ReturnType<typeof css> {
     }
     .back-row {
       padding-top: 0.75rem;
+    }
+    .conn-status {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      padding-bottom: 0.6rem;
+    }
+    .conn-dot {
+      width: 0.6rem;
+      height: 0.6rem;
+      border-radius: 50%;
+      background: var(--theme-color-alarm, #c00);
+    }
+    .conn-dot.up {
+      background: var(--theme-color-success, #2a2);
+    }
+    .conn-state {
+      opacity: 0.75;
     }
     .select-footer .grow {
       flex: 1;

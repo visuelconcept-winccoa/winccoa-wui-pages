@@ -34,9 +34,24 @@ shared API `paraController` uses — `dpTypeCreate` / `dpCreate` / `dpSetWait` /
 | Method | Path           | Role     | Purpose |
 |--------|----------------|----------|---------|
 | GET    | `/health`      | —        | liveness |
-| GET    | `/connections` | `browse` | list `_OPCUAServer` connections (`{name, connected}`) |
-| POST   | `/browse`      | `browse` | one browse level of a live server (`{connection,nodeId?,depth?}` → `{nodes}`) |
+| GET    | `/connections` | `browse` | list `_OPCUAServer` connections (`{name, dp, connected}`) — `name` is the bare server name (reference), `dp` the full DP path (may be system-qualified, e.g. `System1:_Simulator1`) used to browse/read |
+| POST   | `/connection`  | `create` | create + register a new connection (`{name?, endpoint, securityPolicy?, messageMode?, user?, password?}` → `{connection, warnings}`) |
+| POST   | `/browse`      | `browse` | one browse level of a live server (`{connection,nodeId?,depth?}` — `connection` is the `dp` path → `{nodes}`) |
 | POST   | `/apply`       | `create` | create the plan's types/DPs/addresses (`{plan,dryRun}` → `{ok,dryRun,results}`) |
+
+**Connection identity.** `dpNames` may return a connection system-qualified
+(`System1:_Simulator1`). The API therefore separates the **bare server name**
+(`Simulator1` — used in the address reference and `Config.Servers`) from the
+**DP path** (`System1:_Simulator1` — used to browse/read `.Browse.*`/`.State.*`).
+Browse must be given the DP path, never the bare name with a blind `_` prefix.
+
+**Create** ports the datapoint side of the ETM `opcua-add-connection`: ensure
+`_OPCUA<n>` / `_Driver<n>`, create `_OpcUAConnection<n>` (type `_OPCUAServer`),
+write `Config.*` (ConnInfo `opc.tcp://…`, AccessInfo, Password blob,
+Security.Policy/MessageMode, Active, ReconnectTimer, Separator), append to
+`_OPCUA<n>.Config.Servers` and trigger `Command.AddServer`. It reuses an existing
+OPC UA manager number when present; the physical driver is **not** started (no
+Pmon access in the webserver — a warning is returned if none is running).
 
 **Browse** writes a request id to `_<conn>.Browse.GetBranch:_original.._value`
 `[requestId, startNode, depth, eventSource]` and correlates the echoed

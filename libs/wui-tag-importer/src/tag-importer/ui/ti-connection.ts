@@ -59,19 +59,22 @@ export class TiConnection extends LitElement {
       <select .value=${this.selected} @change=${(e: Event) => (this.selected = (e.target as HTMLSelectElement).value)}>
         <option value="" disabled ?selected=${this.selected === ''}>—</option>
         ${this.connections.map(
-          (c) => html`<option value=${c.name} ?selected=${c.name === this.selected}>
+          (c) => html`<option value=${c.dp} ?selected=${c.dp === this.selected}>
             ${c.name} · ${c.connected ? localize(MSG.online.connected) : localize(MSG.online.disconnected)}
           </option>`
         )}
       </select>
-      <ix-button
-        variant="primary"
-        ?disabled=${this.selected === '' || this.busy}
-        @click=${() => this.dispatchEvent(new CustomEvent('wui:connection', { detail: { name: this.selected }, bubbles: true, composed: true }))}
-      >
+      <ix-button variant="primary" ?disabled=${this.selected === '' || this.busy} @click=${() => this.onSelect()}>
         ${localizeDir(MSG.connection.continue)}
       </ix-button>
     </div>`;
+  }
+
+  private onSelect(): void {
+    const conn = this.connections.find((c) => c.dp === this.selected);
+    if (conn) {
+      this.dispatchEvent(new CustomEvent('wui:connection', { detail: { name: conn.name, dp: conn.dp }, bubbles: true, composed: true }));
+    }
   }
 
   private renderCreate(): TemplateResult {

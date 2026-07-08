@@ -35,16 +35,23 @@ nesting cycles are broken by promoting a type to a reference (with a warning).
 ## Usage
 
 1. Open **Tag Importer** in the menu.
-2. **Source** — choose *NodeSet2 XML file* (drop a `.xml`) or *Live OPC UA server*
-   (pick a connection and browse).
-3. **Select** (online only) — browse the address space and pick the instance to
-   model as a datapoint type; optionally include same-level siblings.
-4. **Review** — adjust the DPType name prefix and the hybrid option, inspect the
-   datapoint types / datapoints / address configs to be created, and run a
-   **Preview (dry-run)**.
-5. **Apply** — after a confirmation, the types, datapoints and (online) address
+2. **Driver** — choose the driver/protocol to import from (OPC UA today).
+3. **Connection** — select an existing OPC UA connection (`_OPCUAServer`) or
+   create a new one (endpoint `opc.tcp://…`, security policy/mode, credentials).
+4. **Source** — choose *NodeSet2 XML file* (drop a `.xml`, offline) or
+   *Live OPC UA server* (browse the chosen connection).
+5. **Select** (live only) — browse the address space (with a live
+   connection-state banner) and pick the instance to model as a datapoint type;
+   optionally include same-level siblings.
+6. **Review** — adjust the DPType name prefix, the hybrid option and the
+   *Write address configs* toggle, inspect the datapoint types / datapoints /
+   address configs to be created, and run a **Preview (dry-run)**.
+7. **Apply** — after a confirmation, the types, datapoints and (bound) address
    configs are created in the project. A result report lists what was created,
    skipped (already existed) or failed.
+
+The chosen connection feeds **both** sources; a NodeSet import can be bound to it
+too (with a namespace-index caveat — its indices are file-local).
 
 ## Architecture (files)
 

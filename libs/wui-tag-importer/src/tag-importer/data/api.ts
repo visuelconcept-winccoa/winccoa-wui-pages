@@ -11,9 +11,12 @@ import type { ApplyResult, ImportPlan } from '../core/plan.js';
 
 const BASE = '/api/tag-importer';
 
-/** One OPC UA server connection (`_OPCUAServer`), name without leading underscore. */
+/** One OPC UA server connection (`_OPCUAServer`). */
 export interface Connection {
+  /** Bare server name (no system prefix, no leading underscore) — used in the address reference. */
   name: string;
+  /** Full datapoint path (may be system-qualified, e.g. `System1:_Simulator1`) — used to browse/read. */
+  dp: string;
   connected: boolean;
 }
 

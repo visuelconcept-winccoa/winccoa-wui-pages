@@ -147,6 +147,28 @@ interface NewConnectionBody {
   password?: string;
 }
 
+/**
+ * Split a connection DP name into its display/reference name (bare — no system
+ * prefix, no leading underscore, e.g. `Simulator1`) and the full DP path used to
+ * address the datapoint (system-qualified when the API returns it that way,
+ * e.g. `System1:_Simulator1`). `dpNames` may return either form.
+ */
+function splitConnection(dpName: string): { name: string; dp: string } {
+  const full = dpName.replace(/\.$/, '');
+  const afterSystem = full.includes(':') ? full.slice(full.indexOf(':') + 1) : full;
+  return { name: afterSystem.replace(/^_/, ''), dp: full };
+}
+
+/**
+ * Resolve a connection identifier to the DP path base for browse/state. Accepts
+ * the full DP (system-qualified `System1:_x` or internal `_x`) as-is, and only
+ * prepends `_` to a bare server name (`x` → `_x`).
+ */
+function resolveConnDp(connection: string): string {
+  const c = connection.replace(/\.$/, '');
+  return c.includes(':') || c.startsWith('_') ? c : `_${c}`;
+}
+
 /** Parse an OPC UA endpoint `opc.tcp://host:port` → {host, port}; null if invalid. */
 function parseEndpoint(endpoint: string): { host: string; port: number } | null {
   const match = /^opc\.tcp:\/\/([^/:]+)(?::(\d+))?/i.exec(endpoint.trim());
@@ -180,17 +202,17 @@ export class TagImporterController {
       const w = win();
       const dps: string[] = w.dpNames('*', '_OPCUAServer') ?? [];
       const connections = await Promise.all(
-        dps.map(async (dp) => {
-          const name = dp.replace(/^_/, '').replace(/\.$/, '');
+        dps.map(async (dpName) => {
+          const { name, dp } = splitConnection(dpName);
           let connected = false;
           try {
-            const state = await w.dpGet(`${dp.replace(/\.$/, '')}.State.ConnState`);
+            const state = await w.dpGet(`${dp}.State.ConnState`);
             const v = Array.isArray(state) ? state[0] : state;
             connected = Number(v) > 0;
           } catch {
             connected = false;
           }
-          return { name, connected };
+          return { name, dp, connected };
         })
       );
       res.status(200).json({ ok: true, connections });
@@ -215,7 +237,7 @@ export class TagImporterController {
     }
     try {
       const created = await this.doCreateConnection(parsed.host, parsed.port, body);
-      res.status(200).json({ ok: true, connection: { name: created.name, connected: false }, warnings: created.warnings });
+      res.status(200).json({ ok: true, connection: { name: created.name, dp: created.dp, connected: false }, warnings: created.warnings });
     } catch (error) {
       res.status(400).json({ ok: false, error: describeError(error) });
     }
@@ -401,7 +423,7 @@ export class TagImporterController {
   // --- OPC UA manager number + poll group (ported) ----------------------------
 
   /** Create + configure + register a new _OPCUAServer connection (datapoint-level). */
-  private async doCreateConnection(host: string, port: number, body: NewConnectionBody): Promise<{ name: string; warnings: string[] }> {
+  private async doCreateConnection(host: string, port: number, body: NewConnectionBody): Promise<{ name: string; dp: string; warnings: string[] }> {
     const w = win();
     const warnings: string[] = [];
     const managerNumber = await this.pickManagerNumber(warnings);
@@ -455,7 +477,7 @@ export class TagImporterController {
     } catch {
       warnings.push('Could not notify a running OPC UA driver (Command.AddServer). Start the OPC UA client driver for the connection to go live.');
     }
-    return { name: bare, warnings };
+    return { name: bare, dp: connDp, warnings };
   }
 
   /** Reuse an existing OPC UA manager number, else fall back to the default (with a warning). */
@@ -543,7 +565,7 @@ export class TagImporterController {
 
   private browseLevel(connectionName: string, startNode: string, depth: number): Promise<BrowseNode[]> {
     const w = win();
-    const connDp = connectionName.startsWith('_') ? connectionName : `_${connectionName}`;
+    const connDp = resolveConnDp(connectionName);
     const start = startNode || OBJECTS_FOLDER;
     requestCounter += 1;
     const requestId = `tagimp_${Date.now()}_${requestCounter}`;
