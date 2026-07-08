@@ -27,10 +27,11 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
-import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import appSecurityRoles from './app-security.roles.json';
 import { canEditFleet, canEditFleet$ } from '@visuelconcept/wui-kit/data/permissions.js';
 import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
-import { MSG, confirmControlMsg, confirmRemoveMsg, localize, localizeDir, ml, serverLabel } from './process-monitor/i18n.js';
+import { MSG, confirmControlMsg, confirmRemoveMsg, localize, localizeDir, serverLabel } from './process-monitor/i18n.js';
 import { addManager, controlManager, listInstances, removeManager, restartAll } from './process-monitor/data/api.js';
 import { ensureStores, loadHistory, traceOperation } from './process-monitor/data/stores.js';
 import type { DeployResult, HistoryEntry, Instance, ManagerSpec } from './process-monitor/types.js';
@@ -79,16 +80,7 @@ export class WuiProcessMonitor extends LitElement {
     this.permSub = canEditFleet$().subscribe((allowed) => (this.canEdit = allowed));
     // Application Security: declare this module's roles and follow the grants
     // (the same rules are ENFORCED server-side on /api/process-monitor).
-    registerModuleRoles({
-      module: MODULE_ID,
-      title: ml('Process Monitor', 'Moniteur de processus', 'Prozessmonitor'),
-      roles: [
-        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
-        { id: 'control', label: ml('Control managers', 'Piloter les managers', 'Manager steuern') },
-        { id: 'edit-managers', label: ml('Edit manager configuration', 'Éditer la configuration des managers', 'Manager-Konfiguration bearbeiten') },
-        { id: 'deploy', label: ml('Deploy projects', 'Déployer des projets', 'Projekte deployen') }
-      ]
-    });
+    registerModuleRoles(appSecurityRoles as AppModuleRoles);
     this.permSub.add(hasRole$(MODULE_ID, 'control').subscribe((granted) => (this.roleControl = granted)));
     this.permSub.add(hasRole$(MODULE_ID, 'edit-managers').subscribe((granted) => (this.roleEditManagers = granted)));
     this.permSub.add(hasRole$(MODULE_ID, 'deploy').subscribe((granted) => (this.roleDeploy = granted)));

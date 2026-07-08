@@ -1,0 +1,16 @@
+{
+  "module": "report-templates",
+  "title": { "en_US.utf8": "Report Templates", "fr.utf8": "Modèles de rapports", "de.utf8": "Berichtsvorlagen" },
+  "roles": [
+    { "id": "view", "label": { "en_US.utf8": "View", "fr.utf8": "Consulter", "de.utf8": "Ansehen" } },
+    {
+      "id": "edit",
+      "label": { "en_US.utf8": "Edit", "fr.utf8": "Éditer", "de.utf8": "Bearbeiten" },
+      "description": {
+        "en_US.utf8": "Design report templates.",
+        "fr.utf8": "Concevoir les modèles de rapports.",
+        "de.utf8": "Berichtsvorlagen gestalten."
+      }
+    }
+  ]
+}

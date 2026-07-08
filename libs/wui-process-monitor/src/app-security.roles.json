@@ -1,0 +1,34 @@
+{
+  "module": "process-monitor",
+  "title": { "en_US.utf8": "Process Monitor", "fr.utf8": "Moniteur de processus", "de.utf8": "Prozessmonitor" },
+  "roles": [
+    { "id": "view", "label": { "en_US.utf8": "View", "fr.utf8": "Consulter", "de.utf8": "Ansehen" } },
+    {
+      "id": "control",
+      "label": { "en_US.utf8": "Control managers", "fr.utf8": "Piloter les managers", "de.utf8": "Manager steuern" },
+      "description": {
+        "en_US.utf8": "Start/stop/restart managers (enforced server-side).",
+        "fr.utf8": "Démarrer/arrêter/redémarrer les managers (contrôlé côté serveur).",
+        "de.utf8": "Manager starten/stoppen/neu starten (serverseitig erzwungen)."
+      }
+    },
+    {
+      "id": "edit-managers",
+      "label": { "en_US.utf8": "Edit manager configuration", "fr.utf8": "Éditer la configuration des managers", "de.utf8": "Manager-Konfiguration bearbeiten" },
+      "description": {
+        "en_US.utf8": "Add/remove pmon configuration entries — config/progs (enforced server-side).",
+        "fr.utf8": "Ajouter/supprimer des entrées de la configuration pmon — config/progs (contrôlé côté serveur).",
+        "de.utf8": "pmon-Konfigurationseinträge hinzufügen/entfernen — config/progs (serverseitig erzwungen)."
+      }
+    },
+    {
+      "id": "deploy",
+      "label": { "en_US.utf8": "Deploy projects", "fr.utf8": "Déployer des projets", "de.utf8": "Projekte deployen" },
+      "description": {
+        "en_US.utf8": "Upload and deploy project ZIPs (enforced server-side).",
+        "fr.utf8": "Téléverser et déployer des ZIP projet (contrôlé côté serveur).",
+        "de.utf8": "Projekt-ZIPs hochladen und deployen (serverseitig erzwungen)."
+      }
+    }
+  ]
+}

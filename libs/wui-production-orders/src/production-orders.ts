@@ -29,14 +29,15 @@ import { query, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import type { Atelier } from '@visuelconcept/wui-fleet-core/types.js';
 import { FleetStore } from '@visuelconcept/wui-fleet-core/data/fleet-store.js';
-import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import appSecurityRoles from './app-security.roles.json';
 import { buildDemoOrders } from './production-orders/data/demo-orders.js';
 import { clearOrderFromFleet, pushOrderToFleet } from './production-orders/data/fleet-link.js';
 import { exportCsv, exportJson, parseOrders } from './production-orders/data/io.js';
 import { OrderStore } from './production-orders/data/order-store.js';
 import type { OrderStatus, ProductionOrder } from './production-orders/types.js';
 import { applyTransition } from './production-orders/workflow.js';
-import { MSG, confirmDeleteMsg, localize, localizeDir, ml } from './production-orders/i18n.js';
+import { MSG, confirmDeleteMsg, localize, localizeDir } from './production-orders/i18n.js';
 import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
 import './production-orders/ui/po-gantt.js';
 import './production-orders/ui/po-kpi-bar.js';
@@ -119,22 +120,7 @@ export class WuiProductionOrders extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
-    registerModuleRoles({
-      module: MODULE_ID,
-      title: ml('Production Orders', 'Ordres de production', 'Fertigungsaufträge'),
-      roles: [
-        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
-        {
-          id: 'edit',
-          label: ml('Edit', 'Éditer', 'Bearbeiten'),
-          description: ml(
-            'Manage orders and their workflow',
-            'Gérer les ordres et leur cycle de vie',
-            'Aufträge und ihren Statusablauf verwalten'
-          )
-        }
-      ]
-    });
+    registerModuleRoles(appSecurityRoles as AppModuleRoles);
     this.roleSub = new Subscription();
     this.roleSub.add(
       hasRole$(MODULE_ID, 'view').subscribe((granted) => (this.canView = granted))

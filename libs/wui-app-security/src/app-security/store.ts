@@ -26,10 +26,36 @@ import {
   type AppRoleAssignments,
   type AppRoleDeclaration
 } from '@visuelconcept/wui-kit/data/app-security.js';
-import { MODULE_MANIFEST } from './manifest.js';
 
 const DP_SET_URL = '/api/para/dp/set';
 const GROUPS_URL = '/api/app-security/groups';
+
+/**
+ * Aggregated per-module role catalog — served (dev) / emitted (build) at the
+ * public config prefix by the `page-appsec-merge` Vite plugin from every
+ * module's own `src/app-security.roles.json` fragment. Replaces the former
+ * hand-maintained central manifest: adding or extending a module never touches
+ * app-security. Truly external modules (built from another repository and absent
+ * from this asset) are still discovered at runtime via `registerModuleRoles`.
+ *
+ * Fixed public path (same convention as `menuconfig.json`) rather than an
+ * `import.meta.url`-relative URL: the page bundle is served from source in the
+ * dev server (so a relative URL would resolve under the lib's `src/`, which the
+ * plugin does not serve), while the plugin serves/emits this exact absolute path
+ * in both dev and production.
+ */
+const MANIFEST_URL = '/data/dashboard-wc/app-security-manifest.json';
+
+async function fetchManifest(): Promise<AppModuleRoles[]> {
+  try {
+    const res = await fetch(MANIFEST_URL);
+    if (!res.ok) return [];
+    const body = (await res.json()) as unknown;
+    return Array.isArray(body) ? (body as AppModuleRoles[]) : [];
+  } catch {
+    return [];
+  }
+}
 
 /** One module row of the catalog (declaration + current assignments). */
 export interface ModuleEntry {
@@ -99,6 +125,7 @@ export class AppSecurityStore {
   private readonly dpe = this.resolveDpe();
   private readonly audit = new AuditTrailWriter({ dpName: 'AuditTrail_AppSecurity', itemType: 'AppSecurity' });
   private memory: ModuleEntry[] | null = null;
+  private manifestCache: AppModuleRoles[] | null = null;
 
   /**
    * Every declared module, sorted by module id. Re-attempts the backend on
@@ -162,10 +189,11 @@ export class AppSecurityStore {
     }
   }
 
-  /** Seed/refresh every manifest module's declaration. Returns how many succeeded. */
-  async discover(manifest: AppModuleRoles[] = MODULE_MANIFEST): Promise<number> {
+  /** Seed/refresh every catalog module's declaration. Returns how many succeeded. */
+  async discover(manifest?: AppModuleRoles[]): Promise<number> {
+    const list = manifest ?? (await this.manifest());
     let ok = 0;
-    for (const decl of manifest) {
+    for (const decl of list) {
       if (await upsertModuleRoles(decl)) ok += 1;
     }
     // A working seeding proves the backend is writable — clear the offline flag.
@@ -224,15 +252,31 @@ export class AppSecurityStore {
     }
   }
 
-  private mem(): ModuleEntry[] {
+  /**
+   * Aggregated per-module catalog. Caches only a NON-empty result, so a
+   * transient fetch failure (→ `[]`) is retried on the next call instead of
+   * latching the page empty — consistent with the "no offline latch" rule of
+   * {@link list}.
+   */
+  private async manifest(): Promise<AppModuleRoles[]> {
+    if (this.manifestCache && this.manifestCache.length > 0) return this.manifestCache;
+    const fetched = await fetchManifest();
+    if (fetched.length > 0) this.manifestCache = fetched;
+    return fetched;
+  }
+
+  private async mem(): Promise<ModuleEntry[]> {
     this.offline = true;
-    this.memory ??= MODULE_MANIFEST.map((decl) => ({
-      module: decl.module,
-      dp: appSecurityDp(decl.module),
-      title: decl.title,
-      roles: decl.roles,
-      assignments: {}
-    }));
+    if (!this.memory) {
+      const manifest = await this.manifest();
+      this.memory = manifest.map((decl) => ({
+        module: decl.module,
+        dp: appSecurityDp(decl.module),
+        title: decl.title,
+        roles: decl.roles,
+        assignments: {}
+      }));
+    }
     return this.memory;
   }
 

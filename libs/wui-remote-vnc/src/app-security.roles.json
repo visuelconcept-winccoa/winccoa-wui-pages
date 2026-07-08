@@ -1,0 +1,25 @@
+{
+  "module": "remote-vnc",
+  "title": { "en_US.utf8": "Remote VNC", "fr.utf8": "VNC distant", "de.utf8": "Remote-VNC" },
+  "roles": [
+    { "id": "view", "label": { "en_US.utf8": "View", "fr.utf8": "Consulter", "de.utf8": "Ansehen" } },
+    {
+      "id": "connect",
+      "label": { "en_US.utf8": "Open sessions", "fr.utf8": "Ouvrir des sessions", "de.utf8": "Sitzungen öffnen" },
+      "description": {
+        "en_US.utf8": "Connect to remote desktops.",
+        "fr.utf8": "Se connecter aux postes distants.",
+        "de.utf8": "Mit entfernten Desktops verbinden."
+      }
+    },
+    {
+      "id": "edit",
+      "label": { "en_US.utf8": "Edit", "fr.utf8": "Éditer", "de.utf8": "Bearbeiten" },
+      "description": {
+        "en_US.utf8": "Manage the connection list.",
+        "fr.utf8": "Gérer la liste des connexions.",
+        "de.utf8": "Verbindungsliste verwalten."
+      }
+    }
+  ]
+}

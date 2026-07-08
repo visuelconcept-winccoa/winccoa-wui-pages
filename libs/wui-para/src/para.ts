@@ -26,7 +26,8 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
-import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import appSecurityRoles from './app-security.roles.json';
 import './para/para-ai-assistant.js';
 import type { TypeProposal } from './para/para-ai-context.js';
 import { exportDpl, importDpl, pickDplFile } from './para/para-dpl.js';
@@ -157,17 +158,8 @@ export class WuiPara extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     // Application Security: declare this module's roles (docs/wui-app-security/INTEGRATION.md).
-    // edit-types/edit-values are followed by the child editors; dpl-import here.
-    registerModuleRoles({
-      module: 'para',
-      title: ml('Parametrization (PARA)', 'Paramétrage (PARA)', 'Parametrierung (PARA)'),
-      roles: [
-        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
-        { id: 'edit-types', label: ml('Edit DP types', 'Éditer les types de DP', 'DP-Typen bearbeiten') },
-        { id: 'edit-values', label: ml('Write values & configs', 'Écrire valeurs & configs', 'Werte & Configs schreiben') },
-        { id: 'dpl-import', label: ml('DPL import/export', 'Import/export DPL', 'DPL-Import/-Export') }
-      ]
-    });
+    // Declaration lives in the module's own app-security.roles.json fragment.
+    registerModuleRoles(appSecurityRoles as AppModuleRoles);
     this.roleSub = hasRole$('para', 'dpl-import').subscribe((granted) => (this.roleDplImport = granted));
   }
 

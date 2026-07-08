@@ -1,0 +1,16 @@
+{
+  "module": "ampere",
+  "title": { "en_US.utf8": "Ampère (electrical)", "fr.utf8": "Ampère (électrique)", "de.utf8": "Ampère (elektrisch)" },
+  "roles": [
+    { "id": "view", "label": { "en_US.utf8": "View", "fr.utf8": "Consulter", "de.utf8": "Ansehen" } },
+    {
+      "id": "edit",
+      "label": { "en_US.utf8": "Edit networks", "fr.utf8": "Éditer les réseaux", "de.utf8": "Netze bearbeiten" },
+      "description": {
+        "en_US.utf8": "Draw/modify single-line diagrams and bindings.",
+        "fr.utf8": "Dessiner/modifier les schémas unifilaires et les liaisons DP.",
+        "de.utf8": "Einpolige Schemata und DP-Bindungen bearbeiten."
+      }
+    }
+  ]
+}

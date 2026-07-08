@@ -26,7 +26,8 @@ import { LitElement, css, html, nothing, type PropertyValues, type TemplateResul
 import { property, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
-import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import appSecurityRoles from './app-security.roles.json';
 import { AmpereStore } from './ampere/data/ampere-store.js';
 import { demoNetworks } from './ampere/data/demo.js';
 import { SNIPPETS, instantiateSnippet, type SnippetId } from './ampere/data/snippets.js';
@@ -48,7 +49,7 @@ import {
   type PortRef,
   type Rotation
 } from './ampere/types.js';
-import { MSG, confirmDeleteMsg, localize, localizeDir, ml, networkCountMsg } from './ampere/i18n.js';
+import { MSG, confirmDeleteMsg, localize, localizeDir, networkCountMsg } from './ampere/i18n.js';
 import type { Selection, Tool } from './ampere/ui/am-canvas.js';
 import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
 import './ampere/ui/am-canvas.js';
@@ -227,14 +228,7 @@ export class WuiAmpere extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
-    registerModuleRoles({
-      module: 'ampere',
-      title: ml('Ampère (electrical)', 'Ampère (électrique)', 'Ampère (elektrisch)'),
-      roles: [
-        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
-        { id: 'edit', label: ml('Edit networks', 'Éditer les réseaux', 'Netze bearbeiten') }
-      ]
-    });
+    registerModuleRoles(appSecurityRoles as AppModuleRoles);
     this.roleSub = hasRole$('ampere', 'edit').subscribe((granted) => {
       this.canEdit = granted;
       if (!granted && this.editing) this.setEditing(false);

@@ -24,12 +24,13 @@ import { RouterEvent } from '@wincc-oa/wui-models/events/router-event.js';
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { property, query, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
-import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import appSecurityRoles from './app-security.roles.json';
 import { StreamStore } from './camera-streams/data/stream-store.js';
 import { DEMO_STREAMS } from './camera-streams/data/demo-streams.js';
 import { exportJson, exportStream, parseStreams } from './camera-streams/data/io.js';
 import type { CameraStatus, CameraStream } from './camera-streams/types.js';
-import { MSG, cameraCountMsg, confirmDeleteCameraMsg, localize, localizeDir, ml } from './camera-streams/i18n.js';
+import { MSG, cameraCountMsg, confirmDeleteCameraMsg, localize, localizeDir } from './camera-streams/i18n.js';
 import {
   AuditTrailWriter,
   auditDiff,
@@ -161,22 +162,7 @@ export class WuiCameraStreams extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
-    registerModuleRoles({
-      module: MODULE_ID,
-      title: MSG.page.headerTitle,
-      roles: [
-        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
-        {
-          id: 'edit',
-          label: ml('Edit', 'Éditer', 'Bearbeiten'),
-          description: ml(
-            'Manage cameras and stream options.',
-            'Gérer les caméras et options de flux.',
-            'Kameras und Stream-Optionen verwalten.'
-          )
-        }
-      ]
-    });
+    registerModuleRoles(appSecurityRoles as AppModuleRoles);
     this.roleSubs = new Subscription();
     this.roleSubs.add(hasRole$(MODULE_ID, 'view').subscribe((granted) => (this.canView = granted)));
     this.roleSubs.add(

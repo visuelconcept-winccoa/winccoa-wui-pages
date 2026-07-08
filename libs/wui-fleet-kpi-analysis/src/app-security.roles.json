@@ -1,0 +1,7 @@
+{
+  "module": "fleet-kpi-analysis",
+  "title": { "en_US.utf8": "KPI Analysis", "fr.utf8": "Analyse des KPI", "de.utf8": "KPI-Analyse" },
+  "roles": [
+    { "id": "view", "label": { "en_US.utf8": "View", "fr.utf8": "Consulter", "de.utf8": "Ansehen" } }
+  ]
+}

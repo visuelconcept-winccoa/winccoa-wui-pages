@@ -29,7 +29,8 @@ import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
 import { pageStyles } from '@visuelconcept/wui-fleet-core/styles.js';
 import { FleetStore } from '@visuelconcept/wui-fleet-core/data/fleet-store.js';
-import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import appSecurityRoles from './app-security.roles.json';
 import { canEditFleet, canEditFleet$ } from '@visuelconcept/wui-kit/data/permissions.js';
 import '@visuelconcept/wui-fleet-core/ui/mf-stop-causes.js';
 import {
@@ -56,7 +57,7 @@ import {
   type ClosureConfig
 } from '@visuelconcept/wui-fleet-core/closures.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
-import { MSG, localize, localizeDir, ml, rawStopCountMsg } from './i18n.js';
+import { MSG, localize, localizeDir, rawStopCountMsg } from './i18n.js';
 
 const TAB_TABLE = 0;
 const TAB_CHART = 1;
@@ -156,11 +157,7 @@ export class WuiFleetStopAnalysis extends LitElement {
     super.connectedCallback();
     this.initDefaultRange();
     this.permSub = canEditFleet$().subscribe((allowed) => (this.canEdit = allowed));
-    registerModuleRoles({
-      module: 'fleet-stop-analysis',
-      title: ml('Stop-Cause Analysis', "Analyse des causes d'arrêts", 'Stoppursachen-Analyse'),
-      roles: [{ id: 'view', label: ml('View', 'Consulter', 'Ansehen') }]
-    });
+    registerModuleRoles(appSecurityRoles as AppModuleRoles);
     this.roleSub = hasRole$('fleet-stop-analysis', 'view').subscribe((granted) => {
       this.canView = granted;
     });

@@ -1,0 +1,34 @@
+{
+  "module": "para",
+  "title": { "en_US.utf8": "Parametrization (PARA)", "fr.utf8": "Paramétrage (PARA)", "de.utf8": "Parametrierung (PARA)" },
+  "roles": [
+    { "id": "view", "label": { "en_US.utf8": "View", "fr.utf8": "Consulter", "de.utf8": "Ansehen" } },
+    {
+      "id": "edit-types",
+      "label": { "en_US.utf8": "Edit DP types", "fr.utf8": "Éditer les types de DP", "de.utf8": "DP-Typen bearbeiten" },
+      "description": {
+        "en_US.utf8": "Create/change/delete datapoint types.",
+        "fr.utf8": "Créer/modifier/supprimer des types de datapoints.",
+        "de.utf8": "Datenpunkttypen anlegen/ändern/löschen."
+      }
+    },
+    {
+      "id": "edit-values",
+      "label": { "en_US.utf8": "Write values & configs", "fr.utf8": "Écrire valeurs & configs", "de.utf8": "Werte & Configs schreiben" },
+      "description": {
+        "en_US.utf8": "Set element values and config attributes.",
+        "fr.utf8": "Écrire les valeurs et attributs de configuration.",
+        "de.utf8": "Elementwerte und Config-Attribute schreiben."
+      }
+    },
+    {
+      "id": "dpl-import",
+      "label": { "en_US.utf8": "DPL import/export", "fr.utf8": "Import/export DPL", "de.utf8": "DPL-Import/-Export" },
+      "description": {
+        "en_US.utf8": "ASCII DPL import into the project.",
+        "fr.utf8": "Import DPL ASCII dans le projet.",
+        "de.utf8": "ASCII-DPL-Import in das Projekt."
+      }
+    }
+  ]
+}

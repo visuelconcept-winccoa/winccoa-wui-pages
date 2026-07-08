@@ -22,7 +22,8 @@ import { LitElement, css, html, nothing, type PropertyValues, type TemplateResul
 import { query, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
-import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import appSecurityRoles from './app-security.roles.json';
 import { buildDemoTemplates } from '@visuelconcept/wui-report-builder/data/demo.js';
 import { exportTemplatesJson, parseTemplates } from '@visuelconcept/wui-report-builder/data/io.js';
 import { TemplateStore } from '@visuelconcept/wui-report-builder/data/template-store.js';
@@ -30,7 +31,7 @@ import { blankTemplate, nowLocal, type ReportTemplate } from '@visuelconcept/wui
 import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
 import '@visuelconcept/wui-report-builder/ui/rb-template-editor.js';
 import '@visuelconcept/wui-report-builder/ui/rb-template-table.js';
-import { MSG, confirmDeleteMsg, localize, localizeDir, ml } from './i18n.js';
+import { MSG, confirmDeleteMsg, localize, localizeDir } from './i18n.js';
 
 const REPORTS_ROUTE = '/report-builder';
 /** Application-Security module id — the specs/menuconfig page id. */
@@ -65,18 +66,7 @@ export class WuiReportTemplates extends LitElement {
     this.readUser();
     if (this.user) this.userSub = this.user.user$.subscribe(() => this.readUser());
     // Application Security: declare this module's roles and follow the grants.
-    registerModuleRoles({
-      module: MODULE_ID,
-      title: ml('Report Templates', 'Modèles de rapports', 'Berichtsvorlagen'),
-      roles: [
-        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
-        {
-          id: 'edit',
-          label: ml('Edit', 'Éditer', 'Bearbeiten'),
-          description: ml('Design report templates.', 'Concevoir les modèles de rapports.', 'Berichtsvorlagen gestalten.')
-        }
-      ]
-    });
+    registerModuleRoles(appSecurityRoles as AppModuleRoles);
     this.roleSub = new Subscription();
     this.roleSub.add(hasRole$(MODULE_ID, 'view').subscribe((granted) => (this.roleView = granted)));
     this.roleSub.add(

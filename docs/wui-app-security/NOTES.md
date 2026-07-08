@@ -15,7 +15,10 @@ One DP per module — type `AppSecurity_Module` (Struct, 3 Strings), instance
 - `.module` — the page id (redundant with the DP name, convenient for queries);
 - `.roles` — declaration JSON `{ title: MultiLangString, roles: [{id, label, description?}] }`,
   written by the PROVIDING module (`registerModuleRoles`, best-effort at page
-  load) and by the admin page's **Discover** seeding (static manifest);
+  load) and by the admin page's **Discover** seeding. Both read the SAME
+  per-module `app-security.roles.json` fragment (aggregated into the
+  `app-security-manifest.json` asset by the `page-appsec-merge` Vite plugin) —
+  there is no central manifest;
 - `.assignments` — `{roleId: [group names]}`, written **ONLY** by the admin page.
 
 Two elements = two writers with **no contention** (the original single-JSON
@@ -66,7 +69,8 @@ idea was rejected for that reason). Role/group direction is role → groups
 - The kit `hasRole$` caches the identity fetch and one `dpConnect` per module
   (shareReplay) — cheap to call from many components.
 - `registerModuleRoles` runs under the VISITING user's rights: treat it as a
-  hint; the manifest + Discover is the authoritative seeding path.
+  hint; the aggregated `app-security-manifest.json` + Discover is the
+  authoritative seeding path (both derive from the per-module fragments).
 - Menu-entry gating by role is NOT covered (the shell guard only knows
   connected/canEdit/canPublish/canWrite) — page/feature-level gating only.
 - **Identity has two client paths**: `/me` first (server-side view); when it is

@@ -18,11 +18,11 @@
 //                      file still needs wiring).
 //
 // What it does (all idempotent — safe to re-run after every re-scaffold):
-//   1. deploy tools/dev-wiring/{discover-page-libs,page-menu-merge-plugin}.mjs
+//   1. deploy tools/dev-wiring/{discover-page-libs,page-menu-merge-plugin,page-appsec-merge-plugin}.mjs
 //      -> <workspace>/apps/dashboard-wc/scripts/
 //   2. patch apps/dashboard-wc/vite.shared.ts       (merge discoverPageLibs() into standalonePages)
-//   3. patch apps/dashboard-wc/vite.config.ts       (add pageMenuMergePlugin before copyConfigFilesPlugin)
-//   4. patch apps/dashboard-wc/vite.config.pages.ts (add pageMenuMergePlugin for the build:pages menu merge)
+//   3. patch apps/dashboard-wc/vite.config.ts       (add pageMenuMergePlugin + pageAppsecMergePlugin)
+//   4. patch apps/dashboard-wc/vite.config.pages.ts (add pageMenuMergePlugin + pageAppsecMergePlugin for the build:pages merges)
 //   5. patch tsconfig.base.json                     (paths @visuelconcept/wui-*/* -> libs/wui-*/src/*)
 //   6. patch libs/default-components/src/lib/webui-app-ix.ts (chromeless shell for Mosaïque tiles; embed flag read from the hash so the root redirect / SPA router can't strip it)
 //   7. patch libs/default-components/src/lib/route-generators/route-generator-utils.ts (loadModuleWithFallback: always try import(), only /error on real failure — fixes blank page on first nav)
@@ -60,7 +60,7 @@ const workspace = path.resolve(
 );
 const wiringSourceDirectory = path.join(__dirname, 'dev-wiring');
 
-const HELPERS = ['discover-page-libs.mjs', 'page-menu-merge-plugin.mjs'];
+const HELPERS = ['discover-page-libs.mjs', 'page-menu-merge-plugin.mjs', 'page-appsec-merge-plugin.mjs'];
 const PUBLIC_URL_PREFIX = '/data/dashboard-wc';
 
 let changed = 0;
@@ -247,6 +247,64 @@ function patchViteConfigPagesChunkHash() {
         `assetFileNames: 'pages/assets/[name].[ext]',`,
         `assetFileNames: 'pages/assets/[name]-[hash].[ext]',`,
         'vite.config.pages.ts (assetFileNames)'
+      );
+      return out;
+    }
+  );
+}
+
+// --- 4c. vite.config.ts — app-security manifest merge (dev) -------------------
+// Serves <prefix>/app-security-manifest.json by aggregating every
+// libs/wui-<page>/src/app-security.roles.json — the app-security "Discover"
+// seed, with no central manifest. Runs alongside pageMenuMergePlugin (patched
+// in first, so its plugin line is the anchor).
+function patchViteConfigAppsec() {
+  patchFile(
+    'apps/dashboard-wc/vite.config.ts',
+    (c) => c.includes('page-appsec-merge-plugin.mjs'),
+    (c) => {
+      let out = replaceAnchor(
+        c,
+        `import { pageMenuMergePlugin } from './scripts/page-menu-merge-plugin.mjs';`,
+        `import { pageMenuMergePlugin } from './scripts/page-menu-merge-plugin.mjs';\nimport { pageAppsecMergePlugin } from './scripts/page-appsec-merge-plugin.mjs';`,
+        'vite.config.ts (appsec import)'
+      );
+      out = replaceAnchor(
+        out,
+        `      pageMenuMergePlugin({ publicUrlPrefix: '${PUBLIC_URL_PREFIX}' }),`,
+        `      pageMenuMergePlugin({ publicUrlPrefix: '${PUBLIC_URL_PREFIX}' }),\n` +
+          `      // Aggregate each libs/wui-<page>/src/app-security.roles.json into\n` +
+          `      // <prefix>/app-security-manifest.json (app-security "Discover" seed; dev only).\n` +
+          `      pageAppsecMergePlugin({ publicUrlPrefix: '${PUBLIC_URL_PREFIX}' }),`,
+        'vite.config.ts (appsec plugin)'
+      );
+      return out;
+    }
+  );
+}
+
+// --- 4d. vite.config.pages.ts — app-security manifest merge (build) -----------
+// Build counterpart: emits <outDir>/app-security-manifest.json. Anchored on the
+// pageMenuMergePlugin line patched in by patchViteConfigPages (last array item,
+// no trailing comma) — add a comma and append the appsec plugin.
+function patchViteConfigPagesAppsec() {
+  patchFile(
+    'apps/dashboard-wc/vite.config.pages.ts',
+    (c) => c.includes('page-appsec-merge-plugin.mjs'),
+    (c) => {
+      let out = replaceAnchor(
+        c,
+        `import { pageMenuMergePlugin } from './scripts/page-menu-merge-plugin.mjs';`,
+        `import { pageMenuMergePlugin } from './scripts/page-menu-merge-plugin.mjs';\nimport { pageAppsecMergePlugin } from './scripts/page-appsec-merge-plugin.mjs';`,
+        'vite.config.pages.ts (appsec import)'
+      );
+      out = replaceAnchor(
+        out,
+        `    pageMenuMergePlugin({ publicUrlPrefix: '${PUBLIC_URL_PREFIX}' })`,
+        `    pageMenuMergePlugin({ publicUrlPrefix: '${PUBLIC_URL_PREFIX}' }),\n` +
+          `    // Emit <outDir>/app-security-manifest.json (build counterpart of the dev merge).\n` +
+          `    pageAppsecMergePlugin({ publicUrlPrefix: '${PUBLIC_URL_PREFIX}' })`,
+        'vite.config.pages.ts (appsec plugin)'
       );
       return out;
     }
@@ -452,6 +510,8 @@ try {
   patchViteConfig();
   patchViteConfigPages();
   patchViteConfigPagesChunkHash();
+  patchViteConfigAppsec();
+  patchViteConfigPagesAppsec();
   patchTsconfigPaths();
   patchWebuiAppEmbed();
   patchRouteModuleLoader();

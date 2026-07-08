@@ -22,7 +22,7 @@ page itself.
 | `hasRole$(module, role)` / `registerModuleRoles(decl)` | `@visuelconcept/wui-kit/data/app-security.js` | live UI gating + self-registration at page load |
 | `/api/app-security` (`/me`, `/groups`) | webserver module | resolves the SESSION user + their OA groups server-side (`_Users`/`_Groups`) |
 | `requireRole(module, role)` | `backend/routes/appSecurityGuard.ts` (copied into each consuming module) | express middleware → 403 server-side |
-| Static manifest | `libs/wui-app-security/src/app-security/manifest.ts` | "Discover modules" seeding — covers pages never visited |
+| Per-module fragment | `libs/wui-<page>/src/app-security.roles.json` (aggregated into `app-security-manifest.json` by the `page-appsec-merge` Vite plugin) | single source of truth for a module's roles — feeds both self-registration and the "Discover modules" seeding; no central manifest |
 
 ## Install
 

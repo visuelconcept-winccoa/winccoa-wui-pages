@@ -27,8 +27,9 @@ import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
 import { templateSeed } from './machine-fleet-3d/data/atelier-templates.js';
 import { normDp, toNumber } from './machine-fleet-3d/data/dp-utils.js';
-import { MSG, localizeDir, ml } from './machine-fleet-3d/i18n.js';
-import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { MSG, localizeDir } from './machine-fleet-3d/i18n.js';
+import appSecurityRoles from './app-security.roles.json';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
 import { canEditFleet, canEditFleet$ } from '@visuelconcept/wui-kit/data/permissions.js';
 import { FleetStore } from '@visuelconcept/wui-fleet-core/data/fleet-store.js';
 import {
@@ -148,15 +149,7 @@ export class WuiMachineFleet3d extends LitElement {
     super.connectedCallback();
     this.permSub = canEditFleet$().subscribe((allowed) => (this.canEdit = allowed));
     // Application Security: declare this module's roles and follow the grants.
-    registerModuleRoles({
-      module: MODULE_ID,
-      title: ml('Machine Fleet', 'Parc machine', 'Maschinenpark'),
-      roles: [
-        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
-        { id: 'edit', label: ml('Edit workshops', 'Éditer les ateliers', 'Werkstätten bearbeiten') },
-        { id: 'ai', label: ml('AI assistant', 'Assistant IA', 'KI-Assistent') }
-      ]
-    });
+    registerModuleRoles(appSecurityRoles as AppModuleRoles);
     this.permSub.add(hasRole$(MODULE_ID, 'view').subscribe((granted) => (this.canView = granted)));
     this.permSub.add(hasRole$(MODULE_ID, 'edit').subscribe((granted) => (this.roleEdit = granted)));
     this.permSub.add(hasRole$(MODULE_ID, 'ai').subscribe((granted) => (this.roleAi = granted)));

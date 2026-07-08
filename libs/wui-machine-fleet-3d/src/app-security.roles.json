@@ -1,0 +1,25 @@
+{
+  "module": "machine-fleet-3d",
+  "title": { "en_US.utf8": "Machine Fleet", "fr.utf8": "Parc machine", "de.utf8": "Maschinenpark" },
+  "roles": [
+    { "id": "view", "label": { "en_US.utf8": "View", "fr.utf8": "Consulter", "de.utf8": "Ansehen" } },
+    {
+      "id": "edit",
+      "label": { "en_US.utf8": "Edit workshops", "fr.utf8": "Éditer les ateliers", "de.utf8": "Werkstätten bearbeiten" },
+      "description": {
+        "en_US.utf8": "Edit 3D layout, machines and configuration.",
+        "fr.utf8": "Éditer l’implantation 3D, machines et configuration.",
+        "de.utf8": "3D-Layout, Maschinen und Konfiguration bearbeiten."
+      }
+    },
+    {
+      "id": "ai",
+      "label": { "en_US.utf8": "AI assistant", "fr.utf8": "Assistant IA", "de.utf8": "KI-Assistent" },
+      "description": {
+        "en_US.utf8": "Use the embedded AI assistant.",
+        "fr.utf8": "Utiliser l’assistant IA intégré.",
+        "de.utf8": "Den integrierten KI-Assistenten verwenden."
+      }
+    }
+  ]
+}

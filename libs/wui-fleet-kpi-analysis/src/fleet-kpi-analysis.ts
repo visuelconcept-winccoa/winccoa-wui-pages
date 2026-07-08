@@ -24,7 +24,8 @@ import { LitElement, html, type PropertyValues, type TemplateResult } from 'lit'
 import { customElement, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
-import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import appSecurityRoles from './app-security.roles.json';
 import { pageStyles } from '@visuelconcept/wui-fleet-core/styles.js';
 import { FleetStore } from '@visuelconcept/wui-fleet-core/data/fleet-store.js';
 import {
@@ -49,7 +50,7 @@ import {
   normaliseClosures,
   type ClosureConfig
 } from '@visuelconcept/wui-fleet-core/closures.js';
-import { MSG, localize, localizeDir, ml } from './fleet-kpi-analysis/i18n.js';
+import { MSG, localize, localizeDir } from './fleet-kpi-analysis/i18n.js';
 
 const TAB_TABLE = 0;
 const TAB_CHART = 1;
@@ -101,11 +102,7 @@ export class WuiFleetKpiAnalysis extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
-    registerModuleRoles({
-      module: 'fleet-kpi-analysis',
-      title: ml('KPI Analysis', 'Analyse des KPI', 'KPI-Analyse'),
-      roles: [{ id: 'view', label: ml('View', 'Consulter', 'Ansehen') }]
-    });
+    registerModuleRoles(appSecurityRoles as AppModuleRoles);
     this.roleSub = hasRole$('fleet-kpi-analysis', 'view').subscribe((granted) => {
       this.canView = granted;
     });

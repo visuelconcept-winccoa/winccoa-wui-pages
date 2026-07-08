@@ -26,10 +26,10 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
-import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import appSecurityRoles from './app-security.roles.json';
 import {
   MSG,
-  ml,
   localize,
   localizeDir,
   atelierScopeLabel,
@@ -125,22 +125,7 @@ export class WuiFleetClosures extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     this.year = new Date().getFullYear();
-    registerModuleRoles({
-      module: MODULE_ID,
-      title: ml('Non-Worked Periods', 'Jours non travaillés', 'Arbeitsfreie Zeiträume'),
-      roles: [
-        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
-        {
-          id: 'edit',
-          label: ml('Edit', 'Éditer', 'Bearbeiten'),
-          description: ml(
-            'Manage the non-working periods',
-            'Gérer les périodes non travaillées',
-            'Arbeitsfreie Zeiträume verwalten'
-          )
-        }
-      ]
-    });
+    registerModuleRoles(appSecurityRoles as AppModuleRoles);
     this.roleSubs = new Subscription();
     this.roleSubs.add(
       hasRole$(MODULE_ID, 'view').subscribe((granted) => (this.canView = granted))

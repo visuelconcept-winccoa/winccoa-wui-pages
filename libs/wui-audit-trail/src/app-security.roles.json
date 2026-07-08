@@ -1,0 +1,16 @@
+{
+  "module": "audit-trail",
+  "title": { "en_US.utf8": "Audit Trail", "fr.utf8": "Audit Trail", "de.utf8": "Audit Trail" },
+  "roles": [
+    { "id": "view", "label": { "en_US.utf8": "View", "fr.utf8": "Consulter", "de.utf8": "Ansehen" } },
+    {
+      "id": "manage",
+      "label": { "en_US.utf8": "Manage audit DPs", "fr.utf8": "Gérer les DP d’audit", "de.utf8": "Audit-DPs verwalten" },
+      "description": {
+        "en_US.utf8": "Create audit-trail datapoints.",
+        "fr.utf8": "Créer les datapoints de piste d’audit.",
+        "de.utf8": "Audit-Trail-Datenpunkte anlegen."
+      }
+    }
+  ]
+}

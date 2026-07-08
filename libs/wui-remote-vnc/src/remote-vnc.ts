@@ -23,11 +23,12 @@ import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { property, query, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
-import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import appSecurityRoles from './app-security.roles.json';
 import { ConnectionStore } from './remote-vnc/data/connection-store.js';
 import { DEMO_CONNECTIONS } from './remote-vnc/data/demo-connections.js';
 import { exportConnection, exportJson, parseConnections } from './remote-vnc/data/io.js';
-import { MSG, confirmDeleteMsg, localize, localizeDir, ml } from './remote-vnc/i18n.js';
+import { MSG, confirmDeleteMsg, localize, localizeDir } from './remote-vnc/i18n.js';
 import type { VncConnection, VncStatus } from './remote-vnc/types.js';
 import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
 import './remote-vnc/ui/rv-connection-dialog.js';
@@ -133,23 +134,7 @@ export class WuiRemoteVnc extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
-    registerModuleRoles({
-      module: MODULE_ID,
-      title: ml('Remote VNC', 'VNC distant', 'Remote-VNC'),
-      roles: [
-        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
-        {
-          id: 'connect',
-          label: ml('Open sessions', 'Ouvrir des sessions', 'Sitzungen öffnen'),
-          description: ml('Connect to remote desktops.', 'Se connecter aux postes distants.', 'Mit entfernten Desktops verbinden.')
-        },
-        {
-          id: 'edit',
-          label: ml('Edit', 'Éditer', 'Bearbeiten'),
-          description: ml('Manage the connection list.', 'Gérer la liste des connexions.', 'Verbindungsliste verwalten.')
-        }
-      ]
-    });
+    registerModuleRoles(appSecurityRoles as AppModuleRoles);
     this.roleSub = new Subscription();
     this.roleSub.add(hasRole$(MODULE_ID, 'view').subscribe((granted) => (this.canView = granted)));
     this.roleSub.add(hasRole$(MODULE_ID, 'connect').subscribe((granted) => (this.canConnect = granted)));

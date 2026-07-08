@@ -1,0 +1,25 @@
+{
+  "module": "report-builder",
+  "title": { "en_US.utf8": "Reports", "fr.utf8": "Rapports", "de.utf8": "Berichte" },
+  "roles": [
+    { "id": "view", "label": { "en_US.utf8": "View", "fr.utf8": "Consulter", "de.utf8": "Ansehen" } },
+    {
+      "id": "fill",
+      "label": { "en_US.utf8": "Fill reports", "fr.utf8": "Remplir les rapports", "de.utf8": "Berichte ausfüllen" },
+      "description": {
+        "en_US.utf8": "Create report instances and enter data.",
+        "fr.utf8": "Créer des instances de rapport et saisir les données.",
+        "de.utf8": "Berichtsinstanzen anlegen und Daten erfassen."
+      }
+    },
+    {
+      "id": "sign",
+      "label": { "en_US.utf8": "Sign reports", "fr.utf8": "Signer les rapports", "de.utf8": "Berichte signieren" },
+      "description": {
+        "en_US.utf8": "Advance the signing workflow.",
+        "fr.utf8": "Faire avancer le circuit de signature.",
+        "de.utf8": "Den Signatur-Workflow fortführen."
+      }
+    }
+  ]
+}

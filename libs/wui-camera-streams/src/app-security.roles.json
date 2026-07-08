@@ -1,0 +1,16 @@
+{
+  "module": "camera-streams",
+  "title": { "en_US.utf8": "Camera Streams (RTSP)", "fr.utf8": "Flux caméras (RTSP)", "de.utf8": "Kamera-Streams (RTSP)" },
+  "roles": [
+    { "id": "view", "label": { "en_US.utf8": "View", "fr.utf8": "Consulter", "de.utf8": "Ansehen" } },
+    {
+      "id": "edit",
+      "label": { "en_US.utf8": "Edit", "fr.utf8": "Éditer", "de.utf8": "Bearbeiten" },
+      "description": {
+        "en_US.utf8": "Manage cameras and stream options.",
+        "fr.utf8": "Gérer les caméras et options de flux.",
+        "de.utf8": "Kameras und Stream-Optionen verwalten."
+      }
+    }
+  ]
+}

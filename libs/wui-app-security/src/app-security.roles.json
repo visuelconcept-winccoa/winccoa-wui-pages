@@ -1,0 +1,15 @@
+{
+  "module": "app-security",
+  "title": { "en_US.utf8": "Application Security", "fr.utf8": "Sécurité applicative", "de.utf8": "Anwendungssicherheit" },
+  "roles": [
+    {
+      "id": "manage",
+      "label": { "en_US.utf8": "Manage role assignments", "fr.utf8": "Gérer les associations de rôles", "de.utf8": "Rollenzuordnungen verwalten" },
+      "description": {
+        "en_US.utf8": "Assign WinCC OA groups to module roles. Assign this role first — it protects this page itself.",
+        "fr.utf8": "Associer les groupes WinCC OA aux rôles des modules. À assigner en premier — il protège cette page elle-même.",
+        "de.utf8": "WinCC-OA-Gruppen den Modulrollen zuordnen. Zuerst zuweisen — sie schützt diese Seite selbst."
+      }
+    }
+  ]
+}

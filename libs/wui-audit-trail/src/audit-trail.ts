@@ -29,13 +29,14 @@ import { LitElement, css, html, type PropertyValues, type TemplateResult } from 
 import { customElement, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
-import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import appSecurityRoles from './app-security.roles.json';
 import './audit-trail/at-manage-dialog.js';
 import { AuditConfigStore } from './audit-trail/config-store.js';
 import { listAuditDps } from './audit-trail/dp-admin.js';
 import { auditColumns, buildMergedPivot, type PivotResult } from './audit-trail/engine.js';
 import { exportAuditCsv, exportAuditJson, printAudit } from './audit-trail/export.js';
-import { MSG, colLabel, liveSuffixMsg, localize, localizeDir, ml, recordsMsg, shownOfMsg, truncatedMsg } from './audit-trail/i18n.js';
+import { MSG, colLabel, liveSuffixMsg, localize, localizeDir, recordsMsg, shownOfMsg, truncatedMsg } from './audit-trail/i18n.js';
 import {
   AUDIT_DP_TYPE,
   AUDIT_FIELDS,
@@ -157,14 +158,7 @@ export class WuiAuditTrail extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     // Application Security: declare this module's roles (docs/wui-app-security/INTEGRATION.md).
-    registerModuleRoles({
-      module: MODULE_ID,
-      title: ml(PAGE_TITLE, PAGE_TITLE, PAGE_TITLE),
-      roles: [
-        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
-        { id: 'manage', label: ml('Manage audit DPs', 'Gérer les DP d’audit', 'Audit-DPs verwalten') }
-      ]
-    });
+    registerModuleRoles(appSecurityRoles as AppModuleRoles);
     this.roleSub = hasRole$(MODULE_ID, 'view').subscribe((granted) => (this.roleView = granted));
     this.roleSub.add(
       hasRole$(MODULE_ID, 'manage').subscribe((granted) => {

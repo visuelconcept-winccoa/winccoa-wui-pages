@@ -1,0 +1,16 @@
+{
+  "module": "mosaic",
+  "title": { "en_US.utf8": "Mosaic", "fr.utf8": "Mosaïque", "de.utf8": "Mosaik" },
+  "roles": [
+    { "id": "view", "label": { "en_US.utf8": "View", "fr.utf8": "Consulter", "de.utf8": "Ansehen" } },
+    {
+      "id": "edit",
+      "label": { "en_US.utf8": "Edit", "fr.utf8": "Éditer", "de.utf8": "Bearbeiten" },
+      "description": {
+        "en_US.utf8": "Compose display walls",
+        "fr.utf8": "Composer les murs d’écrans",
+        "de.utf8": "Bildschirmwände zusammenstellen"
+      }
+    }
+  ]
+}

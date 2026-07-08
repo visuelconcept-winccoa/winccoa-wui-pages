@@ -1,0 +1,7 @@
+{
+  "module": "fleet-stop-analysis",
+  "title": { "en_US.utf8": "Stop-Cause Analysis", "fr.utf8": "Analyse des causes d'arrêts", "de.utf8": "Stoppursachen-Analyse" },
+  "roles": [
+    { "id": "view", "label": { "en_US.utf8": "View", "fr.utf8": "Consulter", "de.utf8": "Ansehen" } }
+  ]
+}

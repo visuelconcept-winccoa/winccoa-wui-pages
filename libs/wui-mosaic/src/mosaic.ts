@@ -25,7 +25,8 @@ import { RouterEvent } from '@wincc-oa/wui-models/events/router-event.js';
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { property, query, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
-import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import appSecurityRoles from './app-security.roles.json';
 import { MosaicStore } from './mosaic/data/mosaic-store.js';
 import { DEMO_MOSAICS } from './mosaic/data/demo-mosaics.js';
 import { exportJson, exportMosaic, parseMosaics } from './mosaic/data/io.js';
@@ -36,7 +37,6 @@ import {
   confirmDeleteMsg,
   localize,
   localizeDir,
-  ml,
   mosaicCountMsg,
   tileCountMsg
 } from './mosaic/i18n.js';
@@ -155,18 +155,7 @@ export class WuiMosaic extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     // Application Security: declare this module's roles (docs/wui-app-security/INTEGRATION.md).
-    registerModuleRoles({
-      module: 'mosaic',
-      title: ml('Mosaic', 'Mosaïque', 'Mosaik'),
-      roles: [
-        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
-        {
-          id: 'edit',
-          label: ml('Edit', 'Éditer', 'Bearbeiten'),
-          description: ml('Compose display walls', "Composer les murs d'écrans", 'Bildschirmwände zusammenstellen')
-        }
-      ]
-    });
+    registerModuleRoles(appSecurityRoles as AppModuleRoles);
     this.roleSub = new Subscription();
     this.roleSub.add(
       hasRole$('mosaic', 'view').subscribe((granted) => {

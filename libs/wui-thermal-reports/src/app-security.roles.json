@@ -1,0 +1,16 @@
+{
+  "module": "thermal-reports",
+  "title": { "en_US.utf8": "Thermal Treatment Reports", "fr.utf8": "Rapports de traitement thermique", "de.utf8": "Wärmebehandlungsberichte" },
+  "roles": [
+    { "id": "view", "label": { "en_US.utf8": "View", "fr.utf8": "Consulter", "de.utf8": "Ansehen" } },
+    {
+      "id": "edit",
+      "label": { "en_US.utf8": "Edit", "fr.utf8": "Éditer", "de.utf8": "Bearbeiten" },
+      "description": {
+        "en_US.utf8": "Create / validate treatment reports",
+        "fr.utf8": "Créer / valider des rapports de traitement",
+        "de.utf8": "Behandlungsberichte erstellen / validieren"
+      }
+    }
+  ]
+}

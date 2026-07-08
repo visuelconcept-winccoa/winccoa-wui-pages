@@ -29,8 +29,9 @@ import { query, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import type { Atelier } from '@visuelconcept/wui-fleet-core/types.js';
 import { FleetStore } from '@visuelconcept/wui-fleet-core/data/fleet-store.js';
-import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
-import { MSG, confirmDeleteMsg, localize, localizeDir, ml } from './thermal-reports/i18n.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import appSecurityRoles from './app-security.roles.json';
+import { MSG, confirmDeleteMsg, localize, localizeDir } from './thermal-reports/i18n.js';
 import { buildDemoReports } from './thermal-reports/data/demo-reports.js';
 import { exportCsv, exportJson, parseReports } from './thermal-reports/data/io.js';
 import { ReportStore } from './thermal-reports/data/report-store.js';
@@ -158,22 +159,7 @@ export class WuiThermalReports extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
-    registerModuleRoles({
-      module: MODULE_ID,
-      title: ml('Thermal Treatment Reports', 'Rapports de traitement thermique', 'Wärmebehandlungsberichte'),
-      roles: [
-        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
-        {
-          id: 'edit',
-          label: ml('Edit', 'Éditer', 'Bearbeiten'),
-          description: ml(
-            'Create / validate treatment reports',
-            'Créer / valider des rapports de traitement',
-            'Behandlungsberichte erstellen / validieren'
-          )
-        }
-      ]
-    });
+    registerModuleRoles(appSecurityRoles as AppModuleRoles);
     this.roleSubs.add(hasRole$(MODULE_ID, 'view').subscribe((granted) => (this.canView = granted)));
     this.roleSubs.add(
       hasRole$(MODULE_ID, 'edit').subscribe((granted) => {

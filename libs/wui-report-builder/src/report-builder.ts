@@ -25,8 +25,9 @@ import { LitElement, css, html, nothing, type PropertyValues, type TemplateResul
 import { property, query, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
-import { hasRole$, registerModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
-import { MSG, confirmDeleteReportMsg, localize, localizeDir, ml } from './i18n.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import appSecurityRoles from './app-security.roles.json';
+import { MSG, confirmDeleteReportMsg, localize, localizeDir } from './i18n.js';
 import { buildDemoReports, buildDemoTemplates } from './data/demo.js';
 import { exportReportsCsv, exportReportsJson, parseReports } from './data/io.js';
 import { ReportStore } from './data/report-store.js';
@@ -77,15 +78,7 @@ export class WuiReportBuilder extends LitElement {
     this.readUser();
     if (this.user) this.userSub = this.user.user$.subscribe(() => this.readUser());
     // Application Security: declare this module's roles and follow the grants live.
-    registerModuleRoles({
-      module: MODULE_ID,
-      title: ml('Reports', 'Rapports', 'Berichte'),
-      roles: [
-        { id: 'view', label: ml('View', 'Consulter', 'Ansehen') },
-        { id: 'fill', label: ml('Fill reports', 'Remplir les rapports', 'Berichte ausfüllen') },
-        { id: 'sign', label: ml('Sign reports', 'Signer les rapports', 'Berichte signieren') }
-      ]
-    });
+    registerModuleRoles(appSecurityRoles as AppModuleRoles);
     this.roleSub = new Subscription();
     this.roleSub.add(hasRole$(MODULE_ID, 'view').subscribe((granted) => (this.roleView = granted)));
     this.roleSub.add(

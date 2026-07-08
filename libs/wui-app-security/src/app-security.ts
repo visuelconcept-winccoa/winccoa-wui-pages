@@ -26,10 +26,11 @@ import {
   hasRole$,
   identity$,
   registerModuleRoles,
+  type AppModuleRoles,
   type AppRoleAssignments,
   type AppSecurityIdentity
 } from '@visuelconcept/wui-kit/data/app-security.js';
-import { MODULE_MANIFEST } from './app-security/manifest.js';
+import appSecurityRoles from './app-security.roles.json';
 import { AppSecurityStore, type ModuleEntry, type OaGroup } from './app-security/store.js';
 import { MSG, catalogCountMsg, discoveredMsg, localize, localizeDir } from './app-security/i18n.js';
 
@@ -59,9 +60,9 @@ export class WuiAppSecurity extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
-    // Self-registration: this page declares its own role like any module.
-    const self = MODULE_MANIFEST.find((m) => m.module === 'app-security');
-    if (self) registerModuleRoles(self);
+    // Self-registration: this page declares its own role like any module,
+    // from its own app-security.roles.json fragment.
+    registerModuleRoles(appSecurityRoles as AppModuleRoles);
     this.roleSub = hasRole$('app-security', 'manage').subscribe((granted) => (this.canManage = granted));
     // Reactive identity: re-emits when the shell session user changes
     // (login/logout without a SPA reload) or loads late — the banner always
