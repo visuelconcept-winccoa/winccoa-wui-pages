@@ -42,13 +42,18 @@ nesting cycles are broken by promoting a type to a reference (with a warning).
 4. **Source** — choose *NodeSet2 XML file* (drop a `.xml`, offline) or
    *Live OPC UA server* (browse the chosen connection).
 5. **Select** (live only) — browse the address space (with a live
-   connection-state banner) and **tick one or more instances** to model as
-   datapoint types; each selected instance's subtree becomes a type + a datapoint
-   (instances with an identical structure share one type — N pumps → 1 type + N
-   datapoints).
-6. **Review** — adjust the DPType name prefix, the hybrid option and the
-   *Write address configs* toggle, inspect the datapoint types / datapoints /
-   address configs to be created, and run a **Preview (dry-run)**.
+   connection-state banner) and **tick one or more instances**, then choose the
+   **assembly**:
+   - *Flat* — one datapoint per node (identical structures share one type —
+     N pumps → 1 type + N datapoints);
+   - *Sub-levels* — the nodes become named sub-elements (renameable) of **one**
+     type and a **single** datapoint (e.g. to add them under an existing type).
+6. **Review** (sections stacked vertically) — adjust the DPType name prefix
+   (defaults to the connection name), the hybrid option and *Write address
+   configs*; per type, **create a new type or map to an existing one** (with
+   *extend* to add missing elements); **rename each datapoint**; set each address
+   **direction** (default IN/OUT, or IN) individually or in bulk for the filtered/
+   checked rows; then run a **Preview (dry-run)**.
 7. **Apply** — after a confirmation, the types, datapoints and (bound) address
    configs are created in the project. A result report lists what was created,
    skipped (already existed) or failed.

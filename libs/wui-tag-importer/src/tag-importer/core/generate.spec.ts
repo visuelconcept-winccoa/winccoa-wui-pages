@@ -116,3 +116,45 @@ describe('DpTypeGenerator — reuse mapping', () => {
     expect(plan.dps.find((d) => d.dpName === 'a1')?.dpType).not.toBe('A');
   });
 });
+
+describe('DpTypeGenerator — grouped (sub-levels) model', () => {
+  it('builds one type with nested groups, one datapoint, and addresses under the child paths', () => {
+    const grouped: TagModel = {
+      source: 'opcua-online',
+      namespaces: [],
+      warnings: [],
+      types: [
+        {
+          id: 'online:grouped',
+          name: 'Dev',
+          displayName: 'Dev',
+          members: [
+            { kind: 'group', name: 'Motor', children: [leaf('Speed')] },
+            { kind: 'group', name: 'Pump', children: [leaf('Flow')] }
+          ]
+        }
+      ],
+      instances: [
+        {
+          name: 'Dev',
+          displayName: 'Dev',
+          typeId: 'online:grouped',
+          bindings: {
+            'Motor.Speed': { protocol: 'opcua', nodeId: 'ns=2;s=Dev.Motor.Speed', access: 'r', sourceDataType: 'Double' },
+            'Pump.Flow': { protocol: 'opcua', nodeId: 'ns=2;s=Dev.Pump.Flow', access: 'r', sourceDataType: 'Double' }
+          }
+        }
+      ]
+    };
+    const plan = buildPlan(grouped, { typePrefix: '', hybrid: true, connection: 'Sim' });
+
+    expect(plan.types).toHaveLength(1);
+    const struct = plan.types[0].structure;
+    expect((struct.children ?? []).map((c) => c.name).sort()).toEqual(['Motor', 'Pump']);
+    expect((struct.children ?? []).find((c) => c.name === 'Motor')?.type).toBe('Struct');
+    // A SINGLE datapoint (not one per node), with addresses under the child paths.
+    expect(plan.dps).toHaveLength(1);
+    const dp = plan.dps[0].dpName;
+    expect(plan.addresses.map((a) => a.dpe).sort()).toEqual([`${dp}.Motor.Speed`, `${dp}.Pump.Flow`]);
+  });
+});

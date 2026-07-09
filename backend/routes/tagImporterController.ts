@@ -519,7 +519,22 @@ export class TagImporterController {
   private async applyAddresses(plan: ImportPlan, dry: boolean, results: ApplyItemResult[]): Promise<void> {
     if (!plan.addresses || plan.addresses.length === 0) return;
     if (dry) {
-      for (const a of plan.addresses) results.push({ kind: 'address', name: a.dpe, status: 'created' });
+      // A reused-WITHOUT-extend target keeps only the DPEs it already has, so an
+      // address on a model leaf the target lacks is skipped at apply time — the
+      // preview must reflect that instead of always reporting 'created'.
+      const dpTypeOf = new Map(plan.dps.map((d) => [d.dpName, d.dpType]));
+      const targetPaths = new Map<string, Set<string>>();
+      for (const t of plan.types) {
+        if (t.reuse && !t.extend) targetPaths.set(t.typeName, this.typeElementPaths(t.typeName));
+      }
+      for (const a of plan.addresses) {
+        const dot = a.dpe.indexOf('.');
+        const root = dot >= 0 ? a.dpe.slice(0, dot) : a.dpe;
+        const path = dot >= 0 ? a.dpe.slice(dot + 1) : '';
+        const paths = targetPaths.get(dpTypeOf.get(root) ?? '');
+        const willBind = paths === undefined || paths.has(path);
+        results.push({ kind: 'address', name: a.dpe, status: willBind ? 'created' : 'skipped' });
+      }
       return;
     }
     if (!plan.connection) {
@@ -618,6 +633,24 @@ export class TagImporterController {
     } catch {
       return false;
     }
+  }
+
+  /** All element dot-paths of an existing datapoint type (used by the dry-run reuse check). */
+  private typeElementPaths(typeName: string): Set<string> {
+    const out = new Set<string>();
+    const rec = (node: any, prefix: string): void => {
+      for (const c of (node.children ?? []) as any[]) {
+        const p = prefix ? `${prefix}.${c.name}` : c.name;
+        out.add(p);
+        rec(c, p);
+      }
+    };
+    try {
+      rec(win().dpTypeGet(typeName), '');
+    } catch {
+      /* type unreadable — treat as no known paths */
+    }
+    return out;
   }
 
   // --- OPC UA manager number + poll group (ported) ----------------------------

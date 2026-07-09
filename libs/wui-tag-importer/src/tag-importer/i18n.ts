@@ -120,6 +120,11 @@ export const MSG = {
       'Wählen Sie eine oder mehrere Instanzen (Knoten ankreuzen) als Datenpunkttypen'
     ),
     selected: ml('selected', 'sélectionné(s)', 'ausgewählt'),
+    assembly: ml('Assembly', 'Assemblage', 'Zusammensetzung'),
+    perNode: ml('Flat — one datapoint per node', 'À plat — un datapoint par nœud', 'Flach — ein Datenpunkt pro Knoten'),
+    grouped: ml('Sub-levels — one datapoint, nodes nested', 'Sous-niveaux — un datapoint, nœuds imbriqués', 'Unterebenen — ein Datenpunkt, Knoten verschachtelt'),
+    groupName: ml('Datapoint / type name', 'Nom du datapoint / type', 'Datenpunkt-/Typname'),
+    childName: ml('Sub-element name', 'Nom du sous-élément', 'Name des Unterelements'),
     browseError: ml('Browsing the server failed.', 'Le parcours du serveur a échoué.', 'Das Durchsuchen des Servers ist fehlgeschlagen.')
   },
   options: {

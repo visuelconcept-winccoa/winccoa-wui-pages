@@ -43,6 +43,8 @@ export interface PlanType {
 
 /** One datapoint instance to create. */
 export interface PlanDp {
+  /** Stable per-instance key (source NodeId) for name overrides, survives recompute. */
+  key: string;
   dpName: string;
   displayName: string;
   dpType: string;

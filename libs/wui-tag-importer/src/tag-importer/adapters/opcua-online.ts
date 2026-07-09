@@ -14,7 +14,7 @@
 
 import type { InstanceDef, LeafMember, Member, ProtocolAddress, TagAccess, TagModel, TypeDef } from '../core/model.js';
 import { opcUaLeafType, isUnmappedOpcUaType } from '../core/opcua-mapping.js';
-import { stripBrowseNs } from '../core/naming.js';
+import { sanitizeIdentifier, stripBrowseNs } from '../core/naming.js';
 import { browse, type BrowseNode } from '../data/api.js';
 
 /** A node picked in the browse tree to model as (and instantiate) a type. */
@@ -23,10 +23,25 @@ export interface OnlineNodeRef {
   displayName: string;
 }
 
+/**
+ * How the selected nodes are assembled:
+ *  - `perNode` (default, "flat"): one datapoint type per distinct structure and
+ *    one datapoint per selected node;
+ *  - `grouped` ("sub-levels"): all selected nodes become named child sub-groups
+ *    of ONE type, and a SINGLE datapoint is created.
+ */
+export type AssemblyMode = 'perNode' | 'grouped';
+
 export interface OnlineOptions {
   connection: string;
-  /** The selected instances; each becomes a datapoint (types are deduped by structure). */
+  /** The selected instances. */
   nodes: OnlineNodeRef[];
+  /** perNode (default) or grouped. */
+  assembly?: AssemblyMode;
+  /** grouped: sub-element name per node (default = sanitised display name). */
+  childNames?: Record<string, string>;
+  /** grouped: the single type/DP display name (default = the connection name). */
+  groupName?: string;
   /** Max subtree depth to browse (guards huge address spaces). */
   maxDepth?: number;
   /** Default access for browsed variables (online browse omits AccessLevel). */
@@ -61,8 +76,17 @@ async function walk(
     warnings.push(`Browse of "${nodeId}" failed: ${error instanceof Error ? error.message : String(error)}`);
     return;
   }
+  const used = new Set<string>();
   for (const child of children) {
-    const name = stripBrowseNs(child.displayName);
+    // Element names must be valid WinCC OA identifiers and unique within a level;
+    // the SAME sanitised name is used for the DPE and the binding path segment.
+    let name = sanitizeIdentifier(stripBrowseNs(child.displayName));
+    if (used.has(name)) {
+      let n = 2;
+      while (used.has(`${name}_${n}`)) n += 1;
+      name = `${name}_${n}`;
+    }
+    used.add(name);
     const path = prefix ? `${prefix}.${name}` : name;
     if (isVariable(child.nodeClass)) {
       if (isUnmappedOpcUaType(child.dataType)) {
@@ -107,6 +131,8 @@ export async function buildOnlineModel(opts: OnlineOptions): Promise<TagModel> {
   const warnings: string[] = [];
   const maxDepth = opts.maxDepth ?? DEFAULT_MAX_DEPTH;
   const access = opts.defaultAccess ?? 'r';
+  if (opts.assembly === 'grouped') return buildGrouped(opts, maxDepth, access, warnings);
+
   const types: TypeDef[] = [];
   const instances: InstanceDef[] = [];
   const typeIdBySignature = new Map<string, string>();
@@ -132,4 +158,41 @@ export async function buildOnlineModel(opts: OnlineOptions): Promise<TagModel> {
   if (opts.nodes.length === 0) warnings.push('No instance selected.');
 
   return { source: 'opcua-online', namespaces: [], types, instances, warnings };
+}
+
+/**
+ * Grouped assembly: every selected node becomes a named child sub-group of ONE
+ * type, and a SINGLE datapoint is created (its bindings prefixed by the child
+ * name). Combined with a reuse+extend mapping, this adds the nodes as sub-levels
+ * of an existing datapoint type.
+ */
+async function buildGrouped(opts: OnlineOptions, maxDepth: number, access: TagAccess, warnings: string[]): Promise<TagModel> {
+  const groupName = opts.groupName?.trim() || stripBrowseNs(opts.connection);
+  const members: Member[] = [];
+  const bindings: Record<string, ProtocolAddress> = {};
+  const usedChild = new Set<string>();
+  for (const node of opts.nodes) {
+    let childName = sanitizeIdentifier(opts.childNames?.[node.nodeId] ?? stripBrowseNs(node.displayName));
+    // Keep child sub-element names unique within the single datapoint.
+    if (usedChild.has(childName)) {
+      let n = 2;
+      while (usedChild.has(`${childName}_${n}`)) n += 1;
+      childName = `${childName}_${n}`;
+    }
+    usedChild.add(childName);
+    const sub: Member[] = [];
+    const subBindings: Record<string, ProtocolAddress> = {};
+    await walk(opts.connection, node.nodeId, '', maxDepth, access, sub, subBindings, warnings);
+    members.push({ kind: 'group', name: childName, children: sub });
+    for (const [path, addr] of Object.entries(subBindings)) bindings[`${childName}.${path}`] = addr;
+  }
+  if (members.length === 0) warnings.push('No instance selected.');
+  const typeId = 'online:grouped';
+  return {
+    source: 'opcua-online',
+    namespaces: [],
+    types: [{ id: typeId, name: groupName, displayName: groupName, members }],
+    instances: [{ name: groupName, displayName: groupName, typeId, bindings }],
+    warnings
+  };
 }

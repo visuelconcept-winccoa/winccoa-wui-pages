@@ -51,6 +51,8 @@ export interface GenerateOptions {
   pollGroup?: string;
   /** Per-DPE direction override (INPUT_POLL / IO_POLL); default is IO_POLL (IN/OUT). */
   directionOverrides?: Record<string, number>;
+  /** Per-instance datapoint name override, keyed by the instance's stable key (source NodeId). */
+  dpNameOverrides?: Record<string, string>;
 }
 
 /** Map a scalar WinCC OA element-type key to its one-dimensional `Dyn*` variant. */
@@ -349,14 +351,16 @@ export function buildPlan(model: TagModel, opts: GenerateOptions): ImportPlan {
   const conn = opts.connection;
   const pollGroup = opts.pollGroup ?? DEFAULT_POLL_GROUP;
   const directionOverrides = opts.directionOverrides ?? {};
+  const dpNameOverrides = opts.dpNameOverrides ?? {};
   for (const inst of model.instances) {
     const typeName = nameById.get(inst.typeId);
     if (!typeName) {
       warnings.push(`Instance "${inst.displayName}" has no generated type — skipped.`);
       continue;
     }
-    const dpName = uniqueName(proposeDpName(inst.name || inst.displayName), usedDpNames);
-    dps.push({ dpName, displayName: inst.displayName, dpType: typeName });
+    const key = inst.sourceNodeId ?? inst.name;
+    const dpName = uniqueName(proposeDpName(dpNameOverrides[key] || inst.name || inst.displayName), usedDpNames);
+    dps.push({ key, dpName, displayName: inst.displayName, dpType: typeName });
     if (conn) addresses.push(...addressesForInstance(inst, dpName, conn, pollGroup, directionOverrides, warnings));
   }
 

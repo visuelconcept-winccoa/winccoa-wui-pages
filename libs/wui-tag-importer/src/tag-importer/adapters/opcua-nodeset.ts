@@ -26,7 +26,12 @@
 
 import type { InstanceDef, LeafMember, Member, ProtocolAddress, TagModel, TagAccess, TypeDef } from '../core/model.js';
 import { opcUaLeafType, isUnmappedOpcUaType } from '../core/opcua-mapping.js';
-import { stripBrowseNs } from '../core/naming.js';
+import { sanitizeIdentifier, stripBrowseNs } from '../core/naming.js';
+
+/** DPE element name from an OPC UA BrowseName: strip the ns prefix, then sanitise to a valid identifier. */
+function elementName(browseName: string): string {
+  return sanitizeIdentifier(stripBrowseNs(browseName));
+}
 
 // Standard reference-type NodeIds (namespace 0). See OPC UA Part 6.
 const REF_HAS_SUBTYPE = 'i=45';
@@ -242,7 +247,7 @@ export function parseNodeSet(xml: string): NodeSetParseResult {
         }
         const leaf: LeafMember = {
           kind: 'leaf',
-          name: stripBrowseNs(child.browseName),
+          name: elementName(child.browseName),
           dataType: opcUaLeafType(dataType),
           access: accessFromLevel(child.accessLevel),
           arrayRank: child.valueRank >= 1 || child.valueRank === 0 ? 1 : 0,
@@ -256,14 +261,14 @@ export function parseNodeSet(xml: string): NodeSetParseResult {
       case 'UAObject': {
         const typeDef = typeDefinitionOf(child);
         if (typeDef && nodes.get(typeDef)?.kind === 'UAObjectType') {
-          members.push({ kind: 'ref', name: stripBrowseNs(child.browseName), typeId: typeDef });
+          members.push({ kind: 'ref', name: elementName(child.browseName), typeId: typeDef });
         } else if (seenTypes.has(child.nodeId)) {
           warnings.push(`Component cycle at "${stripBrowseNs(child.browseName)}" — nested object skipped.`);
         } else {
           // Untyped / non-modelled nested object → inline its own components.
           members.push({
             kind: 'group',
-            name: stripBrowseNs(child.browseName),
+            name: elementName(child.browseName),
             children: membersOf(child, new Set(seenTypes).add(child.nodeId))
           });
         }
@@ -314,7 +319,8 @@ export function parseNodeSet(xml: string): NodeSetParseResult {
     for (const childId of componentIds) {
       const child = nodes.get(childId);
       if (!child) continue;
-      const path = prefix ? `${prefix}.${stripBrowseNs(child.browseName)}` : stripBrowseNs(child.browseName);
+      const seg = elementName(child.browseName);
+      const path = prefix ? `${prefix}.${seg}` : seg;
       if (child.kind === 'UAVariable') {
         out[path] = {
           protocol: 'opcua',

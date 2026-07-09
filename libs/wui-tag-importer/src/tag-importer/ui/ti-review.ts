@@ -193,7 +193,20 @@ export class TiReview extends LitElement {
             </tr>
           </thead>
           <tbody>
-            ${plan.dps.map((d) => html`<tr><td>${d.dpName}</td><td class="muted">${d.dpType}</td></tr>`)}
+            ${plan.dps.map(
+              (d) => html`<tr>
+                <td>
+                  <input
+                    class="dpname"
+                    type="text"
+                    .value=${d.dpName}
+                    @change=${(e: Event) =>
+                      this.fire(new CustomEvent('wui:dpname', { detail: { key: d.key, name: (e.target as HTMLInputElement).value }, bubbles: true, composed: true }))}
+                  />
+                </td>
+                <td class="muted">${d.dpType}</td>
+              </tr>`
+            )}
           </tbody>
         </table>
       </div>
@@ -421,12 +434,16 @@ function reviewStyles(): ReturnType<typeof css> {
     }
     .maprow select,
     .addr-toolbar input,
-    td select {
+    td select,
+    td input.dpname {
       padding: 0.25rem;
       background: var(--theme-color-1);
       color: var(--theme-color-text);
       border: 1px solid var(--theme-color-soft-bdr);
       border-radius: 4px;
+    }
+    td input.dpname {
+      min-width: 12rem;
     }
     .overrides {
       display: flex;

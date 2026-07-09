@@ -29,7 +29,6 @@ import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
-import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
 import appSecurityRoles from './app-security.roles.json';
 import type { TagModel } from './tag-importer/core/model.js';
 import type { ApplyResult, ImportPlan } from './tag-importer/core/plan.js';
@@ -37,9 +36,9 @@ import { summarize } from './tag-importer/core/plan.js';
 import { analyzeTypes, buildPlan, type GenerateOptions, type TypeDecision } from './tag-importer/core/generate.js';
 import { DEFAULT_POLL_GROUP } from './tag-importer/core/opcua-mapping.js';
 import { parseNodeSet } from './tag-importer/adapters/opcua-nodeset.js';
-import { buildOnlineModel, type OnlineNodeRef } from './tag-importer/adapters/opcua-online.js';
+import { buildOnlineModel, type AssemblyMode, type OnlineNodeRef } from './tag-importer/adapters/opcua-online.js';
 import { apply as applyPlan, createConnection, listConnections, listDpTypes, listDrivers, updateConnection, type Connection, type NewConnection } from './tag-importer/data/api.js';
-import { sanitizeIdentifier } from './tag-importer/core/naming.js';
+import { sanitizeIdentifier, stripBrowseNs } from './tag-importer/core/naming.js';
 import { MSG, confirmApplyMsg, localize, localizeDir } from './tag-importer/i18n.js';
 import './tag-importer/ui/ti-driver.js';
 import './tag-importer/ui/ti-connection.js';
@@ -72,6 +71,7 @@ export class WuiTagImporter extends LitElement {
   @state() private existingTypes: string[] = [];
   @state() private typeMapping: Record<string, { target?: string; extend: boolean }> = {};
   @state() private directionOverrides: Record<string, number> = {};
+  @state() private dpNameOverrides: Record<string, string> = {};
   @state() private typePrefix = '';
   @state() private hybrid = true;
   @state() private busy = false;
@@ -81,6 +81,9 @@ export class WuiTagImporter extends LitElement {
   @state() private applyResult: ApplyResult | null = null;
   // online selection (one or more instances ticked in the browse tree)
   @state() private selectedNodes: OnlineNodeRef[] = [];
+  @state() private assembly: AssemblyMode = 'perNode';
+  @state() private groupName = '';
+  @state() private childNames: Record<string, string> = {};
   // roles (open by default until an admin assigns groups)
   @state() private roleImportFile = true;
   @state() private roleBrowse = true;
@@ -138,11 +141,17 @@ export class WuiTagImporter extends LitElement {
         </div>
       </div>
       ${this.confirmOpen && this.plan
-        ? html`<wui-confirm-dialog
-            message=${confirmApplyMsg(summarize(this.plan).typesNew, summarize(this.plan).dpsNew, this.plan.addresses.length)}
-            @wui:confirm=${() => void this.onApplyConfirmed()}
-            @wui:cancel=${() => (this.confirmOpen = false)}
-          ></wui-confirm-dialog>`
+        ? html`<div class="confirm-overlay" @click=${() => (this.confirmOpen = false)}>
+            <div class="confirm-panel" @click=${(e: Event) => e.stopPropagation()}>
+              <div class="confirm-msg">
+                ${confirmApplyMsg(summarize(this.plan).typesNew, summarize(this.plan).dpsNew, this.plan.addresses.length)}
+              </div>
+              <div class="confirm-actions">
+                <ix-button variant="secondary" @click=${() => (this.confirmOpen = false)}>${localizeDir(MSG.confirm.cancel)}</ix-button>
+                <ix-button variant="primary" @click=${() => void this.onApplyConfirmed()}>${localizeDir(MSG.confirm.yes)}</ix-button>
+              </div>
+            </div>
+          </div>`
         : nothing}
     `;
   }
@@ -180,7 +189,8 @@ export class WuiTagImporter extends LitElement {
       typeMapping: this.typeMapping,
       connection: this.bindAddresses && this.connection ? this.connection : undefined,
       pollGroup: DEFAULT_POLL_GROUP,
-      directionOverrides: this.directionOverrides
+      directionOverrides: this.directionOverrides,
+      dpNameOverrides: this.dpNameOverrides
     };
   }
 
@@ -304,7 +314,13 @@ export class WuiTagImporter extends LitElement {
     this.busy = true;
     this.error = '';
     try {
-      this.model = await buildOnlineModel({ connection: this.connectionDp, nodes: this.selectedNodes });
+      this.model = await buildOnlineModel({
+        connection: this.connectionDp,
+        nodes: this.selectedNodes,
+        assembly: this.assembly,
+        childNames: this.childNames,
+        groupName: this.groupName.trim() || sanitizeIdentifier(this.connection)
+      });
       // Default: a DPType prefixed with the connection name (editable in review).
       this.typePrefix = `${sanitizeIdentifier(this.connection)}_`;
       await this.loadDpTypes();
@@ -343,6 +359,11 @@ export class WuiTagImporter extends LitElement {
     const next = { ...this.directionOverrides };
     for (const dpe of detail.dpes) next[dpe] = detail.direction;
     this.directionOverrides = next;
+    this.recompute();
+  }
+
+  private onDpName(detail: { key: string; name: string }): void {
+    this.dpNameOverrides = { ...this.dpNameOverrides, [detail.key]: detail.name };
     this.recompute();
   }
 
@@ -401,7 +422,11 @@ export class WuiTagImporter extends LitElement {
     this.forceInline.clear();
     this.typeMapping = {};
     this.directionOverrides = {};
+    this.dpNameOverrides = {};
     this.selectedNodes = [];
+    this.assembly = 'perNode';
+    this.groupName = '';
+    this.childNames = {};
     this.dryRunResult = null;
     this.applyResult = null;
     this.error = '';
@@ -448,6 +473,51 @@ export class WuiTagImporter extends LitElement {
     </div>`;
   }
 
+  /** Assembly mode (flat per-node vs grouped sub-levels) for the browse step. */
+  private renderAssembly(): TemplateResult {
+    if (this.selectedNodes.length === 0) return html``;
+    return html`<div class="assembly">
+      <div class="asm-modes">
+        <label class="asm-opt">
+          <input type="radio" name="asm" .checked=${this.assembly === 'perNode'} @change=${() => this.setAssembly('perNode')} />
+          <span>${localizeDir(MSG.online.perNode)}</span>
+        </label>
+        <label class="asm-opt">
+          <input type="radio" name="asm" .checked=${this.assembly === 'grouped'} @change=${() => this.setAssembly('grouped')} />
+          <span>${localizeDir(MSG.online.grouped)}</span>
+        </label>
+      </div>
+      ${this.assembly === 'grouped' ? this.renderGroupedConfig() : nothing}
+    </div>`;
+  }
+
+  private renderGroupedConfig(): TemplateResult {
+    return html`<div class="grouped-cfg">
+      <label class="fld">
+        <span>${localizeDir(MSG.online.groupName)}</span>
+        <input type="text" .value=${this.groupName} placeholder=${sanitizeIdentifier(this.connection)} @change=${(e: Event) => (this.groupName = (e.target as HTMLInputElement).value)} />
+      </label>
+      ${this.selectedNodes.map(
+        (n) => html`<label class="fld child">
+          <span title=${n.nodeId}>${n.displayName}</span>
+          <input
+            type="text"
+            .value=${this.childNames[n.nodeId] ?? sanitizeIdentifier(stripBrowseNs(n.displayName))}
+            @change=${(e: Event) => this.setChildName(n.nodeId, (e.target as HTMLInputElement).value)}
+          />
+        </label>`
+      )}
+    </div>`;
+  }
+
+  private setAssembly(mode: AssemblyMode): void {
+    this.assembly = mode;
+  }
+
+  private setChildName(nodeId: string, value: string): void {
+    this.childNames = { ...this.childNames, [nodeId]: value };
+  }
+
   private renderStep(): TemplateResult {
     switch (this.step) {
       case 'driver': {
@@ -487,6 +557,7 @@ export class WuiTagImporter extends LitElement {
             .connection=${this.connectionDp}
             @wui:selection=${(e: CustomEvent<{ nodes: OnlineNodeRef[] }>) => this.onSelection(e.detail)}
           ></ti-browse-tree>
+          ${this.renderAssembly()}
           <div class="select-footer">
             <div class="grow"></div>
             <ix-button variant="secondary" @click=${() => (this.step = 'source')}>${localizeDir(MSG.actions.back)}</ix-button>
@@ -515,6 +586,7 @@ export class WuiTagImporter extends LitElement {
           @wui:typeoverride=${(e: CustomEvent<{ id: string; keep: boolean }>) => this.onTypeOverride(e.detail)}
           @wui:typemapping=${(e: CustomEvent<{ id: string; target?: string; extend: boolean }>) => this.onTypeMapping(e.detail)}
           @wui:setdirection=${(e: CustomEvent<{ dpes: string[]; direction: number }>) => this.onSetDirection(e.detail)}
+          @wui:dpname=${(e: CustomEvent<{ key: string; name: string }>) => this.onDpName(e.detail)}
           @wui:dryrun=${() => void this.onDryRun()}
           @wui:apply=${() => (this.confirmOpen = true)}
         ></ti-review>
@@ -620,6 +692,50 @@ function pageStyles(): ReturnType<typeof css> {
     .conn-state {
       opacity: 0.75;
     }
+    .assembly {
+      padding-top: 0.75rem;
+    }
+    .asm-modes {
+      display: flex;
+      gap: 1.25rem;
+      flex-wrap: wrap;
+    }
+    .asm-opt {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.85rem;
+    }
+    .grouped-cfg {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      margin-top: 0.5rem;
+      padding: 0.6rem 0.75rem;
+      border: 1px solid var(--theme-color-soft-bdr);
+      border-radius: 4px;
+      max-width: 34rem;
+    }
+    .grouped-cfg .fld {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-size: 0.82rem;
+    }
+    .grouped-cfg .fld > span {
+      flex: 0 0 10rem;
+    }
+    .grouped-cfg .fld.child > span {
+      opacity: 0.8;
+    }
+    .grouped-cfg input {
+      flex: 1;
+      padding: 0.3rem;
+      background: var(--theme-color-1);
+      color: var(--theme-color-text);
+      border: 1px solid var(--theme-color-soft-bdr);
+      border-radius: 4px;
+    }
     .select-footer .grow {
       flex: 1;
     }
@@ -628,6 +744,32 @@ function pageStyles(): ReturnType<typeof css> {
       align-items: center;
       gap: 0.4rem;
       font-size: 0.85rem;
+    }
+    .confirm-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .confirm-panel {
+      width: min(440px, 90vw);
+      background: var(--theme-color-1, #fff);
+      color: var(--theme-color-text);
+      border: 1px solid var(--theme-color-soft-bdr);
+      border-radius: 6px;
+      padding: 1.25rem;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+    }
+    .confirm-msg {
+      margin-bottom: 1rem;
+    }
+    .confirm-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.6rem;
     }
   `;
 }
