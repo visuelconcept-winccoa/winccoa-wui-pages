@@ -9,7 +9,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildBoreGeometry,
+  buildCutawayGeometries,
   buildRibbonGeometry,
+  buildSectionCapGeometry,
+  clipFrames,
   crossSection,
   frameAt,
   rightOf,
@@ -122,5 +125,53 @@ describe('swept geometries', () => {
     const frames = sampleCenterline(tube([segment({ lengthM: 200 })]));
     const geometry = buildRibbonGeometry(frames, 3, 0.02);
     expect(geometry.getAttribute('position').count).toBe(frames.length * 2);
+  });
+
+  it('builds two open-top shells that leave a crown skylight', () => {
+    const t = tube([segment({ lengthM: 200 })]);
+    const section = crossSection(t);
+    const shells = buildCutawayGeometries(sampleCenterline(t), section);
+    expect(shells).toHaveLength(2);
+    // No shell vertex reaches the crown — the top stays open.
+    for (const shell of shells) {
+      const positions = shell.getAttribute('position');
+      let maxY = 0;
+      for (let i = 0; i < positions.count; i++) maxY = Math.max(maxY, positions.getY(i));
+      expect(maxY).toBeLessThan(section.crownHeightM - 0.5);
+      expect(maxY).toBeGreaterThan(section.wallHeightM);
+    }
+  });
+
+  it('builds a triangle-fan section cap at a frame', () => {
+    const t = tube([segment({ lengthM: 100 })]);
+    const frames = sampleCenterline(t);
+    const cap = buildSectionCapGeometry(frameAt(frames, 50), crossSection(t));
+    const index = cap.getIndex()!;
+    expect(index.count % 3).toBe(0);
+    // Fan over the profile: every cap vertex sits on the cut plane z = 50.
+    const positions = cap.getAttribute('position');
+    for (let i = 0; i < positions.count; i++) expect(positions.getZ(i)).toBeCloseTo(50, 6);
+  });
+});
+
+describe('clipFrames', () => {
+  it('returns the full array at or beyond the tube end', () => {
+    const frames = sampleCenterline(tube([segment({ lengthM: 100 })]));
+    expect(clipFrames(frames, 100)).toBe(frames);
+    expect(clipFrames(frames, 500)).toBe(frames);
+  });
+
+  it('ends exactly on the requested PK (interpolated frame)', () => {
+    const frames = sampleCenterline(tube([segment({ lengthM: 100 })]));
+    const cut = clipFrames(frames, 55);
+    expect(cut.at(-1)?.pkM).toBeCloseTo(55, 6);
+    expect(cut.at(-1)?.position.z).toBeCloseTo(55, 6);
+    // Strictly increasing PKs (no duplicate around the cut).
+    for (let i = 1; i < cut.length; i++) expect(cut[i].pkM).toBeGreaterThan(cut[i - 1].pkM);
+  });
+
+  it('keeps at least the first frame for a degenerate cut', () => {
+    const frames = sampleCenterline(tube([segment({ lengthM: 100 })]));
+    expect(clipFrames(frames, 0).length).toBeGreaterThan(0);
   });
 });

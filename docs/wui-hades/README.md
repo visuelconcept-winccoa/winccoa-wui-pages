@@ -8,7 +8,19 @@ bound to datapoints, operating modes — rendered four ways from ONE config:
   segment list (length / gradient / curve radius / lanes); equipment
   primitives sit at their PK/side and recolour live from the bound state
   DPEs (faults pulse). Free orbit camera + a "drive through" mode along the
-  centerline. Two selectable render styles (persisted per browser):
+  centerline. Three selectable **shell modes** (persisted per browser) make
+  the aerial view carry information instead of showing an opaque tube:
+  **cutaway** (default) — the crown is left open (dollhouse), so orbiting
+  from above reads the roadway, markings, arrows and equipment directly;
+  **x-ray** — translucent glass shell with **PK graduations + portal name
+  boards** and a per-zone **status heat-ribbon** on the back of the bore
+  (green/amber/red from the worst live equipment state of each 100 m zone) —
+  the sky view becomes a state map of the line; **closed tube** — the
+  historical opaque bore. A **PK cut scrubber** (toolbar toggle + slider)
+  slices the tunnel at a chainage with a filled section face and parks the
+  camera three-quarter on the cut; with the cut armed, selecting an
+  equipment from the synoptic slices right there. Portal heads, approach
+  roads and a ground apron situate the works. Two render styles:
   **modern** — light concrete, cool lighting and continuous cyan LED
   light-lines along both walls and the crown — and **simple** — the sober
   engineering look. Optional projected **name labels** (state dot, click to

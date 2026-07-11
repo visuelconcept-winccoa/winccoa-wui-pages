@@ -146,11 +146,53 @@ function boreProfile(section: CrossSection): { x: number; y: number }[] {
 }
 
 /**
- * Swept interior surface of the bore (indexed, with normals), meant to be
- * rendered with `side: BackSide` so the camera inside the tube sees the walls.
+ * Fraction of the vault quarter kept on each side in the cutaway (dollhouse)
+ * profile — the rest of the crown is left open so an orbiting camera looks
+ * straight down onto the roadway and the equipment.
  */
-export function buildBoreGeometry(frames: Frame[], section: CrossSection): BufferGeometry {
-  const profile = boreProfile(section);
+const CUTAWAY_VAULT_KEEP = 0.45;
+
+/**
+ * The two half-profiles of the open-top (cutaway) bore: each keeps its wall and
+ * the lower {@link CUTAWAY_VAULT_KEEP} of its vault quarter, leaving a
+ * longitudinal skylight along the crown. Returned left half then right half,
+ * each ordered base → opening edge.
+ */
+function cutawayProfiles(section: CrossSection): { x: number; y: number }[][] {
+  const keep = Math.max(1, Math.round(VAULT_POINTS * 0.5 * CUTAWAY_VAULT_KEEP));
+  const left: { x: number; y: number }[] = [
+    { x: -section.halfWidthM, y: 0 },
+    { x: -section.halfWidthM, y: section.wallHeightM }
+  ];
+  for (let i = 1; i <= keep; i++) {
+    const angle = Math.PI - (Math.PI * i) / VAULT_POINTS;
+    left.push({
+      x: Math.cos(angle) * section.halfWidthM,
+      y: section.wallHeightM + Math.sin(angle) * section.halfWidthM
+    });
+  }
+  // Mirrored right half (base → opening edge; DoubleSide material absorbs the winding flip).
+  const right = left.map((p) => ({ x: -p.x, y: p.y }));
+  return [left, right];
+}
+
+/**
+ * Clip a sampled centerline at a PK: every frame up to `pkM` plus one exact
+ * interpolated end frame. The full array comes back when the PK is at (or
+ * beyond) the tube end; at least the first frame is always kept.
+ */
+export function clipFrames(frames: Frame[], pkM: number): Frame[] {
+  const last = frames.at(-1);
+  if (!last || pkM >= last.pkM) return frames;
+  const kept = frames.filter((f) => f.pkM < pkM);
+  if (kept.length === 0) kept.push(frames[0]);
+  const end = frameAt(frames, Math.max(frames[0].pkM, pkM));
+  if (end.pkM > (kept.at(-1)?.pkM ?? 0)) kept.push(end);
+  return kept;
+}
+
+/** Sweep an arbitrary local (x, y) profile along the frames (shared core). */
+function sweepProfile(frames: Frame[], profile: { x: number; y: number }[]): BufferGeometry {
   const ringSize = profile.length;
   const positions = new Float32Array(frames.length * ringSize * 3);
   const uvs = new Float32Array(frames.length * ringSize * 2);
@@ -186,6 +228,47 @@ export function buildBoreGeometry(frames: Frame[], section: CrossSection): Buffe
   const geometry = new BufferGeometry();
   geometry.setAttribute('position', new BufferAttribute(positions, 3));
   geometry.setAttribute('uv', new BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+/**
+ * Swept interior surface of the bore (indexed, with normals), meant to be
+ * rendered with `side: BackSide` so the camera inside the tube sees the walls.
+ */
+export function buildBoreGeometry(frames: Frame[], section: CrossSection): BufferGeometry {
+  return sweepProfile(frames, boreProfile(section));
+}
+
+/**
+ * Open-top (cutaway) bore: the two wall/lower-vault shells with a longitudinal
+ * skylight along the crown — the dollhouse view. Rendered DoubleSide so the
+ * shells read from outside as well as inside.
+ */
+export function buildCutawayGeometries(frames: Frame[], section: CrossSection): BufferGeometry[] {
+  return cutawayProfiles(section).map((profile) => sweepProfile(frames, profile));
+}
+
+/**
+ * Flat cross-section face (the "slice" cap) of the bore at one frame — shown at
+ * the moving PK cut so the scrubbed tunnel reads as a solid sliced model. A
+ * triangle fan from the profile centroid (the horseshoe profile is convex).
+ */
+export function buildSectionCapGeometry(frame: Frame, section: CrossSection): BufferGeometry {
+  const profile = boreProfile(section);
+  const right = rightOf(frame);
+  const centroid = { x: 0, y: (section.wallHeightM + section.crownHeightM) / 3 };
+  const points = [centroid, ...profile];
+  const positions = new Float32Array(points.length * 3);
+  for (const [i, p] of points.entries()) {
+    const world = frame.position.clone().addScaledVector(right, p.x).add(new Vector3(0, p.y, 0));
+    positions.set([world.x, world.y, world.z], i * 3);
+  }
+  const indices: number[] = [];
+  for (let i = 1; i < points.length - 1; i++) indices.push(0, i, i + 1);
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(positions, 3));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   return geometry;

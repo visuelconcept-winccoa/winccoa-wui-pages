@@ -14,11 +14,25 @@
  *  - `simple` — the sober engineering look, tuned bright enough to read;
  *  - `modern` — the marketing look: light concrete, cool white lighting and
  *    continuous cyan LED light-lines swept along both walls and the crown.
+ *
+ * Three shell MODES (selectable, persisted by the view) answer the "opaque tube
+ * seen from the sky" problem:
+ *  - `cutaway` (default) — open-top dollhouse: the crown is left open so an
+ *    orbiting camera reads the roadway, markings and equipment directly;
+ *  - `xray` — translucent glass shell with PK graduations and a per-zone status
+ *    heat-ribbon on its back: the aerial view becomes a state map of the line;
+ *  - `closed` — the historical opaque bore (interior/drive-through look).
+ * A moving PK CUT (setCutPk) slices the twin at a chainage with a filled
+ * section face, and can park the camera three-quarter on the cut (scrubbing).
+ * Portal heads + approach roads + a ground apron situate the works outside.
+ *
  * Optional HTML overlay LABELS (name + state dot) are projected per frame
  * from the equipment anchors; faulty equipment pulses in both styles.
  */
 import {
   AmbientLight,
+  BoxGeometry,
+  CanvasTexture,
   Color,
   ConeGeometry,
   DirectionalLight,
@@ -30,20 +44,26 @@ import {
   BackSide,
   DoubleSide,
   PerspectiveCamera,
+  PlaneGeometry,
   PointLight,
   Raycaster,
   Scene,
   SphereGeometry,
+  Sprite,
+  SpriteMaterial,
   Vector2,
   Vector3,
   WebGLRenderer
 } from 'three';
-import { STATE_FAULT, STATE_RUN, stateColor, tubeEquipment, type EquipmentDef, type Tunnel } from '../types.js';
+import { STATE_FAULT, STATE_RUN, STATE_WARNING, stateColor, tubeEquipment, type EquipmentDef, type Tunnel } from '../types.js';
 import { disposeObject } from './dispose.js';
 import { applyState, buildEquipmentMesh, type EquipmentSceneData } from './equipment-meshes.js';
 import {
   buildBoreGeometry,
+  buildCutawayGeometries,
   buildRibbonGeometry,
+  buildSectionCapGeometry,
+  clipFrames,
   crossSection,
   frameAt,
   rightOf,
@@ -55,6 +75,15 @@ import {
 
 /** Render style of the twin (see class docs). */
 export type ViewStyle = 'simple' | 'modern';
+
+/**
+ * Shell mode of the twin — the answer to "an opaque tube seen from the sky says
+ * nothing": `cutaway` opens the crown (dollhouse — roadway + equipment readable
+ * from an orbiting camera), `xray` turns the bore into translucent glass with a
+ * per-zone status ribbon on its back (the aerial state map), `closed` keeps the
+ * historical opaque bore (the drive-through look).
+ */
+export type ViewMode = 'closed' | 'cutaway' | 'xray';
 
 interface StylePreset {
   background: number;
@@ -112,6 +141,27 @@ const RIBBON_INSET_M = 0.15;
 const MARKING_HEX = 0xd0_d4_da;
 /** Lateral gap between the bores of a multi-tube tunnel (m). */
 const TUBE_GAP_M = 10;
+/** X-ray shell opacity (translucent glass look). */
+const XRAY_OPACITY = 0.16;
+/** Status heat-ribbon (x-ray): zone length and ribbon size above the crown. */
+const HEAT_ZONE_M = 100;
+const HEAT_RIBBON_HALF_W_M = 0.45;
+const HEAT_RIBBON_RISE_M = 0.3;
+/** State → heat-ribbon colour (nominal zones stay discreet). */
+const HEAT_OK_HEX = 0x2f_a3_4f;
+const HEAT_WARN_HEX = 0xe6_a4_1c;
+const HEAT_FAULT_HEX = 0xe0_3b_3b;
+/** PK graduations: interval, tick size and label sprite scale. */
+const PK_TICK_EVERY_M = 500;
+const PK_LABEL_RISE_M = 3.2;
+const SPRITE_PX_PER_M = 22;
+/** Exterior dressing: ground apron and portal head dimensions (m). */
+const GROUND_MARGIN_M = 120;
+const PORTAL_THICK_M = 1.2;
+const PORTAL_BAND_M = 2.2;
+const APPROACH_ROAD_M = 70;
+const GROUND_HEX = 0x14_19_21;
+const PORTAL_HEX = 0x3c_44_52;
 /** Interval between the ambience point lights along the tube (m). */
 const ACCENT_EVERY_M = 180;
 const ACCENT_MAX = 20;
@@ -151,6 +201,13 @@ interface TubeScene {
   group: Group;
 }
 
+/** Chainage notation of a PK in metres (e.g. `PK 1+500`). */
+function formatPk(pkM: number): string {
+  const rounded = Math.round(pkM);
+  const km = Math.floor(rounded / 1000);
+  return `PK ${km}+${String(rounded % 1000).padStart(3, '0')}`;
+}
+
 export class TunnelScene {
   private readonly scene = new Scene();
   private readonly camera: PerspectiveCamera;
@@ -162,6 +219,13 @@ export class TunnelScene {
   private tubes: TubeScene[] = [];
   private readonly equipmentGroups = new Map<string, Group>();
   private style: ViewStyle = 'modern';
+  private mode: ViewMode = 'cutaway';
+  /** Moving PK cut (m); null = whole tunnel. */
+  private cutPkM: number | null = null;
+  /** X-ray status heat-ribbon segments, recoloured on every state update. */
+  private heatSegments: { material: MeshStandardMaterial; tubeId: string; fromPkM: number; toPkM: number }[] = [];
+  /** Exterior ground apron (owned by the scene root, rebuilt with the tunnel). */
+  private ground: Mesh | null = null;
   private lastTunnel: Tunnel | null = null;
   private readonly ambient = new AmbientLight(0xff_ff_ff, 0.35);
   private readonly hemisphere = new HemisphereLight(0x9a_a8c0, 0x22_26_2e, 0.5);
@@ -237,6 +301,42 @@ export class TunnelScene {
     return this.style;
   }
 
+  /** Switch the shell mode (closed / cutaway / x-ray) and rebuild (keeps camera pose). */
+  setMode(mode: ViewMode): void {
+    if (mode === this.mode) return;
+    this.mode = mode;
+    if (this.lastTunnel) this.rebuild(this.lastTunnel);
+  }
+
+  get currentMode(): ViewMode {
+    return this.mode;
+  }
+
+  /**
+   * Slice the twin at a PK (null = full length) and rebuild. `focus` also parks
+   * the orbit camera in a three-quarter pose on the cut face — the scrub view.
+   */
+  setCutPk(pkM: number | null, focus = false): void {
+    this.cutPkM = pkM;
+    if (this.lastTunnel) this.rebuild(this.lastTunnel);
+    const tube = this.tubes[0];
+    if (focus && pkM != null && tube) {
+      this.driving = false;
+      const frame = frameAt(tube.frames, pkM);
+      this.target.copy(frame.position).add(tube.offset).add(new Vector3(0, tube.section.wallHeightM, 0));
+      this.radius = Math.max(MIN_RADIUS, tube.section.halfWidthM * 6);
+      this.phi = 1;
+      // Face the cut from ahead-right of the tangent (a three-quarter view);
+      // orbit XZ direction is (cos θ, sin θ), so θ = atan2(z, x) of the tangent.
+      this.theta = Math.atan2(frame.tangent.z, frame.tangent.x) + Math.PI / 4;
+      this.applyOrbit();
+    }
+  }
+
+  get currentCutPk(): number | null {
+    return this.cutPkM;
+  }
+
   /** Host element for the HTML overlay labels (positioned over the canvas). */
   setLabelHost(host: HTMLElement): void {
     this.labelHost = host;
@@ -262,11 +362,18 @@ export class TunnelScene {
   private rebuild(tunnel: Tunnel): void {
     this.root.clear();
     for (const tube of this.tubes) disposeObject(tube.group);
+    if (this.ground) {
+      disposeObject(this.ground);
+      this.ground = null;
+    }
     this.tubes = [];
     this.equipmentGroups.clear();
+    this.heatSegments = [];
 
     for (const [index, tube] of tunnel.tubes.entries()) {
-      const frames = sampleCenterline(tube);
+      const fullFrames = sampleCenterline(tube);
+      const frames = this.cutPkM == null ? fullFrames : clipFrames(fullFrames, this.cutPkM);
+      const cutEndPkM = frames.at(-1)?.pkM ?? 0;
       const section = crossSection(tube);
       const offset = new Vector3(index * (section.halfWidthM * 2 + TUBE_GAP_M), 0, 0);
       const group = new Group();
@@ -274,12 +381,21 @@ export class TunnelScene {
       this.buildBore(group, frames, section, tube.lanes);
       this.buildDirectionArrows(group, frames, section, tube.lanes, tube.direction === 'bidirectional');
       this.buildAccents(group, frames, section);
+      if (this.mode !== 'closed') this.buildPkGraduations(group, frames, section, tube.name || tube.id);
+      if (this.mode === 'xray') this.buildHeatRibbon(group, frames, section, tube.id);
+      if (this.cutPkM != null && cutEndPkM < (fullFrames.at(-1)?.pkM ?? 0)) {
+        this.buildSectionCap(group, frames, section);
+      }
+      this.buildPortals(group, fullFrames, frames, section);
+      // Beyond the cut the plant is hidden with the bore (the slice hides downstream).
       for (const equipment of tubeEquipment(tunnel, tube.id)) {
+        if (this.cutPkM != null && equipment.pkM > cutEndPkM) continue;
         this.placeEquipment(group, frames, section, equipment);
       }
       this.root.add(group);
       this.tubes.push({ tubeId: tube.id, frames, section, offset, group });
     }
+    this.buildGround();
     this.rebuildLabels(tunnel);
     this.updateStates(tunnel);
   }
@@ -303,6 +419,23 @@ export class TunnelScene {
       data.state = equipment.state;
       const label = this.labels.get(equipment.id);
       if (label) label.dot.style.background = stateColor(equipment.state);
+    }
+    this.updateHeatRibbon(tunnel);
+  }
+
+  /** Recolour each x-ray heat segment by the worst equipment state of its zone. */
+  private updateHeatRibbon(tunnel: Tunnel): void {
+    for (const segment of this.heatSegments) {
+      let worst = 0;
+      for (const equipment of tubeEquipment(tunnel, segment.tubeId)) {
+        if (equipment.pkM < segment.fromPkM || equipment.pkM >= segment.toPkM) continue;
+        if (equipment.state === STATE_FAULT) worst = Math.max(worst, 2);
+        else if (equipment.state === STATE_WARNING) worst = Math.max(worst, 1);
+      }
+      const hex = worst === 2 ? HEAT_FAULT_HEX : worst === 1 ? HEAT_WARN_HEX : HEAT_OK_HEX;
+      segment.material.color.setHex(hex);
+      segment.material.emissive.setHex(hex);
+      segment.material.emissiveIntensity = worst === 2 ? 1.4 : 0.7;
     }
   }
 
@@ -473,16 +606,42 @@ export class TunnelScene {
 
   private buildBore(group: Group, frames: Frame[], section: CrossSection, lanes: number): void {
     const preset = STYLES[this.style];
-    const bore = new Mesh(
-      buildBoreGeometry(frames, section),
-      new MeshStandardMaterial({ color: preset.bore, roughness: 0.92, metalness: 0.02, side: BackSide })
-    );
+    // Shell per mode: closed opaque (inside look), cutaway open-top shells
+    // (dollhouse), x-ray translucent glass (state map).
+    if (this.mode === 'cutaway') {
+      const material = new MeshStandardMaterial({
+        color: preset.bore,
+        roughness: 0.92,
+        metalness: 0.02,
+        side: DoubleSide
+      });
+      for (const geometry of buildCutawayGeometries(frames, section)) {
+        group.add(new Mesh(geometry, material));
+      }
+    } else if (this.mode === 'xray') {
+      const glass = new MeshStandardMaterial({
+        color: preset.bore,
+        roughness: 0.4,
+        metalness: 0.05,
+        transparent: true,
+        opacity: XRAY_OPACITY,
+        depthWrite: false,
+        side: DoubleSide
+      });
+      group.add(new Mesh(buildBoreGeometry(frames, section), glass));
+    } else {
+      const bore = new Mesh(
+        buildBoreGeometry(frames, section),
+        new MeshStandardMaterial({ color: preset.bore, roughness: 0.92, metalness: 0.02, side: BackSide })
+      );
+      group.add(bore);
+    }
     const roadHalf = section.halfWidthM - 1;
     const road = new Mesh(
       buildRibbonGeometry(frames, roadHalf, 0.02),
       new MeshStandardMaterial({ color: preset.road, roughness: 0.95, side: DoubleSide })
     );
-    group.add(bore, road);
+    group.add(road);
     for (const side of [-1, 1]) {
       const walkway = new Mesh(
         buildRibbonGeometry(frames, 0.5, 0.14, side * (section.halfWidthM - 0.5)),
@@ -490,7 +649,11 @@ export class TunnelScene {
       );
       group.add(walkway);
     }
-    if (preset.ribbons) this.buildLightLines(group, frames, section);
+    // The LED light-lines are an interior signature — pointless on a glass shell;
+    // in cutaway the crown is open, so only the wall lines are swept.
+    if (preset.ribbons && this.mode !== 'xray') {
+      this.buildLightLines(group, frames, section, this.mode === 'cutaway');
+    }
     for (let lane = 1; lane < lanes; lane++) {
       const offset = -roadHalf + (2 * roadHalf * lane) / lanes;
       const marking = new Mesh(
@@ -501,12 +664,157 @@ export class TunnelScene {
     }
   }
 
+  /** Flat slice face closing the bore at the moving PK cut. */
+  private buildSectionCap(group: Group, frames: Frame[], section: CrossSection): void {
+    const end = frames.at(-1);
+    if (!end) return;
+    const cap = new Mesh(
+      buildSectionCapGeometry(end, section),
+      new MeshStandardMaterial({ color: 0x9a_a2b0, roughness: 0.75, side: DoubleSide })
+    );
+    group.add(cap);
+  }
+
+  /** PK tick + label sprite every {@link PK_TICK_EVERY_M}, plus portal name sprites. */
+  private buildPkGraduations(group: Group, frames: Frame[], section: CrossSection, tubeName: string): void {
+    const lengthM = frames.at(-1)?.pkM ?? 0;
+    const tickMaterial = new MeshStandardMaterial({ color: MARKING_HEX, roughness: 0.7 });
+    for (let pk = 0; pk <= lengthM; pk += PK_TICK_EVERY_M) {
+      const frame = frameAt(frames, pk);
+      const tick = new Mesh(new BoxGeometry(section.halfWidthM * 2 + 1, 0.12, 0.35), tickMaterial);
+      tick.position.copy(worldAt(frames, pk, 0, section.crownHeightM + 0.1));
+      // Align the tick across the tube (its X axis along the local right vector).
+      const right = rightOf(frame);
+      tick.quaternion.setFromUnitVectors(new Vector3(1, 0, 0), right);
+      group.add(tick);
+      group.add(this.makeTextSprite(formatPk(pk), worldAt(frames, pk, 0, section.crownHeightM + PK_LABEL_RISE_M)));
+    }
+    // Portal names at both ends, higher so they read from far away.
+    const first = frames[0];
+    const last = frames.at(-1);
+    if (first && last) {
+      group.add(this.makeTextSprite(`${tubeName} — ${formatPk(first.pkM)}`, first.position.clone().setY(first.position.y + section.crownHeightM + PK_LABEL_RISE_M + 1.6)));
+      group.add(this.makeTextSprite(`${tubeName} — ${formatPk(last.pkM)}`, last.position.clone().setY(last.position.y + section.crownHeightM + PK_LABEL_RISE_M + 1.6)));
+    }
+  }
+
+  /**
+   * X-ray status ribbon: one segment per {@link HEAT_ZONE_M} on the back of the
+   * shell, recoloured on every live update by the worst equipment state of its
+   * zone — the aerial view becomes a state map of the line.
+   */
+  private buildHeatRibbon(group: Group, frames: Frame[], section: CrossSection, tubeId: string): void {
+    const lengthM = frames.at(-1)?.pkM ?? 0;
+    for (let from = 0; from < lengthM; from += HEAT_ZONE_M) {
+      const to = Math.min(lengthM, from + HEAT_ZONE_M);
+      const zone = frames.filter((f) => f.pkM >= from - 1 && f.pkM <= to + 1);
+      if (zone.length < 2) continue;
+      const material = new MeshStandardMaterial({
+        color: HEAT_OK_HEX,
+        emissive: HEAT_OK_HEX,
+        emissiveIntensity: 0.7,
+        roughness: 0.5,
+        side: DoubleSide
+      });
+      group.add(new Mesh(buildRibbonGeometry(zone, HEAT_RIBBON_HALF_W_M, section.crownHeightM + HEAT_RIBBON_RISE_M), material));
+      this.heatSegments.push({ material, tubeId, fromPkM: from, toPkM: to });
+    }
+  }
+
+  /** Canvas-backed billboard text (PK marks, portal names). */
+  private makeTextSprite(text: string, position: Vector3): Sprite {
+    const pad = 12;
+    const fontPx = 44;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d')!;
+    ctx.font = `600 ${fontPx}px sans-serif`;
+    canvas.width = Math.ceil(ctx.measureText(text).width) + pad * 2;
+    canvas.height = fontPx + pad * 2;
+    ctx.font = `600 ${fontPx}px sans-serif`;
+    ctx.fillStyle = 'rgba(10, 14, 20, 0.55)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#dfe6f0';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, pad, canvas.height / 2);
+    const sprite = new Sprite(new SpriteMaterial({ map: new CanvasTexture(canvas), depthTest: false, transparent: true }));
+    sprite.scale.set(canvas.width / SPRITE_PX_PER_M, canvas.height / SPRITE_PX_PER_M, 1);
+    sprite.position.copy(position);
+    return sprite;
+  }
+
+  /** Portal heads (pillars + lintel) and a short approach road at both tube ends. */
+  private buildPortals(group: Group, fullFrames: Frame[], frames: Frame[], section: CrossSection): void {
+    const roadMaterial = new MeshStandardMaterial({ color: STYLES[this.style].road, roughness: 0.95, side: DoubleSide });
+    const headMaterial = new MeshStandardMaterial({ color: PORTAL_HEX, roughness: 0.85 });
+    const makeHead = (frame: Frame, outward: 1 | -1): void => {
+      const right = rightOf(frame);
+      const head = new Group();
+      const lintel = new Mesh(
+        new BoxGeometry(section.halfWidthM * 2 + PORTAL_BAND_M * 2, PORTAL_BAND_M, PORTAL_THICK_M),
+        headMaterial
+      );
+      lintel.position.set(0, section.crownHeightM + PORTAL_BAND_M / 2 - 0.3, 0);
+      head.add(lintel);
+      for (const side of [-1, 1]) {
+        const pillar = new Mesh(new BoxGeometry(PORTAL_BAND_M, section.crownHeightM + 0.6, PORTAL_THICK_M), headMaterial);
+        pillar.position.set(side * (section.halfWidthM + PORTAL_BAND_M / 2), (section.crownHeightM + 0.6) / 2, 0);
+        head.add(pillar);
+      }
+      head.position.copy(frame.position);
+      // Face the portal frame across the tube (its local Z along the tangent).
+      head.quaternion.setFromUnitVectors(new Vector3(1, 0, 0), right);
+      group.add(head);
+      // Short approach road running outward from the portal.
+      const start = frame.position.clone();
+      const dir = frame.tangent.clone().multiplyScalar(outward);
+      const approach: Frame[] = [0, APPROACH_ROAD_M].map((d) => ({
+        pkM: d,
+        position: start.clone().addScaledVector(dir, d).setY(start.y),
+        tangent: dir
+      }));
+      group.add(new Mesh(buildRibbonGeometry(approach, section.halfWidthM - 1, 0.02), roadMaterial));
+    };
+    const first = fullFrames[0];
+    if (first) makeHead(first, -1);
+    // The far head only exists while the tunnel is not sliced (the cut replaces it).
+    const last = fullFrames.at(-1);
+    if (last && frames.at(-1)?.pkM === last.pkM) makeHead(last, 1);
+  }
+
+  /** Dark ground apron under the whole works (exterior dressing). */
+  private buildGround(): void {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    let minY = Infinity;
+    for (const tube of this.tubes) {
+      for (const frame of tube.frames) {
+        const x = frame.position.x + tube.offset.x;
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+        minZ = Math.min(minZ, frame.position.z);
+        maxZ = Math.max(maxZ, frame.position.z);
+        minY = Math.min(minY, frame.position.y);
+      }
+    }
+    if (!Number.isFinite(minX)) return;
+    const ground = new Mesh(
+      new PlaneGeometry(maxX - minX + GROUND_MARGIN_M * 2, maxZ - minZ + GROUND_MARGIN_M * 2),
+      new MeshStandardMaterial({ color: GROUND_HEX, roughness: 1 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.set((minX + maxX) / 2, minY - 0.12, (minZ + maxZ) / 2);
+    this.ground = ground;
+    this.root.add(ground);
+  }
+
   /**
    * The « modern » signature: continuous cyan LED light-lines swept along both
    * walls (two heights) and under the crown — emissive, fog-free, unlit
    * materials so they read as light sources without post-processing.
    */
-  private buildLightLines(group: Group, frames: Frame[], section: CrossSection): void {
+  private buildLightLines(group: Group, frames: Frame[], section: CrossSection, skipCrown = false): void {
     const material = new MeshStandardMaterial({
       color: RIBBON_HEX,
       emissive: RIBBON_HEX,
@@ -522,13 +830,15 @@ export class TunnelScene {
         group.add(new Mesh(buildRibbonGeometry(frames, RIBBON_WIDTH_M, height, side * lateral), material));
       }
     }
-    // Crown line, centred under the vault.
-    group.add(
-      new Mesh(
-        buildRibbonGeometry(frames, RIBBON_WIDTH_M * 1.6, section.crownHeightM - CROWN_RIBBON_GAP_M, 0),
-        material
-      )
-    );
+    // Crown line, centred under the vault — absent when the crown is open (cutaway).
+    if (!skipCrown) {
+      group.add(
+        new Mesh(
+          buildRibbonGeometry(frames, RIBBON_WIDTH_M * 1.6, section.crownHeightM - CROWN_RIBBON_GAP_M, 0),
+          material
+        )
+      );
+    }
   }
 
   /**

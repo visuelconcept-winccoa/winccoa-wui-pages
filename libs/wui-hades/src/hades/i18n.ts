@@ -78,6 +78,14 @@ export const MSG = {
     tabLogbook: ml('Logbook', 'Main courante', 'Betriebstagebuch'),
     styleModern: ml('Modern rendering', 'Rendu moderne', 'Modernes Rendering'),
     styleSimple: ml('Simple rendering', 'Rendu simple', 'Einfaches Rendering'),
+    modeCutaway: ml('Cutaway (dollhouse)', 'Écorché (maquette)', 'Aufschnitt (Modell)'),
+    modeXray: ml('X-ray (state map)', 'Rayons X (carte d’état)', 'Röntgen (Zustandskarte)'),
+    modeClosed: ml('Closed tube', 'Tube fermé', 'Geschlossene Röhre'),
+    cutToggle: ml(
+      'PK cut — slice the tunnel at a chainage and scrub along it',
+      'Coupe PK — trancher le tunnel à un PK et le parcourir au curseur',
+      'PK-Schnitt — Tunnel an einer Station aufschneiden und entlangfahren'
+    ),
     toggleLabels: ml('Equipment labels', 'Étiquettes des équipements', 'Anlagenbeschriftungen'),
     tabExercise: ml('Exercise', 'Exercice', 'Übung'),
     shadowChip: ml('Observation', 'Observation', 'Beobachtung'),

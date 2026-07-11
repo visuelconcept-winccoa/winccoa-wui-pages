@@ -35,7 +35,7 @@ import {
   modeEngagedMsg,
   simulatedCommandMsg
 } from '../i18n.js';
-import { TunnelScene, type ViewStyle } from '../scene/tunnel-scene.js';
+import { TunnelScene, type ViewMode, type ViewStyle } from '../scene/tunnel-scene.js';
 import type { EquipmentDef, OperatingMode, Tunnel } from '../types.js';
 import { STATE_FAULT, STATE_RUN, STATE_WARNING } from '../types.js';
 import './hd-editor.js';
@@ -54,9 +54,25 @@ const TABS: readonly Tab[] = ['3d', 'editor', 'synoptic', 'modes', 'logbook', 'e
 const EXERCISE_TICK_MS = 1000;
 /** localStorage key of the preferred 3D render style. */
 const STYLE_STORAGE_KEY = 'hades.viewStyle';
+/** localStorage key of the preferred 3D shell mode (closed / cutaway / x-ray). */
+const MODE_STORAGE_KEY = 'hades.viewMode';
+/** PK cut slider bounds/step (m). */
+const CUT_MIN_M = 50;
+const CUT_STEP_M = 10;
 
 function storedStyle(): ViewStyle {
   return localStorage.getItem(STYLE_STORAGE_KEY) === 'simple' ? 'simple' : 'modern';
+}
+
+function storedMode(): ViewMode {
+  const raw = localStorage.getItem(MODE_STORAGE_KEY);
+  return raw === 'closed' || raw === 'xray' ? raw : 'cutaway';
+}
+
+/** Chainage notation of a PK in metres (e.g. `PK 1+500`). */
+function formatPkLabel(pkM: number): string {
+  const rounded = Math.round(pkM);
+  return `PK ${Math.floor(rounded / 1000)}+${String(rounded % 1000).padStart(3, '0')}`;
 }
 
 @customElement('hd-tunnel-view')
@@ -69,6 +85,10 @@ export class HdTunnelView extends LitElement {
 
   @state() private tab: Tab = '3d';
   @state() private viewStyle: ViewStyle = storedStyle();
+  @state() private viewMode: ViewMode = storedMode();
+  /** PK cut scrubber: enabled + current PK (m). */
+  @state() private cutOn = false;
+  @state() private cutPkM = CUT_MIN_M;
   @state() private labelsOn = false;
   @state() private selectedId = '';
   /** Bumped on every live emission so the open dialog re-renders its values. */
@@ -122,6 +142,7 @@ export class HdTunnelView extends LitElement {
     const labelHost = this.renderRoot.querySelector<HTMLElement>('.scene-labels');
     if (labelHost) this.scene.setLabelHost(labelHost);
     this.scene.setStyle(this.viewStyle);
+    this.scene.setMode(this.viewMode);
     this.resizeObserver = new ResizeObserver(() => this.scene?.resize());
     this.resizeObserver.observe(host);
     this.applyTunnel();
@@ -224,6 +245,15 @@ export class HdTunnelView extends LitElement {
           ${this.tab === '3d'
             ? html`
                 <ix-select
+                  class="mode-select"
+                  .value=${this.viewMode}
+                  @valueChange=${(e: CustomEvent<string>) => this.onMode(String(e.detail) as ViewMode)}
+                >
+                  <ix-select-item label=${localize(MSG.view.modeCutaway)} value="cutaway"></ix-select-item>
+                  <ix-select-item label=${localize(MSG.view.modeXray)} value="xray"></ix-select-item>
+                  <ix-select-item label=${localize(MSG.view.modeClosed)} value="closed"></ix-select-item>
+                </ix-select>
+                <ix-select
                   class="style-select"
                   .value=${this.viewStyle}
                   @valueChange=${(e: CustomEvent<string>) => this.onStyle(String(e.detail) as ViewStyle)}
@@ -231,6 +261,26 @@ export class HdTunnelView extends LitElement {
                   <ix-select-item label=${localize(MSG.view.styleModern)} value="modern"></ix-select-item>
                   <ix-select-item label=${localize(MSG.view.styleSimple)} value="simple"></ix-select-item>
                 </ix-select>
+                <ix-icon-button
+                  icon="cut"
+                  variant=${this.cutOn ? 'primary' : 'secondary'}
+                  ghost
+                  title=${localize(MSG.view.cutToggle)}
+                  @click=${() => this.toggleCut()}
+                ></ix-icon-button>
+                ${this.cutOn
+                  ? html`<label class="cut-slider">
+                      <input
+                        type="range"
+                        min=${CUT_MIN_M}
+                        max=${Math.max(CUT_MIN_M, this.tunnelLengthM())}
+                        step=${CUT_STEP_M}
+                        .value=${String(this.cutPkM)}
+                        @input=${(e: Event) => this.onCutInput((e.target as HTMLInputElement).value)}
+                      />
+                      <span class="cut-pk">${formatPkLabel(this.cutPkM)}</span>
+                    </label>`
+                  : nothing}
                 <ix-icon-button
                   icon="label"
                   variant=${this.labelsOn ? 'primary' : 'secondary'}
@@ -425,6 +475,35 @@ export class HdTunnelView extends LitElement {
     this.scene?.setStyle(style);
   }
 
+  private onMode(mode: ViewMode): void {
+    this.viewMode = mode;
+    localStorage.setItem(MODE_STORAGE_KEY, mode);
+    this.scene?.setMode(mode);
+  }
+
+  /** Length (m) of the first tube — the PK cut scrubber range. */
+  private tunnelLengthM(): number {
+    const segments = this.tunnel?.tubes[0]?.segments ?? [];
+    return segments.reduce((sum, s) => sum + s.lengthM, 0);
+  }
+
+  private toggleCut(): void {
+    this.cutOn = !this.cutOn;
+    if (this.cutOn) {
+      this.cutPkM = Math.min(Math.max(CUT_MIN_M, this.cutPkM), this.tunnelLengthM());
+      this.scene?.setCutPk(this.cutPkM, true);
+    } else {
+      this.scene?.setCutPk(null);
+    }
+  }
+
+  private onCutInput(raw: string): void {
+    const pk = Number(raw);
+    if (!Number.isFinite(pk)) return;
+    this.cutPkM = pk;
+    this.scene?.setCutPk(pk, true);
+  }
+
   private toggleLabels(): void {
     this.labelsOn = !this.labelsOn;
     this.scene?.setLabelsVisible(this.labelsOn);
@@ -437,6 +516,13 @@ export class HdTunnelView extends LitElement {
 
   private onSelect(id: string): void {
     this.selectedId = id;
+    // With the PK cut armed, selecting (e.g. from the synoptic) slices there.
+    const pk = this.tunnel?.equipment.find((e) => e.id === id)?.pkM;
+    if (this.cutOn && pk != null) {
+      this.cutPkM = Math.max(CUT_MIN_M, pk + CUT_STEP_M);
+      this.scene?.setCutPk(this.cutPkM, true);
+      return;
+    }
     this.scene?.flyTo(id);
   }
 
@@ -765,6 +851,24 @@ function viewStyles(): ReturnType<typeof css> {
     }
     .style-select {
       width: 11rem;
+    }
+    .mode-select {
+      width: 12rem;
+    }
+    .cut-slider {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .cut-slider input[type='range'] {
+      width: 11rem;
+      accent-color: var(--theme-color-primary, #0ea5e9);
+    }
+    .cut-pk {
+      min-width: 5.2rem;
+      font-family: var(--theme-font-mono, monospace);
+      font-size: 0.8rem;
+      color: var(--theme-color-soft-text);
     }
     .scene-hint {
       position: absolute;

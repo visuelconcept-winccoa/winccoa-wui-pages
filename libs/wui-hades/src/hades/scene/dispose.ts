@@ -7,7 +7,7 @@
  * (Same helper as the machine-fleet-3d page, duplicated so each page bundle
  * stays self-contained at packaging time.)
  */
-import { Mesh, type Material, type Object3D, type Texture } from 'three';
+import { Mesh, Sprite, type Material, type Object3D, type Texture } from 'three';
 
 const TEXTURE_KEYS = [
   'map',
@@ -36,6 +36,9 @@ export function disposeObject(root: Object3D): void {
       const mat = obj.material as Material | Material[] | undefined;
       if (Array.isArray(mat)) for (const m of mat) disposeMaterial(m);
       else if (mat) disposeMaterial(mat);
+    } else if (obj instanceof Sprite) {
+      // Canvas-backed billboards (PK marks, portal names) own their texture.
+      disposeMaterial(obj.material);
     }
   });
   root.clear();
