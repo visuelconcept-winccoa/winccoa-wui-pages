@@ -1,0 +1,34 @@
+{
+  "module": "warehouse",
+  "title": { "en_US.utf8": "Warehouse", "fr.utf8": "Gestion d'entrepôt", "de.utf8": "Lagerverwaltung" },
+  "roles": [
+    { "id": "view", "label": { "en_US.utf8": "View", "fr.utf8": "Consulter", "de.utf8": "Ansehen" } },
+    {
+      "id": "edit-config",
+      "label": { "en_US.utf8": "Edit configuration", "fr.utf8": "Éditer la configuration", "de.utf8": "Konfiguration bearbeiten" },
+      "description": {
+        "en_US.utf8": "Create/edit/delete storage zones, locations and products.",
+        "fr.utf8": "Créer/éditer/supprimer les zones de stockage, emplacements et produits.",
+        "de.utf8": "Lagerzonen, Lagerplätze und Produkte anlegen/bearbeiten/löschen."
+      }
+    },
+    {
+      "id": "adjust-stock",
+      "label": { "en_US.utf8": "Adjust stock", "fr.utf8": "Ajuster le stock", "de.utf8": "Bestand anpassen" },
+      "description": {
+        "en_US.utf8": "Change stock quantities (add/remove/set at a location).",
+        "fr.utf8": "Modifier les quantités en stock (ajouter/retirer/définir à un emplacement).",
+        "de.utf8": "Bestandsmengen ändern (an einem Lagerplatz hinzufügen/entnehmen/setzen)."
+      }
+    },
+    {
+      "id": "inventory",
+      "label": { "en_US.utf8": "Run inventory", "fr.utf8": "Réaliser un inventaire", "de.utf8": "Inventur durchführen" },
+      "description": {
+        "en_US.utf8": "Create inventory campaigns, enter counts and validate (applies counts to stock).",
+        "fr.utf8": "Créer des campagnes d'inventaire, saisir les comptages et valider (applique les comptages au stock).",
+        "de.utf8": "Inventurkampagnen anlegen, Zählungen erfassen und validieren (überträgt Zählungen in den Bestand)."
+      }
+    }
+  ]
+}

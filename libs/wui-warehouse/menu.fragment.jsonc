@@ -1,0 +1,12 @@
+// Menu fragment for @visuelconcept/wui-warehouse.
+[
+  {
+    "title": { "en_US": "Warehouse", "fr": "Gestion d'entrepôt", "de_AT": "Lagerverwaltung" },
+    "icon": "capacity",
+    "path": "/warehouse",
+    "module": "/data/dashboard-wc/pages/warehouse.js",
+    "routeId": "warehouse",
+    "component": "wui-warehouse",
+    "permission": ["connected"]
+  }
+]
