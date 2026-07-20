@@ -1,0 +1,30 @@
+{
+  "name": "@visuelconcept/wui-warehouse",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Warehouse Management System — standalone WinCC OA WebUI page: configure storage zones and locations, a product catalog, visualise stock on a 2D plan + tables, and run stock-count inventory campaigns. Config/products/campaigns persist as JSON-in-DP (DpJsonStore); stock quantities live in a dedicated WMS_Stock datapoint type (archivable / alarmable).",
+  "author": { "name": "Visuel Concept" },
+  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page", "warehouse", "wms", "inventory"],
+  "license": "MIT",
+  "dependencies": {
+    "@visuelconcept/wui-kit": "*"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-oarxjs-context": "*"
+  },
+  "exports": { "./*": { "types": "./types/*", "import": "./*" } },
+  "wuiPage": {
+    "route": "/warehouse",
+    "routeId": "warehouse",
+    "component": "wui-warehouse",
+    "module": "/data/dashboard-wc/pages/warehouse.js",
+    "icon": "capacity",
+    "permission": ["connected"],
+    "tier": 3
+  }
+}
