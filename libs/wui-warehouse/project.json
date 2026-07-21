@@ -5,6 +5,14 @@
   "projectType": "library",
   "tags": ["package", "standalone-page"],
   "targets": {
+    "test": {
+      "executor": "@nx/vite:test",
+      "outputs": ["{options.reportsDirectory}"],
+      "options": {
+        "passWithNoTests": false,
+        "reportsDirectory": "../../coverage/unit/libs/wui-warehouse"
+      }
+    },
     "lint": {
       "executor": "@nx/eslint:lint"
     }

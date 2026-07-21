@@ -318,11 +318,14 @@ export class WuiWarehouse extends LitElement {
 
   private async reload(): Promise<void> {
     const config = await loadConfig();
-    this.zones = config.zones;
-    this.locations = config.locations;
-    this.products = config.products;
-    this.campaigns = config.campaigns;
-    this.stock = await stockStore.list();
+    // Copy every list: the offline stores return their LIVE in-memory array
+    // (mutated in place by create/save/remove), and an unchanged reference
+    // would defeat Lit's change detection — the UI would never refresh.
+    this.zones = [...config.zones];
+    this.locations = [...config.locations];
+    this.products = [...config.products];
+    this.campaigns = [...config.campaigns];
+    this.stock = [...(await stockStore.list())];
     this.offline = config.offline || stockStore.offline;
   }
 
