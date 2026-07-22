@@ -318,6 +318,7 @@ export class WuiWarehouse extends LitElement {
               .zones=${this.scopedZones}
               .locations=${this.scopedLocations}
               .stock=${this.scopedStock}
+              .products=${this.products}
               .selectedId=${this.selectedId}
               .editing=${this.editingLayout}
               @wui:select=${(e: CustomEvent<{ locationId: string }>) => (this.selectedId = e.detail.locationId)}

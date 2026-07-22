@@ -23,14 +23,24 @@
   (ampère has no resize precedent; the handle is this module's own addition).
   Locations are clamped inside their zone and below the reserved label band
   (`ZONE_LABEL_BAND`).
-- **3D view (machine-fleet-3d pattern, minimal).** `wh-plan3d` owns a small
-  three.js scene (zone slabs + one box per location, height by type, same
-  colour scale as 2D). Selection raycasts the boxes; edit-drag raycasts the
-  ground `Plane` and emits the same `wui:layout`. Orbit is hand-rolled
-  (θ/φ/radius — no OrbitControls). Lifecycle mirrors `mf-atelier-view`:
-  absolute canvas in a sized viewport, `ResizeObserver`, full geometry/material
-  disposal + `forceContextLoss()` on disconnect. `three` is a direct bundled
-  dependency (`external-dependencies.mjs`), never a shared bundle.
+- **3D view (machine-fleet-3d pattern, fully procedural).** `wh-plan3d` owns a
+  three.js scene where every location is BUILT from its type — no external
+  assets (nothing to license, works offline): pallet-rack uprights + orange
+  beam levels + deck plates (`rack`), close-level shelving (`shelf`), cubby
+  blocks (`bin`), translucent cold-room enclosures (`cold`), painted floor
+  markings with pallet stacks when occupied (`floor`). Each location carries:
+  a **fill gauge** (inner volume rising with the occupancy ratio, same colour
+  scale as 2D), a **billboard label** (canvas-texture sprite, code + units,
+  `depthTest:false` so it never hides), an **alert badge** (amber/red “!”
+  sprite when a cell is under-min/over-max) and a **hover/selection outline**
+  (inflated `BackSide` shell — an emissive tint would wash the occupancy
+  colour). Selection/hover raycast invisible full-size hitboxes; edit-drag
+  raycasts the ground `Plane` and emits the same `wui:layout` as the 2D
+  editor. Orbit is hand-rolled (θ/φ/radius — no OrbitControls). Lifecycle
+  mirrors `mf-atelier-view`: absolute canvas in a sized viewport,
+  `ResizeObserver`, full geometry/material/texture disposal +
+  `forceContextLoss()` on disconnect. `three` is a direct bundled dependency
+  (`external-dependencies.mjs`), never a shared bundle.
 - **One generic entity dialog** (`wh-entity-dialog`, schema-driven via
   `forms.ts`) instead of six near-identical modals. `ix-select` preselection
   binds through `.value` — `.selectedIndices` does NOT reflect into the input.
@@ -87,9 +97,10 @@ Playwright captures incl. the 3D WebGL scene and the layout-edit mode).
 
 ## Known limitations / candidate follow-ups
 
-- 3D view has no rack labels (codes appear in the side panel on selection);
-  billboard/sprite labels would be the fleet-3d-style next step.
 - 3D editing supports move only; resize stays a 2D-editor affordance.
-- The 3D "selected" highlight is an emissive tint; an outline pass would read
-  better on red racks.
 - No keyboard interaction on the plan editors (pointer only).
+- Labels can crowd each other on dense plans at low zoom; an overlay-HTML
+  label manager with collision fade (fleet-3d style) would be the next step.
+- Optional "crates on levels" display (quantity-proportional `InstancedMesh`
+  boxes on the rack decks) was considered and skipped — redundant with the
+  fill gauge; revisit if operators ask for it.
