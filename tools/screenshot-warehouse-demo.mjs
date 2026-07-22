@@ -16,7 +16,10 @@
 // theme + DI services but no shell, router or login.
 //
 // Captured (default docs/images/manual/):
-//   warehouse.png                  Plan tab, one location selected
+//   warehouse.png                  Overview — one card per warehouse
+//   warehouse-plan.png             Plan tab (2D), one location selected
+//   warehouse-plan-edit.png        Plan tab (2D) in layout-edit mode (handles)
+//   warehouse-plan3d.png           Plan tab (3D three.js scene)
 //   warehouse-stock.png            Stock tab (KPIs + table)
 //   warehouse-zones.png            Zones tab
 //   warehouse-products.png         Products tab
@@ -72,6 +75,16 @@ const HARNESS_HTML = `<!doctype html>
       // source (see createProxyConfig in vite.shared.ts). Static imports won't do:
       // vite's import-analysis fails on the virtual /data/... path.
       await import(/* @vite-ignore */ '/data/dashboard-wc/pages/warehouse.js' + '?import');
+      // Minimal router shim: the page navigates master/detail by dispatching
+      // RouterEvent ('navigateTo'); mirror the /warehouse/:id path into the
+      // component's warehouseid attribute like the shell router would.
+      globalThis.addEventListener('navigateTo', (e) => {
+        const path = e.detail?.pathname ?? '';
+        const match = new RegExp('^/warehouse/([^/]+)$').exec(path);
+        const el = document.querySelector('wui-warehouse');
+        if (match) el.setAttribute('warehouseid', decodeURIComponent(match[1]));
+        else el.removeAttribute('warehouseid');
+      });
     </script>
   </body>
 </html>
@@ -148,11 +161,28 @@ async function main() {
     const root = page.locator('wui-warehouse');
     // The offline banner proves the demo fallback engaged (i.e. no WinCC OA).
     await root.locator('.offline').waitFor({ timeout: 30_000 });
-    const tab = (label) => root.locator('.tabs ix-button', { hasText: label });
+    const tab = (label) => root.locator('ix-tab-item', { hasText: label });
 
-    // Plan — select a stocked location so the detail panel is populated.
-    await root.locator('svg text', { hasText: 'B-01' }).first().click();
+    // Overview — one card per warehouse.
+    await root.locator('wh-overview .card').first().waitFor();
     await shoot(page, 'warehouse.png');
+
+    // Open the first warehouse → Plan (2D), select a stocked location.
+    await root.locator('wh-overview .card', { hasText: 'Entrepôt Nord' }).click();
+    await root.locator('wh-plan').waitFor();
+    await root.locator('svg g.loc', { hasText: 'B-01' }).first().click();
+    await shoot(page, 'warehouse-plan.png');
+
+    // Layout-edit mode (drag/resize handles).
+    await root.locator('.plan-toolbar ix-button', { hasText: 'Edit layout' }).click();
+    await shoot(page, 'warehouse-plan-edit.png');
+    await root.locator('.plan-toolbar ix-button', { hasText: 'Done' }).click();
+
+    // 3D scene.
+    await root.locator('.plan-toolbar ix-button', { hasText: '3D' }).click();
+    await root.locator('wh-plan3d canvas').waitFor();
+    await page.waitForTimeout(1500); // let the WebGL scene settle
+    await shoot(page, 'warehouse-plan3d.png');
 
     await tab('Stock').click();
     await shoot(page, 'warehouse-stock.png');
@@ -189,7 +219,7 @@ async function main() {
   } finally {
     await browser.close();
     stopDevelopmentServer(server);
-    rmSync(HARNESS, { force: true });
+    if (!process.env.KEEP_HARNESS) rmSync(HARNESS, { force: true });
   }
   console.log('Done.');
 }

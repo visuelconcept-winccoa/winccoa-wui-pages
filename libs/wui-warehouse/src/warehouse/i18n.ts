@@ -48,6 +48,20 @@ export const MSG = {
     ),
     units: ml('units', 'unités', 'Einheiten')
   },
+  warehouses: {
+    add: ml('New warehouse', 'Nouvel entrepôt', 'Neues Lager'),
+    open: ml('Open', 'Ouvrir', 'Öffnen'),
+    zones: ml('zones', 'zones', 'Zonen'),
+    locations: ml('locations', 'emplacements', 'Lagerplätze'),
+    none: ml('No warehouses yet — create one to start.', 'Aucun entrepôt — créez-en un pour commencer.', 'Noch keine Lager — legen Sie eines an.'),
+    deleteConfirm: ml(
+      'Delete this warehouse with all its zones, locations and stock?',
+      'Supprimer cet entrepôt avec toutes ses zones, emplacements et stocks ?',
+      'Dieses Lager mit allen Zonen, Lagerplätzen und Beständen löschen?'
+    ),
+    notFound: ml('Warehouse not found.', 'Entrepôt introuvable.', 'Lager nicht gefunden.'),
+    back: ml('All warehouses', 'Tous les entrepôts', 'Alle Lager')
+  },
   plan: {
     hint: ml('Click a location to see its stock.', 'Cliquez sur un emplacement pour voir son stock.', 'Klicken Sie auf einen Lagerplatz, um dessen Bestand zu sehen.'),
     legend: ml('Occupancy', 'Occupation', 'Belegung'),
@@ -55,6 +69,21 @@ export const MSG = {
     legOk: ml('Normal', 'Normal', 'Normal'),
     legHigh: ml('High', 'Élevé', 'Hoch'),
     legFull: ml('Full', 'Plein', 'Voll'),
+    legUncapped: ml('Occupied (uncapped)', 'Occupé (illimité)', 'Belegt (unbegrenzt)'),
+    view2d: ml('2D', '2D', '2D'),
+    view3d: ml('3D', '3D', '3D'),
+    edit: ml('Edit layout', 'Éditer le plan', 'Layout bearbeiten'),
+    done: ml('Done', 'Terminer', 'Fertig'),
+    editHint: ml(
+      'Drag zones and racks to move them; drag the corner handle to resize.',
+      'Glissez les zones et racks pour les déplacer ; la poignée d’angle les redimensionne.',
+      'Zonen und Regale ziehen zum Verschieben; Eckgriff zum Skalieren.'
+    ),
+    editHint3d: ml(
+      'Drag a rack to move it on the floor. Left-drag orbits, wheel zooms, right-drag pans.',
+      'Glissez un rack pour le déplacer au sol. Glisser = orbite, molette = zoom, clic droit = panoramique.',
+      'Regal ziehen zum Verschieben. Ziehen = Orbit, Rad = Zoom, Rechtsklick = Schwenken.'
+    ),
     noSelection: ml('No location selected.', 'Aucun emplacement sélectionné.', 'Kein Lagerplatz ausgewählt.'),
     capacity: ml('Capacity', 'Capacité', 'Kapazität'),
     occupancy: ml('Occupancy', 'Occupation', 'Belegung'),
@@ -62,7 +91,7 @@ export const MSG = {
   },
   stock: {
     kpiSkus: ml('Stocked products', 'Produits en stock', 'Bevorratete Produkte'),
-    kpiUnits: ml('Total units', 'Unités totales', 'Einheiten gesamt'),
+    kpiFill: ml('Overall occupancy', 'Occupation globale', 'Gesamtbelegung'),
     kpiUnder: ml('Below minimum', 'Sous le minimum', 'Unter Minimum'),
     kpiEmpty: ml('Empty locations', 'Emplacements vides', 'Leere Lagerplätze'),
     colProduct: ml('Product', 'Produit', 'Produkt'),
@@ -134,6 +163,7 @@ export const MSG = {
   },
   fields: {
     name: ml('Name', 'Nom', 'Name'),
+    warehouse: ml('Warehouse', 'Entrepôt', 'Lager'),
     code: ml('Code', 'Code', 'Code'),
     color: ml('Colour', 'Couleur', 'Farbe'),
     description: ml('Description', 'Description', 'Beschreibung'),
@@ -154,6 +184,8 @@ export const MSG = {
     posH: ml('Height', 'Hauteur', 'Höhe')
   },
   dialogTitles: {
+    newWarehouse: ml('New warehouse', 'Nouvel entrepôt', 'Neues Lager'),
+    editWarehouse: ml('Edit warehouse', 'Éditer l’entrepôt', 'Lager bearbeiten'),
     newZone: ml('New zone', 'Nouvelle zone', 'Neue Zone'),
     editZone: ml('Edit zone', 'Éditer la zone', 'Zone bearbeiten'),
     newLocation: ml('New location', 'Nouvel emplacement', 'Neuer Lagerplatz'),

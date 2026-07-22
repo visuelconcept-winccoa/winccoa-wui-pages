@@ -20,6 +20,8 @@ interface IxValueEvent {
 }
 
 const CHIP_VARIANT: Record<StockStatus, string> = { ok: 'success', under: 'warning', over: 'alarm', empty: 'neutral' };
+/** Sentinel value of the "all zones" filter entry (ix-select needs non-empty values). */
+const ALL_ZONES = '__all__';
 
 @customElement('wh-stock')
 export class WhStock extends LitElement {
@@ -40,10 +42,10 @@ export class WhStock extends LitElement {
       <div class="bar">
         <ix-select
           class="zone-filter"
-          .selectedIndices=${[this.zoneIndex()]}
+          .value=${this.filterZone === '' ? ALL_ZONES : this.filterZone}
           @valueChange=${(e: CustomEvent<string | string[]>) => this.readZone(e.detail)}
         >
-          <ix-select-item value="" label=${localize(MSG.common.all)}></ix-select-item>
+          <ix-select-item value=${ALL_ZONES} label=${localize(MSG.common.all)}></ix-select-item>
           ${this.zones.map((z) => html`<ix-select-item value=${z.id} label=${`${z.code} · ${z.name}`}></ix-select-item>`)}
         </ix-select>
         <ix-input
@@ -64,21 +66,29 @@ export class WhStock extends LitElement {
   }
 
   private renderKpis(): TemplateResult {
-    const totalUnits = this.stock.reduce((sum, c) => sum + c.quantity, 0);
     const stocked = this.products.filter((p) => productUnits(this.stock, p.id) > 0).length;
     const under = this.products.filter((p) => productUnits(this.stock, p.id) < p.minQty).length;
     const empty = this.locations.filter((l) => locationUnits(this.stock, l.id) === 0).length;
     return html`
       <div class="kpis">
         ${this.kpi(String(stocked), MSG.stock.kpiSkus, 'neutral')}
-        ${this.kpi(totalUnits.toLocaleString(), MSG.stock.kpiUnits, 'neutral')}
+        ${this.kpi(this.fillLabel(), MSG.stock.kpiFill, 'neutral')}
         ${this.kpi(String(under), MSG.stock.kpiUnder, under > 0 ? 'warning' : 'ok')}
         ${this.kpi(String(empty), MSG.stock.kpiEmpty, 'neutral')}
       </div>
     `;
   }
 
-  private kpi(value: string, label: typeof MSG.stock.kpiUnits, tone: 'neutral' | 'warning' | 'ok'): TemplateResult {
+  /** Global fill of the capped locations (heterogeneous units cannot be summed). */
+  private fillLabel(): string {
+    const capped = this.locations.filter((l) => l.capacity > 0);
+    const capacity = capped.reduce((sum, l) => sum + l.capacity, 0);
+    if (capacity === 0) return '—';
+    const units = capped.reduce((sum, l) => sum + locationUnits(this.stock, l.id), 0);
+    return `${Math.round((units / capacity) * 100)}%`;
+  }
+
+  private kpi(value: string, label: typeof MSG.stock.kpiFill, tone: 'neutral' | 'warning' | 'ok'): TemplateResult {
     return html`<div class="kpi ${tone}">
       <div class="kpi-val">${value}</div>
       <div class="kpi-lbl">${localizeDir(label)}</div>
@@ -154,13 +164,9 @@ export class WhStock extends LitElement {
     });
   }
 
-  private zoneIndex(): number {
-    const i = this.zones.findIndex((z) => z.id === this.filterZone);
-    return i === -1 ? 0 : i + 1;
-  }
-
   private readZone(detail: string | string[]): void {
-    this.filterZone = Array.isArray(detail) ? (detail[0] ?? '') : detail;
+    const value = Array.isArray(detail) ? (detail[0] ?? ALL_ZONES) : detail;
+    this.filterZone = value === ALL_ZONES ? '' : value;
   }
 
   private editCell(cell: StockCell): void {

@@ -12,7 +12,7 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { MSG, localize, localizeDir } from '../i18n.js';
-import { locationUnits, occupancy } from '../model.js';
+import { locationUnits, occupancyPercent } from '../model.js';
 import type { StockCell, StorageLocation, Zone } from '../types.js';
 
 @customElement('wh-zones')
@@ -42,15 +42,21 @@ export class WhZones extends LitElement {
 
   private renderZone(zone: Zone): TemplateResult {
     const locs = this.locations.filter((l) => l.zoneId === zone.id);
+    // Fill is computed over the CAPPED locations only; uncapped (floor) ones
+    // hold units but have no capacity to fill.
+    const capped = locs.filter((l) => l.capacity > 0);
     const units = locs.reduce((sum, l) => sum + locationUnits(this.stock, l.id), 0);
-    const capacity = locs.reduce((sum, l) => sum + l.capacity, 0);
-    const pct = Math.round(occupancy(units, capacity) * 100);
+    const cappedUnits = capped.reduce((sum, l) => sum + locationUnits(this.stock, l.id), 0);
+    const capacity = capped.reduce((sum, l) => sum + l.capacity, 0);
+    const pct = occupancyPercent(cappedUnits, capacity);
     return html`
       <div class="card" style="--accent:${zone.color}">
         <div class="card-head">
           <span class="dot"></span>
           <span class="ztitle">${zone.code} · ${zone.name}</span>
-          <span class="zmeta">${units.toLocaleString()} ${localize(MSG.common.units)}${capacity > 0 ? ` · ${pct}%` : ''}</span>
+          <span class="zmeta">
+            ${units.toLocaleString()} ${localize(MSG.common.units)}${pct == null ? '' : ` · ${pct}%`}
+          </span>
           <span class="grow"></span>
           ${this.canEdit
             ? html`
@@ -91,7 +97,8 @@ export class WhZones extends LitElement {
 
   private renderLocationRow(loc: StorageLocation): TemplateResult {
     const units = locationUnits(this.stock, loc.id);
-    const pct = Math.round(occupancy(units, loc.capacity) * 100);
+    // Never clamp: an over-filled location must READ as over-filled (e.g. 162%).
+    const pct = occupancyPercent(units, loc.capacity);
     return html`
       <tr>
         <td class="strong">${loc.code}</td>
@@ -99,7 +106,9 @@ export class WhZones extends LitElement {
         <td class="muted">${localizeDir(MSG.locTypes[loc.type])}</td>
         <td class="num muted">${loc.capacity > 0 ? loc.capacity : '∞'}</td>
         <td class="num">
-          ${units.toLocaleString()}${loc.capacity > 0 ? html` <span class="muted">(${pct}%)</span>` : nothing}
+          ${units.toLocaleString()}${pct == null
+            ? nothing
+            : html` <span class=${pct > 100 ? 'overcap' : 'muted'}>(${pct}%)</span>`}
         </td>
         ${this.canEdit
           ? html`<td class="actions-col">
@@ -191,6 +200,10 @@ function zonesStyles(): ReturnType<typeof css> {
     }
     .muted {
       color: var(--theme-color-soft-text);
+    }
+    .overcap {
+      color: var(--theme-color-alarm, #ef4444);
+      font-weight: 600;
     }
     .actions-col {
       white-space: nowrap;

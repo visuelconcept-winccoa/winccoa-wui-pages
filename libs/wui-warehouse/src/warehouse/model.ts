@@ -4,10 +4,18 @@
 /**
  * Pure domain helpers (derivations, colours, ids) and the demo dataset used both
  * as the offline in-memory fallback and as the first-run seed. All demo entities
- * carry STABLE explicit ids so their cross-references (location→zone,
- * stock→product/location) survive being persisted with `create(item, {id})`.
+ * carry STABLE explicit ids so their cross-references (zone→warehouse,
+ * location→zone, stock→product/location) survive being persisted with
+ * `create(item, {id})`.
+ *
+ * The demo quantities are deliberately COHERENT with the location capacities
+ * (rack 1000 · shelf 400 · cold 250 · bin 200 · floor uncapped) so the plan
+ * shows the full colour range instead of saturating red.
  */
-import type { InventoryLine, Product, StockCell, StockStatus, StorageLocation, Zone } from './types.js';
+import type { InventoryLine, LocationType, Product, StockCell, StockStatus, StorageLocation, Warehouse, Zone } from './types.js';
+
+/** Warehouse every legacy (pre-multi-warehouse) entity is backfilled into. */
+export const DEFAULT_WAREHOUSE_ID = 'wh-nord';
 
 /** WinCC-OA-safe id fragment (DP names allow letters, digits, underscore). */
 export function sanitizeDpId(raw: string): string {
@@ -35,12 +43,38 @@ export function occupancy(units: number, capacity: number): number {
   return units > 0 ? 1 : 0;
 }
 
+/**
+ * UNCAPPED fill percent of a location — may exceed 100 (over-capacity must stay
+ * visible, not silently clamp). `null` when the location has no capacity.
+ */
+export function occupancyPercent(units: number, capacity: number): number | null {
+  if (capacity <= 0) return null;
+  return Math.round((units / capacity) * 100);
+}
+
+const COLOR_EMPTY = '#64748b';
+const COLOR_OK = '#10b981';
+const COLOR_HIGH = '#f59e0b';
+const COLOR_FULL = '#ef4444';
+/** Occupied location without a capacity (floor storage) — informative, not an alarm. */
+const COLOR_UNCAPPED = '#3b82f6';
+
 /** Plan fill colour from a fill ratio (grey when empty). */
 export function occupancyColor(ratio: number, hasStock: boolean): string {
-  if (!hasStock) return '#64748b';
-  if (ratio < 0.7) return '#10b981';
-  if (ratio < 0.9) return '#f59e0b';
-  return '#ef4444';
+  if (!hasStock) return COLOR_EMPTY;
+  if (ratio < 0.7) return COLOR_OK;
+  if (ratio < 0.9) return COLOR_HIGH;
+  return COLOR_FULL;
+}
+
+/**
+ * Fill colour of a location on the plan/3D view. Uncapped locations never show
+ * the red "full" alarm — any stock on them is neutral information (blue).
+ */
+export function locationFillColor(units: number, capacity: number): string {
+  if (units <= 0) return COLOR_EMPTY;
+  if (capacity <= 0) return COLOR_UNCAPPED;
+  return occupancyColor(units / capacity, true);
 }
 
 /** Stock status of a quantity vs the product's min/max thresholds. */
@@ -60,6 +94,7 @@ export function variance(line: InventoryLine): number {
 
 interface ZoneSeed {
   id: string;
+  warehouseId: string;
   code: string;
   name: string;
   color: string;
@@ -69,33 +104,48 @@ interface ZoneSeed {
   h: number;
 }
 
+export function demoWarehouses(): Warehouse[] {
+  return [
+    { id: 'wh-nord', name: 'Entrepôt Nord', code: 'N', description: 'Site principal', color: '#3b82f6' },
+    { id: 'wh-sud', name: 'Entrepôt Sud', code: 'S', description: 'Picking & retours', color: '#f97316' }
+  ];
+}
+
 const ZONE_SEEDS: ZoneSeed[] = [
-  { id: 'z-a', code: 'A', name: 'Réception', color: '#3b82f6', x: 1, y: 1, w: 13, h: 8 },
-  { id: 'z-b', code: 'B', name: 'Stockage principal', color: '#8b5cf6', x: 15, y: 1, w: 14, h: 8 },
-  { id: 'z-c', code: 'C', name: 'Zone froide', color: '#06b6d4', x: 1, y: 10, w: 13, h: 7 },
-  { id: 'z-d', code: 'D', name: 'Expédition', color: '#f97316', x: 15, y: 10, w: 14, h: 7 }
+  { id: 'z-a', warehouseId: 'wh-nord', code: 'A', name: 'Réception', color: '#3b82f6', x: 1, y: 1, w: 13, h: 8 },
+  { id: 'z-b', warehouseId: 'wh-nord', code: 'B', name: 'Stockage principal', color: '#8b5cf6', x: 15, y: 1, w: 14, h: 8 },
+  { id: 'z-c', warehouseId: 'wh-nord', code: 'C', name: 'Zone froide', color: '#06b6d4', x: 1, y: 10, w: 13, h: 7 },
+  { id: 'z-d', warehouseId: 'wh-nord', code: 'D', name: 'Expédition', color: '#f97316', x: 15, y: 10, w: 14, h: 7 },
+  { id: 'z-e', warehouseId: 'wh-sud', code: 'E', name: 'Picking', color: '#22c55e', x: 1, y: 1, w: 13, h: 8 },
+  { id: 'z-f', warehouseId: 'wh-sud', code: 'F', name: 'Retours', color: '#eab308', x: 15, y: 1, w: 14, h: 8 }
 ];
 
-const TYPE_BY_ZONE: Record<string, StorageLocation['type']> = { 'z-c': 'cold', 'z-d': 'floor' };
+const TYPE_BY_ZONE: Record<string, LocationType> = { 'z-c': 'cold', 'z-d': 'floor', 'z-e': 'shelf', 'z-f': 'bin' };
 
-/** Four locations laid out as a 2×2 grid inside a zone rectangle. */
+/** Realistic per-type capacities (0 = uncapped floor storage). */
+export const CAPACITY_BY_TYPE: Record<LocationType, number> = { rack: 1000, shelf: 400, bin: 200, floor: 0, cold: 250 };
+
+/** Top band of a zone rectangle reserved for its label (grid units). */
+export const ZONE_LABEL_BAND = 1.4;
+
+/** Four locations laid out as a 2×2 grid inside a zone rectangle, below the label band. */
 function zoneLocations(zone: ZoneSeed): StorageLocation[] {
-  const type: StorageLocation['type'] = TYPE_BY_ZONE[zone.id] ?? 'rack';
+  const type: LocationType = TYPE_BY_ZONE[zone.id] ?? 'rack';
   const cellW = (zone.w - 1.5) / 2;
-  const cellH = (zone.h - 1.5) / 2;
+  const cellH = (zone.h - ZONE_LABEL_BAND - 1) / 2;
   const spots = [
-    { x: 0.5, y: 0.5 },
-    { x: 1 + cellW, y: 0.5 },
-    { x: 0.5, y: 1 + cellH },
-    { x: 1 + cellW, y: 1 + cellH }
+    { x: 0.5, y: ZONE_LABEL_BAND },
+    { x: 1 + cellW, y: ZONE_LABEL_BAND },
+    { x: 0.5, y: ZONE_LABEL_BAND + 0.5 + cellH },
+    { x: 1 + cellW, y: ZONE_LABEL_BAND + 0.5 + cellH }
   ];
-  return spots.map((spot, i) => ({
-    id: `${zone.id}-${i + 1}`,
+  return spots.map((spot, index) => ({
+    id: `${zone.id}-${index + 1}`,
     zoneId: zone.id,
-    code: `${zone.code}-${String(i + 1).padStart(2, '0')}`,
-    label: `${zone.name} ${i + 1}`,
+    code: `${zone.code}-${String(index + 1).padStart(2, '0')}`,
+    label: `${zone.name} ${index + 1}`,
     type,
-    capacity: type === 'floor' ? 0 : 100,
+    capacity: CAPACITY_BY_TYPE[type],
     x: Number(spot.x.toFixed(2)),
     y: Number(spot.y.toFixed(2)),
     w: Number(cellW.toFixed(2)),
@@ -106,6 +156,7 @@ function zoneLocations(zone: ZoneSeed): StorageLocation[] {
 export function demoZones(): Zone[] {
   return ZONE_SEEDS.map((z) => ({
     id: z.id,
+    warehouseId: z.warehouseId,
     name: z.name,
     code: z.code,
     description: '',
@@ -145,19 +196,32 @@ interface StockSeed {
   quantity: number;
 }
 
+/**
+ * Quantities chosen against the location capacities to exercise every colour:
+ * green (<70%), amber (70–90%), red (≥90%), blue (uncapped floor), grey (empty)
+ * — plus the under-min / over-max product statuses used by the tables.
+ */
 const STOCK_SEEDS: StockSeed[] = [
-  { location: 'z-a-1', product: 'p-1001', quantity: 1500 },
-  { location: 'z-a-1', product: 'p-1002', quantity: 120 }, // under min
+  // Entrepôt Nord — racks (cap 1000)
+  { location: 'z-a-1', product: 'p-1001', quantity: 600 },
+  { location: 'z-a-1', product: 'p-1002', quantity: 120 }, // under min · cell total 720 → amber
   { location: 'z-a-2', product: 'p-1003', quantity: 180 },
   { location: 'z-a-3', product: 'p-1004', quantity: 45 },
-  { location: 'z-b-1', product: 'p-1001', quantity: 900 },
+  { location: 'z-b-1', product: 'p-1001', quantity: 900 }, // 90% → red
   { location: 'z-b-2', product: 'p-1003', quantity: 260 },
   { location: 'z-b-3', product: 'p-2001', quantity: 52 },
   { location: 'z-b-4', product: 'p-2002', quantity: 8 }, // under min
+  // Zone froide (cap 250)
   { location: 'z-c-1', product: 'p-3001', quantity: 140 },
   { location: 'z-c-2', product: 'p-3002', quantity: 12 }, // under min
-  { location: 'z-c-3', product: 'p-3001', quantity: 220 }, // over max
-  { location: 'z-d-1', product: 'p-2001', quantity: 20 }
+  { location: 'z-c-3', product: 'p-3001', quantity: 220 }, // over max (200) · 88% → amber
+  // Expédition (floor, uncapped → blue)
+  { location: 'z-d-1', product: 'p-2001', quantity: 20 },
+  // Entrepôt Sud — picking shelves (cap 400) & retours bins (cap 200)
+  { location: 'z-e-1', product: 'p-1001', quantity: 350 }, // 87% → amber
+  { location: 'z-e-2', product: 'p-1004', quantity: 100 },
+  { location: 'z-f-1', product: 'p-2002', quantity: 30 },
+  { location: 'z-f-2', product: 'p-1002', quantity: 190 } // 95% → red · under min
 ];
 
 export function demoStock(): StockCell[] {

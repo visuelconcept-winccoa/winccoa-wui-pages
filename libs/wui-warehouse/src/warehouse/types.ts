@@ -17,10 +17,23 @@ import type { DpEntity } from '@visuelconcept/wui-kit/data/dp-json-store.js';
 
 export type LocationType = 'rack' | 'shelf' | 'bin' | 'floor' | 'cold';
 
+/** A warehouse (site) — the top-level container; zones belong to exactly one. */
+export interface Warehouse extends DpEntity {
+  id: string;
+  dp?: string;
+  name: string;
+  code: string;
+  description: string;
+  /** Accent colour (hex) used on the overview card. */
+  color: string;
+}
+
 /** A storage zone — a rectangle on the 2D plan holding locations. */
 export interface Zone extends DpEntity {
   id: string;
   dp?: string;
+  /** Owning warehouse (backfilled to the default warehouse on legacy data). */
+  warehouseId: string;
   name: string;
   code: string;
   description: string;
@@ -86,10 +99,12 @@ export interface InventoryLine {
   countedQty: number | null;
 }
 
-/** A stock-count campaign over a zone (or the whole warehouse). */
+/** A stock-count campaign over a zone (or a whole warehouse). */
 export interface InventoryCampaign extends DpEntity {
   id: string;
   dp?: string;
+  /** Owning warehouse (backfilled to the default warehouse on legacy data). */
+  warehouseId: string;
   name: string;
   status: InventoryStatus;
   createdAt: string;

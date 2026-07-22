@@ -38,21 +38,58 @@ export function pageStyles(): CSSResult {
       text-align: center;
       color: var(--theme-color-soft-text);
     }
-    .tabs {
+    .site-bar {
       display: flex;
-      flex-wrap: wrap;
-      gap: 0.4rem;
-      padding: 0.5rem 0;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem 0 0.25rem;
+    }
+    .site-bar .grow {
+      flex: 1;
+    }
+    .site-name {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-weight: 600;
+      font-size: 1.05rem;
+    }
+    .site-name .dot {
+      width: 0.75rem;
+      height: 0.75rem;
+      border-radius: 50%;
+      background: var(--accent, var(--theme-color-primary));
+    }
+    ix-tabs {
+      margin-bottom: 0.5rem;
     }
     .panel {
       flex: 1;
       min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .panel > * {
+      min-height: 0;
+    }
+    .plan-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-bottom: 0.5rem;
+    }
+    .plan-toolbar .grow {
+      flex: 1;
+    }
+    .edit-hint {
+      font-size: 0.8rem;
+      color: var(--theme-color-soft-text);
     }
     .plan-wrap {
       display: grid;
       grid-template-columns: 1fr 20rem;
       gap: 0.75rem;
-      height: 100%;
+      flex: 1;
       min-height: 0;
     }
     .detail {

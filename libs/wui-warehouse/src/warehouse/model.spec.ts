@@ -12,15 +12,19 @@ import {
   demoLocations,
   demoProducts,
   demoStock,
+  demoWarehouses,
   demoZones,
+  locationFillColor,
   locationUnits,
   occupancy,
   occupancyColor,
+  occupancyPercent,
   productUnits,
   sanitizeDpId,
   stockId,
   stockStatus,
-  variance
+  variance,
+  ZONE_LABEL_BAND
 } from './model.js';
 import type { InventoryLine } from './types.js';
 
@@ -40,8 +44,8 @@ describe('locationUnits / productUnits', () => {
   const stock = demoStock();
 
   it('sums all cells of one location', () => {
-    // z-a-1 holds p-1001 (1500) + p-1002 (120)
-    expect(locationUnits(stock, 'z-a-1')).toBe(1620);
+    // z-a-1 holds p-1001 (600) + p-1002 (120)
+    expect(locationUnits(stock, 'z-a-1')).toBe(720);
     expect(locationUnits(stock, 'nope')).toBe(0);
   });
 
@@ -62,6 +66,28 @@ describe('occupancy', () => {
   it('is presence-based (0 or 1) when uncapped', () => {
     expect(occupancy(0, 0)).toBe(0);
     expect(occupancy(3, 0)).toBe(1);
+  });
+});
+
+describe('occupancyPercent', () => {
+  it('is the UNCLAMPED percent for capped locations, null when uncapped', () => {
+    expect(occupancyPercent(50, 100)).toBe(50);
+    expect(occupancyPercent(1620, 1000)).toBe(162); // over-capacity must stay visible
+    expect(occupancyPercent(20, 0)).toBeNull();
+  });
+});
+
+describe('locationFillColor', () => {
+  it('is grey when empty, blue when occupied without capacity (not an alarm)', () => {
+    expect(locationFillColor(0, 100)).toBe('#64748b');
+    expect(locationFillColor(0, 0)).toBe('#64748b');
+    expect(locationFillColor(20, 0)).toBe('#3b82f6');
+  });
+
+  it('follows the occupancy scale for capped locations', () => {
+    expect(locationFillColor(100, 1000)).toBe('#10b981');
+    expect(locationFillColor(750, 1000)).toBe('#f59e0b');
+    expect(locationFillColor(950, 1000)).toBe('#ef4444');
   });
 });
 
@@ -119,22 +145,26 @@ describe('variance', () => {
 });
 
 describe('demo dataset integrity (offline fallback + first-run seed)', () => {
+  const warehouses = demoWarehouses();
   const zones = demoZones();
   const locations = demoLocations();
   const products = demoProducts();
   const stock = demoStock();
 
-  it('has the documented shape: 4 zones, 16 locations, 8 products, 12 stock cells', () => {
-    expect(zones).toHaveLength(4);
-    expect(locations).toHaveLength(16);
+  it('has the documented shape: 2 warehouses, 6 zones, 24 locations, 8 products, 16 stock cells', () => {
+    expect(warehouses).toHaveLength(2);
+    expect(zones).toHaveLength(6);
+    expect(locations).toHaveLength(24);
     expect(products).toHaveLength(8);
-    expect(stock).toHaveLength(12);
+    expect(stock).toHaveLength(16);
   });
 
   it('keeps every cross-reference resolvable (ids are stable across calls)', () => {
+    const warehouseIds = new Set(warehouses.map((w) => w.id));
     const zoneIds = new Set(zones.map((z) => z.id));
     const locationIds = new Set(locations.map((l) => l.id));
     const productIds = new Set(products.map((p) => p.id));
+    for (const z of zones) expect(warehouseIds.has(z.warehouseId), `zone ${z.id} → warehouse ${z.warehouseId}`).toBe(true);
     for (const l of locations) expect(zoneIds.has(l.zoneId), `location ${l.id} → zone ${l.zoneId}`).toBe(true);
     for (const c of stock) {
       expect(locationIds.has(c.locationId), `stock ${c.id} → location ${c.locationId}`).toBe(true);
@@ -142,8 +172,16 @@ describe('demo dataset integrity (offline fallback + first-run seed)', () => {
     }
   });
 
+  it('keeps demo quantities coherent with the location capacities (capped cells never overflow)', () => {
+    for (const l of locations) {
+      if (l.capacity <= 0) continue;
+      const units = locationUnits(stock, l.id);
+      expect(units, `location ${l.id}: ${units} > capacity ${l.capacity}`).toBeLessThanOrEqual(l.capacity);
+    }
+  });
+
   it('uses DP-safe unique ids everywhere', () => {
-    const all = [...zones, ...locations, ...products].map((e) => e.id);
+    const all = [...warehouses, ...zones, ...locations, ...products].map((e) => e.id);
     expect(new Set(all).size).toBe(all.length);
     for (const c of stock) expect(c.id).toMatch(/^[A-Za-z0-9_]+$/);
   });
@@ -162,23 +200,23 @@ describe('demo dataset integrity (offline fallback + first-run seed)', () => {
     expect(statusOf('z-a-1', 'p-1001')).toBe('ok');
   });
 
-  it('lays every location inside its zone rectangle (relative coordinates)', () => {
+  it('lays every location inside its zone rectangle, below the label band', () => {
     const byId = new Map(zones.map((z) => [z.id, z]));
     for (const l of locations) {
       const zone = byId.get(l.zoneId);
       expect(zone).toBeDefined();
       if (!zone) continue;
       expect(l.x).toBeGreaterThanOrEqual(0);
-      expect(l.y).toBeGreaterThanOrEqual(0);
+      expect(l.y, `location ${l.id} must not cover the zone label band`).toBeGreaterThanOrEqual(ZONE_LABEL_BAND);
       expect(l.x + l.w).toBeLessThanOrEqual(zone.w + 1e-6);
       expect(l.y + l.h).toBeLessThanOrEqual(zone.h + 1e-6);
     }
   });
 
-  it('keeps the zone rectangles disjoint on the plan', () => {
+  it('keeps the zone rectangles disjoint within each warehouse plan', () => {
     for (const a of zones)
       for (const b of zones) {
-        if (a.id === b.id) continue;
+        if (a.id === b.id || a.warehouseId !== b.warehouseId) continue;
         const overlap = a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
         expect(overlap, `${a.id} overlaps ${b.id}`).toBe(false);
       }

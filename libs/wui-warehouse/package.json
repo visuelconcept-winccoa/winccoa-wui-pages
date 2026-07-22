@@ -12,14 +12,17 @@
   "peerDependencies": {
     "lit": "*",
     "rxjs": "*",
+    "three": "*",
     "@etm-professional-control/oa-rx-js-api": "*",
     "@wincc-oa/wui-shared": "*",
     "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-models": "*",
     "@wincc-oa/wui-oarxjs-context": "*"
   },
   "exports": { "./*": { "types": "./types/*", "import": "./*" } },
   "wuiPage": {
     "route": "/warehouse",
+    "routes": ["/warehouse", "/warehouse/:warehouseid"],
     "routeId": "warehouse",
     "component": "wui-warehouse",
     "module": "/data/dashboard-wc/pages/warehouse.js",

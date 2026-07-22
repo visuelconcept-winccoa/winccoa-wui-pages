@@ -3,10 +3,17 @@
 
 /** Field-schema builders feeding the generic entity dialog. */
 import { describe, expect, it } from 'vitest';
-import { campaignFields, locationFields, productFields, stockFields, zoneFields } from './forms.js';
+import { campaignFields, locationFields, productFields, stockFields, warehouseFields, zoneFields } from './forms.js';
 import { demoLocations, demoProducts, demoZones } from './model.js';
 
 describe('form field builders', () => {
+  it('warehouseFields: name and code required', () => {
+    const fields = warehouseFields();
+    expect(fields.find((f) => f.key === 'name')?.required).toBe(true);
+    expect(fields.find((f) => f.key === 'code')?.required).toBe(true);
+    expect(fields.find((f) => f.key === 'color')?.kind).toBe('color');
+  });
+
   it('zoneFields: name/code required, layout rectangle is numeric', () => {
     const fields = zoneFields();
     expect(fields.find((f) => f.key === 'name')?.required).toBe(true);

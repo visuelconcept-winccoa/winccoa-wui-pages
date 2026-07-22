@@ -72,7 +72,8 @@ export class StockStore {
     await this.ensureType();
     const api = this.api;
     const dpe = this.dpe;
-    if (this.offline || !api || !dpe) return this.mem();
+    // Offline returns a COPY of the live memory array (Lit change detection).
+    if (this.offline || !api || !dpe) return [...this.mem()];
     try {
       const names = await firstValueFrom(dpe.listDatapoints(TYPE));
       const out: StockCell[] = [];
@@ -83,7 +84,7 @@ export class StockStore {
       return out;
     } catch {
       this.offline = true;
-      return this.mem();
+      return [...this.mem()];
     }
   }
 

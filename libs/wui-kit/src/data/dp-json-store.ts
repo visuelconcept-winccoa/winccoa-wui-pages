@@ -99,7 +99,10 @@ export class DpJsonStore<T extends DpEntity> {
     await this.ensureType();
     const api = this.api;
     const dpe = this.dpe;
-    if (this.offline || !api || !dpe) return this.mem();
+    // Offline returns a COPY: the live memory array is mutated in place by
+    // create/save/remove, and callers assigning an unchanged reference to a Lit
+    // state property would never re-render (online builds a fresh array anyway).
+    if (this.offline || !api || !dpe) return [...this.mem()];
     try {
       const names = await firstValueFrom(dpe.listDatapoints(this.typeName));
       const out: T[] = [];
@@ -110,7 +113,7 @@ export class DpJsonStore<T extends DpEntity> {
       return out;
     } catch {
       this.offline = true;
-      return this.mem();
+      return [...this.mem()];
     }
   }
 

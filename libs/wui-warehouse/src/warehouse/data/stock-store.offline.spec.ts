@@ -14,7 +14,7 @@ describe('StockStore without a backend (offline fallback)', () => {
     const store = new StockStore();
     const stock = await store.list();
     expect(store.offline).toBe(true);
-    expect(stock).toHaveLength(12);
+    expect(stock).toHaveLength(16);
     for (const cell of stock) expect(cell.dp).toBe(`WMS_Stock_${cell.id}`);
   });
 
@@ -26,13 +26,13 @@ describe('StockStore without a backend (offline fallback)', () => {
     const updated = await store.setQuantity('p-1001', 'z-a-1', 999);
     expect(updated.id).toBe(stockId('z-a-1', 'p-1001'));
     let stock = await store.list();
-    expect(stock).toHaveLength(12);
+    expect(stock).toHaveLength(16);
     expect(stock.find((c) => c.id === updated.id)?.quantity).toBe(999);
 
     // insert a brand new product×location pair
     const inserted = await store.setQuantity('p-1004', 'z-d-4', 7);
     stock = await store.list();
-    expect(stock).toHaveLength(13);
+    expect(stock).toHaveLength(17);
     expect(stock.find((c) => c.id === inserted.id)?.quantity).toBe(7);
   });
 
@@ -41,7 +41,7 @@ describe('StockStore without a backend (offline fallback)', () => {
     const [first] = await store.list();
     await store.remove(first.id);
     const stock = await store.list();
-    expect(stock).toHaveLength(11);
+    expect(stock).toHaveLength(15);
     expect(stock.some((c) => c.id === first.id)).toBe(false);
   });
 

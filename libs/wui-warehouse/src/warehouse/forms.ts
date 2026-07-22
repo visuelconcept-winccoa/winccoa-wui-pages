@@ -13,6 +13,15 @@ import type { LocationType, Product, StorageLocation, Zone } from './types.js';
 
 const LOCATION_TYPES: LocationType[] = ['rack', 'shelf', 'bin', 'floor', 'cold'];
 
+export function warehouseFields(): FieldDef[] {
+  return [
+    { key: 'name', label: MSG.fields.name, kind: 'text', required: true, full: true },
+    { key: 'code', label: MSG.fields.code, kind: 'text', required: true },
+    { key: 'color', label: MSG.fields.color, kind: 'color' },
+    { key: 'description', label: MSG.fields.description, kind: 'textarea', full: true }
+  ];
+}
+
 export function zoneFields(): FieldDef[] {
   return [
     { key: 'name', label: MSG.fields.name, kind: 'text', required: true, full: true },

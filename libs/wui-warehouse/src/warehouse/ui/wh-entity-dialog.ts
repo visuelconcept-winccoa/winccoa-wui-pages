@@ -120,10 +120,11 @@ export class WhEntityDialog extends LitElement {
   }
 
   private renderSelect(field: FieldDef, current: string | number | undefined): TemplateResult {
+    // ix-select selection binds through `value` (matched against the items'
+    // `value`); `.selectedIndices` does not reflect into the input display.
     const options = field.options ?? [];
-    const index = options.findIndex((o) => o.value === String(current));
     return html`<ix-select
-      .selectedIndices=${[Math.max(0, index)]}
+      .value=${current == null ? '' : String(current)}
       ?disabled=${field.readonly ?? false}
       @valueChange=${(e: CustomEvent<string | string[]>) => this.readSelect(field, e.detail)}
     >

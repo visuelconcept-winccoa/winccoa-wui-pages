@@ -1,4 +1,4 @@
-// Menu fragment for @visuelconcept/wui-warehouse.
+// Menu fragment for @visuelconcept/wui-warehouse. Merge into the host `entries` (idempotent by routeId).
 [
   {
     "title": { "en_US": "Warehouse", "fr": "Gestion d'entrepôt", "de_AT": "Lagerverwaltung" },
@@ -7,6 +7,14 @@
     "module": "/data/dashboard-wc/pages/warehouse.js",
     "routeId": "warehouse",
     "component": "wui-warehouse",
+    "permission": ["connected"]
+  },
+  {
+    "path": "/warehouse/:warehouseid",
+    "module": "/data/dashboard-wc/pages/warehouse.js",
+    "routeId": "warehouse-detail",
+    "component": "wui-warehouse",
+    "hidden": true,
     "permission": ["connected"]
   }
 ]
