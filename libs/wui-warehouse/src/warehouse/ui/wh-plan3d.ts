@@ -14,10 +14,17 @@
  * LABEL sprite (code + units, canvas texture), an ALERT badge when a cell is
  * under-min / over-max, and a hover/selection OUTLINE (back-side shell).
  *
+ * Every location carries a per-instance COLOUR (its `color`, else the per-type
+ * default) applied to the structure body, and a per-instance HEIGHT (its
+ * `height`, else the per-type default).
+ *
  * Interactions: click selects (raycast on invisible full-size hitboxes,
- * pointermove hover); in edit mode drag a location along the floor plane to
- * move it inside its zone (grid-snapped) — emits the same `wui:layout` event
- * as the 2D editor. Left-drag orbits, wheel zooms, right-drag pans
+ * pointermove hover); the selection HIGHLIGHT is a translucent box enclosing the
+ * whole structure (glass fill + bright edges). In edit mode, drag a location
+ * along the floor plane to move it inside its zone (grid-snapped), or drag one
+ * of the selected location's three RESIZE HANDLES to change its width, depth or
+ * height. Both move and resize emit the same `wui:layout` event as the 2D editor
+ * (resize adds the `height`). Left-drag orbits, wheel zooms, right-drag pans
  * (hand-rolled orbit, no OrbitControls dependency).
  *
  * Lifecycle mirrors mf-atelier-view: absolute canvas in a sized viewport,
@@ -28,57 +35,75 @@ import { LitElement, css, html, type PropertyValues, type TemplateResult } from 
 import { customElement, property, query } from 'lit/decorators.js';
 import {
   AmbientLight,
-  BackSide,
   BoxGeometry,
   CanvasTexture,
   Color,
   DirectionalLight,
+  DoubleSide,
+  EdgesGeometry,
   GridHelper,
   Group,
+  LineBasicMaterial,
+  LineSegments,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
   PerspectiveCamera,
   Plane,
   PlaneGeometry,
+  type Ray,
   Raycaster,
   Scene,
   Sprite,
   SpriteMaterial,
   SRGBColorSpace,
+  type Texture,
   Vector2,
   Vector3,
   WebGLRenderer
 } from 'three';
-import { locationFillColor, locationUnits, occupancy, stockStatus, ZONE_LABEL_BAND } from '../model.js';
+import { locationColor, locationFillColor, locationHeight, locationUnits, occupancy, stockStatus, ZONE_LABEL_BAND } from '../model.js';
 import type { LocationType, Product, StockCell, StorageLocation, Zone } from '../types.js';
+import { createWarehouseTextures, type WarehouseTextures } from './plan3d-textures.js';
 
-const HEIGHT_BY_TYPE: Record<LocationType, number> = { rack: 3.2, shelf: 2.4, bin: 1.6, floor: 0.3, cold: 2.6 };
 const LEVELS_BY_TYPE: Record<LocationType, number> = { rack: 3, shelf: 4, bin: 2, floor: 0, cold: 0 };
 const SNAP = 0.5;
 const DRAG_THRESHOLD_PX = 5;
+/** Resize bounds (grid units for width/depth, world units for height). */
+const MIN_SIZE = 1;
+const MIN_HEIGHT = 0.4;
+const MAX_HEIGHT = 12;
+const HANDLE_SIZE = 0.5;
+const HANDLE_GAP = 0.35;
 
-// Palette (steel-blue uprights, pallet-rack orange beams, dark deck plates).
+// Axis unit vectors + a scratch vector for the ray/axis closest-point solve.
+const UNIT_X = new Vector3(1, 0, 0);
+const UNIT_Y = new Vector3(0, 1, 0);
+const UNIT_Z = new Vector3(0, 0, 1);
+const TMP_AXIS = new Vector3();
+
+// Scene palette. Per-location structure colours come from the location itself
+// (locationColor); the constants below are the fixed scene accents only.
 const BG = 0x0D_11_17;
 const FLOOR_COLOR = 0x1A_22_30;
 const GRID_MAJOR = 0x2A_35_50;
 const GRID_MINOR = 0x22_2C_42;
-const POST_COLOR = 0x46_54_70;
-const BEAM_COLOR = 0xD9_7B_29;
+const BEAM_COLOR = 0xD9_7B_29; // pallet-rack orange beam accent
 const DECK_COLOR = 0x2C_35_48;
-const SHELF_COLOR = 0x8A_94_A8;
-const BIN_COLOR = 0x5A_64_78;
-const COLD_COLOR = 0x9F_D8_E8;
 const PALLET_COLOR = 0x8A_5A_2B;
 const CRATE_COLOR = 0xB9_9A_6B;
 const OUTLINE_SELECTED = 0xFF_FF_FF;
 const OUTLINE_HOVER = 0x7D_D3_FC;
+const HANDLE_COLOR = 0x38_BD_F8;
 const ALERT_UNDER = '#f59e0b';
 const ALERT_OVER = '#ef4444';
 
 const POST = 0.09;
 const BEAM = 0.07;
 const DECK = 0.03;
+const BRACE = 0.03;
+const FOOT_H = 0.06;
+const FOOT_COLOR = 0x2F_39_4D;
 
 interface OrbitPose {
   theta: number;
@@ -86,11 +111,32 @@ interface OrbitPose {
   radius: number;
 }
 
+/** One resizable axis of a location and the dimension it drives. */
+type ResizeAxis = 'w' | 'd' | 'h';
+
 interface LocationVisual {
   group: Group;
   hitbox: Mesh;
-  outline: Mesh;
+  /** Translucent box + edges enclosing the whole structure (hover/selection). */
+  highlight: Group;
+  highlightBox: Mesh;
+  highlightEdges: LineSegments;
+  /** The three resize handles (visible only for the selected location in edit mode). */
+  handles: Group;
+  handleMeshes: Mesh[];
+  /** Committed footprint width / depth and vertical height. */
+  w: number;
+  d: number;
   height: number;
+}
+
+/** Live resize gesture (previewed via the highlight box, committed on release). */
+interface ResizeState {
+  id: string;
+  axis: ResizeAxis;
+  start: { w: number; d: number; height: number };
+  pending: { w: number; d: number; height: number };
+  moved: boolean;
 }
 
 @customElement('wh-plan3d')
@@ -110,6 +156,7 @@ export class WhPlan3d extends LitElement {
   private renderer?: WebGLRenderer;
   private scene?: Scene;
   private camera?: PerspectiveCamera;
+  private textures?: WarehouseTextures;
   private content = new Group();
   private visuals = new Map<string, LocationVisual>();
   private hoveredId = '';
@@ -126,6 +173,7 @@ export class WhPlan3d extends LitElement {
   private orbiting: { mode: 'rotate' | 'pan'; x: number; y: number } | null = null;
   private downAt = { x: 0, y: 0 };
   private dragging: { id: string; offset: Vector3; moved: boolean } | null = null;
+  private resizing: ResizeState | null = null;
 
   override render(): TemplateResult {
     return html`<div class="viewport"><canvas></canvas></div>`;
@@ -141,6 +189,7 @@ export class WhPlan3d extends LitElement {
     this.renderer = new WebGLRenderer({ canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio || 1, 2));
     this.renderer.outputColorSpace = SRGBColorSpace;
+    this.textures = createWarehouseTextures();
     this.addLights();
     this.scene.add(this.content);
     this.rebuild();
@@ -161,6 +210,8 @@ export class WhPlan3d extends LitElement {
     this.resizeObserver?.disconnect();
     this.detachGlobal();
     this.disposeContent();
+    this.textures?.dispose();
+    this.textures = undefined;
     this.renderer?.dispose();
     this.renderer?.forceContextLoss();
     this.renderer = undefined;
@@ -170,9 +221,13 @@ export class WhPlan3d extends LitElement {
     if (changed.has('zones') || changed.has('locations') || changed.has('stock') || changed.has('products')) {
       this.rebuild();
     } else if (changed.has('selectedId')) {
-      this.refreshOutlines();
+      this.refreshHighlights();
+      this.refreshHandles();
     }
-    if (changed.has('editing')) this.updateCursor();
+    if (changed.has('editing')) {
+      this.updateCursor();
+      this.refreshHandles();
+    }
   }
 
   // --- scene building --------------------------------------------------------
@@ -195,9 +250,11 @@ export class WhPlan3d extends LitElement {
     this.visuals = new Map();
     const extent = this.extent();
 
+    const concrete = this.textures?.concrete;
+    if (concrete) concrete.repeat.set((extent.w + 8) / 4, (extent.h + 8) / 4);
     const ground = new Mesh(
       new PlaneGeometry(extent.w + 8, extent.h + 8),
-      new MeshStandardMaterial({ color: FLOOR_COLOR, roughness: 0.95 })
+      new MeshStandardMaterial({ color: FLOOR_COLOR, roughness: 0.95, map: concrete })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.set(extent.w / 2, -0.02, extent.h / 2);
@@ -215,74 +272,85 @@ export class WhPlan3d extends LitElement {
       }
     }
     this.scene.add(this.content);
-    this.refreshOutlines();
+    this.refreshHighlights();
+    this.refreshHandles();
     this.needsRender = true;
   }
 
-  private buildZoneSlab(zone: Zone): Mesh {
+  private buildZoneSlab(zone: Zone): Group {
+    const group = new Group();
+    const color = new Color(zone.color);
     const slab = new Mesh(
-      new BoxGeometry(zone.w, 0.08, zone.h),
-      new MeshStandardMaterial({ color: new Color(zone.color), transparent: true, opacity: 0.32, roughness: 0.8 })
+      new BoxGeometry(zone.w, 0.06, zone.h),
+      new MeshStandardMaterial({ color, transparent: true, opacity: 0.2, roughness: 0.85 })
     );
-    slab.position.set(zone.x + zone.w / 2, 0.04, zone.y + zone.h / 2);
-    return slab;
+    slab.position.y = 0.03;
+    group.add(slab);
+    // Bright coloured border around the slab edge for a finished, legible zone outline.
+    const tmp = new BoxGeometry(zone.w, 0.06, zone.h);
+    const border = new LineSegments(new EdgesGeometry(tmp), new LineBasicMaterial({ color, transparent: true, opacity: 0.65 }));
+    tmp.dispose();
+    border.position.y = 0.031;
+    group.add(border);
+    group.position.set(zone.x + zone.w / 2, 0, zone.y + zone.h / 2);
+    return group;
   }
 
-  /** Assemble one location: structure + fill gauge + label + badge + hitbox + outline. */
+  /** Assemble one location: structure + fill gauge + label + badge + hitbox + highlight + handles. */
   private buildLocation(loc: StorageLocation): LocationVisual | undefined {
     const zone = this.zones.find((z) => z.id === loc.zoneId);
     if (!zone) return undefined;
-    const w = loc.w * 0.94;
-    const d = loc.h * 0.94;
-    const height = HEIGHT_BY_TYPE[loc.type];
+    const fw = loc.w; // footprint (grid units) — the resize/highlight/handle space
+    const fd = loc.h;
+    const sw = fw * 0.94; // structure inset inside the footprint
+    const sd = fd * 0.94;
+    const sh = locationHeight(loc); // structure height
+    const H = Math.max(sh, MIN_HEIGHT); // interaction/highlight height
+    const color = locationColor(loc);
     const units = locationUnits(this.stock, loc.id);
 
     const group = new Group();
-    group.position.set(zone.x + loc.x + loc.w / 2, 0, zone.y + loc.y + loc.h / 2);
+    group.position.set(zone.x + loc.x + fw / 2, 0, zone.y + loc.y + fd / 2);
 
-    this.addStructure(group, loc.type, w, d, height, units);
-    this.addFillGauge(group, loc, w, d, height, units);
-    group.add(makeLabelSprite(loc.code, `${units}`, height));
-    this.addAlertBadge(group, loc, height);
+    this.addStructure(group, loc.type, sw, sd, sh, units, color);
+    this.addFillGauge(group, loc, sw, sd, sh, units);
+    group.add(makeLabelSprite(loc.code, `${units}`, sh));
+    this.addAlertBadge(group, loc, sh);
 
-    // Invisible full-size hitbox — the raycast/selection target.
-    const hitbox = new Mesh(
-      new BoxGeometry(w, Math.max(height, 0.4), d),
-      new MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
-    );
-    hitbox.position.y = Math.max(height, 0.4) / 2;
+    // Invisible full-footprint hitbox — the raycast/selection target.
+    const hitbox = new Mesh(new BoxGeometry(fw, H, fd), new MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }));
+    hitbox.position.y = H / 2;
     hitbox.userData['locationId'] = loc.id;
     group.add(hitbox);
 
-    // Hover / selection outline: slightly inflated back-side shell.
-    const outline = new Mesh(
-      new BoxGeometry(w * 1.06, Math.max(height, 0.4) * 1.06, d * 1.06),
-      new MeshBasicMaterial({ color: OUTLINE_SELECTED, side: BackSide, transparent: true, opacity: 0.85 })
-    );
-    outline.position.y = Math.max(height, 0.4) / 2;
-    outline.visible = false;
-    group.add(outline);
+    // Enclosing translucent highlight (glass box + bright edges) — hover/selection.
+    const { highlight, highlightBox, highlightEdges } = buildHighlight(fw, fd, H);
+    group.add(highlight);
 
-    return { group, hitbox, outline, height };
+    // Three resize handles (width / depth / height), shown only when selected in edit mode.
+    const { handles, handleMeshes } = buildHandles(fw, fd, H, loc.id);
+    group.add(handles);
+
+    return { group, hitbox, highlight, highlightBox, highlightEdges, handles, handleMeshes, w: fw, d: fd, height: H };
   }
 
   /** Type-specific procedural structure, centred on the group origin. */
-  private addStructure(group: Group, type: LocationType, w: number, d: number, h: number, units: number): void {
+  private addStructure(group: Group, type: LocationType, w: number, d: number, h: number, units: number, color: string): void {
     switch (type) {
       case 'rack': {
-        this.addFrame(group, w, d, h, POST_COLOR, BEAM_COLOR, LEVELS_BY_TYPE.rack);
+        this.addFrame(group, w, d, h, new Color(color), new Color(BEAM_COLOR), LEVELS_BY_TYPE.rack, 1, true, this.textures?.steel, this.textures?.beam);
         break;
       }
       case 'shelf': {
-        this.addFrame(group, w, d, h, SHELF_COLOR, SHELF_COLOR, LEVELS_BY_TYPE.shelf, 0.6);
+        this.addFrame(group, w, d, h, new Color(color), new Color(color), LEVELS_BY_TYPE.shelf, 0.6, false, this.textures?.shelf, this.textures?.shelf);
         break;
       }
       case 'bin': {
-        this.addBinBlock(group, w, d, h);
+        this.addBinBlock(group, w, d, h, new Color(color));
         break;
       }
       case 'cold': {
-        this.addColdRoom(group, w, d, h);
+        this.addColdRoom(group, w, d, h, new Color(color));
         break;
       }
       default: {
@@ -291,11 +359,28 @@ export class WhPlan3d extends LitElement {
     }
   }
 
-  /** Uprights at the corners (+ mid posts on wide bays) and beam/deck levels. */
-  private addFrame(group: Group, w: number, d: number, h: number, postColor: number, beamColor: number, levels: number, postScale = 1): void {
-    const posts = new MeshStandardMaterial({ color: postColor, roughness: 0.5, metalness: 0.35 });
-    const beams = new MeshStandardMaterial({ color: beamColor, roughness: 0.45, metalness: 0.3 });
-    const decks = new MeshStandardMaterial({ color: DECK_COLOR, roughness: 0.85 });
+  /**
+   * Pallet-rack / shelving frame: chamfered uprights on foot plates (+ mid posts
+   * on wide bays), front/back beams and deck plates per level, and — for pallet
+   * racks — X diagonal braces on the end frames for a more finished look.
+   */
+  private addFrame(
+    group: Group,
+    w: number,
+    d: number,
+    h: number,
+    postColor: Color,
+    beamColor: Color,
+    levels: number,
+    postScale: number,
+    braces: boolean,
+    bodyTexture?: Texture,
+    beamTexture?: Texture
+  ): void {
+    const posts = new MeshStandardMaterial({ color: postColor, roughness: 0.45, metalness: 0.4, map: bodyTexture });
+    const beams = new MeshStandardMaterial({ color: beamColor, roughness: 0.4, metalness: 0.35, map: beamTexture });
+    const decks = new MeshStandardMaterial({ color: new Color(DECK_COLOR), roughness: 0.85, map: bodyTexture });
+    const feet = new MeshStandardMaterial({ color: new Color(FOOT_COLOR), roughness: 0.6, metalness: 0.3, map: bodyTexture });
     const p = POST * postScale;
     const xs = [-w / 2 + p / 2, w / 2 - p / 2];
     if (w > 4) xs.push(0); // mid upright on wide bays
@@ -305,10 +390,12 @@ export class WhPlan3d extends LitElement {
         const post = new Mesh(new BoxGeometry(p, h, p), posts);
         post.position.set(x, h / 2, z);
         group.add(post);
+        const foot = new Mesh(new BoxGeometry(p * 2.1, FOOT_H, p * 2.1), feet);
+        foot.position.set(x, FOOT_H / 2, z);
+        group.add(foot);
       }
     for (let level = 1; level <= levels; level++) {
       const y = (h / (levels + 0.35)) * level;
-      // Front + back beams along the width.
       for (const z of zs) {
         const beam = new Mesh(new BoxGeometry(w - p * 2, BEAM, BEAM), beams);
         beam.position.set(0, y, z);
@@ -318,11 +405,28 @@ export class WhPlan3d extends LitElement {
       deck.position.set(0, y - BEAM / 2 - DECK / 2, 0);
       group.add(deck);
     }
+    if (braces) this.addEndBraces(group, w, d, h, posts, p);
+  }
+
+  /** Thin X braces on the two end frames (left/right), pallet-rack style. */
+  private addEndBraces(group: Group, w: number, d: number, h: number, material: MeshStandardMaterial, p: number): void {
+    const span = d - p;
+    const diag = Math.hypot(span, h) ;
+    const angle = Math.atan2(h, span);
+    for (const x of [-w / 2 + p / 2, w / 2 - p / 2]) {
+      for (const sign of [1, -1]) {
+        const brace = new Mesh(new BoxGeometry(BRACE, diag * 0.98, BRACE), material);
+        brace.position.set(x, h / 2, 0);
+        brace.rotation.x = sign * (Math.PI / 2 - angle);
+        group.add(brace);
+      }
+    }
   }
 
   /** Cubby block: shell open on the front, one horizontal + two vertical dividers. */
-  private addBinBlock(group: Group, w: number, d: number, h: number): void {
-    const shell = new MeshStandardMaterial({ color: BIN_COLOR, roughness: 0.7 });
+  private addBinBlock(group: Group, w: number, d: number, h: number, color: Color): void {
+    const shell = new MeshStandardMaterial({ color, roughness: 0.65, metalness: 0.15, map: this.textures?.bin });
+    const inner = new MeshStandardMaterial({ color: color.clone().multiplyScalar(0.82), roughness: 0.75, map: this.textures?.bin });
     const panel = 0.05;
     const back = new Mesh(new BoxGeometry(w, h, panel), shell);
     back.position.set(0, h / 2, -d / 2 + panel / 2);
@@ -335,50 +439,66 @@ export class WhPlan3d extends LitElement {
     const top = new Mesh(new BoxGeometry(w, panel, d), shell);
     top.position.set(0, h - panel / 2, 0);
     group.add(top);
-    const mid = new Mesh(new BoxGeometry(w, panel, d), shell);
+    const base = new Mesh(new BoxGeometry(w, panel, d), shell);
+    base.position.set(0, panel / 2, 0);
+    group.add(base);
+    const mid = new Mesh(new BoxGeometry(w, panel, d), inner);
     mid.position.set(0, h / 2, 0);
     group.add(mid);
     const third = w / 3;
     for (const x of [-third / 2, third / 2]) {
-      const divider = new Mesh(new BoxGeometry(panel, h, d), shell);
+      const divider = new Mesh(new BoxGeometry(panel, h, d), inner);
       divider.position.set(x, h / 2, 0);
       group.add(divider);
     }
   }
 
-  /** Translucent cold-room enclosure with a door seam on the front face. */
-  private addColdRoom(group: Group, w: number, d: number, h: number): void {
-    const glass = new MeshStandardMaterial({
-      color: COLD_COLOR,
-      transparent: true,
-      opacity: 0.28,
-      roughness: 0.15,
-      metalness: 0.1
-    });
+  /** Translucent cold-room enclosure: glass walls, solid rim/kick-plate and a framed door. */
+  private addColdRoom(group: Group, w: number, d: number, h: number, color: Color): void {
+    const glass = new MeshStandardMaterial({ color, transparent: true, opacity: 0.24, roughness: 0.12, metalness: 0.1 });
     const shell = new Mesh(new BoxGeometry(w, h, d), glass);
     shell.position.y = h / 2;
     group.add(shell);
-    const rim = new MeshStandardMaterial({ color: COLD_COLOR, roughness: 0.3 });
-    const lid = new Mesh(new BoxGeometry(w, 0.06, d), rim);
-    lid.position.y = h + 0.03;
+    const rimMat = new MeshStandardMaterial({ color: color.clone().multiplyScalar(0.9), roughness: 0.3, metalness: 0.2 });
+    const lid = new Mesh(new BoxGeometry(w + 0.04, 0.08, d + 0.04), rimMat);
+    lid.position.y = h + 0.04;
     group.add(lid);
-    const door = new Mesh(new BoxGeometry(w * 0.35, h * 0.75, 0.04), rim);
-    door.position.set(0, (h * 0.75) / 2, d / 2 + 0.02);
+    const kick = new Mesh(new BoxGeometry(w + 0.04, 0.12, d + 0.04), rimMat);
+    kick.position.y = 0.06;
+    group.add(kick);
+    // Door: recessed panel with a frame on the front face.
+    const frame = new Mesh(new BoxGeometry(w * 0.42, h * 0.8, 0.05), rimMat);
+    frame.position.set(0, (h * 0.8) / 2, d / 2 + 0.01);
+    group.add(frame);
+    const door = new Mesh(new BoxGeometry(w * 0.34, h * 0.72, 0.06), glass);
+    door.position.set(0, (h * 0.72) / 2 + 0.02, d / 2 + 0.03);
     group.add(door);
   }
 
-  /** Painted floor marking; pallet stacks appear when the spot holds stock. */
+  /** Painted floor marking with a border stripe; pallet stacks appear when occupied. */
   private addFloorMarking(group: Group, w: number, d: number, units: number): void {
-    const marking = new Mesh(
-      new PlaneGeometry(w, d),
-      new MeshBasicMaterial({ color: new Color(locationFillColor(units, 0)), transparent: true, opacity: 0.3 })
-    );
+    const paint = new Color(locationFillColor(units, 0));
+    const marking = new Mesh(new PlaneGeometry(w, d), new MeshBasicMaterial({ color: paint, transparent: true, opacity: 0.26 }));
     marking.rotation.x = -Math.PI / 2;
     marking.position.y = 0.011;
     group.add(marking);
+    // Border stripe (four thin bars) for a painted-bay look.
+    const stripe = new MeshBasicMaterial({ color: paint, transparent: true, opacity: 0.85 });
+    const t = 0.08;
+    for (const [gw, gd, x, z] of [
+      [w, t, 0, -d / 2 + t / 2],
+      [w, t, 0, d / 2 - t / 2],
+      [t, d, -w / 2 + t / 2, 0],
+      [t, d, w / 2 - t / 2, 0]
+    ] as const) {
+      const bar = new Mesh(new PlaneGeometry(gw, gd), stripe);
+      bar.rotation.x = -Math.PI / 2;
+      bar.position.set(x, 0.012, z);
+      group.add(bar);
+    }
     if (units <= 0) return;
-    const pallet = new MeshStandardMaterial({ color: PALLET_COLOR, roughness: 0.8 });
-    const crate = new MeshStandardMaterial({ color: CRATE_COLOR, roughness: 0.75 });
+    const pallet = new MeshStandardMaterial({ color: new Color(PALLET_COLOR), roughness: 0.8, map: this.textures?.wood });
+    const crate = new MeshStandardMaterial({ color: new Color(CRATE_COLOR), roughness: 0.75, map: this.textures?.cardboard });
     const spots = [
       { x: -w / 4, z: -d / 4 },
       { x: w / 4, z: d / 4 }
@@ -431,7 +551,10 @@ export class WhPlan3d extends LitElement {
       if (mesh.geometry) mesh.geometry.dispose();
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       for (const m of mats) {
-        (m as MeshBasicMaterial | undefined)?.map?.dispose?.();
+        // Per-instance maps (sprite label/badge canvases) are disposed here;
+        // the shared/cached structure textures are kept for the next rebuild.
+        const map = (m as MeshBasicMaterial | undefined)?.map;
+        if (map && !map.userData['shared']) map.dispose();
         m?.dispose?.();
       }
     });
@@ -439,16 +562,31 @@ export class WhPlan3d extends LitElement {
     this.content.clear();
   }
 
-  // --- outlines / hover -------------------------------------------------------
+  // --- highlight / handles / hover --------------------------------------------
 
-  private refreshOutlines(): void {
+  /** Enclosing translucent box + edges, tinted white (selected) or cyan (hover). */
+  private refreshHighlights(): void {
     for (const [id, visual] of this.visuals) {
       const selected = id === this.selectedId;
       const hovered = id === this.hoveredId;
-      visual.outline.visible = selected || hovered;
-      const material = visual.outline.material as MeshBasicMaterial;
-      material.color.set(selected ? OUTLINE_SELECTED : OUTLINE_HOVER);
-      material.opacity = selected ? 0.9 : 0.5;
+      visual.highlight.visible = selected || hovered;
+      const color = selected ? OUTLINE_SELECTED : OUTLINE_HOVER;
+      const box = visual.highlightBox.material as MeshBasicMaterial;
+      box.color.set(color);
+      box.opacity = selected ? 0.16 : 0.08;
+      const edges = visual.highlightEdges.material as LineBasicMaterial;
+      edges.color.set(color);
+      edges.opacity = selected ? 0.95 : 0.55;
+    }
+    this.needsRender = true;
+  }
+
+  /** Resize handles are visible only for the selected location while editing. */
+  private refreshHandles(): void {
+    for (const [id, visual] of this.visuals) {
+      const on = this.editing && id === this.selectedId;
+      visual.handles.visible = on;
+      if (on && this.resizing?.id !== id) resetHandlePositions(visual);
     }
     this.needsRender = true;
   }
@@ -456,7 +594,7 @@ export class WhPlan3d extends LitElement {
   private setHovered(id: string): void {
     if (this.hoveredId === id) return;
     this.hoveredId = id;
-    this.refreshOutlines();
+    this.refreshHighlights();
     if (this.canvasEl && !this.editing) this.canvasEl.style.cursor = id ? 'pointer' : 'grab';
   }
 
@@ -516,6 +654,13 @@ export class WhPlan3d extends LitElement {
   private readonly onPointerDown = (e: PointerEvent): void => {
     this.downAt = { x: e.clientX, y: e.clientY };
     if (this.editing && e.button === 0) {
+      // A resize handle of the selected location takes priority over move/orbit.
+      const axis = this.handleAt(e);
+      if (axis) {
+        this.beginResize(this.selectedId, axis);
+        this.attachGlobal();
+        return;
+      }
       const hit = this.locationAt(e);
       if (hit) {
         const loc = this.locations.find((l) => l.id === hit);
@@ -534,11 +679,19 @@ export class WhPlan3d extends LitElement {
   };
 
   private readonly onHoverMove = (e: PointerEvent): void => {
-    if (this.orbiting || this.dragging) return;
+    if (this.orbiting || this.dragging || this.resizing) return;
+    if (this.editing && this.handleAt(e)) {
+      if (this.canvasEl) this.canvasEl.style.cursor = 'move';
+      return;
+    }
     this.setHovered(this.locationAt(e) ?? '');
   };
 
   private readonly onPointerMove = (e: PointerEvent): void => {
+    if (this.resizing) {
+      this.resizeDragged(e);
+      return;
+    }
     if (this.dragging) {
       this.moveDragged(e);
       return;
@@ -562,20 +715,33 @@ export class WhPlan3d extends LitElement {
   };
 
   private readonly onPointerUp = (e: PointerEvent): void => {
+    const wasResizing = this.resizing;
     const wasDragging = this.dragging;
     const movedPx = Math.hypot(e.clientX - this.downAt.x, e.clientY - this.downAt.y);
     this.detachGlobal();
     this.orbiting = null;
     this.dragging = null;
+    this.resizing = null;
+    if (wasResizing) {
+      if (wasResizing.moved) this.commitResize(wasResizing);
+      else this.rebuild(); // discard the (empty) preview transform
+      return;
+    }
     if (wasDragging) {
       if (wasDragging.moved) this.commitDrag(wasDragging.id);
+      // A click without a move selects the location (so its resize handles appear).
+      else this.dispatchSelect(wasDragging.id);
       return;
     }
     if (movedPx <= DRAG_THRESHOLD_PX && e.button === 0) {
       const hit = this.locationAt(e);
-      if (hit) this.dispatchEvent(new CustomEvent('wui:select', { detail: { locationId: hit }, bubbles: true, composed: true }));
+      if (hit) this.dispatchSelect(hit);
     }
   };
+
+  private dispatchSelect(locationId: string): void {
+    this.dispatchEvent(new CustomEvent('wui:select', { detail: { locationId }, bubbles: true, composed: true }));
+  }
 
   private readonly onWheel = (e: WheelEvent): void => {
     e.preventDefault();
@@ -618,25 +784,88 @@ export class WhPlan3d extends LitElement {
     );
   }
 
+  // --- 3D resize (width / depth / height handles) ------------------------------
+
+  /** Which resize handle of the SELECTED location is under the pointer (if any). */
+  private handleAt(e: PointerEvent): ResizeAxis | undefined {
+    const visual = this.visuals.get(this.selectedId);
+    if (!visual || !visual.handles.visible || !this.pointerRay(e)) return undefined;
+    const hits = this.raycaster.intersectObjects(visual.handleMeshes, false);
+    return hits[0]?.object.userData['handle'] as ResizeAxis | undefined;
+  }
+
+  private beginResize(id: string, axis: ResizeAxis): void {
+    const visual = this.visuals.get(id);
+    const loc = this.locations.find((l) => l.id === id);
+    if (!visual || !loc) return;
+    const start = { w: loc.w, d: loc.h, height: visual.height };
+    this.resizing = { id, axis, start, pending: { ...start }, moved: false };
+  }
+
+  /** Drag a handle along its axis; preview the new size on the highlight + handles. */
+  private resizeDragged(e: PointerEvent): void {
+    const r = this.resizing;
+    const visual = r ? this.visuals.get(r.id) : undefined;
+    const loc = r ? this.locations.find((l) => l.id === r.id) : undefined;
+    const zone = loc ? this.zones.find((z) => z.id === loc.zoneId) : undefined;
+    const ray = this.pointerRay(e);
+    if (!r || !visual || !loc || !zone || !ray) return;
+    const center = visual.group.position;
+    if (r.axis === 'w') {
+      const originX = center.x - r.start.w / 2; // min-x corner stays anchored
+      const span = scalarOnAxis(ray, new Vector3(originX, r.start.height / 2, center.z), UNIT_X);
+      r.pending.w = clamp(snap(span), MIN_SIZE, Math.max(MIN_SIZE, zone.w - loc.x));
+    } else if (r.axis === 'd') {
+      const originZ = center.z - r.start.d / 2;
+      const span = scalarOnAxis(ray, new Vector3(center.x, r.start.height / 2, originZ), UNIT_Z);
+      r.pending.d = clamp(snap(span), MIN_SIZE, Math.max(MIN_SIZE, zone.h - loc.y));
+    } else {
+      const span = scalarOnAxis(ray, new Vector3(center.x, 0, center.z), UNIT_Y);
+      r.pending.height = clamp(snap(span), MIN_HEIGHT, MAX_HEIGHT);
+    }
+    r.moved = true;
+    applyResizePreview(visual, r);
+    this.needsRender = true;
+  }
+
+  private commitResize(r: ResizeState): void {
+    const loc = this.locations.find((l) => l.id === r.id);
+    if (!loc) return;
+    const { w, d, height } = r.pending;
+    if (w === loc.w && d === loc.h && height === r.start.height) {
+      this.rebuild(); // nothing changed — drop the preview transform
+      return;
+    }
+    this.dispatchEvent(
+      new CustomEvent('wui:layout', {
+        detail: { kind: 'location', id: r.id, x: loc.x, y: loc.y, w, h: d, height },
+        bubbles: true,
+        composed: true
+      })
+    );
+  }
+
   private locationAt(e: PointerEvent): string | undefined {
-    const canvas = this.canvasEl;
-    if (!canvas || !this.camera) return undefined;
-    const rect = canvas.getBoundingClientRect();
-    this.pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
-    this.raycaster.setFromCamera(this.pointer, this.camera);
+    if (!this.pointerRay(e)) return undefined;
     const hitboxes = [...this.visuals.values()].map((v) => v.hitbox);
     const hits = this.raycaster.intersectObjects(hitboxes, false);
     return hits[0]?.object.userData['locationId'] as string | undefined;
   }
 
   private floorPoint(e: PointerEvent): Vector3 | undefined {
+    if (!this.pointerRay(e)) return undefined;
+    const out = new Vector3();
+    return this.raycaster.ray.intersectPlane(this.floorPlane, out) ?? undefined;
+  }
+
+  /** Set the raycaster from the pointer; returns the ray (undefined if not ready). */
+  private pointerRay(e: PointerEvent): Ray | undefined {
     const canvas = this.canvasEl;
     if (!canvas || !this.camera) return undefined;
     const rect = canvas.getBoundingClientRect();
     this.pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(this.pointer, this.camera);
-    const out = new Vector3();
-    return this.raycaster.ray.intersectPlane(this.floorPlane, out) ?? undefined;
+    return this.raycaster.ray;
   }
 
   private attachGlobal(): void {
@@ -652,6 +881,86 @@ export class WhPlan3d extends LitElement {
   private updateCursor(): void {
     if (this.canvasEl) this.canvasEl.style.cursor = this.editing ? 'move' : 'grab';
   }
+}
+
+/** Enclosing translucent highlight: glass box + bright edge lines (full footprint × height). */
+function buildHighlight(w: number, d: number, h: number): { highlight: Group; highlightBox: Mesh; highlightEdges: LineSegments } {
+  const highlight = new Group();
+  const box = new Mesh(
+    new BoxGeometry(w, h, d),
+    new MeshBasicMaterial({ color: OUTLINE_SELECTED, transparent: true, opacity: 0.16, side: DoubleSide, depthWrite: false })
+  );
+  box.position.y = h / 2;
+  highlight.add(box);
+  const tmp = new BoxGeometry(w, h, d);
+  const edges = new LineSegments(new EdgesGeometry(tmp), new LineBasicMaterial({ color: OUTLINE_SELECTED, transparent: true, opacity: 0.95 }));
+  tmp.dispose();
+  edges.position.y = h / 2;
+  highlight.add(edges);
+  highlight.visible = false;
+  return { highlight, highlightBox: box, highlightEdges: edges };
+}
+
+/** The three resize handles (width +X, depth +Z, height +Y) as small always-on-top cubes. */
+function buildHandles(w: number, d: number, h: number, id: string): { handles: Group; handleMeshes: Mesh[] } {
+  const handles = new Group();
+  const make = (axis: ResizeAxis): Mesh => {
+    const mesh = new Mesh(
+      new BoxGeometry(HANDLE_SIZE, HANDLE_SIZE, HANDLE_SIZE),
+      new MeshBasicMaterial({ color: HANDLE_COLOR, depthTest: false, transparent: true, opacity: 0.95 })
+    );
+    mesh.renderOrder = 12;
+    mesh.userData['handle'] = axis;
+    mesh.userData['locationId'] = id;
+    handles.add(mesh);
+    return mesh;
+  };
+  const handleMeshes = [make('w'), make('d'), make('h')];
+  layoutHandles(handleMeshes, w, d, h, w, d);
+  handles.visible = false;
+  return { handles, handleMeshes };
+}
+
+/** Place the handles on the moving faces, anchored at the fixed min corner (−sw/2, −sd/2, 0). */
+function layoutHandles(meshes: Mesh[], w: number, d: number, height: number, sw: number, sd: number): void {
+  const minX = -sw / 2;
+  const minZ = -sd / 2;
+  meshes[0]?.position.set(minX + w + HANDLE_GAP, height / 2, minZ + d / 2); // width
+  meshes[1]?.position.set(minX + w / 2, height / 2, minZ + d + HANDLE_GAP); // depth
+  meshes[2]?.position.set(minX + w / 2, height + HANDLE_GAP, minZ + d / 2); // height
+}
+
+/** Reset a location's handles to its committed size (min corner at −w/2, −d/2). */
+function resetHandlePositions(visual: LocationVisual): void {
+  layoutHandles(visual.handleMeshes, visual.w, visual.d, visual.height, visual.w, visual.d);
+}
+
+/** Preview a live resize: scale/offset the highlight box + edges and move the handles. */
+function applyResizePreview(visual: LocationVisual, r: ResizeState): void {
+  const { w, d, height } = r.pending;
+  const { w: sw, d: sd, height: sh } = r.start;
+  const cx = -sw / 2 + w / 2; // min-x corner anchored
+  const cz = -sd / 2 + d / 2; // min-z corner anchored
+  for (const object of [visual.highlightBox, visual.highlightEdges]) {
+    object.scale.set(w / sw, height / sh, d / sd);
+    object.position.set(cx, height / 2, cz);
+  }
+  layoutHandles(visual.handleMeshes, w, d, height, sw, sd);
+}
+
+/**
+ * Signed distance along a unit axis (origin + s·dir) to its closest approach with
+ * a ray — the standard line/line closest-point solve. Used to drag a resize
+ * handle along one world axis regardless of the camera orientation.
+ */
+function scalarOnAxis(ray: Ray, origin: Vector3, dir: Vector3): number {
+  const w0 = TMP_AXIS.copy(origin).sub(ray.origin);
+  const b = dir.dot(ray.direction);
+  const dOff = dir.dot(w0);
+  const eOff = ray.direction.dot(w0);
+  const denom = 1 - b * b; // dir and ray.direction are both unit vectors
+  if (Math.abs(denom) < 1e-6) return dOff; // near-parallel — fall back to a plain projection
+  return (b * eOff - dOff) / denom;
 }
 
 /** Billboard label above the structure: location code + unit count. */

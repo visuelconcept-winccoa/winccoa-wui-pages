@@ -72,6 +72,10 @@ export function pageStyles(): CSSResult {
     .panel > * {
       min-height: 0;
     }
+    .panel:fullscreen {
+      background: var(--theme-color-1);
+      padding: 0.75rem;
+    }
     .plan-toolbar {
       display: flex;
       align-items: center;

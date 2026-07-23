@@ -56,11 +56,23 @@ export interface StorageLocation extends DpEntity {
   type: LocationType;
   /** Max units the location holds (0 = uncapped). */
   capacity: number;
+  /**
+   * Structure colour (hex) of the 3D model. Optional — falls back to the
+   * per-type default ({@link DEFAULT_COLOR_BY_TYPE}).
+   */
+  color?: string;
   /** Layout rectangle RELATIVE to the parent zone, in grid units. */
   x: number;
   y: number;
+  /** Footprint width (grid units). */
   w: number;
+  /** Footprint depth (grid units). */
   h: number;
+  /**
+   * Vertical height of the 3D structure (world units). Optional — falls back to
+   * the per-type default ({@link HEIGHT_BY_TYPE}). Not used by the 2D plan.
+   */
+  height?: number;
 }
 
 /** A product (SKU) in the catalog. */

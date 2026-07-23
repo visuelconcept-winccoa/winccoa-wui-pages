@@ -41,11 +41,13 @@ export function locationFields(zones: Zone[]): FieldDef[] {
     { key: 'code', label: MSG.fields.code, kind: 'text', required: true },
     { key: 'label', label: MSG.fields.name, kind: 'text' },
     { key: 'type', label: MSG.fields.type, kind: 'select', options: typeOptions() },
+    { key: 'color', label: MSG.fields.color, kind: 'color' },
     { key: 'capacity', label: MSG.fields.capacity, kind: 'number', min: 0 },
     { key: 'x', label: MSG.fields.posX, kind: 'number', min: 0 },
     { key: 'y', label: MSG.fields.posY, kind: 'number', min: 0 },
     { key: 'w', label: MSG.fields.posW, kind: 'number', min: 1 },
-    { key: 'h', label: MSG.fields.posH, kind: 'number', min: 1 }
+    { key: 'h', label: MSG.fields.depth, kind: 'number', min: 1 },
+    { key: 'height', label: MSG.fields.height3d, kind: 'number', min: 0, step: 0.1 }
   ];
 }
 

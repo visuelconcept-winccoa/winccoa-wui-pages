@@ -74,15 +74,17 @@ export const MSG = {
     view3d: ml('3D', '3D', '3D'),
     edit: ml('Edit layout', 'Éditer le plan', 'Layout bearbeiten'),
     done: ml('Done', 'Terminer', 'Fertig'),
+    fullscreen: ml('Fullscreen', 'Plein écran', 'Vollbild'),
+    exitFullscreen: ml('Exit fullscreen', 'Quitter le plein écran', 'Vollbild beenden'),
     editHint: ml(
       'Drag zones and racks to move them; drag the corner handle to resize.',
       'Glissez les zones et racks pour les déplacer ; la poignée d’angle les redimensionne.',
       'Zonen und Regale ziehen zum Verschieben; Eckgriff zum Skalieren.'
     ),
     editHint3d: ml(
-      'Drag a rack to move it on the floor. Left-drag orbits, wheel zooms, right-drag pans.',
-      'Glissez un rack pour le déplacer au sol. Glisser = orbite, molette = zoom, clic droit = panoramique.',
-      'Regal ziehen zum Verschieben. Ziehen = Orbit, Rad = Zoom, Rechtsklick = Schwenken.'
+      'Click a rack to select it, then drag its handles to resize (width, depth, height); drag the rack to move it. Left-drag orbits, wheel zooms, right-drag pans.',
+      'Cliquez un rack pour le sélectionner, puis glissez ses poignées pour le redimensionner (largeur, profondeur, hauteur) ; glissez le rack pour le déplacer. Glisser = orbite, molette = zoom, clic droit = panoramique.',
+      'Regal anklicken zum Auswählen, dann Griffe ziehen zum Skalieren (Breite, Tiefe, Höhe); Regal ziehen zum Verschieben. Ziehen = Orbit, Rad = Zoom, Rechtsklick = Schwenken.'
     ),
     noSelection: ml('No location selected.', 'Aucun emplacement sélectionné.', 'Kein Lagerplatz ausgewählt.'),
     capacity: ml('Capacity', 'Capacité', 'Kapazität'),
@@ -181,7 +183,9 @@ export const MSG = {
     posX: ml('Plan X', 'Plan X', 'Plan X'),
     posY: ml('Plan Y', 'Plan Y', 'Plan Y'),
     posW: ml('Width', 'Largeur', 'Breite'),
-    posH: ml('Height', 'Hauteur', 'Höhe')
+    posH: ml('Height', 'Hauteur', 'Höhe'),
+    depth: ml('Depth', 'Profondeur', 'Tiefe'),
+    height3d: ml('Height (3D)', 'Hauteur (3D)', 'Höhe (3D)')
   },
   dialogTitles: {
     newWarehouse: ml('New warehouse', 'Nouvel entrepôt', 'Neues Lager'),

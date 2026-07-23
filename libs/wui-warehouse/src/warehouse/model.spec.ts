@@ -151,12 +151,12 @@ describe('demo dataset integrity (offline fallback + first-run seed)', () => {
   const products = demoProducts();
   const stock = demoStock();
 
-  it('has the documented shape: 2 warehouses, 6 zones, 24 locations, 8 products, 16 stock cells', () => {
-    expect(warehouses).toHaveLength(2);
-    expect(zones).toHaveLength(6);
-    expect(locations).toHaveLength(24);
+  it('has the documented shape: 5 warehouses, 15 zones, 60 locations, 8 products, 34 stock cells', () => {
+    expect(warehouses).toHaveLength(5);
+    expect(zones).toHaveLength(15);
+    expect(locations).toHaveLength(60);
     expect(products).toHaveLength(8);
-    expect(stock).toHaveLength(16);
+    expect(stock).toHaveLength(34);
   });
 
   it('keeps every cross-reference resolvable (ids are stable across calls)', () => {

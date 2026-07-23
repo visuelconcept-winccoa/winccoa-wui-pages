@@ -20,7 +20,23 @@ describe('DpJsonStore without a backend (offline fallback)', () => {
     const store = freshZoneStore();
     const zones = await store.list();
     expect(store.offline).toBe(true);
-    expect(zones.map((z) => z.id)).toEqual(['z-a', 'z-b', 'z-c', 'z-d', 'z-e', 'z-f']);
+    expect(zones.map((z) => z.id)).toEqual([
+      'z-a',
+      'z-b',
+      'z-c',
+      'z-d',
+      'z-e',
+      'z-f',
+      'z-g',
+      'z-h',
+      'z-i',
+      'z-j',
+      'z-k',
+      'z-l',
+      'z-m',
+      'z-n',
+      'z-o'
+    ]);
   });
 
   it('returns a fresh array on every list() so Lit change detection works', async () => {
@@ -39,7 +55,7 @@ describe('DpJsonStore without a backend (offline fallback)', () => {
     expect(created.id).toMatch(/^zone-tampon-/);
     expect(created.dp).toBe(`WMS_Zone_${created.id}`);
     const zones = await store.list();
-    expect(zones).toHaveLength(7);
+    expect(zones).toHaveLength(16);
     expect(zones.some((z) => z.id === created.id)).toBe(true);
   });
 
@@ -62,7 +78,7 @@ describe('DpJsonStore without a backend (offline fallback)', () => {
 
     await store.remove(first.id);
     const after = await store.list();
-    expect(after).toHaveLength(5);
+    expect(after).toHaveLength(14);
     expect(after.some((z) => z.id === first.id)).toBe(false);
   });
 });
@@ -71,9 +87,9 @@ describe('warehouse config stores without a backend', () => {
   it('loadConfig returns the full demo snapshot flagged offline', async () => {
     const config = await loadConfig();
     expect(config.offline).toBe(true);
-    expect(config.warehouses).toHaveLength(2);
-    expect(config.zones).toHaveLength(6);
-    expect(config.locations).toHaveLength(24);
+    expect(config.warehouses).toHaveLength(5);
+    expect(config.zones).toHaveLength(15);
+    expect(config.locations).toHaveLength(60);
     expect(config.products).toHaveLength(8);
     expect(config.campaigns).toHaveLength(0);
   });
@@ -87,9 +103,9 @@ describe('warehouse config stores without a backend', () => {
   it('seedConfigIfEmpty never seeds the in-memory fallback (no duplicates)', async () => {
     await seedConfigIfEmpty();
     const config = await loadConfig();
-    expect(config.warehouses).toHaveLength(2);
-    expect(config.zones).toHaveLength(6);
-    expect(config.locations).toHaveLength(24);
+    expect(config.warehouses).toHaveLength(5);
+    expect(config.zones).toHaveLength(15);
+    expect(config.locations).toHaveLength(60);
     expect(config.products).toHaveLength(8);
   });
 });

@@ -33,7 +33,7 @@ import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
 import appSecurityRoles from './app-security.roles.json';
 import { MSG, localize, localizeDir } from './warehouse/i18n.js';
 import { pageStyles } from './warehouse/page-styles.js';
-import { locationUnits, occupancyPercent, stockStatus } from './warehouse/model.js';
+import { locationColor, locationHeight, locationUnits, occupancyPercent, stockStatus } from './warehouse/model.js';
 import {
   inventoryStore,
   loadConfig,
@@ -96,6 +96,8 @@ interface LayoutDetail {
   y: number;
   w: number;
   h: number;
+  /** Vertical height, in world units — only the 3D editor's height handle sets it. */
+  height?: number;
 }
 
 function num(draft: EntityDraft, key: string, fallback = 0): number {
@@ -129,6 +131,7 @@ export class WuiWarehouse extends LitElement {
   @state() private loading = true;
   @state() private selectedId = '';
   @state() private openCampaignId = '';
+  @state() private isFullscreen = false;
   @state() private roleView = true;
   @state() private roleEdit = true;
   @state() private roleAdjust = true;
@@ -178,6 +181,7 @@ export class WuiWarehouse extends LitElement {
     );
     this.permSub.add(hasRole$(MODULE_ID, 'adjust-stock').subscribe((g) => (this.roleAdjust = g)));
     this.permSub.add(hasRole$(MODULE_ID, 'inventory').subscribe((g) => (this.roleInventory = g)));
+    document.addEventListener('fullscreenchange', this.onFullscreenChange);
     void this.init();
   }
 
@@ -185,6 +189,7 @@ export class WuiWarehouse extends LitElement {
     super.disconnectedCallback();
     this.permSub.unsubscribe();
     this.permSub = new Subscription();
+    document.removeEventListener('fullscreenchange', this.onFullscreenChange);
   }
 
   override render(): TemplateResult {
@@ -302,6 +307,10 @@ export class WuiWarehouse extends LitElement {
               ${localizeDir(this.editingLayout ? MSG.plan.done : MSG.plan.edit)}
             </ix-button>`
           : nothing}
+        <ix-button variant="secondary" outline @click=${() => this.togglePlanFullscreen()}>
+          <ix-icon name="maximize" slot="icon"></ix-icon>
+          ${localizeDir(this.isFullscreen ? MSG.plan.exitFullscreen : MSG.plan.fullscreen)}
+        </ix-button>
       </div>
       <div class="plan-wrap">
         ${this.planView === '2d'
@@ -377,7 +386,8 @@ export class WuiWarehouse extends LitElement {
     } else {
       const loc = this.locations.find((l) => l.id === detail.id);
       if (!loc) return;
-      await locationStore.save({ ...loc, x: detail.x, y: detail.y, w: detail.w, h: detail.h });
+      const height = detail.height == null ? {} : { height: detail.height };
+      await locationStore.save({ ...loc, x: detail.x, y: detail.y, w: detail.w, h: detail.h, ...height });
     }
     await this.reload();
   }
@@ -470,6 +480,20 @@ export class WuiWarehouse extends LitElement {
     this.dispatchEvent(new RouterEvent('/warehouse'));
   }
 
+  private readonly onFullscreenChange = (): void => {
+    this.isFullscreen = document.fullscreenElement != null;
+  };
+
+  /** Toggle fullscreen on the plan panel (works for both the 2D and 3D scene). */
+  private togglePlanFullscreen(): void {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+      return;
+    }
+    const panel = this.renderRoot.querySelector<HTMLElement>('.panel');
+    void panel?.requestFullscreen?.();
+  }
+
   // --- data --------------------------------------------------------------------
 
   private async init(): Promise<void> {
@@ -520,8 +544,32 @@ export class WuiWarehouse extends LitElement {
   private openLocationDialog(editId?: string, zoneId?: string): void {
     const existing = editId ? this.locations.find((l) => l.id === editId) : undefined;
     const value: EntityDraft = existing
-      ? { zoneId: existing.zoneId, code: existing.code, label: existing.label, type: existing.type, capacity: existing.capacity, x: existing.x, y: existing.y, w: existing.w, h: existing.h }
-      : { zoneId: zoneId ?? this.scopedZones[0]?.id ?? '', code: '', label: '', type: 'rack', capacity: 100, x: 0.5, y: 1.4, w: 5, h: 2.5 };
+      ? {
+          zoneId: existing.zoneId,
+          code: existing.code,
+          label: existing.label,
+          type: existing.type,
+          color: locationColor(existing),
+          capacity: existing.capacity,
+          x: existing.x,
+          y: existing.y,
+          w: existing.w,
+          h: existing.h,
+          height: locationHeight(existing)
+        }
+      : {
+          zoneId: zoneId ?? this.scopedZones[0]?.id ?? '',
+          code: '',
+          label: '',
+          type: 'rack',
+          color: locationColor({ type: 'rack' }),
+          capacity: 100,
+          x: 0.5,
+          y: 1.4,
+          w: 5,
+          h: 2.5,
+          height: locationHeight({ type: 'rack' })
+        };
     this.dialog = {
       kind: 'location',
       editId,
@@ -618,17 +666,20 @@ export class WuiWarehouse extends LitElement {
   }
 
   private async saveLocation(draft: EntityDraft, editId?: string): Promise<void> {
+    const height = num(draft, 'height', 0);
     const base: StorageLocation = {
       id: editId ?? '',
       zoneId: str(draft, 'zoneId'),
       code: str(draft, 'code'),
       label: str(draft, 'label'),
       type: (str(draft, 'type', 'rack') as StorageLocation['type']),
+      color: str(draft, 'color') || undefined,
       capacity: num(draft, 'capacity', 0),
       x: num(draft, 'x', 0.5),
       y: num(draft, 'y', 1.4),
       w: num(draft, 'w', 5),
-      h: num(draft, 'h', 2.5)
+      h: num(draft, 'h', 2.5),
+      height: height > 0 ? height : undefined
     };
     const existing = editId ? this.locations.find((l) => l.id === editId) : undefined;
     await (existing ? locationStore.save({ ...existing, ...base, id: existing.id }) : locationStore.create(base));

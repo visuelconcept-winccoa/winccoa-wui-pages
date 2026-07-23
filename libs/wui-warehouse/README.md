@@ -18,7 +18,7 @@ plugins — no central registration.
 
 | Tab           | What it does                                                                                       |
 | ------------- | -------------------------------------------------------------------------------------------------- |
-| **Plan**      | 2D map of zones/locations coloured by occupancy (grey → green → amber → red). Click a location to inspect its contents. |
+| **Plan**      | 2D map **or** procedural 3D scene of zones/locations coloured by occupancy (grey → green → amber → red). Click a location to inspect its contents. In edit mode you can move and (in 3D) resize racks in all three dimensions via on-object handles; each location also has its own 3D model **type** and **colour**. A **Fullscreen** button expands the 2D/3D scene. |
 | **Stock**     | KPI tiles (stocked SKUs · total units · products below minimum · empty locations), zone filter + search, and the stock table with add / adjust / remove. |
 | **Zones**     | CRUD of zones and their locations, including the plan layout rectangle (grid units) and capacity.  |
 | **Products**  | CRUD of the product catalog: reference, name, category, unit, min/max thresholds.                  |
@@ -42,15 +42,40 @@ for every JSON-store page). There is a **hybrid** granularity by design:
   `{ quantity:Float, product:String, location:String, minQty:Float, maxQty:Float }`.
 
 When the backend is read-only or unreachable, every store transparently falls
-back to an in-memory **demo dataset** (four zones, sixteen locations, eight
-products, seeded stock incl. a few under-min / over-max cells) and shows a banner
-— the UI stays fully usable; changes just aren't persisted. On a writable, empty
-project the same dataset is **seeded once** so the page is populated on first
-open.
+back to an in-memory **demo dataset** and shows a banner — the UI stays fully
+usable; changes just aren't persisted. On a writable, empty project the same
+dataset is **seeded once** so the page is populated on first open. The demo set
+ships **five demonstration sites** with distinct configurations: *Nord* (mixed
+racks / cold / floor), *Sud* (picking shelves + return bins), *Est* (tall,
+coloured high-bay pallet racks — showcases the per-location 3D height/colour),
+*Ouest* (cold chain: cold rooms + refrigerated dock) and *Atelier* (a compact
+mixed store), with seeded stock exercising the full occupancy palette and a few
+under-min / over-max cells.
 
 > Existence of a possibly-missing DP is always probed with `dpNames` (never
 > `dpGet`/`dpConnect`, which throw uncatchably in the webserver CTRL layer for a
 > non-existent DPE).
+
+## Run without WinCC OA (standalone demo)
+
+To open and **use** the Warehouse page in your browser with the built-in demo
+dataset — no WinCC OA, no login, no `/api/para` backend — use the launcher:
+
+```bash
+node tools/warehouse-standalone.mjs        # add --no-open to skip auto-opening the browser
+```
+
+It starts the Vite dev server with a dead `BASE_URL` (so every backend call fails
+fast and the stores engage their in-memory demo fallback), mounts `<wui-warehouse>`
+through a minimal harness (iX theme + DI, no shell/router/login), prints the URL
+(`http://127.0.0.1:4300/warehouse-standalone.html`) and keeps running until
+`Ctrl+C`. All five tabs, the 2D/3D plan, dialogs and inventory campaigns work;
+edits stay in memory for the session. The "offline" banner confirms demo mode.
+
+Prerequisite: a wired runtime workspace (`apps/dashboard-wc/` present). If it is
+missing, the launcher prints the one-time setup commands — see
+[DEVELOPMENT.md](../../DEVELOPMENT.md) §1. For non-interactive screenshots of the
+same offline mode, see [`tools/screenshot-warehouse-demo.mjs`](../../tools/screenshot-warehouse-demo.mjs).
 
 ## Application Security (module id `warehouse`)
 
@@ -82,6 +107,6 @@ libs/wui-warehouse/
     warehouse/
       types.ts  i18n.ts  model.ts  forms.ts
       data/  stores.ts  stock-store.ts
-      ui/    wh-entity-dialog.ts  wh-plan.ts  wh-stock.ts
-             wh-zones.ts  wh-products.ts  wh-inventory.ts
+      ui/    wh-entity-dialog.ts  wh-plan.ts  wh-plan3d.ts  plan3d-textures.ts
+             wh-stock.ts  wh-zones.ts  wh-products.ts  wh-inventory.ts
 ```
