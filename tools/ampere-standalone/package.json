@@ -1,0 +1,23 @@
+{
+  "name": "@visuelconcept/ampere-standalone-harness",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Standalone harness to run the wui-ampere page WITHOUT any WinCC OA backend or @wincc-oa runtime package (all shell imports are aliased to local stubs). Used to demo the page and capture screenshots of the built-in demo networks.",
+  "scripts": {
+    "dev": "vite",
+    "shoot": "node shoot.mjs"
+  },
+  "dependencies": {
+    "@siemens/ix": "^2.6.0",
+    "@siemens/ix-icons": "^2.2.0",
+    "lit": "^3.2.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "tsyringe": "^4.8.0"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.48.0",
+    "vite": "^5.4.0"
+  }
+}
