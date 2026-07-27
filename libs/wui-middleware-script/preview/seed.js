@@ -14,7 +14,33 @@ globalThis.__previewLocale = 'fr.utf8';
 
 const now = () => new Date().toISOString();
 
-globalThis.__previewSeed = [
+globalThis.__previewSeed = {};
+
+globalThis.__previewSeed['MiddlewareScript_Model_'] = [
+  {
+    id: 'seuil-hysteresis',
+    name: 'Seuil avec hystérésis',
+    description: 'Alarme haute générique : seuils haut/bas paramétrables par instance.',
+    inputs: [{ alias: 'mesure', description: 'Valeur surveillée' }],
+    outputs: [{ alias: 'alarme', description: 'Alarme booléenne' }],
+    params: [
+      { name: 'seuilHaut', defaultValue: 90, description: 'Déclenchement' },
+      { name: 'seuilBas', defaultValue: 85, description: 'Retombée' }
+    ],
+    script: [
+      '// Hystérésis : monte au-dessus de seuilHaut, retombe sous seuilBas.',
+      'if (inputs.mesure > params.seuilHaut) {',
+      "  output('alarme', true);",
+      '} else if (inputs.mesure < params.seuilBas) {',
+      "  output('alarme', false);",
+      '}',
+      "log('mesure =', inputs.mesure, 'seuils', params.seuilHaut, '/', params.seuilBas);"
+    ].join('\n'),
+    updatedAt: now()
+  }
+];
+
+globalThis.__previewSeed['MiddlewareScript_Task_'] = [
   {
     id: 'alarme-niveau-cuve',
     name: 'Alarme niveau cuve',
@@ -58,6 +84,20 @@ globalThis.__previewSeed = [
     script: "output('consigneSecours', inputs.consigne);",
     timeoutMs: 500,
     updatedAt: now()
+  },
+  {
+    id: 'temperature-four-2',
+    name: 'Alarme température four 2',
+    description: 'Instance du modèle « Seuil avec hystérésis » sur le four 2.',
+    enabled: true,
+    trigger: { kind: 'dpe', debounceMs: 200 },
+    inputs: [{ alias: 'mesure', dpe: 'System1:Four2.temperature' }],
+    outputs: [{ alias: 'alarme', dpe: 'System1:Four2.alarmeTemp' }],
+    script: '',
+    modelId: 'seuil-hysteresis',
+    params: { seuilHaut: 250 },
+    timeoutMs: 1000,
+    updatedAt: now()
   }
 ];
 
@@ -65,7 +105,8 @@ globalThis.__previewDpValues = {
   'System1:Cuve1.niveau': 93.5,
   'System1:PompeA.debit': 12.4,
   'System1:PompeB.debit': 10.8,
-  'System1:Regulation.consigne': 68
+  'System1:Regulation.consigne': 68,
+  'System1:Four2.temperature': 254.2
 };
 
 globalThis.__previewStatuses = {
@@ -82,7 +123,13 @@ globalThis.__previewStatuses = {
     lastError: 'Timeout du script (1000 ms)',
     runCount: 42
   }),
-  'MiddlewareScript_Task_recopie-consigne.status': JSON.stringify({ state: 'disabled', runCount: 0 })
+  'MiddlewareScript_Task_recopie-consigne.status': JSON.stringify({ state: 'disabled', runCount: 0 }),
+  'MiddlewareScript_Task_temperature-four-2.status': JSON.stringify({
+    state: 'idle',
+    lastRunAt: now(),
+    lastDurationMs: 2,
+    runCount: 57
+  })
 };
 
 // ---- fetch mock ---------------------------------------------------------------
@@ -104,12 +151,14 @@ function dryRun(task, inputValues) {
     logs.push(args.map((arg) => (typeof arg === 'string' ? arg : JSON.stringify(arg))).join(' '));
   };
   const inputs = Object.freeze({ ...inputValues });
+  const params = Object.freeze({ ...(task.params ?? {}) });
   const started = performance.now();
   try {
     // Preview-only execution — the real dry-run runs in the manager's worker
-    // sandbox; this keeps the Test tab usable without any backend.
-    const fn = new Function('inputs', 'output', 'log', `'use strict';\n${task.script}`);
-    fn(inputs, output, log);
+    // sandbox; this keeps the Test tab usable without any backend. The page
+    // sends the task with its model already RESOLVED (script + params).
+    const fn = new Function('inputs', 'output', 'log', 'params', `'use strict';\n${task.script}`);
+    fn(inputs, output, log, params);
     return { ok: true, outputs, logs, durationMs: Math.max(1, Math.round(performance.now() - started)) };
   } catch (error) {
     return {

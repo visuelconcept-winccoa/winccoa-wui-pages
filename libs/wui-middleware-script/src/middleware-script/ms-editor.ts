@@ -25,8 +25,11 @@ import { MSG, localize, localizeDir, validationMsg } from './i18n.js';
 import {
   DEFAULT_DEBOUNCE_MS,
   DEFAULT_INTERVAL_S,
+  resolveTaskParams,
+  resolveTaskScript,
   validateTask,
   type MsIoBinding,
+  type MsModel,
   type MsTask,
   type MsTrigger
 } from './types.js';
@@ -159,6 +162,8 @@ export class WuiMsEditor extends LitElement {
 
   /** Selected task (the editor works on an internal draft copy). */
   @property({ attribute: false }) task: MsTask | null = null;
+  /** Available reusable models (script-source selector + instantiation). */
+  @property({ attribute: false }) models: MsModel[] = [];
   @property({ type: Boolean }) canEdit = true;
   @property({ type: Boolean }) canControl = true;
   @property({ type: Boolean }) canTest = true;
@@ -230,13 +235,31 @@ export class WuiMsEditor extends LitElement {
     `;
   }
 
+  /** The model this draft instantiates, or null. */
+  private draftModel(): MsModel | null {
+    const id = this.draft?.modelId;
+    return id == null ? null : (this.models.find((model) => model.id === id) ?? null);
+  }
+
+  /** Draft with the model instantiation RESOLVED (what Test actually runs). */
+  private effectiveDraft(draft: MsTask): MsTask {
+    const model = this.draftModel();
+    return {
+      ...draft,
+      script: resolveTaskScript(draft, model) ?? '',
+      modelId: null,
+      params: resolveTaskParams(draft, model)
+    };
+  }
+
   private renderTab(draft: MsTask): TemplateResult {
     if (this.activeTab === TAB_IO) {
       return this.renderIoTab(draft);
     }
     if (this.activeTab === TAB_TEST) {
-      return html`<wui-ms-test-panel .task=${draft} .canTest=${this.canTest}></wui-ms-test-panel>`;
+      return html`<wui-ms-test-panel .task=${this.effectiveDraft(draft)} .canTest=${this.canTest}></wui-ms-test-panel>`;
     }
+    const model = this.draftModel();
     return html`
       <ix-textarea
         label=${localize(MSG.editor.description)}
@@ -245,11 +268,57 @@ export class WuiMsEditor extends LitElement {
         ?disabled=${!this.canEdit}
         @valueChange=${(e: CustomEvent<string>) => this.patch({ description: e.detail })}
       ></ix-textarea>
-      <wui-ms-script-editor
-        .script=${draft.script}
-        .readonly=${!this.canEdit}
-        @wui:scriptchange=${(e: CustomEvent<string>) => this.patch({ script: e.detail })}
-      ></wui-ms-script-editor>
+      <div class="grid">
+        <ix-select
+          label=${localize(MSG.editor.scriptSource)}
+          .value=${draft.modelId ?? 'inline'}
+          ?disabled=${!this.canEdit}
+          @valueChange=${(e: CustomEvent<string | string[]>) => this.setScriptSource(e.detail)}
+        >
+          <ix-select-item label=${localize(MSG.editor.sourceInline)} value="inline"></ix-select-item>
+          ${this.models.map((m) => html`<ix-select-item label=${m.name} value=${m.id}></ix-select-item>`)}
+        </ix-select>
+      </div>
+      ${draft.modelId != null
+        ? html`
+            <div class="hint">${localizeDir(MSG.editor.modelReadonlyHint)}</div>
+            ${this.renderInstanceParams(draft, model)}
+            <wui-ms-script-editor .script=${model?.script ?? ''} .readonly=${true}></wui-ms-script-editor>
+          `
+        : html`
+            <wui-ms-script-editor
+              .script=${draft.script}
+              .readonly=${!this.canEdit}
+              @wui:scriptchange=${(e: CustomEvent<string>) => this.patch({ script: e.detail })}
+            ></wui-ms-script-editor>
+          `}
+    `;
+  }
+
+  /** Per-instance parameter values (JSON-encoded, defaults as placeholders). */
+  private renderInstanceParams(draft: MsTask, model: MsModel | null): TemplateResult {
+    if (model == null || model.params.length === 0) {
+      return html`<div class="hint">${model == null ? validationMsg('modelMissing') : localizeDir(MSG.editor.noParams)}</div>`;
+    }
+    return html`
+      <div class="section">
+        <span class="title">${localizeDir(MSG.editor.paramsHead)}</span>
+        <div class="grid">
+          ${model.params.map((param) => {
+            const value = draft.params[param.name];
+            return html`
+              <ix-input
+                label=${param.name}
+                title=${param.description ?? ''}
+                .value=${value === undefined ? '' : JSON.stringify(value)}
+                placeholder=${param.defaultValue === undefined ? '' : JSON.stringify(param.defaultValue)}
+                ?disabled=${!this.canEdit}
+                @valueChange=${(e: Event) => this.setParamValue(param.name, (e.target as HTMLInputElement).value)}
+              ></ix-input>
+            `;
+          })}
+        </div>
+      </div>
     `;
   }
 
@@ -298,11 +367,13 @@ export class WuiMsEditor extends LitElement {
 
   private renderIoList(draft: MsTask, kind: 'inputs' | 'outputs'): TemplateResult {
     const rows = draft[kind];
+    // A model instance's alias contract is FIXED by the model — only DPEs bind.
+    const fixedContract = draft.modelId != null;
     return html`
       <div class="section">
         <span class="title">${localizeDir(kind === 'inputs' ? MSG.editor.inputsHead : MSG.editor.outputsHead)}</span>
-        ${rows.map((row, index) => this.renderIoRow(kind, row, index))}
-        ${this.canEdit
+        ${rows.map((row, index) => this.renderIoRow(kind, row, index, fixedContract))}
+        ${this.canEdit && !fixedContract
           ? html`<div>
               <ix-button ghost icon="plus" @click=${() => this.addIoRow(kind)}>
                 ${localizeDir(kind === 'inputs' ? MSG.editor.addInput : MSG.editor.addOutput)}
@@ -313,7 +384,7 @@ export class WuiMsEditor extends LitElement {
     `;
   }
 
-  private renderIoRow(kind: 'inputs' | 'outputs', row: MsIoBinding, index: number): TemplateResult {
+  private renderIoRow(kind: 'inputs' | 'outputs', row: MsIoBinding, index: number, fixedContract = false): TemplateResult {
     const probe = this.probes.get(`${kind}:${index}`);
     return html`
       <div class="io-row">
@@ -321,7 +392,7 @@ export class WuiMsEditor extends LitElement {
           class="alias"
           label=${index === 0 ? localize(MSG.editor.alias) : ''}
           .value=${row.alias}
-          ?disabled=${!this.canEdit}
+          ?disabled=${!this.canEdit || fixedContract}
           @valueChange=${(e: Event) => this.patchIoRow(kind, index, { alias: (e.target as HTMLInputElement).value })}
         ></ix-input>
         <ix-input
@@ -344,7 +415,7 @@ export class WuiMsEditor extends LitElement {
           title=${localize(MSG.editor.probe)}
           @click=${() => this.probeDpe(kind, index, row.dpe)}
         ></ix-icon-button>
-        ${this.canEdit
+        ${this.canEdit && !fixedContract
           ? html`<ix-icon-button
               icon="trashcan"
               size="16"
@@ -368,6 +439,50 @@ export class WuiMsEditor extends LitElement {
   private patchTrigger(partial: Partial<MsTrigger>): void {
     if (this.draft == null) return;
     this.patch({ trigger: { ...this.draft.trigger, ...partial } });
+  }
+
+  /** Switch between the task's own script and a reusable model instantiation. */
+  private setScriptSource(detail: string | string[]): void {
+    const value = Array.isArray(detail) ? detail[0] : detail;
+    if (this.draft == null) return;
+    if (value === 'inline' || value == null) {
+      // Detach: keep a private copy of the model script as a starting point.
+      const model = this.draftModel();
+      this.patch({
+        modelId: null,
+        script: this.draft.script.trim() === '' ? (model?.script ?? '') : this.draft.script
+      });
+      return;
+    }
+    const model = this.models.find((m) => m.id === value);
+    if (model == null) return;
+    // Instantiate: adopt the model's alias contract, keeping DPEs already
+    // bound to the same alias; params start empty (declared defaults apply).
+    const rebind = (bindings: MsIoBinding[], decls: { alias: string }[]): MsIoBinding[] =>
+      decls.map((decl) => ({ alias: decl.alias, dpe: bindings.find((b) => b.alias === decl.alias)?.dpe ?? '' }));
+    this.patch({
+      modelId: model.id,
+      inputs: rebind(this.draft.inputs, model.inputs),
+      outputs: rebind(this.draft.outputs, model.outputs),
+      params: { ...this.draft.params }
+    });
+  }
+
+  /** JSON-lenient per-instance parameter value ('' clears back to the default). */
+  private setParamValue(name: string, text: string): void {
+    if (this.draft == null) return;
+    const params = { ...this.draft.params };
+    const trimmed = text.trim();
+    if (trimmed === '') {
+      delete params[name];
+    } else {
+      try {
+        params[name] = JSON.parse(trimmed);
+      } catch {
+        params[name] = trimmed;
+      }
+    }
+    this.patch({ params });
   }
 
   private setTriggerKind(detail: string | string[]): void {
@@ -418,7 +533,7 @@ export class WuiMsEditor extends LitElement {
 
   private save(): void {
     if (this.draft == null) return;
-    const errors = validateTask(this.draft);
+    const errors = validateTask(this.draft, this.draftModel());
     this.errors = errors;
     if (errors.length > 0) return;
     const task: MsTask = { ...this.draft, updatedAt: new Date().toISOString() };

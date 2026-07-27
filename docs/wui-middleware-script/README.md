@@ -16,6 +16,11 @@ duration come back; no output datapoint is written:
 
 ![Middleware Script — sandbox dry-run](../images/manual/middleware-script-test.png)
 
+A reusable **model**: declared aliases + parameters, instantiated by tasks
+that only bind DPEs and override parameter values:
+
+![Middleware Script — reusable model](../images/manual/middleware-script-model.png)
+
 > These captures come from the module's **WinCC-OA-free preview harness**
 > ([`libs/wui-middleware-script/preview/`](../../libs/wui-middleware-script/preview/README.md)
 > — real page code + real Siemens iX, stubbed OA layer with demo data;
@@ -32,8 +37,21 @@ duration come back; no output datapoint is written:
 | **Inputs** | declared `alias → DPE` bindings, read before each run; the script sees `inputs.<alias>` |
 | **Outputs** | declared `alias → DPE` bindings; the script writes ONLY via `output(alias, value)` — no arbitrary dpSet |
 | **Trigger** | `dpe` (any declared-input change, debounced) or `cyclic` (fixed period) |
-| **Script** | synchronous JS body run as `(inputs, output, log) => { … }`, per-task timeout |
+| **Script** | synchronous JS body run as `(inputs, output, log, params) => { … }`, per-task timeout |
+| **Model** | optional: instead of its own script, a task INSTANTIATES a reusable model (see below) |
 | **Enabled** | only enabled tasks run on the manager; the rest just persist |
+
+## Reusable models (instantiation)
+
+A **model** (`Modèles` list) is a script written once with a declared contract:
+input/output **aliases** (no DPE) and **parameters** with defaults
+(`params.<name>` in the script). A task instantiates it by picking it as its
+*script source*: the task then only binds each declared alias to its own DPE
+and overrides the parameters it needs — `seuilHaut: 250` for the furnace, the
+default `90` for the tank. **Saving the model updates every instance** (the
+manager re-resolves on hot reload); a model still instantiated cannot be
+deleted. Detaching an instance back to "own script" copies the model script as
+a private starting point (fork).
 
 Example — level alarm:
 

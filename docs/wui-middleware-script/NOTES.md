@@ -20,13 +20,41 @@ BEFORE the kit probe runs, and the manager's `ensureType` falls back to
 `dpTypeChange` — so whichever side runs first, `.status` ends up present.
 Keep BOTH ensures in sync if the type ever changes.
 
+## Reusable models (instantiation)
+
+`MiddlewareScript_Model_<id>` DPs (plain 2-element name/json kit-store type —
+no runtime status) carry: script + declared input/output ALIASES (no DPE) +
+declared PARAMETERS with defaults. A task with `modelId` instantiates one:
+
+- **Resolution** happens in the manager at reload time (`resolveTask`): script
+  = model script; params = declared defaults overlaid by the instance's
+  `task.params`. The hot-reload diff key INCLUDES the resolution, so saving a
+  model rewires every instance within ~10 s. A missing model → task status
+  `error` ("Modèle introuvable"), never a silent no-op.
+- **Contract enforcement** (`ioMatchesModel`, validateTask): the instance's
+  binding aliases must exactly cover the model's declared aliases; the UI
+  prefills them when picking the model (keeping DPEs already bound to the same
+  alias) and locks alias editing (only DPEs bind).
+- **Test path**: the page sends the task with the model RESOLVED (script +
+  params); the manager's `Test` also resolves `modelId` itself when the script
+  comes empty (defense in depth). The model editor tests a pseudo-task built
+  from the declarations with the parameter DEFAULTS.
+- **Delete guard**: UI-only — the model editor refuses deletion while
+  `usageCount > 0`. The manager tolerates a dangling `modelId` anyway (status
+  error), because a DP can always disappear behind our back.
+- Detaching an instance ("Script propre") copies the model script into the
+  task when the task's own script is empty — deliberate fork semantics.
+
 ## Script contract (the sandbox API)
 
-`(inputs, output, log)` — synchronous body, strict mode:
+`(inputs, output, log, params)` — synchronous body, strict mode:
 - `inputs.<alias>` — frozen snapshot of the declared inputs (dpGet before run);
 - `output(alias, value)` — the ONLY write path; throws on an undeclared alias.
   The manager maps aliases to DPEs and dpSets AFTER a successful run — a
   thrown script writes nothing;
+- `params.<name>` — frozen per-instance constants (model defaults overlaid by
+  the task's values; empty object for a task without model unless it sets its
+  own `params`);
 - `log(…)` — capped at 200 lines, returned by tests, dropped by normal runs;
 - allowlisted globals only: Math, JSON, Number, String, Boolean, Array,
   Object, Date, RegExp, Error, isNaN/isFinite/parseFloat/parseInt. No require,
@@ -88,6 +116,13 @@ included) — deliberate, so you test before saving.
   edits, selecting another task resets. Save validates (`validateTask`) and
   stamps `updatedAt`; Enable is gated by `control`, fields by `edit`, dry-run
   by `test`.
+- **Both editors (task + model) stay MOUNTED**, the inactive one hidden with a
+  `.hidden` class (same pattern as the para tabs) — drafts survive switching
+  the Tasks/Models list. ⚠ Do not "simplify" into a template ternary swapping
+  `<wui-ms-editor>` ↔ `<wui-ms-model-editor>`: in the preview harness that
+  swap left stale editors in the DOM (lit ChildPart not clearing — suspected
+  interaction with the iX loader's HTMLElement shim; not reproducible in a
+  minimal lit-only page). The hidden-toggle is deliberate.
 
 ## WinCC-OA-free preview (`preview/`)
 

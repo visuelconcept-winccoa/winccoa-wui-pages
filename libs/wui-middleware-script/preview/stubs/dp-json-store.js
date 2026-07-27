@@ -12,7 +12,8 @@ export class DpJsonStore {
   constructor(_typeName, prefix, _labelOf, demo, opts = {}) {
     this.prefix = prefix;
     this.opts = opts;
-    const seed = globalThis.__previewSeed ?? demo();
+    // Seeds are keyed by DP prefix (one store per entity kind — tasks, models…).
+    const seed = globalThis.__previewSeed?.[prefix] ?? demo();
     this.items = seed.map((item, index) => {
       const id = item.id && item.id !== '' ? item.id : `preview-${index + 1}`;
       return { ...structuredClone(item), id, dp: prefix + id };

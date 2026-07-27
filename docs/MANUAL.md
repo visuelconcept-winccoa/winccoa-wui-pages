@@ -188,6 +188,15 @@ three-tab editor:
   input values (or values loaded live): computed outputs, logs and duration
   come back, **no output datapoint is written**.
 
+**Reusable models (instantiation).** The *Modèles* list holds scripts written
+once with declared input/output aliases and **parameters** with defaults
+(`params.<name>`). A task instantiates a model as its script source: it only
+binds each declared alias to its own DPE and overrides parameters
+(e.g. `seuilHaut: 250` on one furnace, the default elsewhere). Saving a model
+updates every instance; a model still in use cannot be deleted.
+
+![Middleware Script — reusable model](images/manual/middleware-script-model.png)
+
 Execution happens server-side on the **`middlewareScript`** manager
 (worker-thread + `node:vm` sandbox, hot reload of saved tasks). *Tier 3*
 (`/api/middleware-script` + the `middlewareScript` manager; task persistence

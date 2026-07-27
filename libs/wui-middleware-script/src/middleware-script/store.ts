@@ -20,10 +20,12 @@ import { Observable, map } from 'rxjs';
 import { container } from 'tsyringe';
 import { DpJsonStore } from '@visuelconcept/wui-kit/data/dp-json-store.js';
 import { localize, ml } from './i18n.js';
-import { newTask, normalizeTask, type MsTask, type MsTaskStatus } from './types.js';
+import { newTask, normalizeModel, normalizeTask, type MsModel, type MsTask, type MsTaskStatus } from './types.js';
 
 export const TASK_TYPE = 'MiddlewareScript_Task';
 export const TASK_PREFIX = 'MiddlewareScript_Task_';
+export const MODEL_TYPE = 'MiddlewareScript_Model';
+export const MODEL_PREFIX = 'MiddlewareScript_Model_';
 
 const CREATE_TYPE_URL = '/api/para/dptype/create';
 const TYPE_PROBE_URL = `/api/para/dptype/${encodeURIComponent(TASK_TYPE)}`;
@@ -162,5 +164,49 @@ export class MsTaskStore {
     } catch {
       return null;
     }
+  }
+}
+
+/** Offline demo seed for the models store. */
+function demoModels(): MsModel[] {
+  return [];
+}
+
+/**
+ * Reusable script models — plain kit DpJsonStore (2-element name/json type,
+ * created by the kit itself; models carry no runtime status element). Audited
+ * into the same GxP trail as the tasks, with its own item type.
+ */
+export class MsModelStore {
+  private readonly store = new DpJsonStore<MsModel>(
+    MODEL_TYPE,
+    MODEL_PREFIX,
+    (model) => model.name,
+    demoModels,
+    {
+      slugFallback: 'model',
+      afterRead: normalizeModel,
+      audit: { dpName: 'AuditTrail_MiddlewareScript', itemType: 'MiddlewareScriptModel', exclude: ['updatedAt'] }
+    }
+  );
+
+  get offline(): boolean {
+    return this.store.offline;
+  }
+
+  async list(): Promise<MsModel[]> {
+    return this.store.list();
+  }
+
+  async create(model: MsModel): Promise<MsModel> {
+    return this.store.create(model);
+  }
+
+  async save(model: MsModel): Promise<void> {
+    await this.store.save(model);
+  }
+
+  async remove(id: string): Promise<void> {
+    await this.store.remove(id);
   }
 }

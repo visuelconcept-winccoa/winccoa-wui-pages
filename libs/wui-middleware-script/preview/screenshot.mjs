@@ -5,8 +5,9 @@
 // Capture the documentation screenshots of the Middleware-Script page from the
 // WinCC-OA-free preview (run `node build.mjs` first, or use `npm run shots`):
 //
-//   middleware-script.png       Script tab, first demo task selected
-//   middleware-script-test.png  Test tab after a dry-run (outputs + logs)
+//   middleware-script.png        Script tab, first demo task selected
+//   middleware-script-test.png   Test tab after a dry-run (outputs + logs)
+//   middleware-script-model.png  reusable-model editor (declared IO/params)
 //
 // Written into ../../../docs/images/manual/ (override with --out <dir>).
 // Chromium: playwright-core + PW_CHROMIUM env or the Playwright default
@@ -88,6 +89,14 @@ try {
   await page.waitForTimeout(500);
   await page.screenshot({ path: path.join(outDir, 'middleware-script-test.png') });
   console.log(`✓ ${path.join(outDir, 'middleware-script-test.png')}`);
+
+  // Models mode: open the demo reusable model (declared aliases + parameters).
+  await page.locator('wui-ms-task-list .mode button').nth(1).click();
+  await page.locator('wui-ms-task-list button.row').first().click();
+  await page.waitForSelector('wui-ms-model-editor wui-ms-script-editor textarea');
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: path.join(outDir, 'middleware-script-model.png') });
+  console.log(`✓ ${path.join(outDir, 'middleware-script-model.png')}`);
 } finally {
   await browser.close();
   server.close();

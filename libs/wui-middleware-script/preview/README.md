@@ -18,8 +18,12 @@ to produce the documentation screenshots.
 cd libs/wui-middleware-script/preview
 npm install
 npm run dev     # watch + serve  →  http://127.0.0.1:4600
-npm run shots   # build + capture docs/images/manual/middleware-script{,-test}.png
+npm run shots   # build + capture docs/images/manual/middleware-script{,-test,-model}.png
 ```
+
+The demo scene includes a reusable MODEL («Seuil avec hystérésis», declared
+aliases + parameters) and a task instantiating it («Alarme température four 2»,
+`seuilHaut: 250`) — handy to iterate on the instantiation UX.
 
 `npm run shots` uses `playwright-core` with the Chromium pointed to by
 `PW_CHROMIUM` (default `/opt/pw-browsers/chromium`, the Claude-Code remote

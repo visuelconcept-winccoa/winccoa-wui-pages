@@ -28,10 +28,12 @@ import { Subscription } from 'rxjs';
 import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
 import appSecurityRoles from './app-security.roles.json';
 import './middleware-script/ms-editor.js';
+import './middleware-script/ms-model-editor.js';
 import './middleware-script/ms-task-list.js';
+import type { MsListMode } from './middleware-script/ms-task-list.js';
 import { MSG, localize, localizeDir, loadFailedMsg, saveFailedMsg } from './middleware-script/i18n.js';
-import { MsTaskStore } from './middleware-script/store.js';
-import { newTask, type MsTask, type MsTaskStatus } from './middleware-script/types.js';
+import { MsModelStore, MsTaskStore } from './middleware-script/store.js';
+import { newModel, newTask, type MsModel, type MsTask, type MsTaskStatus } from './middleware-script/types.js';
 
 export class WuiMiddlewareScript extends LitElement {
   static override readonly styles = [
@@ -81,16 +83,23 @@ export class WuiMiddlewareScript extends LitElement {
         width: 20rem;
         flex-shrink: 0;
       }
-      wui-ms-editor {
+      wui-ms-editor,
+      wui-ms-model-editor {
         flex: 1;
         min-width: 0;
+      }
+      .hidden {
+        display: none !important;
       }
     `
   ];
 
   @state() private tasks: MsTask[] = [];
+  @state() private models: MsModel[] = [];
   @state() private statuses = new Map<string, MsTaskStatus>();
+  @state() private listMode: MsListMode = 'tasks';
   @state() private selectedId: string | null = null;
+  @state() private selectedModelId: string | null = null;
   @state() private error = '';
   @state() private offline = false;
 
@@ -100,6 +109,7 @@ export class WuiMiddlewareScript extends LitElement {
   @state() private roleControl = true;
 
   private readonly store = new MsTaskStore();
+  private readonly modelStore = new MsModelStore();
   private roleSubs = new Subscription();
   private statusSub = new Subscription();
 
@@ -122,8 +132,19 @@ export class WuiMiddlewareScript extends LitElement {
     this.statusSub = new Subscription();
   }
 
+  /** Model id → number of tasks instantiating it. */
+  private modelUsage(): Map<string, number> {
+    const usage = new Map<string, number>();
+    for (const task of this.tasks) {
+      if (task.modelId != null) usage.set(task.modelId, (usage.get(task.modelId) ?? 0) + 1);
+    }
+    return usage;
+  }
+
   override render(): TemplateResult {
     const selected = this.tasks.find((task) => task.id === this.selectedId) ?? null;
+    const selectedModel = this.models.find((model) => model.id === this.selectedModelId) ?? null;
+    const usage = this.modelUsage();
     return html`
       <div class="topbar">
         <wui-context-generator
@@ -144,25 +165,45 @@ export class WuiMiddlewareScript extends LitElement {
           ${this.offline ? html`<span class="msg warn">${localizeDir(MSG.page.offline)}</span>` : nothing}
           <ix-icon-button icon="refresh" variant="secondary" title=${localize(MSG.list.reload)} @click=${() => void this.reload()}></ix-icon-button>
           ${this.roleEdit
-            ? html`<ix-button variant="primary" icon="plus" @click=${() => void this.createTask()}>${localizeDir(MSG.page.newTask)}</ix-button>`
+            ? html`<ix-button variant="primary" icon="plus" @click=${() => void this.createEntity()}>
+                ${localizeDir(this.listMode === 'models' ? MSG.page.newModel : MSG.page.newTask)}
+              </ix-button>`
             : nothing}
         </div>
       </div>
       <div class="split">
         <wui-ms-task-list
           .tasks=${this.tasks}
+          .models=${this.models}
+          .usage=${usage}
           .statuses=${this.statuses}
-          .selectedId=${this.selectedId}
+          .mode=${this.listMode}
+          .selectedId=${this.listMode === 'models' ? this.selectedModelId : this.selectedId}
+          @wui:modechange=${(e: CustomEvent<{ mode: MsListMode }>) => (this.listMode = e.detail.mode)}
           @wui:taskselect=${(e: CustomEvent<{ id: string }>) => (this.selectedId = e.detail.id)}
+          @wui:modelselect=${(e: CustomEvent<{ id: string }>) => (this.selectedModelId = e.detail.id)}
         ></wui-ms-task-list>
+        <!-- Both editors stay mounted; the inactive one is hidden (same pattern
+             as the para tabs) so drafts survive switching Tasks <-> Models. -->
         <wui-ms-editor
+          class=${this.listMode === 'models' ? 'hidden' : ''}
           .task=${selected}
+          .models=${this.models}
           .canEdit=${this.roleEdit}
           .canControl=${this.roleControl}
           .canTest=${this.roleTest}
           @wui:tasksave=${this.onSave}
           @wui:taskdelete=${this.onDelete}
         ></wui-ms-editor>
+        <wui-ms-model-editor
+          class=${this.listMode === 'models' ? '' : 'hidden'}
+          .model=${selectedModel}
+          .usageCount=${selectedModel == null ? 0 : (usage.get(selectedModel.id) ?? 0)}
+          .canEdit=${this.roleEdit}
+          .canTest=${this.roleTest}
+          @wui:modelsave=${this.onModelSave}
+          @wui:modeldelete=${this.onModelDelete}
+        ></wui-ms-model-editor>
       </div>
     `;
   }
@@ -171,13 +212,56 @@ export class WuiMiddlewareScript extends LitElement {
     this.error = '';
     try {
       this.tasks = await this.store.list();
+      this.models = await this.modelStore.list();
       this.offline = this.store.offline;
       if (this.selectedId != null && !this.tasks.some((task) => task.id === this.selectedId)) {
         this.selectedId = null;
       }
+      if (this.selectedModelId != null && !this.models.some((model) => model.id === this.selectedModelId)) {
+        this.selectedModelId = null;
+      }
       this.watchStatuses();
     } catch (error) {
       this.error = loadFailedMsg(String(error));
+    }
+  }
+
+  private createEntity(): Promise<void> {
+    return this.listMode === 'models' ? this.createModel() : this.createTask();
+  }
+
+  private async createModel(): Promise<void> {
+    this.error = '';
+    try {
+      const created = await this.modelStore.create(newModel(localize(MSG.page.defaultModelName)));
+      this.models = [...this.models, created];
+      this.selectedModelId = created.id;
+    } catch (error) {
+      this.error = saveFailedMsg(String(error));
+    }
+  }
+
+  private async onModelSave(event: CustomEvent<{ model: MsModel }>): Promise<void> {
+    this.error = '';
+    const model = event.detail.model;
+    try {
+      await this.modelStore.save(model);
+      this.models = this.models.map((item) => (item.id === model.id ? model : item));
+    } catch (error) {
+      this.error = saveFailedMsg(String(error));
+    }
+  }
+
+  private async onModelDelete(event: CustomEvent<{ id: string }>): Promise<void> {
+    this.error = '';
+    try {
+      await this.modelStore.remove(event.detail.id);
+      this.models = this.models.filter((model) => model.id !== event.detail.id);
+      if (this.selectedModelId === event.detail.id) {
+        this.selectedModelId = null;
+      }
+    } catch (error) {
+      this.error = saveFailedMsg(String(error));
     }
   }
 

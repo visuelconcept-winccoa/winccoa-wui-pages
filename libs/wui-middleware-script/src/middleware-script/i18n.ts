@@ -34,9 +34,23 @@ export const MSG = {
       'Backend injoignable — les tâches ne sont éditées qu’en mémoire.',
       'Backend nicht erreichbar — Aufgaben werden nur im Speicher bearbeitet.'
     ),
-    defaultTaskName: ml('New task', 'Nouvelle tâche', 'Neue Aufgabe')
+    defaultTaskName: ml('New task', 'Nouvelle tâche', 'Neue Aufgabe'),
+    newModel: ml('New model', 'Nouveau modèle', 'Neues Modell'),
+    defaultModelName: ml('New model', 'Nouveau modèle', 'Neues Modell'),
+    noModels: ml(
+      'No reusable model yet. A model carries the script; each task instance only binds its DPEs and parameters.',
+      'Aucun modèle réutilisable. Un modèle porte le script ; chaque tâche instance ne lie que ses DPEs et paramètres.',
+      'Noch kein wiederverwendbares Modell. Ein Modell trägt das Skript; jede Aufgaben-Instanz bindet nur ihre DPEs und Parameter.'
+    ),
+    selectModel: ml(
+      'Select a model on the left, or create a new one.',
+      'Sélectionnez un modèle à gauche, ou créez-en un nouveau.',
+      'Wählen Sie links ein Modell aus oder erstellen Sie ein neues.'
+    )
   },
   list: {
+    modeTasks: ml('Tasks', 'Tâches', 'Aufgaben'),
+    modeModels: ml('Models', 'Modèles', 'Modelle'),
     filter: ml('Filter tasks…', 'Filtrer les tâches…', 'Aufgaben filtern…'),
     reload: ml('Reload', 'Recharger', 'Neu laden'),
     enabled: ml('Enabled', 'Activée', 'Aktiviert'),
@@ -91,12 +105,52 @@ export const MSG = {
     ),
     // --- script tab ---
     scriptHint: ml(
-      'Synchronous JavaScript body. Available: inputs.<alias>, output(alias, value), log(…), Math, JSON. No require/network/DP access.',
-      'Corps JavaScript synchrone. Disponible : inputs.<alias>, output(alias, valeur), log(…), Math, JSON. Pas de require/réseau/accès DP.',
-      'Synchroner JavaScript-Rumpf. Verfügbar: inputs.<alias>, output(alias, wert), log(…), Math, JSON. Kein require/Netzwerk/DP-Zugriff.'
+      'Synchronous JavaScript body. Available: inputs.<alias>, output(alias, value), log(…), params.<name>, Math, JSON. No require/network/DP access.',
+      'Corps JavaScript synchrone. Disponible : inputs.<alias>, output(alias, valeur), log(…), params.<nom>, Math, JSON. Pas de require/réseau/accès DP.',
+      'Synchroner JavaScript-Rumpf. Verfügbar: inputs.<alias>, output(alias, wert), log(…), params.<name>, Math, JSON. Kein require/Netzwerk/DP-Zugriff.'
     ),
     syntaxOk: ml('Syntax OK', 'Syntaxe OK', 'Syntax OK'),
-    syntaxError: ml('Syntax error', 'Erreur de syntaxe', 'Syntaxfehler')
+    syntaxError: ml('Syntax error', 'Erreur de syntaxe', 'Syntaxfehler'),
+    // --- reusable model instantiation ---
+    scriptSource: ml('Script source', 'Source du script', 'Skriptquelle'),
+    sourceInline: ml('Own script (this task)', 'Script propre (cette tâche)', 'Eigenes Skript (diese Aufgabe)'),
+    modelReadonlyHint: ml(
+      'This task instantiates a reusable model — the script is edited on the model (Models list), for every instance at once.',
+      'Cette tâche instancie un modèle réutilisable — le script s’édite sur le modèle (liste Modèles), pour toutes les instances à la fois.',
+      'Diese Aufgabe instanziiert ein wiederverwendbares Modell — das Skript wird am Modell bearbeitet (Modell-Liste), für alle Instanzen zugleich.'
+    ),
+    paramsHead: ml('Instance parameters', 'Paramètres de l’instance', 'Instanz-Parameter'),
+    noParams: ml('This model declares no parameter.', 'Ce modèle ne déclare aucun paramètre.', 'Dieses Modell deklariert keine Parameter.')
+  },
+  modelEditor: {
+    name: ml('Model name', 'Nom du modèle', 'Modellname'),
+    description: ml('Description', 'Description', 'Beschreibung'),
+    inputsDecl: ml('Declared inputs (aliases)', 'Entrées déclarées (alias)', 'Deklarierte Eingänge (Aliase)'),
+    outputsDecl: ml('Declared outputs (aliases)', 'Sorties déclarées (alias)', 'Deklarierte Ausgänge (Aliase)'),
+    paramsDecl: ml('Declared parameters', 'Paramètres déclarés', 'Deklarierte Parameter'),
+    alias: ml('Alias', 'Alias', 'Alias'),
+    hint: ml('Hint', 'Indication', 'Hinweis'),
+    paramName: ml('Name', 'Nom', 'Name'),
+    paramDefault: ml('Default (JSON)', 'Défaut (JSON)', 'Standard (JSON)'),
+    addParam: ml('Add a parameter', 'Ajouter un paramètre', 'Parameter hinzufügen'),
+    declHint: ml(
+      'A task instantiating this model binds each declared alias to its own DPE and overrides the parameters.',
+      'Une tâche instanciant ce modèle lie chaque alias déclaré à son propre DPE et surcharge les paramètres.',
+      'Eine Aufgabe, die dieses Modell instanziiert, bindet jeden deklarierten Alias an ihr eigenes DPE und überschreibt die Parameter.'
+    ),
+    testDefaultsHint: ml(
+      'The dry-run below uses the declared parameter DEFAULTS.',
+      'Le test ci-dessous utilise les valeurs PAR DÉFAUT des paramètres.',
+      'Der Testlauf unten verwendet die STANDARD-Werte der Parameter.'
+    ),
+    save: ml('Save', 'Enregistrer', 'Speichern'),
+    delete: ml('Delete the model', 'Supprimer le modèle', 'Modell löschen'),
+    deleteConfirm: ml(
+      'Delete this model? This cannot be undone.',
+      'Supprimer ce modèle ? Cette action est irréversible.',
+      'Dieses Modell löschen? Dies kann nicht rückgängig gemacht werden.'
+    ),
+    saved: ml('Model saved — every instance follows.', 'Modèle enregistré — toutes les instances suivent.', 'Modell gespeichert — alle Instanzen folgen.')
   },
   test: {
     head: ml('Sandbox dry-run', 'Test à blanc (sandbox)', 'Testlauf (Sandbox)'),
@@ -175,8 +229,39 @@ export function validationMsg(key: string): string {
     ),
     dpeRequired: ml('Each row needs a DPE.', 'Chaque ligne requiert un DPE.', 'Jede Zeile benötigt ein DPE.'),
     duplicateAlias: ml('Duplicate alias.', 'Alias en double.', 'Doppelter Alias.'),
-    syntax: ml('The script has a syntax error.', 'Le script a une erreur de syntaxe.', 'Das Skript hat einen Syntaxfehler.')
+    syntax: ml('The script has a syntax error.', 'Le script a une erreur de syntaxe.', 'Das Skript hat einen Syntaxfehler.'),
+    modelMissing: ml(
+      'The referenced model no longer exists.',
+      'Le modèle référencé n’existe plus.',
+      'Das referenzierte Modell existiert nicht mehr.'
+    ),
+    modelIoMismatch: ml(
+      'The task bindings do not match the model’s declared aliases.',
+      'Les liaisons de la tâche ne correspondent pas aux alias déclarés du modèle.',
+      'Die Bindungen der Aufgabe entsprechen nicht den deklarierten Aliassen des Modells.'
+    ),
+    badParamName: ml(
+      'Parameter names must be JS identifiers (letters, digits, _).',
+      'Les noms de paramètres doivent être des identifiants JS (lettres, chiffres, _).',
+      'Parameternamen müssen JS-Bezeichner sein (Buchstaben, Ziffern, _).'
+    ),
+    duplicateParam: ml('Duplicate parameter name.', 'Nom de paramètre en double.', 'Doppelter Parametername.'),
+    modelInUse: ml(
+      'This model is still instantiated by tasks — delete or detach them first.',
+      'Ce modèle est encore instancié par des tâches — supprimez-les ou détachez-les d’abord.',
+      'Dieses Modell wird noch von Aufgaben instanziiert — löschen oder lösen Sie diese zuerst.'
+    )
   };
   const found = table[key];
   return found ? localize(found) : key;
+}
+
+/** Model usage badge: how many tasks instantiate it (plain string). */
+export function modelUsedByMsg(count: number): string {
+  return localize(ml(`${count} instance(s)`, `${count} instance(s)`, `${count} Instanz(en)`));
+}
+
+/** Task-list badge for a model-based task (plain string). */
+export function taskModelBadgeMsg(name: string): string {
+  return localize(ml(`model: ${name}`, `modèle : ${name}`, `Modell: ${name}`));
 }

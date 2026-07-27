@@ -13,6 +13,12 @@
  * contention). Every RELOAD_MS the task list is re-read and diffed, so a saved
  * task is picked up without restarting the manager (hot reload).
  *
+ * Reusable models: `MiddlewareScript_Model_<id>` DPs carry a script + declared
+ * alias contract + parameter defaults. A task with `modelId` INSTANTIATES a
+ * model: its script/params are resolved at reload time (the diff key includes
+ * the resolution, so saving a model hot-reloads every instance). Scripts see
+ * the resolved constants as `params.<name>`.
+ *
  * Per enabled task:
  *   - trigger `dpe`    → dpConnect on the DECLARED input DPEs (+ debounce);
  *   - trigger `cyclic` → setInterval(intervalS).
@@ -46,6 +52,9 @@ const winccoa = new WinccoaManager();
 const SERVICE_NAME = 'MiddlewareScript';
 const TASK_TYPE = 'MiddlewareScript_Task';
 const TASK_PATTERN = 'MiddlewareScript_Task_*';
+const MODEL_TYPE = 'MiddlewareScript_Model';
+const MODEL_PATTERN = 'MiddlewareScript_Model_*';
+const MODEL_PREFIX = 'MiddlewareScript_Model_';
 const ELEM = { Struct: 1, String: 25 };
 
 const RELOAD_MS = 10_000;
@@ -94,6 +103,77 @@ async function ensureType() {
   }
 }
 
+/** Ensure the model type exists (2 Strings — the page's kit store creates the
+ *  same shape; whoever runs first wins, both tolerate "already exists"). */
+async function ensureModelType() {
+  const root = new WinccoaDpTypeNode(MODEL_TYPE, ELEM.Struct, '', [
+    new WinccoaDpTypeNode('name', ELEM.String),
+    new WinccoaDpTypeNode('json', ELEM.String)
+  ]);
+  try {
+    await winccoa.dpTypeCreate(root);
+    log(`Type de données créé : ${MODEL_TYPE}`);
+  } catch {
+    // already exists
+  }
+}
+
+/** Parse one model DP; null when the JSON is absent/invalid. */
+async function readModel(dp) {
+  try {
+    const json = extractString(await winccoa.dpGet(`${dp}.json`));
+    if (!json.startsWith('{')) return null;
+    const model = JSON.parse(json);
+    if (!model || typeof model !== 'object' || typeof model.script !== 'string') return null;
+    model.params = Array.isArray(model.params) ? model.params : [];
+    return model;
+  } catch (e) {
+    log(`Modèle illisible (${dp}) : ${e}`);
+    return null;
+  }
+}
+
+/** Read every model, keyed by id (task.modelId matches the DP suffix). */
+async function readModels() {
+  const models = new Map();
+  let dps = [];
+  try {
+    dps = winccoa.dpNames(MODEL_PATTERN, MODEL_TYPE) || [];
+  } catch {
+    return models; // type not created yet — no model exists
+  }
+  for (const dp of dps) {
+    const model = await readModel(dp);
+    if (model == null) continue;
+    const bare = dp.includes(':') ? dp.slice(dp.indexOf(':') + 1) : dp;
+    const id = bare.startsWith(MODEL_PREFIX) ? bare.slice(MODEL_PREFIX.length) : bare;
+    models.set(id, model);
+  }
+  return models;
+}
+
+/**
+ * Effective script/params of a task: its own, or its model's script with the
+ * declared parameter defaults overlaid by the instance values. `script` is
+ * null when the referenced model is missing.
+ */
+function resolveTask(task, models) {
+  const params = {};
+  if (task.modelId == null || task.modelId === '') {
+    Object.assign(params, task.params && typeof task.params === 'object' ? task.params : {});
+    return { script: String(task.script || ''), params };
+  }
+  const model = models.get(String(task.modelId));
+  if (model == null) {
+    return { script: null, params, error: `Modèle introuvable : ${task.modelId}` };
+  }
+  for (const decl of model.params) {
+    if (decl && typeof decl.name === 'string') params[decl.name] = decl.defaultValue;
+  }
+  Object.assign(params, task.params && typeof task.params === 'object' ? task.params : {});
+  return { script: model.script, params };
+}
+
 /** Parse one task DP; null when the config JSON is absent/invalid. */
 async function readTask(dp) {
   try {
@@ -127,12 +207,12 @@ async function writeStatus(dp, status) {
  * `{ ok, outputs, logs, durationMs, error? }` — never rejects. The worker is
  * terminated in every path; a run-away script dies with it.
  */
-function runSandbox({ script, inputs, outputAliases, timeoutMs }) {
+function runSandbox({ script, inputs, params, outputAliases, timeoutMs }) {
   return new Promise((resolve) => {
     const started = Date.now();
     let worker;
     try {
-      worker = new Worker(WORKER_FILE, { workerData: { script, inputs, outputAliases, timeoutMs } });
+      worker = new Worker(WORKER_FILE, { workerData: { script, inputs, params, outputAliases, timeoutMs } });
     } catch (e) {
       resolve({ ok: false, error: `Sandbox indisponible : ${e}`, outputs: {}, logs: [], durationMs: 0 });
       return;
@@ -173,7 +253,8 @@ async function readInputs(task) {
 
 /**
  * Runtime entry per task DP:
- * { gen, config, json, timer, connId, debounce, running, rerun, runCount }
+ * { gen, config, script, params, json, timer, connId, debounce, running, rerun, runCount }
+ * `script`/`params` are RESOLVED (model instantiation applied at reload time).
  */
 const running = new Map();
 
@@ -189,8 +270,9 @@ async function runTask(entry) {
   try {
     const inputs = await readInputs(task);
     result = await runSandbox({
-      script: String(task.script || ''),
+      script: entry.script,
       inputs,
+      params: entry.params,
       outputAliases: task.outputs.map((b) => b.alias),
       timeoutMs: task.timeoutMs
     });
@@ -273,7 +355,9 @@ function unwire(entry) {
   entry.connId = null;
 }
 
-/** Reload the task list, diff against the running map, (re)wire what changed. */
+/** Reload models + tasks, diff against the running map, (re)wire what changed.
+ *  The diff key includes the RESOLVED script/params, so editing a model
+ *  hot-reloads every task that instantiates it. */
 async function reload() {
   let dps = [];
   try {
@@ -282,19 +366,24 @@ async function reload() {
     log(`dpNames a échoué : ${e}`);
     return;
   }
+  const models = await readModels();
   const seen = new Set();
   for (const dp of dps) {
     seen.add(dp);
     const task = await readTask(dp);
     if (task == null) continue;
-    const json = JSON.stringify(task);
+    const resolved = resolveTask(task, models);
+    const json = JSON.stringify({ task, script: resolved.script, params: resolved.params });
     const existing = running.get(dp);
-    if (existing && existing.json === json) continue; // unchanged
+    if (existing && existing.json === json) continue; // unchanged (task AND model)
     if (existing) unwire(existing);
-    const entry = { gen: (existing ? existing.gen : 0) + 1, config: task, json, timer: null, connId: null, debounce: null, running: false, rerun: false, runCount: existing ? existing.runCount : 0 };
+    const entry = { gen: (existing ? existing.gen : 0) + 1, config: task, script: resolved.script, params: resolved.params, json, timer: null, connId: null, debounce: null, running: false, rerun: false, runCount: existing ? existing.runCount : 0 };
     running.set(dp, entry);
-    if (task.enabled) {
-      log(`Tâche (re)câblée : ${dp} (${task.trigger && task.trigger.kind === 'cyclic' ? 'cyclique' : 'sur changement de DP'})`);
+    if (resolved.error) {
+      log(`Tâche ${dp} : ${resolved.error}`);
+      await writeStatus(dp, { state: 'error', lastError: resolved.error, runCount: entry.runCount });
+    } else if (task.enabled) {
+      log(`Tâche (re)câblée : ${dp} (${task.trigger && task.trigger.kind === 'cyclic' ? 'cyclique' : 'sur changement de DP'}${task.modelId ? `, modèle ${task.modelId}` : ''})`);
       wire(entry);
       await writeStatus(dp, { state: 'idle', runCount: entry.runCount });
     } else {
@@ -313,11 +402,27 @@ async function reload() {
 
 // ---- MSA vRPC service (dry-run tests) ---------------------------------------------
 
-/** Test({ task, inputValues? }) — sandbox run WITHOUT writing any output DP. */
+/** Test({ task, inputValues? }) — sandbox run WITHOUT writing any output DP.
+ *  A model-based task (`modelId` set, empty script) is resolved against the
+ *  live model DP, exactly like the runtime path. */
 async function testTask(req) {
   const task = req && typeof req.task === 'object' && req.task != null ? req.task : null;
   if (task == null || typeof task.script !== 'string') {
     return { ok: false, error: 'Requête invalide : tâche/script manquant' };
+  }
+  let script = task.script;
+  let params = task.params && typeof task.params === 'object' ? { ...task.params } : {};
+  if (task.modelId != null && task.modelId !== '' && script.trim() === '') {
+    const model = await readModel(`${MODEL_PREFIX}${task.modelId}`);
+    if (model == null) {
+      return { ok: false, error: `Modèle introuvable : ${task.modelId}` };
+    }
+    script = model.script;
+    const defaults = {};
+    for (const decl of model.params) {
+      if (decl && typeof decl.name === 'string') defaults[decl.name] = decl.defaultValue;
+    }
+    params = { ...defaults, ...params };
   }
   const inputsDecl = Array.isArray(task.inputs) ? task.inputs.filter((b) => b && b.alias && b.dpe) : [];
   const outputsDecl = Array.isArray(task.outputs) ? task.outputs.filter((b) => b && b.alias) : [];
@@ -337,8 +442,9 @@ async function testTask(req) {
   }
   const timeoutMs = Math.min(MAX_TIMEOUT_MS, Math.max(50, Number(task.timeoutMs) || DEFAULT_TIMEOUT_MS));
   return runSandbox({
-    script: task.script,
+    script,
     inputs,
+    params,
     outputAliases: outputsDecl.map((b) => b.alias),
     timeoutMs
   });
@@ -371,6 +477,7 @@ class MiddlewareScriptService extends Vrpc.ServiceBase {
 async function run() {
   log('Démarrage du manager Middleware Script…');
   await ensureType();
+  await ensureModelType();
   await reload();
   setInterval(() => void reload(), RELOAD_MS);
 

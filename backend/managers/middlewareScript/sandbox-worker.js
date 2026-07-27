@@ -24,7 +24,7 @@ const vm = require('vm');
 
 const MAX_LOGS = 200;
 
-const { script, inputs, outputAliases, timeoutMs } = workerData;
+const { script, inputs, outputAliases, timeoutMs, params } = workerData;
 
 const outputs = {};
 const logs = [];
@@ -63,6 +63,7 @@ function run() {
   context.inputs = Object.freeze({ ...(inputs || {}) });
   context.output = output;
   context.log = log;
+  context.params = Object.freeze({ ...(params || {}) });
   context.Math = Math;
   context.JSON = JSON;
   context.Number = Number;
@@ -79,7 +80,7 @@ function run() {
   context.parseInt = parseInt;
 
   vm.runInContext(
-    `'use strict';\n(function (inputs, output, log) {\n${String(script)}\n})(inputs, output, log);`,
+    `'use strict';\n(function (inputs, output, log, params) {\n${String(script)}\n})(inputs, output, log, params);`,
     context,
     { timeout: Math.max(50, Number(timeoutMs) || 1000), displayErrors: true }
   );
