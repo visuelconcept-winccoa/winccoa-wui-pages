@@ -30,6 +30,7 @@ All pages are published under the `@visuelconcept/` scope (e.g.
 | `wui-fleet-kpi-analysis` | `/fleet-kpi` | Per-machine availability & TRS charts, computed live by a manager over opening time minus closures | `kpiCalc` mgr |
 | `wui-fleet-stop-analysis` | `/fleet-stops` | Downtime decomposition per stop cause (table + ECharts views) | — |
 | `wui-machine-fleet-3d` | `/fleet-3d` | Three.js 3D fleet view with per-machine state/KPI bubbles, contextual Gantt/Pareto, and AI assistant (hub page) | `/api/ai` + `machineSim`, `kpiCalc`, `aiAssistant` mgrs (assistant MCP tools via an optional external MCP server) |
+| `wui-middleware-script` | `/middleware-script` | Author sandboxed JS tasks implementing logic between datapoints (declared inputs/outputs, DP-change or cyclic trigger, in-UI dry-run tests) | `/api/middleware-script` + `middlewareScript` mgr |
 | `wui-mosaic` | `/mosaic` | Display-wall page embedding other dashboard views as chromeless, same-origin iframes | — |
 | `wui-para` | `/para` | Datapoint-parametrization page | `/api/para` |
 | `wui-production-orders` | `/production-orders` | Production orders CRUD + status workflow + ECharts Gantt + server-side KPI | `productionOrdersKpi` mgr |

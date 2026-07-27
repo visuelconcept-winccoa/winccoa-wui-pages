@@ -1,0 +1,34 @@
+{
+  "module": "middleware-script",
+  "title": { "en_US.utf8": "Middleware Script", "fr.utf8": "Script middleware", "de.utf8": "Middleware-Skript" },
+  "roles": [
+    { "id": "view", "label": { "en_US.utf8": "View", "fr.utf8": "Consulter", "de.utf8": "Ansehen" } },
+    {
+      "id": "edit",
+      "label": { "en_US.utf8": "Edit tasks", "fr.utf8": "Éditer les tâches", "de.utf8": "Aufgaben bearbeiten" },
+      "description": {
+        "en_US.utf8": "Create, modify and delete script tasks (script, inputs/outputs, trigger).",
+        "fr.utf8": "Créer, modifier et supprimer les tâches de script (script, entrées/sorties, déclencheur).",
+        "de.utf8": "Skript-Aufgaben erstellen, ändern und löschen (Skript, Ein-/Ausgänge, Auslöser)."
+      }
+    },
+    {
+      "id": "test",
+      "label": { "en_US.utf8": "Run tests", "fr.utf8": "Exécuter des tests", "de.utf8": "Tests ausführen" },
+      "description": {
+        "en_US.utf8": "Dry-run a script in the server sandbox (no output is written).",
+        "fr.utf8": "Exécuter un script à blanc dans la sandbox serveur (aucune sortie n'est écrite).",
+        "de.utf8": "Ein Skript im Server-Sandkasten testweise ausführen (keine Ausgabe wird geschrieben)."
+      }
+    },
+    {
+      "id": "control",
+      "label": { "en_US.utf8": "Enable / disable tasks", "fr.utf8": "Activer / désactiver les tâches", "de.utf8": "Aufgaben aktivieren / deaktivieren" },
+      "description": {
+        "en_US.utf8": "Toggle whether a task runs on the middlewareScript manager.",
+        "fr.utf8": "Contrôler l'exécution d'une tâche par le manager middlewareScript.",
+        "de.utf8": "Steuert, ob eine Aufgabe vom middlewareScript-Manager ausgeführt wird."
+      }
+    }
+  ]
+}

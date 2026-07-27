@@ -1,0 +1,44 @@
+{
+  "name": "@visuelconcept/wui-middleware-script",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Middleware Script — standalone WinCC OA WebUI page: author small sandboxed JavaScript tasks that implement logic between datapoints (declared inputs/outputs, DP-change or cyclic trigger, in-UI dry-run testing). Tasks persist as MiddlewareScript_Task DPs; the middlewareScript JS manager executes them server-side in a worker sandbox and reports live status.",
+  "author": { "name": "Visuel Concept" },
+  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page", "scripting"],
+  "license": "MIT",
+  "dependencies": {
+    "@visuelconcept/wui-kit": "*"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "tsyringe": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-data-selector-data": "*"
+  },
+  "exports": {
+    "./*": {
+      "types": "./types/*",
+      "import": "./*"
+    }
+  },
+  "wuiPage": {
+    "route": "/middleware-script",
+    "routeId": "middleware-script",
+    "component": "wui-middleware-script",
+    "module": "/data/dashboard-wc/pages/middleware-script.js",
+    "icon": "code",
+    "permission": ["connected"],
+    "tier": 3,
+    "backend": {
+      "routes": [
+        "/api/middleware-script/* (sandboxed dry-run test bridge -> MiddlewareScript MSA service)",
+        "/api/para/* (shared DP-JSON persistence for MiddlewareScript_Task DPs — provided by wui-para's backend)"
+      ],
+      "managers": ["middlewareScript (executes the tasks: DP-change/cyclic triggers, worker sandbox, live status)"]
+    }
+  }
+}

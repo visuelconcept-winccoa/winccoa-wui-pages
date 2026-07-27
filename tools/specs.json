@@ -132,5 +132,14 @@
     "tier": 3,
     "description": "Tag Importer page (/tag-importer) — import device tags into WinCC OA datapoint types + datapoints from an OPC UA NodeSet2 XML file (repeated node instances of one ObjectType are mutualised into a single DPType, one DP per instance) or by browsing a live OPC UA server (a selected instance's subtree becomes the DPType). Protocol-agnostic core (intermediate model + hybrid DPType generator + address binder) with pluggable source adapters — OPC UA today, extensible to other protocols. Nested ObjectTypes shared across ≥2 parents become DPT_TYPEREF references (hybrid), one-off nesting is flattened. A dry-run preview precedes every write. Online import also writes the peripheral address configs (_address/_distrib, reference <Conn>$$1$1$<NodeId>). All engineering ops go through /api/tag-importer (WsjServerGlobal.winccoa: dpTypeCreate/dpCreate/dpSetWait + OPC UA Browse.GetBranch); no dedicated manager. Sensitive routes are role-gated server-side (Application Security roles 'browse'/'create' — open until groups are assigned).",
     "backend": { "mount": "/api/tag-importer", "routeClass": "TagImporterRoute", "routeFile": "tagImporterRoute", "srcFiles": ["tagImporterController.ts", "tagImporterRoute.ts", "appSecurityGuard.ts"] }
+  },
+  {
+    "page": "middleware-script",
+    "name": "@visuelconcept/wui-middleware-script",
+    "title": "Middleware Script",
+    "tier": 3,
+    "description": "Middleware Script page (/middleware-script) — author small sandboxed JavaScript tasks that implement logic BETWEEN datapoints: declared inputs/outputs (the script reads inputs.<alias> and writes ONLY via output(alias, value) on declared outputs — no arbitrary dpSet), DP-change (debounced dpConnect) or cyclic trigger, per-task timeout. Tasks persist as MiddlewareScript_Task DPs (.json config written by the page via the shared /api/para DP-JSON API; .status execution state written only by the manager). The middlewareScript JS manager executes the tasks in a worker_threads + node:vm sandbox, hot-reloads saved tasks (~10 s), and hosts the MiddlewareScript MSA vRPC service backing the in-UI dry-run tests (/api/middleware-script/test — no output DP is written). Test route role-gated server-side (Application Security role 'test'; 'view'/'edit'/'control' gate the UI — open until groups are assigned). GxP audit trail (AuditTrail_MiddlewareScript) on task create/update/delete.",
+    "backend": { "mount": "/api/middleware-script", "routeClass": "MiddlewareScriptRoute", "routeFile": "middlewareScriptRoute", "srcFiles": ["middlewareScriptController.ts", "middlewareScriptRoute.ts", "appSecurityGuard.ts"] },
+    "managers": ["middlewareScript"]
   }
 ]

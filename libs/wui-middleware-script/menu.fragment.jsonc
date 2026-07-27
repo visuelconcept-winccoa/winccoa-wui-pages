@@ -1,0 +1,15 @@
+// Menu fragment for @visuelconcept/wui-middleware-script.
+// Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
+// Tier 3: requires the /api/para persistence route (task DPs) and, for testing
+// and execution, the /api/middleware-script bridge + middlewareScript manager.
+[
+  {
+    "title": { "en_US": "Middleware Script", "de_AT": "Middleware-Skript", "fr": "Script middleware" },
+    "icon": "code",
+    "path": "/middleware-script",
+    "module": "/data/dashboard-wc/pages/middleware-script.js",
+    "routeId": "middleware-script",
+    "component": "wui-middleware-script",
+    "permission": ["connected"]
+  }
+]
