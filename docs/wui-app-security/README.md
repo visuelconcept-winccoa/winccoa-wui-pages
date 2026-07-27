@@ -34,8 +34,10 @@ DP-JSON-store page).
 
 ## Usage
 
-1. Open `/app-security` → **Discover modules** (seeds/refreshes every known
-   module's declaration).
+1. Open `/app-security` → **Discover modules** (seeds/refreshes the declaration
+   of every **installed** module — the catalog is cross-checked against the
+   deployed menu so no `AppSecurity_<module>` DP is created for a module that
+   is not part of this deployment).
 2. Per role, **Edit groups** → tick OA groups (directory from `/groups`, with
    a direct `_Groups` fallback) or type a group name.
 3. Every assignment change writes a GxP audit row (`AuditTrail_AppSecurity`).

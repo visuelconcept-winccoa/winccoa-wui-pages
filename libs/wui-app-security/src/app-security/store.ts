@@ -46,6 +46,9 @@ const GROUPS_URL = '/api/app-security/groups';
  */
 const MANIFEST_URL = '/data/dashboard-wc/app-security-manifest.json';
 
+/** Deployed menu — the authoritative runtime list of INSTALLED page bundles. */
+const MENU_URL = '/data/dashboard-wc/menuconfig.json';
+
 async function fetchManifest(): Promise<AppModuleRoles[]> {
   try {
     const res = await fetch(MANIFEST_URL);
@@ -54,6 +57,37 @@ async function fetchManifest(): Promise<AppModuleRoles[]> {
     return Array.isArray(body) ? (body as AppModuleRoles[]) : [];
   } catch {
     return [];
+  }
+}
+
+/**
+ * Page-bundle ids (`pages/<id>.js`) referenced by the deployed menu, walking
+ * nested entries/children. Role-fragment module ids equal their page-bundle
+ * ids (docs/wui-app-security/INTEGRATION.md), so this set tells which catalog
+ * modules are actually installed. Null when the menu is unreachable or lists
+ * no page — callers must then NOT restrict (fail open, e.g. dev server).
+ */
+async function fetchInstalledPageIds(): Promise<Set<string> | null> {
+  try {
+    const res = await fetch(MENU_URL);
+    if (!res.ok) return null;
+    const menu = (await res.json()) as { entries?: unknown };
+    const ids = new Set<string>();
+    const walk = (entries: unknown): void => {
+      if (!Array.isArray(entries)) return;
+      for (const entry of entries) {
+        if (!entry || typeof entry !== 'object') continue;
+        const module = (entry as { module?: unknown }).module;
+        const match = typeof module === 'string' ? /\/pages\/([^/]+)\.js$/.exec(module) : null;
+        if (match) ids.add(match[1]);
+        walk((entry as { entries?: unknown }).entries);
+        walk((entry as { children?: unknown }).children);
+      }
+    };
+    walk(menu.entries);
+    return ids.size > 0 ? ids : null;
+  } catch {
+    return null;
   }
 }
 
@@ -189,9 +223,19 @@ export class AppSecurityStore {
     }
   }
 
-  /** Seed/refresh every catalog module's declaration. Returns how many succeeded. */
+  /**
+   * Seed/refresh the declaration of every INSTALLED catalog module. Returns how
+   * many succeeded. The static manifest aggregates every module of the build
+   * tree, including pages that were pruned from this deployment — seeding those
+   * would create `AppSecurity_<module>` DPs for modules that are not installed,
+   * so the catalog is restricted to the page bundles the deployed menu
+   * references. When the menu is unreadable the restriction is skipped rather
+   * than blocking the seeding (fail open — same spirit as the guard rules).
+   */
   async discover(manifest?: AppModuleRoles[]): Promise<number> {
-    const list = manifest ?? (await this.manifest());
+    const catalog = manifest ?? (await this.manifest());
+    const installed = await fetchInstalledPageIds();
+    const list = installed == null ? catalog : catalog.filter((decl) => installed.has(decl.module));
     let ok = 0;
     for (const decl of list) {
       if (await upsertModuleRoles(decl)) ok += 1;

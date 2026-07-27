@@ -10,8 +10,9 @@
 //   1. asks for the target WinCC OA project root (data/, javascript/, config/),
 //   2. lets you SELECT which page modules to include (pre-checked default set),
 //   3. builds the standalone pages into <project>/data/dashboard-wc,
-//   4. filters the deployed menu to ONLY the selected modules AND prunes the
-//      non-selected page bundles from the deploy (use --no-prune to keep them),
+//   4. filters the deployed menu AND the app-security role manifest to ONLY the
+//      selected modules, and prunes the non-selected page bundles from the
+//      deploy (use --no-prune to keep the bundles),
 //   5. deploys the BACKENDS (webserver modules + managers) associated with the
 //      selected modules — via tools/scripts/deploy-backend.mjs, driven by
 //      tools/specs.json.
@@ -398,6 +399,35 @@ function filterMenu(dwcDir, selected) {
   }
 }
 
+/**
+ * Restrict the built app-security-manifest.json to the selected modules (the
+ * counterpart of filterMenu/pruneBundles for the Application-Security page).
+ * The build aggregates EVERY libs/wui-* role fragment, so without this filter
+ * the page's "Discover modules" would seed AppSecurity_<module> datapoints for
+ * modules that are not part of this release. Entries whose module id is not in
+ * the repo catalog (external modules merged by their own installer) are kept.
+ */
+function filterAppSecurityManifest(dwcDir, catalog, selected) {
+  const file = path.join(dwcDir, 'app-security-manifest.json');
+  if (!fs.existsSync(file)) { console.log(c('dim', '  · app-security-manifest.json absent — rien à filtrer.')); return; }
+  let manifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (e) {
+    console.log(c('yellow', `  ! app-security-manifest.json illisible (${e.message}) — non filtré.`));
+    return;
+  }
+  if (!Array.isArray(manifest)) { console.log(c('yellow', '  ! app-security-manifest.json inattendu (pas un tableau) — non filtré.')); return; }
+  const known = new Set(catalog.map((m) => m.id));
+  const kept = manifest.filter((entry) => !known.has(entry?.module) || selected.has(entry.module));
+  if (kept.length !== manifest.length) {
+    fs.writeFileSync(file, `${JSON.stringify(kept, null, 2)}\n`);
+    console.log(c('green', `  ✓ app-security-manifest filtré : ${kept.length}/${manifest.length} module(s) conservé(s).`));
+  } else {
+    console.log(c('dim', '  · app-security-manifest déjà conforme.'));
+  }
+}
+
 // ---- webserver install + module descriptors --------------------------------
 
 /** Install the base customer-webserver into the project (copy + npm install + tsc + pmon). */
@@ -511,6 +541,7 @@ async function main() {
     // 2) menu filter + default landing page + feature flags
     console.log(c('bold', '\n[2/4] Filtrage du menu + page de démarrage + options…'));
     filterMenu(dwcDir, selected);
+    filterAppSecurityManifest(dwcDir, catalog, selected);
     applyStartPage(dwcDir, startPage);
     writeFeatures(dwcDir, aiAssistant);
 

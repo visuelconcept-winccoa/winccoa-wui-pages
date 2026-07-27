@@ -58,6 +58,16 @@ idea was rejected for that reason). Role/group direction is role → groups
 - **No offline latch**: `list()` ensures the DP type exists first (same order
   as `DpJsonStore`), re-attempts the backend on every call; a successful
   list/discover clears the offline flag.
+- **Discover seeds INSTALLED modules only.** The static manifest aggregates
+  every fragment of the build tree, but a curated release (deploy-release)
+  ships only a subset of pages. `discover()` therefore restricts the catalog
+  to the page-bundle ids referenced by the deployed `menuconfig.json`
+  (fragment module id == page-bundle id, cf. INTEGRATION Step 2) so no
+  `AppSecurity_<module>` DP is created for a module that is not deployed.
+  When the menu is unreachable the restriction is skipped (fail open — dev
+  server, tests). `deploy-release.mjs` additionally filters the emitted
+  `app-security-manifest.json` to the selected modules (external entries,
+  unknown to the repo catalog, are kept).
 - **Stale assignments** (role assigned but no longer declared) are badged, kept,
   and never auto-deleted.
 - **Audit**: every `.assignments` write logs one UPDATE row (old/new JSON) into

@@ -62,10 +62,14 @@ registerModuleRoles(appSecurityRoles as AppModuleRoles);
 ```
 
 Self-registration is best-effort (no-op offline / without write rights); the
-admin's **"Discover modules"** seeds every module from the aggregated
+admin's **"Discover modules"** seeds modules from the aggregated
 `app-security-manifest.json` asset — built by the `page-appsec-merge` Vite
 plugin from every `app-security.roles.json` present in the build (and merged
-into the workspace by each module's installer). **A module built in another
+into the workspace by each module's installer). Discover only seeds the
+modules whose page bundle is referenced by the deployed `menuconfig.json`
+(this is why the fragment's `module` id MUST equal the page-bundle id): a
+manifest entry whose page is not installed gets **no** `AppSecurity_<module>`
+DP. **A module built in another
 repository never touches app-security**: it ships its fragment + calls
 `registerModuleRoles`, and appears at runtime (first visit) or in Discover once
 its fragment is merged into the asset.
