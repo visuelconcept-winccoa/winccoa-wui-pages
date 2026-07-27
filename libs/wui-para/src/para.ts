@@ -33,8 +33,9 @@ import type { TypeProposal } from './para/para-ai-context.js';
 import { exportDpl, importDpl, pickDplFile } from './para/para-dpl.js';
 import './para/para-dpl-dialog.js';
 import './para/para-detail.js';
-import type { DpDialogMode } from './para/para-dp-dialog.js';
+import type { DpDeleteTarget, DpDialogMode } from './para/para-dp-dialog.js';
 import './para/para-dp-dialog.js';
+import type { WuiParaNav } from './para/para-nav.js';
 import './para/para-nav.js';
 import './para/para-type-editor.js';
 import './para/para-archive.js';
@@ -137,7 +138,7 @@ export class WuiPara extends LitElement {
   /** Owning DP-type of the selected DP/element (drives the detail value enumeration). */
   @state() private selectedOwnerType: string | null = null;
   @state() private selectedKey: string | null = null;
-  @state() private dpDialog: { mode: DpDialogMode; typeName: string; dp: string } | null = null;
+  @state() private dpDialog: { mode: DpDialogMode; typeName: string; dp: string; dps: DpDeleteTarget[] } | null = null;
   @state() private reloadToken = 0;
   /** Type currently loaded in the model editor (for the assistant context). */
   @state() private modelTypeName: string | null = null;
@@ -145,7 +146,9 @@ export class WuiPara extends LitElement {
   @state() private editorProposal: TypeProposal | null = null;
   /** DPL export selection reported by the instances tree (DPL buttons live in the header). */
   @state() private dplSel: { dpts: string[]; dps: string[] } = { dpts: [], dps: [] };
-  @state() private dplBusy = false;
+  /** One waiting flag per DPL operation, so each button spins only for its own job. */
+  @state() private dplImportBusy = false;
+  @state() private dplExportBusy = false;
   @state() private dplMsg = '';
   @state() private dplOk = false;
   @state() private dplDialogOpen = false;
@@ -183,6 +186,7 @@ export class WuiPara extends LitElement {
             .mode=${this.dpDialog.mode}
             .dpType=${this.dpDialog.typeName}
             .dp=${this.dpDialog.dp}
+            .dps=${this.dpDialog.dps}
             @wui:done=${this.onDpDialogDone}
           ></wui-para-dp-dialog>`
         : nothing}
@@ -216,13 +220,19 @@ export class WuiPara extends LitElement {
         <div class="dpl-bar">
           ${this.dplMsg === '' ? nothing : html`<span class="dpl-msg ${this.dplOk ? 'ok' : 'err'}">${this.dplMsg}</span>`}
           ${this.roleDplImport
-            ? html`<ix-button outline icon="upload" ?disabled=${this.dplBusy} @click=${this.doImport}>${localizeDir(MSG.page.importDpl)}</ix-button>`
+            ? html`<ix-button
+                outline
+                icon="upload"
+                ?disabled=${this.dplBusy()}
+                .loading=${this.dplImportBusy}
+                @click=${this.doImport}
+              >${localizeDir(MSG.page.importDpl)}</ix-button>`
             : nothing}
           <ix-button
             variant="primary"
             icon="download"
-            ?disabled=${this.dplBusy || this.dplSelCount() === 0}
-            .loading=${this.dplBusy}
+            ?disabled=${this.dplBusy() || this.dplSelCount() === 0}
+            .loading=${this.dplExportBusy}
             title=${localize(MSG.page.exportTitle)}
             @click=${this.openExportDialog}
           >
@@ -348,6 +358,11 @@ export class WuiPara extends LitElement {
     return this.dplSel.dpts.length + this.dplSel.dps.length;
   }
 
+  /** A DPL operation is running (either direction blocks both buttons). */
+  private dplBusy(): boolean {
+    return this.dplImportBusy || this.dplExportBusy;
+  }
+
   private onExportSelection(event: CustomEvent<{ dpts: string[]; dps: string[] }>): void {
     this.dplSel = event.detail;
   }
@@ -371,7 +386,7 @@ export class WuiPara extends LitElement {
     if (this.dplSelCount() === 0) {
       return;
     }
-    this.dplBusy = true;
+    this.dplExportBusy = true;
     this.dplMsg = '';
     try {
       const result = await exportDpl({ dpts: this.dplSel.dpts, dps: this.dplSel.dps, filter });
@@ -380,7 +395,7 @@ export class WuiPara extends LitElement {
         result.ok === true
       );
     } finally {
-      this.dplBusy = false;
+      this.dplExportBusy = false;
     }
   }
 
@@ -389,7 +404,7 @@ export class WuiPara extends LitElement {
     if (file == null) {
       return;
     }
-    this.dplBusy = true;
+    this.dplImportBusy = true;
     this.dplMsg = '';
     try {
       const result = await importDpl(file);
@@ -402,7 +417,7 @@ export class WuiPara extends LitElement {
         this.reloadToken += 1;
       }
     } finally {
-      this.dplBusy = false;
+      this.dplImportBusy = false;
     }
   }
 
@@ -411,19 +426,24 @@ export class WuiPara extends LitElement {
     this.dplOk = ok;
   }
 
-  private onDpAction(event: CustomEvent<{ mode: DpDialogMode; typeName: string; dp: string }>): void {
-    const { mode, typeName, dp } = event.detail;
-    this.dpDialog = { mode, typeName, dp };
+  private onDpAction(event: CustomEvent<{ mode: DpDialogMode; typeName: string; dp: string; dps?: DpDeleteTarget[] }>): void {
+    const { mode, typeName, dp, dps } = event.detail;
+    this.dpDialog = { mode, typeName, dp, dps: dps ?? [] };
   }
 
-  private onDpDialogDone(event: CustomEvent<{ changed: boolean }>): void {
+  private onDpDialogDone(event: CustomEvent<{ changed: boolean; deletedDps?: string[] }>): void {
     const removed = this.dpDialog?.mode === 'create' ? null : this.dpDialog?.dp;
+    const deleted = event.detail.deletedDps ?? [];
     this.dpDialog = null;
     if (event.detail.changed) {
       // Clear a selection that points at a now-renamed/deleted datapoint.
-      if (removed != null && this.selectedDp === removed) {
+      if ((removed != null && this.selectedDp === removed) || (this.selectedDp != null && deleted.includes(this.selectedDp))) {
         this.selectedDp = null;
         this.selectedKey = null;
+      }
+      // Untick deleted datapoints so the DPL selection does not go stale.
+      if (deleted.length > 0) {
+        this.shadowRoot?.querySelector<WuiParaNav>('wui-para-nav')?.removeFromExportSelection(deleted);
       }
       this.reloadToken += 1;
     }

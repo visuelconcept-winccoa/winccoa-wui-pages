@@ -124,7 +124,16 @@ export const MSG = {
     deselectAll: ml('Deselect all', 'Tout décocher', 'Alle abwählen'),
     loading: ml('Loading…', 'Loading…', 'Wird geladen…'),
     noMatch: ml('No datapoint types match.', 'No datapoint types match.', 'Keine passenden Datenpunkttypen.'),
-    selectForExport: ml('Select for DPL export', 'Select for DPL export', 'Für DPL-Export auswählen'),
+    selectForExport: ml(
+      'Select for DPL export / deletion',
+      'Sélectionner pour export DPL / suppression',
+      'Für DPL-Export / Löschen auswählen'
+    ),
+    deleteSelected: ml(
+      'Delete the selected datapoints',
+      'Supprimer les datapoints sélectionnés',
+      'Ausgewählte Datenpunkte löschen'
+    ),
     createDp: ml('Create datapoint', 'Create datapoint', 'Datenpunkt erstellen'),
     renameDp: ml('Rename datapoint', 'Rename datapoint', 'Datenpunkt umbenennen'),
     deleteDp: ml('Delete datapoint', 'Delete datapoint', 'Datenpunkt löschen'),
@@ -197,6 +206,7 @@ export const MSG = {
     dpName: ml('Datapoint name', 'Datapoint name', 'Datenpunktname'),
     dpNamePlaceholder: ml('MyDatapoint', 'MyDatapoint', 'MeinDatenpunkt'),
     deleteTitle: ml('Delete datapoint', 'Delete datapoint', 'Datenpunkt löschen'),
+    deleteMultiTitle: ml('Delete datapoints', 'Supprimer des datapoints', 'Datenpunkte löschen'),
     renameTitle: ml('Rename datapoint', 'Rename datapoint', 'Datenpunkt umbenennen'),
     createTitle: ml('Create datapoint', 'Create datapoint', 'Datenpunkt erstellen'),
     delete: ml('Delete', 'Delete', 'Löschen'),
@@ -563,13 +573,13 @@ export function navCouldNotLoadTypeMsg(type: string, detail: string): string {
   );
 }
 
-/** Nav: count selected for DPL export (plain string). */
-export function navExportSelectedMsg(count: number): string {
+/** Nav: count of rows ticked (for DPL export or multi-delete) (plain string). */
+export function navSelectedMsg(count: number): string {
   return localize(
     ml(
-      `${count} selected for DPL export`,
-      `${count} sélectionné(s) pour l'export DPL`,
-      `${count} für DPL-Export ausgewählt`
+      `${count} selected`,
+      `${count} sélectionné(s)`,
+      `${count} ausgewählt`
     )
   );
 }
@@ -647,6 +657,35 @@ export function writeAttrRejectedMsg(attr: string, status: number): string {
 /** DP dialog: request-failed error (plain string). */
 export function dpRequestFailedMsg(status: number): string {
   return localize(ml(`Request failed (HTTP ${status})`, `Request failed (HTTP ${status})`, `Anfrage fehlgeschlagen (HTTP ${status})`));
+}
+
+/** DP dialog: multi-delete confirm body (plain string). */
+export function dpDeleteMultiConfirmMsg(count: number): string {
+  return localize(
+    ml(
+      `Delete these ${count} datapoints?`,
+      `Supprimer ces ${count} datapoints ?`,
+      `Diese ${count} Datenpunkte löschen?`
+    )
+  );
+}
+
+/** DP dialog: multi-delete progress while running (plain string). */
+export function dpDeletingProgressMsg(done: number, total: number): string {
+  return localize(
+    ml(`Deleting… ${done}/${total}`, `Suppression… ${done}/${total}`, `Löschen… ${done}/${total}`)
+  );
+}
+
+/** DP dialog: multi-delete partial-failure summary (plain string). */
+export function dpDeleteMultiResultMsg(deleted: number, total: number): string {
+  return localize(
+    ml(
+      `${deleted}/${total} deleted — failures:`,
+      `${deleted}/${total} supprimé(s) — échecs :`,
+      `${deleted}/${total} gelöscht — Fehler:`
+    )
+  );
 }
 
 /** DP dialog: could-not-reach-API error (plain string). */

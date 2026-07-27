@@ -52,7 +52,20 @@ falls back to the system prompt alone.
 
 Frontend: checkboxes on type/DP rows in `wui-para-nav` build a selection;
 `para-dpl.ts` POSTs to `/api/para/dpl/{export,import}` and streams the `.dpl`
-download / uploads the chosen file as base64.
+download / uploads the chosen file as base64. The import and export buttons
+carry **separate** busy flags (`dplImportBusy` / `dplExportBusy` in `para.ts`)
+so each button spins only for its own operation (both stay disabled while
+either runs).
+
+The same tick selection doubles as the **multi-delete** selection: a trashcan
+button on the selection row (UI-gated by `edit-values`, like the single-DP
+actions) opens `wui-para-dp-dialog` in `delete-multi` mode, which DELETEs the
+ticked DPs one by one (`/api/para/dp/:name?dpType=`; the type guard is looked
+up in the loaded tree and omitted when unknown — the backend accepts a
+guard-less delete). Failed targets stay listed for retry; the dialog reports
+`deletedDps` in `wui:done` so the page prunes them from the nav selection
+(`removeFromExportSelection`). Ticked DP-types are ignored by the delete —
+type deletion stays in the model tab.
 
 Backend: `dplController.ts` bridges HTTP → the **`DplAscii`** MSA service
 (`backend/managers/dplAscii/index.js`), which shells out to **`WCCOAasciiSQLite`**

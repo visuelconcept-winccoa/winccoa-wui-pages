@@ -10,8 +10,9 @@
  *   Level 2+: element branches      (getDatapointTypes nested structure)
  *
  * Emits `wui:select` with the chosen datapoint / element path and `wui:dpaction`
- * for datapoint create/rename/delete. (Datapoint *type* creation lives in the
- * "Modèle" tab's wui-para-type-editor, not here.)
+ * for datapoint create/rename/delete — including `delete-multi` for the ticked
+ * checkbox selection, which doubles as the DPL-export selection. (Datapoint
+ * *type* creation lives in the "Modèle" tab's wui-para-type-editor, not here.)
  */
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { hasRole$ } from '@visuelconcept/wui-kit/data/app-security.js';
@@ -22,7 +23,8 @@ import { property, state } from 'lit/decorators.js';
 import { Subscription, catchError, forkJoin, map, of } from 'rxjs';
 import { container } from 'tsyringe';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
-import { MSG, localize, localizeDir, navCouldNotLoadTypeMsg, navCouldNotLoadTypesMsg, navExportSelectedMsg } from './i18n.js';
+import type { DpDeleteTarget } from './para-dp-dialog.js';
+import { MSG, localize, localizeDir, navCouldNotLoadTypeMsg, navCouldNotLoadTypesMsg, navSelectedMsg } from './i18n.js';
 
 /** Default datapoint-type search pattern. */
 const DEFAULT_PATTERN = '*';
@@ -207,6 +209,12 @@ export class WuiParaNav extends LitElement {
         font-size: 0.75rem;
         color: var(--theme-color-soft-text);
       }
+      .dpl-sel-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.125rem;
+        flex-shrink: 0;
+      }
       .export-cb {
         flex-shrink: 0;
         margin: 0 0.125rem 0 0;
@@ -283,8 +291,19 @@ export class WuiParaNav extends LitElement {
         </div>
         ${this.showExport && this.exportSel.size > 0
           ? html`<div class="dpl-sel">
-              <span>${navExportSelectedMsg(this.exportSel.size)}</span>
-              <ix-icon-button ghost size="16" icon="close" title=${localize(MSG.nav.deselectAll)} @click=${this.clearExport}></ix-icon-button>
+              <span>${navSelectedMsg(this.exportSel.size)}</span>
+              <span class="dpl-sel-actions">
+                ${this.canManageDps && this.selectedDpTargets().length > 0
+                  ? html`<ix-icon-button
+                      ghost
+                      size="16"
+                      icon="trashcan"
+                      title=${localize(MSG.nav.deleteSelected)}
+                      @click=${this.requestDeleteSelected}
+                    ></ix-icon-button>`
+                  : ''}
+                <ix-icon-button ghost size="16" icon="close" title=${localize(MSG.nav.deselectAll)} @click=${this.clearExport}></ix-icon-button>
+              </span>
             </div>`
           : ''}
       </div>
@@ -444,6 +463,60 @@ export class WuiParaNav extends LitElement {
   private clearExport(): void {
     this.exportSel = new Set();
     this.emitExportSelection();
+  }
+
+  /**
+   * The ticked datapoints as delete targets. The owning type is looked up in
+   * the loaded tree; a DP ticked before a reload may no longer be in the tree,
+   * its guard is then empty (the backend accepts a guard-less delete).
+   */
+  private selectedDpTargets(): DpDeleteTarget[] {
+    const typeByDp = new Map<string, string>();
+    for (const typeNode of this.roots) {
+      for (const child of typeNode.children) {
+        if (child.kind === 'dp' && child.dp != null) {
+          typeByDp.set(child.dp, typeNode.typeName ?? '');
+        }
+      }
+    }
+    const targets: DpDeleteTarget[] = [];
+    for (const key of this.exportSel) {
+      if (key.startsWith('dp:')) {
+        const dp = key.slice('dp:'.length);
+        targets.push({ dp, dpType: typeByDp.get(dp) ?? '' });
+      }
+    }
+    return targets.sort((a, b) => a.dp.localeCompare(b.dp));
+  }
+
+  /** Ask the page to confirm+delete the ticked datapoints (types are ignored). */
+  private requestDeleteSelected(): void {
+    const targets = this.selectedDpTargets();
+    if (targets.length === 0) {
+      return;
+    }
+    this.dispatchEvent(
+      new CustomEvent('wui:dpaction', {
+        detail: { mode: 'delete-multi', typeName: '', dp: '', dps: targets },
+        bubbles: true,
+        composed: true
+      })
+    );
+  }
+
+  /** Drop deleted datapoints from the tick selection and re-emit it (called by the page). */
+  removeFromExportSelection(dps: string[]): void {
+    if (dps.length === 0) {
+      return;
+    }
+    const next = new Set(this.exportSel);
+    for (const dp of dps) {
+      next.delete(`dp:${dp}`);
+    }
+    if (next.size !== this.exportSel.size) {
+      this.exportSel = next;
+      this.emitExportSelection();
+    }
   }
 
   /** Report the export selection ({dpts, dps}) to the page — the DPL Import/Export buttons live in the header. */

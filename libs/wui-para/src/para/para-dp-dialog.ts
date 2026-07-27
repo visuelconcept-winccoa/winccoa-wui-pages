@@ -2,17 +2,21 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * PARA "manage datapoint" dialog - create, rename or delete a datapoint.
+ * PARA "manage datapoint" dialog - create, rename or delete datapoint(s).
  *
  * A single dialog driven by `mode`, talking to the webserver.js PARA extension
  * (same origin):
- *   create -> POST   /api/para/dp/create   { dpName, dpType }
- *   rename -> POST   /api/para/dp/rename   { oldName, newName, expectedType }
- *   delete -> DELETE /api/para/dp/:name?dpType=
+ *   create       -> POST   /api/para/dp/create   { dpName, dpType }
+ *   rename       -> POST   /api/para/dp/rename   { oldName, newName, expectedType }
+ *   delete       -> DELETE /api/para/dp/:name?dpType=
+ *   delete-multi -> DELETE /api/para/dp/:name?dpType=  sequentially for each
+ *                   entry of `dps` (the nav tree's checkbox selection); failed
+ *                   entries stay listed so the user can retry or cancel.
  *
- * Emits `wui:done` with `{ changed: boolean }` so the parent can close and
- * refresh. The type guard (expectedType / ?dpType=) scopes every operation to
- * the owning datapoint type, matching the backend 409 contract.
+ * Emits `wui:done` with `{ changed, deletedDps }` so the parent can close,
+ * refresh and prune the nav selection. The type guard (expectedType / ?dpType=)
+ * scopes every operation to the owning datapoint type, matching the backend
+ * 409 contract (an empty dpType skips the guard).
  */
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
@@ -20,6 +24,9 @@ import { property, state } from 'lit/decorators.js';
 import {
   MSG,
   dpCouldNotReachApiMsg,
+  dpDeleteMultiConfirmMsg,
+  dpDeleteMultiResultMsg,
+  dpDeletingProgressMsg,
   dpRequestFailedMsg,
   localize,
   localizeDir
@@ -31,7 +38,13 @@ const RENAME_DP_URL = '/api/para/dp/rename';
 /** DELETE target is `${DELETE_DP_BASE}/${encodeURIComponent(name)}`. */
 const DELETE_DP_BASE = '/api/para/dp';
 
-export type DpDialogMode = 'create' | 'rename' | 'delete';
+export type DpDialogMode = 'create' | 'rename' | 'delete' | 'delete-multi';
+
+/** One datapoint targeted by a multi-delete (dpType '' = no type guard). */
+export interface DpDeleteTarget {
+  dp: string;
+  dpType: string;
+}
 
 /** Build a JSON POST request init for the PARA extension. */
 function jsonPost(body: object): RequestInit {
@@ -102,6 +115,13 @@ export class WuiParaDpDialog extends LitElement {
       .error {
         color: var(--theme-color-alarm);
       }
+      .dp-list {
+        margin: 0;
+        padding-left: 1.25rem;
+        max-height: 14rem;
+        overflow: auto;
+        font-size: 0.8125rem;
+      }
     `
   ];
 
@@ -111,10 +131,16 @@ export class WuiParaDpDialog extends LitElement {
   @property({ type: String }) dpType = '';
   /** Existing datapoint name (rename / delete). */
   @property({ type: String }) dp = '';
+  /** Datapoints targeted by a multi-delete (delete-multi mode only). */
+  @property({ attribute: false }) dps: DpDeleteTarget[] = [];
 
   @state() private name = '';
   @state() private busy = false;
   @state() private error = '';
+  /** Progress line while a multi-delete runs ("Deleting… 2/5"). */
+  @state() private progress = '';
+  /** Names already deleted in this dialog (reported to the parent on close). */
+  private deletedDps: string[] = [];
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -137,8 +163,8 @@ export class WuiParaDpDialog extends LitElement {
           <div class="footer">
             <ix-button outline @click=${this.cancel}>${localizeDir(MSG.dpDialog.cancel)}</ix-button>
             <ix-button
-              variant=${this.mode === 'delete' ? 'danger-primary' : 'primary'}
-              ?disabled=${this.busy}
+              variant=${this.isDelete() ? 'danger-primary' : 'primary'}
+              ?disabled=${this.busy || (this.mode === 'delete-multi' && this.dps.length === 0)}
               .loading=${this.busy}
               @click=${this.submit}
             >
@@ -151,6 +177,18 @@ export class WuiParaDpDialog extends LitElement {
   }
 
   private renderBody(): TemplateResult {
+    if (this.mode === 'delete-multi') {
+      return html`
+        <div>${dpDeleteMultiConfirmMsg(this.dps.length)} ${localizeDir(MSG.dpDialog.cannotUndo)}</div>
+        <ul class="dp-list">
+          ${this.dps.map(
+            (target) => html`<li><strong>${target.dp}</strong>${target.dpType === '' ? nothing : html` <span class="type-line">(${target.dpType})</span>`}</li>`
+          )}
+        </ul>
+        ${this.progress === '' ? nothing : html`<div class="type-line">${this.progress}</div>`}
+        ${this.error === '' ? nothing : html`<div class="error">${this.error}</div>`}
+      `;
+    }
     if (this.mode === 'delete') {
       return html`
         <div>${localizeDir(MSG.dpDialog.deleteConfirmPre)} <strong>${this.dp}</strong>? ${localizeDir(MSG.dpDialog.cannotUndo)}</div>
@@ -171,14 +209,21 @@ export class WuiParaDpDialog extends LitElement {
     `;
   }
 
+  private isDelete(): boolean {
+    return this.mode === 'delete' || this.mode === 'delete-multi';
+  }
+
   private headerIcon(): string {
-    if (this.mode === 'delete') {
+    if (this.isDelete()) {
       return 'trashcan';
     }
     return this.mode === 'rename' ? 'pen' : 'add-circle';
   }
 
   private headerTitle(): string {
+    if (this.mode === 'delete-multi') {
+      return localize(MSG.dpDialog.deleteMultiTitle);
+    }
     if (this.mode === 'delete') {
       return localize(MSG.dpDialog.deleteTitle);
     }
@@ -186,22 +231,37 @@ export class WuiParaDpDialog extends LitElement {
   }
 
   private submitLabel(): string {
-    if (this.mode === 'delete') {
+    if (this.isDelete()) {
       return localize(MSG.dpDialog.delete);
     }
     return localize(this.mode === 'rename' ? MSG.dpDialog.rename : MSG.dpDialog.create);
   }
 
   private cancel(): void {
-    this.dispatchEvent(new CustomEvent('wui:done', { detail: { changed: false }, bubbles: true, composed: true }));
+    // A partially completed multi-delete still changed data: let the parent refresh.
+    this.emitDone(this.deletedDps.length > 0);
   }
 
   private done(): void {
-    this.dispatchEvent(new CustomEvent('wui:done', { detail: { changed: true }, bubbles: true, composed: true }));
+    this.emitDone(true);
+  }
+
+  private emitDone(changed: boolean): void {
+    this.dispatchEvent(
+      new CustomEvent('wui:done', {
+        detail: { changed, deletedDps: [...this.deletedDps] },
+        bubbles: true,
+        composed: true
+      })
+    );
   }
 
   private async submit(): Promise<void> {
     if (this.busy) {
+      return;
+    }
+    if (this.mode === 'delete-multi') {
+      await this.submitMultiDelete();
       return;
     }
     const request = this.buildRequest();
@@ -214,6 +274,9 @@ export class WuiParaDpDialog extends LitElement {
       const response = await fetch(request.url, request.init);
       const result = await response.json().catch(() => ({}));
       if (response.ok && result.ok) {
+        if (this.mode === 'delete') {
+          this.deletedDps.push(this.dp);
+        }
         this.done();
       } else {
         this.error = result.error ?? dpRequestFailedMsg(response.status);
@@ -225,10 +288,60 @@ export class WuiParaDpDialog extends LitElement {
     }
   }
 
+  /**
+   * Delete the `dps` targets one by one (the backend deletes a single DP per
+   * request). Failed targets stay listed with a summary error so the user can
+   * retry them or cancel; the parent still gets the already-deleted names.
+   */
+  private async submitMultiDelete(): Promise<void> {
+    if (this.dps.length === 0) {
+      return;
+    }
+    this.busy = true;
+    this.error = '';
+    const total = this.dps.length;
+    const failures: { target: DpDeleteTarget; error: string }[] = [];
+    let done = 0;
+    try {
+      for (const target of this.dps) {
+        this.progress = dpDeletingProgressMsg(done, total);
+        const request = this.buildDeleteRequest(target.dp, target.dpType);
+        try {
+          const response = await fetch(request.url, request.init);
+          const result = await response.json().catch(() => ({}));
+          if (response.ok && result.ok) {
+            this.deletedDps.push(target.dp);
+          } else {
+            failures.push({ target, error: result.error ?? dpRequestFailedMsg(response.status) });
+          }
+        } catch (error) {
+          failures.push({ target, error: dpCouldNotReachApiMsg(String(error)) });
+        }
+        done += 1;
+      }
+    } finally {
+      this.busy = false;
+      this.progress = '';
+    }
+    if (failures.length === 0) {
+      this.done();
+      return;
+    }
+    // Keep only the failed targets listed so a retry does not re-delete.
+    this.dps = failures.map((failure) => failure.target);
+    this.error = `${dpDeleteMultiResultMsg(total - failures.length, total)} ${failures
+      .map((failure) => `${failure.target.dp} (${failure.error})`)
+      .join(', ')}`;
+  }
+
+  private buildDeleteRequest(dp: string, dpType: string): { url: string; init: RequestInit } {
+    const query = dpType === '' ? '' : `?dpType=${encodeURIComponent(dpType)}`;
+    return { url: `${DELETE_DP_BASE}/${encodeURIComponent(dp)}${query}`, init: { method: 'DELETE' } };
+  }
+
   private buildRequest(): { url: string; init: RequestInit } | null {
     if (this.mode === 'delete') {
-      const query = this.dpType === '' ? '' : `?dpType=${encodeURIComponent(this.dpType)}`;
-      return { url: `${DELETE_DP_BASE}/${encodeURIComponent(this.dp)}${query}`, init: { method: 'DELETE' } };
+      return this.buildDeleteRequest(this.dp, this.dpType);
     }
 
     const name = this.name.trim();

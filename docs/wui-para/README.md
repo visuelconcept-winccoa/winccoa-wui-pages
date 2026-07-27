@@ -13,7 +13,8 @@ runtime version (a page bundle is coupled to the shell's import map).
   place** via `dptype/change` (preserves existing datapoints; renamed elements
   are matched by their original name and carried over with `newName`).
 - **Instances & valeurs** (instances & values) **tab** — the master-detail browser (Type→DP→element tree
-  + live values & config-attribute editor; create/rename/delete DPs).
+  + live values & config-attribute editor; create/rename/delete DPs, including
+  batch-delete of the DPs ticked in the tree).
 - **AI assistant** (header) — *proposal-only*: scoped to PARA modeling, runs with
   **no MCP tools** (`mcpServers: []`, so it never mutates), and can load a
   proposed type model straight into the editor for the user to review and save.
