@@ -134,7 +134,7 @@ export class WuiMsTestPanel extends LitElement {
         <ix-button outline icon="refresh" ?disabled=${this.busy || this.api == null} @click=${this.loadLive}>
           ${localizeDir(MSG.test.loadLive)}
         </ix-button>
-        <ix-button variant="primary" icon="start" ?disabled=${this.busy || !this.canTest} .loading=${this.busy} @click=${this.run}>
+        <ix-button variant="primary" icon="play" ?disabled=${this.busy || !this.canTest} .loading=${this.busy} @click=${this.run}>
           ${localizeDir(MSG.test.run)}
         </ix-button>
       </div>

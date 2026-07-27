@@ -89,6 +89,18 @@ included) — deliberate, so you test before saving.
   stamps `updatedAt`; Enable is gated by `control`, fields by `edit`, dry-run
   by `test`.
 
+## WinCC-OA-free preview (`preview/`)
+
+`libs/wui-middleware-script/preview/` runs the REAL page without any WinCC OA:
+esbuild aliases the runtime-only imports to `preview/stubs/*` (in-memory
+DpJsonStore, simulated dpGet/dpConnect, granted roles, fetch mock whose
+`/test` dry-runs the script browser-side), Siemens iX 2.x comes real from npm
+(the runtime generation — `ix-tabs` `selectedChange`; note ix-icons 2.x has no
+`start` icon, which is why the Test button uses `play`). `npm run dev` for the
+iteration loop, `npm run shots` regenerates the two documentation PNGs
+(playwright-core + `PW_CHROMIUM`). It is a preview, not a proof: manager,
+sandbox limits, shell and enforcement only exist on a deployed project.
+
 ## Application Security (roles)
 
 Declared in `src/app-security.roles.json` (self-registration in

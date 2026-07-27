@@ -11,10 +11,19 @@ testing before enabling anything.
 
 ![Middleware Script](../images/manual/middleware-script.png)
 
-> The screenshot is generated (live, logged in) by
-> [`tools/screenshot-pages.mjs`](../../tools/screenshot-pages.mjs) into
-> `docs/images/manual/` — run it against a WinCC OA project with this module
-> deployed to (re)produce them (see "Screenshots" in the root `CLAUDE.md`).
+The *Test* tab dry-runs the current draft — computed outputs, logs and
+duration come back; no output datapoint is written:
+
+![Middleware Script — sandbox dry-run](../images/manual/middleware-script-test.png)
+
+> These captures come from the module's **WinCC-OA-free preview harness**
+> ([`libs/wui-middleware-script/preview/`](../../libs/wui-middleware-script/preview/README.md)
+> — real page code + real Siemens iX, stubbed OA layer with demo data;
+> regenerate with `npm run shots`). `middleware-script.png` is also refreshed,
+> live against a real project, by the standard
+> [`tools/screenshot-pages.mjs`](../../tools/screenshot-pages.mjs) run. The
+> preview doubles as a dev loop: `npm run dev` → http://127.0.0.1:4600 to
+> iterate on the page without any WinCC OA.
 
 ## What a task is
 

@@ -1,0 +1,38 @@
+<!doctype html>
+<!-- SPDX-FileCopyrightText: 2026 VISUEL CONCEPT -->
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>Middleware Script — preview (sans WinCC OA)</title>
+    <link rel="stylesheet" href="/node_modules/@siemens/ix/dist/siemens-ix/siemens-ix.css" />
+    <link rel="stylesheet" href="/node_modules/@siemens/ix/dist/siemens-ix/theme/classic-dark.css" />
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        background: var(--theme-color-1);
+        color: var(--theme-color-std-text);
+        font-family: 'Siemens Sans', Arial, Helvetica, sans-serif;
+      }
+      wui-middleware-script {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+      }
+    </style>
+    <script type="module">
+      import { defineCustomElements as defineIcons } from '/node_modules/@siemens/ix-icons/loader/index.js';
+      import { defineCustomElements as defineIx } from '/node_modules/@siemens/ix/loader/index.js';
+      defineIcons();
+      defineIx();
+    </script>
+    <script type="module" src="/dist/entry.js"></script>
+  </head>
+  <body class="theme-classic-dark">
+    <wui-middleware-script></wui-middleware-script>
+  </body>
+</html>

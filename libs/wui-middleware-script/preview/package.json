@@ -1,0 +1,23 @@
+{
+  "name": "@visuelconcept/wui-middleware-script-preview",
+  "private": true,
+  "type": "module",
+  "description": "Standalone (WinCC-OA-free) preview harness for the Middleware-Script page: renders the REAL page code with real Siemens iX components, the WinCC OA layer stubbed with demo data. Use it to iterate on the module visually (npm run dev) and to capture the documentation screenshots (npm run shots).",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --serve",
+    "shots": "node build.mjs && node screenshot.mjs"
+  },
+  "dependencies": {
+    "@siemens/ix": "^2.7.0",
+    "@siemens/ix-icons": "^2.2.0",
+    "lit": "^3.2.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "tsyringe": "^4.8.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "playwright-core": "^1.50.0"
+  }
+}

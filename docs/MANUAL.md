@@ -168,6 +168,10 @@ Opening a wall lays its tiles out side by side; each embeds another view chromel
 
 ![Middleware Script](images/manual/middleware-script.png)
 
+> This capture comes from the module's WinCC-OA-free preview harness
+> (`libs/wui-middleware-script/preview/`, demo data) — the standard live
+> screenshot run replaces it like any other page.
+
 Author small **sandboxed JavaScript tasks that implement logic between
 datapoints** — thresholds, recomputations, copies, interlocks. Master/detail:
 the task list (with live per-task status badges fed by the manager) and a
