@@ -9,6 +9,13 @@ recomputations, copies, interlocks — executed server-side by the dedicated
 **`middlewareScript`** JS manager in a **worker sandbox**, with in-UI dry-run
 testing before enabling anything.
 
+![Middleware Script](../images/manual/middleware-script.png)
+
+> The screenshot is generated (live, logged in) by
+> [`tools/screenshot-pages.mjs`](../../tools/screenshot-pages.mjs) into
+> `docs/images/manual/` — run it against a WinCC OA project with this module
+> deployed to (re)produce them (see "Screenshots" in the root `CLAUDE.md`).
+
 ## What a task is
 
 | Piece | Meaning |

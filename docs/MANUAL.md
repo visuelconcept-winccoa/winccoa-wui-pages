@@ -164,6 +164,34 @@ Opening a wall lays its tiles out side by side; each embeds another view chromel
 
 ---
 
+## Middleware Script — `/middleware-script`
+
+![Middleware Script](images/manual/middleware-script.png)
+
+Author small **sandboxed JavaScript tasks that implement logic between
+datapoints** — thresholds, recomputations, copies, interlocks. Master/detail:
+the task list (with live per-task status badges fed by the manager) and a
+three-tab editor:
+
+- **Script** — a dependency-free code editor (line gutter, Tab indentation,
+  live syntax check). The script is a synchronous body `(inputs, output, log)`:
+  it reads `inputs.<alias>` and writes **only** via `output(alias, value)` on
+  the declared outputs — no arbitrary dpSet.
+- **Entrées / sorties & déclencheur** — declare the input/output `alias → DPE`
+  bindings (with a per-row existence probe) and the trigger: **on DP change**
+  (debounced) or **cyclic** (fixed period), plus the per-task timeout.
+- **Test** — dry-run the CURRENT draft in the server sandbox with editable
+  input values (or values loaded live): computed outputs, logs and duration
+  come back, **no output datapoint is written**.
+
+Execution happens server-side on the **`middlewareScript`** manager
+(worker-thread + `node:vm` sandbox, hot reload of saved tasks). *Tier 3*
+(`/api/middleware-script` + the `middlewareScript` manager; task persistence
+via `/api/para`). Application-Security roles `view` / `edit` / `test` /
+`control`.
+
+---
+
 ## Parametrization — `/para`
 
 ![Parametrization](images/manual/para.png)
