@@ -114,14 +114,16 @@ globalThis.__previewStatuses = {
     state: 'idle',
     lastRunAt: now(),
     lastDurationMs: 3,
-    runCount: 128
+    runCount: 128,
+    lastLogs: ['niveau = 93.5 => alarme true']
   }),
   'MiddlewareScript_Task_moyenne-debit-pompes.status': JSON.stringify({
     state: 'error',
     lastRunAt: now(),
     lastDurationMs: 1002,
     lastError: 'Timeout du script (1000 ms)',
-    runCount: 42
+    runCount: 42,
+    lastLogs: ['debitP1 = 12.4', 'debitP2 = 10.8', 'itérations…']
   }),
   'MiddlewareScript_Task_recopie-consigne.status': JSON.stringify({ state: 'disabled', runCount: 0 }),
   'MiddlewareScript_Task_temperature-four-2.status': JSON.stringify({

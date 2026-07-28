@@ -189,6 +189,7 @@ export class WuiMiddlewareScript extends LitElement {
           class=${this.listMode === 'models' ? 'hidden' : ''}
           .task=${selected}
           .models=${this.models}
+          .status=${selected == null ? null : (this.statuses.get(selected.id) ?? null)}
           .canEdit=${this.roleEdit}
           .canControl=${this.roleControl}
           .canTest=${this.roleTest}

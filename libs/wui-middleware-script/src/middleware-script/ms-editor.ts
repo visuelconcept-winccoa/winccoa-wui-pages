@@ -31,12 +31,14 @@ import {
   type MsIoBinding,
   type MsModel,
   type MsTask,
+  type MsTaskStatus,
   type MsTrigger
 } from './types.js';
 
 const TAB_SCRIPT = 0;
 const TAB_IO = 1;
 const TAB_TEST = 2;
+const TAB_JOURNAL = 3;
 
 /** DPE existence probes: alias -> ok/ko (transient UI state). */
 type ProbeMap = Map<string, boolean>;
@@ -143,6 +145,29 @@ export class WuiMsEditor extends LitElement {
         font-size: 0.8125rem;
         white-space: pre-line;
       }
+      .journal-grid {
+        display: grid;
+        grid-template-columns: 10rem 1fr;
+        gap: 0.25rem 0.75rem;
+        font-size: 0.8125rem;
+        align-items: baseline;
+      }
+      .journal-grid .k {
+        color: var(--theme-color-soft-text);
+      }
+      .journal-logs {
+        margin: 0;
+        padding: 0.5rem;
+        font-family: monospace;
+        font-size: 0.75rem;
+        white-space: pre-wrap;
+        word-break: break-word;
+        border: 1px solid var(--theme-color-soft-bdr);
+        border-radius: var(--theme-default-border-radius);
+        background: var(--theme-color-1);
+        max-height: 24rem;
+        overflow: auto;
+      }
       .footer {
         display: flex;
         align-items: center;
@@ -164,6 +189,8 @@ export class WuiMsEditor extends LitElement {
   @property({ attribute: false }) task: MsTask | null = null;
   /** Available reusable models (script-source selector + instantiation). */
   @property({ attribute: false }) models: MsModel[] = [];
+  /** Live execution status of the selected task (Journal tab; null = none). */
+  @property({ attribute: false }) status: MsTaskStatus | null = null;
   @property({ type: Boolean }) canEdit = true;
   @property({ type: Boolean }) canControl = true;
   @property({ type: Boolean }) canTest = true;
@@ -218,6 +245,7 @@ export class WuiMsEditor extends LitElement {
         <ix-tab-item>${localizeDir(MSG.editor.tabScript)}</ix-tab-item>
         <ix-tab-item>${localizeDir(MSG.editor.tabIo)}</ix-tab-item>
         <ix-tab-item>${localizeDir(MSG.editor.tabTest)}</ix-tab-item>
+        <ix-tab-item>${localizeDir(MSG.editor.tabJournal)}</ix-tab-item>
       </ix-tabs>
       <div class="body">${this.renderTab(draft)}</div>
       <div class="footer">
@@ -259,6 +287,9 @@ export class WuiMsEditor extends LitElement {
     if (this.activeTab === TAB_TEST) {
       return html`<wui-ms-test-panel .task=${this.effectiveDraft(draft)} .canTest=${this.canTest}></wui-ms-test-panel>`;
     }
+    if (this.activeTab === TAB_JOURNAL) {
+      return this.renderJournalTab();
+    }
     const model = this.draftModel();
     return html`
       <ix-textarea
@@ -292,6 +323,43 @@ export class WuiMsEditor extends LitElement {
               @wui:scriptchange=${(e: CustomEvent<string>) => this.patch({ script: e.detail })}
             ></wui-ms-script-editor>
           `}
+    `;
+  }
+
+  /** Live state + captured `log(…)` lines of the LAST manager run. */
+  private renderJournalTab(): TemplateResult {
+    const status = this.status;
+    if (status == null) {
+      return html`<div class="hint">${localizeDir(MSG.journal.none)}</div>`;
+    }
+    const stateLabel =
+      status.state === 'error'
+        ? MSG.list.stateError
+        : status.state === 'running'
+          ? MSG.list.stateRunning
+          : status.state === 'disabled'
+            ? MSG.list.stateDisabled
+            : MSG.list.stateIdle;
+    const logs = status.lastLogs ?? [];
+    return html`
+      <div class="hint">${localizeDir(MSG.journal.hint)}</div>
+      <div class="journal-grid">
+        <span class="k">${localizeDir(MSG.journal.state)}</span><span>${localizeDir(stateLabel)}</span>
+        <span class="k">${localizeDir(MSG.journal.lastRun)}</span>
+        <span>${status.lastRunAt == null ? '—' : new Date(status.lastRunAt).toLocaleString()}</span>
+        <span class="k">${localizeDir(MSG.journal.duration)}</span>
+        <span>${status.lastDurationMs == null ? '—' : `${status.lastDurationMs} ms`}</span>
+        <span class="k">${localizeDir(MSG.journal.runs)}</span><span>${status.runCount ?? 0}</span>
+        ${status.lastError != null && status.lastError !== ''
+          ? html`<span class="k">${localizeDir(MSG.journal.error)}</span><span class="errors">${status.lastError}</span>`
+          : nothing}
+      </div>
+      <div class="section">
+        <span class="title">${localizeDir(MSG.journal.logsHead)}</span>
+        ${logs.length === 0
+          ? html`<div class="hint">${localizeDir(MSG.journal.noLogs)}</div>`
+          : html`<pre class="journal-logs">${logs.join('\n')}</pre>`}
+      </div>
     `;
   }
 

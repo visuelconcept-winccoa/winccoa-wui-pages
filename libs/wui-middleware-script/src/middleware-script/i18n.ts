@@ -67,6 +67,7 @@ export const MSG = {
     tabScript: ml('Script', 'Script', 'Skript'),
     tabIo: ml('Inputs / outputs & trigger', 'Entrées / sorties & déclencheur', 'Ein-/Ausgänge & Auslöser'),
     tabTest: ml('Test', 'Test', 'Test'),
+    tabJournal: ml('Journal', 'Journal', 'Journal'),
     name: ml('Task name', 'Nom de la tâche', 'Aufgabenname'),
     description: ml('Description', 'Description', 'Beschreibung'),
     enable: ml('Task enabled (runs on the manager)', 'Tâche activée (exécutée par le manager)', 'Aufgabe aktiviert (läuft auf dem Manager)'),
@@ -121,6 +122,29 @@ export const MSG = {
     ),
     paramsHead: ml('Instance parameters', 'Paramètres de l’instance', 'Instanz-Parameter'),
     noParams: ml('This model declares no parameter.', 'Ce modèle ne déclare aucun paramètre.', 'Dieses Modell deklariert keine Parameter.')
+  },
+  journal: {
+    hint: ml(
+      'Live state of the LAST run on the manager — the `log(…)` lines of the script are captured (capped).',
+      'État live de la DERNIÈRE exécution sur le manager — les lignes `log(…)` du script sont capturées (plafonnées).',
+      'Live-Zustand des LETZTEN Laufs auf dem Manager — die `log(…)`-Zeilen des Skripts werden erfasst (begrenzt).'
+    ),
+    none: ml(
+      'No status yet — the middlewareScript manager is stopped, or the task never ran.',
+      'Aucun statut — le manager middlewareScript est arrêté, ou la tâche n’a jamais été exécutée.',
+      'Noch kein Status — der middlewareScript-Manager ist gestoppt oder die Aufgabe lief nie.'
+    ),
+    state: ml('State', 'État', 'Zustand'),
+    lastRun: ml('Last run', 'Dernière exécution', 'Letzter Lauf'),
+    duration: ml('Duration', 'Durée', 'Dauer'),
+    runs: ml('Run count', 'Nombre d’exécutions', 'Anzahl Läufe'),
+    error: ml('Last error', 'Dernière erreur', 'Letzter Fehler'),
+    logsHead: ml('Script logs (last run)', 'Logs du script (dernière exécution)', 'Skript-Logs (letzter Lauf)'),
+    noLogs: ml(
+      'No log line — add `log(…)` calls to the script.',
+      'Aucune ligne de log — ajoutez des appels `log(…)` dans le script.',
+      'Keine Log-Zeile — fügen Sie `log(…)`-Aufrufe in das Skript ein.'
+    )
   },
   modelEditor: {
     name: ml('Model name', 'Nom du modèle', 'Modellname'),

@@ -62,6 +62,9 @@ const DEFAULT_TIMEOUT_MS = 1000;
 const MAX_TIMEOUT_MS = 30_000;
 const DEFAULT_DEBOUNCE_MS = 200;
 const MIN_INTERVAL_MS = 1000;
+/** Last-run `log(…)` lines persisted into `.status` (Journal tab). */
+const MAX_STATUS_LOGS = 30;
+const MAX_STATUS_LOG_CHARS = 300;
 /** Extra delay before the parent hard-terminates a worker past the vm timeout. */
 const KILL_GRACE_MS = 250;
 
@@ -299,7 +302,12 @@ async function runTask(entry) {
     lastRunAt: new Date().toISOString(),
     lastDurationMs: result.durationMs,
     lastError: result.ok ? undefined : result.error,
-    runCount: entry.runCount
+    runCount: entry.runCount,
+    // Persist the run's log(…) lines (capped) so the page's Journal tab can
+    // show them live — also on error: the lines before the throw are the clue.
+    lastLogs: Array.isArray(result.logs)
+      ? result.logs.slice(-MAX_STATUS_LOGS).map((line) => String(line).slice(0, MAX_STATUS_LOG_CHARS))
+      : []
   });
   if (entry.rerun && running.get(task.dp) === entry) {
     entry.rerun = false;

@@ -71,6 +71,11 @@ log('level', inputs.level);
                                                            triggers + worker sandbox + dpSet outputs
 ```
 
+- **Editor**: CodeMirror 6 with JavaScript syntax highlighting, line numbers,
+  Tab indentation and a live parse-only syntax check.
+- **Journal**: each run's `log(…)` lines are captured by the manager into
+  `.status` (capped) — the *Journal* tab shows the last run live (state,
+  duration, run count, error, logs).
 - **Persistence**: kit `DpJsonStore` over the shared `/api/para` API — one DP
   per task, `.json` written by the page, `.status` written only by the manager
   (GxP audit rows into `AuditTrail_MiddlewareScript`).

@@ -87,6 +87,8 @@ export interface MsTaskStatus {
   lastDurationMs?: number;
   lastError?: string;
   runCount?: number;
+  /** `log(…)` lines of the LAST run (manager-capped), shown in the Journal tab. */
+  lastLogs?: string[];
 }
 
 /** Result of a sandbox dry-run (POST /api/middleware-script/test). */

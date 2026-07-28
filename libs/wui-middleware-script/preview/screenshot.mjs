@@ -73,7 +73,7 @@ try {
   // Playwright CSS selectors pierce shadow DOM. Select the first demo task and
   // let the Stencil components settle.
   await page.locator('wui-ms-task-list button.row').first().click();
-  await page.waitForSelector('wui-ms-script-editor textarea');
+  await page.waitForSelector('wui-ms-script-editor .cm-editor');
   await page.waitForTimeout(800);
   await page.screenshot({ path: path.join(outDir, 'middleware-script.png') });
   console.log(`✓ ${path.join(outDir, 'middleware-script.png')}`);
@@ -93,7 +93,7 @@ try {
   // Models mode: open the demo reusable model (declared aliases + parameters).
   await page.locator('wui-ms-task-list .mode button').nth(1).click();
   await page.locator('wui-ms-task-list button.row').first().click();
-  await page.waitForSelector('wui-ms-model-editor wui-ms-script-editor textarea');
+  await page.waitForSelector('wui-ms-model-editor wui-ms-script-editor .cm-editor');
   await page.waitForTimeout(500);
   await page.screenshot({ path: path.join(outDir, 'middleware-script-model.png') });
   console.log(`✓ ${path.join(outDir, 'middleware-script-model.png')}`);

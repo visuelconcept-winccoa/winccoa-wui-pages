@@ -65,6 +65,32 @@ The page's "syntax OK/error" indicator is a PARSE-ONLY probe
 (`new Function(...)` in types.ts, never invoked) — same body wrapping as the
 worker, so what parses in the UI parses in the sandbox.
 
+## Script editor — CodeMirror 6
+
+`ms-script-editor` embeds CodeMirror 6 (deliberate dependency, user-approved):
+`minimalSetup` + line numbers + `indentWithTab` + `@codemirror/lang-javascript`
++ `oneDark` highlight palette, with the chrome (background/gutter) re-themed on
+the dashboard tokens. Declared as `"*"` peerDependencies of the lib (same
+pattern as `three` in machine-fleet-3d — the workspace/installer provides
+them; the preview pins concrete versions). Contracts:
+- CONTROLLED component: parent owns the text; `wui:scriptchange` on each edit;
+  an external `script` prop change replaces the doc only when it differs
+  (no update loop).
+- The tab bodies unmount on tab switches → the EditorView is destroyed on
+  disconnect and rebuilt on reconnect (`connectedCallback` + updateComplete).
+  Don't hold references to the view across tabs.
+
+## Run journal (`log(…)` in production)
+
+`log(…)` lines are no longer test-only: the manager persists the LAST run's
+lines into `.status.lastLogs` (capped `MAX_STATUS_LOGS`=30 lines ×
+`MAX_STATUS_LOG_CHARS`=300 chars — `.status` is a DP element, keep it small),
+including on error (the lines before the throw are the clue). The task
+editor's **Journal** tab renders them live (page passes the dpConnect-fed
+status of the selected task), together with state / last run / duration /
+run count / last error. The worker-side cap stays 200 lines per run (tests
+return them all; the status persists the tail).
+
 ## Sandbox containment — honest limits
 
 `worker_threads` + `node:vm` with a null-prototype context removes ambient
