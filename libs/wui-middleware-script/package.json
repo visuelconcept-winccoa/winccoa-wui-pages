@@ -16,6 +16,7 @@
     "codemirror": "*",
     "@codemirror/commands": "*",
     "@codemirror/lang-javascript": "*",
+    "@codemirror/language": "*",
     "@codemirror/state": "*",
     "@codemirror/theme-one-dark": "*",
     "@codemirror/view": "*",

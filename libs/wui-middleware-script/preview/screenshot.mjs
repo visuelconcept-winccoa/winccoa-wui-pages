@@ -69,6 +69,9 @@ const browser = await chromium.launch({
 try {
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
   await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'networkidle' });
+  // The floating light/dark toggle is a preview-only helper — keep it out of
+  // the documentation captures.
+  await page.addStyleTag({ content: '#theme-toggle { display: none !important; }' });
 
   // Playwright CSS selectors pierce shadow DOM. Select the first demo task and
   // let the Stencil components settle.

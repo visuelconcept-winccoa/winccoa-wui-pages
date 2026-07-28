@@ -68,11 +68,19 @@ worker, so what parses in the UI parses in the sandbox.
 ## Script editor — CodeMirror 6
 
 `ms-script-editor` embeds CodeMirror 6 (deliberate dependency, user-approved):
-`minimalSetup` + line numbers + `indentWithTab` + `@codemirror/lang-javascript`
-+ `oneDark` highlight palette, with the chrome (background/gutter) re-themed on
-the dashboard tokens. Declared as `"*"` peerDependencies of the lib (same
-pattern as `three` in machine-fleet-3d — the workspace/installer provides
-them; the preview pins concrete versions). Contracts:
+`minimalSetup` + line numbers + `indentWithTab` + `@codemirror/lang-javascript`.
+Declared as `"*"` peerDependencies of the lib (same pattern as `three` in
+machine-fleet-3d — the workspace/installer provides them; the preview pins
+concrete versions). Contracts:
+- **THEME-AWARE palette**: the chrome (background/gutter/caret) is built on
+  the `--theme-*` tokens only, so it follows the active iX theme by itself;
+  the syntax TOKEN palette swaps through a Compartment —
+  `oneDarkHighlightStyle` on a dark theme, CodeMirror's
+  `defaultHighlightStyle` (light) otherwise. The mode is read from the iX
+  theme class (`theme-*-dark` / `theme-*-light` on html/body; OS preference
+  as fallback, dark default) and re-evaluated by a MutationObserver, so a
+  live theme switch restyles open editors without reload. Never import the
+  full `oneDark` extension (it hard-codes dark backgrounds).
 - CONTROLLED component: parent owns the text; `wui:scriptchange` on each edit;
   an external `script` prop change replaces the doc only when it differs
   (no update loop).

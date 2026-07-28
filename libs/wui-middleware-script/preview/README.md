@@ -25,6 +25,10 @@ The demo scene includes a reusable MODEL («Seuil avec hystérésis», declared
 aliases + parameters) and a task instantiating it («Alarme température four 2»,
 `seuilHaut: 250`) — handy to iterate on the instantiation UX.
 
+A floating **clair / sombre** button (bottom right, preview-only — hidden in
+the screenshot captures) toggles the iX theme class on `<body>`, to exercise
+the editor's theme-aware syntax palette and the page in light mode.
+
 `npm run shots` uses `playwright-core` with the Chromium pointed to by
 `PW_CHROMIUM` (default `/opt/pw-browsers/chromium`, the Claude-Code remote
 container's install; point it to any local Chrome/Chromium otherwise).

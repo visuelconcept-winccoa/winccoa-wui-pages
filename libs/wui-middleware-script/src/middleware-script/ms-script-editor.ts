@@ -2,10 +2,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * CodeMirror-6 script editor: JavaScript syntax highlighting (one-dark
- * palette over the dashboard theme tokens), line numbers, bracket matching,
- * history, Tab indentation — plus the live parse-only syntax probe
- * (types.ts `scriptSyntaxError`; the script is never executed here).
+ * CodeMirror-6 script editor: JavaScript syntax highlighting, line numbers,
+ * bracket matching, history, Tab indentation — plus the live parse-only
+ * syntax probe (types.ts `scriptSyntaxError`; the script is never executed
+ * here).
+ *
+ * THEME-AWARE: the editor chrome (background, gutter, borders) is built on
+ * the dashboard's `--theme-*` tokens, so it follows the active iX theme by
+ * itself; only the syntax TOKEN palette must be swapped — one-dark in dark
+ * themes, CodeMirror's default (light) style otherwise. The active mode is
+ * detected from the iX theme class (`theme-*-dark` / `theme-*-light` on
+ * html/body) and re-evaluated live through a MutationObserver, so a theme
+ * switch restyles open editors without a reload.
  *
  * Controlled component: the parent owns the text (`script` prop) and receives
  * `wui:scriptchange` on every edit; an external prop change replaces the
@@ -15,8 +23,9 @@
  */
 import { indentWithTab } from '@codemirror/commands';
 import { javascript } from '@codemirror/lang-javascript';
-import { Compartment, EditorState } from '@codemirror/state';
-import { oneDark } from '@codemirror/theme-one-dark';
+import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { Compartment, EditorState, type Extension } from '@codemirror/state';
+import { oneDarkHighlightStyle } from '@codemirror/theme-one-dark';
 import { EditorView, keymap, lineNumbers } from '@codemirror/view';
 import { minimalSetup } from 'codemirror';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
@@ -25,26 +34,42 @@ import { property, query } from 'lit/decorators.js';
 import { MSG, localizeDir } from './i18n.js';
 import { scriptSyntaxError } from './types.js';
 
-/** Editor chrome aligned on the dashboard theme (layered after oneDark). */
-const dashboardTheme = EditorView.theme(
-  {
-    '&': {
-      height: '100%',
-      fontSize: '0.8125rem',
-      backgroundColor: 'var(--theme-color-1)'
-    },
-    '&.cm-focused': { outline: 'none' },
-    '.cm-content': { fontFamily: 'monospace' },
-    '.cm-gutters': {
-      backgroundColor: 'var(--theme-color-2)',
-      color: 'var(--theme-color-soft-text)',
-      border: 'none',
-      borderRight: '1px solid var(--theme-color-soft-bdr)'
-    },
-    '.cm-scroller': { overflow: 'auto' }
+/** Editor chrome on the dashboard theme tokens (valid for light AND dark). */
+const CHROME_SPEC = {
+  '&': {
+    height: '100%',
+    fontSize: '0.8125rem',
+    backgroundColor: 'var(--theme-color-1)',
+    color: 'var(--theme-color-std-text)'
   },
-  { dark: true }
-);
+  '&.cm-focused': { outline: 'none' },
+  '.cm-content': { fontFamily: 'monospace', caretColor: 'var(--theme-color-std-text)' },
+  '.cm-gutters': {
+    backgroundColor: 'var(--theme-color-2)',
+    color: 'var(--theme-color-soft-text)',
+    border: 'none',
+    borderRight: '1px solid var(--theme-color-soft-bdr)'
+  },
+  '.cm-scroller': { overflow: 'auto' }
+} as const;
+
+/** iX marks the active theme with a `theme-<name>-dark|light` class. */
+function isDarkTheme(): boolean {
+  const classes = `${document.documentElement.className} ${document.body?.className ?? ''}`;
+  if (/theme-[\w-]*-light/i.test(classes)) return false;
+  if (/theme-[\w-]*-dark/i.test(classes)) return true;
+  // No iX theme class (bare host page): follow the OS preference, defaulting
+  // to dark like the shipped dashboards.
+  return window.matchMedia?.('(prefers-color-scheme: light)').matches !== true;
+}
+
+/** Chrome + token palette for one mode (swapped through a Compartment). */
+function themeExtensions(dark: boolean): Extension {
+  return [
+    EditorView.theme(CHROME_SPEC, { dark }),
+    syntaxHighlighting(dark ? oneDarkHighlightStyle : defaultHighlightStyle)
+  ];
+}
 
 export class WuiMsScriptEditor extends LitElement {
   static override readonly styles = [
@@ -96,6 +121,9 @@ export class WuiMsScriptEditor extends LitElement {
 
   private view?: EditorView;
   private readonly readonlyCompartment = new Compartment();
+  private readonly themeCompartment = new Compartment();
+  private dark = true;
+  private themeObserver?: MutationObserver;
 
   override render(): TemplateResult {
     const syntax = scriptSyntaxError(this.script);
@@ -110,6 +138,7 @@ export class WuiMsScriptEditor extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
+    this.watchTheme();
     // Tab switches unmount/remount this element: rebuild the view on reconnect
     // (initial mount goes through firstUpdated — the frame does not exist yet).
     if (this.hasUpdated) {
@@ -119,6 +148,8 @@ export class WuiMsScriptEditor extends LitElement {
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
+    this.themeObserver?.disconnect();
+    this.themeObserver = undefined;
     this.view?.destroy();
     this.view = undefined;
   }
@@ -140,6 +171,22 @@ export class WuiMsScriptEditor extends LitElement {
     }
   }
 
+  /** Re-evaluate the iX theme class live (theme switch without reload). */
+  private watchTheme(): void {
+    this.dark = isDarkTheme();
+    this.themeObserver = new MutationObserver(() => {
+      const dark = isDarkTheme();
+      if (dark !== this.dark) {
+        this.dark = dark;
+        this.view?.dispatch({ effects: this.themeCompartment.reconfigure(themeExtensions(dark)) });
+      }
+    });
+    this.themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    if (document.body) {
+      this.themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    }
+  }
+
   private createView(): void {
     if (this.frame == null || !this.isConnected) {
       return;
@@ -154,8 +201,7 @@ export class WuiMsScriptEditor extends LitElement {
           lineNumbers(),
           keymap.of([indentWithTab]),
           javascript(),
-          oneDark,
-          dashboardTheme,
+          this.themeCompartment.of(themeExtensions(this.dark)),
           this.readonlyCompartment.of(this.readonlyExtensions()),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
@@ -173,7 +219,7 @@ export class WuiMsScriptEditor extends LitElement {
     });
   }
 
-  private readonlyExtensions() {
+  private readonlyExtensions(): Extension {
     return [EditorState.readOnly.of(this.readonly), EditorView.editable.of(!this.readonly)];
   }
 }
