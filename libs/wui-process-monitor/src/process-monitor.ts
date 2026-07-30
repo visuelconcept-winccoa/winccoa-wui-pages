@@ -13,7 +13,7 @@
  *    `ProcessMonitor_Node` datapoints.
  *  - **Project upload**: deploy a ZIP into the project across ALL connected
  *    servers (optional folder purge, 7-Zip extraction into non-protected folders,
- *    config.env, optional restart) — DPL import is NOT here.
+ *    optional restart) — DPL import is NOT here.
  * Plus a **History** tab. Every project import and manager restart is traced to a
  * GxP `_AuditTrail` datapoint (`AuditTrail_ProcessMonitor`, with the session user)
  * and an operations-log datapoint, both ensured at page init.

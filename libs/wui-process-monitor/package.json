@@ -2,7 +2,7 @@
   "name": "@visuelconcept/wui-process-monitor",
   "type": "module",
   "version": "0.1.0",
-  "description": "Process Monitor — standalone WinCC OA WebUI page: pmon manager console (status + start/stop/restart + restart-all) and project ZIP upload/deploy (optional folder purge, 7-Zip extraction, config.env, optional restart) with GxP audit-trail tracing. DPL import is handled elsewhere.",
+  "description": "Process Monitor — standalone WinCC OA WebUI page: pmon manager console (status + start/stop/restart + restart-all) and project ZIP upload/deploy (optional folder purge, 7-Zip extraction, optional restart) with GxP audit-trail tracing. DPL import is handled elsewhere.",
   "author": { "name": "Visuel Concept" },
   "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page"],
   "license": "MIT",

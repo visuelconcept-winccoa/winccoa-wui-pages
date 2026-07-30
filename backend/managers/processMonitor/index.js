@@ -26,7 +26,7 @@
  *
  * Project deployment: optionally purge selected folders (allow-list), extract an
  * uploaded ZIP (7-Zip) into the project — NEVER into protected folders
- * (logs/log/db/config/images/bin) — run config.env.bat, optionally restart all.
+ * (logs/log/db/config/images/bin) — then optionally restart all.
  * DPL import is intentionally NOT handled (done elsewhere).
  *
  * Register in config/progs:
@@ -243,13 +243,7 @@ async function purgeFolder(rel) {
   }
 }
 
-function runConfigEnv() {
-  const bat = path.join(PROJ_PATH, 'config', 'config.env.bat');
-  if (!fs.existsSync(bat)) return Promise.resolve({ ok: true, skipped: true });
-  return run(bat, [], PROJ_PATH);
-}
-
-/** Deploy a ZIP into the LOCAL project (purge → extract → config.env → restart). */
+/** Deploy a ZIP into the LOCAL project (purge → extract → restart). */
 async function doLocalDeploy({ zipPath, clearFolders, restart }) {
   if (!zipPath || !fs.existsSync(zipPath)) return { ok: false, error: `ZIP introuvable : ${zipPath}` };
   const cleared = [];
@@ -264,7 +258,6 @@ async function doLocalDeploy({ zipPath, clearFolders, restart }) {
   log(`Deploy: extracting ${zipPath} into ${PROJ_PATH} (cleared=[${cleared.join(', ')}])`);
   const ex = await extractZip(zipPath);
   if (!ex.ok) return { ok: false, error: ex.error, cleared, skipped: ex.skipped };
-  await runConfigEnv();
   if (restart) {
     // Fire the restart, then return — pmon RESTART_ALL recycles managers (incl.
     // the webserver) shortly after this reply is sent.

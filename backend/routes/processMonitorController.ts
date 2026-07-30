@@ -9,8 +9,8 @@
 // manager: list/control pmon managers, add/remove pmon configuration entries,
 // restart-all, and deploy an uploaded project ZIP (chunked upload assembled to
 // a temp file, then handed to the manager which purges selected folders,
-// extracts via 7-Zip, runs config.env and optionally restarts all). DPL import
-// is intentionally NOT handled here.
+// extracts via 7-Zip and optionally restarts all). DPL import is intentionally
+// NOT handled here.
 //
 // winccoa-manager (the MSA `Vrpc` namespace) is supplied by the WinCC OA node
 // bootstrap at runtime; loaded via a guarded require so only /api/process-monitor
