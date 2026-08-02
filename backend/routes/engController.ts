@@ -42,13 +42,17 @@ import {
   diffWorkspace,
   liveScopeOf,
   asEngWarnings,
+  blockingProblems,
+  normalizeDevice,
   refreshWarnings,
+  validateDevice,
   withAccess,
   withRoles,
   type AddressBook,
   type AddressConfig,
   type BookDiff,
   type Device,
+  type DeviceDraft,
   type DpTypeStructure,
   type DpeConfigs,
   type EngPlan,
@@ -262,7 +266,12 @@ export class EngController {
     res.status(200).json({ ok: true, devices: this.store.listDevices<Device>() });
   };
 
-  /** POST /api/eng/devices  body { devices } — replace the device registry. */
+  /**
+   * PUT /api/eng/devices  body { devices } — replace the WHOLE registry.
+   * Kept for bulk provisioning (an import, a migration script). The studio's form
+   * uses the single-device routes below instead: replacing the list from a UI that
+   * loaded it minutes ago silently discards whatever another operator added since.
+   */
   public saveDevices = (req: Request, res: Response): void => {
     const devices = (req.body ?? {}).devices as Device[] | undefined;
     if (!Array.isArray(devices)) {
@@ -271,6 +280,95 @@ export class EngController {
     }
     this.store.saveDevices(devices);
     res.status(200).json({ ok: true, devices });
+  };
+
+  /**
+   * POST /api/eng/devices  body { device } — CREATE one device.
+   *
+   * A creation has its own route rather than an "empty id" in the path: `POST
+   * /devices/` would collide with the registry route, and any in-band sentinel
+   * ("new", "-") could one day be a legitimate slug. The SERVER derives the id —
+   * two operators creating the same name concurrently then get `four1` and
+   * `four1-2`, where a client-derived id would have made the second silently
+   * overwrite the first.
+   */
+  public createDevice = (req: Request, res: Response): void => {
+    const draft = this.readDraft(req, res);
+    if (!draft) return;
+    const devices = this.store.listDevices<Device>();
+    if (this.refuse(res, { ...draft, id: '' }, devices)) return;
+    const device = normalizeDevice({ ...draft, id: '' }, devices);
+    this.store.saveDevices([...devices, device]);
+    res.status(201).json({ ok: true, device, devices: [...devices, device] });
+  };
+
+  /**
+   * POST /api/eng/devices/:id  body { device } — UPDATE one device.
+   *
+   * 404 when `:id` is unknown: a client that thinks it is editing must not create
+   * (that is what the route above is for). The id is taken from the PATH and the
+   * body's own `id` is ignored, so a rename can never re-parent the books and
+   * configs that reference it.
+   */
+  public saveDevice = (req: Request, res: Response): void => {
+    const id = String(req.params['id']);
+    const draft = this.readDraft(req, res);
+    if (!draft) return;
+    const devices = this.store.listDevices<Device>();
+    const index = devices.findIndex((device) => device.id === id);
+    if (index === -1) {
+      res.status(404).json({ ok: false, error: `unknown device '${id}'` });
+      return;
+    }
+    const others = devices.filter((device) => device.id !== id);
+    if (this.refuse(res, { ...draft, id }, others)) return;
+    const device = normalizeDevice({ ...draft, id }, others);
+    const updated = [...devices];
+    updated[index] = { ...devices[index], ...device };
+    this.store.saveDevices(updated);
+    res.status(200).json({ ok: true, device: updated[index], devices: updated });
+  };
+
+  /** Body → draft, answering 400 itself when the body is not one. */
+  private readDraft(req: Request, res: Response): DeviceDraft | null {
+    const draft = (req.body ?? {}).device as DeviceDraft | undefined;
+    if (!draft || typeof draft.name !== 'string') {
+      res.status(400).json({ ok: false, error: 'device {name, protocol, …} is required' });
+      return null;
+    }
+    return draft;
+  }
+
+  /**
+   * Re-validate with the CORE's rules — the form already did, but a client is not a
+   * guard — and answer 400 + the structured `problems` when they refuse. Returns
+   * true when the request was answered (the caller must stop).
+   */
+  private refuse(res: Response, draft: DeviceDraft, others: Device[]): boolean {
+    const problems = blockingProblems(validateDevice(draft, others));
+    if (problems.length === 0) return false;
+    res.status(400).json({ ok: false, error: problems.map((problem) => problem.message).join(' '), problems });
+    return true;
+  }
+
+  /**
+   * DELETE /api/eng/devices/:id — forget an equipment.
+   *
+   * Its BOOKS are deliberately kept: the relation is many-to-many, so a catalog may
+   * be shared with other equipments, and deleting a device must not delete a
+   * catalog. Datapoints and configs already checked in are untouched too — this is
+   * an engineering-registry deletion, not a project one.
+   */
+  public deleteDevice = (req: Request, res: Response): void => {
+    const id = String(req.params['id']);
+    const devices = this.store.listDevices<Device>();
+    const remaining = devices.filter((device) => device.id !== id);
+    if (remaining.length === devices.length) {
+      res.status(404).json({ ok: false, error: `unknown device '${id}'` });
+      return;
+    }
+    this.store.saveDevices(remaining);
+    res.status(200).json({ ok: true, devices: remaining });
   };
 
   // --- address books ---------------------------------------------------------

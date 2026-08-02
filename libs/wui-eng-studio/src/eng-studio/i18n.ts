@@ -105,11 +105,6 @@ export const MSG = {
   // --- devices panel --------------------------------------------------------
   devicesRail: ml('COMMUNICATING DEVICES', 'ÉQUIPEMENTS COMMUNICANTS', 'KOMMUNIZIERENDE GERÄTE'),
   addDevice: ml('+ Add', '+ Ajouter', '+ Hinzufügen'),
-  addDeviceSoon: ml(
-    'Add a device: per-protocol form (coming soon).',
-    'Ajout d’équipement : formulaire par protocole (à venir).',
-    'Gerät hinzufügen: protokollspezifisches Formular (folgt).'
-  ),
   noDevice: ml('No device.', 'Aucun équipement.', 'Kein Gerät.'),
   books: ml('Books', 'Carnets', 'Adressbücher'),
   bookCount: ml('{n} books', '{n} carnets', '{n} Adressbücher'),
@@ -140,6 +135,67 @@ export const MSG = {
   fieldWarnings: ml('warnings', 'avertissements', 'Warnungen'),
   entriesValue: ml('{n} signals · {types} type(s)', '{n} signaux · {types} type(s)', '{n} Signale · {types} Typ(en)'),
   generatorWarnings: ml('Generator warnings', 'Avertissements du générateur', 'Generator-Warnungen'),
+
+  // --- device form ----------------------------------------------------------
+  deviceEdit: ml('✎ Edit', '✎ Modifier', '✎ Bearbeiten'),
+  deviceFormNew: ml('New device', 'Nouvel équipement', 'Neues Gerät'),
+  deviceFormEdit: ml('Device — {name}', 'Équipement — {name}', 'Gerät — {name}'),
+  deviceDelete: ml('Delete', 'Supprimer', 'Löschen'),
+  deviceDeleteConfirm: ml('Confirm the deletion', 'Confirmer la suppression', 'Löschen bestätigen'),
+  deviceDeleteHint: ml(
+    'Deleting only forgets the equipment here: its books are KEPT (they may be shared) and nothing already checked in is touched.',
+    'La suppression n’oublie l’équipement qu’ici : ses carnets sont CONSERVÉS (ils peuvent être mutualisés) et rien de déjà checké-in n’est touché.',
+    'Das Löschen vergisst das Gerät nur hier: seine Adressbücher BLEIBEN erhalten (sie können gemeinsam genutzt werden) und bereits eingecheckte Objekte werden nicht angetastet.'
+  ),
+  cancel: ml('Cancel', 'Annuler', 'Abbrechen'),
+  save: ml('Save', 'Enregistrer', 'Speichern'),
+  deviceIdentity: ml('Identity', 'Identité', 'Identität'),
+  deviceName: ml('name', 'nom', 'Name'),
+  deviceIdFixed: ml(
+    'Identifier: {id} — fixed at creation. Books and configs reference it, so a rename never changes it.',
+    'Identifiant : {id} — fixé à la création. Les carnets et les configs le référencent : un renommage ne le change pas.',
+    'Kennung: {id} — bei der Erstellung festgelegt. Adressbücher und Konfigs verweisen darauf, eine Umbenennung ändert sie nicht.'
+  ),
+  deviceIdDerived: ml(
+    'Identifier: {id} — derived from the name, then fixed for good.',
+    'Identifiant : {id} — dérivé du nom, puis fixé définitivement.',
+    'Kennung: {id} — aus dem Namen abgeleitet und dann endgültig festgelegt.'
+  ),
+  deviceProtocol: ml('protocol', 'protocole', 'Protokoll'),
+  deviceAccessModes: ml('access modes', 'modes d’accès', 'Zugriffsarten'),
+  deviceAccessModesHint: ml(
+    'One candidate address is generated per checked mode — an S7-1500 reachable both ways carries S7+ AND OPC UA.',
+    'Une adresse candidate est générée par mode coché — un S7-1500 joignable des deux façons porte S7+ ET OPC UA.',
+    'Pro angehakter Zugriffsart wird eine Kandidaten-Adresse erzeugt — eine S7-1500, die auf beiden Wegen erreichbar ist, trägt S7+ UND OPC UA.'
+  ),
+  deviceConnection: ml('Connection — {protocol}', 'Connexion — {protocol}', 'Verbindung — {protocol}'),
+  deviceDriverNumber: ml('driver number', 'numéro de driver', 'Treibernummer'),
+  devicePollGroup: ml('poll group', 'groupe de poll', 'Poll-Gruppe'),
+  devicePollGroupHint: ml(
+    'Both optional. The driver number is the WinCC OA manager number of the driver; the poll group names the _PollGroup datapoint the generated addresses subscribe to.',
+    'Les deux sont optionnels. Le numéro de driver est le numéro de manager WinCC OA du driver ; le groupe de poll nomme le datapoint _PollGroup auquel les adresses générées s’abonnent.',
+    'Beide optional. Die Treibernummer ist die WinCC OA-Managernummer des Treibers; die Poll-Gruppe benennt den _PollGroup-Datenpunkt, den die erzeugten Adressen abonnieren.'
+  ),
+  deviceBooks: ml('Address books', 'Carnets d’adresses', 'Adressbücher'),
+  deviceNoBookYet: ml(
+    'No book yet — save the equipment, then browse its server or ingest an export.',
+    'Aucun carnet pour l’instant — enregistrer l’équipement, puis parcourir son serveur ou ingérer un export.',
+    'Noch kein Adressbuch — das Gerät speichern, dann seinen Server durchlaufen oder einen Export einlesen.'
+  ),
+  deviceBooksHint: ml(
+    'A book may be shared by several equipments (⇆): the catalog of a machine model is bound to each one at generation time.',
+    'Un carnet peut être mutualisé entre plusieurs équipements (⇆) : le catalogue d’un modèle de machine est lié à chacun à la génération.',
+    'Ein Adressbuch kann von mehreren Geräten gemeinsam genutzt werden (⇆): der Katalog eines Maschinenmodells wird bei der Erzeugung an jedes gebunden.'
+  ),
+  deviceProblems: ml('Problems', 'Problèmes', 'Probleme'),
+  deviceCreated: ml('Device “{name}” created.', 'Équipement « {name} » créé.', 'Gerät „{name}“ erstellt.'),
+  deviceUpdated: ml('Device “{name}” updated.', 'Équipement « {name} » modifié.', 'Gerät „{name}“ geändert.'),
+  deviceDeleted: ml(
+    'Device “{name}” deleted — its books are kept.',
+    'Équipement « {name} » supprimé — ses carnets sont conservés.',
+    'Gerät „{name}“ gelöscht — seine Adressbücher bleiben erhalten.'
+  ),
+  deviceSaveFailed: ml('Save refused: {error}', 'Enregistrement refusé : {error}', 'Speichern abgelehnt: {error}'),
 
   // --- online browse --------------------------------------------------------
   browseTitle: ml('Online OPC UA browse', 'Parcours OPC UA en ligne', 'OPC UA-Browse (online)'),
@@ -372,6 +428,27 @@ export const ROLE_LABEL: Record<string, Ml> = {
   unknown: ml('to qualify', 'à qualifier', 'zu qualifizieren')
 };
 
+/**
+ * Labels of the connection parameters of the device form, keyed by the core's
+ * `DeviceParamSpec.key`.
+ *
+ * The SHAPE of the form is data owned by the core (`PROTOCOL_PARAMS`: which keys a
+ * protocol needs, which ones are required, an example value); only the WORDS live
+ * here. Adding a protocol is then a core change plus a few labels — never a change
+ * to the page's template. An unknown key falls back to the raw key, so a new
+ * parameter shows up unlabelled rather than invisible.
+ */
+export const PARAM_LABEL: Record<string, Ml> = {
+  server: ml('server (OPC UA connection)', 'serveur (connexion OPC UA)', 'Server (OPC UA-Verbindung)'),
+  endpoint: ml('endpoint (for the record)', 'endpoint (pour mémoire)', 'Endpoint (zur Dokumentation)'),
+  ip: ml('IP address', 'adresse IP', 'IP-Adresse'),
+  rack: ml('rack', 'rack', 'Rack'),
+  slot: ml('slot', 'slot', 'Steckplatz'),
+  port: ml('TCP port', 'port TCP', 'TCP-Port'),
+  unitId: ml('unit id (slave)', 'unit id (esclave)', 'Unit-ID (Slave)'),
+  cpu: ml('CPU reference', 'référence CPU', 'CPU-Referenz')
+};
+
 /** Substitute `{placeholder}` occurrences. Unknown placeholders are left as-is. */
 export function fmt(template: string, params: Record<string, string | number> = {}): string {
   return template.replaceAll(/\{(\w+)\}/g, (whole, key: string) => (key in params ? String(params[key]) : whole));
@@ -394,6 +471,44 @@ export function fmt(template: string, params: Record<string, string | number> = 
  *    (see the core's `asEngWarnings`): nothing to translate, show it as it is.
  */
 export const WARNING_MSG: Record<string, Ml> = {
+  // --- device declaration (the form's own refusals) ----------------------------
+  'device.name-required': ml('A device name is required.', 'Un nom d’équipement est requis.', 'Ein Gerätename ist erforderlich.'),
+  'device.name-invalid': ml(
+    'The name "{name}" is not a valid WinCC OA identifier — use "{clean}" (letters, digits and _).',
+    'Le nom « {name} » n’est pas un identifiant WinCC OA valide — utiliser « {clean} » (lettres, chiffres et _).',
+    'Der Name „{name}“ ist kein gültiger WinCC OA-Identifier — „{clean}“ verwenden (Buchstaben, Ziffern und _).'
+  ),
+  'device.name-taken': ml(
+    'Another device is already named "{name}".',
+    'Un autre équipement porte déjà le nom « {name} ».',
+    'Ein anderes Gerät heißt bereits „{name}“.'
+  ),
+  'device.id-taken': ml(
+    'The identifier "{id}" is already used by another device.',
+    'L’identifiant « {id} » est déjà utilisé par un autre équipement.',
+    'Die Kennung „{id}“ wird bereits von einem anderen Gerät verwendet.'
+  ),
+  'device.no-access-mode': ml(
+    'Select at least one access mode — the model generator needs one to pick an address.',
+    'Sélectionner au moins un mode d’accès — le générateur de modèle en a besoin pour choisir une adresse.',
+    'Mindestens eine Zugriffsart auswählen — der Modellgenerator braucht sie, um eine Adresse zu wählen.'
+  ),
+  'device.param-required': ml(
+    'The "{param}" parameter is required for the {protocol} protocol.',
+    'Le paramètre « {param} » est requis pour le protocole {protocol}.',
+    'Der Parameter „{param}“ ist für das Protokoll {protocol} erforderlich.'
+  ),
+  'device.driver-invalid': ml(
+    'The driver number "{value}" must be a positive integer (a WinCC OA manager number).',
+    'Le numéro de driver « {value} » doit être un entier positif (un numéro de manager WinCC OA).',
+    'Die Treibernummer „{value}“ muss eine positive ganze Zahl sein (eine WinCC OA-Managernummer).'
+  ),
+  'device.driver-recommended': ml(
+    'No driver number: auto-detection is only verified for OPC UA, so a {protocol} address will be refused at check-in until this is set.',
+    'Aucun numéro de driver : la détection automatique n’est vérifiée que pour OPC UA, une adresse {protocol} sera donc refusée au check-in tant que ce champ est vide.',
+    'Keine Treibernummer: die automatische Erkennung ist nur für OPC UA verifiziert, eine {protocol}-Adresse wird beim Check-in daher abgelehnt, solange dies nicht gesetzt ist.'
+  ),
+
   // --- address-book refresh ---------------------------------------------------
   'book.removed': ml(
     '⚠️ {n} signal(s) GONE from the source since the last walk ({paths}{more}) — check the models that reference them BEFORE any check-in.',

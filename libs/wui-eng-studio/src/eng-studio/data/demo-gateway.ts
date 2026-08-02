@@ -13,6 +13,10 @@ import {
   applyPlan,
   asEngWarnings,
   baselineOf,
+  blockingProblems,
+  formatWarning,
+  normalizeDevice,
+  validateDevice,
   buildBookFromOpcUaBrowse,
   classifyEntries,
   diffBooks,
@@ -25,6 +29,7 @@ import {
   type AddressBook,
   type ApplyReport,
   type Device,
+  type DeviceDraft,
   type DpeConfigs,
   type EngPlan,
   type EngPort,
@@ -100,8 +105,36 @@ export class DemoEngGateway implements EngGateway {
     return new Set<EngRole>(['view', 'edit-model', 'manage-devices', 'checkin']);
   }
 
+  /** Mutable in the demo, so the form's create/edit/delete actually persist. */
+  private devices: Device[] = DEMO_DEVICES.map((device) => ({ ...device }));
+
   async listDevices(): Promise<Device[]> {
-    return DEMO_DEVICES;
+    return this.devices.map((device) => ({ ...device }));
+  }
+
+  /**
+   * Same contract as the backend, deliberately including its REFUSALS: validate
+   * with the core, then normalise; an empty `id` creates (the id is derived here,
+   * as the server does), a non-empty unknown one is an error rather than a silent
+   * creation. A demo that is laxer than the real gateway teaches the wrong thing.
+   */
+  async saveDevice(id: string, draft: DeviceDraft): Promise<Device[]> {
+    const index = id === '' ? -1 : this.devices.findIndex((device) => device.id === id);
+    if (id !== '' && index === -1) throw new Error(`unknown device '${id}'`);
+    const others = this.devices.filter((device) => device.id !== id);
+    const problems = blockingProblems(validateDevice({ ...draft, id }, others));
+    if (problems.length > 0) throw new Error(problems.map((problem) => formatWarning(problem)).join(' '));
+    const device = normalizeDevice({ ...draft, id }, others);
+    if (index === -1) this.devices = [...this.devices, device];
+    else this.devices = this.devices.map((existing, at) => (at === index ? { ...existing, ...device } : existing));
+    return this.listDevices();
+  }
+
+  async deleteDevice(id: string): Promise<Device[]> {
+    // Books are KEPT: a catalog may be shared with another equipment.
+    if (!this.devices.some((device) => device.id === id)) throw new Error(`unknown device '${id}'`);
+    this.devices = this.devices.filter((device) => device.id !== id);
+    return this.listDevices();
   }
 
   async listBooks(): Promise<AddressBook[]> {

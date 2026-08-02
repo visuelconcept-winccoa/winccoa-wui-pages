@@ -13,11 +13,11 @@ the live project — in bulk, previewed, transactional.
 > **Status: v0.2 — workflow-complete on demo data, backend implemented.** The whole
 > page runs end-to-end WITHOUT a WinCC OA runtime via an in-memory demo gateway (the
 > source of the screenshots below). The pure engineering domain
-> (`@visuelconcept/wui-eng-core`) is unit-tested (224 tests, no runtime) and the
+> (`@visuelconcept/wui-eng-core`) is unit-tested (244 tests, no runtime) and the
 > backend (`/api/eng`: file store, config read-back, check-out/plan/check-in,
 > online OPC UA browse, fail-closed role gating) typechecks offline against those
-> same sources. Still staged: the **watched-folder ingestion**, the device form, and
-> the **TIA Openness connector** — see [NOTES.md](./NOTES.md) "Staged for later" and
+> same sources. Still staged: the **watched-folder ingestion** and the
+> **TIA Openness connector** — see [NOTES.md](./NOTES.md) "Staged for later" and
 > [INTEGRATION.md](./INTEGRATION.md).
 
 ## Why (vs PARA)
@@ -43,6 +43,35 @@ CSV, or an AI proposal — and refreshable). The book is the persistent catalog 
 rest of the studio consumes.
 
 ![Devices panel](../images/eng-studio/01-devices.png)
+
+#### Declaring an equipment
+
+"+ Add" opens the declaration form in place of the device detail — so an empty
+project starts here. The **connection fields are rendered from the protocol's
+specification** (the core's `PROTOCOL_PARAMS`), not hand-written per protocol:
+switching the protocol swaps the fields and drops the parameters of the previous
+one. Validation is the core's too, running as you type and again on the server,
+which is what makes the two agree:
+
+- the **name must be a valid WinCC OA identifier** — datapoint names are built from
+  it (`{Zone}_{Equipement}_{Signal}`), so an invalid one would fail at check-in, far
+  from its cause. The form proposes the sanitised spelling;
+- the **id is derived once** from the name and then fixed for good: books and
+  address configs reference a device by id, so a rename must never re-parent
+  catalogs;
+- a **missing driver number** outside OPC UA is reported as an *advisory* (it does
+  not block the save) because auto-detection is only verified for OPC UA — see
+  "Driver number" in [INTEGRATION.md](./INTEGRATION.md);
+- **books are checked here**, with `⇆` showing the ones already shared with other
+  equipments.
+
+![Device form: creation, validated as you type](../images/eng-studio/19-device-form-new.png)
+
+Editing shows the same screen with the id pinned and the equipment's books
+checked. Deleting asks twice, and only forgets the equipment: **its books are
+kept** (they may be shared) and nothing already checked in is touched.
+
+![Device form: editing an equipment and its books](../images/eng-studio/20-device-form-edit.png)
 
 **Books are first-class and the device↔book relation is many-to-many**, both
 directions supported:
@@ -276,10 +305,11 @@ plain BCP-47 tags. A picker in the top bar switches it live.
 ```bash
 cd libs/wui-eng-core
 npm install
-npm test          # 224 tests: SimaticML parse + S7 offsets, Schneider CSV/XVM, OPC UA
+npm test          # 244 tests: SimaticML parse + S7 offsets, Schneider CSV/XVM, OPC UA
                   # browse walk + NodeSet2, roles, modelgen (mirror + mapping),
                   # structure outline + auto-binding, diff + live scope, apply,
-                  # config write builders + read-back, structured warnings
+                  # config write builders + read-back, structured warnings,
+                  # device declaration (id slug, per-protocol params, normalisation)
 npm run typecheck
 
 # and the backend routes, against the REAL core sources (webserver packages stubbed):
@@ -289,8 +319,8 @@ npm run typecheck
 The translation tables have their own verification (no test runner needed — it
 bundles the real modules with esbuild): every entry present in EN/FR/DE, the same
 `{placeholders}` in all three, **every core warning code translated** (and no
-translation matching a code nobody emits), and the WinCC OA locale identifiers
-resolving:
+translation matching a code nobody emits), **every connection parameter of the
+device form labelled**, and the WinCC OA locale identifiers resolving:
 
 ```bash
 node tools/check-eng-i18n.mjs
@@ -306,6 +336,7 @@ libs/wui-eng-core/        PURE domain (no WinCC OA import, unit-tested)
   configs/builders.ts     atomic config writes (_address/_alert_hdl/_archive/_pv_range)
   configs/read.ts         the read-back: raw dpGet → DpeConfigs, written-vs-provenance
   warnings.ts             EngWarning: stable code + English template + params (i18n)
+  devices.ts              device declaration: per-protocol params, validation, normalisation
   structure.ts            authored type outline + auto-binding to the book's signals
   roles/                  rule engine (structural < path < name) + neutral profiles
   modelgen.ts             book + roles → type, DPs and configs (the generation)

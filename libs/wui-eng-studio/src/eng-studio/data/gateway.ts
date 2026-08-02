@@ -19,6 +19,7 @@ import type {
   AddressBook,
   ApplyReport,
   Device,
+  DeviceDraft,
   EngPlan,
   LiveSnapshot,
   SignalRole,
@@ -101,6 +102,18 @@ export interface EngGateway {
   // --- devices + address books (many-to-many) ---------------------------------
   /** Equipments — each carries `bookIds` (see the N:N relation in the model). */
   listDevices(): Promise<Device[]>;
+  /**
+   * Create or update ONE equipment (a single-device upsert, not a registry
+   * replacement: replacing the list from a UI that loaded it minutes ago would
+   * discard whatever another operator added since). Returns the fresh registry.
+   * Rejects with the validation message when the backend refuses the draft.
+   */
+  saveDevice(id: string, draft: DeviceDraft): Promise<Device[]>;
+  /**
+   * Forget an equipment. Its BOOKS are kept — the relation is many-to-many, so a
+   * catalog may be shared — and nothing already checked in is touched.
+   */
+  deleteDevice(id: string): Promise<Device[]>;
   /** Every address book (registry). A book may be referenced by several devices. */
   listBooks(): Promise<AddressBook[]>;
   /** One book by its id, or null. */

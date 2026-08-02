@@ -159,5 +159,15 @@ export const WARNING_CODES = {
   },
   diff: {
     RETYPE_UNSUPPORTED: 'diff.retype-unsupported'
+  },
+  device: {
+    NAME_REQUIRED: 'device.name-required',
+    NAME_INVALID: 'device.name-invalid',
+    NAME_TAKEN: 'device.name-taken',
+    ID_TAKEN: 'device.id-taken',
+    NO_ACCESS_MODE: 'device.no-access-mode',
+    PARAM_REQUIRED: 'device.param-required',
+    DRIVER_INVALID: 'device.driver-invalid',
+    DRIVER_RECOMMENDED: 'device.driver-recommended'
   }
 } as const;

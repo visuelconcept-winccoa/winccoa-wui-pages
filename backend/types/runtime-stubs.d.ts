@@ -32,6 +32,8 @@ declare module 'ultimate-express' {
     use(...handlers: any[]): void;
     get(path: string, ...handlers: any[]): void;
     post(path: string, ...handlers: any[]): void;
+    /** Verified against ultimate-express 2.2.1 (`methods` list in src/router.js). */
+    put(path: string, ...handlers: any[]): void;
     delete(path: string, ...handlers: any[]): void;
   }
   export function Router(): Router;

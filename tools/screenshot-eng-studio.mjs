@@ -267,6 +267,31 @@ async function main() {
       console.log(`[eng-shots] ${shot.file} — ${shot.desc}`);
     }
 
+    // Device declaration form, in the two states worth documenting:
+    //   1. a CREATION mid-typing, showing the core's live validation (an invalid
+    //      name and a missing required parameter);
+    //   2. an EDIT of an existing equipment, with its books checked.
+    await page.goto(`${devUrl}/?panel=devices&lang=${LANG}`, { waitUntil: 'load' });
+    await page.waitForSelector('wui-eng-studio');
+    await page.waitForTimeout(500);
+    await page.evaluate(() => {
+      document.querySelector('wui-eng-studio')?.deviceFormForDemo(undefined, {
+        name: 'Four n°2 (zone B)',
+        protocol: 's7plus',
+        accessModes: ['s7plus', 'opcua'],
+        connection: {}
+      });
+    });
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: resolve(OUT, '19-device-form-new.png') });
+    console.log('[eng-shots] 19-device-form-new.png — Device form: creation, with the core validating as you type');
+    await page.evaluate(() => {
+      document.querySelector('wui-eng-studio')?.deviceFormForDemo('m580-station');
+    });
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: resolve(OUT, '20-device-form-edit.png') });
+    console.log('[eng-shots] 20-device-form-edit.png — Device form: editing an equipment and its books');
+
     // Proof that the page is localised, kept in the docs: the same panel in FR and
     // DE. The rest of the set stays English so it matches the documentation.
     for (const [code, file] of [

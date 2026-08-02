@@ -544,6 +544,63 @@ export const engStudioStyles = [
       color: var(--eng-primary);
       border-color: var(--eng-primary);
     }
+    /* Device declaration form (Devices panel, in place of the device detail). */
+    .device-form {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      padding: 0.9rem;
+      max-width: 46rem;
+    }
+    .form-row {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-bottom: 0.4rem;
+      font-size: 0.8rem;
+    }
+    .form-row > span:first-child {
+      width: 12rem;
+      flex-shrink: 0;
+      color: var(--eng-soft);
+    }
+    .form-row .filter {
+      max-width: 22rem;
+    }
+    .form-hint {
+      font-size: 0.72rem;
+      color: var(--eng-soft);
+      margin-bottom: 0.5rem;
+    }
+    .form-hint.danger {
+      color: var(--eng-alarm);
+      border: 1px solid var(--eng-alarm);
+      border-radius: var(--eng-radius);
+      padding: 0.4rem 0.6rem;
+      margin-bottom: 0;
+    }
+    .mode-boxes,
+    .book-boxes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem 0.75rem;
+    }
+    .mode-box {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      white-space: nowrap;
+    }
+    .book-boxes .mode-box {
+      max-width: 22rem;
+    }
+    /* Ellipsis has to live on the TEXT, not on the flex label — otherwise a long
+       book name pushes its chips out of the box instead of being truncated. */
+    .box-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     /* Online OPC UA browse form (Devices panel). */
     .browse-row {
       display: flex;

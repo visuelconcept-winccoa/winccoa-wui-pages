@@ -41,7 +41,10 @@
 | GET  | `/health` | — | liveness + the resolved store path |
 | GET  | `/roles` | — | the **caller's own** studio grants (what the UI gates on) |
 | GET  | `/devices` | `view` | the device registry |
-| POST | `/devices` `{devices}` | `manage-devices` | replace the device registry |
+| POST | `/devices` `{device}` | `manage-devices` | **create** one device — the **server** derives the id → `201 {device, devices}` |
+| POST | `/devices/:id` `{device}` | `manage-devices` | **update** that device (`404` if unknown; the body's `id` is ignored) |
+| DELETE | `/devices/:id` | `manage-devices` | forget one device; **its books are kept** (the relation is N:N) |
+| PUT  | `/devices` `{devices}` | `manage-devices` | replace the whole registry (bulk provisioning / migration) |
 | GET  | `/connections` | `view` | the project's OPC UA connections (`_OPCUAServer`), browsable |
 | GET  | `/books` | `view` | every address book, re-qualified (roles) |
 | GET  | `/books/:id` | `view` | one book |
@@ -75,6 +78,31 @@ default deployment these guards are inert and an API caller bypasses the UI
 gating. Enable webserver auth in production.
 
 ### Payloads worth knowing
+
+**`POST /devices` / `POST /devices/:id`** — body `{ device: DeviceDraft }`:
+
+```jsonc
+{ "device": {
+  "name": "Z09_Four2",            // must be a valid WinCC OA identifier: DP names derive from it
+  "protocol": "s7plus",           // opcua | s7 | s7plus | modbus
+  "accessModes": ["s7plus"],      // one candidate address is generated per mode
+  "connection": { "ip": "192.168.10.21", "rack": 0, "slot": 1 },
+  "driverNumber": 3,              // WinCC OA manager number; required in practice outside OPC UA
+  "pollGroup": "_EngStudio_Poll",
+  "bookIds": ["book-s7-four"]     // N:N — a book may be listed by several devices
+} }
+```
+
+`connection` keys are **per protocol** and defined by the core's `PROTOCOL_PARAMS`
+(`opcua`: `server`\*, `endpoint` — `s7`/`s7plus`: `ip`\*, `rack`, `slot` —
+`modbus`: `ip`\*, `port`, `unitId`, `cpu`; \* = required). Keys of another protocol
+are dropped on normalisation, numeric ones are coerced, and `state` is always
+stored as `unknown` — only a probe may claim `connected`.
+
+A refusal is `400 { error, problems }` where `problems` are the core's
+`EngWarning`s (`device.name-invalid`, `device.param-required`, …) — the same
+objects the form renders, so an API client can localise them the same way.
+`device.driver-recommended` is **advisory** and never blocks.
 
 **`POST /books/ingest`** — one shape per generator:
 
@@ -231,6 +259,14 @@ To harden the **SimaticML/TIA** path against real data, please provide:
 3. Confirmation of the **S7 `_datatype` transformation codes** and a
    **standard-DB offset** sample from a live project, to lift the sentinels in
    `drivers/s7.ts` / verify `simaticml/offsets.ts`.
+   The reference tables are the `_address` appendix
+   (`.../en_US/Notes/dpconfig_address.html`) and
+   `.../Treiber_ComDrv/comdrv_transformation.html` of the WinCC OA help —
+   **`www.winccoa.com` is blocked by our dev environment's network policy** (the
+   HTTPS proxy rejects the CONNECT with 403), so those pages cannot be read from a
+   dev container. Paste the two tables here, or drop a copy under
+   `docs/knowledge/vendor/`, and the sentinels can be replaced by verified values
+   plus a unit test per code.
 4. A **real Control Expert variables export** (data editor → Export; the native
    `.XVM` XML is welcome too) to calibrate `schneider/variables.ts` on actual
    column sets, plus the WinCC OA **Modbus driver `_datatype` codes** to lift the

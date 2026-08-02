@@ -24,19 +24,27 @@ import {
   classifyEntry,
   diffWorkspace,
   filterEntries,
+  PROTOCOLS,
+  PROTOCOL_PARAMS,
   autoBindStructure,
+  blockingProblems,
+  deviceIdFrom,
+  draftFromDevice,
+  emptyDraft,
   formatStructureOutline,
   generateModelFromBook,
   liveScopeOf,
   mergeProposal,
   parseStructureOutline,
   roleCounts,
+  validateDevice,
   structureLeaves,
   type SignalRole,
   type AddressBook,
   type ApplyReport,
   type BookEntry,
   type Device,
+  type DeviceDraft,
   type DpTypeStructure,
   type EngPlan,
   type EngWarning,
@@ -51,7 +59,7 @@ import { engStudioStyles } from './eng-studio/eng-styles.js';
 import { DemoEngGateway } from './eng-studio/data/demo-gateway.js';
 import { HttpEngGateway } from './eng-studio/data/http-gateway.js';
 import type { BookDelta, EngConnection, EngGateway, EngRole } from './eng-studio/data/gateway.js';
-import { LANG_LABEL, MSG, ROLE_LABEL, WARNING_MSG, fmt, resolveLang, t, type Lang, type Ml } from './eng-studio/i18n.js';
+import { LANG_LABEL, MSG, PARAM_LABEL, ROLE_LABEL, WARNING_MSG, fmt, resolveLang, t, type Lang, type Ml } from './eng-studio/i18n.js';
 
 type Panel = 'devices' | 'model' | 'control';
 
@@ -113,6 +121,20 @@ export class WuiEngStudio extends LitElement {
   @state() private browseBookId = '';
   /** Delta of the last source re-read — the reason a refresh is not a no-op. */
   @state() private bookDelta: BookDelta | null = null;
+  /**
+   * Device form: the draft being edited, `null` when the form is closed.
+   * `deviceFormId` is the id being EDITED ('' for a creation) — kept apart from the
+   * draft so a rename never re-derives the id (books reference a device by id).
+   */
+  @state() private deviceDraft: DeviceDraft | null = null;
+  @state() private deviceFormId = '';
+  /** Validation problems of the draft, re-computed on every edit. */
+  @state() private deviceProblems: EngWarning[] = [];
+  /**
+   * Delete armed by a first click: forgetting an equipment is not undoable from
+   * the UI, so the button asks twice instead of opening a modal.
+   */
+  @state() private deviceDeleteArmed = false;
 
   override async connectedCallback(): Promise<void> {
     super.connectedCallback();
@@ -169,6 +191,19 @@ export class WuiEngStudio extends LitElement {
     this.genOutlineErrors = parseStructureOutline(this.genOutline, typeName).errors;
     this.genBindings = {};
     this.onAutoBind(book);
+  }
+
+  /**
+   * Public: open the device form (demo/screenshot harness).
+   * With no `deviceId` it opens a CREATION; `draft` then pre-fills the fields the
+   * way typing would — through `patchDraft`, so the validation runs like it does
+   * for an operator (the screenshot shows real problems, not staged ones).
+   */
+  deviceFormForDemo(deviceId?: string, draft?: Partial<DeviceDraft>): void {
+    const device = deviceId === undefined ? undefined : this.devices.find((d) => d.id === deviceId);
+    if (device) this.onEditDevice(device);
+    else this.onAddDevice();
+    if (draft) this.patchDraft(draft);
   }
 
   /** Public: run a generation with the given form values (demo/screenshot harness). */
@@ -365,8 +400,18 @@ export class WuiEngStudio extends LitElement {
   // --- panel 1: devices + books -----------------------------------------------
 
   private renderDevicesPanel(): TemplateResult {
+    // The form takes over the panel: creating an equipment must not require one to
+    // already exist (the empty-project case), and editing is the same screen.
+    if (this.deviceDraft) return this.renderDeviceForm(this.deviceDraft);
     const device = this.currentDevice();
-    if (!device) return html`<div class="empty">${this.tr(MSG.noDevice)}</div>`;
+    if (!device) {
+      return html`<div class="empty">
+        ${this.tr(MSG.noDevice)}
+        ${this.can('manage-devices')
+          ? html`<div><button class="btn primary" @click=${this.onAddDevice}>${this.tr(MSG.addDevice)}</button></div>`
+          : nothing}
+      </div>`;
+    }
     const books = this.booksOfDevice(device);
     const book = this.activeBook();
     return html`
@@ -376,6 +421,9 @@ export class WuiEngStudio extends LitElement {
         <span class="chip"><span class="dot ${device.state}"></span>${device.state}</span>
         <span class="chip">${this.tr(MSG.bookCount, { n: books.length })}</span>
         <div class="spacer"></div>
+        ${this.can('manage-devices')
+          ? html`<button class="btn" @click=${() => this.onEditDevice(device)}>${this.tr(MSG.deviceEdit)}</button>`
+          : nothing}
         ${this.can('manage-devices')
           ? html`<button class="btn primary" ?disabled=${this.busy || book == null} @click=${this.onRefreshBook}>${this.tr(MSG.refreshBook)}</button>`
           : nothing}
@@ -390,6 +438,159 @@ export class WuiEngStudio extends LitElement {
               </div>
               ${book ? this.renderBookDetail(device, book) : nothing}
             `}
+      </div>
+    `;
+  }
+
+  /**
+   * Device declaration form — create or edit one equipment.
+   *
+   * The connection fields are rendered FROM THE CORE's `PROTOCOL_PARAMS` spec, so
+   * adding a protocol never touches this page: the spec says what a field is, the
+   * i18n table says what it is called. Validation problems come from the core too
+   * (`validateDevice`), which is what the backend re-runs — the form cannot be
+   * stricter or laxer than the store.
+   */
+  private renderDeviceForm(draft: DeviceDraft): TemplateResult {
+    const editing = this.deviceFormId !== '';
+    const blocking = blockingProblems(this.deviceProblems);
+    const advisory = this.deviceProblems.filter((problem) => !blocking.includes(problem));
+    const specs = PROTOCOL_PARAMS[draft.protocol] ?? [];
+    const device = editing ? this.devices.find((d) => d.id === this.deviceFormId) : undefined;
+    return html`
+      <div class="panel-head">
+        <h2>${this.tr(editing ? MSG.deviceFormEdit : MSG.deviceFormNew, { name: draft.name || '…' })}</h2>
+        <div class="spacer"></div>
+        ${editing && device
+          ? html`<button class="btn danger" ?disabled=${this.busy} @click=${() => this.onDeleteClick(device)}>
+              ${this.tr(this.deviceDeleteArmed ? MSG.deviceDeleteConfirm : MSG.deviceDelete)}
+            </button>`
+          : nothing}
+        <button class="btn" @click=${() => this.closeDeviceForm()}>${this.tr(MSG.cancel)}</button>
+        <button
+          class="btn primary"
+          ?disabled=${this.busy || blocking.length > 0 || !this.can('manage-devices')}
+          @click=${() => void this.onSaveDevice()}
+        >
+          ${this.tr(MSG.save)}
+        </button>
+      </div>
+      <div class="panel-scroll">
+        <div class="device-form">
+          ${this.deviceDeleteArmed ? html`<div class="form-hint danger">${this.tr(MSG.deviceDeleteHint)}</div>` : nothing}
+          <section class="card">
+            <div class="card-title">${this.tr(MSG.deviceIdentity)}</div>
+            <label class="form-row">
+              <span>${this.tr(MSG.deviceName)}</span>
+              <input
+                class="filter"
+                placeholder="Z01_FOUR001"
+                .value=${draft.name}
+                @input=${(e: Event) => this.patchDraft({ name: (e.target as HTMLInputElement).value })}
+              />
+            </label>
+            <div class="form-hint">
+              ${editing
+                ? this.tr(MSG.deviceIdFixed, { id: this.deviceFormId })
+                : this.tr(MSG.deviceIdDerived, { id: draft.name.trim() === '' ? '…' : deviceIdFrom(draft.name) })}
+            </div>
+            <label class="form-row">
+              <span>${this.tr(MSG.deviceProtocol)}</span>
+              <select class="filter" @change=${(e: Event) => this.patchDraftProtocol((e.target as HTMLSelectElement).value)}>
+                ${PROTOCOLS.map(
+                  (protocol) => html`<option value=${protocol} ?selected=${protocol === draft.protocol}>
+                    ${this.protocolOf(protocol)}
+                  </option>`
+                )}
+              </select>
+            </label>
+            <div class="form-row">
+              <span>${this.tr(MSG.deviceAccessModes)}</span>
+              <div class="mode-boxes">
+                ${PROTOCOLS.map(
+                  (mode) => html`<label class="mode-box">
+                    <input
+                      type="checkbox"
+                      .checked=${draft.accessModes.includes(mode)}
+                      @change=${() => this.toggleDraftMode(mode)}
+                    />
+                    ${this.protocolOf(mode)}
+                  </label>`
+                )}
+              </div>
+            </div>
+            <div class="form-hint">${this.tr(MSG.deviceAccessModesHint)}</div>
+          </section>
+
+          <section class="card">
+            <div class="card-title">${this.tr(MSG.deviceConnection, { protocol: this.protocolOf(draft.protocol) })}</div>
+            ${specs.map(
+              (spec) => html`<label class="form-row">
+                <span>${this.paramLabel(spec.key)}${spec.required ? ' *' : ''}</span>
+                <input
+                  class="filter ${spec.kind === 'text' ? '' : 'mono'}"
+                  type=${spec.kind === 'number' || spec.kind === 'port' ? 'number' : 'text'}
+                  placeholder=${spec.example ?? ''}
+                  .value=${String(draft.connection[spec.key] ?? '')}
+                  @input=${(e: Event) => this.patchDraftParam(spec.key, (e.target as HTMLInputElement).value)}
+                />
+              </label>`
+            )}
+            <label class="form-row">
+              <span>${this.tr(MSG.deviceDriverNumber)}</span>
+              <input
+                class="filter mono"
+                type="number"
+                min="1"
+                placeholder="3"
+                .value=${draft.driverNumber === undefined ? '' : String(draft.driverNumber)}
+                @input=${(e: Event) => this.patchDraft({ driverNumber: (e.target as HTMLInputElement).value })}
+              />
+            </label>
+            <label class="form-row">
+              <span>${this.tr(MSG.devicePollGroup)}</span>
+              <input
+                class="filter mono"
+                placeholder="_EngStudio_Poll"
+                .value=${draft.pollGroup ?? ''}
+                @input=${(e: Event) => this.patchDraft({ pollGroup: (e.target as HTMLInputElement).value })}
+              />
+            </label>
+            <div class="form-hint">${this.tr(MSG.devicePollGroupHint)}</div>
+          </section>
+
+          <section class="card">
+            <div class="card-title">${this.tr(MSG.deviceBooks)}</div>
+            ${this.books.length === 0
+              ? html`<div class="empty small">${this.tr(MSG.deviceNoBookYet)}</div>`
+              : html`<div class="book-boxes">
+                  ${this.books.map((book) => {
+                    const shared = this.otherDevicesSharing(book.id).filter((name) => name !== draft.name);
+                    return html`<label class="mode-box" title=${book.name}>
+                      <input
+                        type="checkbox"
+                        .checked=${draft.bookIds.includes(book.id)}
+                        @change=${() => this.toggleDraftBook(book.id)}
+                      />
+                      <span class="box-name">${book.name}</span>
+                      <span class="chip">${book.entries.length}</span>
+                      ${shared.length > 0 ? html`<span class="chip" title=${shared.join(', ')}>⇆ ${shared.length}</span>` : nothing}
+                    </label>`;
+                  })}
+                </div>`}
+            <div class="form-hint">${this.tr(MSG.deviceBooksHint)}</div>
+          </section>
+
+          ${blocking.length > 0 || advisory.length > 0
+            ? html`<section class="card warnings">
+                <div class="card-title">${this.tr(MSG.deviceProblems)}</div>
+                <ul>
+                  ${blocking.map((problem) => html`<li class="warn-text">${this.warnText(problem)}</li>`)}
+                  ${advisory.map((problem) => html`<li>${this.warnText(problem)}</li>`)}
+                </ul>
+              </section>`
+            : nothing}
+        </div>
       </div>
     `;
   }
@@ -410,6 +611,16 @@ export class WuiEngStudio extends LitElement {
   private protocolOf(protocol: string): string {
     const map: Record<string, string> = { opcua: 'OPC UA', s7: 'S7', s7plus: 'S7+', modbus: 'Modbus' };
     return map[protocol] ?? protocol;
+  }
+
+  /**
+   * Label of a connection parameter. The core owns WHICH parameters exist
+   * (`PROTOCOL_PARAMS`); an unlabelled key falls back to the key itself, so a new
+   * parameter is visible (raw) rather than blank.
+   */
+  private paramLabel(key: string): string {
+    const label = PARAM_LABEL[key];
+    return label === undefined ? key : this.tr(label);
   }
 
   private renderBookDetail(device: Device, book: AddressBook): TemplateResult {
@@ -1252,8 +1463,120 @@ export class WuiEngStudio extends LitElement {
     return parts.length === 0 ? this.tr(MSG.deltaNone) : ` (${parts.join(' / ')})`;
   }
 
+  // --- device form ------------------------------------------------------------
+
+  /** Open the form on a blank draft (creation). */
   private onAddDevice(): void {
-    this.notice = this.tr(MSG.addDeviceSoon);
+    this.deviceFormId = '';
+    this.deviceDraft = emptyDraft('opcua');
+    this.deviceProblems = [];
+    this.deviceDeleteArmed = false;
+    this.panel = 'devices';
+  }
+
+  /** Open the form on an existing equipment (edit). */
+  private onEditDevice(device: Device): void {
+    this.deviceFormId = device.id;
+    this.deviceDraft = draftFromDevice(device);
+    this.deviceProblems = validateDevice(this.deviceDraft, this.devices.filter((other) => other.id !== device.id));
+    this.deviceDeleteArmed = false;
+    this.panel = 'devices';
+  }
+
+  private closeDeviceForm(): void {
+    this.deviceDraft = null;
+    this.deviceProblems = [];
+    this.deviceDeleteArmed = false;
+  }
+
+  /** Patch the draft and re-validate — the form shows problems as you type. */
+  private patchDraft(patch: Partial<DeviceDraft>): void {
+    if (!this.deviceDraft) return;
+    const draft: DeviceDraft = { ...this.deviceDraft, ...patch };
+    this.deviceDraft = draft;
+    this.deviceProblems = validateDevice(draft, this.devices.filter((other) => other.id !== this.deviceFormId));
+    // An edit after the delete was armed is a change of mind — disarm it.
+    this.deviceDeleteArmed = false;
+  }
+
+  private patchDraftParam(key: string, value: string): void {
+    if (!this.deviceDraft) return;
+    this.patchDraft({ connection: { ...this.deviceDraft.connection, [key]: value } });
+  }
+
+  /**
+   * Switching protocol also switches the ACCESS MODES to it — the common case is
+   * one protocol per equipment, and a stale mode from the previous protocol would
+   * make the generator look for an address that does not exist. Extra modes stay
+   * addable afterwards (an S7-1500 offers `s7` and `opcua`).
+   */
+  private patchDraftProtocol(protocol: string): void {
+    this.patchDraft({ protocol: protocol as Device['protocol'] & string, accessModes: [protocol as never] });
+  }
+
+  private toggleDraftMode(mode: string): void {
+    if (!this.deviceDraft) return;
+    const modes = new Set(this.deviceDraft.accessModes);
+    if (modes.has(mode as never)) modes.delete(mode as never);
+    else modes.add(mode as never);
+    this.patchDraft({ accessModes: [...modes] as never });
+  }
+
+  private toggleDraftBook(bookId: string): void {
+    if (!this.deviceDraft) return;
+    const ids = this.deviceDraft.bookIds.includes(bookId)
+      ? this.deviceDraft.bookIds.filter((id) => id !== bookId)
+      : [...this.deviceDraft.bookIds, bookId];
+    this.patchDraft({ bookIds: ids });
+  }
+
+  private async onSaveDevice(): Promise<void> {
+    const draft = this.deviceDraft;
+    if (!draft || blockingProblems(this.deviceProblems).length > 0) return;
+    this.busy = true;
+    try {
+      const devices = await this.gateway.saveDevice(this.deviceFormId, draft);
+      this.devices = devices;
+      const saved = devices.find((device) => device.name === draft.name.trim());
+      if (saved) this.selectDevice(saved.id);
+      this.closeDeviceForm();
+      this.notice = this.tr(this.deviceFormId === '' ? MSG.deviceCreated : MSG.deviceUpdated, { name: draft.name.trim() });
+    } catch (error) {
+      this.notice = this.tr(MSG.deviceSaveFailed, { error: (error as Error).message });
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /**
+   * Two-step delete: the first click arms the button (and shows what deleting does
+   * NOT touch), the second one goes through. Deliberate, like every destructive
+   * operation of the studio — there is no undo for a forgotten equipment.
+   */
+  private onDeleteClick(device: Device): void {
+    if (!this.deviceDeleteArmed) {
+      this.deviceDeleteArmed = true;
+      return;
+    }
+    void this.onDeleteDevice(device);
+  }
+
+  private async onDeleteDevice(device: Device): Promise<void> {
+    this.busy = true;
+    try {
+      const devices = await this.gateway.deleteDevice(device.id);
+      this.devices = devices;
+      if (this.selectedDeviceId === device.id) {
+        this.selectedDeviceId = devices[0]?.id ?? null;
+        this.selectedBookId = devices[0]?.bookIds[0] ?? null;
+      }
+      this.closeDeviceForm();
+      this.notice = this.tr(MSG.deviceDeleted, { name: device.name });
+    } catch (error) {
+      this.notice = this.tr(MSG.deviceSaveFailed, { error: (error as Error).message });
+    } finally {
+      this.busy = false;
+    }
   }
 
   private async onTestRead(): Promise<void> {

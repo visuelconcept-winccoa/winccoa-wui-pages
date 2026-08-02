@@ -42,7 +42,7 @@ const bundle = await esbuild.build({
   logLevel: 'silent'
 });
 const module_ = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
-const { MSG, ROLE_LABEL, WARNING_MSG, resolveLang, fmt } = module_;
+const { MSG, PARAM_LABEL, ROLE_LABEL, WARNING_MSG, resolveLang, fmt } = module_;
 
 // The core's warning vocabulary, bundled the same way.
 const coreBundle = await esbuild.build({
@@ -72,7 +72,11 @@ function* entries(node, prefix = '') {
 const placeholders = (text) => [...String(text).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
 
 let count = 0;
-for (const [key, entry] of [...entries(MSG), ...entries(ROLE_LABEL, 'ROLE_LABEL')]) {
+for (const [key, entry] of [
+  ...entries(MSG),
+  ...entries(ROLE_LABEL, 'ROLE_LABEL'),
+  ...entries(PARAM_LABEL, 'PARAM_LABEL')
+]) {
   count += 1;
   for (const lang of LANGS) {
     const value = entry[lang];
@@ -109,6 +113,29 @@ for (const code of CORE_CODES) {
     }
   }
 }
+// --- every connection parameter the form renders must have a label ------------
+// Same class of defect as an untranslated warning: the core owns the SHAPE of the
+// device form, so a parameter added there would render as a raw key ("unitId").
+const devicesBundle = await esbuild.build({
+  entryPoints: [resolve(REPO, 'libs/wui-eng-core/src/devices.ts')],
+  bundle: true,
+  format: 'esm',
+  platform: 'neutral',
+  write: false,
+  logLevel: 'silent'
+});
+const devices = await import(`data:text/javascript;base64,${Buffer.from(devicesBundle.outputFiles[0].text).toString('base64')}`);
+const PARAM_KEYS = [...new Set(Object.values(devices.PROTOCOL_PARAMS).flatMap((specs) => specs.map((spec) => spec.key)))];
+for (const key of PARAM_KEYS) {
+  if (PARAM_LABEL[key] === undefined) {
+    errors.push(`PARAM_LABEL: no label for the connection parameter "${key}" (the form would show the raw key)`);
+  }
+}
+for (const key of Object.keys(PARAM_LABEL)) {
+  if (!PARAM_KEYS.includes(key)) errors.push(`PARAM_LABEL: "${key}" matches no PROTOCOL_PARAMS key (typo, or a removed parameter)`);
+}
+console.log(`[eng-i18n] ${PARAM_KEYS.length} connection parameters checked against PARAM_LABEL.`);
+
 // A translation nobody emits is dead weight (or a typo in the code).
 for (const code of Object.keys(WARNING_MSG)) {
   if (!CORE_CODES.includes(code) && !code.startsWith('demo.') && !code.startsWith('ui.')) {

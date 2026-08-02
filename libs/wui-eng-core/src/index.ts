@@ -5,6 +5,7 @@
 
 export * from './warnings.js';
 export * from './model.js';
+export * from './devices.js';
 export * from './naming.js';
 export * from './roles/roles.js';
 export * from './roles/classify.js';

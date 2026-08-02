@@ -60,6 +60,14 @@ export const engTheme = css`
     border-color: var(--eng-primary);
     font-weight: 600;
   }
+  .btn.danger {
+    border-color: var(--eng-alarm);
+    color: var(--eng-alarm);
+  }
+  .btn.danger:hover {
+    background: var(--eng-alarm);
+    color: var(--eng-bg);
+  }
   .btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;

@@ -47,7 +47,10 @@ function gate(role: 'view' | 'edit-model' | 'manage-devices' | 'checkin') {
  *   GET  /roles                                         (open) -> { roles }
  *
  *   GET  /devices                                       (view)           -> { devices }
- *   POST /devices          { devices }                  (manage-devices) -> { devices }
+ *   POST /devices          { device }                   (manage-devices) -> 201 { device, devices }
+ *   POST /devices/:id      { device }                   (manage-devices) -> { device, devices }
+ *   PUT  /devices          { devices }                  (manage-devices) -> { devices }
+ *   DEL  /devices/:id                                   (manage-devices) -> { devices }
  *
  *   GET  /connections                                   (view)           -> { connections }
  *
@@ -90,8 +93,14 @@ export class EngRoute {
     router.get('/roles', controller.roles);
 
     // --- devices --------------------------------------------------------------
+    // A creation POSTs to the collection and an update to the item: an "empty id"
+    // in the path (`/devices/`) would match the collection route with Express's
+    // default non-strict routing, and quietly hit the registry-replace handler.
     router.get('/devices', gate('view'), controller.listDevices);
-    router.post('/devices', gate('manage-devices'), controller.saveDevices);
+    router.post('/devices', gate('manage-devices'), controller.createDevice);
+    router.post('/devices/:id', gate('manage-devices'), controller.saveDevice);
+    router.put('/devices', gate('manage-devices'), controller.saveDevices);
+    router.delete('/devices/:id', gate('manage-devices'), controller.deleteDevice);
 
     // --- OPC UA connections (browsable sources) --------------------------------
     router.get('/connections', gate('view'), controller.connections);

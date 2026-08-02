@@ -12,6 +12,7 @@ import type {
   AddressBook,
   ApplyReport,
   Device,
+  DeviceDraft,
   EngPlan,
   LiveSnapshot,
   SignalRole,
@@ -42,7 +43,16 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
-  if (!res.ok) throw new Error(`POST ${path} → HTTP ${res.status}`);
+  if (!res.ok) {
+    // Surface the backend's own reason when it sent one (a validation refusal says
+    // WHAT is wrong; "HTTP 400" does not).
+    const reason = await res
+      .clone()
+      .json()
+      .then((payload: { error?: string }) => payload?.error)
+      .catch(() => undefined);
+    throw new Error(reason ?? `POST ${path} → HTTP ${res.status}`);
+  }
   return (await res.json()) as T;
 }
 
@@ -56,6 +66,26 @@ export class HttpEngGateway implements EngGateway {
 
   async listDevices(): Promise<Device[]> {
     const { devices } = await getJson<{ devices: Device[] }>('/devices');
+    return devices;
+  }
+
+  /**
+   * A creation POSTs to the COLLECTION (`/devices`) and an update to the ITEM
+   * (`/devices/<id>`) — an empty id would produce `/devices/`, which Express (with
+   * its default non-strict routing) hands to the collection handler. The server
+   * derives the id of a creation, so concurrent creations of the same name cannot
+   * overwrite each other.
+   */
+  async saveDevice(id: string, draft: DeviceDraft): Promise<Device[]> {
+    const path = id === '' ? '/devices' : `/devices/${encodeURIComponent(id)}`;
+    const { devices } = await postJson<{ devices: Device[] }>(path, { device: draft });
+    return devices;
+  }
+
+  async deleteDevice(id: string): Promise<Device[]> {
+    const res = await fetch(`${BASE}/devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`DELETE /devices/${id} → HTTP ${res.status}`);
+    const { devices } = (await res.json()) as { devices: Device[] };
     return devices;
   }
 
