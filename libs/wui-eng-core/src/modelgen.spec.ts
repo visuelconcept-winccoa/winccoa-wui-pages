@@ -9,7 +9,8 @@
 import { describe, expect, it } from 'vitest';
 import { diffWorkspace } from './diff.js';
 import { generateModelFromBook, mergeProposal } from './modelgen.js';
-import type { AddressBook, BookEntry, LiveSnapshot, OaLeafType, TagAccess, Workspace } from './model.js';
+import { autoBindStructure } from './structure.js';
+import type { AddressBook, BookEntry, DpTypeStructure, LiveSnapshot, OaLeafType, TagAccess, Workspace } from './model.js';
 import type { SignalRole } from './roles/roles.js';
 
 function entry(
@@ -307,3 +308,121 @@ describe('mergeProposal + diff (the closed loop)', () => {
     expect(merged.configs['Z01_EQ1.X'].archive).toBeDefined();
   });
 });
+
+describe('custom structure + mapping (the alternative to mirroring)', () => {
+  /** A house-standard type, deliberately named/nested unlike the source. */
+  const TARGET: DpTypeStructure = {
+    name: 'STD_Four',
+    type: 'Struct',
+    children: [
+      { name: 'PV', type: 'Struct', children: [{ name: 'Temp', type: 'Float' }] },
+      { name: 'SP', type: 'Struct', children: [{ name: 'Temp', type: 'Float' }] },
+      { name: 'Marche', type: 'Bool' }
+    ]
+  };
+  const SOURCE = book(
+    [
+      entry('PLC.Grp1.TempProcess', 'Float', 'r', 'measure', { addresses: { opcua: 'C$$1$1$ns=2;s=Temp' } }),
+      entry('PLC.Grp2.ConsigneTemp', 'Float', 'rw', 'setpoint', { addresses: { opcua: 'C$$1$1$ns=2;s=Sp' } }),
+      entry('PLC.Bits.CmdMarche', 'Bool', 'w', 'command', { addresses: { opcua: 'C$$1$1$ns=2;s=Cmd' } }),
+      entry('PLC.Bits.Inutilise', 'Bool', 'r', 'state', { addresses: { opcua: 'C$$1$1$ns=2;s=Nc' } })
+    ],
+    OPCUA_IFACE
+  );
+
+  it('uses the AUTHORED structure, not the book paths', () => {
+    const proposal = generateModelFromBook(SOURCE, {
+      typeName: 'STD_Four',
+      equipments: ['FOUR001'],
+      zone: 'Z9',
+      deviceId: 'd1',
+      mapping: {
+        structure: TARGET,
+        bindings: { 'PV.Temp': 'PLC.Grp1.TempProcess', 'SP.Temp': 'PLC.Grp2.ConsigneTemp', Marche: 'PLC.Bits.CmdMarche' }
+      }
+    });
+    expect(proposal.type.structure.children?.map((c) => c.name)).toEqual(['PV', 'SP', 'Marche']);
+    expect(Object.keys(proposal.configs).sort()).toEqual(['Z9_FOUR001.Marche', 'Z9_FOUR001.PV.Temp', 'Z9_FOUR001.SP.Temp']);
+  });
+
+  it('takes each config from the BOUND signal (role, access, address)', () => {
+    const proposal = generateModelFromBook(SOURCE, {
+      typeName: 'STD_Four',
+      equipments: ['FOUR001'],
+      zone: 'Z9',
+      deviceId: 'd1',
+      mapping: {
+        structure: TARGET,
+        bindings: { 'PV.Temp': 'PLC.Grp1.TempProcess', 'SP.Temp': 'PLC.Grp2.ConsigneTemp', Marche: 'PLC.Bits.CmdMarche' }
+      }
+    });
+    // measure → IN, setpoint on a rw signal → I/O, command on a w signal → OUT.
+    expect(proposal.configs['Z9_FOUR001.PV.Temp'].address?.direction).toBe(4);
+    expect(proposal.configs['Z9_FOUR001.SP.Temp'].address?.direction).toBe(7);
+    expect(proposal.configs['Z9_FOUR001.Marche'].address?.direction).toBe(1);
+  });
+
+  it('keeps an UNBOUND leaf in the type but generates no config for it, and says so', () => {
+    const proposal = generateModelFromBook(SOURCE, {
+      typeName: 'STD_Four',
+      equipments: ['FOUR001'],
+      zone: 'Z9',
+      deviceId: 'd1',
+      mapping: { structure: TARGET, bindings: { 'PV.Temp': 'PLC.Grp1.TempProcess' } }
+    });
+    const sp = proposal.type.structure.children?.find((c) => c.name === 'SP');
+    expect(sp?.children?.map((c) => c.name)).toEqual(['Temp']); // still in the type
+    expect(proposal.configs['Z9_FOUR001.SP.Temp']).toBeUndefined();
+    expect(proposal.warnings.some((w) => w.includes('sans signal associé'))).toBe(true);
+  });
+
+  it('reports a binding that points at a signal the book does not have', () => {
+    const proposal = generateModelFromBook(SOURCE, {
+      typeName: 'STD_Four',
+      equipments: ['FOUR001'],
+      deviceId: 'd1',
+      mapping: { structure: TARGET, bindings: { 'PV.Temp': 'PLC.Disparu' } }
+    });
+    expect(proposal.warnings.some((w) => w.includes('signal absent du carnet'))).toBe(true);
+  });
+
+  it('keeps the MODEL type on a mismatch and names it (a mapping mistake, usually)', () => {
+    const proposal = generateModelFromBook(SOURCE, {
+      typeName: 'STD_Four',
+      equipments: ['FOUR001'],
+      zone: 'Z9',
+      deviceId: 'd1',
+      mapping: { structure: TARGET, bindings: { Marche: 'PLC.Grp1.TempProcess' } }
+    });
+    const marche = proposal.type.structure.children?.find((c) => c.name === 'Marche');
+    expect(marche?.type).toBe('Bool'); // the authored contract wins
+    expect(proposal.warnings.some((w) => w.includes('TYPE DIFFÉRENT'))).toBe(true);
+  });
+
+  it('reports the book signals the model does not use', () => {
+    const proposal = generateModelFromBook(SOURCE, {
+      typeName: 'STD_Four',
+      equipments: ['FOUR001'],
+      deviceId: 'd1',
+      mapping: {
+        structure: TARGET,
+        bindings: { 'PV.Temp': 'PLC.Grp1.TempProcess', 'SP.Temp': 'PLC.Grp2.ConsigneTemp', Marche: 'PLC.Bits.CmdMarche' }
+      }
+    });
+    expect(proposal.warnings.some((w) => w.includes('non utilisé'))).toBe(true);
+  });
+
+  it('auto-binding a mirrored structure reproduces the mirror mode', () => {
+    const mirrored = generateModelFromBook(SOURCE, { typeName: 'T', equipments: ['E1'], deviceId: 'd1' });
+    const bound = autoBindStructure(mirrored.type.structure, SOURCE.entries);
+    const mapped = generateModelFromBook(SOURCE, {
+      typeName: 'T',
+      equipments: ['E1'],
+      deviceId: 'd1',
+      mapping: { structure: mirrored.type.structure, bindings: bound.bindings }
+    });
+    expect(mapped.type.structure).toEqual(mirrored.type.structure);
+    expect(Object.keys(mapped.configs).sort()).toEqual(Object.keys(mirrored.configs).sort());
+  });
+});
+

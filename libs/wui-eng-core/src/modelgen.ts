@@ -43,6 +43,7 @@ import { opcUaDatatypeCode } from './drivers/opcua.js';
 import { S7_DATATYPE_UNVERIFIED, s7DatatypeCode } from './drivers/s7.js';
 import { MODBUS_DATATYPE_UNVERIFIED, modbusDatatypeCode } from './drivers/modbus.js';
 import { configsForRole, type RoleProfile, type RoleProfileContext } from './roles/profiles.js';
+import { structureLeaves, type StructureBindings } from './structure.js';
 import { SIGNAL_ROLES, type SignalRole } from './roles/roles.js';
 
 /** Options driving one generation. */
@@ -68,6 +69,21 @@ export interface ModelGenOptions {
   deviceId: string;
   profiles?: Record<SignalRole, RoleProfile>;
   profileContext?: RoleProfileContext;
+  /**
+   * CUSTOM structure + mapping. Omitted → the type MIRRORS the book's paths.
+   * Given → the type is exactly `mapping.structure` and each of its leaves takes
+   * its config from the bound book entry (see `structure.ts`). A leaf with no
+   * binding still exists in the type, it simply gets no config.
+   */
+  mapping?: ModelMapping;
+}
+
+/** An engineer-authored type structure and its bindings to the book's signals. */
+export interface ModelMapping {
+  /** Target structure; its root is renamed to `options.typeName`. */
+  structure: DpTypeStructure;
+  /** Target leaf path (dot-joined, below the root) → book entry path. */
+  bindings: StructureBindings;
 }
 
 /** What a generation proposes to add to the workspace. */
@@ -151,26 +167,16 @@ function buildStructure(typeName: string, leaves: Leaf[]): DpTypeStructure {
   return root;
 }
 
-/**
- * Generate a model proposal from a book. Pure: it reads the book and returns what
- * should be added — the caller merges it ({@link mergeProposal}) and check-in
- * turns it into writes.
- */
-export function generateModelFromBook(book: AddressBook, options: ModelGenOptions): ModelProposal {
-  const warnings: string[] = [];
-  const selected = options.selection === undefined
-    ? book.entries
-    : book.entries.filter((entry) => options.selection?.includes(entry.path));
-  if (selected.length === 0) {
-    warnings.push('Aucun signal sélectionné — rien à générer.');
-  }
-
+/** Mirror mode: the type follows the book's own paths (the default). */
+function mirrorLeaves(
+  selected: BookEntry[],
+  options: ModelGenOptions,
+  warnings: string[]
+): { leaves: Leaf[]; type: EngType } {
   const strip = (options.stripCommonPrefix ?? true) ? commonPrefix(selected.map((e) => e.path)).length : 0;
   if (strip > 0) {
     warnings.push(`Préfixe commun « ${selected[0].path.split('.').slice(0, strip).join('.')} » retiré des chemins.`);
   }
-
-  // --- leaves (sanitised, de-duplicated per parent) --------------------------
   const leaves: Leaf[] = [];
   const usedPerParent = new Map<string, Set<string>>();
   for (const entry of selected) {
@@ -193,8 +199,94 @@ export function generateModelFromBook(book: AddressBook, options: ModelGenOption
     }
     leaves.push({ segments, leafType: entry.leafType, entry });
   }
+  return { leaves, type: { typeName: options.typeName, structure: buildStructure(options.typeName, leaves) } };
+}
 
-  const type: EngType = { typeName: options.typeName, structure: buildStructure(options.typeName, leaves) };
+/**
+ * Mapping mode: the type is the AUTHORED structure, and every leaf takes its
+ * config from the bound book entry.
+ *
+ * What it refuses to hide:
+ *  - a leaf with no binding → it stays in the type (the engineer put it there) but
+ *    gets no config, and is counted in a warning;
+ *  - a binding pointing at a path the book (or the selection) does not have → the
+ *    leaf is treated as unbound and the dangling binding is named;
+ *  - a TYPE MISMATCH between the authored leaf and the bound signal → the authored
+ *    type wins (it is the model's contract) and the mismatch is named, because a
+ *    Bool DPE fed by a Float address is a mapping mistake far more often than an
+ *    intended conversion.
+ */
+function mappedLeaves(
+  selected: BookEntry[],
+  mapping: ModelMapping,
+  options: ModelGenOptions,
+  warnings: string[]
+): { leaves: Leaf[]; type: EngType } {
+  const byPath = new Map(selected.map((entry) => [entry.path, entry]));
+  const structure: DpTypeStructure = { ...mapping.structure, name: options.typeName };
+  const leaves: Leaf[] = [];
+  const unbound: string[] = [];
+  const dangling: string[] = [];
+  const mismatched: string[] = [];
+
+  for (const leaf of structureLeaves(structure)) {
+    const leafPath = leaf.segments.join('.');
+    const boundPath = mapping.bindings[leafPath];
+    if (boundPath === undefined || boundPath === '') {
+      unbound.push(leafPath);
+      continue;
+    }
+    const entry = byPath.get(boundPath);
+    if (entry === undefined) {
+      dangling.push(`${leafPath} → ${boundPath}`);
+      continue;
+    }
+    if (entry.leafType !== leaf.leafType) {
+      mismatched.push(`${leafPath} (${leaf.leafType}) ← ${entry.path} (${entry.leafType})`);
+    }
+    // The AUTHORED leaf type is kept: it is the model's contract.
+    leaves.push({ segments: leaf.segments, leafType: leaf.leafType, entry });
+  }
+
+  if (unbound.length > 0) {
+    warnings.push(
+      `${unbound.length} élément(s) du modèle sans signal associé — DPE créés SANS config : ${unbound.slice(0, 8).join(', ')}${unbound.length > 8 ? ' …' : ''}`
+    );
+  }
+  if (dangling.length > 0) {
+    warnings.push(`${dangling.length} association(s) pointant vers un signal absent du carnet : ${dangling.slice(0, 5).join(' · ')}`);
+  }
+  if (mismatched.length > 0) {
+    warnings.push(
+      `${mismatched.length} association(s) avec un TYPE DIFFÉRENT (le type du modèle est conservé) : ${mismatched.slice(0, 5).join(' · ')}`
+    );
+  }
+  const bound = new Set(leaves.map((leaf) => leaf.entry.path));
+  const unused = selected.filter((entry) => !bound.has(entry.path)).length;
+  if (unused > 0) {
+    warnings.push(`${unused} signal(aux) du carnet non utilisé(s) par le modèle (association partielle assumée).`);
+  }
+  return { leaves, type: { typeName: options.typeName, structure } };
+}
+
+/**
+ * Generate a model proposal from a book. Pure: it reads the book and returns what
+ * should be added — the caller merges it ({@link mergeProposal}) and check-in
+ * turns it into writes.
+ */
+export function generateModelFromBook(book: AddressBook, options: ModelGenOptions): ModelProposal {
+  const warnings: string[] = [];
+  const selected = options.selection === undefined
+    ? book.entries
+    : book.entries.filter((entry) => options.selection?.includes(entry.path));
+  if (selected.length === 0) {
+    warnings.push('Aucun signal sélectionné — rien à générer.');
+  }
+
+  // --- leaves + type: MIRROR the book, or follow the AUTHORED structure -------
+  const { leaves, type } = options.mapping === undefined
+    ? mirrorLeaves(selected, options, warnings)
+    : mappedLeaves(selected, options.mapping, options, warnings);
 
   // --- datapoints -----------------------------------------------------------
   const usedDpNames = new Set<string>();

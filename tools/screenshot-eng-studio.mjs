@@ -223,6 +223,23 @@ async function main() {
     await page.screenshot({ path: resolve(OUT, '15-browse-refresh-delta.png') });
     console.log('[eng-shots] 15-browse-refresh-delta.png — Re-parcours : delta ajoutés / disparus / modifiés');
 
+    // Custom structure + mapping: a house-standard type authored as an outline and
+    // auto-mapped onto the S7 book, whose paths are nested and named differently.
+    await page.goto(`${devUrl}/?panel=model`, { waitUntil: 'load' });
+    await page.waitForSelector('wui-eng-studio');
+    await page.waitForTimeout(500);
+    await page.evaluate(() => {
+      const app = document.querySelector('wui-eng-studio');
+      app?.selectDeviceById('s7-four1');
+      app?.customStructureForDemo(
+        'STD_Four',
+        ['STD_Four', '  PV', '    Temperature : Float', '    Hygrometrie : Float', '  SP', '    Temperature : Float', '    Rampe : Float', '  Etat', '    EnChauffe : Bool', '    PorteOuverte : Bool', '  Moteur', '    Marche : Bool', '    Defaut : Bool', '    Vitesse : Float'].join('\n')
+      );
+    });
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: resolve(OUT, '16-custom-structure-mapping.png') });
+    console.log('[eng-shots] 16-custom-structure-mapping.png — Structure personnalisée + mapping des signaux');
+
     // Generation scenario: qualify → generate → diff, captured end to end.
     await page.goto(`${devUrl}/?panel=model`, { waitUntil: 'load' });
     await page.waitForSelector('wui-eng-studio');

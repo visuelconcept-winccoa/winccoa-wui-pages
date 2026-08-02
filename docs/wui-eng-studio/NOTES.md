@@ -114,6 +114,49 @@ a useless check. A project profile states real bounds when it wants one.
 into the workspace, and the existing diff engine turns it into a check-in plan.
 Nothing is written until check-in — the generation is a workspace edit.
 
+### Two ways to shape the type: mirror, or author + map
+
+`options.mapping` selects the mode, and it is the ONLY thing that differs — both
+modes produce the same `Leaf[]` and everything downstream (datapoints, configs,
+descriptions, warnings) is shared:
+
+- **mirror** (default) — the type follows the book's own paths. Right when the
+  source is already organised the way the model should be (a TIA DB, a PackML
+  interface).
+- **custom + mapping** — the engineer authors the target structure and binds each
+  of its leaves to a book signal. That is what a HOUSE STANDARD needs: one DP type
+  across machines whose PLCs name and nest things differently.
+
+The authoring format is an **outline** (`structure.ts`): indentation is nesting,
+`Name : Type` is a leaf. A textarea, not a tree widget — the outline is readable,
+diffable, pasteable between projects, and it is what a standard looks like in a
+spec document. Switching to custom mode pre-fills it from the MIRRORED structure,
+so authoring starts from something that already works, and `parseStructureOutline`
+never throws: a bad line is reported next to the editor and skipped.
+
+One parser decision worth keeping: the first line is treated as the type ROOT (and
+dropped) **only when it names the type**. `Mesures` followed by indented members is
+genuinely ambiguous — root, or a group inside the type? — and eating it would
+silently lose a level. Nothing is dropped unless the text says so.
+
+`autoBindStructure` does the tedious part by name, most specific first: identical
+full path → the entry path ENDS WITH the leaf path (the usual case, since a book is
+rooted at a block or an instance and the structure is not) → leaf name alone.
+Comparison is separator- and case-insensitive (`Temp_Produit` ↔ `TempProduit`).
+When a pass yields **several equal candidates it binds nothing** and reports them:
+`PV.Temperature` matching both `Mesures.Temperature` and `Consignes.Temperature` is
+a question, not a coin flip. The UI shows those and offers the choice.
+
+What the mapping mode refuses to hide:
+- an **unbound leaf** stays in the type (the engineer put it there) but gets no
+  config, and is counted in a warning;
+- a **dangling binding** (pointing at a path the book/selection no longer has) is
+  named — that is what a re-browse that dropped a signal looks like;
+- a **type mismatch** keeps the AUTHORED type (it is the model's contract) and names
+  the mismatch, because a `Bool` DPE fed by a `Float` address is a mapping mistake
+  far more often than an intended conversion;
+- **unused book signals** are counted — a partial model is legitimate, silence is not.
+
 - **Structure from paths.** The entries' dotted paths become nested `Struct`s.
   The **longest fully-shared prefix is stripped** (`DB_Four.` when the whole DB is
   selected): a level shared by *every* selected signal carries no information.

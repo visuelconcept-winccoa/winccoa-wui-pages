@@ -24,16 +24,22 @@ import {
   classifyEntry,
   diffWorkspace,
   filterEntries,
+  autoBindStructure,
+  formatStructureOutline,
   generateModelFromBook,
   liveScopeOf,
   mergeProposal,
+  parseStructureOutline,
   roleCounts,
+  structureLeaves,
   type SignalRole,
   type AddressBook,
   type ApplyReport,
   type BookEntry,
   type Device,
+  type DpTypeStructure,
   type EngPlan,
+  type StructureBindings,
   type TagAccess,
   type LiveSnapshot,
   type Workspace
@@ -73,6 +79,16 @@ export class WuiEngStudio extends LitElement {
   @state() private genEquipments = '';
   /** Warnings of the last generation, shown under the form. */
   @state() private genWarnings: string[] = [];
+  /** Structure mode: mirror the book's paths, or author the type and map onto it. */
+  @state() private genMode: 'mirror' | 'custom' = 'mirror';
+  /** Authored structure, as an editable outline (see the core's structure.ts). */
+  @state() private genOutline = '';
+  /** Parse errors of the outline (shown next to it, never thrown). */
+  @state() private genOutlineErrors: string[] = [];
+  /** Target leaf path → book entry path. */
+  @state() private genBindings: StructureBindings = {};
+  /** Leaves auto-binding could not decide (several equal candidates). */
+  @state() private genAmbiguous: { leaf: string; candidates: string[] }[] = [];
   @state() private workspace: Workspace | null = null;
   @state() private live: LiveSnapshot | null = null;
   @state() private plan: EngPlan | null = null;
@@ -125,6 +141,22 @@ export class WuiEngStudio extends LitElement {
   /** Public: re-read the selected book's source (demo/screenshot harness). */
   async refreshForDemo(): Promise<void> {
     await this.onRefreshBook();
+  }
+
+  /**
+   * Public: switch the generation to a CUSTOM structure (demo/screenshot harness).
+   * With no outline it bootstraps from the mirror; `outline` overrides it to show a
+   * house-standard structure mapped onto a differently-shaped book.
+   */
+  customStructureForDemo(typeName: string, outline?: string): void {
+    const book = this.activeBook();
+    if (!book) return;
+    this.genTypeName = typeName;
+    this.genMode = 'custom';
+    this.genOutline = outline ?? formatStructureOutline(this.mirrorStructure(book));
+    this.genOutlineErrors = parseStructureOutline(this.genOutline, typeName).errors;
+    this.genBindings = {};
+    this.onAutoBind(book);
   }
 
   /** Public: run a generation with the given form values (demo/screenshot harness). */
@@ -679,6 +711,16 @@ export class WuiEngStudio extends LitElement {
             .value=${this.genEquipments}
             @input=${(e: Event) => (this.genEquipments = (e.target as HTMLInputElement).value)}
           /></label>
+        <label class="gen-row"><span>structure</span>
+          <select
+            class="filter"
+            .value=${this.genMode}
+            @change=${(e: Event) => this.onGenMode(book, (e.target as HTMLSelectElement).value as 'mirror' | 'custom')}
+          >
+            <option value="mirror">miroir du carnet</option>
+            <option value="custom">structure personnalisée + mapping</option>
+          </select></label>
+        ${this.genMode === 'custom' ? this.renderCustomStructure(book) : nothing}
         <button
           class="btn primary gen-btn"
           ?disabled=${this.busy || !this.can('edit-model') || this.genTypeName.trim() === ''}
@@ -694,6 +736,111 @@ export class WuiEngStudio extends LitElement {
     `;
   }
 
+  /**
+   * Custom-structure editor: an OUTLINE (indent = nesting, `Name : Type` = leaf)
+   * plus the mapping of each leaf onto a book signal.
+   *
+   * A textarea rather than a tree widget on purpose: the outline is readable,
+   * diffable, pasteable between projects, and it is what a house standard looks
+   * like in a spec document. Switching to this mode pre-fills it with the MIRRORED
+   * structure, so authoring starts from something that already works.
+   */
+  private renderCustomStructure(book: AddressBook): TemplateResult {
+    const parsed = parseStructureOutline(this.genOutline, this.genTypeName.trim() || 'Type');
+    const leaves = structureLeaves(parsed.structure);
+    const bound = leaves.filter((leaf) => (this.genBindings[leaf.segments.join('.')] ?? '') !== '').length;
+    const entries = this.visibleSignals(book);
+    return html`
+      <div class="gen-structure">
+        <div class="gen-sub">structure cible (indentation = imbrication, « Nom : Type » = feuille)</div>
+        <textarea
+          class="outline mono"
+          rows="8"
+          spellcheck="false"
+          .value=${this.genOutline}
+          @input=${(e: Event) => this.onOutlineInput((e.target as HTMLTextAreaElement).value)}
+        ></textarea>
+        ${this.genOutlineErrors.length > 0
+          ? html`<ul class="gen-warnings warn-inline">${this.genOutlineErrors.map((error) => html`<li>${error}</li>`)}</ul>`
+          : nothing}
+        <div class="gen-map-head">
+          <span>${bound}/${leaves.length} élément(s) associé(s)</span>
+          <button class="btn" ?disabled=${this.busy} @click=${() => this.onAutoBind(book)}>⚡ Associer automatiquement</button>
+        </div>
+        ${this.genAmbiguous.length > 0
+          ? html`<ul class="gen-warnings warn-inline">
+              ${this.genAmbiguous.map(
+                (item) => html`<li>« ${item.leaf} » : plusieurs signaux candidats (${item.candidates.join(', ')}) — choisir ci-dessous.</li>`
+              )}
+            </ul>`
+          : nothing}
+        <div class="map-table">
+          ${leaves.map((leaf) => {
+            const path = leaf.segments.join('.');
+            return html`
+              <div class="map-row">
+                <span class="mono map-leaf">${path}</span>
+                <span class="chip">${leaf.leafType}</span>
+                <select class="filter" @change=${(e: Event) => this.onBind(path, (e.target as HTMLSelectElement).value)}>
+                  <!-- \`selected\` on the option, NOT \`.value\` on the select: Lit sets
+                       a property before the options of the same update exist, so
+                       \`.value\` would silently fall back to the first option. -->
+                  <option value="" ?selected=${(this.genBindings[path] ?? '') === ''}>— non associé —</option>
+                  ${entries.map(
+                    (entry) => html`<option value=${entry.path} ?selected=${this.genBindings[path] === entry.path}>
+                      ${entry.path} (${entry.leafType})
+                    </option>`
+                  )}
+                </select>
+              </div>
+            `;
+          })}
+        </div>
+      </div>
+    `;
+  }
+
+  /** Switching to custom mode bootstraps the outline from the mirrored structure. */
+  private onGenMode(book: AddressBook, mode: 'mirror' | 'custom'): void {
+    this.genMode = mode;
+    if (mode !== 'custom' || this.genOutline.trim() !== '') return;
+    this.genOutline = formatStructureOutline(this.mirrorStructure(book));
+    this.genOutlineErrors = [];
+    this.onAutoBind(book);
+  }
+
+  /** The structure the MIRROR mode would build — the starting point for editing. */
+  private mirrorStructure(book: AddressBook): DpTypeStructure {
+    const typeName = this.genTypeName.trim() || 'Type';
+    return generateModelFromBook(book, {
+      typeName,
+      equipments: [],
+      deviceId: 'preview',
+      selection: this.visibleSignals(book).map((entry) => entry.path)
+    }).type.structure;
+  }
+
+  private onOutlineInput(text: string): void {
+    this.genOutline = text;
+    this.genOutlineErrors = parseStructureOutline(text, this.genTypeName.trim() || 'Type').errors;
+  }
+
+  private onBind(leafPath: string, entryPath: string): void {
+    this.genBindings = { ...this.genBindings, [leafPath]: entryPath };
+    this.genAmbiguous = this.genAmbiguous.filter((item) => item.leaf !== leafPath);
+  }
+
+  /** Name-match the authored leaves onto the book, and keep what it could not decide. */
+  private onAutoBind(book: AddressBook): void {
+    const { structure } = parseStructureOutline(this.genOutline, this.genTypeName.trim() || 'Type');
+    const result = autoBindStructure(structure, this.visibleSignals(book));
+    // Keep the operator's own choices: auto-binding fills the gaps, it does not reset.
+    this.genBindings = { ...result.bindings, ...this.genBindings };
+    this.genAmbiguous = result.ambiguous.filter((item) => (this.genBindings[item.leaf] ?? '') === '');
+    const bound = Object.values(this.genBindings).filter((value) => value !== '').length;
+    this.notice = `Association automatique : ${bound} élément(s) associé(s), ${result.unbound.length} sans correspondance, ${result.ambiguous.length} ambigu(s).`;
+  }
+
   /** Run the generator, merge into the workspace and refresh the plan. */
   private async onGenerateModel(book: AddressBook): Promise<void> {
     const workspace = this.workspace;
@@ -705,14 +852,22 @@ export class WuiEngStudio extends LitElement {
       .filter((s) => s !== '');
     this.busy = true;
     try {
+      const typeName = this.genTypeName.trim();
+      const mapping =
+        this.genMode === 'custom'
+          ? { structure: parseStructureOutline(this.genOutline, typeName).structure, bindings: this.genBindings }
+          : undefined;
       const proposal = generateModelFromBook(book, {
-        typeName: this.genTypeName.trim(),
+        typeName,
         zone: this.genZone.trim() === '' ? undefined : this.genZone.trim(),
         equipments,
         deviceId: device?.id ?? book.id,
         // A template catalog is bound to the selected equipment's own connection.
         bindConnection: book.interface?.connection ?? device?.name,
-        mode: book.interface?.protocol ?? device?.accessModes[0]
+        mode: book.interface?.protocol ?? device?.accessModes[0],
+        // Mirror mode restricts to the visible (filtered) signals like before;
+        // mapping mode takes its selection from the bindings themselves.
+        ...(mapping === undefined ? {} : { mapping })
       });
       const merged = mergeProposal(workspace, proposal);
       await this.gateway.saveWorkspace(merged);

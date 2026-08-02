@@ -470,6 +470,62 @@ export const engStudioStyles = [
       width: 100%;
       justify-content: center;
     }
+    /* Custom structure + mapping (generation form). */
+    .gen-structure {
+      margin: 0.35rem 0;
+      padding: 0.4rem;
+      border: 1px solid var(--eng-border);
+      border-radius: var(--eng-radius);
+      background: var(--eng-bg);
+    }
+    .gen-sub {
+      font-size: 0.68rem;
+      color: var(--eng-soft);
+      margin-bottom: 0.25rem;
+    }
+    textarea.outline {
+      width: 100%;
+      box-sizing: border-box;
+      resize: vertical;
+      background: var(--eng-surface);
+      color: var(--eng-text);
+      border: 1px solid var(--eng-border);
+      border-radius: var(--eng-radius);
+      padding: 0.3rem 0.4rem;
+      font-size: 0.72rem;
+      line-height: 1.4;
+    }
+    .gen-map-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.4rem;
+      margin: 0.35rem 0 0.25rem;
+      font-size: 0.7rem;
+      color: var(--eng-soft);
+    }
+    .map-table {
+      max-height: 14rem;
+      overflow: auto;
+    }
+    .map-row {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.12rem 0;
+      font-size: 0.72rem;
+    }
+    .map-leaf {
+      flex: 0 0 9rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .map-row .filter {
+      flex: 1;
+      min-width: 0;
+      font-size: 0.7rem;
+    }
     /* Access provenance: an ASSUMED access is not evidence — make it visible. */
     .chip.acc-assumed {
       color: var(--eng-warn);
