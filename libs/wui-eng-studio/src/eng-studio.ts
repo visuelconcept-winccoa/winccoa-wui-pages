@@ -19,8 +19,13 @@
  * page renders and is screenshotted with no runtime.
  */
 import {
+  SIGNAL_ROLES,
+  SIGNAL_ROLE_LABEL,
+  classifyEntry,
   diffWorkspace,
   filterEntries,
+  roleCounts,
+  type SignalRole,
   type AddressBook,
   type ApplyReport,
   type BookEntry,
@@ -54,6 +59,10 @@ export class WuiEngStudio extends LitElement {
   @state() private bookFilter = '';
   /** Filter for the signal table shown in the Devices panel's address book. */
   @state() private signalFilter = '';
+  /** Role filter of the signal table ('' = all). */
+  @state() private roleFilter: SignalRole | '' = '';
+  /** Signal paths checked for a bulk role assignment. */
+  @state() private checkedSignals = new Set<string>();
   @state() private workspace: Workspace | null = null;
   @state() private live: LiveSnapshot | null = null;
   @state() private plan: EngPlan | null = null;
@@ -81,6 +90,11 @@ export class WuiEngStudio extends LitElement {
   /** Public: activate one of the selected equipment's books by id. */
   selectBookById(id: string): void {
     if (this.books.some((b) => b.id === id)) this.selectBook(id);
+  }
+
+  /** Public: filter the signal table by role ('' = all) — demo/screenshot harness. */
+  filterByRole(role: SignalRole | ''): void {
+    this.roleFilter = role;
   }
 
   /** Monotonic load token — only the latest load() writes state (demo swap race). */
@@ -311,8 +325,10 @@ export class WuiEngStudio extends LitElement {
 
   /** Signal table of the current device's address book (in the Devices panel). */
   private renderDeviceSignals(book: AddressBook): TemplateResult {
-    const entries = filterEntries(book, this.signalFilter);
+    const entries = this.visibleSignals(book);
     const modes = this.currentDevice()?.accessModes ?? [];
+    const counts = this.roleTally(book);
+    const allChecked = entries.length > 0 && entries.every((e) => this.checkedSignals.has(e.path));
     return html`
       <section class="card signals">
         <div class="signals-head">
@@ -323,13 +339,35 @@ export class WuiEngStudio extends LitElement {
             .value=${this.signalFilter}
             @input=${(e: Event) => (this.signalFilter = (e.target as HTMLInputElement).value)}
           />
+          <select
+            class="filter role-filter"
+            .value=${this.roleFilter}
+            @change=${(e: Event) => (this.roleFilter = (e.target as HTMLSelectElement).value as SignalRole | '')}
+          >
+            <option value="">tous les rôles</option>
+            ${SIGNAL_ROLES.map(
+              (role) => html`<option value=${role} ?selected=${this.roleFilter === role}>${SIGNAL_ROLE_LABEL[role]} (${counts[role]})</option>`
+            )}
+          </select>
           <span class="soft signals-count">${entries.length} / ${book.entries.length}</span>
+          ${counts.unknown > 0
+            ? html`<span class="chip conflict" title="Signaux sans rôle — à qualifier">${counts.unknown} à qualifier</span>`
+            : html`<span class="chip new" title="Tous les signaux sont qualifiés">tout qualifié</span>`}
         </div>
+        ${this.renderRoleBar(book, entries)}
         <div class="signals-scroll">
           <table class="grid">
             <thead>
               <tr>
-                <th>chemin</th><th>type</th><th>unité</th><th>accès</th>
+                <th class="cb-col">
+                  <input
+                    type="checkbox"
+                    title="Tout cocher (lignes filtrées)"
+                    .checked=${allChecked}
+                    @change=${() => this.toggleAllSignals(entries)}
+                  />
+                </th>
+                <th>chemin</th><th>rôle</th><th>type</th><th>unité</th><th>accès</th>
                 <th>type source</th><th>gabarit</th><th>adresses (par mode)</th><th>commentaire</th>
               </tr>
             </thead>
@@ -342,13 +380,42 @@ export class WuiEngStudio extends LitElement {
     `;
   }
 
+  /** Bulk role bar: re-apply the rules, or assign a role to the checked rows. */
+  private renderRoleBar(book: AddressBook, visible: BookEntry[]): TemplateResult {
+    const checked = visible.filter((e) => this.checkedSignals.has(e.path)).length;
+    return html`
+      <div class="role-bar">
+        <button class="btn" ?disabled=${this.busy} title="Réappliquer les règles de qualification" @click=${() => this.onApplyRules(book)}>
+          ⚙ Appliquer les règles
+        </button>
+        <span class="soft">${checked} coché${checked > 1 ? 's' : ''}</span>
+        <select
+          class="filter"
+          ?disabled=${checked === 0 || !this.can('edit-model')}
+          @change=${(e: Event) => this.onBulkRole(book, (e.target as HTMLSelectElement).value as SignalRole)}
+        >
+          <option value="">affecter un rôle aux cochés…</option>
+          ${SIGNAL_ROLES.filter((r) => r !== 'unknown').map((role) => html`<option value=${role}>${SIGNAL_ROLE_LABEL[role]}</option>`)}
+        </select>
+        ${checked > 0 ? html`<button class="btn" @click=${() => (this.checkedSignals = new Set())}>décocher</button>` : nothing}
+      </div>
+    `;
+  }
+
   private renderSignalRow(entry: BookEntry, deviceModes: string[]): TemplateResult {
     // Order the candidate addresses by the device's access modes first.
     const present = Object.keys(entry.addresses);
     const ordered = [...deviceModes.filter((m) => present.includes(m)), ...present.filter((m) => !deviceModes.includes(m))];
+    const role = entry.role ?? 'unknown';
     return html`
       <tr>
+        <td class="cb-col">
+          <input type="checkbox" .checked=${this.checkedSignals.has(entry.path)} @change=${() => this.toggleSignal(entry.path)} />
+        </td>
         <td class="mono dpe">${entry.path}</td>
+        <td>
+          <span class="chip role role-${role}" title=${this.roleReason(entry)}>${SIGNAL_ROLE_LABEL[role]}</span>
+        </td>
         <td>${entry.leafType}${entry.unmapped ? html` <span class="chip conflict" title="type non mappé">?</span>` : nothing}</td>
         <td class="unit">${entry.unit ?? html`<span class="soft">—</span>`}</td>
         <td><span class="chip acc">${entry.access}</span></td>
@@ -565,6 +632,71 @@ export class WuiEngStudio extends LitElement {
 
   private selectBook(id: string): void {
     this.selectedBookId = id;
+  }
+
+  // --- signal qualification (roles) -------------------------------------------
+
+  /** Entries of the book after the text filter AND the role filter. */
+  private visibleSignals(book: AddressBook): BookEntry[] {
+    const byText = filterEntries(book, this.signalFilter);
+    return this.roleFilter === '' ? byText : byText.filter((e) => (e.role ?? 'unknown') === this.roleFilter);
+  }
+
+  /** Role counts of the whole book (drives the picker and the "à qualifier" chip). */
+  private roleTally(book: AddressBook): Record<SignalRole, number> {
+    return roleCounts(new Map(book.entries.map((e) => [e.path, { role: e.role ?? 'unknown', source: 'rule', ruleId: null }])));
+  }
+
+  /** Tooltip explaining WHY an entry has its role (the matched rule's note). */
+  private roleReason(entry: BookEntry): string {
+    const assignment = classifyEntry(entry);
+    if (entry.role !== undefined && assignment.role !== entry.role) {
+      return `rôle imposé manuellement (la règle aurait proposé « ${SIGNAL_ROLE_LABEL[assignment.role]} »)`;
+    }
+    return assignment.reason ?? '';
+  }
+
+  private toggleSignal(path: string): void {
+    const next = new Set(this.checkedSignals);
+    if (next.has(path)) next.delete(path);
+    else next.add(path);
+    this.checkedSignals = next;
+  }
+
+  private toggleAllSignals(visible: BookEntry[]): void {
+    const allChecked = visible.length > 0 && visible.every((e) => this.checkedSignals.has(e.path));
+    this.checkedSignals = allChecked ? new Set() : new Set(visible.map((e) => e.path));
+  }
+
+  /** Re-run the rule set on the book (manual overrides are preserved server-side). */
+  private async onApplyRules(book: AddressBook): Promise<void> {
+    this.busy = true;
+    try {
+      const fresh = await this.gateway.refreshBook(book.id);
+      this.books = this.books.map((b) => (b.id === fresh.id ? fresh : b));
+      const counts = this.roleTally(fresh);
+      this.notice = `Règles appliquées sur « ${fresh.name} » : ${fresh.entries.length - counts.unknown}/${fresh.entries.length} signaux qualifiés.`;
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /** Assign one role to every checked signal (the bulk primitive). */
+  private async onBulkRole(book: AddressBook, role: SignalRole): Promise<void> {
+    if (role === ('' as SignalRole) || this.checkedSignals.size === 0) return;
+    const roles: Record<string, SignalRole> = {};
+    for (const path of this.checkedSignals) roles[path] = role;
+    const count = this.checkedSignals.size;
+    this.busy = true;
+    try {
+      await this.gateway.saveBookRoles(book.id, roles);
+      const fresh = await this.gateway.getBook(book.id);
+      if (fresh) this.books = this.books.map((b) => (b.id === fresh.id ? fresh : b));
+      this.checkedSignals = new Set();
+      this.notice = `${count} signal(aux) qualifié(s) « ${SIGNAL_ROLE_LABEL[role]} ».`;
+    } finally {
+      this.busy = false;
+    }
   }
 
   private async onRefreshBook(): Promise<void> {

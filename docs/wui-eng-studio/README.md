@@ -100,6 +100,43 @@ is not vendor-verified**:
 
 ![Schneider XVM book — second generator on the same equipment](../images/eng-studio/09-book-schneider-xvm.png)
 
+#### Qualifying the signals (roles) — what makes the rest automatic
+
+A book says *what to read*; a **role** says *what it is for*. Roles are inferred by
+a rule engine and drive both the model and the configs at check-in
+(archive / alarm / range / direction). Eight roles: **mesure, consigne, commande,
+état, alarme, compteur, paramètre**, and **à qualifier** — nothing ever takes a
+silent default.
+
+Three rule layers, most specific wins, and the matching rule is always shown as
+the chip's tooltip:
+
+1. **structural** — datatype + access + unit (a read-only `Float` in `bar` is a
+   measure; a writable `Bool` is a command). Zero configuration, works on any
+   source;
+2. **source path** — `Command.*` / `Status.*` / `Admin.*` (PackML),
+   `Mesures.*` / `Consignes.*` / `Etat.*` (S7 & catalog books);
+3. **name & convention** — the VC referential prefixes (`AI_`, `AO_`, `DI_`,
+   `DO_`, `CALC_`) plus business patterns (`*_Defaut` → alarme, `Marche*` →
+   commande, `Compteur*`/`Nb_*` → compteur…).
+
+Rules are **data** (serialisable, project-overridable), a **manual role always
+wins**, and the whole set is re-runnable (*Appliquer les règles*) without losing
+overrides. On the demo books this qualifies **100 % of the signals with no
+configuration**: below, the M580 book — `Defaut_*` → alarme, `Marche_*` →
+commande, `Consigne_*` → consigne, and `Pression_Reseau` → mesure *despite being
+writable* (a quantity name outranks the structural rule, but not the
+`Consignes.` branch):
+
+![Role qualification with rules and bulk assignment](../images/eng-studio/10-roles-qualification.png)
+
+Bulk assignment is the escape hatch: filter (text or role), tick, assign one role
+to every checked row. And the subtle cases work — on the PAC3200, the **4 energy
+counters carry no "counter" keyword at all**; their unit (`kWh`, `kvarh`, `kVAh`)
+qualifies them, while `m³` or `h` stay measures because those units are ambiguous:
+
+![PAC3200 counters isolated among 45 signals](../images/eng-studio/11-roles-pac3200.png)
+
 ### 2 · Modèle — book browser + signal grid
 
 Left, the **address-book browser** (filterable): each entry shows its WinCC OA leaf

@@ -9,10 +9,14 @@
  */
 
 import {
+  DEFAULT_ROLE_RULES,
   applyPlan,
   baselineOf,
+  classifyEntries,
   diffWorkspace,
   makeDpeName,
+  withRoles,
+  type SignalRole,
   type AddressBook,
   type ApplyReport,
   type Device,
@@ -24,6 +28,16 @@ import {
 } from '@visuelconcept/wui-eng-core';
 import type { EngGateway, EngRole, TestReadResult } from './gateway.js';
 import { DEMO_DEVICES, DEMO_LIVE_VALUES, demoBooks, demoLiveSnapshot } from './demo-data.js';
+
+/**
+ * Qualify a book with the default rule set, honouring the operator's manual
+ * overrides. The real backend does the same on ingestion/refresh — the roles are
+ * stored WITH the book so a mutualised catalog is qualified once.
+ */
+function qualify(book: AddressBook, manual: Record<string, SignalRole>): AddressBook {
+  const assignments = classifyEntries(book.entries, DEFAULT_ROLE_RULES, manual);
+  return { ...book, entries: withRoles(book.entries, assignments) };
+}
 
 /** In-memory port so the demo check-in mutates a fake live project. */
 function demoPort(live: LiveSnapshot): EngPort {
@@ -47,7 +61,9 @@ function demoPort(live: LiveSnapshot): EngPort {
 export class DemoEngGateway implements EngGateway {
   readonly isDemo = true;
 
-  private books = new Map<string, AddressBook>(demoBooks().map((b) => [b.id, b]));
+  private books = new Map<string, AddressBook>(demoBooks().map((b) => [b.id, qualify(b, {})]));
+  /** Operator role overrides per book (path → role), kept across refreshes. */
+  private manualRoles = new Map<string, Record<string, SignalRole>>();
   private live: LiveSnapshot = demoLiveSnapshot();
   private workspace: Workspace = this.seedWorkspace();
 
@@ -69,8 +85,15 @@ export class DemoEngGateway implements EngGateway {
 
   async refreshBook(bookId: string): Promise<AddressBook> {
     const fresh = demoBooks().find((b) => b.id === bookId);
-    if (fresh) this.books.set(bookId, fresh);
+    // A refresh re-runs the rules but KEEPS the operator's manual overrides.
+    if (fresh) this.books.set(bookId, qualify(fresh, this.manualRoles.get(bookId) ?? {}));
     return this.books.get(bookId) as AddressBook;
+  }
+
+  async saveBookRoles(bookId: string, roles: Record<string, SignalRole>): Promise<void> {
+    this.manualRoles.set(bookId, { ...(this.manualRoles.get(bookId) ?? {}), ...roles });
+    const book = this.books.get(bookId);
+    if (book) this.books.set(bookId, qualify(book, this.manualRoles.get(bookId) ?? {}));
   }
 
   async getWorkspace(): Promise<Workspace> {

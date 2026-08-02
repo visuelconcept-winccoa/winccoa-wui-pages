@@ -79,6 +79,18 @@ const DEVICE_SHOTS = [
     book: 'book-m580-pesage-xvm',
     file: '09-book-schneider-xvm.png',
     desc: 'Schneider XVM : second générateur (XML) sur le même équipement'
+  },
+  {
+    device: 'm580-station',
+    book: 'book-m580-station',
+    file: '10-roles-qualification.png',
+    desc: 'Qualification : rôles déduits par règles + affectation en masse'
+  },
+  {
+    device: 'pac-depart1',
+    role: 'counter',
+    file: '11-roles-pac3200.png',
+    desc: 'Qualification automatique du PAC3200 : les compteurs d’énergie isolés parmi 45 signaux'
   }
 ];
 
@@ -169,6 +181,12 @@ async function main() {
         await page.evaluate((id) => {
           document.querySelector('wui-eng-studio')?.selectBookById(id);
         }, shot.book);
+        await page.waitForTimeout(300);
+      }
+      if (shot.role) {
+        await page.evaluate((role) => {
+          document.querySelector('wui-eng-studio')?.filterByRole(role);
+        }, shot.role);
         await page.waitForTimeout(300);
       }
       const file = resolve(OUT, shot.file);

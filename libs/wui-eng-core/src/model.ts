@@ -20,6 +20,8 @@
  * dot — see docs 'adressage-datapoints-wincc-oa').
  */
 
+import type { SignalRole } from './roles/roles.js';
+
 /** WinCC OA scalar element types the studio maps source datatypes onto. */
 export type OaLeafType =
   | 'Bool'
@@ -118,6 +120,12 @@ export interface BookEntry {
   comment?: string;
   /** Engineering unit of the signal (→ DPE unit), e.g. `V`, `A`, `kWh`. */
   unit?: string;
+  /**
+   * Semantic qualification driving the model + configs (see `roles/`). Set by
+   * the rule engine or by the operator; carried BY THE BOOK so a mutualised
+   * catalog is qualified once and reused everywhere.
+   */
+  role?: SignalRole;
   /** Id of the source structured type (UDT) this entry belongs to, if any. */
   typeId?: string;
   /** True when the datatype could not be mapped (bound as default/String). */

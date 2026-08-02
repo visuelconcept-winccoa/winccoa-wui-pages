@@ -250,6 +250,70 @@ export const engStudioStyles = [
     .addr-cell {
       white-space: normal;
     }
+    /* role qualification */
+    .role-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.4rem 0.75rem;
+      border-bottom: 1px solid var(--eng-border);
+      font-size: 0.8rem;
+    }
+    .role-filter {
+      max-width: 12rem;
+    }
+    select.filter {
+      background: var(--eng-bg);
+      border: 1px solid var(--eng-border);
+      border-radius: var(--eng-radius);
+      color: var(--eng-text);
+      padding: 0.2rem 0.4rem;
+      font: inherit;
+    }
+    .cb-col {
+      width: 1.6rem;
+      text-align: center;
+    }
+    .cb-col input {
+      accent-color: var(--eng-primary);
+      cursor: pointer;
+    }
+    .chip.role {
+      font-weight: 600;
+    }
+    .chip.role-measure {
+      color: #4aa3f0;
+      border-color: #4aa3f0;
+    }
+    .chip.role-setpoint {
+      color: #9b8cf0;
+      border-color: #9b8cf0;
+    }
+    .chip.role-command {
+      color: var(--eng-primary);
+      border-color: var(--eng-primary);
+    }
+    .chip.role-state {
+      color: var(--eng-soft);
+      border-color: var(--eng-border);
+    }
+    .chip.role-alarm {
+      color: var(--eng-alarm);
+      border-color: var(--eng-alarm);
+    }
+    .chip.role-counter {
+      color: var(--eng-success);
+      border-color: var(--eng-success);
+    }
+    .chip.role-parameter {
+      color: #c0a080;
+      border-color: #c0a080;
+    }
+    .chip.role-unknown {
+      color: var(--eng-warn);
+      border-color: var(--eng-warn);
+      border-style: dashed;
+    }
     td.unit {
       color: var(--eng-primary);
       font-family: 'Cascadia Code', 'Consolas', monospace;

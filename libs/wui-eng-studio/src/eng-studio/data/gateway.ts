@@ -21,6 +21,7 @@ import type {
   Device,
   EngPlan,
   LiveSnapshot,
+  SignalRole,
   Workspace
 } from '@visuelconcept/wui-eng-core';
 
@@ -54,6 +55,11 @@ export interface EngGateway {
    * SimaticML bundle). Returns the fresh book.
    */
   refreshBook(bookId: string): Promise<AddressBook>;
+  /**
+   * Persist the operator's MANUAL role overrides of a book (path → role).
+   * Rule-derived roles are recomputed, manual ones are kept.
+   */
+  saveBookRoles(bookId: string, roles: Record<string, SignalRole>): Promise<void>;
 
   // --- workspace + check-in ---------------------------------------------------
   getWorkspace(): Promise<Workspace>;
