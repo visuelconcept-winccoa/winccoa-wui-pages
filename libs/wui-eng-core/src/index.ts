@@ -15,6 +15,8 @@ export * from './addressbook.js';
 export * from './configs/builders.js';
 export * from './configs/read.js';
 export * from './drivers/opcua.js';
+export * from './opcua/browse.js';
+export * from './opcua/nodeset.js';
 export * from './drivers/s7.js';
 export * from './drivers/modbus.js';
 export * from './simaticml/xml.js';

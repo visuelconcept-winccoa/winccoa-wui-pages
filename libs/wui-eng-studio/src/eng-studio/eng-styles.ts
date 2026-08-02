@@ -470,6 +470,32 @@ export const engStudioStyles = [
       width: 100%;
       justify-content: center;
     }
+    /* Online OPC UA browse form (Devices panel). */
+    .browse-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 0.5rem;
+      margin-bottom: 0.4rem;
+    }
+    .browse-row label {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+      font-size: 0.7rem;
+      color: var(--eng-soft);
+    }
+    .browse-row input,
+    .browse-row select {
+      background: var(--eng-bg);
+      color: var(--eng-text);
+      border: 1px solid var(--eng-border);
+      border-radius: var(--eng-radius);
+      padding: 0.2rem 0.4rem;
+      font-size: 0.78rem;
+      font-family: inherit;
+      min-width: 11rem;
+    }
     .gen-hint,
     .gen-warnings {
       font-size: 0.72rem;

@@ -153,3 +153,46 @@ describe('book-level classification', () => {
     expect(assignments.get('Mesures.Temperature')).toMatchObject({ role: 'parameter', source: 'manual' });
   });
 });
+
+describe('path rules match a BRANCH wherever it sits', () => {
+  // Regression: the path rules were anchored at `^`, so they only ever fired on
+  // catalogs rooted at the branch itself (a companion spec). Every book rooted at
+  // a block (SimaticML) or at an instance (an online browse) silently fell through
+  // to the name/structural rules.
+  it('fires on a path rooted at a TIA block', () => {
+    expect(classifyEntry(entry('DB_Four.Mesures.Hygrometrie', 'Float', 'r')).ruleId).toBe('path-measure');
+    expect(classifyEntry(entry('DB_Four.Consignes.Rampe', 'Float', 'rw')).ruleId).toBe('path-setpoint');
+  });
+
+  it('fires on a path rooted at a browsed instance', () => {
+    expect(classifyEntry(entry('Remplisseuse.Status.StateCurrent', 'Int', 'r')).ruleId).toBe('path-state');
+    expect(classifyEntry(entry('Remplisseuse.Commandes.Demarrer', 'Bool', 'r')).ruleId).toBe('path-command');
+    expect(classifyEntry(entry('Remplisseuse.Admin.RecetteCourante', 'String', 'r')).ruleId).toBe('path-admin');
+  });
+
+  it('keeps the name rules ABOVE the path rules where they are more specific', () => {
+    // `Admin.` would say "parameter"; a counter name is stronger and wins (prio 36
+    // vs 22) — the layering is deliberate, not accidental.
+    expect(classifyEntry(entry('Remplisseuse.Admin.ProdProcessedCount', 'UInt', 'r'))).toMatchObject({
+      role: 'counter',
+      ruleId: 'name-counter'
+    });
+  });
+
+  it('still fires at the root (a companion-spec catalog)', () => {
+    expect(classifyEntry(entry('Status.UnitModeCurrent', 'Int', 'r')).ruleId).toBe('path-state');
+  });
+
+  it('does not fire on a mere SUBSTRING of a segment', () => {
+    // `Statusless` is not the `Status` branch.
+    expect(classifyEntry(entry('Machine.Statusless.Valeur', 'Float', 'r')).ruleId).not.toBe('path-state');
+  });
+
+  it('a browsed command stays a command despite the read-only browse default', () => {
+    // A browse cannot read AccessLevel, so `access` is 'r' — the PATH is what
+    // rescues the qualification here (and the direction then comes from the role).
+    const assignment = classifyEntry(entry('Remplisseuse.Commandes.CmdStart', 'Bool', 'r'));
+    expect(assignment.role).toBe('command');
+  });
+});
+

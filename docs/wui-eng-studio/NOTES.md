@@ -290,6 +290,99 @@ the user.
   `tagImporterController.writeAddress`; the `_alert_hdl` and `_archive` writes
   mirror `para-alarm.ts` / `para-archive.ts`.
 
+## Online OPC UA browse — decisions forced by the driver
+
+The walk lives in the pure core (`opcua/browse.ts`) behind an injected
+`OpcUaBrowsePort`; the backend implements the port, the demo implements it over an
+in-memory fake server. Every design choice below is a consequence of what the
+driver actually returns, not a preference:
+
+- **One level per request.** A browse answer is six PARALLEL ARRAYS
+  (`DisplayNames`, `NodeIds`, `DataTypes`, `ValueRanks`, `NodeClasses`,
+  `BrowsePaths`) with **no parent link**, so a multi-level answer cannot be
+  reassembled into a tree. The walker asks for depth 1 and recurses itself — that
+  is the only way to know a node's parent, hence its symbolic path. (Using the
+  driver's own multi-level browse would first require confirming the exact
+  `BrowsePaths` format on a real server; not done, so not used.)
+- **Sequential, and QUEUED per connection.** Every browse of a connection goes
+  through the same `_<conn>.Browse.GetBranch` element: a second request overwrites
+  the first before its answer arrives, and the first caller then waits for a reply
+  that never comes. The walk is sequential by construction, and the backend port
+  keeps a per-connection queue so two concurrent HTTP callers cannot collide
+  either. The tag importer does one browse per user click and never hit this; the
+  studio walks hundreds of levels, so it must.
+- **Bounded, and never silently.** Depth, signal count and request count are all
+  capped (8 / 5000 / 2000 by default). Hitting a cap emits a warning naming the
+  abandoned branches — a truncated catalog that *looks* complete is how you ship a
+  half-configured machine.
+- **A cycle guard**, because an OPC UA address space is a graph: a node already
+  visited is not re-entered.
+- **One unreadable branch does not lose the catalog**: the failure is caught,
+  counted and reported as a warning; the rest of the walk continues.
+- **`AccessLevel` is not browsed** (verified caveat inherited from the tag
+  importer), so every browsed signal is catalogued `r`. This is stated as a book
+  warning, and it is *why the role layer matters here*: the address direction comes
+  from the role's profile, not from the browse default. It also made a latent bug
+  visible — see the path-rule fix below.
+- **Array variables are flagged, not guessed.** `OaLeafType` has no `Dyn*` member
+  and the `_address` write for a dynamic DPE is unverified, so an array is
+  catalogued with its scalar base type, marked `unmapped`, and listed in a warning.
+  Fabricating a dynamic address would put a silently-truncating binding in a
+  project.
+
+**The refresh is the reason a book is first-class.** Browse parameters are recorded
+in `provenance.browse`, so a refresh REPLAYS the same walk and diffs the result
+(`diffBooks` → `refreshWarnings`, both in the core so the backend and the demo word
+it identically). `removed` is the dangerous half: those signals may still be
+referenced by a workspace. A failed re-browse **keeps the stored catalog** (HTTP
+502 + the old book) — losing a catalog because a server blinked is not acceptable.
+
+### The path-rule bug the browse exposed
+
+The role engine's path rules (`path-measure`, `path-state`, `path-command`,
+`path-setpoint`, `path-admin`) were anchored at `^`, e.g. `^(mesures?)\.`. That
+only ever matched catalogs rooted at the branch itself (a companion spec like
+PackML). Every book rooted at a **block** (`DB_Four.Mesures.Temperature`) or at an
+**instance** (`Remplisseuse.Status.StateCurrent`, which is what a browse produces)
+fell straight through to the name/structural rules. The rules were silently dead
+for most real books.
+
+Fixed by matching a **branch anywhere** in the path (`(^|\.)(…)\.`) — a branch is
+what carries the meaning, wherever it sits — plus the French plural
+(`commande?s?`, so a TIA `Commandes.` folder counts). Visible effect on the demo:
+`Status.*` went from *mesure* to *état*, and the generated model gained correct
+I/O directions on setpoints and a binary alarm on `Moteur.Defaut`. Regression tests
+cover all three rootings.
+
+## OPC UA NodeSet2 — the offline sibling
+
+`opcua/nodeset.ts` ports the tag importer's proven NodeSet reader (standard
+reference/datatype NodeIds, alias resolution, `AccessLevel` decoding, supertype
+folding) onto the core's dependency-free XML reader — the tag-importer version runs
+on the browser's `DOMParser`, which exists neither in the core nor in the backend.
+
+Two output shapes, and the difference is not cosmetic:
+
+- the file declares real **instances** (`UAObject` with a `HasTypeDefinition` and
+  **no** `HasModellingRule` — a modelling rule marks an instance *declaration*,
+  i.e. part of a type) → entries rooted at each instance. An export of a machine.
+- the file declares only **types** (the usual companion-spec case) → each
+  `UAObjectType` becomes a TEMPLATE rooted at the type name. That is precisely the
+  studio's template catalog, mutualisable across every machine implementing the
+  spec.
+
+**NodeIds are file-local.** A NodeSet assigns its own namespace INDICES and a live
+server almost always assigns different ones, so a NodeSet address is a *candidate*,
+never a binding: every address is emitted with the `<Connexion>` placeholder, the
+book carries **no `interface`** (so `ingestBook` deliberately does not forward one),
+and the caveat is the book's first warning. Unlike a browse, a NodeSet *does* carry
+`AccessLevel`, so its access modes are real.
+
+⚠️ The unit-test fixtures are hand-written `UANodeSet` documents following OPC UA
+Part 6 — **not** vendor exports. The OPC Foundation pages for the PackML companion
+spec return HTTP 403 from this environment, so a real companion-spec NodeSet is
+still to be calibrated against (see INTEGRATION "Inputs still needed").
+
 ## Backend: the runtime seam, and where the honesty lives
 
 The backend is deliberately thin — three files, no manager. Endpoint table, store
@@ -352,11 +445,16 @@ backend too, not just the core and the page.
   studio parses it as a book. Goal: minimal human steps between TIA and WinCC OA.
 - **Ingestion mode** — `POST /books/ingest` exists; the **watched folder** does
   not (waiting on your choice, see INTEGRATION "Inputs still needed").
-- **Online browse** — `provenance.kind: 'opcua-browse'` books are stored and
-  re-qualified, but `refreshBook` does not yet re-browse the server (it re-runs
-  the rules on the stored catalog). Regenerating a browsed book is the next
-  backend increment; file-based books are regenerated by re-ingesting.
+- **File-book regeneration** — a re-browse replays an online walk, but the server
+  does not keep an uploaded document, so a SimaticML/CSV/XVM/NodeSet book is
+  regenerated by re-ingesting its source. Keeping the source blob next to the book
+  in the store would make those refreshable too; not done (storage + retention
+  question for you).
 - **Device form** — the UI's "add device" is still a stub; `POST /devices`
   accepts the registry, so devices can be provisioned by the API meanwhile.
+- **Browse-time type discovery** — a browsed book has no `BookType` (an online
+  browse does not reliably expose `HasTypeDefinition`, the same limit the tag
+  importer documents). Structural sharing across identical machines therefore comes
+  from a NodeSet or from the model generation, not from the walk.
 - Mass-edit rules & config profiles, auto-map-by-name, multi-user check-out
   locking (the baseline already detects the conflict; it does not prevent it).

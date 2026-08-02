@@ -28,6 +28,7 @@
     "types/**/*.d.ts",
     "routes/engRoute.ts",
     "routes/engController.ts",
+    "routes/engOpcuaBrowse.ts",
     "routes/engStore.ts",
     "routes/appSecurityGuard.ts"
   ]

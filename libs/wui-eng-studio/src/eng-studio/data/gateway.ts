@@ -51,6 +51,45 @@ export interface LiveScope {
   dpes?: string[];
 }
 
+/** One OPC UA server connection of the project, offered for browsing. */
+export interface EngConnection {
+  /** Reference name (no leading `_`), as used in an address reference. */
+  name: string;
+  connected: boolean;
+}
+
+/** Parameters of an online browse (see the core's `BrowseSource`). */
+export interface BrowseRequest {
+  bookId: string;
+  connection: string;
+  name?: string;
+  rootNodeId?: string;
+  maxDepth?: number;
+  maxEntries?: number;
+}
+
+/** Paths touched by a re-read of a book's source. */
+export interface BookDelta {
+  added: string[];
+  removed: string[];
+  changed: string[];
+}
+
+/**
+ * Result of a refresh / browse. `delta` is present only when the SOURCE was
+ * actually re-read and a previous version existed — a refresh that merely re-runs
+ * the rules has nothing to compare. `removed` is the dangerous half: those
+ * signals may still be referenced by a workspace.
+ */
+export interface BookRefresh {
+  book: AddressBook;
+  /** True when the live source was re-read (as opposed to rules-only). */
+  rebrowsed: boolean;
+  delta?: BookDelta;
+  /** Why the source could not be re-read, when it could not. */
+  note?: string;
+}
+
 export interface EngGateway {
   /** Whether this gateway is the offline demo (drives a visible banner). */
   readonly isDemo: boolean;
@@ -66,10 +105,21 @@ export interface EngGateway {
   /** One book by its id, or null. */
   getBook(bookId: string): Promise<AddressBook | null>;
   /**
-   * (Re)generate a book from its configured source (browse / last ingested
-   * SimaticML bundle). Returns the fresh book.
+   * (Re)generate a book from its configured source. An `opcua-browse` book with
+   * replayable browse parameters is **re-browsed on the live server**; any other
+   * book only has its role rules re-run (the server does not keep the uploaded
+   * document — re-ingest to regenerate a file catalog).
    */
-  refreshBook(bookId: string): Promise<AddressBook>;
+  refreshBook(bookId: string): Promise<BookRefresh>;
+
+  /** OPC UA connections available for an online browse (empty in the demo). */
+  listConnections(): Promise<EngConnection[]>;
+
+  /**
+   * Walk a live OPC UA server into a book and store it under `bookId`.
+   * Replaces a book of the same id — that is what a "re-browse" is.
+   */
+  browseBook(request: BrowseRequest): Promise<BookRefresh>;
   /**
    * Persist the operator's MANUAL role overrides of a book (path → role).
    * Rule-derived roles are recomputed, manual ones are kept.

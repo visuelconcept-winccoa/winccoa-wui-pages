@@ -49,10 +49,13 @@ function gate(role: 'view' | 'edit-model' | 'manage-devices' | 'checkin') {
  *   GET  /devices                                       (view)           -> { devices }
  *   POST /devices          { devices }                  (manage-devices) -> { devices }
  *
+ *   GET  /connections                                   (view)           -> { connections }
+ *
  *   GET  /books                                         (view)           -> { books }
  *   GET  /books/:id                                     (view)           -> { book }
  *   POST /books/ingest     { bookId, format, … }        (manage-devices) -> { book }
- *   POST /books/:id/refresh                             (manage-devices) -> { book }
+ *   POST /books/browse     { bookId, connection, … }    (manage-devices) -> { book, delta? }
+ *   POST /books/:id/refresh                             (manage-devices) -> { book, delta? }
  *   POST /books/:id/roles  { roles }                    (manage-devices) -> { book }
  *
  *   GET  /workspace?name=                               (view)           -> { workspace }
@@ -69,8 +72,8 @@ function gate(role: 'view' | 'edit-model' | 'manage-devices' | 'checkin') {
  * "backend absent" from "not allowed", and `/roles` is what the UI needs to gate
  * itself (it only ever reports the CALLER's own grants, never another user's).
  *
- * `/books/ingest` is declared BEFORE `/books/:id/*` — otherwise "ingest" would
- * match the `:id` parameter.
+ * `/books/ingest` and `/books/browse` are declared BEFORE `/books/:id/*` —
+ * otherwise "ingest"/"browse" would match the `:id` parameter.
  *
  * The body limit is 25mb: a SimaticML ingestion posts a whole TIA export bundle
  * and a check-in plan can carry thousands of config items.
@@ -89,9 +92,13 @@ export class EngRoute {
     router.get('/devices', gate('view'), controller.listDevices);
     router.post('/devices', gate('manage-devices'), controller.saveDevices);
 
+    // --- OPC UA connections (browsable sources) --------------------------------
+    router.get('/connections', gate('view'), controller.connections);
+
     // --- address books ---------------------------------------------------------
     router.get('/books', gate('view'), controller.listBooks);
     router.post('/books/ingest', gate('manage-devices'), controller.ingestBook);
+    router.post('/books/browse', gate('manage-devices'), controller.browseBook);
     router.get('/books/:id', gate('view'), controller.getBook);
     router.post('/books/:id/refresh', gate('manage-devices'), controller.refreshBook);
     router.post('/books/:id/roles', gate('manage-devices'), controller.saveBookRoles);

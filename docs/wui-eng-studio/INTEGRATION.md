@@ -17,7 +17,10 @@
     "mount": "/api/eng",
     "routeClass": "EngRoute",
     "routeFile": "engRoute",
-    "srcFiles": ["engController.ts", "engRoute.ts", "engStore.ts", "appSecurityGuard.ts"],
+    "srcFiles": [
+      "engController.ts", "engRoute.ts", "engStore.ts",
+      "engOpcuaBrowse.ts", "appSecurityGuard.ts"
+    ],
     "vendorPackages": ["@visuelconcept/wui-eng-core"]
   }
 }
@@ -39,10 +42,12 @@
 | GET  | `/roles` | — | the **caller's own** studio grants (what the UI gates on) |
 | GET  | `/devices` | `view` | the device registry |
 | POST | `/devices` `{devices}` | `manage-devices` | replace the device registry |
+| GET  | `/connections` | `view` | the project's OPC UA connections (`_OPCUAServer`), browsable |
 | GET  | `/books` | `view` | every address book, re-qualified (roles) |
 | GET  | `/books/:id` | `view` | one book |
-| POST | `/books/ingest` `{bookId,format,…}` | `manage-devices` | build a book from a file source (`simaticml` \| `xvm` \| `csv`) |
-| POST | `/books/:id/refresh` | `manage-devices` | re-run the role rules over the stored book |
+| POST | `/books/ingest` `{bookId,format,…}` | `manage-devices` | build a book from a file source (`simaticml` \| `xvm` \| `csv` \| `nodeset`) |
+| POST | `/books/browse` `{bookId,connection,…}` | `manage-devices` | walk a LIVE OPC UA server into a book |
+| POST | `/books/:id/refresh` | `manage-devices` | re-read the source (re-browse when replayable), else re-run the rules |
 | POST | `/books/:id/roles` `{roles}` | `manage-devices` | persist the operator's **manual** role overrides |
 | GET  | `/workspace?name=` | `view` | the working copy |
 | POST | `/workspace` `{workspace}` | `edit-model` | save the working copy |
@@ -77,10 +82,26 @@ gating. Enable webserver auth in production.
 | `simaticml` | `documents: [{fileName, xml}]` | TIA Openness `PlcBlock.Export()` bundle |
 | `xvm` | `xml` | Control Expert `.XVM` / `.XSY` |
 | `csv` | `text` | Control Expert data-editor export (CSV/TSV) |
+| `nodeset` | `xml` | OPC UA NodeSet2 (`UANodeSet`) — companion spec or server export |
 
-Optional for all three: `name`, `file` (recorded in the provenance),
+Optional for all four: `name`, `file` (recorded in the provenance),
 `interface: {protocol, connection, …}` — omit it to store a **template catalog**
-(bound per equipment at generation time, see NOTES).
+(bound per equipment at generation time, see NOTES). `nodeset` **ignores**
+`interface` on purpose: a NodeSet's namespace indices are file-local, so it is
+always a template catalog.
+
+**`POST /books/browse`** — `{bookId, connection}` required; optional `name`,
+`rootNodeId` (defaults to the Objects folder `ns=0;i=85`), `maxDepth`, `maxEntries`,
+`maxRequests`, `driverNumber`. It REPLACES a book of the same id — that is what a
+re-browse is — and answers `{book, rebrowsed: true, delta?}`, where `delta` lists the
+paths `added` / `removed` / `changed` versus the previous version.
+
+`POST /books/:id/refresh` answers the same shape: it replays the parameters recorded
+in `provenance.browse` when the book has them, otherwise it only re-runs the role
+rules and says so (`rebrowsed: false` + a `note`).
+
+A failed browse answers **502 with the stored book untouched** — a server blink must
+never destroy a catalog.
 
 **`POST /live` and `POST /plan`** — `dpes` is the **config read-back scope**. Both
 the page and the controller derive it from `liveScopeOf(workspace)` in the core:
@@ -158,6 +179,11 @@ the write routes.
 - **Live address binding**: a running driver per device (OPC UA client / S7 /
   Modbus) and, for polled addresses, a poll group. Declare `driverNumber` on every
   non-OPC-UA device — auto-detection is only verified for `OPCUAC`.
+- **Online OPC UA browse**: a `_OPCUAServer` connection **connected** through a
+  running OPC UA client manager. The browse writes `_<conn>.Browse.GetBranch` and
+  reads the echoed `Browse.*` arrays (the tag importer's proven protocol), so the
+  webserver needs write access to that connection datapoint. Browses of one
+  connection are queued server-side; a level times out after 60 s.
 
 ## Typecheck the backend without WinCC OA
 
@@ -197,6 +223,15 @@ To harden the **SimaticML/TIA** path against real data, please provide:
 5. If a UMAS-based online browse is wanted (Schneider's extended Modbus, FC
    `0x5A`), an explicit go/no-go: it is proprietary and security-sensitive — see
    NOTES.md.
+6. A **real OPC UA NodeSet2** file (a companion spec such as PackML/OPC 30050, or a
+   vendor/server export). The reader's fixtures are hand-written `UANodeSet`
+   documents following OPC UA Part 6 — faithful to the schema, but not calibrated
+   against a vendor file (the OPC Foundation pages return HTTP 403 here).
+7. Confirmation, on a real server, of two browse behaviours the driver docs do not
+   settle: whether `Browse.BrowsePaths` is a full path from the browse root (that
+   would let one request cover several levels instead of one), and whether any
+   `Browse.*` element exposes `AccessLevel` (today every browsed signal is
+   catalogued read-only).
 
 Until (1) and (3) arrive, the S7 SimaticML path stays behind its verification
 markers (NOTES "verified vs pending"); OPC UA is already on the verified

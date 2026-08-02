@@ -233,6 +233,7 @@
         "engController.ts",
         "engRoute.ts",
         "engStore.ts",
+        "engOpcuaBrowse.ts",
         "appSecurityGuard.ts"
       ],
       "vendorPackages": [

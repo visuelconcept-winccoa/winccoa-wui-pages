@@ -44,6 +44,34 @@ export function diffBooks(before: AddressBook, after: AddressBook): BookDiff {
   return { added, removed, changed };
 }
 
+/**
+ * Book warnings describing a source RE-READ (online re-browse, re-ingest).
+ *
+ * Lives in the core so the backend and the offline demo say exactly the same
+ * thing about the same event. `removed` comes first and loudest: a signal that
+ * vanished from the source may still be referenced by a workspace, and swapping
+ * the catalog under a model without saying so is how a project ends up with
+ * addresses pointing at nodes that no longer exist.
+ */
+export function refreshWarnings(delta: BookDiff): string[] {
+  const warnings: string[] = [];
+  if (delta.removed.length > 0) {
+    const shown = delta.removed.slice(0, 8).map((e) => e.path);
+    warnings.push(
+      `⚠️ ${delta.removed.length} signal(aux) DISPARU(S) de la source depuis le dernier parcours (${shown.join(', ')}${delta.removed.length > shown.length ? '…' : ''}) — vérifier les modèles qui les référencent AVANT tout check-in.`
+    );
+  }
+  if (delta.changed.length > 0) {
+    warnings.push(
+      `${delta.changed.length} signal(aux) MODIFIÉ(S) (type, accès ou adresse) — les configs générées à partir d’eux sont à régénérer.`
+    );
+  }
+  if (delta.added.length > 0) {
+    warnings.push(`${delta.added.length} nouveau(x) signal(aux) détecté(s) dans la source.`);
+  }
+  return warnings;
+}
+
 /** Case-insensitive substring filter over entry paths and comments. */
 export function filterEntries(book: AddressBook, needle: string): BookEntry[] {
   const n = needle.trim().toLowerCase();

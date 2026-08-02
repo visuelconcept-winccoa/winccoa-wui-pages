@@ -12,8 +12,11 @@ import {
   DEFAULT_ROLE_RULES,
   applyPlan,
   baselineOf,
+  buildBookFromOpcUaBrowse,
   classifyEntries,
+  diffBooks,
   diffWorkspace,
+  refreshWarnings,
   makeDpeName,
   withRoles,
   type SignalRole,
@@ -26,7 +29,16 @@ import {
   type LiveSnapshot,
   type Workspace
 } from '@visuelconcept/wui-eng-core';
-import type { EngGateway, EngRole, LiveScope, TestReadResult } from './gateway.js';
+import type {
+  BookRefresh,
+  BrowseRequest,
+  EngConnection,
+  EngGateway,
+  EngRole,
+  LiveScope,
+  TestReadResult
+} from './gateway.js';
+import { DEMO_CONNECTIONS, DemoOpcUaBrowsePort } from './demo-opcua-server.js';
 import { DEMO_DEVICES, DEMO_LIVE_VALUES, demoBooks, demoLiveSnapshot } from './demo-data.js';
 
 /**
@@ -64,6 +76,10 @@ export class DemoEngGateway implements EngGateway {
   private books = new Map<string, AddressBook>(demoBooks().map((b) => [b.id, qualify(b, {})]));
   /** Operator role overrides per book (path → role), kept across refreshes. */
   private manualRoles = new Map<string, Record<string, SignalRole>>();
+  /** The fake OPC UA server the demo browses (drifts between generations). */
+  private readonly browsePort = new DemoOpcUaBrowsePort();
+  /** One-shot seeding of the walker-produced online book. */
+  private browseSeed: Promise<void> | null = null;
   private live: LiveSnapshot = demoLiveSnapshot();
   private workspace: Workspace = this.seedWorkspace();
 
@@ -76,18 +92,96 @@ export class DemoEngGateway implements EngGateway {
   }
 
   async listBooks(): Promise<AddressBook[]> {
+    await this.ensureBrowsedBook();
     return [...this.books.values()];
   }
 
   async getBook(bookId: string): Promise<AddressBook | null> {
+    await this.ensureBrowsedBook();
     return this.books.get(bookId) ?? null;
   }
 
-  async refreshBook(bookId: string): Promise<AddressBook> {
+  /**
+   * Produce the demo's ONLINE book with the real core walker (generation 1 of the
+   * fake server), once. Everything else in `demoBooks()` is a literal fixture; this
+   * one is a genuine walk, so the browse path — paths, datatype mapping, warnings,
+   * and later its refresh delta — is what the docs and screenshots actually show.
+   */
+  private async ensureBrowsedBook(): Promise<void> {
+    this.browseSeed ??= this.seedBrowsedBook();
+    await this.browseSeed;
+  }
+
+  private async seedBrowsedBook(): Promise<void> {
+    const book = await buildBookFromOpcUaBrowse(this.browsePort, {
+      bookId: 'book-opcua-remplisseuse',
+      name: 'OPC UA Remplisseuse (parcours en ligne)',
+      connection: 'Remplisseuse',
+      generatedAt: '2026-08-02T09:15:00.000Z'
+    });
+    this.books.set(book.id, qualify(book, {}));
+  }
+
+  /**
+   * Same contract as the backend: an `opcua-browse` book with replayable
+   * parameters is RE-BROWSED (against the fake server, which drifts between
+   * generations); any other book only has its rules re-run.
+   */
+  async refreshBook(bookId: string): Promise<BookRefresh> {
+    await this.ensureBrowsedBook();
+    const previous = this.books.get(bookId);
+    const source = previous?.provenance.browse;
+    if (previous && previous.provenance.kind === 'opcua-browse' && source) {
+      this.browsePort.advance(); // the machine's program moved on since last time
+      return this.runBrowse({ ...source, bookId, name: previous.name });
+    }
     const fresh = demoBooks().find((b) => b.id === bookId);
-    // A refresh re-runs the rules but KEEPS the operator's manual overrides.
+    // A rules-only refresh KEEPS the operator's manual overrides.
     if (fresh) this.books.set(bookId, qualify(fresh, this.manualRoles.get(bookId) ?? {}));
-    return this.books.get(bookId) as AddressBook;
+    return {
+      book: this.books.get(bookId) as AddressBook,
+      rebrowsed: false,
+      note: 'Source hors ligne : seules les règles de qualification ont été rejouées.'
+    };
+  }
+
+  async listConnections(): Promise<EngConnection[]> {
+    return DEMO_CONNECTIONS;
+  }
+
+  async browseBook(request: BrowseRequest): Promise<BookRefresh> {
+    await this.ensureBrowsedBook();
+    return this.runBrowse(request);
+  }
+
+  /** The shared browse path: walk, diff against the stored book, store, report. */
+  private async runBrowse(request: BrowseRequest): Promise<BookRefresh> {
+    const previous = this.books.get(request.bookId) ?? null;
+    const fresh = await buildBookFromOpcUaBrowse(this.browsePort, {
+      bookId: request.bookId,
+      connection: request.connection,
+      ...(request.name === undefined ? {} : { name: request.name }),
+      ...(request.rootNodeId === undefined ? {} : { rootNodeId: request.rootNodeId }),
+      ...(request.maxDepth === undefined ? {} : { maxDepth: request.maxDepth }),
+      ...(request.maxEntries === undefined ? {} : { maxEntries: request.maxEntries })
+    });
+    const delta = previous === null ? null : diffBooks(previous, fresh);
+    const warned = delta === null ? fresh : { ...fresh, warnings: [...refreshWarnings(delta), ...fresh.warnings] };
+    const stored = qualify(warned, this.manualRoles.get(request.bookId) ?? {});
+    this.books.set(request.bookId, stored);
+    return {
+      book: stored,
+      rebrowsed: true,
+      ...(delta === null
+        ? {}
+        : {
+            delta: {
+              added: delta.added.map((e) => e.path),
+              removed: delta.removed.map((e) => e.path),
+              changed: delta.changed.map((c) => c.after.path)
+            }
+          })
+    };
   }
 
   async saveBookRoles(bookId: string, roles: Record<string, SignalRole>): Promise<void> {

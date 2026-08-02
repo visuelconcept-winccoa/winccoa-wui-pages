@@ -17,7 +17,15 @@ import type {
   SignalRole,
   Workspace
 } from '@visuelconcept/wui-eng-core';
-import type { EngGateway, EngRole, LiveScope, TestReadResult } from './gateway.js';
+import type {
+  BookRefresh,
+  BrowseRequest,
+  EngConnection,
+  EngGateway,
+  EngRole,
+  LiveScope,
+  TestReadResult
+} from './gateway.js';
 
 const BASE = '/api/eng';
 
@@ -60,9 +68,17 @@ export class HttpEngGateway implements EngGateway {
     return book;
   }
 
-  async refreshBook(bookId: string): Promise<AddressBook> {
-    const { book } = await postJson<{ book: AddressBook }>(`/books/${encodeURIComponent(bookId)}/refresh`, {});
-    return book;
+  async refreshBook(bookId: string): Promise<BookRefresh> {
+    return postJson<BookRefresh>(`/books/${encodeURIComponent(bookId)}/refresh`, {});
+  }
+
+  async listConnections(): Promise<EngConnection[]> {
+    const { connections } = await getJson<{ connections: EngConnection[] }>('/connections');
+    return connections;
+  }
+
+  async browseBook(request: BrowseRequest): Promise<BookRefresh> {
+    return postJson<BookRefresh>('/books/browse', request);
   }
 
   async saveBookRoles(bookId: string, roles: Record<string, SignalRole>): Promise<void> {

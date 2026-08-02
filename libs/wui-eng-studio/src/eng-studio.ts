@@ -42,7 +42,7 @@ import { state } from 'lit/decorators.js';
 import { engStudioStyles } from './eng-studio/eng-styles.js';
 import { DemoEngGateway } from './eng-studio/data/demo-gateway.js';
 import { HttpEngGateway } from './eng-studio/data/http-gateway.js';
-import type { EngGateway, EngRole } from './eng-studio/data/gateway.js';
+import type { BookDelta, EngConnection, EngGateway, EngRole } from './eng-studio/data/gateway.js';
 
 type Panel = 'devices' | 'model' | 'control';
 
@@ -79,6 +79,14 @@ export class WuiEngStudio extends LitElement {
   @state() private roles = new Set<EngRole>();
   @state() private busy = false;
   @state() private notice = '';
+  /** Live OPC UA connections available for an online browse. */
+  @state() private connections: EngConnection[] = [];
+  /** Online-browse form (Devices panel). */
+  @state() private browseConnection = '';
+  @state() private browseRoot = '';
+  @state() private browseBookId = '';
+  /** Delta of the last source re-read — the reason a refresh is not a no-op. */
+  @state() private bookDelta: BookDelta | null = null;
 
   override async connectedCallback(): Promise<void> {
     super.connectedCallback();
@@ -106,6 +114,18 @@ export class WuiEngStudio extends LitElement {
     this.roleFilter = role;
   }
 
+  /** Public: browse a connection into a book (demo/screenshot harness). */
+  async browseForDemo(connection: string, bookId = ''): Promise<void> {
+    this.browseConnection = connection;
+    this.browseBookId = bookId;
+    await this.onBrowseConnection();
+  }
+
+  /** Public: re-read the selected book's source (demo/screenshot harness). */
+  async refreshForDemo(): Promise<void> {
+    await this.onRefreshBook();
+  }
+
   /** Public: run a generation with the given form values (demo/screenshot harness). */
   generateForDemo(typeName: string, zone: string, equipments: string): void {
     const book = this.activeBook();
@@ -128,6 +148,8 @@ export class WuiEngStudio extends LitElement {
       const roles = await gateway.roles();
       const devices = await gateway.listDevices();
       const books = await gateway.listBooks();
+      // Browsable connections are a nice-to-have: never fail the whole load on them.
+      const connections = await gateway.listConnections().catch(() => [] as EngConnection[]);
       const selectedDeviceId = this.selectedDeviceId ?? devices[0]?.id ?? null;
       const device = devices.find((d) => d.id === selectedDeviceId);
       const selectedBookId = this.selectedBookId ?? device?.bookIds[0] ?? null;
@@ -137,6 +159,8 @@ export class WuiEngStudio extends LitElement {
       this.roles = roles;
       this.devices = devices;
       this.books = books;
+      this.connections = connections;
+      if (this.browseConnection === '') this.browseConnection = connections.find((c) => c.connected)?.name ?? '';
       this.selectedDeviceId = selectedDeviceId;
       this.selectedBookId = selectedBookId;
       this.workspace = workspace;
@@ -335,10 +359,108 @@ export class WuiEngStudio extends LitElement {
           </table>
         </section>
       </div>
+      ${this.renderBrowseCard(device, book)}
+      ${this.renderBookDelta()}
       ${book.warnings.length > 0
         ? html`<section class="card warnings"><div class="card-title">Avertissements du générateur</div><ul>${book.warnings.map((w) => html`<li>${w}</li>`)}</ul></section>`
         : nothing}
       ${this.renderDeviceSignals(book)}
+    `;
+  }
+
+  /**
+   * Online OPC UA browse: re-browse the current book's server, or walk another
+   * connection into a new catalog. Shown only where it applies — the project must
+   * expose an OPC UA connection AND the equipment must speak OPC UA (or already
+   * carry a browsed book); an OPC UA form on a Modbus-only equipment is noise.
+   */
+  private renderBrowseCard(device: Device, book: AddressBook): TemplateResult {
+    const applies = device.accessModes.includes('opcua') || book.provenance.kind === 'opcua-browse';
+    if (this.connections.length === 0 || !applies) return html``;
+    const replayable = book.provenance.kind === 'opcua-browse' && book.provenance.browse !== undefined;
+    return html`
+      <section class="card">
+        <div class="card-title">Parcours OPC UA en ligne</div>
+        <div class="browse-row">
+          <label>
+            connexion
+            <select
+              .value=${this.browseConnection}
+              @change=${(e: Event) => (this.browseConnection = (e.target as HTMLSelectElement).value)}
+            >
+              ${this.connections.map(
+                (c) => html`<option value=${c.name}>${c.name}${c.connected ? '' : ' (déconnectée)'}</option>`
+              )}
+            </select>
+          </label>
+          <label>
+            racine
+            <input
+              class="mono"
+              placeholder="ns=0;i=85 (Objects)"
+              .value=${this.browseRoot}
+              @input=${(e: Event) => (this.browseRoot = (e.target as HTMLInputElement).value)}
+            />
+          </label>
+          <label>
+            carnet
+            <input
+              placeholder="id (défaut : opcua-<connexion>)"
+              .value=${this.browseBookId}
+              @input=${(e: Event) => (this.browseBookId = (e.target as HTMLInputElement).value)}
+            />
+          </label>
+          <button
+            class="btn"
+            ?disabled=${this.busy || !this.can('manage-devices') || this.browseConnection === ''}
+            @click=${() => void this.onBrowseConnection()}
+          >
+            Parcourir
+          </button>
+        </div>
+        <div class="small">
+          ${replayable
+            ? html`Ce carnet est rafraîchissable : « Rafraîchir » relance le même parcours
+                (<code>${book.provenance.browse?.rootNodeId ?? 'Objects'}</code>) et affiche le delta.`
+            : html`Ce carnet n’a pas de paramètres de parcours enregistrés : « Rafraîchir » ne rejoue que les règles de
+                qualification. Lancer un parcours ci-dessus pour le rendre rafraîchissable.`}
+        </div>
+      </section>
+    `;
+  }
+
+  /** Delta of the last source re-read — removals first, they are the risky ones. */
+  private renderBookDelta(): TemplateResult {
+    const delta = this.bookDelta;
+    if (!delta) return html``;
+    const unchanged = delta.added.length === 0 && delta.removed.length === 0 && delta.changed.length === 0;
+    return html`
+      <section class="card ${delta.removed.length > 0 ? 'warnings' : ''}">
+        <div class="card-title">Delta du dernier parcours</div>
+        ${unchanged
+          ? html`<div class="empty small">Aucun changement : la source est identique au carnet stocké.</div>`
+          : html`
+              ${delta.removed.length > 0
+                ? html`<div class="warn-text">
+                    <b>${delta.removed.length} disparu(s)</b> — vérifier les modèles qui les référencent :
+                    ${delta.removed.slice(0, 12).map((p) => html`<span class="chip mono">${p}</span> `)}
+                    ${delta.removed.length > 12 ? html`<span class="small">…</span>` : nothing}
+                  </div>`
+                : nothing}
+              ${delta.changed.length > 0
+                ? html`<div>
+                    <b>${delta.changed.length} modifié(s)</b> (type, accès ou adresse) :
+                    ${delta.changed.slice(0, 12).map((p) => html`<span class="chip mono">${p}</span> `)}
+                  </div>`
+                : nothing}
+              ${delta.added.length > 0
+                ? html`<div>
+                    <b>${delta.added.length} nouveau(x)</b> :
+                    ${delta.added.slice(0, 12).map((p) => html`<span class="chip mono">${p}</span> `)}
+                  </div>`
+                : nothing}
+            `}
+      </section>
     `;
   }
 
@@ -774,8 +896,9 @@ export class WuiEngStudio extends LitElement {
   private async onApplyRules(book: AddressBook): Promise<void> {
     this.busy = true;
     try {
-      const fresh = await this.gateway.refreshBook(book.id);
+      const { book: fresh, delta } = await this.gateway.refreshBook(book.id);
       this.books = this.books.map((b) => (b.id === fresh.id ? fresh : b));
+      this.bookDelta = delta ?? null;
       const counts = this.roleTally(fresh);
       this.notice = `Règles appliquées sur « ${fresh.name} » : ${fresh.entries.length - counts.unknown}/${fresh.entries.length} signaux qualifiés.`;
     } finally {
@@ -801,17 +924,63 @@ export class WuiEngStudio extends LitElement {
     }
   }
 
+  /**
+   * Re-read the selected book's source. For an online book this RE-BROWSES the
+   * server; the delta (added / removed / changed) is then shown above the signal
+   * table, because a signal that disappeared may still be referenced by the model.
+   */
   private async onRefreshBook(): Promise<void> {
     const bookId = this.selectedBookId;
     if (!bookId) return;
     this.busy = true;
+    this.bookDelta = null;
     try {
-      const fresh = await this.gateway.refreshBook(bookId);
+      const { book: fresh, rebrowsed, delta, note } = await this.gateway.refreshBook(bookId);
       this.books = this.books.map((b) => (b.id === bookId ? fresh : b));
-      this.notice = `Carnet « ${fresh.name} » rafraîchi : ${fresh.entries.length} signaux.`;
+      this.bookDelta = delta ?? null;
+      this.notice = rebrowsed
+        ? `Carnet « ${fresh.name} » re-parcouru en ligne : ${fresh.entries.length} signaux${this.describeDelta(delta)}.`
+        : `Carnet « ${fresh.name} » rafraîchi (règles seules) : ${fresh.entries.length} signaux.${note ? ` ${note}` : ''}`;
+    } catch (error) {
+      this.notice = `Rafraîchissement impossible : ${(error as Error).message} — le carnet stocké est conservé.`;
     } finally {
       this.busy = false;
     }
+  }
+
+  /** Browse the chosen live OPC UA connection into a new (or replaced) book. */
+  private async onBrowseConnection(): Promise<void> {
+    const connection = this.browseConnection.trim();
+    if (connection === '') return;
+    const bookId = this.browseBookId.trim() === '' ? `opcua-${connection.toLowerCase()}` : this.browseBookId.trim();
+    this.busy = true;
+    this.bookDelta = null;
+    try {
+      const { book, delta } = await this.gateway.browseBook({
+        bookId,
+        connection,
+        name: `OPC UA ${connection}`,
+        ...(this.browseRoot.trim() === '' ? {} : { rootNodeId: this.browseRoot.trim() })
+      });
+      const known = this.books.some((b) => b.id === book.id);
+      this.books = known ? this.books.map((b) => (b.id === book.id ? book : b)) : [...this.books, book];
+      this.selectedBookId = book.id;
+      this.bookDelta = delta ?? null;
+      this.notice = `Parcours de « ${connection} » terminé : ${book.entries.length} signaux${this.describeDelta(delta)}.`;
+    } catch (error) {
+      this.notice = `Parcours impossible : ${(error as Error).message}`;
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  private describeDelta(delta: BookDelta | undefined): string {
+    if (!delta) return '';
+    const parts: string[] = [];
+    if (delta.added.length > 0) parts.push(`+${delta.added.length}`);
+    if (delta.removed.length > 0) parts.push(`−${delta.removed.length}`);
+    if (delta.changed.length > 0) parts.push(`~${delta.changed.length}`);
+    return parts.length === 0 ? ' (aucun changement)' : ` (${parts.join(' / ')})`;
   }
 
   private onAddDevice(): void {

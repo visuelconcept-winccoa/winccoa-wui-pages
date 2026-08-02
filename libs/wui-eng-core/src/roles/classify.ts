@@ -67,6 +67,18 @@ const NUMERIC: OaLeafType[] = ['Float', 'Int', 'UInt', 'Long', 'ULong', 'Char'];
  * The shipped rule set — neutral defaults, meant to be extended/overridden per
  * project. Ids are stable so a project override can replace one precisely.
  */
+/**
+ * Pattern matching a named BRANCH anywhere in an entry path, not only at its root.
+ *
+ * A path is rooted differently by every generator: a SimaticML book starts at the
+ * block (`DB_Four.Mesures.Temperature`), an online browse starts at the instance
+ * (`Remplisseuse.Status.StateCurrent`), a companion-spec catalog starts at the
+ * branch itself (`Status.StateCurrent`). Anchoring these rules at `^` silently
+ * disabled them for the first two shapes — the branch is what carries the meaning,
+ * wherever it sits.
+ */
+const BRANCH = (alternatives: string): string => `(^|\\.)(${alternatives})\\.`;
+
 export const DEFAULT_ROLE_RULES: RoleRule[] = [
   // --- layer 3: name & Visuel Concept convention -----------------------------
   {
@@ -151,35 +163,35 @@ export const DEFAULT_ROLE_RULES: RoleRule[] = [
     id: 'path-command',
     priority: 26,
     role: 'command',
-    when: { pathPattern: '^(command|commande)\\.' },
-    note: 'branche « Command » de la source (ex. PackML)'
+    when: { pathPattern: BRANCH('commande?s?') },
+    note: 'branche « Command(e/s) » de la source (ex. PackML, TIA)'
   },
   {
     id: 'path-measure',
     priority: 25,
     role: 'measure',
-    when: { pathPattern: '^(mesures?|measures?)\\.' },
+    when: { pathPattern: BRANCH('mesures?|measures?') },
     note: 'branche « Mesures » de la source'
   },
   {
     id: 'path-setpoint',
     priority: 25,
     role: 'setpoint',
-    when: { pathPattern: '^(consignes?|setpoints?)\\.' },
+    when: { pathPattern: BRANCH('consignes?|setpoints?') },
     note: 'branche « Consignes » de la source'
   },
   {
     id: 'path-state',
     priority: 24,
     role: 'state',
-    when: { pathPattern: '^(status|etat|état)\\.' },
+    when: { pathPattern: BRANCH('status|etat|état') },
     note: 'branche « Status/État » de la source'
   },
   {
     id: 'path-admin',
     priority: 22,
     role: 'parameter',
-    when: { pathPattern: '^admin\\.' },
+    when: { pathPattern: BRANCH('admin') },
     note: 'branche « Admin » de la source (ex. PackML)'
   },
   {

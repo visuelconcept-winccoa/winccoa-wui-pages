@@ -201,6 +201,28 @@ async function main() {
       console.log(`[eng-shots] ${shot.file} — ${shot.desc}`);
     }
 
+    // Online OPC UA browse scenario, captured on the demo's FAKE server:
+    //   1. the book produced by the real core walker (level-by-level, warnings);
+    //   2. the same book RE-BROWSED after the machine's program drifted → the
+    //      delta (added / removed / changed) that makes a refresh worth doing.
+    await page.goto(`${devUrl}/?panel=devices`, { waitUntil: 'load' });
+    await page.waitForSelector('wui-eng-studio');
+    await page.waitForTimeout(500);
+    await page.evaluate(() => {
+      const app = document.querySelector('wui-eng-studio');
+      app?.selectDeviceById('ligne-embouteillage');
+      app?.selectBookById('book-opcua-remplisseuse');
+    });
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: resolve(OUT, '14-browse-online.png') });
+    console.log('[eng-shots] 14-browse-online.png — Carnet issu d’un parcours OPC UA en ligne');
+    await page.evaluate(async () => {
+      await document.querySelector('wui-eng-studio')?.refreshForDemo();
+    });
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: resolve(OUT, '15-browse-refresh-delta.png') });
+    console.log('[eng-shots] 15-browse-refresh-delta.png — Re-parcours : delta ajoutés / disparus / modifiés');
+
     // Generation scenario: qualify → generate → diff, captured end to end.
     await page.goto(`${devUrl}/?panel=model`, { waitUntil: 'load' });
     await page.waitForSelector('wui-eng-studio');

@@ -211,13 +211,11 @@ export function pompeCatalogueBook(): AddressBook {
 export function demoBooks(): AddressBook[] {
   return [
     s7FourBook(),
-    opcuaBook('book-opcua-remplisseuse', 'OPC UA Remplisseuse', 'Remplisseuse', [
-      ['Remplisseuse.Cadence', 'ns=2;s=Remplisseuse.Cadence', 'Int32', 'r', 'Cadence (bouteilles/min)'],
-      ['Remplisseuse.Niveau', 'ns=2;s=Remplisseuse.Niveau', 'Double', 'r', 'Niveau cuve (%)'],
-      ['Remplisseuse.EnMarche', 'ns=2;s=Remplisseuse.EnMarche', 'Boolean', 'r'],
-      ['Remplisseuse.Defaut', 'ns=2;s=Remplisseuse.Defaut', 'Boolean', 'r', 'Défaut remplisseuse'],
-      ['Remplisseuse.Consigne', 'ns=2;s=Remplisseuse.Consigne', 'Int32', 'rw', 'Consigne cadence']
-    ]),
+    // NOTE: `book-opcua-remplisseuse` is NOT declared here. It is produced by the
+    // real core walker (`buildBookFromOpcUaBrowse`) against the demo's fake OPC UA
+    // server, seeded by DemoEngGateway — so the online-browse path, its warnings
+    // and its refresh delta are exercised by the demo and the screenshots, not
+    // faked by a literal. See data/demo-opcua-server.ts.
     opcuaBook('book-opcua-etiqueteuse', 'OPC UA Étiqueteuse', 'Etiqueteuse', [
       ['Etiqueteuse.Cadence', 'ns=2;s=Etiqueteuse.Cadence', 'Int32', 'r', 'Cadence (étiquettes/min)'],
       ['Etiqueteuse.StockEtiquettes', 'ns=2;s=Etiqueteuse.StockEtiquettes', 'Int32', 'r', 'Stock étiquettes'],
