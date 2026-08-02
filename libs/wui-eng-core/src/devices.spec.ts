@@ -118,6 +118,44 @@ describe('normalizeDevice', () => {
     expect(device.connection).toEqual({ ip: '10.0.0.5', port: 502, cpu: 'BMEP' });
   });
 
+  /**
+   * `wordOrder` / `zeroBased` are DECLARATIVE (set in the WinCC OA config file or
+   * when the connection is created, never per address) — but they must survive an
+   * edit: dropping them would lose the only written record of how the driver reads
+   * every register of the book.
+   */
+  it('keeps the declarative Modbus parameters through a round-trip', () => {
+    const device = normalizeDevice(
+      draft({ protocol: 'modbus', accessModes: ['modbus'], connection: { ip: '10.0.0.5', wordOrder: 'big', zeroBased: false } })
+    );
+    expect(device.connection).toMatchObject({ wordOrder: 'big', zeroBased: false });
+    expect(normalizeDevice(draftFromDevice(device))).toEqual(device);
+  });
+
+  it('distinguishes a flag set to false from a flag nobody stated', () => {
+    const stated = normalizeDevice(draft({ protocol: 'modbus', accessModes: ['modbus'], connection: { ip: '10.0.0.5', zeroBased: false } }));
+    const silent = normalizeDevice(draft({ protocol: 'modbus', accessModes: ['modbus'], connection: { ip: '10.0.0.5' } }));
+    expect(stated.connection).toMatchObject({ zeroBased: false });
+    expect(silent.connection).not.toHaveProperty('zeroBased');
+    // A <select> hands over strings — they must coerce to real booleans.
+    const fromForm = normalizeDevice(draft({ protocol: 'modbus', accessModes: ['modbus'], connection: { ip: '10.0.0.5', zeroBased: 'true' } }));
+    expect(fromForm.connection?.zeroBased).toBe(true);
+  });
+
+  it('refuses a choice value outside the declared options', () => {
+    const problems = validateDevice(draft({ protocol: 'modbus', accessModes: ['modbus'], connection: { ip: '10.0.0.5', wordOrder: 'bug' } }));
+    const invalid = problems.find((p) => p.code === 'device.param-invalid');
+    expect(invalid?.params).toMatchObject({ param: 'wordOrder', value: 'bug', options: 'big, little' });
+    expect(blockingProblems(problems)).toHaveLength(1);
+    // The declared ones pass.
+    for (const value of ['big', 'little', '']) {
+      expect(
+        blockingProblems(validateDevice(draft({ protocol: 'modbus', accessModes: ['modbus'], connection: { ip: '10.0.0.5', wordOrder: value } }))),
+        value
+      ).toEqual([]);
+    }
+  });
+
   it('keeps only the CURRENT protocol\'s parameters (a protocol switch cleans up)', () => {
     const device = normalizeDevice(draft({ protocol: 'opcua', accessModes: ['opcua'], connection: { server: 'Srv', ip: '10.0.0.1', rack: 0 } }));
     expect(device.connection).toEqual({ server: 'Srv' });

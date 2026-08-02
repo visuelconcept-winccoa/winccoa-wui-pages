@@ -176,6 +176,17 @@ export const MSG = {
     'Les deux sont optionnels. Le numéro de driver est le numéro de manager WinCC OA du driver ; le groupe de poll nomme le datapoint _PollGroup auquel les adresses générées s’abonnent.',
     'Beide optional. Die Treibernummer ist die WinCC OA-Managernummer des Treibers; die Poll-Gruppe benennt den _PollGroup-Datenpunkt, den die erzeugten Adressen abonnieren.'
   ),
+  paramUnset: ml('— not stated —', '— non renseigné —', '— nicht angegeben —'),
+  deviceDeclared: ml(
+    'Declared on the WinCC OA side',
+    'Déclaré côté WinCC OA',
+    'Auf WinCC OA-Seite deklariert'
+  ),
+  deviceDeclaredHint: ml(
+    'Recorded here, NOT applied: these are set in the project config file / when the connection to the device is created — there is no per-address attribute for them. They decide how every register of the book is interpreted (a word swap turns a REAL into nonsense, a one-register shift moves every measurement), so write down what the driver is actually configured with.',
+    'Consigné ici, PAS appliqué : cela se règle dans le fichier config du projet / à la création de la connexion vers l’équipement — aucun attribut d’adresse ne les porte. Ces réglages décident de l’interprétation de chaque registre du carnet (une permutation de mots rend un REAL absurde, un décalage d’un registre décale toutes les mesures) : noter ici ce dont le driver est réellement configuré.',
+    'Hier festgehalten, NICHT angewendet: das wird in der Projekt-Config-Datei / beim Anlegen der Verbindung zum Gerät eingestellt — es gibt kein Adressattribut dafür. Diese Einstellungen bestimmen, wie jedes Register des Adressbuchs interpretiert wird (ein Worttausch macht aus einem REAL Unsinn, eine Verschiebung um ein Register verschiebt alle Messwerte) — also notieren, wie der Treiber wirklich konfiguriert ist.'
+  ),
   deviceBooks: ml('Address books', 'Carnets d’adresses', 'Adressbücher'),
   deviceNoBookYet: ml(
     'No book yet — save the equipment, then browse its server or ingest an export.',
@@ -446,7 +457,20 @@ export const PARAM_LABEL: Record<string, Ml> = {
   slot: ml('slot', 'slot', 'Steckplatz'),
   port: ml('TCP port', 'port TCP', 'TCP-Port'),
   unitId: ml('unit id (slave)', 'unit id (esclave)', 'Unit-ID (Slave)'),
-  cpu: ml('CPU reference', 'référence CPU', 'CPU-Referenz')
+  cpu: ml('CPU reference', 'référence CPU', 'CPU-Referenz'),
+  wordOrder: ml('word order', 'ordre des mots', 'Wortreihenfolge'),
+  zeroBased: ml('zero based addressing', 'adressage base zéro', 'Adressierung ab Null')
+};
+
+/**
+ * Labels of the values of a `choice`/`flag` connection parameter, keyed
+ * `<paramKey>.<value>`. An unlabelled value renders raw, like an unlabelled key.
+ */
+export const PARAM_OPTION_LABEL: Record<string, Ml> = {
+  'wordOrder.big': ml('big-endian (no swap)', 'big-endian (sans permutation)', 'Big-Endian (kein Tausch)'),
+  'wordOrder.little': ml('little-endian (swapped)', 'little-endian (permuté)', 'Little-Endian (getauscht)'),
+  'zeroBased.true': ml('yes — the first register is 0', 'oui — le premier registre est 0', 'ja — das erste Register ist 0'),
+  'zeroBased.false': ml('no — the first register is 1', 'non — le premier registre est 1', 'nein — das erste Register ist 1')
 };
 
 /** Substitute `{placeholder}` occurrences. Unknown placeholders are left as-is. */
@@ -497,6 +521,11 @@ export const WARNING_MSG: Record<string, Ml> = {
     'The "{param}" parameter is required for the {protocol} protocol.',
     'Le paramètre « {param} » est requis pour le protocole {protocol}.',
     'Der Parameter „{param}“ ist für das Protokoll {protocol} erforderlich.'
+  ),
+  'device.param-invalid': ml(
+    'The "{param}" parameter must be one of: {options} (got "{value}").',
+    'Le paramètre « {param} » doit valoir l’une de ces valeurs : {options} (reçu « {value} »).',
+    'Der Parameter „{param}“ muss einen dieser Werte haben: {options} (erhalten: „{value}“).'
   ),
   'device.driver-invalid': ml(
     'The driver number "{value}" must be a positive integer (a WinCC OA manager number).',

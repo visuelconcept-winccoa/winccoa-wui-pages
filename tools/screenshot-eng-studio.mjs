@@ -285,12 +285,15 @@ async function main() {
     await page.waitForTimeout(400);
     await page.screenshot({ path: resolve(OUT, '19-device-form-new.png') });
     console.log('[eng-shots] 19-device-form-new.png — Device form: creation, with the core validating as you type');
+    // A PAC3200: the one demo equipment whose word order and addressing base are
+    // DOCUMENTED facts (from the Siemens manual), so the "declared on the WinCC OA
+    // side" card shows real content instead of "not stated".
     await page.evaluate(() => {
-      document.querySelector('wui-eng-studio')?.deviceFormForDemo('m580-station');
+      document.querySelector('wui-eng-studio')?.deviceFormForDemo('pac-depart1');
     });
     await page.waitForTimeout(400);
     await page.screenshot({ path: resolve(OUT, '20-device-form-edit.png') });
-    console.log('[eng-shots] 20-device-form-edit.png — Device form: editing an equipment and its books');
+    console.log('[eng-shots] 20-device-form-edit.png — Device form: editing a Modbus equipment (declared driver settings)');
 
     // Proof that the page is localised, kept in the docs: the same panel in FR and
     // DE. The rest of the set stays English so it matches the documentation.

@@ -45,6 +45,7 @@ import {
   type BookEntry,
   type Device,
   type DeviceDraft,
+  type DeviceParamSpec,
   type DpTypeStructure,
   type EngPlan,
   type EngWarning,
@@ -59,7 +60,19 @@ import { engStudioStyles } from './eng-studio/eng-styles.js';
 import { DemoEngGateway } from './eng-studio/data/demo-gateway.js';
 import { HttpEngGateway } from './eng-studio/data/http-gateway.js';
 import type { BookDelta, EngConnection, EngGateway, EngRole } from './eng-studio/data/gateway.js';
-import { LANG_LABEL, MSG, PARAM_LABEL, ROLE_LABEL, WARNING_MSG, fmt, resolveLang, t, type Lang, type Ml } from './eng-studio/i18n.js';
+import {
+  LANG_LABEL,
+  MSG,
+  PARAM_LABEL,
+  PARAM_OPTION_LABEL,
+  ROLE_LABEL,
+  WARNING_MSG,
+  fmt,
+  resolveLang,
+  t,
+  type Lang,
+  type Ml
+} from './eng-studio/i18n.js';
 
 type Panel = 'devices' | 'model' | 'control';
 
@@ -455,7 +468,12 @@ export class WuiEngStudio extends LitElement {
     const editing = this.deviceFormId !== '';
     const blocking = blockingProblems(this.deviceProblems);
     const advisory = this.deviceProblems.filter((problem) => !blocking.includes(problem));
-    const specs = PROTOCOL_PARAMS[draft.protocol] ?? [];
+    const allSpecs = PROTOCOL_PARAMS[draft.protocol] ?? [];
+    const specs = allSpecs.filter((spec) => spec.declarative !== true);
+    // Parameters that only RECORD how the driver is configured elsewhere get their
+    // own card: shown among the connection fields they would read as settings the
+    // studio applies, which they are not.
+    const declarative = allSpecs.filter((spec) => spec.declarative === true);
     const device = editing ? this.devices.find((d) => d.id === this.deviceFormId) : undefined;
     return html`
       <div class="panel-head">
@@ -524,18 +542,7 @@ export class WuiEngStudio extends LitElement {
 
           <section class="card">
             <div class="card-title">${this.tr(MSG.deviceConnection, { protocol: this.protocolOf(draft.protocol) })}</div>
-            ${specs.map(
-              (spec) => html`<label class="form-row">
-                <span>${this.paramLabel(spec.key)}${spec.required ? ' *' : ''}</span>
-                <input
-                  class="filter ${spec.kind === 'text' ? '' : 'mono'}"
-                  type=${spec.kind === 'number' || spec.kind === 'port' ? 'number' : 'text'}
-                  placeholder=${spec.example ?? ''}
-                  .value=${String(draft.connection[spec.key] ?? '')}
-                  @input=${(e: Event) => this.patchDraftParam(spec.key, (e.target as HTMLInputElement).value)}
-                />
-              </label>`
-            )}
+            ${specs.map((spec) => this.renderParamRow(draft, spec))}
             <label class="form-row">
               <span>${this.tr(MSG.deviceDriverNumber)}</span>
               <input
@@ -558,6 +565,14 @@ export class WuiEngStudio extends LitElement {
             </label>
             <div class="form-hint">${this.tr(MSG.devicePollGroupHint)}</div>
           </section>
+
+          ${declarative.length === 0
+            ? nothing
+            : html`<section class="card">
+                <div class="card-title">${this.tr(MSG.deviceDeclared)}</div>
+                <div class="form-hint">${this.tr(MSG.deviceDeclaredHint)}</div>
+                ${declarative.map((spec) => this.renderParamRow(draft, spec))}
+              </section>`}
 
           <section class="card">
             <div class="card-title">${this.tr(MSG.deviceBooks)}</div>
@@ -621,6 +636,48 @@ export class WuiEngStudio extends LitElement {
   private paramLabel(key: string): string {
     const label = PARAM_LABEL[key];
     return label === undefined ? key : this.tr(label);
+  }
+
+  /**
+   * One connection-parameter row, rendered from the core's spec — the `kind` picks
+   * the control, never a hand-written form per protocol.
+   *
+   * `flag` is a three-state SELECT, not a checkbox: for a declarative parameter,
+   * "no" (someone checked) and "not stated" (nobody did) are different claims, and a
+   * checkbox can only ever say one of them.
+   */
+  private renderParamRow(draft: DeviceDraft, spec: DeviceParamSpec): TemplateResult {
+    const raw = draft.connection[spec.key];
+    const current = raw === undefined || raw === null ? '' : String(raw);
+    const label = html`<span>${this.paramLabel(spec.key)}${spec.required ? ' *' : ''}</span>`;
+    if (spec.kind === 'choice' || spec.kind === 'flag') {
+      const options = spec.kind === 'flag' ? ['true', 'false'] : (spec.options ?? []);
+      return html`<label class="form-row">
+        ${label}
+        <select class="filter" @change=${(e: Event) => this.patchDraftParam(spec.key, (e.target as HTMLSelectElement).value)}>
+          <option value="" ?selected=${current === ''}>${this.tr(MSG.paramUnset)}</option>
+          ${options.map(
+            (option) => html`<option value=${option} ?selected=${option === current}>${this.paramOption(spec.key, option)}</option>`
+          )}
+        </select>
+      </label>`;
+    }
+    return html`<label class="form-row">
+      ${label}
+      <input
+        class="filter ${spec.kind === 'text' ? '' : 'mono'}"
+        type=${spec.kind === 'number' || spec.kind === 'port' ? 'number' : 'text'}
+        placeholder=${spec.example ?? ''}
+        .value=${current}
+        @input=${(e: Event) => this.patchDraftParam(spec.key, (e.target as HTMLInputElement).value)}
+      />
+    </label>`;
+  }
+
+  /** Label of one option of a `choice`/`flag` parameter (`<key>.<value>`). */
+  private paramOption(key: string, value: string): string {
+    const label = PARAM_OPTION_LABEL[`${key}.${value}`];
+    return label === undefined ? value : this.tr(label);
   }
 
   private renderBookDetail(device: Device, book: AddressBook): TemplateResult {

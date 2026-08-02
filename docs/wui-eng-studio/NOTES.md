@@ -106,6 +106,28 @@ Deleting a device is deliberate (the button arms, then confirms) and narrow: the
 **books survive** — they may be shared — and nothing already checked in is touched.
 It is a registry deletion, not a project one.
 
+**Declarative parameters, and the bug they exposed.** A Modbus **word order** and
+**zero-based addressing** are configured on the WinCC OA side — in the project
+`config` file / when the connection to the device is created — and never per
+address; the `_address` attribute set has no byte-order attribute at all, which is
+the same fact seen from the other end. The studio still records them
+(`declarative: true` in the spec, their own card in the form) because they decide how
+every register of the book is *interpreted*: a word swap turns a `REAL` into nonsense
+and a one-register shift moves every measurement. Recorded next to the equipment they
+can be compared with the driver's configuration; absent, they cost an afternoon of
+"the values move on their own".
+
+Adding them fixed a real defect: the demo's PAC3200 devices already carried
+`wordOrder`/`zeroBased`, but the spec did not declare them — and `normalizeDevice`
+keeps only declared keys, so **editing a Modbus device silently dropped both**. A
+data-driven form is only as complete as its data.
+
+They are **three-state**, not booleans: `false` ("checked, it is not zero-based") and
+absent ("nobody said") are different claims, and a declarative field exists precisely
+to record which one it is. Hence the `flag` kind rendering as a select with
+*— not stated —*, and the `choice` kind validating its value server-side
+(`device.param-invalid`) since an API client can send anything.
+
 ## Signal roles: the rule engine and its calibration
 
 `roles/` qualifies each book entry (measure / setpoint / command / state / alarm /

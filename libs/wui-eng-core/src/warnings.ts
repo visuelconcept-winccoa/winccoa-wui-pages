@@ -167,6 +167,7 @@ export const WARNING_CODES = {
     ID_TAKEN: 'device.id-taken',
     NO_ACCESS_MODE: 'device.no-access-mode',
     PARAM_REQUIRED: 'device.param-required',
+    PARAM_INVALID: 'device.param-invalid',
     DRIVER_INVALID: 'device.driver-invalid',
     DRIVER_RECOMMENDED: 'device.driver-recommended'
   }

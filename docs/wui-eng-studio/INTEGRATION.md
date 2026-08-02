@@ -95,9 +95,17 @@ gating. Enable webserver auth in production.
 
 `connection` keys are **per protocol** and defined by the core's `PROTOCOL_PARAMS`
 (`opcua`: `server`\*, `endpoint` — `s7`/`s7plus`: `ip`\*, `rack`, `slot` —
-`modbus`: `ip`\*, `port`, `unitId`, `cpu`; \* = required). Keys of another protocol
-are dropped on normalisation, numeric ones are coerced, and `state` is always
-stored as `unknown` — only a probe may claim `connected`.
+`modbus`: `ip`\*, `port`, `unitId`, `cpu`, `wordOrder`, `zeroBased`; \* = required).
+Keys of another protocol are dropped on normalisation, numeric ones are coerced, and
+`state` is always stored as `unknown` — only a probe may claim `connected`.
+
+Two Modbus keys are **declarative**: `wordOrder` (`"big"` | `"little"`) and
+`zeroBased` (boolean). They are configured on the WinCC OA side — project `config`
+file / creation of the connection to the device — and **never written by the studio**;
+`_address` has no byte-order attribute. They are stored because they decide how every
+register of the book is interpreted. Both are **tri-state**: omit the key for "not
+stated"; `false` means "checked, it is not zero-based". An out-of-range `wordOrder` is
+refused (`device.param-invalid`).
 
 A refusal is `400 { error, problems }` where `problems` are the core's
 `EngWarning`s (`device.name-invalid`, `device.param-required`, …) — the same

@@ -13,7 +13,7 @@ the live project — in bulk, previewed, transactional.
 > **Status: v0.2 — workflow-complete on demo data, backend implemented.** The whole
 > page runs end-to-end WITHOUT a WinCC OA runtime via an in-memory demo gateway (the
 > source of the screenshots below). The pure engineering domain
-> (`@visuelconcept/wui-eng-core`) is unit-tested (261 tests, no runtime) and the
+> (`@visuelconcept/wui-eng-core`) is unit-tested (264 tests, no runtime) and the
 > backend (`/api/eng`: file store, config read-back, check-out/plan/check-in,
 > online OPC UA browse, fail-closed role gating) typechecks offline against those
 > same sources. Still staged: the **watched-folder ingestion** and the
@@ -67,11 +67,21 @@ which is what makes the two agree:
 
 ![Device form: creation, validated as you type](../images/eng-studio/19-device-form-new.png)
 
-Editing shows the same screen with the id pinned and the equipment's books
-checked. Deleting asks twice, and only forgets the equipment: **its books are
-kept** (they may be shared) and nothing already checked in is touched.
+A separate card, **"declared on the WinCC OA side"**, holds the parameters the
+studio only *records*: a Modbus **word order** and **zero-based addressing** are set
+in the project `config` file / when the connection to the device is created — never
+per address (the `_address` attribute set has no byte-order attribute at all). They
+are worth writing down next to the equipment because they decide how every register
+of its book is *interpreted*: a word swap turns a `REAL` into nonsense and a
+one-register shift moves every measurement. Each is **three-state** — `big` /
+`little` / *not stated* — because "we checked, it is not zero-based" and "nobody
+said" are different claims.
 
-![Device form: editing an equipment and its books](../images/eng-studio/20-device-form-edit.png)
+Editing shows the same screen with the id pinned and the equipment's books checked.
+Deleting asks twice, and only forgets the equipment: **its books are kept** (they may
+be shared) and nothing already checked in is touched.
+
+![Device form: editing a Modbus equipment, with its declared driver settings](../images/eng-studio/20-device-form-edit.png)
 
 **Books are first-class and the device↔book relation is many-to-many**, both
 directions supported:
@@ -314,7 +324,7 @@ plain BCP-47 tags. A picker in the top bar switches it live.
 ```bash
 cd libs/wui-eng-core
 npm install
-npm test          # 261 tests: SimaticML parse + S7 offsets, Schneider CSV/XVM, OPC UA
+npm test          # 264 tests: SimaticML parse + S7 offsets, Schneider CSV/XVM, OPC UA
                   # browse walk + NodeSet2, roles, modelgen (mirror + mapping),
                   # structure outline + auto-binding, diff + live scope, apply,
                   # config write builders + read-back, structured warnings,

@@ -32,7 +32,7 @@ import { sanitizeSegment } from './naming.js';
 import { WARNING_CODES, warn, type EngWarning } from './warnings.js';
 
 /** How a connection parameter is entered (drives the input type, not the words). */
-export type DeviceParamKind = 'text' | 'number' | 'host' | 'port';
+export type DeviceParamKind = 'text' | 'number' | 'host' | 'port' | 'choice' | 'flag';
 
 /** One connection parameter of a protocol. */
 export interface DeviceParamSpec {
@@ -42,6 +42,14 @@ export interface DeviceParamSpec {
   required: boolean;
   /** Example value shown as the input placeholder (not a default). */
   example?: string;
+  /** Allowed values of a `choice` parameter (the first one is the default). */
+  options?: string[];
+  /**
+   * True when the parameter only RECORDS how the driver is configured elsewhere,
+   * and nothing the studio writes depends on it being right. Those are shown apart
+   * in the form: an operator must not think filling them in changes the driver.
+   */
+  declarative?: boolean;
 }
 
 /**
@@ -52,11 +60,22 @@ export interface DeviceParamSpec {
  * carries), and creating a connection is the tag importer's job, not the studio's.
  * The endpoint is offered as an optional note so the form documents what it points
  * at.
+ *
+ * The Modbus `wordOrder` and `zeroBased` parameters are **declarative**: those two
+ * are configured on the WinCC OA side — in the project `config` file / when the
+ * connection to the device is created — never per address. The `_address` attribute
+ * set has no byte-order attribute at all (see
+ * `docs/wui-eng-studio/VENDOR-ADDRESS-TRANSFORMATIONS.md`), which is the same fact
+ * seen from the other end. They are recorded here anyway because they decide how
+ * every register of the book is *interpreted*: a word swap turns a REAL into
+ * nonsense and a one-register shift moves every measurement. Written down next to
+ * the equipment, they can be compared with the driver's configuration; guessed,
+ * they cost an afternoon of "the values move on their own".
  */
 export const PROTOCOL_PARAMS: Record<ProtocolKind, DeviceParamSpec[]> = {
   opcua: [
     { key: 'server', kind: 'text', required: true, example: 'Remplisseuse' },
-    { key: 'endpoint', kind: 'text', required: false, example: 'opc.tcp://192.168.10.42:4840' }
+    { key: 'endpoint', kind: 'text', required: false, example: 'opc.tcp://192.168.10.42:4840', declarative: true }
   ],
   s7: [
     { key: 'ip', kind: 'host', required: true, example: '192.168.10.21' },
@@ -72,7 +91,9 @@ export const PROTOCOL_PARAMS: Record<ProtocolKind, DeviceParamSpec[]> = {
     { key: 'ip', kind: 'host', required: true, example: '192.168.10.30' },
     { key: 'port', kind: 'port', required: false, example: '502' },
     { key: 'unitId', kind: 'number', required: false, example: '255' },
-    { key: 'cpu', kind: 'text', required: false, example: 'BMEP582040' }
+    { key: 'cpu', kind: 'text', required: false, example: 'BMEP582040' },
+    { key: 'wordOrder', kind: 'choice', required: false, options: ['big', 'little'], declarative: true },
+    { key: 'zeroBased', kind: 'flag', required: false, declarative: true }
   ]
 };
 
@@ -157,11 +178,24 @@ export function validateDevice(draft: DeviceDraft, others: Device[] = []): EngWa
   }
 
   for (const spec of PROTOCOL_PARAMS[draft.protocol] ?? []) {
-    if (spec.required && paramText(draft, spec.key) === '') {
+    const text = paramText(draft, spec.key);
+    if (spec.required && text === '') {
       problems.push(
         warn(WARNING_CODES.device.PARAM_REQUIRED, 'The "{param}" parameter is required for the {protocol} protocol.', {
           param: spec.key,
           protocol: draft.protocol
+        })
+      );
+      continue;
+    }
+    // A `choice` value comes from a <select> in the UI, but an API client sends
+    // whatever it likes — and a word order of "bug" would be stored as gospel.
+    if (spec.kind === 'choice' && text !== '' && !(spec.options ?? []).includes(text)) {
+      problems.push(
+        warn(WARNING_CODES.device.PARAM_INVALID, 'The "{param}" parameter must be one of: {options} (got "{value}").', {
+          param: spec.key,
+          options: (spec.options ?? []).join(', '),
+          value: text
         })
       );
     }
@@ -206,6 +240,15 @@ export function normalizeDevice(draft: DeviceDraft, others: Device[] = []): Devi
   const specs = PROTOCOL_PARAMS[draft.protocol] ?? [];
   const connection: Record<string, string | number | boolean> = {};
   for (const spec of specs) {
+    if (spec.kind === 'flag') {
+      // THREE states, not two: `false` ("checked, it is not zero-based") and absent
+      // ("nobody said") are different claims, and a declarative parameter exists
+      // precisely to record which one it is. An empty value stays unset.
+      const value = draft.connection[spec.key];
+      if (value === true || value === 'true') connection[spec.key] = true;
+      else if (value === false || value === 'false') connection[spec.key] = false;
+      continue;
+    }
     const text = paramText(draft, spec.key);
     if (text === '') continue;
     connection[spec.key] = spec.kind === 'number' || spec.kind === 'port' ? Number(text) : text;
