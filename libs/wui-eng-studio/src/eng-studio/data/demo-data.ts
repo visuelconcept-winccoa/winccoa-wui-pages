@@ -20,6 +20,7 @@ import {
   directionFor,
   opcUaDatatypeCode,
   opcUaLeafType,
+  s7LeafType,
   type AddressBook,
   type BookEntry,
   type BookInterface,
@@ -177,12 +178,20 @@ export function s7FourBook(): AddressBook {
   });
 }
 
-/** A shared FILE catalog (no live interface) — mutualised across pumps. */
+/**
+ * A shared FILE catalog (no live interface) — mutualised across pumps.
+ *
+ * The source types are the **TIA** ones (`Bool`, `LReal`), not the OPC UA ones: the
+ * addresses of this catalog are S7Plus symbolic operands, and the `_datatype`
+ * transformation is looked up in the S7Plus table, which speaks IEC names. A
+ * catalog whose type names belong to another driver generates DPEs the generator
+ * cannot address (and now says so) — see drivers/s7.ts.
+ */
 export function pompeCatalogueBook(): AddressBook {
   const leaf = (path: string, dt: string, access: 'r' | 'rw' | 'w', comment?: string): BookEntry => ({
     path,
     sourceType: dt,
-    leafType: opcUaLeafType(dt),
+    leafType: s7LeafType(dt),
     access,
     // A catalog/template: symbolic path only, bound per equipment at check-in.
     addresses: { s7plus: `"${path.split('.').map((s) => s).join('"."')}"` },
@@ -194,13 +203,13 @@ export function pompeCatalogueBook(): AddressBook {
     provenance: { kind: 'nodeset', file: 'KSB_Etanorm.xml', generatedAt: '2026-07-20T14:00:00.000Z', detail: 'Catalogue type (sans interface) — mutualisé' },
     // interface intentionally absent → file catalog / template.
     entries: [
-      leaf('Etat.Marche', 'Boolean', 'r', 'Retour de marche'),
-      leaf('Etat.Defaut', 'Boolean', 'r', 'Défaut pompe'),
-      leaf('Mesures.Debit', 'Double', 'r', 'Débit (m³/h)'),
-      leaf('Mesures.Pression', 'Double', 'r', 'Pression (bar)'),
-      leaf('Mesures.Courant', 'Double', 'r', 'Courant moteur (A)'),
-      leaf('Commande.Consigne', 'Double', 'rw', 'Consigne vitesse (%)'),
-      leaf('Commande.MarcheArret', 'Boolean', 'w', 'Ordre marche/arrêt')
+      leaf('Etat.Marche', 'Bool', 'r', 'Retour de marche'),
+      leaf('Etat.Defaut', 'Bool', 'r', 'Défaut pompe'),
+      leaf('Mesures.Debit', 'LReal', 'r', 'Débit (m³/h)'),
+      leaf('Mesures.Pression', 'LReal', 'r', 'Pression (bar)'),
+      leaf('Mesures.Courant', 'LReal', 'r', 'Courant moteur (A)'),
+      leaf('Commande.Consigne', 'LReal', 'rw', 'Consigne vitesse (%)'),
+      leaf('Commande.MarcheArret', 'Bool', 'w', 'Ordre marche/arrêt')
     ],
     types: [],
     warnings: []

@@ -38,13 +38,35 @@ export const OpcUaDatatype = {
   LOCALIZEDTEXT: 768
 } as const;
 
-/** Peripheral-address direction constants (`_address.._direction`). */
+/**
+ * Peripheral-address direction constants (`_address.._direction`), complete per the
+ * WinCC OA `_address` appendix — see
+ * `docs/wui-eng-studio/VENDOR-ADDRESS-TRANSFORMATIONS.md`. Driver-independent
+ * despite living here (this module is the verified reference the rest imports).
+ *
+ * `INTERNAL` (32) and `LOW_LEVEL_FLAG` (64) of the legacy `_mode` bit field are
+ * deliberately absent: they are now the separate `_internal` / `_lowlevel`
+ * attributes, which is what `configs/builders.ts` writes.
+ */
 export const DpAddressDirection = {
+  UNDEFINED: 0,
   OUTPUT: 1,
   INPUT_SPONT: 2,
   INPUT_SQUERY: 3,
   INPUT_POLL: 4,
-  IO_POLL: 7
+  /** Output with a SINGLE connection per subindex (OUTPUT groups them). */
+  OUTPUT_SINGLE: 5,
+  IO_SPONT: 6,
+  IO_POLL: 7,
+  IO_SQUERY: 8,
+  /** Hardware alert handling — external alerts are triggered through it. */
+  AM_ALERT: 9,
+  /** Polled only while a dpConnect/dpQueryConnect exists on the element. */
+  INPUT_CYCLIC_ON_USE: 11,
+  IO_CYCLIC_ON_USE: 13,
+  /** Subscribed only while a dpConnect/dpQueryConnect exists on the element. */
+  INPUT_SPONT_ON_USE: 14,
+  IO_SPONT_ON_USE: 15
 } as const;
 
 /** OPC UA built-in datatype name → WinCC OA element type of the DPE. */

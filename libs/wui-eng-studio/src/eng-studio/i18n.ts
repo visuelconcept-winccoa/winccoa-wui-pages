@@ -677,10 +677,10 @@ export const WARNING_MSG: Record<string, Ml> = {
     '{n} signal(aux) issus d’un catalogue non lié : fournir la connexion cible pour résoudre la référence (placeholder non substitué).',
     '{n} Signal(e) aus einem nicht gebundenen Katalog: die Zielverbindung angeben, um die Referenz aufzulösen (Platzhalter unverändert).'
   ),
-  'modelgen.unverified-datatype': ml(
-    'The "{mode}" driver\'s "_datatype" transformation is UNVERIFIED (sentinel value) — confirm it on a real system before checking in.',
-    'La transformation « _datatype » du driver « {mode} » est NON VÉRIFIÉE (valeur sentinelle) — à confirmer sur système réel avant check-in.',
-    'Die „_datatype“-Transformation des Treibers „{mode}“ ist NICHT VERIFIZIERT (Sentinel-Wert) — vor dem Check-in an einem echten System bestätigen.'
+  'modelgen.no-datatype': ml(
+    'The "{mode}" driver has no "_datatype" transformation for {n} source type(s) ({types}) — those DPEs are created WITHOUT a peripheral address, on purpose: a neighbouring transformation would misread the value. Change the type in the PLC, or address them through another mode.',
+    'Le driver « {mode} » n’a aucune transformation « _datatype » pour {n} type(s) source ({types}) — ces DPE sont créés SANS adresse périphérique, volontairement : une transformation voisine lirait la valeur de travers. Changer le type dans l’automate, ou les adresser par un autre mode.',
+    'Der Treiber „{mode}“ hat keine „_datatype“-Transformation für {n} Quelltyp(en) ({types}) — diese DPEs werden absichtlich OHNE Peripherieadresse erstellt: eine benachbarte Transformation würde den Wert falsch lesen. Den Typ in der SPS ändern oder sie über einen anderen Modus adressieren.'
   ),
   'modelgen.direction-adjusted': ml(
     'Address direction adjusted for {n} signal(s) — the role asked to write, the access declared by the source does not allow it: {details}{more}',

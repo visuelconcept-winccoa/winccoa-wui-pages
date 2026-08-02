@@ -125,7 +125,7 @@ export const WARNING_CODES = {
     UNQUALIFIED: 'modelgen.unqualified',
     MISSING_ADDRESS: 'modelgen.missing-address',
     UNRESOLVED_REFERENCE: 'modelgen.unresolved-reference',
-    UNVERIFIED_DATATYPE: 'modelgen.unverified-datatype',
+    NO_DATATYPE: 'modelgen.no-datatype',
     DIRECTION_ADJUSTED: 'modelgen.direction-adjusted',
     ACCESS_ASSUMED: 'modelgen.access-assumed'
   },

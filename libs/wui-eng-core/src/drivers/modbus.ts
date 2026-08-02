@@ -20,11 +20,14 @@
  * `%MW2` (verified against the SENTRON PAC3200 manual A5E01168664B-04 §3.9.3
  * via the VC fiche `templates-import-tags-modbus-pac3200`).
  *
- * ⚠️ UNVERIFIED (same policy as `drivers/s7.ts`): the WinCC OA Modbus driver's
- * `_address.._datatype` TRANSFORMATION constants are NOT hardcoded here.
- * {@link modbusDatatypeCode} returns {@link MODBUS_DATATYPE_UNVERIFIED} until
- * checked against a live driver; byte/word order must also be confirmed per
- * device (big-endian vs little-endian is the #1 Modbus pitfall).
+ * The `_address.._datatype` TRANSFORMATION constants (560–577) come from the
+ * WinCC OA help, `_address` config appendix, table MODBUS — recorded verbatim in
+ * `docs/wui-eng-studio/VENDOR-ADDRESS-TRANSFORMATIONS.md`.
+ *
+ * ⚠️ Still to confirm PER DEVICE, and no table can answer it: the byte/word order
+ * of 32/64-bit values (big-endian vs little-endian is the #1 Modbus pitfall) and
+ * the connector's "zero based addressing" option — a one-register shift offsets
+ * every measurement. See {@link ModbusWordOrder} and the PAC3200 book's warnings.
  */
 
 import type { OaLeafType } from '../model.js';
@@ -57,8 +60,65 @@ const REGISTER_COUNT: Record<ModbusDataType, number> = {
 /** Word order of 32/64-bit values — the classic Modbus pitfall. */
 export type ModbusWordOrder = 'big' | 'little';
 
-/** Sentinel: WinCC OA Modbus `_datatype` transformation constants unverified. */
-export const MODBUS_DATATYPE_UNVERIFIED = 0;
+/**
+ * `_address.._datatype` transformations of the WinCC OA **Modbus** driver.
+ * Verbatim from the `_address` appendix (note the non-contiguous numbering: the
+ * 64-bit types were appended after the original block).
+ */
+export const ModbusDatatype = {
+  UNDEFINED: 560,
+  INT16: 561,
+  INT32: 562,
+  UINT16: 563,
+  UINT32: 564,
+  CHAR: 565,
+  FLOAT: 566,
+  BIT: 567,
+  BOOLEAN_AS_BYTE: 568,
+  STRING: 569,
+  BLOB: 570,
+  INT64: 571,
+  DOUBLE: 572,
+  FLOAT_WITH_TIMESTAMP: 573,
+  UINT64: 574,
+  /** PLC-specific MOD10 spanning 2 / 3 / 4 registers. */
+  MOD10_SIZE_2: 575,
+  MOD10_SIZE_3: 576,
+  MOD10_SIZE_4: 577
+} as const;
+
+/**
+ * Source-type name → Modbus transformation constant.
+ *
+ * Two vocabularies land here, because a Modbus book has two possible origins and
+ * both name their types their own way: a **vendor register map** ({@link
+ * ModbusDataType}: `REAL`, `UDINT`…) and a **Control Expert export** (IEC-61131:
+ * `EBOOL`, `WORD`, `DWORD`, `TIME`…). Keys are normalised upper-case heads, so
+ * `STRING[16]` resolves like `STRING`.
+ *
+ * Absent on purpose: `DATE` / `TOD` / `DT`. Schneider packs those as
+ * vendor-specific BCD across several registers and the Modbus driver has no
+ * transformation for them — reading one as `UINT32` would return a number that
+ * looks like a date and is not.
+ */
+const DATATYPE_CODE_MAP: Record<string, number> = {
+  BOOL: ModbusDatatype.BIT,
+  EBOOL: ModbusDatatype.BIT,
+  INT: ModbusDatatype.INT16,
+  UINT: ModbusDatatype.UINT16,
+  WORD: ModbusDatatype.UINT16,
+  BYTE: ModbusDatatype.UINT16,
+  DINT: ModbusDatatype.INT32,
+  UDINT: ModbusDatatype.UINT32,
+  DWORD: ModbusDatatype.UINT32,
+  /** Schneider `TIME` is a DURATION in ms — an unsigned 32-bit count. */
+  TIME: ModbusDatatype.UINT32,
+  LINT: ModbusDatatype.INT64,
+  ULINT: ModbusDatatype.UINT64,
+  REAL: ModbusDatatype.FLOAT,
+  LREAL: ModbusDatatype.DOUBLE,
+  STRING: ModbusDatatype.STRING
+};
 
 /** Map a register-map datatype to the WinCC OA element type. */
 export function modbusLeafType(dataType: ModbusDataType): OaLeafType {
@@ -71,11 +131,18 @@ export function modbusRegisterCount(dataType: ModbusDataType): number {
 }
 
 /**
- * `_address.._datatype` for the WinCC OA Modbus driver — returns
- * {@link MODBUS_DATATYPE_UNVERIFIED} until verified (see file header).
+ * `_address.._datatype` for the WinCC OA Modbus driver, or `undefined` when the
+ * driver has no transformation for that source type — the generator then leaves the
+ * DPE without an address rather than guessing (see {@link DATATYPE_CODE_MAP}).
+ *
+ * Takes a plain string, not {@link ModbusDataType}: a Modbus book may come from a
+ * Control Expert export, whose type names are the IEC ones.
  */
-export function modbusDatatypeCode(_dataType: ModbusDataType): number {
-  return MODBUS_DATATYPE_UNVERIFIED;
+export function modbusDatatypeCode(dataType: string | undefined): number | undefined {
+  const text = (dataType ?? '').trim().toUpperCase();
+  // `STRING[16]`, `ARRAY[0..9] OF INT` → the leading identifier.
+  const head = /^([A-Z_]+)/.exec(text)?.[1] ?? text;
+  return DATATYPE_CODE_MAP[head];
 }
 
 /**

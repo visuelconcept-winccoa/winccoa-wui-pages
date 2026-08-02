@@ -238,14 +238,54 @@ describe('what it refuses to invent', () => {
     expect(proposal.configs['Z01_EQ1.Status.StateCurrent'].address?.reference).toBe('Encaisseuse$$1$1$ns=4;s=X');
   });
 
-  it('flags an unverified driver transformation instead of passing a sentinel off as verified', () => {
+  it('writes the verified Modbus transformation of the source type', () => {
     const modbusBook = book([entry('U_L1_N', 'Float', 'r', 'measure', { sourceType: 'REAL', addresses: { modbus: '40002' } })], {
       protocol: 'modbus',
       connection: 'PAC1'
     });
     const proposal = generateModelFromBook(modbusBook, { typeName: 'T', zone: 'Z02', equipments: ['PAC1'], deviceId: 'd1' });
-    expect(proposal.configs['Z02_PAC1.U_L1_N'].address?.datatype).toBe(0);
-    expect(proposal.warnings.map(warningText).join('\n')).toMatch(/is UNVERIFIED/);
+    expect(proposal.configs['Z02_PAC1.U_L1_N'].address?.datatype).toBe(566); // FLOAT
+    expect(proposal.warnings.map((w) => w.code)).not.toContain('modelgen.no-datatype');
+  });
+
+  /**
+   * The two S7 drivers have DISJOINT transformation tables, so the access mode — not
+   * the family — selects the code. Same book, same signal, two modes: two codes.
+   */
+  it('picks the transformation of the S7 driver the mode names', () => {
+    const s7Book = book([entry('Temp', 'Float', 'r', 'measure', { sourceType: 'Real', addresses: { s7: 'DB1.DBD0', s7plus: '"DB_Four".Temp' } })], {
+      protocol: 's7',
+      connection: 'Four'
+    });
+    const classic = generateModelFromBook(s7Book, { typeName: 'T', zone: 'Z01', equipments: ['EQ1'], deviceId: 'd1', mode: 's7' });
+    const plus = generateModelFromBook(s7Book, { typeName: 'T', zone: 'Z01', equipments: ['EQ1'], deviceId: 'd1', mode: 's7plus' });
+    expect(classic.configs['Z01_EQ1.Temp'].address?.datatype).toBe(705); // S7 FLOAT
+    expect(plus.configs['Z01_EQ1.Temp'].address?.datatype).toBe(1015); // S7Plus REAL
+  });
+
+  /**
+   * A type the driver cannot carry gets NO address at all — an address whose
+   * transformation is wrong reads a plausible wrong value, which is worse than a
+   * DPE an operator can see is unbound.
+   */
+  it('creates the DPE WITHOUT an address when the driver has no transformation for the type', () => {
+    const s7Book = book([entry('Energie', 'Float', 'r', 'measure', { sourceType: 'LReal', addresses: { s7: 'DB1.DBB0' } })], {
+      protocol: 's7',
+      connection: 'Four'
+    });
+    const proposal = generateModelFromBook(s7Book, { typeName: 'T', zone: 'Z01', equipments: ['EQ1'], deviceId: 'd1', mode: 's7' });
+    expect(proposal.configs['Z01_EQ1.Energie']?.address).toBeUndefined();
+    const problem = proposal.warnings.find((w) => w.code === 'modelgen.no-datatype');
+    expect(problem?.params).toMatchObject({ mode: 's7', n: 1, types: 'LReal' });
+    // The same signal IS addressable through S7Plus, which does have LREAL.
+    const plus = generateModelFromBook(book([entry('Energie', 'Float', 'r', 'measure', { sourceType: 'LReal', addresses: { s7plus: '"DB".E' } })], { protocol: 's7plus', connection: 'Four' }), {
+      typeName: 'T',
+      zone: 'Z01',
+      equipments: ['EQ1'],
+      deviceId: 'd1',
+      mode: 's7plus'
+    });
+    expect(plus.configs['Z01_EQ1.Energie'].address?.datatype).toBe(1016);
   });
 
   it('reports a signal with no address for the chosen mode', () => {

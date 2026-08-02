@@ -13,7 +13,7 @@ the live project — in bulk, previewed, transactional.
 > **Status: v0.2 — workflow-complete on demo data, backend implemented.** The whole
 > page runs end-to-end WITHOUT a WinCC OA runtime via an in-memory demo gateway (the
 > source of the screenshots below). The pure engineering domain
-> (`@visuelconcept/wui-eng-core`) is unit-tested (244 tests, no runtime) and the
+> (`@visuelconcept/wui-eng-core`) is unit-tested (261 tests, no runtime) and the
 > backend (`/api/eng`: file store, config read-back, check-out/plan/check-in,
 > online OPC UA browse, fail-closed role gating) typechecks offline against those
 > same sources. Still staged: the **watched-folder ingestion** and the
@@ -242,9 +242,18 @@ name**, a **zone** and the **equipment list**, and the studio derives
 ![Model generated from the book and its roles](../images/eng-studio/12-model-generation.png)
 
 It refuses to invent, and says so: an unqualified signal gets its DPE but **no
-config**; a template catalog with no bound connection yields no address; and an
-unverified driver transformation (S7, Modbus `_datatype`) is flagged rather than
-passed off as a value — visible under the form above.
+config**; a template catalog with no bound connection yields no address; and a
+source type the target driver has **no `_datatype` transformation** for gets **no
+address at all** rather than a nearby-looking one (a classic S7 driver has no
+64-bit float — reading an `LReal` as `FLOAT` would silently halve its precision).
+All of it visible under the form above.
+
+> The `_datatype` transformation constants of every driver used here (OPC UA
+> 750–768, S7 700–722, S7Plus 1001–1027, Modbus 560–577) come from the WinCC OA
+> `_address` appendix, recorded in
+> [VENDOR-ADDRESS-TRANSFORMATIONS.md](./VENDOR-ADDRESS-TRANSFORMATIONS.md) and
+> asserted code-by-code in the unit tests. **S7 and S7Plus are different drivers
+> with disjoint tables** — the access mode, not the family, selects the code.
 
 The result lands in the workspace, so the **check-in diff is immediately there**
 (49 creates / 2 updates here), each config item detailing what it writes:
@@ -305,11 +314,12 @@ plain BCP-47 tags. A picker in the top bar switches it live.
 ```bash
 cd libs/wui-eng-core
 npm install
-npm test          # 244 tests: SimaticML parse + S7 offsets, Schneider CSV/XVM, OPC UA
+npm test          # 261 tests: SimaticML parse + S7 offsets, Schneider CSV/XVM, OPC UA
                   # browse walk + NodeSet2, roles, modelgen (mirror + mapping),
                   # structure outline + auto-binding, diff + live scope, apply,
                   # config write builders + read-back, structured warnings,
-                  # device declaration (id slug, per-protocol params, normalisation)
+                  # device declaration (id slug, per-protocol params, normalisation),
+                  # S7 / S7Plus / Modbus _datatype transformations (code by code)
 npm run typecheck
 
 # and the backend routes, against the REAL core sources (webserver packages stubbed):

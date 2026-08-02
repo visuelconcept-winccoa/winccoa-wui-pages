@@ -40,8 +40,8 @@ import type {
 import { makeDpeName } from './model.js';
 import { dpName, sanitizeSegment, uniqueName } from './naming.js';
 import { opcUaDatatypeCode } from './drivers/opcua.js';
-import { S7_DATATYPE_UNVERIFIED, s7DatatypeCode } from './drivers/s7.js';
-import { MODBUS_DATATYPE_UNVERIFIED, modbusDatatypeCode } from './drivers/modbus.js';
+import { s7DatatypeCode } from './drivers/s7.js';
+import { modbusDatatypeCode } from './drivers/modbus.js';
 import { configsForRole, type RoleProfile, type RoleProfileContext } from './roles/profiles.js';
 import { structureLeaves, type StructureBindings } from './structure.js';
 import { WARNING_CODES, warn, type EngWarning } from './warnings.js';
@@ -120,20 +120,22 @@ interface Leaf {
   entry: BookEntry;
 }
 
-/** `_datatype` transformation for the mode, and whether it is a verified value. */
-function datatypeFor(mode: AccessMode, sourceType: string): { code: number; verified: boolean } {
+/**
+ * `_datatype` transformation for the mode, or `undefined` when that driver has no
+ * transformation for this source type — the two S7 drivers do NOT share a table
+ * (see `drivers/s7.ts`), so the mode, not the family, selects it.
+ */
+function datatypeFor(mode: AccessMode, sourceType: string): number | undefined {
   switch (mode) {
     case 'opcua': {
-      return { code: opcUaDatatypeCode(sourceType), verified: true };
+      return opcUaDatatypeCode(sourceType);
     }
     case 's7':
     case 's7plus': {
-      const code = s7DatatypeCode(sourceType);
-      return { code, verified: code !== S7_DATATYPE_UNVERIFIED };
+      return s7DatatypeCode(sourceType, mode);
     }
     case 'modbus': {
-      const code = modbusDatatypeCode(sourceType as never);
-      return { code, verified: code !== MODBUS_DATATYPE_UNVERIFIED };
+      return modbusDatatypeCode(sourceType);
     }
   }
 }
@@ -328,7 +330,8 @@ export function generateModelFromBook(book: AddressBook, options: ModelGenOption
   let unknownCount = 0;
   let missingAddress = 0;
   let unresolvedReference = 0;
-  let unverifiedDatatype = 0;
+  /** Source types this driver has no `_datatype` transformation for. */
+  const untransformableTypes = new Set<string>();
   let assumedAccess = 0;
   const directionNotes = new Set<string>();
 
@@ -358,16 +361,21 @@ export function generateModelFromBook(book: AddressBook, options: ModelGenOption
           unresolvedReference += 1;
         } else {
           const datatype = datatypeFor(mode, leaf.entry.sourceType);
-          if (!datatype.verified) unverifiedDatatype += 1;
-          const address: AddressConfig = {
-            deviceId: options.deviceId,
-            mode,
-            reference,
-            direction: roleConfigs.direction,
-            datatype: datatype.code,
-            active: true
-          };
-          entryConfigs.address = address;
+          if (datatype === undefined) {
+            // No transformation for this type on this driver: an address without a
+            // `_datatype` would read garbage, so none is written at all.
+            untransformableTypes.add(leaf.entry.sourceType);
+          } else {
+            const address: AddressConfig = {
+              deviceId: options.deviceId,
+              mode,
+              reference,
+              direction: roleConfigs.direction,
+              datatype,
+              active: true
+            };
+            entryConfigs.address = address;
+          }
         }
       }
       if (Object.keys(entryConfigs).length > 0) configs[dpe] = entryConfigs;
@@ -417,12 +425,12 @@ export function generateModelFromBook(book: AddressBook, options: ModelGenOption
       )
     );
   }
-  if (unverifiedDatatype > 0) {
+  if (untransformableTypes.size > 0) {
     warnings.push(
       warn(
-        WARNING_CODES.modelgen.UNVERIFIED_DATATYPE,
-        'The "{mode}" driver\'s "_datatype" transformation is UNVERIFIED (sentinel value) — confirm it on a real system before checking in.',
-        { mode }
+        WARNING_CODES.modelgen.NO_DATATYPE,
+        'The "{mode}" driver has no "_datatype" transformation for {n} source type(s) ({types}) — those DPEs are created WITHOUT a peripheral address, on purpose: a neighbouring transformation would misread the value. Change the type in the PLC, or address them through another mode.',
+        { mode, n: untransformableTypes.size, types: [...untransformableTypes].sort().join(', ') }
       )
     );
   }

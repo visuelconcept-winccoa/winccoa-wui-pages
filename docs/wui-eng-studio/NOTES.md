@@ -216,8 +216,10 @@ What the mapping mode refuses to hide:
   1. a role of `unknown` → the DPE is created, NO config;
   2. a template catalog with no connection → no address config (the role's other
      configs still apply);
-  3. a driver whose `_datatype` is still a sentinel (S7, Modbus) → flagged once,
-     so nobody mistakes 0 for a verified transformation.
+  3. a source type the target driver has **no `_datatype` transformation** for →
+     **no address at all** (`modelgen.no-datatype`, naming the types). An address
+     whose transformation is wrong reads a plausible wrong value, which is worse
+     than a DPE an operator can see is unbound.
 - A signal with no address for the chosen mode is reported too (the DPE is still
   modelled — useful for a computed/internal element).
 
@@ -246,10 +248,11 @@ picks the candidate matching the device's mode.
   the SimaticML v5 dialect. Before production the parser must be re-checked
   against **real** `PlcBlock.Export()` / `PlcType.Export()` files (see
   INTEGRATION "inputs needed"), and the standard-DB offsets cross-checked against
-  a live DB. The S7 `_datatype` **transformation codes are intentionally left at
-  a sentinel (0)** in `drivers/s7.ts` until verified against the S7 driver —
-  same "verify against the real system, not training data" culture as
-  `docs/wui-para/NOTES.md` (the DPL `-filter` work).
+  a live DB. The S7 `_datatype` transformation codes were a **sentinel (0)** until
+  the vendor tables were obtained; they are now the verified constants — see
+  "`_datatype`: the sentinels are lifted" below. Same "verify against the real
+  system, not training data" culture as `docs/wui-para/NOTES.md` (the DPL
+  `-filter` work).
 
 ## Demo catalogs: sources and verification status
 
@@ -274,9 +277,45 @@ template books** (mutualised across equipments):
   real book comes from browsing the machine or ingesting the spec's NodeSet2.
   Both caveats are surfaced as book warnings in the UI, not hidden.
 
-⚠️ Like `drivers/s7.ts`, `drivers/modbus.ts` leaves the WinCC OA
-`_address.._datatype` transformation constants at a sentinel
-(`MODBUS_DATATYPE_UNVERIFIED`) until verified against a live driver.
+## `_datatype`: the sentinels are lifted
+
+`drivers/s7.ts` and `drivers/modbus.ts` used to return a **sentinel (0)** for
+`_address.._datatype`, flagged by a warning, because the constants are driver
+specific and we refuse to ship numbers from memory. The vendor tables are now
+recorded in [VENDOR-ADDRESS-TRANSFORMATIONS.md](./VENDOR-ADDRESS-TRANSFORMATIONS.md)
+(the WinCC OA `_address` appendix — **the vendor host is unreachable from our dev
+containers**, so a copy in the repo is what makes the constants auditable), and
+every code is asserted one by one in `drivers/s7.spec.ts` / `drivers/modbus.spec.ts`.
+
+Four things the tables changed, none of them cosmetic:
+
+**S7 and S7Plus are two different drivers with disjoint tables.** 700–722 with
+driver-flavoured names (`INT16`, `BIT`, `TimeOfDay`) versus 1001–1027 with the IEC
+names TIA itself uses (`BOOL`, `UDINT`, `LREAL`). The code that treated `s7` and
+`s7plus` as one family would have written an S7Plus code onto an S7 address —
+accepted by the API, wrong on the wire. `s7DatatypeCode` now takes the variant as a
+**required argument** so the choice cannot be forgotten.
+
+**A missing transformation is not a nearby one.** The classic S7 driver has no
+64-bit integer, no 64-bit float, no wide string, no 8-bit signed; Modbus has no
+`DATE`/`TOD`/`DT`. Mapping `LReal` onto `FLOAT` would silently halve precision on
+every read, so those types return `undefined`, the generator writes **no address**
+for them and names them in `modelgen.no-datatype`. Not-configured is recoverable;
+wrongly-configured is a field bug that looks like a sensor problem.
+
+**A Modbus book has two possible vocabularies.** A vendor register map says
+`REAL`/`UDINT`; a Control Expert export says `EBOOL`/`WORD`/`DWORD`/`TIME`. Under
+one shared sentinel that gap was invisible — every code was 0. `modbusDatatypeCode`
+now takes a plain string and maps both, normalising `STRING[16]` → `STRING`.
+
+**The lift exposed a wrong demo fixture.** `Catalogue_Pompe_KSB` declared OPC UA
+type names (`Boolean`, `Double`) on S7Plus symbolic addresses; with real tables its
+signals became unaddressable. The fixture was wrong, not the mapping — it now uses
+the TIA names (`Bool`, `LReal`), which is what a book bound over S7Plus must carry.
+
+Still NOT settled by any table, and per-device: the Modbus **byte/word order** and
+the connector's **zero-based addressing** option. Those stay device facts, carried
+as book warnings.
 
 ## Schneider (Modicon) — why a variables export, not the "extended Modbus"
 

@@ -256,21 +256,19 @@ To harden the **SimaticML/TIA** path against real data, please provide:
    - the **UDT** export(s) referenced above.
 2. **Ingestion mode** for v1 — watched folder, HTTP `POST`, or both
    (recommended: both — the folder is robust in OT, the POST serves the agent).
-3. Confirmation of the **S7 `_datatype` transformation codes** and a
-   **standard-DB offset** sample from a live project, to lift the sentinels in
-   `drivers/s7.ts` / verify `simaticml/offsets.ts`.
-   The reference tables are the `_address` appendix
-   (`.../en_US/Notes/dpconfig_address.html`) and
-   `.../Treiber_ComDrv/comdrv_transformation.html` of the WinCC OA help —
-   **`www.winccoa.com` is blocked by our dev environment's network policy** (the
-   HTTPS proxy rejects the CONNECT with 403), so those pages cannot be read from a
-   dev container. Paste the two tables here, or drop a copy under
-   `docs/knowledge/vendor/`, and the sentinels can be replaced by verified values
-   plus a unit test per code.
+3. A **standard-DB offset sample** from a live project (the DB's real member
+   offsets next to its export) to cross-check `simaticml/offsets.ts`.
+   ✅ *Done — the `_datatype` transformation codes of S7, S7Plus and Modbus are no
+   longer sentinels*: the `_address` appendix tables you supplied are recorded in
+   [VENDOR-ADDRESS-TRANSFORMATIONS.md](./VENDOR-ADDRESS-TRANSFORMATIONS.md) and
+   asserted code-by-code in the unit tests. Keep in mind the vendor host
+   (`www.winccoa.com`) is **unreachable from our dev/CI containers** — the HTTPS
+   proxy rejects the CONNECT with 403 — so that file is the reference we can audit
+   against; refresh it from the online help when upgrading WinCC OA.
 4. A **real Control Expert variables export** (data editor → Export; the native
    `.XVM` XML is welcome too) to calibrate `schneider/variables.ts` on actual
-   column sets, plus the WinCC OA **Modbus driver `_datatype` codes** to lift the
-   `MODBUS_DATATYPE_UNVERIFIED` sentinel.
+   column sets, and — per device, since no table settles it — the **byte/word order**
+   and the **zero-based-addressing** setting of each Modbus device.
 5. If a UMAS-based online browse is wanted (Schneider's extended Modbus, FC
    `0x5A`), an explicit go/no-go: it is proprietary and security-sensitive — see
    NOTES.md.
