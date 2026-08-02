@@ -148,6 +148,31 @@ and a **test-read** of live values before any check-in.
 
 ![Model panel](../images/eng-studio/02-model.png)
 
+#### Generating the model from the roles — the loop closes here
+
+With the signals qualified, the Model panel generates everything: give a **type
+name**, a **zone** and the **equipment list**, and the studio derives
+
+- the **DPType structure** from the entries' dotted paths (nested `Struct`s, names
+  sanitised, the fully-shared prefix stripped),
+- **one datapoint per equipment**, named `{Zone}_{Equipement}`, with the source
+  comments as DPE descriptions,
+- and **every config from the role**: address (reference resolved for the device's
+  access mode) + direction, archiving, binary alert on the alarms, range when the
+  project profile states real bounds.
+
+![Model generated from the book and its roles](../images/eng-studio/12-model-generation.png)
+
+It refuses to invent, and says so: an unqualified signal gets its DPE but **no
+config**; a template catalog with no bound connection yields no address; and an
+unverified driver transformation (S7, Modbus `_datatype`) is flagged rather than
+passed off as a value — visible under the form above.
+
+The result lands in the workspace, so the **check-in diff is immediately there**
+(49 creates / 2 updates here), each config item detailing what it writes:
+
+![Check-in diff produced by the generation](../images/eng-studio/13-control-generated.png)
+
 ### 3 · Contrôle — diff + check-in
 
 The **diff** of the working copy against the live project: creates, updates and

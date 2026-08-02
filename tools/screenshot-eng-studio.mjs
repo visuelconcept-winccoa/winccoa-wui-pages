@@ -94,6 +94,13 @@ const DEVICE_SHOTS = [
   }
 ];
 
+// The generation scenario: fill the Model panel's form from the S7 book and
+// generate, then capture the Model panel and the resulting check-in diff.
+const GENERATION_SHOTS = [
+  { file: '12-model-generation.png', panel: 'model', desc: 'Génération du modèle depuis le carnet (rôles → configs)' },
+  { file: '13-control-generated.png', panel: 'control', desc: 'Diff de check-in issu de la génération' }
+];
+
 async function reachable(url) {
   try {
     const res = await fetch(url, { method: 'GET' });
@@ -189,6 +196,27 @@ async function main() {
         }, shot.role);
         await page.waitForTimeout(300);
       }
+      const file = resolve(OUT, shot.file);
+      await page.screenshot({ path: file });
+      console.log(`[eng-shots] ${shot.file} — ${shot.desc}`);
+    }
+
+    // Generation scenario: qualify → generate → diff, captured end to end.
+    await page.goto(`${devUrl}/?panel=model`, { waitUntil: 'load' });
+    await page.waitForSelector('wui-eng-studio');
+    await page.waitForTimeout(500);
+    await page.evaluate(() => {
+      const app = document.querySelector('wui-eng-studio');
+      app?.selectDeviceById('s7-four1');
+      app?.generateForDemo('Equip_Four_Gen', 'Z04', 'FOUR010, FOUR011');
+    });
+    await page.waitForTimeout(700);
+    for (const shot of GENERATION_SHOTS) {
+      await page.evaluate((panel) => {
+        const app = document.querySelector('wui-eng-studio');
+        if (app) app.panel = panel;
+      }, shot.panel);
+      await page.waitForTimeout(400);
       const file = resolve(OUT, shot.file);
       await page.screenshot({ path: file });
       console.log(`[eng-shots] ${shot.file} — ${shot.desc}`);

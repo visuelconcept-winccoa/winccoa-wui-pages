@@ -24,6 +24,8 @@ import {
   classifyEntry,
   diffWorkspace,
   filterEntries,
+  generateModelFromBook,
+  mergeProposal,
   roleCounts,
   type SignalRole,
   type AddressBook,
@@ -63,6 +65,12 @@ export class WuiEngStudio extends LitElement {
   @state() private roleFilter: SignalRole | '' = '';
   /** Signal paths checked for a bulk role assignment. */
   @state() private checkedSignals = new Set<string>();
+  /** Model-generation form (Model panel). */
+  @state() private genTypeName = '';
+  @state() private genZone = 'Z01';
+  @state() private genEquipments = '';
+  /** Warnings of the last generation, shown under the form. */
+  @state() private genWarnings: string[] = [];
   @state() private workspace: Workspace | null = null;
   @state() private live: LiveSnapshot | null = null;
   @state() private plan: EngPlan | null = null;
@@ -95,6 +103,16 @@ export class WuiEngStudio extends LitElement {
   /** Public: filter the signal table by role ('' = all) — demo/screenshot harness. */
   filterByRole(role: SignalRole | ''): void {
     this.roleFilter = role;
+  }
+
+  /** Public: run a generation with the given form values (demo/screenshot harness). */
+  generateForDemo(typeName: string, zone: string, equipments: string): void {
+    const book = this.activeBook();
+    if (!book) return;
+    this.genTypeName = typeName;
+    this.genZone = zone;
+    this.genEquipments = equipments;
+    void this.onGenerateModel(book);
   }
 
   /** Monotonic load token — only the latest load() writes state (demo swap race). */
@@ -473,8 +491,90 @@ export class WuiEngStudio extends LitElement {
             : entries.map((entry) => this.renderBookEntry(entry))}
         </div>
         <div class="browser-foot">${entries.length} / ${book?.entries.length ?? 0} signaux</div>
+        ${book ? this.renderGenerator(book) : nothing}
       </section>
     `;
+  }
+
+  /**
+   * Generate the model from the active book: the roles decide the configs, the
+   * VC convention the datapoint names. The result lands in the workspace, so the
+   * Control panel's diff immediately shows what a check-in would write.
+   */
+  private renderGenerator(book: AddressBook): TemplateResult {
+    const unknown = this.roleTally(book).unknown;
+    return html`
+      <div class="generator">
+        <div class="gen-title">Générer le modèle depuis ce carnet</div>
+        <label class="gen-row"><span>type</span>
+          <input
+            class="filter"
+            placeholder="Equip_Four"
+            .value=${this.genTypeName}
+            @input=${(e: Event) => (this.genTypeName = (e.target as HTMLInputElement).value)}
+          /></label>
+        <label class="gen-row"><span>zone</span>
+          <input
+            class="filter"
+            placeholder="Z01"
+            .value=${this.genZone}
+            @input=${(e: Event) => (this.genZone = (e.target as HTMLInputElement).value)}
+          /></label>
+        <label class="gen-row"><span>équipements</span>
+          <input
+            class="filter"
+            placeholder="FOUR001, FOUR002"
+            .value=${this.genEquipments}
+            @input=${(e: Event) => (this.genEquipments = (e.target as HTMLInputElement).value)}
+          /></label>
+        <button
+          class="btn primary gen-btn"
+          ?disabled=${this.busy || !this.can('edit-model') || this.genTypeName.trim() === ''}
+          @click=${() => this.onGenerateModel(book)}
+        >⚙ Générer</button>
+        ${unknown > 0
+          ? html`<div class="gen-hint warn-inline">${unknown} signal(aux) « à qualifier » : leurs DPE seront créés sans config.</div>`
+          : nothing}
+        ${this.genWarnings.length > 0
+          ? html`<ul class="gen-warnings">${this.genWarnings.map((w) => html`<li>${w}</li>`)}</ul>`
+          : nothing}
+      </div>
+    `;
+  }
+
+  /** Run the generator, merge into the workspace and refresh the plan. */
+  private async onGenerateModel(book: AddressBook): Promise<void> {
+    const workspace = this.workspace;
+    if (!workspace) return;
+    const device = this.currentDevice();
+    const equipments = this.genEquipments
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s !== '');
+    this.busy = true;
+    try {
+      const proposal = generateModelFromBook(book, {
+        typeName: this.genTypeName.trim(),
+        zone: this.genZone.trim() === '' ? undefined : this.genZone.trim(),
+        equipments,
+        deviceId: device?.id ?? book.id,
+        // A template catalog is bound to the selected equipment's own connection.
+        bindConnection: book.interface?.connection ?? device?.name,
+        mode: book.interface?.protocol ?? device?.accessModes[0]
+      });
+      const merged = mergeProposal(workspace, proposal);
+      await this.gateway.saveWorkspace(merged);
+      this.workspace = merged;
+      this.live = await this.gateway.liveSnapshot();
+      this.recomputePlan();
+      this.genWarnings = proposal.warnings;
+      const configCount = Object.keys(proposal.configs).length;
+      this.notice = `Modèle généré : type « ${proposal.type.typeName} », ${proposal.dps.length} DP, ${configCount} DPE configurés — voir l’onglet Contrôle.`;
+    } catch (error) {
+      this.genWarnings = [`Génération impossible : ${(error as Error).message}`];
+    } finally {
+      this.busy = false;
+    }
   }
 
   private renderBookEntry(entry: BookEntry): TemplateResult {

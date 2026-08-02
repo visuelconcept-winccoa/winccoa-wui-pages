@@ -438,6 +438,52 @@ export const engStudioStyles = [
       font-size: 0.72rem;
       color: var(--eng-soft);
     }
+    .generator {
+      border-top: 1px solid var(--eng-border);
+      padding: 0.5rem 0.6rem 0.6rem;
+      background: var(--eng-surface-2);
+      flex-shrink: 0;
+    }
+    .gen-title {
+      font-weight: 600;
+      font-size: 0.8rem;
+      margin-bottom: 0.4rem;
+    }
+    .gen-row {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-bottom: 0.25rem;
+      font-size: 0.75rem;
+    }
+    .gen-row span {
+      color: var(--eng-soft);
+      width: 6rem;
+      flex-shrink: 0;
+    }
+    .gen-row .filter {
+      flex: 1;
+      min-width: 0;
+    }
+    .gen-btn {
+      margin-top: 0.35rem;
+      width: 100%;
+      justify-content: center;
+    }
+    .gen-hint,
+    .gen-warnings {
+      font-size: 0.72rem;
+      margin: 0.4rem 0 0;
+    }
+    .warn-inline {
+      color: var(--eng-warn);
+    }
+    .gen-warnings {
+      padding-left: 1rem;
+      color: var(--eng-warn);
+      max-height: 7rem;
+      overflow: auto;
+    }
     .grid-wrap {
       display: flex;
       flex-direction: column;

@@ -9,6 +9,7 @@ export * from './roles/roles.js';
 export * from './roles/classify.js';
 export * from './roles/profiles.js';
 export * from './diff.js';
+export * from './modelgen.js';
 export * from './apply.js';
 export * from './addressbook.js';
 export * from './configs/builders.js';
