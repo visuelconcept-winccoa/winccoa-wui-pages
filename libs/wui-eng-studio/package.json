@@ -1,0 +1,29 @@
+{
+  "name": "@visuelconcept/wui-eng-studio",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Engineering Studio — standalone WinCC OA WebUI page (/eng-studio): device-first, check-in/check-out studio to model DP types, datapoints and their configs (address/alarm/archive/range) from communicating equipment. Address-book-centric imports (OPC UA browse, SimaticML/TIA Openness export, CSV, AI proposal) with a live diff and transactional check-in. Pure domain in @visuelconcept/wui-eng-core; all I/O behind an EngGateway (HTTP /api/eng in the shell, in-memory demo for docs/screenshots).",
+  "author": { "name": "Visuel Concept" },
+  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page", "engineering", "simaticml", "opcua"],
+  "license": "MIT",
+  "dependencies": {
+    "@visuelconcept/wui-eng-core": "*"
+  },
+  "peerDependencies": {
+    "lit": "*"
+  },
+  "exports": { "./*": { "types": "./types/*", "import": "./*" } },
+  "wuiPage": {
+    "route": "/eng-studio",
+    "routeId": "eng-studio",
+    "component": "wui-eng-studio",
+    "module": "/data/dashboard-wc/pages/eng-studio.js",
+    "icon": "cogwheel",
+    "permission": ["connected"],
+    "tier": 3,
+    "backend": {
+      "mount": "/api/eng",
+      "routes": ["/api/eng/*"]
+    }
+  }
+}

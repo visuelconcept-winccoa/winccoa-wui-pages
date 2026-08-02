@@ -1,0 +1,34 @@
+{
+  "module": "eng-studio",
+  "title": { "en_US.utf8": "Engineering Studio", "fr.utf8": "Studio d'ingénierie", "de.utf8": "Engineering Studio" },
+  "roles": [
+    { "id": "view", "label": { "en_US.utf8": "View", "fr.utf8": "Consulter", "de.utf8": "Ansehen" } },
+    {
+      "id": "edit-model",
+      "label": { "en_US.utf8": "Edit model", "fr.utf8": "Éditer le modèle", "de.utf8": "Modell bearbeiten" },
+      "description": {
+        "en_US.utf8": "Edit the workspace: types, datapoints and their configs.",
+        "fr.utf8": "Éditer le workspace : types, datapoints et leurs configs.",
+        "de.utf8": "Workspace bearbeiten: Typen, Datenpunkte und Configs."
+      }
+    },
+    {
+      "id": "manage-devices",
+      "label": { "en_US.utf8": "Manage devices", "fr.utf8": "Gérer les équipements", "de.utf8": "Geräte verwalten" },
+      "description": {
+        "en_US.utf8": "Declare devices and generate/refresh their address books.",
+        "fr.utf8": "Déclarer les équipements et générer/rafraîchir leurs carnets d'adresses.",
+        "de.utf8": "Geräte deklarieren und Adressbücher generieren/aktualisieren."
+      }
+    },
+    {
+      "id": "checkin",
+      "label": { "en_US.utf8": "Check-in", "fr.utf8": "Check-in", "de.utf8": "Check-in" },
+      "description": {
+        "en_US.utf8": "Apply the workspace to the live project (create/update/delete).",
+        "fr.utf8": "Appliquer le workspace au projet live (créer/modifier/supprimer).",
+        "de.utf8": "Workspace ins Live-Projekt übernehmen (anlegen/ändern/löschen)."
+      }
+    }
+  ]
+}
