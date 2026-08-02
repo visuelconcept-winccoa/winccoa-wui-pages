@@ -70,14 +70,22 @@ function normalizeType(type: string): string {
   return head;
 }
 
-/** One parsed row of the export. */
-interface VariableRow {
+/**
+ * One variable of a Control Expert export, whatever the file format it came
+ * from (CSV/TSV here, XVM/XSY XML in `./xvm.ts`). The engineering resolution
+ * ({@link entriesFromSchneiderVariables}) is shared by both generators.
+ */
+export interface SchneiderVariable {
   name: string;
+  /** Located address as written in the data editor (`%MW100`), '' if unlocated. */
   address: string;
   type: string;
   comment?: string;
   unit?: string;
 }
+
+/** Backwards-compatible alias used inside this module. */
+type VariableRow = SchneiderVariable;
 
 /** Recognised header aliases (EN + FR), lower-case. */
 const HEADERS: Record<keyof VariableRow, string[]> = {
@@ -159,11 +167,42 @@ export function buildBookFromSchneiderExport(bundle: SchneiderExportBundle): Add
     }
   }
 
+  const resolved = entriesFromSchneiderVariables(rows);
+  warnings.push(...resolved.warnings);
+
+  return {
+    id: bundle.bookId,
+    name: bundle.name ?? bundle.bookId,
+    provenance: {
+      kind: 'csv',
+      generatedAt: bundle.provenance?.generatedAt ?? new Date().toISOString(),
+      ...bundle.provenance
+    },
+    interface: bundle.interface,
+    entries: resolved.entries,
+    types: [],
+    warnings
+  };
+}
+
+/**
+ * Resolve parsed variables into {@link BookEntry}s — the SHARED engineering step
+ * of every Schneider generator (CSV export, XVM/XSY XML, …):
+ *  - unlocated variables are excluded (invisible to a Modbus client);
+ *  - non-Modbus-addressable addresses (topological, `%SW`…) are excluded;
+ *  - derived/unknown types are kept but flagged `unmapped`;
+ *  - **register overlaps** are reported (a `DINT` at `%MW112` vs an `INT` at 113).
+ */
+export function entriesFromSchneiderVariables(variables: SchneiderVariable[]): {
+  entries: BookEntry[];
+  warnings: string[];
+} {
   const entries: BookEntry[] = [];
+  const warnings: string[] = [];
   /** register index → first variable name occupying it (overlap detection). */
   const owner = new Map<number, string>();
 
-  for (const row of rows) {
+  for (const row of variables) {
     const address = parseSchneiderAddress(row.address);
     if (!address) {
       warnings.push(`Variable « ${row.name} » non localisée (aucune adresse) — invisible pour un client Modbus.`);
@@ -198,18 +237,5 @@ export function buildBookFromSchneiderExport(bundle: SchneiderExportBundle): Add
       unmapped: unmapped || undefined
     });
   }
-
-  return {
-    id: bundle.bookId,
-    name: bundle.name ?? bundle.bookId,
-    provenance: {
-      kind: 'csv',
-      generatedAt: bundle.provenance?.generatedAt ?? new Date().toISOString(),
-      ...bundle.provenance
-    },
-    interface: bundle.interface,
-    entries,
-    types: [],
-    warnings
-  };
+  return { entries, warnings };
 }

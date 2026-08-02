@@ -17,3 +17,4 @@ export * from './simaticml/offsets.js';
 export * from './simaticml/parse.js';
 export * from './schneider/address.js';
 export * from './schneider/variables.js';
+export * from './schneider/xvm.js';

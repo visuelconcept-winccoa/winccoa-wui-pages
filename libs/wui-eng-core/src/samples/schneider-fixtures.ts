@@ -38,3 +38,69 @@ Securite_Niveau_Bas;%I0.2.3;EBOOL;Sécurité niveau bas (topologique);
 Recette_Courante;;STRING[16];Recette en cours (non localisée);
 Bloc_Regulation;%MW300;PID_Params;Paramètres régulation (type dérivé);
 `;
+
+/**
+ * XVM/XSY-style export (Unity spelling: `elementaryVariable` / `typeName` /
+ * `topologicalAddress`, `<comment>` child, Unity-style `<attribute>` pairs, and a
+ * structured `derivedVariable` whose members carry their own addresses).
+ *
+ * ⚠️ Hand-authored — the XVM schema is NOT vendor-published and no real export
+ * could be obtained. The reader is spelling-tolerant precisely because of that;
+ * replace this fixture with a real export when one is available.
+ */
+export const M580_PESAGE_XVM = `<?xml version="1.0" encoding="UTF-8"?>
+<VariableList version="2.0" producer="Control Expert">
+  <variables>
+    <elementaryVariable name="Poids_Brut" typeName="REAL" topologicalAddress="%MF400">
+      <comment><![CDATA[Poids brut bascule]]></comment>
+      <attribute name="unit" value="kg"/>
+    </elementaryVariable>
+    <elementaryVariable name="Poids_Net" typeName="REAL" topologicalAddress="%MF402">
+      <comment>Poids net apr&#232;s tare</comment>
+      <attribute name="unit" value="kg"/>
+    </elementaryVariable>
+    <elementaryVariable name="Tare" typeName="REAL" topologicalAddress="%MF404">
+      <comment>Tare courante</comment>
+      <attribute name="unit" value="kg"/>
+    </elementaryVariable>
+    <elementaryVariable name="Cadence_Pesee" typeName="INT" topologicalAddress="%MW406">
+      <comment>Cadence de pes&#233;e</comment>
+      <attribute name="unit" value="p/min"/>
+    </elementaryVariable>
+    <elementaryVariable name="Nb_Pesees" typeName="UDINT" topologicalAddress="%MD408">
+      <comment>Nombre de pes&#233;es cumul&#233;</comment>
+    </elementaryVariable>
+    <elementaryVariable name="Bascule_Stable" typeName="EBOOL" topologicalAddress="%M40">
+      <comment>Bascule stabilis&#233;e</comment>
+    </elementaryVariable>
+    <elementaryVariable name="Defaut_Cellule" typeName="EBOOL" topologicalAddress="%M41">
+      <comment>D&#233;faut cellule de pes&#233;e</comment>
+    </elementaryVariable>
+    <derivedVariable name="Recette" typeName="ST_Recette" topologicalAddress="%MW420">
+      <comment>Recette de dosage en cours</comment>
+      <structMember name="Consigne" typeName="INT" topologicalAddress="%MW420">
+        <comment>Consigne de dosage</comment>
+        <attribute name="unit" value="kg"/>
+      </structMember>
+      <structMember name="Tolerance" typeName="INT" topologicalAddress="%MW421">
+        <comment>Tol&#233;rance accept&#233;e</comment>
+        <attribute name="unit" value="g"/>
+      </structMember>
+      <structMember name="Libelle" typeName="STRING[16]">
+        <comment>Libell&#233; (membre sans adresse propre)</comment>
+      </structMember>
+    </derivedVariable>
+  </variables>
+</VariableList>
+`;
+
+/** Alternative spelling (attributes capitalised, `Address`/`Description`). */
+export const ALT_SPELLING_XVM = `<?xml version="1.0" encoding="UTF-8"?>
+<FileExport>
+  <VariableList>
+    <Variable Name="Debit_Dosage" Type="REAL" Address="%MF500" Description="D&#233;bit de dosage" Unit="m3/h"/>
+    <Variable Name="Vanne_Ouverte" Type="EBOOL" Address="%M50" Description="Retour vanne ouverte"/>
+  </VariableList>
+</FileExport>
+`;
+

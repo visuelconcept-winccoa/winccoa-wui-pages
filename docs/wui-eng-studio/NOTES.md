@@ -164,11 +164,48 @@ The generator also detects **register overlaps** (a `DINT` at `%MW112` spanning
 112-113 against an `INT` at `%MW113`) — a classic "the value changes on its own"
 root cause. 21 unit tests cover the mapping and these checks.
 
-⚠️ The fixture (`samples/schneider-fixtures.ts`) is hand-authored in the shape of
-a data-editor export; re-calibrate against a **real** Control Expert export (and
-consider the native `.XVM` XML export as a second parser) when one is available.
-A UMAS-based online browse remains possible as an explicitly opt-in phase-2
-generator, with the security trade-off stated to the user.
+### Two Schneider generators, one shared engineering step
+
+`entriesFromSchneiderVariables()` holds the engineering resolution (addresses →
+Modbus, unlocated/topological exclusion, overlap detection, type flagging); the
+generators only differ in how they READ the file:
+
+- `schneider/variables.ts` — CSV/TSV export (delimiter + column order detected);
+- `schneider/xvm.ts` — **XVM / XSY / XEF XML**, on the core's shared XML reader.
+
+### The XVM reader and its unverified schema
+
+⚠️ **Schneider does not publish the XVM schema, and no real export could be
+obtained**: the pages that carry one (the developpez.net thread *"Lecture d'un
+fichier XVM"*, se.com FAQ FA198786, product-help.schneider-electric.com) are
+unreachable from this environment's network policy, and no public sample is
+indexed. What IS documented: XVM is the **OFS-compatible variables export**
+carrying the variable↔controller-address link and the memory-organisation info;
+XSY/XEF are XML exports preserving name, address, type, description and initial
+values, with the attribute **`topologicalAddress`** holding the memory position
+(e.g. `%MW3215`) next to `typeName` and `comment`.
+
+The reader is therefore built to survive being wrong about the exact schema:
+
+- **spelling-tolerant** — a variable is any element carrying a recognisable
+  *name*; name/type/address/comment/unit are looked up across attribute aliases
+  (`topologicalAddress`/`address`/`@`, `typeName`/`type`/`datatype`, …), child
+  elements, and Unity-style `<attribute name= value=/>` children,
+  case-insensitively and ignoring namespace prefixes;
+- **structured variables contribute their MEMBERS**, dot-joined
+  (`Recette.Consigne`) — you bind leaves, not a struct root — and a member with
+  no own address is reported rather than having its offset guessed;
+- **it fails LOUD**: when nothing is recognised it reports the element names
+  actually encountered (with counts), so calibrating on a real file is a
+  one-line alias addition; unreadable XML is reported, never thrown;
+- every book it produces carries the "schema not vendor-verified" warning as its
+  **first** warning, visible in the UI.
+
+The fixtures (`samples/schneider-fixtures.ts`) are hand-authored in the shape of
+a data-editor / XVM export — replace them with a **real** export when available
+(see INTEGRATION.md "inputs needed"). A UMAS-based online browse remains possible
+as an explicitly opt-in phase-2 generator, with the security trade-off stated to
+the user.
 
 ## What is proven
 

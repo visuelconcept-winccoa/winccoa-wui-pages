@@ -87,7 +87,7 @@ export interface Device {
 /** Where a book (or a book refresh) came from. */
 export interface BookProvenance {
   /** Generator kind. */
-  kind: 'opcua-browse' | 'simaticml' | 'csv' | 'nodeset' | 'ai-proposal' | 'manual';
+  kind: 'opcua-browse' | 'simaticml' | 'xvm' | 'csv' | 'nodeset' | 'ai-proposal' | 'manual';
   /** Source file name (file-based generators). */
   file?: string;
   /** Content hash of the source (change detection / audit). */

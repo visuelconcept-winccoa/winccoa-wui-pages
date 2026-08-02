@@ -73,7 +73,13 @@ const DEVICE_SHOTS = [
   { device: 'z01-pompe1', file: '05-book-mutualisation.png', desc: 'Mutualisation : un carnet catalogue partagé entre équipements' },
   { device: 'pac-depart1', file: '06-book-pac3200.png', desc: 'PAC3200 : catalogue de registres Modbus mutualisé' },
   { device: 'ligne-encaisseuse', file: '07-book-packml.png', desc: 'PackML : interface OPC UA standard mutualisée' },
-  { device: 'm580-station', file: '08-book-schneider-m580.png', desc: 'Schneider M580 : carnet depuis un export de variables Control Expert' }
+  { device: 'm580-station', file: '08-book-schneider-m580.png', desc: 'Schneider M580 : carnet depuis un export de variables Control Expert' },
+  {
+    device: 'm580-station',
+    book: 'book-m580-pesage-xvm',
+    file: '09-book-schneider-xvm.png',
+    desc: 'Schneider XVM : second générateur (XML) sur le même équipement'
+  }
 ];
 
 async function reachable(url) {
@@ -159,6 +165,12 @@ async function main() {
         document.querySelector('wui-eng-studio')?.selectDeviceById(id);
       }, shot.device);
       await page.waitForTimeout(400);
+      if (shot.book) {
+        await page.evaluate((id) => {
+          document.querySelector('wui-eng-studio')?.selectBookById(id);
+        }, shot.book);
+        await page.waitForTimeout(300);
+      }
       const file = resolve(OUT, shot.file);
       await page.screenshot({ path: file });
       console.log(`[eng-shots] ${shot.file} — ${shot.desc}`);

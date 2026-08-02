@@ -91,6 +91,15 @@ types. All four are surfaced as book warnings:
 > the studio's default path is the offline variables export — same symbols, no
 > proprietary traffic on the OT network. See [NOTES.md](./NOTES.md).
 
+Two Schneider generators are available, and one equipment can hold both books —
+here a CSV export of the pumping station plus an **XVM/XSY (XML)** export of its
+weighing section. The XVM reader flattens structured variables to their members
+(`Recette.Consigne` → `40421`), picks units from Unity-style
+`<attribute name="unit" …/>` children, and states up front that the **XVM schema
+is not vendor-verified**:
+
+![Schneider XVM book — second generator on the same equipment](../images/eng-studio/09-book-schneider-xvm.png)
+
 ### 2 · Modèle — book browser + signal grid
 
 Left, the **address-book browser** (filterable): each entry shows its WinCC OA leaf

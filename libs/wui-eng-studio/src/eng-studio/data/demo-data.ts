@@ -33,7 +33,7 @@ import {
 } from '@visuelconcept/wui-eng-core/samples/simaticml-fixtures.js';
 import { pac3200Book } from './pac3200.js';
 import { packMlBook } from './packml.js';
-import { m580StationBook } from './schneider.js';
+import { m580PesageXvmBook, m580StationBook } from './schneider.js';
 
 // --- equipments (logical) — each references one or more books -----------------
 export const DEMO_DEVICES: Device[] = [
@@ -100,7 +100,8 @@ export const DEMO_DEVICES: Device[] = [
     driverNumber: 5,
     pollGroup: '_EngStudio_Poll',
     state: 'connected',
-    bookIds: ['book-m580-station']
+    // Two generators on the SAME equipment: a CSV variables export and an XVM one.
+    bookIds: ['book-m580-station', 'book-m580-pesage-xvm']
   },
   // Two SENTRON PAC3200 meters sharing ONE device-type register catalog
   // (Modbus has no browse — the catalog IS the vendor register map).
@@ -226,6 +227,7 @@ export function demoBooks(): AddressBook[] {
     packMlBook(),
     pompeCatalogueBook(),
     m580StationBook(),
+    m580PesageXvmBook(),
     pac3200Book('detailed')
   ];
 }

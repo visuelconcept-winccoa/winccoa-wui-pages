@@ -78,6 +78,11 @@ export class WuiEngStudio extends LitElement {
     if (this.devices.some((d) => d.id === id)) this.selectDevice(id);
   }
 
+  /** Public: activate one of the selected equipment's books by id. */
+  selectBookById(id: string): void {
+    if (this.books.some((b) => b.id === id)) this.selectBook(id);
+  }
+
   /** Monotonic load token — only the latest load() writes state (demo swap race). */
   private loadToken = 0;
 

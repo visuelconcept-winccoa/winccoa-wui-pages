@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Minimal XML parser for the SimaticML subset (TIA Openness `Export()` files).
+ * Minimal XML reader — the SHARED one of the engineering core: used by the
+ * SimaticML parser (TIA Openness `Export()`) and by the Schneider XVM/XSY
+ * reader (`../schneider/xvm.ts`).
  *
  * Deliberately dependency-free so wui-eng-core stays pure and testable in any
  * JS runtime (no DOMParser in Node, no external package to vendor). Supports
