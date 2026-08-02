@@ -200,10 +200,17 @@ export interface EngDp {
   descriptions?: Record<string, string>;
 }
 
-/** Peripheral-address config of one DPE (protocol-agnostic envelope). */
+/**
+ * Peripheral-address config of one DPE (protocol-agnostic envelope).
+ *
+ * `deviceId` and `mode` are studio-side PROVENANCE: they are not values written
+ * to the project (`s7` and `s7plus` both write `_drv_ident = "S7"`), so they are
+ * absent from a read-back and excluded from diff comparison — see
+ * `configs/read.ts` (`comparableConfigs`).
+ */
 export interface AddressConfig {
-  deviceId: string;
-  mode: AccessMode;
+  deviceId?: string;
+  mode?: AccessMode;
   /** Driver reference string (built by the protocol's address builder). */
   reference: string;
   /** `_address.._direction` value. */

@@ -16,6 +16,7 @@
  *    items unless the caller re-bases them explicitly).
  */
 
+import { comparableConfigs } from './configs/read.js';
 import {
   fingerprint,
   type DpeConfigs,
@@ -47,7 +48,7 @@ function describeConfigChange(before: DpeConfigs | undefined, after: DpeConfigs 
       parts.push(`+${family}`);
     } else if (b === undefined) {
       parts.push(`-${family}`);
-    } else if (fingerprint(a) !== fingerprint(b)) {
+    } else if (fingerprint(comparableConfigs({ [family]: a } as DpeConfigs)) !== fingerprint(comparableConfigs({ [family]: b } as DpeConfigs))) {
       parts.push(`~${family}`);
     }
   }
@@ -123,7 +124,9 @@ export function diffWorkspace(workspace: Workspace, snapshot: LiveSnapshot): Eng
   // --- configs -----------------------------------------------------------------
   for (const [dpe, configs] of Object.entries(workspace.configs)) {
     const live = liveCfgs.get(dpe);
-    const same = live !== undefined && fingerprint(live) === fingerprint(configs);
+    // Compare only what is WRITTEN to the project: an address' deviceId/mode are
+    // studio provenance and are absent from a read-back (see configs/read.ts).
+    const same = live !== undefined && fingerprint(comparableConfigs(live)) === fingerprint(comparableConfigs(configs));
     if (same) continue;
     items.push({
       kind: 'config',
@@ -153,6 +156,27 @@ export function diffWorkspace(workspace: Workspace, snapshot: LiveSnapshot): Eng
     (a, b) => kindRank[a.kind] - kindRank[b.kind] || opRank[a.op] - opRank[b.op] || a.name.localeCompare(b.name)
   );
   return { workspace: workspace.name, items, warnings };
+}
+
+/**
+ * What a live read must cover for {@link diffWorkspace} to be complete.
+ *
+ * Reading the configs of the workspace's DPEs is NOT enough: a config the user
+ * DELETED from the workspace is no longer a workspace key, so without its
+ * baseline `cfg:` key the read would miss it and the diff would silently drop the
+ * removal. Both the studio UI and the backend `/plan` handler derive their read
+ * scope here so they cannot drift apart.
+ */
+export function liveScopeOf(workspace: Workspace): { types: string[]; dpes: string[] } {
+  const dpes = new Set<string>(Object.keys(workspace.configs));
+  for (const key of Object.keys(workspace.baseline)) {
+    if (key.startsWith('cfg:')) dpes.add(key.slice('cfg:'.length));
+  }
+  const types = new Set<string>(workspace.types.map((type) => type.typeName));
+  for (const key of Object.keys(workspace.baseline)) {
+    if (key.startsWith('type:')) types.add(key.slice('type:'.length));
+  }
+  return { types: [...types], dpes: [...dpes] };
 }
 
 /** Baseline map for a fresh check-out of `snapshot` (fingerprint per object). */

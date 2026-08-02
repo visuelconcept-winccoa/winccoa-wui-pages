@@ -232,6 +232,7 @@
       "srcFiles": [
         "engController.ts",
         "engRoute.ts",
+        "engStore.ts",
         "appSecurityGuard.ts"
       ],
       "vendorPackages": [

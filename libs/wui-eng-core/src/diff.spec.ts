@@ -7,7 +7,7 @@
  * deterministic types → dps → configs order.
  */
 import { describe, expect, it } from 'vitest';
-import { baselineOf, diffWorkspace } from './diff.js';
+import { baselineOf, diffWorkspace, liveScopeOf } from './diff.js';
 import { fingerprint, type EngType, type LiveSnapshot, type Workspace } from './model.js';
 
 const TYPE_A: EngType = {
@@ -122,5 +122,49 @@ describe('diffWorkspace', () => {
 
   it('fingerprint is key-order independent (stable baselines)', () => {
     expect(fingerprint({ a: 1, b: { c: 2, d: 3 } })).toBe(fingerprint({ b: { d: 3, c: 2 }, a: 1 }));
+  });
+});
+
+describe('liveScopeOf', () => {
+  it('covers the workspace AND the baseline, so deletions stay visible', () => {
+    const live: LiveSnapshot = {
+      types: [TYPE_A],
+      dps: [{ dpName: 'Z01_FOUR001', dpType: 'Equip_Four' }],
+      configs: {
+        'Z01_FOUR001.Temperature': { archive: { group: 'EVENT', active: true } },
+        'Z01_FOUR001.Consigne': { archive: { group: 'EVENT', active: true } }
+      }
+    };
+    // The user removed the Consigne config and kept the Temperature one.
+    const ws = workspace({
+      types: [TYPE_A],
+      dps: [{ dpName: 'Z01_FOUR001', dpType: 'Equip_Four' }],
+      configs: { 'Z01_FOUR001.Temperature': { archive: { group: 'EVENT', active: true } } },
+      baseline: baselineOf(live)
+    });
+    const scope = liveScopeOf(ws);
+    expect(scope.types).toEqual(['Equip_Four']);
+    expect([...scope.dpes].sort()).toEqual(['Z01_FOUR001.Consigne', 'Z01_FOUR001.Temperature']);
+    // A read restricted to that scope still plans the delete.
+    const plan = diffWorkspace(ws, live);
+    expect(plan.items).toEqual([
+      expect.objectContaining({ kind: 'config', op: 'delete', name: 'Z01_FOUR001.Consigne' })
+    ]);
+  });
+
+  it('includes a type present only in the baseline (a deliberate type delete)', () => {
+    const live: LiveSnapshot = { types: [TYPE_A], dps: [], configs: {} };
+    const ws = workspace({ types: [], baseline: baselineOf(live) });
+    expect(liveScopeOf(ws).types).toEqual(['Equip_Four']);
+  });
+
+  it('is empty for a fresh workspace (caller then reads the whole project)', () => {
+    expect(liveScopeOf(workspace({}))).toEqual({ types: [], dpes: [] });
+  });
+
+  it('deduplicates a DPE listed both in the workspace and in the baseline', () => {
+    const live: LiveSnapshot = { types: [], dps: [], configs: { 'DP1.': { archive: { group: 'EVENT', active: true } } } };
+    const ws = workspace({ configs: live.configs, baseline: baselineOf(live) });
+    expect(liveScopeOf(ws).dpes).toEqual(['DP1.']);
   });
 });

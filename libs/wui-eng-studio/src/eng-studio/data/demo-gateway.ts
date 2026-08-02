@@ -26,7 +26,7 @@ import {
   type LiveSnapshot,
   type Workspace
 } from '@visuelconcept/wui-eng-core';
-import type { EngGateway, EngRole, TestReadResult } from './gateway.js';
+import type { EngGateway, EngRole, LiveScope, TestReadResult } from './gateway.js';
 import { DEMO_DEVICES, DEMO_LIVE_VALUES, demoBooks, demoLiveSnapshot } from './demo-data.js';
 
 /**
@@ -104,8 +104,21 @@ export class DemoEngGateway implements EngGateway {
     this.workspace = structuredClone(workspace);
   }
 
-  async liveSnapshot(): Promise<LiveSnapshot> {
-    return structuredClone(this.live);
+  /**
+   * The demo holds the whole fake project in memory, but it still HONOURS the
+   * scope — so the offline demo and the screenshots exercise the same restriction
+   * the backend applies, and an under-scoped read shows up here rather than only
+   * on a live project.
+   */
+  async liveSnapshot(scope: LiveScope = {}): Promise<LiveSnapshot> {
+    const live = structuredClone(this.live);
+    const types = scope.types === undefined || scope.types.length === 0 ? null : new Set(scope.types);
+    const dpes = scope.dpes === undefined ? [] : scope.dpes;
+    return {
+      types: types === null ? live.types : live.types.filter((t) => types.has(t.typeName)),
+      dps: types === null ? live.dps : live.dps.filter((d) => types.has(d.dpType)),
+      configs: Object.fromEntries(dpes.filter((dpe) => dpe in live.configs).map((dpe) => [dpe, live.configs[dpe]]))
+    };
   }
 
   async checkin(plan: EngPlan, dryRun: boolean): Promise<ApplyReport> {

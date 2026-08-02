@@ -18,6 +18,7 @@
 import type { AddressConfig, AlarmConfig, ArchiveConfig, RangeConfig } from '../model.js';
 import { OPCUA_DRV_IDENT } from '../drivers/opcua.js';
 import { S7_DRV_IDENT } from '../drivers/s7.js';
+import { MODBUS_DRV_IDENT } from '../drivers/modbus.js';
 
 /** One atomic write: parallel DPE/value arrays for a single dpSetWait. */
 export interface ConfigWrite {
@@ -36,7 +37,11 @@ const DPATTR_ARCH_PROC_VALARCH = 15;
 const DPCONFIG_MINMAX_PVSS_RANGECHECK = 1;
 const DPCONFIG_NONE = 0;
 
-/** `_drv_ident` per access mode (s7plus rides the S7 driver family). */
+/**
+ * `_drv_ident` per access mode (s7plus rides the S7 driver family). The mode is
+ * studio provenance and therefore optional on a READ-BACK config — but a WRITE
+ * cannot happen without knowing the driver, so it is required here.
+ */
 function drvIdentFor(mode: AddressConfig['mode']): string {
   switch (mode) {
     case 'opcua': {
@@ -47,7 +52,10 @@ function drvIdentFor(mode: AddressConfig['mode']): string {
       return S7_DRV_IDENT;
     }
     case 'modbus': {
-      return 'MODBUS';
+      return MODBUS_DRV_IDENT;
+    }
+    default: {
+      throw new Error('address write: the access mode is required (opcua | s7 | s7plus | modbus)');
     }
   }
 }

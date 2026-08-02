@@ -17,7 +17,7 @@ import type {
   SignalRole,
   Workspace
 } from '@visuelconcept/wui-eng-core';
-import type { EngGateway, EngRole, TestReadResult } from './gateway.js';
+import type { EngGateway, EngRole, LiveScope, TestReadResult } from './gateway.js';
 
 const BASE = '/api/eng';
 
@@ -78,8 +78,12 @@ export class HttpEngGateway implements EngGateway {
     await postJson('/workspace', { workspace });
   }
 
-  async liveSnapshot(): Promise<LiveSnapshot> {
-    const { snapshot } = await getJson<{ snapshot: LiveSnapshot }>('/live');
+  /**
+   * POST (not GET) so the scope travels in the body: a DPE list is unbounded —
+   * a real project checks out thousands of them, well past any URL length limit.
+   */
+  async liveSnapshot(scope: LiveScope = {}): Promise<LiveSnapshot> {
+    const { snapshot } = await postJson<{ snapshot: LiveSnapshot }>('/live', scope);
     return snapshot;
   }
 

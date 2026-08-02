@@ -10,12 +10,15 @@ attribute-by-attribute PARA workflow with a **device-first, check-in / check-out
 studio**: you edit a *working copy* (types + DPs + configs) and **commit a diff** to
 the live project — in bulk, previewed, transactional.
 
-> **Status: v0.1 skeleton, workflow-complete on demo data.** The whole page runs
-> end-to-end WITHOUT a WinCC OA runtime via an in-memory demo gateway (the source
-> of the screenshots below). The pure engineering domain (`@visuelconcept/wui-eng-core`)
-> is unit-tested (40 tests, no runtime). The backend (`/api/eng`) and the TIA
-> Openness connector are deliberately staged for later increments (see
-> [NOTES.md](./NOTES.md) and [INTEGRATION.md](./INTEGRATION.md)).
+> **Status: v0.2 — workflow-complete on demo data, backend implemented.** The whole
+> page runs end-to-end WITHOUT a WinCC OA runtime via an in-memory demo gateway (the
+> source of the screenshots below). The pure engineering domain
+> (`@visuelconcept/wui-eng-core`) is unit-tested (140 tests, no runtime) and the
+> backend (`/api/eng`: file store, config read-back, check-out/plan/check-in,
+> fail-closed role gating) typechecks offline against those same sources. Still
+> staged: the **watched-folder ingestion**, re-**browsing** an online book, the
+> device form, and the **TIA Openness connector** — see
+> [NOTES.md](./NOTES.md) "Staged for later" and [INTEGRATION.md](./INTEGRATION.md).
 
 ## Why (vs PARA)
 
@@ -202,8 +205,12 @@ node tools/screenshot-eng-studio.mjs      # → docs/images/eng-studio/*.png
 ```bash
 cd libs/wui-eng-core
 npm install
-npm test          # 40 tests: SimaticML parse + S7 offsets, diff, apply, builders, naming
+npm test          # 140 tests: SimaticML parse + S7 offsets, Schneider CSV/XVM, roles,
+                  # modelgen, diff + live scope, apply, config write builders + read-back
 npm run typecheck
+
+# and the backend routes, against the REAL core sources (webserver packages stubbed):
+./node_modules/.bin/tsc -p ../../backend/tsconfig.typecheck.json
 ```
 
 ## Architecture
@@ -211,17 +218,25 @@ npm run typecheck
 ```
 libs/wui-eng-core/        PURE domain (no WinCC OA import, unit-tested)
   model.ts                Device · AddressBook · Workspace · Plan (the IR)
-  diff.ts                 check-in diff (create/update/delete, conflicts)
+  diff.ts                 check-in diff (create/update/delete, conflicts) + liveScopeOf
   apply.ts                plan applier over an injectable EngPort (the only runtime seam)
   configs/builders.ts     atomic config writes (_address/_alert_hdl/_archive/_pv_range)
-  drivers/                address builders — opcua (verified), s7
+  configs/read.ts         the read-back: raw dpGet → DpeConfigs, written-vs-provenance
+  roles/                  rule engine (structural < path < name) + neutral profiles
+  modelgen.ts             book + roles → type, DPs and configs (the generation)
+  drivers/                address builders — opcua (verified), s7, modbus
   simaticml/              TIA Openness export parser + standard-block offset computation
+  schneider/              Control Expert CSV + XVM readers, Modbus address mapping
   naming.ts               {Zone}_{Equipement}_{Signal}
 libs/wui-eng-studio/      the page (lit only; no @wincc-oa/* → renders standalone)
   src/eng-studio.ts       the 3-panel studio
   src/eng-studio/data/    EngGateway: HttpEngGateway (/api/eng) | DemoEngGateway (offline)
   demo/                   standalone demo harness (docs + screenshots)
-backend/routes/           engController.ts + engRoute.ts  (thin runtime seam, fail-closed)
+backend/routes/           thin runtime seam, fail-closed
+  engRoute.ts             the endpoint table + role gating
+  engController.ts        EngPort over WsjServerGlobal.winccoa, read-back, handlers
+  engStore.ts             JSON file store (devices · books · roles · workspaces)
+backend/tsconfig.typecheck.json   typecheck the routes offline (stubbed webserver pkgs)
 ```
 
 See [INTEGRATION.md](./INTEGRATION.md) for deployment/roles and the **inputs still

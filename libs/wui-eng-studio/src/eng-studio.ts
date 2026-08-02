@@ -25,6 +25,7 @@ import {
   diffWorkspace,
   filterEntries,
   generateModelFromBook,
+  liveScopeOf,
   mergeProposal,
   roleCounts,
   type SignalRole,
@@ -131,7 +132,7 @@ export class WuiEngStudio extends LitElement {
       const device = devices.find((d) => d.id === selectedDeviceId);
       const selectedBookId = this.selectedBookId ?? device?.bookIds[0] ?? null;
       const workspace = await gateway.getWorkspace();
-      const live = await gateway.liveSnapshot();
+      const live = await gateway.liveSnapshot(liveScopeOf(workspace));
       if (token !== this.loadToken) return; // superseded (e.g. by useDemo)
       this.roles = roles;
       this.devices = devices;
@@ -565,7 +566,8 @@ export class WuiEngStudio extends LitElement {
       const merged = mergeProposal(workspace, proposal);
       await this.gateway.saveWorkspace(merged);
       this.workspace = merged;
-      this.live = await this.gateway.liveSnapshot();
+      // Re-read live with the WIDER scope the generated model just introduced.
+      this.live = await this.gateway.liveSnapshot(liveScopeOf(merged));
       this.recomputePlan();
       this.genWarnings = proposal.warnings;
       const configCount = Object.keys(proposal.configs).length;
@@ -831,8 +833,9 @@ export class WuiEngStudio extends LitElement {
     try {
       this.report = await this.gateway.checkin(this.plan, dryRun);
       if (!dryRun && this.report.ok) {
-        this.workspace = await this.gateway.getWorkspace();
-        this.live = await this.gateway.liveSnapshot();
+        const workspace = await this.gateway.getWorkspace();
+        this.workspace = workspace;
+        this.live = await this.gateway.liveSnapshot(liveScopeOf(workspace));
         this.recomputePlan();
         this.notice = 'Check-in appliqué.';
       }

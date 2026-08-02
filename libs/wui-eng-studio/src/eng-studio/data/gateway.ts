@@ -36,6 +36,21 @@ export interface TestReadResult {
   error?: string;
 }
 
+/**
+ * Scope of a live read — what the diff needs, and nothing more.
+ *
+ * Reading back the configs of a project is expensive (16 attributes per DPE), so
+ * the caller declares its scope instead of asking for everything. Use the core's
+ * `liveScopeOf(workspace)`: it is the union of the workspace and its check-out
+ * baseline, which is what makes deletions visible (a config removed from the
+ * workspace is only in the baseline). An omitted/empty `types` means "every
+ * non-internal DP type"; an omitted/empty `dpes` means "no config read-back".
+ */
+export interface LiveScope {
+  types?: string[];
+  dpes?: string[];
+}
+
 export interface EngGateway {
   /** Whether this gateway is the offline demo (drives a visible banner). */
   readonly isDemo: boolean;
@@ -64,8 +79,12 @@ export interface EngGateway {
   // --- workspace + check-in ---------------------------------------------------
   getWorkspace(): Promise<Workspace>;
   saveWorkspace(workspace: Workspace): Promise<void>;
-  /** Read the live project into the same shape (check-out / diff probe). */
-  liveSnapshot(): Promise<LiveSnapshot>;
+  /**
+   * Read the live project into the same shape (check-out / diff probe).
+   * `scope` restricts the read — see {@link LiveScope}. Called with no scope it
+   * returns the types and datapoints only (no config read-back).
+   */
+  liveSnapshot(scope?: LiveScope): Promise<LiveSnapshot>;
   /** Apply a plan; `dryRun` previews without writing. */
   checkin(plan: EngPlan, dryRun: boolean): Promise<ApplyReport>;
 

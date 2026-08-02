@@ -13,6 +13,7 @@ export * from './modelgen.js';
 export * from './apply.js';
 export * from './addressbook.js';
 export * from './configs/builders.js';
+export * from './configs/read.js';
 export * from './drivers/opcua.js';
 export * from './drivers/s7.js';
 export * from './drivers/modbus.js';
