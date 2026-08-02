@@ -462,24 +462,54 @@ Part 6 — **not** vendor exports. The OPC Foundation pages for the PackML compa
 spec return HTTP 403 from this environment, so a real companion-spec NodeSet is
 still to be calibrated against (see INTEGRATION "Inputs still needed").
 
-## Localisation boundary
+## Localisation: structured warnings (`EngWarning`)
 
-The page is EN / FR / DE; the **core is English, in every language**. That line is
-deliberate, and it is where it is for two reasons:
+The page is EN / FR / DE **and so are the core's diagnostics**, without the core
+knowing a single language.
 
-- `wui-eng-core` is a pure library with no i18n layer, and adding one would mean
-  making `warnings: string[]` a structured `{code, params}` shape — which is stored
-  in the book files, returned by the API and consumed by the backend. A localisation
-  concern should not reshape the engineering contract.
-- Its messages are part of its API: tests assert on them, the backend logs them, and
-  a warning quoted in a bug report should read the same everywhere.
+A generator warning has three consumers, and a plain string serves only the first:
+the OPERATOR (in their language), the TEST suite and the backend log (which need an
+exact, stable meaning), and any future rule that wants to react to a KIND of problem
+without matching prose. So `EngWarning` carries all three concerns separately:
 
-Consequence, stated plainly: a French or German operator sees a localised UI with
-**English generator warnings**. If that is not acceptable, the fix is
-`EngWarning { code, message, params }` in the core plus a code→`ml()` table in the
-page, falling back to `message` for unknown codes — a contained refactor of the ~57
-warning sites, not a redesign. Not done: it is a real cost and nobody has asked for
-localised engine messages yet.
+```ts
+{ code: 'browse.truncated-entries',
+  message: 'Walk TRUNCATED at {max} signals (maxEntries) — …',   // English, the fallback
+  params:  { max: 5 } }
+```
+
+The page maps `code` → its own FR/DE template and substitutes the **same params**, so
+a value never has to be re-extracted from prose. An unknown code falls back to
+`message`: a warning added to the core is never invisible, merely untranslated.
+
+Two rules make that contract hold, and both are enforced mechanically by
+`tools/check-eng-i18n.mjs` (which bundles the real modules with esbuild):
+
+1. **every value sits behind a `{placeholder}`** — a translator cannot re-order text
+   that already has values baked in. `warnings.spec.ts` asserts that no
+   `{placeholder}` survives the English rendering, i.e. that each message's
+   placeholders are all fed;
+2. **codes are stable and exhaustively translated** — the checker fails on a core
+   code missing from `WARNING_MSG`, on a translation whose placeholders drift from
+   the English template, and on a translation matching no core code (a typo, or a
+   warning that was removed). `WARNING_CODES` in the core is the single vocabulary.
+
+**Migration without touching stored files.** `AddressBook.warnings` lives in the
+engineering store on disk, and books written before this change hold plain strings.
+Rather than migrate files (and break a rollback), `asEngWarnings()` accepts both
+shapes when READING: a legacy string becomes `{ code: 'legacy', message }`, which
+renders exactly as before and translates to nothing — the truthful outcome. Both the
+backend's `qualified()` and the demo gateway run stored books through it.
+
+**Test quality improved on the way.** Assertions that matched prose
+(`w.includes('TRUNCATED')`) now match the code and its params
+(`{ code: 'browse.truncated-entries', params: { max: 5 } }`) — re-wording or
+translating a message no longer breaks a test, while a changed *meaning* still does.
+
+Still English by design: `BookProvenance.detail` (a free-form generator trace such as
+`walk ns=0;i=85 · 7 request(s) · 21 signals`) and the role rules' `note` (the
+tooltip explaining which rule matched). Both are diagnostics rather than messages;
+promote them to codes if an operator ever needs them localised.
 
 Two smaller decisions inside the page's i18n:
 - the module is **self-contained** (its own `ml()`/resolver) rather than importing

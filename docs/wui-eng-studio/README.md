@@ -13,7 +13,7 @@ the live project — in bulk, previewed, transactional.
 > **Status: v0.2 — workflow-complete on demo data, backend implemented.** The whole
 > page runs end-to-end WITHOUT a WinCC OA runtime via an in-memory demo gateway (the
 > source of the screenshots below). The pure engineering domain
-> (`@visuelconcept/wui-eng-core`) is unit-tested (176 tests, no runtime) and the
+> (`@visuelconcept/wui-eng-core`) is unit-tested (224 tests, no runtime) and the
 > backend (`/api/eng`: file store, config read-back, check-out/plan/check-in,
 > online OPC UA browse, fail-closed role gating) typechecks offline against those
 > same sources. Still staged: the **watched-folder ingestion**, the device form, and
@@ -86,11 +86,14 @@ carries no parent link, so the walker recurses itself to know each node's path),
 sequential per connection, and **bounded** — depth, signal count and request count
 are all capped, and hitting a cap raises a warning naming what was left out.
 
-Two limits are stated in the book rather than hidden: the browse does **not** expose
-`AccessLevel`, so every signal is catalogued read-only (the real direction comes
-from the signal's *role* profile at generation — which is why qualification matters
-here), and an **array** variable is catalogued with its scalar base type and flagged
-`non mappé` instead of being given an unverified dynamic-DPE address.
+`AccessLevel` is read when the driver exposes it (the `Browse.*` element is
+discovered by introspecting the connection's DP type, never guessed) and the address
+direction then follows the real access. When it is not exposed, signals are catalogued
+read-only with an **`assumed`** access — the book says so, the chip shows `r?`, and
+the direction comes from the signal's *role* instead; a bulk "fix the access" action
+turns an assumed access into evidence. An **array** variable is catalogued with its
+scalar base type and flagged `unmapped` rather than given an unverified dynamic-DPE
+address.
 
 ![Book produced by an online OPC UA browse](../images/eng-studio/14-browse-online.png)
 
@@ -115,7 +118,7 @@ into their subtypes (WinCC OA has no DPType inheritance), and catalogues each
 
 A NodeSet's namespace **indices are file-local** and a live server almost always
 assigns different ones, so its addresses are *candidates*: every one is emitted with
-a `<Connexion>` placeholder, the book carries no interface (it is a **template
+a `<Connection>` placeholder, the book carries no interface (it is a **template
 catalog**, bound per equipment at generation), and the caveat is the book's first
 warning. Verify against the server — or re-browse it online — before check-in.
 
@@ -260,29 +263,34 @@ plain BCP-47 tags. A picker in the top bar switches it live.
 |---|---|
 | ![UI in French](../images/eng-studio/17-i18n-fr.png) | ![UI in German](../images/eng-studio/18-i18n-de.png) |
 
-> **Localisation boundary.** The screenshots in this document are the **English**
-> UI. What stays English in *every* language is the engineering **core**'s output —
-> generator warnings, browse warnings, outline parse errors: it is a pure library
-> with no i18n layer, and its messages are its API. See [NOTES.md](./NOTES.md)
-> "Localisation boundary" for why, and what it would take to localise them too.
+> The screenshots in this document are the **English** UI. The engineering core's
+> diagnostics are localised too: it emits a stable `code` + an English template +
+> params (`EngWarning`), and the page re-templates each code in FR/DE — so the
+> generator warnings above read in the operator's language, while tests and logs keep
+> one stable English meaning. An untranslated code falls back to its English message
+> rather than disappearing. See [NOTES.md](./NOTES.md) "Localisation: structured
+> warnings".
 
 ## Run the unit tests (no WinCC OA)
 
 ```bash
 cd libs/wui-eng-core
 npm install
-npm test          # 176 tests: SimaticML parse + S7 offsets, Schneider CSV/XVM, OPC UA
-                  # browse walk + NodeSet2, roles, modelgen, diff + live scope, apply,
-                  # config write builders + read-back
+npm test          # 224 tests: SimaticML parse + S7 offsets, Schneider CSV/XVM, OPC UA
+                  # browse walk + NodeSet2, roles, modelgen (mirror + mapping),
+                  # structure outline + auto-binding, diff + live scope, apply,
+                  # config write builders + read-back, structured warnings
 npm run typecheck
 
 # and the backend routes, against the REAL core sources (webserver packages stubbed):
 ./node_modules/.bin/tsc -p ../../backend/tsconfig.typecheck.json
 ```
 
-The page's translation table has its own verification (no test runner needed — it
-bundles the real module with esbuild): every entry present in EN/FR/DE, the same
-`{placeholders}` in all three, and the WinCC OA locale identifiers resolving:
+The translation tables have their own verification (no test runner needed — it
+bundles the real modules with esbuild): every entry present in EN/FR/DE, the same
+`{placeholders}` in all three, **every core warning code translated** (and no
+translation matching a code nobody emits), and the WinCC OA locale identifiers
+resolving:
 
 ```bash
 node tools/check-eng-i18n.mjs
@@ -297,6 +305,8 @@ libs/wui-eng-core/        PURE domain (no WinCC OA import, unit-tested)
   apply.ts                plan applier over an injectable EngPort (the only runtime seam)
   configs/builders.ts     atomic config writes (_address/_alert_hdl/_archive/_pv_range)
   configs/read.ts         the read-back: raw dpGet → DpeConfigs, written-vs-provenance
+  warnings.ts             EngWarning: stable code + English template + params (i18n)
+  structure.ts            authored type outline + auto-binding to the book's signals
   roles/                  rule engine (structural < path < name) + neutral profiles
   modelgen.ts             book + roles → type, DPs and configs (the generation)
   drivers/                address builders — opcua (verified), s7, modbus

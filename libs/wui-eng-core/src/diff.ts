@@ -17,6 +17,7 @@
  */
 
 import { comparableConfigs } from './configs/read.js';
+import { WARNING_CODES, warn, type EngWarning } from './warnings.js';
 import {
   fingerprint,
   type DpeConfigs,
@@ -58,7 +59,7 @@ function describeConfigChange(before: DpeConfigs | undefined, after: DpeConfigs 
 /** Compute the check-in plan for `workspace` against the live `snapshot`. */
 export function diffWorkspace(workspace: Workspace, snapshot: LiveSnapshot): EngPlan {
   const items: PlanItem[] = [];
-  const warnings: string[] = [];
+  const warnings: EngWarning[] = [];
 
   const liveTypes = new Map(snapshot.types.map((t) => [t.typeName, t]));
   const liveDps = new Map(snapshot.dps.map((d) => [d.dpName, d]));
@@ -106,7 +107,13 @@ export function diffWorkspace(workspace: Workspace, snapshot: LiveSnapshot): Eng
       continue;
     }
     if (live.dpType !== dp.dpType) {
-      warnings.push(`Datapoint "${dp.dpName}" exists with type "${live.dpType}" (workspace: "${dp.dpType}") — retype is not supported; item skipped.`);
+      warnings.push(
+        warn(
+          WARNING_CODES.diff.RETYPE_UNSUPPORTED,
+          'Datapoint "{dp}" exists with type "{live}" (workspace: "{wanted}") — retype is not supported; item skipped.',
+          { dp: dp.dpName, live: live.dpType, wanted: dp.dpType }
+        )
+      );
     }
   }
   for (const [name, live] of liveDps) {

@@ -21,6 +21,7 @@
  */
 
 import type { SignalRole } from './roles/roles.js';
+import type { EngWarning } from './warnings.js';
 
 /** WinCC OA scalar element types the studio maps source datatypes onto. */
 export type OaLeafType =
@@ -198,7 +199,7 @@ export interface AddressBook {
   /** Structured types discovered in the source (UDTs → DPT candidates). */
   types: BookType[];
   /** Non-fatal issues raised by the generator (unsupported members, …). */
-  warnings: string[];
+  warnings: EngWarning[];
 }
 
 // ---------------------------------------------------------------------------
@@ -331,7 +332,7 @@ export interface PlanItem {
 export interface EngPlan {
   workspace: string;
   items: PlanItem[];
-  warnings: string[];
+  warnings: EngWarning[];
 }
 
 /** Per-item outcome of an apply (check-in) run. */

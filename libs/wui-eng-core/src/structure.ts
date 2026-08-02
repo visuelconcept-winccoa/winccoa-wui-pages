@@ -25,6 +25,7 @@
 
 import type { AddressBook, BookEntry, DpTypeStructure, OaLeafType } from './model.js';
 import { sanitizeSegment } from './naming.js';
+import { WARNING_CODES, warn, type EngWarning } from './warnings.js';
 
 /** Element types a leaf may take in an outline (the studio's scalar set). */
 export const OUTLINE_LEAF_TYPES: OaLeafType[] = [
@@ -92,8 +93,8 @@ export function formatStructureOutline(structure: DpTypeStructure): string {
 export interface OutlineParseResult {
   /** The parsed structure (root named `rootName`), even when errors were found. */
   structure: DpTypeStructure;
-  /** Human-readable problems, one per offending line. Empty = clean parse. */
-  errors: string[];
+  /** Problems, one per offending line. Empty = clean parse. */
+  errors: EngWarning[];
 }
 
 /**
@@ -112,7 +113,7 @@ export interface OutlineParseResult {
  * the errors next to a partially valid preview instead of a stack trace.
  */
 export function parseStructureOutline(text: string, rootName: string): OutlineParseResult {
-  const errors: string[] = [];
+  const errors: EngWarning[] = [];
   const root: DpTypeStructure = { name: rootName, type: 'Struct', children: [] };
 
   interface Row {
@@ -129,7 +130,13 @@ export function parseStructureOutline(text: string, rootName: string): OutlinePa
     const expanded = raw.replaceAll('\t', INDENT);
     const spaces = expanded.length - expanded.trimStart().length;
     if (spaces % INDENT.length !== 0) {
-      errors.push(`line ${lineNumber}: indented by ${spaces} space(s) — use multiples of ${INDENT.length}`);
+      errors.push(
+        warn(WARNING_CODES.outline.ODD_INDENT, 'line {line}: indented by {spaces} space(s) — use multiples of {step}', {
+          line: lineNumber,
+          spaces,
+          step: INDENT.length
+        })
+      );
     }
     const depth = Math.floor(spaces / INDENT.length);
     const body = expanded.trim();
@@ -137,16 +144,18 @@ export function parseStructureOutline(text: string, rootName: string): OutlinePa
     const name = (colon === -1 ? body : body.slice(0, colon)).trim();
     const typeText = colon === -1 ? '' : body.slice(colon + 1).trim();
     if (name === '') {
-      errors.push(`line ${lineNumber}: empty element name`);
+      errors.push(warn(WARNING_CODES.outline.EMPTY_NAME, 'line {line}: empty element name', { line: lineNumber }));
       continue;
     }
     const clean = sanitizeSegment(name);
     if (clean === '') {
-      errors.push(`line ${lineNumber}: "${name}" yields no valid WinCC OA identifier`);
+      errors.push(
+        warn(WARNING_CODES.outline.INVALID_IDENTIFIER, 'line {line}: "{name}" yields no valid WinCC OA identifier', { line: lineNumber, name })
+      );
       continue;
     }
     if (clean !== name) {
-      errors.push(`line ${lineNumber}: "${name}" sanitised to "${clean}"`);
+      errors.push(warn(WARNING_CODES.outline.SANITISED, 'line {line}: "{name}" sanitised to "{clean}"', { line: lineNumber, name, clean }));
     }
     if (typeText === '') {
       rows.push({ depth, name: clean, line: lineNumber });
@@ -154,7 +163,13 @@ export function parseStructureOutline(text: string, rootName: string): OutlinePa
     }
     const leafType = LEAF_TYPE_BY_LOWER.get(typeText.toLowerCase());
     if (leafType === undefined) {
-      errors.push(`line ${lineNumber}: unknown type "${typeText}" — expected one of: ${OUTLINE_LEAF_TYPES.join(', ')}`);
+      errors.push(
+        warn(WARNING_CODES.outline.UNKNOWN_TYPE, 'line {line}: unknown type "{type}" — expected one of: {expected}', {
+          line: lineNumber,
+          type: typeText,
+          expected: OUTLINE_LEAF_TYPES.join(', ')
+        })
+      );
       continue;
     }
     rows.push({ depth, name: clean, type: leafType, line: lineNumber });
@@ -178,13 +193,24 @@ export function parseStructureOutline(text: string, rootName: string): OutlinePa
   const stack: DpTypeStructure[] = [root];
   for (const row of body) {
     if (row.depth > stack.length - 1) {
-      errors.push(`line ${row.line}: "${row.name}" is indented too deep (no parent at that level)`);
+      errors.push(
+        warn(WARNING_CODES.outline.TOO_DEEP, 'line {line}: "{name}" is indented too deep (no parent at that level)', {
+          line: row.line,
+          name: row.name
+        })
+      );
       continue;
     }
     const parent = stack[row.depth];
     parent.children ??= [];
     if (parent.children.some((child) => child.name === row.name)) {
-      errors.push(`line ${row.line}: "${row.name}" duplicated under "${parent.name}"`);
+      errors.push(
+        warn(WARNING_CODES.outline.DUPLICATE, 'line {line}: "{name}" duplicated under "{parent}"', {
+          line: row.line,
+          name: row.name,
+          parent: parent.name
+        })
+      );
       continue;
     }
     const node: DpTypeStructure =

@@ -26,6 +26,7 @@
  */
 
 import type { AddressBook, BookEntry, BookInterface, BookProvenance, OaLeafType } from '../model.js';
+import { WARNING_CODES, warn, type EngWarning } from '../warnings.js';
 import { occupiedRegisters, parseSchneiderAddress } from './address.js';
 
 /** Schneider/IEC-61131 elementary type → WinCC OA element type + register span. */
@@ -142,14 +143,14 @@ export interface SchneiderExportBundle {
  * Unlocated variables and register overlaps are reported as warnings.
  */
 export function buildBookFromSchneiderExport(bundle: SchneiderExportBundle): AddressBook {
-  const warnings: string[] = [];
+  const warnings: EngWarning[] = [];
   const delimiter = detectDelimiter(bundle.text);
   const lines = bundle.text.split(/\r?\n/).filter((l) => l.trim() !== '');
   const rows: VariableRow[] = [];
 
   const header = lines.length > 0 ? mapHeader(cellsOf(lines[0], delimiter)) : null;
   if (!header) {
-    warnings.push('No recognised header — columns assumed in order: name, address, type, comment.');
+    warnings.push(warn(WARNING_CODES.schneider.NO_HEADER, 'No recognised header — columns assumed in order: name, address, type, comment.'));
   }
   for (const line of lines.slice(header ? 1 : 0)) {
     const cells = cellsOf(line, delimiter);
@@ -195,31 +196,50 @@ export function buildBookFromSchneiderExport(bundle: SchneiderExportBundle): Add
  */
 export function entriesFromSchneiderVariables(variables: SchneiderVariable[]): {
   entries: BookEntry[];
-  warnings: string[];
+  warnings: EngWarning[];
 } {
   const entries: BookEntry[] = [];
-  const warnings: string[] = [];
+  const warnings: EngWarning[] = [];
   /** register index → first variable name occupying it (overlap detection). */
   const owner = new Map<number, string>();
 
   for (const row of variables) {
     const address = parseSchneiderAddress(row.address);
     if (!address) {
-      warnings.push(`Variable "${row.name}" is not located (no address) — invisible to a Modbus client.`);
+      warnings.push(
+        warn(WARNING_CODES.schneider.NOT_LOCATED, 'Variable "{name}" is not located (no address) — invisible to a Modbus client.', { name: row.name })
+      );
       continue;
     }
     if (address.reference == null) {
-      warnings.push(`Variable "${row.name}" (${address.raw}): ${address.note ?? 'not addressable over Modbus'}.`);
+      warnings.push(
+        warn(WARNING_CODES.schneider.NOT_ADDRESSABLE, 'Variable "{name}" ({address}): {reason}.', {
+          name: row.name,
+          address: address.raw,
+          reason: address.note ?? 'not addressable over Modbus'
+        })
+      );
       continue;
     }
     const unmapped = isUnmappedSchneiderType(row.type);
     if (unmapped && row.type.trim() !== '') {
-      warnings.push(`Variable "${row.name}": type "${row.type}" has no verified mapping — read as String.`);
+      warnings.push(
+        warn(WARNING_CODES.schneider.UNVERIFIED_TYPE, 'Variable "{name}": type "{type}" has no verified mapping — read as String.', {
+          name: row.name,
+          type: row.type
+        })
+      );
     }
     for (const register of occupiedRegisters(address, schneiderTypeSpan(row.type))) {
       const previous = owner.get(register);
       if (previous !== undefined && previous !== row.name) {
-        warnings.push(`Register ${register} overlaps between "${previous}" and "${row.name}" — check the memory layout.`);
+        warnings.push(
+          warn(WARNING_CODES.schneider.REGISTER_OVERLAP, 'Register {register} overlaps between "{first}" and "{second}" — check the memory layout.', {
+            register,
+            first: previous,
+            second: row.name
+          })
+        );
       } else {
         owner.set(register, row.name);
       }

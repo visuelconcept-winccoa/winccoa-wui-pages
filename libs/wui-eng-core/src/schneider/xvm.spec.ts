@@ -9,6 +9,7 @@
  * the reader must fail LOUD, never silently empty.
  */
 import { describe, expect, it } from 'vitest';
+import { formatWarning as warningText } from '../warnings.js';
 import { ALT_SPELLING_XVM, M580_PESAGE_XVM } from '../samples/schneider-fixtures.js';
 import { buildBookFromXvm, parseXvmVariables } from './xvm.js';
 
@@ -43,7 +44,7 @@ describe('parseXvmVariables — Unity spelling', () => {
   it('reports a member with no own address instead of guessing its offset', () => {
     const { variables, warnings } = parseXvmVariables(M580_PESAGE_XVM);
     expect(variables.some((v) => v.name === 'Recette.Libelle')).toBe(false);
-    expect(warnings.join('\n')).toMatch(/Recette\.Libelle.*has no address of its own/);
+    expect(warnings.map(warningText).join('\n')).toMatch(/Recette\.Libelle.*has no address of its own/);
   });
 });
 
@@ -62,15 +63,15 @@ describe('parseXvmVariables — tolerance', () => {
       '<?xml version="1.0"?><Root><Something Foo="1"/><Other Bar="2"/><Other Bar="3"/></Root>'
     );
     expect(variables).toHaveLength(0);
-    expect(warnings.join('\n')).toMatch(/XVM schema is unverified/);
-    expect(warnings.join('\n')).toMatch(/Other\(2\)/);
+    expect(warnings.map(warningText).join('\n')).toMatch(/XVM schema is unverified/);
+    expect(warnings.map(warningText).join('\n')).toMatch(/Other\(2\)/);
     expect(elements['Other']).toBe(2);
   });
 
   it('reports unreadable XML rather than throwing', () => {
     const { variables, warnings } = parseXvmVariables('<Root><unclosed>');
     expect(variables).toHaveLength(0);
-    expect(warnings[0]).toMatch(/Unreadable XML/);
+    expect(warningText(warnings[0])).toMatch(/Unreadable XML/);
   });
 });
 
@@ -93,7 +94,7 @@ describe('buildBookFromXvm', () => {
 
   it('always carries the unverified-schema warning first', () => {
     const book = buildBookFromXvm({ bookId: 'b', xml: M580_PESAGE_XVM });
-    expect(book.warnings[0]).toMatch(/schema not verified against a vendor export/);
+    expect(warningText(book.warnings[0])).toMatch(/schema not verified against a vendor export/);
   });
 
   it('detects a register overlap coming from an XVM export too', () => {
@@ -102,6 +103,6 @@ describe('buildBookFromXvm', () => {
       <elementaryVariable name="Niveau" typeName="INT" topologicalAddress="%MW113"/>
     </variables></VariableList>`;
     const book = buildBookFromXvm({ bookId: 'b', xml });
-    expect(book.warnings.join('\n')).toMatch(/Register 113 overlaps between "Debit" and "Niveau"/);
+    expect(book.warnings.map(warningText).join('\n')).toMatch(/Register 113 overlaps between "Debit" and "Niveau"/);
   });
 });

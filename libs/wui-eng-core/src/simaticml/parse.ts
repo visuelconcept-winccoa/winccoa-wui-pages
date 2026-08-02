@@ -27,6 +27,7 @@
  */
 
 import type { AddressBook, BookEntry, BookInterface, BookProvenance, BookType, OaLeafType } from '../model.js';
+import { WARNING_CODES, warn, type EngWarning } from '../warnings.js';
 import { isUnmappedS7Type, s7LeafType, s7Operand } from '../drivers/s7.js';
 import { computeStandardOffsets, type LayoutMember, type MemberOffset } from './offsets.js';
 import { childrenOf, findAll, findFirst, localName, parseXml, type XmlNode } from './xml.js';
@@ -131,17 +132,23 @@ export interface SimaticMlBundle {
 }
 
 /** Expand UDT references into concrete members (one level of indirection at a time). */
-function expandUdtRefs(members: ParsedMember[], udts: Map<string, ParsedBlock>, warnings: string[], stack: string[]): ParsedMember[] {
+function expandUdtRefs(members: ParsedMember[], udts: Map<string, ParsedBlock>, warnings: EngWarning[], stack: string[]): ParsedMember[] {
   const out: ParsedMember[] = [];
   for (const member of members) {
     if (member.udtRef !== undefined) {
       const udt = udts.get(member.udtRef);
       if (!udt) {
-        warnings.push(`Member "${member.name}": UDT "${member.udtRef}" is not part of the bundle — skipped.`);
+        warnings.push(warn(WARNING_CODES.simaticml.UDT_MISSING, 'Member "{member}": UDT "{udt}" is not part of the bundle — skipped.', {
+        member: member.name,
+        udt: member.udtRef
+      }));
         continue;
       }
       if (stack.includes(member.udtRef)) {
-        warnings.push(`Member "${member.name}": recursive UDT "${member.udtRef}" — skipped.`);
+        warnings.push(warn(WARNING_CODES.simaticml.UDT_RECURSIVE, 'Member "{member}": recursive UDT "{udt}" — skipped.', {
+        member: member.name,
+        udt: member.udtRef
+      }));
         continue;
       }
       out.push({
@@ -161,13 +168,13 @@ function collectLeaves(
   members: ParsedMember[],
   prefix: string,
   udtOrigin: string | undefined,
-  warnings: string[],
+  warnings: EngWarning[],
   out: { path: string; dataType: string; comment?: string; udtOrigin?: string }[]
 ): void {
   for (const member of members) {
     const path = prefix === '' ? member.name : `${prefix}.${member.name}`;
     if (isArrayType(member.dataType)) {
-      warnings.push(`Member "${path}": array datatypes are not imported in v1 — skipped.`);
+      warnings.push(warn(WARNING_CODES.simaticml.ARRAY_SKIPPED, 'Member "{path}": array datatypes are not imported in v1 — skipped.', { path }));
       continue;
     }
     if (member.dataType === 'Struct') {
@@ -192,13 +199,13 @@ function toLayoutMembers(members: ParsedMember[]): LayoutMember[] {
  * UDT documents feed the type catalog; DB documents produce the entries.
  */
 export function buildBookFromSimaticMl(bundle: SimaticMlBundle): AddressBook {
-  const warnings: string[] = [];
+  const warnings: EngWarning[] = [];
   const blocks: { block: ParsedBlock; fileName: string }[] = [];
   for (const document of bundle.documents) {
     try {
       blocks.push({ block: parseSimaticMlDocument(document.xml), fileName: document.fileName });
     } catch (error) {
-      warnings.push(`${document.fileName}: ${(error as Error).message}`);
+      warnings.push(warn(WARNING_CODES.simaticml.DOCUMENT_FAILED, '{file}: {error}', { file: document.fileName, error: (error as Error).message }));
     }
   }
 
@@ -234,7 +241,9 @@ export function buildBookFromSimaticMl(bundle: SimaticMlBundle): AddressBook {
     let offsets = new Map<string, MemberOffset>();
     if (standard) {
       if (block.number === undefined) {
-        warnings.push(`DB "${block.name}": standard layout but no block number — classic operands skipped.`);
+        warnings.push(warn(WARNING_CODES.simaticml.NO_BLOCK_NUMBER, 'DB "{block}": standard layout but no block number — classic operands skipped.', {
+          block: block.name
+        }));
       } else {
         offsets = new Map(computeStandardOffsets(toLayoutMembers(expanded)).map((o) => [o.path, o]));
       }
@@ -244,7 +253,10 @@ export function buildBookFromSimaticMl(bundle: SimaticMlBundle): AddressBook {
       const leafType: OaLeafType = s7LeafType(leaf.dataType);
       const unmapped = isUnmappedS7Type(leaf.dataType);
       if (unmapped) {
-        warnings.push(`Member "${block.name}.${leaf.path}": datatype "${leaf.dataType}" is not mapped — bound as String.`);
+        warnings.push(warn(WARNING_CODES.simaticml.DATATYPE_UNMAPPED, 'Member "{path}": datatype "{type}" is not mapped — bound as String.', {
+            path: `${block.name}.${leaf.path}`,
+            type: leaf.dataType
+          }));
       }
       const addresses: BookEntry['addresses'] = {
         s7plus: `"${block.name}".${leaf.path.split('.').map((s) => `"${s}"`).join('.')}`,

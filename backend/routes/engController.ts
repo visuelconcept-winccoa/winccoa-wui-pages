@@ -41,6 +41,7 @@ import {
   diffBooks,
   diffWorkspace,
   liveScopeOf,
+  asEngWarnings,
   refreshWarnings,
   withAccess,
   withRoles,
@@ -284,7 +285,9 @@ export class EngController {
     const entries = withAccess(book.entries, access);
     const manual = this.store.readRoles(book.id) as Record<string, SignalRole>;
     const assignments = classifyEntries(entries, DEFAULT_ROLE_RULES, manual);
-    return { ...book, entries: withRoles(entries, assignments) };
+    // `asEngWarnings` tolerates the plain strings of books stored BEFORE the
+    // structured warnings, so an existing store keeps loading (see core warnings.ts).
+    return { ...book, entries: withRoles(entries, assignments), warnings: asEngWarnings(book.warnings) };
   }
 
   public listBooks = (_req: Request, res: Response): void => {

@@ -8,6 +8,7 @@
  * blocks, computed offsets).
  */
 import { describe, expect, it } from 'vitest';
+import { formatWarning as warningText } from '../warnings.js';
 import {
   DB_ECHANGE_STANDARD_XML,
   DB_FOUR_OPTIMIZED_XML,
@@ -101,7 +102,7 @@ describe('buildBookFromSimaticMl', () => {
     const result = book([{ fileName: 'DB_Four.xml', xml: DB_FOUR_OPTIMIZED_XML }]);
     expect(result.entries.some((e) => e.path.startsWith('DB_Four.Alarmes'))).toBe(false);
     expect(result.entries.some((e) => e.path.startsWith('DB_Four.Moteur'))).toBe(false);
-    expect(result.warnings.join('\n')).toContain('array datatypes are not imported');
-    expect(result.warnings.join('\n')).toContain('UDT "UDT_Moteur" is not part of the bundle');
+    expect(result.warnings.map(warningText).join('\n')).toContain('array datatypes are not imported');
+    expect(result.warnings.map(warningText).join('\n')).toContain('UDT "UDT_Moteur" is not part of the bundle');
   });
 });

@@ -38,6 +38,7 @@
  */
 
 import {
+  warn,
   buildOpcUaReference,
   opcUaLeafType,
   type AddressBook,
@@ -138,8 +139,11 @@ export function packMlBook(): AddressBook {
       }
     ],
     warnings: [
-      'Sous-ensemble représentatif de PackTags (spec OPC 30050 non ouverte directement) — à recalibrer par un browse de la machine ou l’ingestion du NodeSet2 de la spec.',
-      'Les NodeIds sont illustratifs (ns=4;s=…) : l’espace de noms réel dépend du serveur OPC UA de la machine.'
+      warn(
+        'demo.packml-subset',
+        'A representative SUBSET of PackTags (the OPC 30050 spec could not be opened directly) — recalibrate it with a browse of the machine, or by ingesting the spec NodeSet2.'
+      ),
+      warn('demo.packml-illustrative-nodeids', 'The NodeIds are illustrative (ns=4;s=…): the real namespace depends on the machine OPC UA server.')
     ]
   };
 }

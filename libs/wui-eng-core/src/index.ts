@@ -3,6 +3,7 @@
 
 /** @visuelconcept/wui-eng-core — pure engineering domain (no WinCC OA dep). */
 
+export * from './warnings.js';
 export * from './model.js';
 export * from './naming.js';
 export * from './roles/roles.js';

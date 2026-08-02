@@ -125,7 +125,10 @@ Root, in order: `$ENG_STUDIO_STORE` → `<$WINCCOA_PROJ>/data/eng-studio` →
 
 ```
 devices.json                 Device[]
-books/<bookId>.json          AddressBook (entries carry their resolved roles)
+books/<bookId>.json          AddressBook (entries carry their resolved roles;
+                             `warnings` are structured EngWarning objects — books
+                             written before that carried plain strings and are still
+                             read, see the core's `asEngWarnings`)
 books/<bookId>.roles.json    { <entryPath>: SignalRole }  — MANUAL overrides only
 books/<bookId>.access.json   { <entryPath>: 'r'|'w'|'rw' } — MANUAL overrides only
 workspaces/<name>.json       Workspace (incl. its check-out baseline)
@@ -179,8 +182,8 @@ the write routes.
 The page renders in EN / FR / DE. Set the element's `lang` attribute from the shell
 (`<wui-eng-studio lang="de_AT.utf8">` — WinCC OA locale identifiers are accepted) or
 let it resolve `?lang=` → `<html lang>` → `navigator.language` → English. A picker in
-the top bar switches it live. Core-generated warnings stay English in every language
-— see NOTES "Localisation boundary".
+the top bar switches it live. Core-generated warnings are localised too (structured
+`EngWarning` codes — see NOTES "Localisation: structured warnings").
 
 ## Prerequisites
 

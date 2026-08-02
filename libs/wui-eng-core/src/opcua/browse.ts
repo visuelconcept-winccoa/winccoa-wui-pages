@@ -35,6 +35,7 @@
  */
 
 import { buildOpcUaReference, isUnmappedOpcUaType, opcUaAccessFromLevel, opcUaLeafType } from '../drivers/opcua.js';
+import { WARNING_CODES, warn, type EngWarning } from '../warnings.js';
 import type { AddressBook, BookEntry, BookInterface } from '../model.js';
 
 /** Standard `Objects` folder — the default browse root. */
@@ -101,7 +102,7 @@ export interface BrowseBookOptions extends BrowseSource {
 /** Outcome of a walk: the entries plus everything the caller must be told. */
 interface WalkResult {
   entries: BookEntry[];
-  warnings: string[];
+  warnings: EngWarning[];
   requests: number;
   /** Nodes whose subtree was not browsed because a cap was hit. */
   skippedBranches: string[];
@@ -133,7 +134,7 @@ async function walk(port: OpcUaBrowsePort, options: BrowseBookOptions): Promise<
   const root = options.rootNodeId ?? OPCUA_OBJECTS_FOLDER;
 
   const entries: BookEntry[] = [];
-  const warnings: string[] = [];
+  const warnings: EngWarning[] = [];
   const skippedBranches: string[] = [];
   const visited = new Set<string>([root]);
   let requests = 0;
@@ -212,46 +213,82 @@ async function walk(port: OpcUaBrowsePort, options: BrowseBookOptions): Promise<
 
   if (entries.length >= maxEntries) {
     warnings.push(
-      `Walk TRUNCATED at ${maxEntries} signals (maxEntries) — the book is INCOMPLETE. Narrow the browse root or raise the limit.`
+      warn(WARNING_CODES.browse.TRUNCATED_ENTRIES, 'Walk TRUNCATED at {max} signals (maxEntries) — the book is INCOMPLETE. Narrow the browse root or raise the limit.', {
+        max: maxEntries
+      })
     );
   }
   if (requests >= maxRequests) {
     warnings.push(
-      `Walk TRUNCATED at ${maxRequests} requests (maxRequests) — the book is INCOMPLETE. Narrow the browse root or raise the limit.`
+      warn(WARNING_CODES.browse.TRUNCATED_REQUESTS, 'Walk TRUNCATED at {max} requests (maxRequests) — the book is INCOMPLETE. Narrow the browse root or raise the limit.', {
+        max: maxRequests
+      })
     );
   }
   if (depthTruncated > 0) {
-    warnings.push(`${depthTruncated} branch(es) not explored beyond depth ${maxDepth} — the book is incomplete there.`);
+    warnings.push(
+      warn(WARNING_CODES.browse.DEPTH_TRUNCATED, '{n} branch(es) not explored beyond depth {depth} — the book is incomplete there.', {
+        n: depthTruncated,
+        depth: maxDepth
+      })
+    );
   }
   if (skippedBranches.length > 0) {
     const shown = [...new Set(skippedBranches)].slice(0, 5);
-    warnings.push(`Branches abandoned after the limit: ${shown.join(', ')}${skippedBranches.length > shown.length ? '…' : ''}.`);
+    warnings.push(
+      warn(WARNING_CODES.browse.SKIPPED_BRANCHES, 'Branches abandoned after the limit: {paths}{more}.', {
+        paths: shown.join(', '),
+        more: skippedBranches.length > shown.length ? '…' : ''
+      })
+    );
   }
   if (failures.length > 0) {
-    warnings.push(`${failures.length} unreadable branch(es): ${failures.slice(0, 3).join(' · ')}${failures.length > 3 ? '…' : ''}.`);
+    warnings.push(
+      warn(WARNING_CODES.browse.UNREADABLE_BRANCHES, '{n} unreadable branch(es): {details}{more}.', {
+        n: failures.length,
+        details: failures.slice(0, 3).join(' · '),
+        more: failures.length > 3 ? '…' : ''
+      })
+    );
   }
   if (methods > 0) {
-    warnings.push(`${methods} OPC UA method(s) skipped (not modelled as DPEs).`);
+    warnings.push(warn(WARNING_CODES.browse.METHODS_SKIPPED, '{n} OPC UA method(s) skipped (not modelled as DPEs).', { n: methods }));
   }
   if (arrays.length > 0) {
     warnings.push(
-      `${arrays.length} ARRAY variable(s) catalogued with their scalar base type and flagged "unmapped" (${arrays.slice(0, 5).join(', ')}${arrays.length > 5 ? '…' : ''}) — the address write for a dynamic DPE is not verified: do not generate an address on them without validating it first.`
+      warn(
+        WARNING_CODES.browse.ARRAYS_FLAGGED,
+        '{n} ARRAY variable(s) catalogued with their scalar base type and flagged "unmapped" ({paths}{more}) — the address write for a dynamic DPE is not verified: do not generate an address on them without validating it first.',
+        { n: arrays.length, paths: arrays.slice(0, 5).join(', '), more: arrays.length > 5 ? '…' : '' }
+      )
     );
   }
   if (unnamed > 0) {
-    warnings.push(`${unnamed} node(s) without a DisplayName skipped.`);
+    warnings.push(warn(WARNING_CODES.browse.UNNAMED_NODES, '{n} node(s) without a DisplayName skipped.', { n: unnamed }));
   }
   if (entries.length === 0 && failures.length === 0) {
-    warnings.push(`No variable found under "${root}" — check the browse root and the connection state.`);
+    warnings.push(
+      warn(WARNING_CODES.browse.EMPTY_ROOT, 'No variable found under "{root}" — check the browse root and the connection state.', { root })
+    );
   }
   if (assumedAccess > 0) {
     warnings.push(
       assumedAccess === entries.length
-        ? 'This walk did not expose AccessLevel: every signal is catalogued READ-ONLY with an "assumed" access. The direction then comes from the role (its profile) — qualify before generating, or fix the access by hand.'
-        : `${assumedAccess}/${entries.length} signals without an exposed AccessLevel: "assumed" access (read-only) — the direction comes from the role for those.`
+        ? warn(
+            WARNING_CODES.browse.ACCESS_ALL_ASSUMED,
+            'This walk did not expose AccessLevel: every signal is catalogued READ-ONLY with an "assumed" access. The direction then comes from the role (its profile) — qualify before generating, or fix the access by hand.'
+          )
+        : warn(WARNING_CODES.browse.ACCESS_PARTLY_ASSUMED, '{n}/{total} signals without an exposed AccessLevel: "assumed" access (read-only) — the direction comes from the role for those.', {
+            n: assumedAccess,
+            total: entries.length
+          })
     );
   } else if (entries.length > 0) {
-    warnings.push(`AccessLevel read from the server for all ${entries.length} signals: the address direction will follow the real access.`);
+    warnings.push(
+      warn(WARNING_CODES.browse.ACCESS_READ, 'AccessLevel read from the server for all {n} signals: the address direction will follow the real access.', {
+        n: entries.length
+      })
+    );
   }
   return { entries, warnings, requests, skippedBranches };
 }

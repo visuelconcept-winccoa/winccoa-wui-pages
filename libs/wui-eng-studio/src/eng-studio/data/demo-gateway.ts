@@ -11,6 +11,7 @@
 import {
   DEFAULT_ROLE_RULES,
   applyPlan,
+  asEngWarnings,
   baselineOf,
   buildBookFromOpcUaBrowse,
   classifyEntries,
@@ -56,7 +57,9 @@ function qualify(
   // Access overrides FIRST: structural role rules match on the access mode.
   const entries = withAccess(book.entries, access);
   const assignments = classifyEntries(entries, DEFAULT_ROLE_RULES, manual);
-  return { ...book, entries: withRoles(entries, assignments) };
+  // Same tolerance as the backend: a fixture (or a stored book) may still carry
+  // plain-string warnings.
+  return { ...book, entries: withRoles(entries, assignments), warnings: asEngWarnings(book.warnings) };
 }
 
 /** In-memory port so the demo check-in mutates a fake live project. */

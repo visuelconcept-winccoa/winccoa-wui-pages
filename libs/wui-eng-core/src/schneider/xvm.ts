@@ -34,6 +34,7 @@
 import type { AddressBook, BookInterface, BookProvenance } from '../model.js';
 import { localName, parseXml, type XmlNode } from '../simaticml/xml.js';
 import { entriesFromSchneiderVariables, type SchneiderVariable } from './variables.js';
+import { WARNING_CODES, warn, type EngWarning } from '../warnings.js';
 
 /** Element local names understood as a variable declaration (lower-case). */
 const VARIABLE_ELEMENTS = new Set([
@@ -63,7 +64,7 @@ const FIELD_ALIASES: Record<'name' | 'type' | 'address' | 'comment' | 'unit', st
 /** Result of reading an XVM/XSY document. */
 export interface XvmParseResult {
   variables: SchneiderVariable[];
-  warnings: string[];
+  warnings: EngWarning[];
   /** Local-name → count of every element seen (diagnostic for calibration). */
   elements: Record<string, number>;
 }
@@ -120,13 +121,17 @@ function memberChildren(node: XmlNode): XmlNode[] {
  * container itself — you bind leaves, not a struct root.
  */
 export function parseXvmVariables(xml: string): XvmParseResult {
-  const warnings: string[] = [];
+  const warnings: EngWarning[] = [];
   const elements: Record<string, number> = {};
   let root: XmlNode;
   try {
     root = parseXml(xml);
   } catch (error) {
-    return { variables: [], warnings: [`Unreadable XML: ${(error as Error).message}`], elements };
+    return {
+      variables: [],
+      warnings: [warn(WARNING_CODES.schneider.XVM_UNREADABLE, 'Unreadable XML: {error}', { error: (error as Error).message })],
+      elements
+    };
   }
 
   const variables: SchneiderVariable[] = [];
@@ -147,7 +152,11 @@ export function parseXvmVariables(xml: string): XvmParseResult {
     const address = pick(pool, 'address') ?? '';
     if (address === '' && prefix !== '') {
       warnings.push(
-        `Member "${path}" has no address of its own — derived layout not computed (declare a located address, or export the member).`
+        warn(
+          WARNING_CODES.schneider.MEMBER_NO_ADDRESS,
+          'Member "{path}" has no address of its own — derived layout not computed (declare a located address, or export the member).',
+          { path }
+        )
       );
       return;
     }
@@ -178,7 +187,11 @@ export function parseXvmVariables(xml: string): XvmParseResult {
       .map(([tag, count]) => `${tag}(${count})`)
       .join(', ');
     warnings.push(
-      `No variable recognised in the XML export — the XVM schema is unverified. Elements seen: ${seen || '(none)'}. Add the missing element/attribute to the aliases in schneider/xvm.ts.`
+      warn(
+        WARNING_CODES.schneider.XVM_NOTHING_RECOGNISED,
+        'No variable recognised in the XML export — the XVM schema is unverified. Elements seen: {elements}. Add the missing element/attribute to the aliases in schneider/xvm.ts.',
+        { elements: seen || '(none)' }
+      )
     );
   }
   return { variables, warnings, elements };
@@ -211,7 +224,10 @@ export function buildBookFromXvm(bundle: XvmBundle): AddressBook {
     entries: resolved.entries,
     types: [],
     warnings: [
-      'XVM/XSY reader: schema not verified against a vendor export (none available) — check the entries before any check-in.',
+      warn(
+        WARNING_CODES.schneider.XVM_UNVERIFIED_SCHEMA,
+        'XVM/XSY reader: schema not verified against a vendor export (none available) — check the entries before any check-in.'
+      ),
       ...parsed.warnings,
       ...resolved.warnings
     ]

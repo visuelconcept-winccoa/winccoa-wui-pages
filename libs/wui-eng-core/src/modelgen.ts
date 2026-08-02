@@ -44,6 +44,7 @@ import { S7_DATATYPE_UNVERIFIED, s7DatatypeCode } from './drivers/s7.js';
 import { MODBUS_DATATYPE_UNVERIFIED, modbusDatatypeCode } from './drivers/modbus.js';
 import { configsForRole, type RoleProfile, type RoleProfileContext } from './roles/profiles.js';
 import { structureLeaves, type StructureBindings } from './structure.js';
+import { WARNING_CODES, warn, type EngWarning } from './warnings.js';
 import { SIGNAL_ROLES, type SignalRole } from './roles/roles.js';
 
 /** Options driving one generation. */
@@ -92,7 +93,7 @@ export interface ModelProposal {
   dps: EngDp[];
   /** Configs keyed by full DPE path. */
   configs: Record<string, DpeConfigs>;
-  warnings: string[];
+  warnings: EngWarning[];
   /** Generated DPEs per role (UI summary). */
   roleCounts: Record<SignalRole, number>;
 }
@@ -171,11 +172,15 @@ function buildStructure(typeName: string, leaves: Leaf[]): DpTypeStructure {
 function mirrorLeaves(
   selected: BookEntry[],
   options: ModelGenOptions,
-  warnings: string[]
+  warnings: EngWarning[]
 ): { leaves: Leaf[]; type: EngType } {
   const strip = (options.stripCommonPrefix ?? true) ? commonPrefix(selected.map((e) => e.path)).length : 0;
   if (strip > 0) {
-    warnings.push(`Common prefix "${selected[0].path.split('.').slice(0, strip).join('.')}" stripped from the paths.`);
+    warnings.push(
+      warn(WARNING_CODES.modelgen.PREFIX_STRIPPED, 'Common prefix "{prefix}" stripped from the paths.', {
+        prefix: selected[0].path.split('.').slice(0, strip).join('.')
+      })
+    );
   }
   const leaves: Leaf[] = [];
   const usedPerParent = new Map<string, Set<string>>();
@@ -194,7 +199,7 @@ function mirrorLeaves(
       segments.push(name);
     }
     if (segments.length === 0) {
-      warnings.push(`Signal "${entry.path}" has no usable name — skipped.`);
+      warnings.push(warn(WARNING_CODES.modelgen.UNUSABLE_NAME, 'Signal "{path}" has no usable name — skipped.', { path: entry.path }));
       continue;
     }
     leaves.push({ segments, leafType: entry.leafType, entry });
@@ -220,7 +225,7 @@ function mappedLeaves(
   selected: BookEntry[],
   mapping: ModelMapping,
   options: ModelGenOptions,
-  warnings: string[]
+  warnings: EngWarning[]
 ): { leaves: Leaf[]; type: EngType } {
   const byPath = new Map(selected.map((entry) => [entry.path, entry]));
   const structure: DpTypeStructure = { ...mapping.structure, name: options.typeName };
@@ -250,21 +255,33 @@ function mappedLeaves(
 
   if (unbound.length > 0) {
     warnings.push(
-      `${unbound.length} model element(s) with no mapped signal — DPEs created WITHOUT any config: ${unbound.slice(0, 8).join(', ')}${unbound.length > 8 ? ' …' : ''}`
+      warn(WARNING_CODES.modelgen.UNBOUND_LEAVES, '{n} model element(s) with no mapped signal — DPEs created WITHOUT any config: {paths}{more}', {
+        n: unbound.length,
+        paths: unbound.slice(0, 8).join(', '),
+        more: unbound.length > 8 ? ' …' : ''
+      })
     );
   }
   if (dangling.length > 0) {
-    warnings.push(`${dangling.length} mapping(s) point at a signal the book does not have: ${dangling.slice(0, 5).join(' · ')}`);
+    warnings.push(
+      warn(WARNING_CODES.modelgen.DANGLING_BINDINGS, '{n} mapping(s) point at a signal the book does not have: {details}', {
+        n: dangling.length,
+        details: dangling.slice(0, 5).join(' · ')
+      })
+    );
   }
   if (mismatched.length > 0) {
     warnings.push(
-      `${mismatched.length} mapping(s) with a DIFFERENT TYPE (the model's type is kept): ${mismatched.slice(0, 5).join(' · ')}`
+      warn(WARNING_CODES.modelgen.TYPE_MISMATCH, "{n} mapping(s) with a DIFFERENT TYPE (the model's type is kept): {details}", {
+        n: mismatched.length,
+        details: mismatched.slice(0, 5).join(' · ')
+      })
     );
   }
   const bound = new Set(leaves.map((leaf) => leaf.entry.path));
   const unused = selected.filter((entry) => !bound.has(entry.path)).length;
   if (unused > 0) {
-    warnings.push(`${unused} book signal(s) unused by the model (partial mapping assumed).`);
+    warnings.push(warn(WARNING_CODES.modelgen.UNUSED_SIGNALS, '{n} book signal(s) unused by the model (partial mapping assumed).', { n: unused }));
   }
   return { leaves, type: { typeName: options.typeName, structure } };
 }
@@ -275,12 +292,12 @@ function mappedLeaves(
  * turns it into writes.
  */
 export function generateModelFromBook(book: AddressBook, options: ModelGenOptions): ModelProposal {
-  const warnings: string[] = [];
+  const warnings: EngWarning[] = [];
   const selected = options.selection === undefined
     ? book.entries
     : book.entries.filter((entry) => options.selection?.includes(entry.path));
   if (selected.length === 0) {
-    warnings.push('No signal selected — nothing to generate.');
+    warnings.push(warn(WARNING_CODES.modelgen.NO_SELECTION, 'No signal selected — nothing to generate.'));
   }
 
   // --- leaves + type: MIRROR the book, or follow the AUTHORED structure -------
@@ -300,7 +317,7 @@ export function generateModelFromBook(book: AddressBook, options: ModelGenOption
     dps.push({ dpName: name, dpType: options.typeName, descriptions });
   }
   if (dps.length === 0) {
-    warnings.push('No device supplied — the type is generated without any datapoint.');
+    warnings.push(warn(WARNING_CODES.modelgen.NO_DEVICE, 'No device supplied — the type is generated without any datapoint.'));
   }
 
   // --- configs per DPE ------------------------------------------------------
@@ -360,30 +377,53 @@ export function generateModelFromBook(book: AddressBook, options: ModelGenOption
   const perDp = dps.length === 0 ? 1 : dps.length;
   if (unknownCount > 0) {
     warnings.push(
-      `${unknownCount / perDp} unqualified signal(s): their DPEs are created but NO config is generated — qualify them, then regenerate.`
+      warn(WARNING_CODES.modelgen.UNQUALIFIED, '{n} unqualified signal(s): their DPEs are created but NO config is generated — qualify them, then regenerate.', {
+        n: unknownCount / perDp
+      })
     );
   }
   if (missingAddress > 0) {
-    warnings.push(`${missingAddress / perDp} signal(s) with no address for mode "${mode}" — DPE created without a peripheral address.`);
+    warnings.push(
+      warn(WARNING_CODES.modelgen.MISSING_ADDRESS, '{n} signal(s) with no address for mode "{mode}" — DPE created without a peripheral address.', {
+        n: missingAddress / perDp,
+        mode
+      })
+    );
   }
   if (unresolvedReference > 0) {
     warnings.push(
-      `${unresolvedReference / perDp} signal(s) from an unbound catalog: supply the target connection to resolve the reference (placeholder left as-is).`
+      warn(
+        WARNING_CODES.modelgen.UNRESOLVED_REFERENCE,
+        '{n} signal(s) from an unbound catalog: supply the target connection to resolve the reference (placeholder left as-is).',
+        { n: unresolvedReference / perDp }
+      )
     );
   }
   if (directionNotes.size > 0) {
     warnings.push(
-      `Address direction adjusted for ${directionNotes.size} signal(s) — the role asked to write, the access declared by the source does not allow it: ${[...directionNotes].slice(0, 5).join(' · ')}${directionNotes.size > 5 ? ' …' : ''}`
+      warn(
+        WARNING_CODES.modelgen.DIRECTION_ADJUSTED,
+        'Address direction adjusted for {n} signal(s) — the role asked to write, the access declared by the source does not allow it: {details}{more}',
+        { n: directionNotes.size, details: [...directionNotes].slice(0, 5).join(' · '), more: directionNotes.size > 5 ? ' …' : '' }
+      )
     );
   }
   if (assumedAccess > 0) {
     warnings.push(
-      `Access NOT DECLARED for ${assumedAccess / perDp} signal(s) (a walk without AccessLevel): the direction comes from the role alone — check that the commands/setpoints really are writable on the device.`
+      warn(
+        WARNING_CODES.modelgen.ACCESS_ASSUMED,
+        'Access NOT DECLARED for {n} signal(s) (a walk without AccessLevel): the direction comes from the role alone — check that the commands/setpoints really are writable on the device.',
+        { n: assumedAccess / perDp }
+      )
     );
   }
   if (unverifiedDatatype > 0) {
     warnings.push(
-      `The "${mode}" driver's "_datatype" transformation is UNVERIFIED (sentinel value) — confirm it on a real system before checking in.`
+      warn(
+        WARNING_CODES.modelgen.UNVERIFIED_DATATYPE,
+        'The "{mode}" driver\'s "_datatype" transformation is UNVERIFIED (sentinel value) — confirm it on a real system before checking in.',
+        { mode }
+      )
     );
   }
   return { type, dps, configs, warnings, roleCounts };

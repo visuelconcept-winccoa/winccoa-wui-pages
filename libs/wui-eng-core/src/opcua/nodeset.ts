@@ -36,6 +36,7 @@
 
 import { buildOpcUaReference, isUnmappedOpcUaType, opcUaAccessFromLevel, opcUaLeafType } from '../drivers/opcua.js';
 import { childrenOf, localName, parseXml, type XmlNode } from '../simaticml/xml.js';
+import { WARNING_CODES, warn, type EngWarning } from '../warnings.js';
 import type { AddressBook, BookEntry, BookType } from '../model.js';
 
 // Standard reference-type NodeIds (namespace 0, OPC UA Part 6).
@@ -196,7 +197,7 @@ export interface NodeSetBookOptions {
 interface Collector {
   entries: BookEntry[];
   types: BookType[];
-  warnings: string[];
+  warnings: EngWarning[];
   methods: number;
   arrays: string[];
   cycles: number;
@@ -333,25 +334,50 @@ export function buildBookFromNodeSet(options: NodeSetBookOptions & { xml: string
     if (members.length > 0) out.types.push({ id: type.nodeId, name: typeName, members });
   }
 
-  const warnings: string[] = [
-    `⚠️ NodeSet2 NodeIds are FILE-LOCAL: a real server almost always assigns different namespace indices. The addresses below are CANDIDATES (placeholder "${CONNECTION_PLACEHOLDER}") — verify them against the server, or regenerate the book with an online browse, before any check-in.`
+  const warnings: EngWarning[] = [
+    warn(
+      WARNING_CODES.nodeset.FILE_LOCAL_NODEIDS,
+      '⚠️ NodeSet2 NodeIds are FILE-LOCAL: a real server almost always assigns different namespace indices. The addresses below are CANDIDATES (placeholder "{placeholder}") — verify them against the server, or regenerate the book with an online browse, before any check-in.',
+      { placeholder: CONNECTION_PLACEHOLDER }
+    )
   ];
   if (instances.length === 0 && objectTypes.length > 0) {
     warnings.push(
-      `No instance declared in the file: ${objectTypes.length} type(s) catalogued as TEMPLATES (rooted at the type name) — a shareable book, bound to each device at generation time.`
+      warn(
+        WARNING_CODES.nodeset.TEMPLATES_ONLY,
+        'No instance declared in the file: {n} type(s) catalogued as TEMPLATES (rooted at the type name) — a shareable book, bound to each device at generation time.',
+        { n: objectTypes.length }
+      )
     );
   }
   if (out.entries.length === 0) {
-    warnings.push('No usable variable found: check that the file really contains UAVariable nodes under UAObject/UAObjectType.');
-  }
-  if (out.methods > 0) warnings.push(`${out.methods} OPC UA method(s) skipped (not modelled as DPEs).`);
-  if (out.arrays.length > 0) {
     warnings.push(
-      `${out.arrays.length} ARRAY variable(s) catalogued with their scalar base type and flagged "unmapped" (${out.arrays.slice(0, 5).join(', ')}${out.arrays.length > 5 ? '…' : ''}) — the address write for a dynamic DPE is not verified.`
+      warn(WARNING_CODES.nodeset.NO_VARIABLE, 'No usable variable found: check that the file really contains UAVariable nodes under UAObject/UAObjectType.')
     );
   }
-  if (out.cycles > 0) warnings.push(`${out.cycles} circular reference(s) cut while reading the model.`);
-  if (out.depthHits > 0) warnings.push(`${out.depthHits} branch(es) truncated beyond ${MAX_MEMBER_DEPTH} nesting levels.`);
+  if (out.methods > 0) {
+    warnings.push(warn(WARNING_CODES.nodeset.METHODS_SKIPPED, '{n} OPC UA method(s) skipped (not modelled as DPEs).', { n: out.methods }));
+  }
+  if (out.arrays.length > 0) {
+    warnings.push(
+      warn(
+        WARNING_CODES.nodeset.ARRAYS_FLAGGED,
+        '{n} ARRAY variable(s) catalogued with their scalar base type and flagged "unmapped" ({paths}{more}) — the address write for a dynamic DPE is not verified.',
+        { n: out.arrays.length, paths: out.arrays.slice(0, 5).join(', '), more: out.arrays.length > 5 ? '…' : '' }
+      )
+    );
+  }
+  if (out.cycles > 0) {
+    warnings.push(warn(WARNING_CODES.nodeset.CYCLES_CUT, '{n} circular reference(s) cut while reading the model.', { n: out.cycles }));
+  }
+  if (out.depthHits > 0) {
+    warnings.push(
+      warn(WARNING_CODES.nodeset.DEPTH_TRUNCATED, '{n} branch(es) truncated beyond {depth} nesting levels.', {
+        n: out.depthHits,
+        depth: MAX_MEMBER_DEPTH
+      })
+    );
+  }
   warnings.push(...out.warnings);
 
   return {

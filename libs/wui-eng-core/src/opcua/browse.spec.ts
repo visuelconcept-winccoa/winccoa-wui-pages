@@ -7,6 +7,7 @@
  * warnings, cycle protection, and the replayable provenance.
  */
 import { describe, expect, it } from 'vitest';
+import { formatWarning as warningText } from '../warnings.js';
 import { BROWSE_DEFAULTS, OPCUA_OBJECTS_FOLDER, buildBookFromOpcUaBrowse, type OpcUaBrowseNode, type OpcUaBrowsePort } from './browse.js';
 
 /** An in-memory address space: nodeId → children. */
@@ -84,7 +85,7 @@ describe('buildBookFromOpcUaBrowse', () => {
     const book = await buildBookFromOpcUaBrowse(fakePort(MACHINE), { bookId: 'b1', connection: 'C' });
     expect(book.entries.every((e) => e.access === 'r')).toBe(true);
     expect(book.entries.every((e) => e.accessSource === 'assumed')).toBe(true);
-    expect(book.warnings.some((w) => w.includes('AccessLevel'))).toBe(true);
+    expect(book.warnings.some((w) => warningText(w).includes('AccessLevel'))).toBe(true);
   });
 
   it('DECODES AccessLevel when the port provides it', async () => {
@@ -101,7 +102,7 @@ describe('buildBookFromOpcUaBrowse', () => {
       ['w', 'declared'],
       ['rw', 'declared']
     ]);
-    expect(book.warnings.some((w) => w.includes('AccessLevel read from the server'))).toBe(true);
+    expect(book.warnings.some((w) => warningText(w).includes('AccessLevel read from the server'))).toBe(true);
   });
 
   it('reports the MIX when only some nodes carry an AccessLevel', async () => {
@@ -110,7 +111,7 @@ describe('buildBookFromOpcUaBrowse', () => {
     };
     const book = await buildBookFromOpcUaBrowse(fakePort(space), { bookId: 'b1', connection: 'C' });
     expect(book.entries.map((e) => e.accessSource)).toEqual(['declared', 'assumed']);
-    expect(book.warnings.some((w) => w.includes('1/2 signals without an exposed AccessLevel'))).toBe(true);
+    expect(book.warnings.some((w) => warningText(w).includes('1/2 signals without an exposed AccessLevel'))).toBe(true);
   });
 
   it('treats an AccessLevel of 0 as evidence (no read, no write) — not as absent', async () => {
@@ -122,7 +123,7 @@ describe('buildBookFromOpcUaBrowse', () => {
   it('skips methods, and reports how many', async () => {
     const book = await buildBookFromOpcUaBrowse(fakePort(MACHINE), { bookId: 'b1', connection: 'C' });
     expect(book.entries.some((e) => e.path.endsWith('Reset'))).toBe(false);
-    expect(book.warnings.some((w) => w.includes('1 OPC UA method'))).toBe(true);
+    expect(book.warnings.some((w) => warningText(w).includes('1 OPC UA method'))).toBe(true);
   });
 
   it('flags an array variable instead of inventing a Dyn element type', async () => {
@@ -131,7 +132,7 @@ describe('buildBookFromOpcUaBrowse', () => {
     };
     const book = await buildBookFromOpcUaBrowse(fakePort(space), { bookId: 'b1', connection: 'C' });
     expect(book.entries[0]).toMatchObject({ leafType: 'Float', sourceType: 'Float[]', unmapped: true });
-    expect(book.warnings.some((w) => w.includes('ARRAY'))).toBe(true);
+    expect(book.warnings.some((w) => warningText(w).includes('ARRAY'))).toBe(true);
   });
 
   it('marks an unmappable datatype as unmapped', async () => {
@@ -160,7 +161,7 @@ describe('buildBookFromOpcUaBrowse', () => {
     };
     const book = await buildBookFromOpcUaBrowse(fakePort(space), { bookId: 'b1', connection: 'C', maxDepth: 1 });
     expect(book.entries).toHaveLength(0);
-    expect(book.warnings.some((w) => w.includes('depth 1'))).toBe(true);
+    expect(book.warnings.some((w) => warningText(w).includes('depth 1'))).toBe(true);
   });
 
   it('stops at maxEntries and WARNS that the catalog is incomplete', async () => {
@@ -171,7 +172,11 @@ describe('buildBookFromOpcUaBrowse', () => {
       maxEntries: 5
     });
     expect(book.entries).toHaveLength(5);
-    expect(book.warnings.some((w) => w.includes('TRUNCATED') && w.includes('5 signals'))).toBe(true);
+    // Assert on the CODE and its params, not on the prose: that is what the
+    // EngWarning refactor buys — the message may be re-worded or translated.
+    expect(book.warnings).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'browse.truncated-entries', params: { max: 5 } })])
+    );
   });
 
   it('keeps the rest of the catalog when one branch is unreadable', async () => {
@@ -184,13 +189,15 @@ describe('buildBookFromOpcUaBrowse', () => {
     };
     const book = await buildBookFromOpcUaBrowse(port, { bookId: 'b1', connection: 'C' });
     expect(book.entries.map((e) => e.path)).toEqual(['Good.V']);
-    expect(book.warnings.some((w) => w.includes('unreadable') && w.includes('BadNodeIdUnknown'))).toBe(true);
+    const unreadable = book.warnings.find((w) => w.code === 'browse.unreadable-branches');
+    expect(unreadable?.params).toMatchObject({ n: 1 });
+    expect(warningText(unreadable!)).toContain('BadNodeIdUnknown');
   });
 
   it('warns when the root holds nothing (wrong root or dead connection)', async () => {
     const book = await buildBookFromOpcUaBrowse(fakePort({}), { bookId: 'b1', connection: 'C' });
     expect(book.entries).toHaveLength(0);
-    expect(book.warnings.some((w) => w.includes('No variable found'))).toBe(true);
+    expect(book.warnings.some((w) => warningText(w).includes('No variable found'))).toBe(true);
   });
 
   it('browses one level at a time — one request per container, never more', async () => {

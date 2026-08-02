@@ -11,6 +11,7 @@
  * (PackML/OPC 30050) is still to be calibrated against.
  */
 import { describe, expect, it } from 'vitest';
+import { formatWarning as warningText } from '../warnings.js';
 import { buildBookFromNodeSet } from './nodeset.js';
 
 /** A NodeSet declaring one ObjectType and two INSTANCES of it (a real machine). */
@@ -130,7 +131,7 @@ describe('buildBookFromNodeSet — a file with instances', () => {
   it('is a TEMPLATE catalog: no interface, placeholder addresses, loud caveat', () => {
     expect(book.interface).toBeUndefined();
     expect(book.entries[0].addresses.opcua).toBe('<Connection>$$1$1$ns=1;i=2011');
-    expect(book.warnings[0]).toContain('FILE-LOCAL');
+    expect(warningText(book.warnings[0])).toContain('FILE-LOCAL');
   });
 
   it('records the provenance', () => {
@@ -144,7 +145,7 @@ describe('buildBookFromNodeSet — a types-only (companion spec) file', () => {
 
   it('roots the entries at the TYPE name and says the catalog is a gabarit', () => {
     expect(book.entries.map((e) => e.path)).toContain('FillerType.Status.CurMachSpeed');
-    expect(book.warnings.some((w) => w.includes('TEMPLATES'))).toBe(true);
+    expect(book.warnings.some((w) => warningText(w).includes('TEMPLATES'))).toBe(true);
   });
 
   it('folds the supertype members into the subtype (WinCC OA has no inheritance)', () => {
@@ -157,7 +158,7 @@ describe('buildBookFromNodeSet — a types-only (companion spec) file', () => {
 
   it('flags the array property and skips the method', () => {
     expect(book.entries.find((e) => e.path.endsWith('Profil'))).toMatchObject({ sourceType: 'Float[]', unmapped: true });
-    expect(book.warnings.some((w) => w.includes('method'))).toBe(true);
+    expect(book.warnings.some((w) => warningText(w).includes('method'))).toBe(true);
   });
 });
 
@@ -170,7 +171,7 @@ describe('buildBookFromNodeSet — robustness', () => {
     const xml = '<UANodeSet><NamespaceUris><Uri>http://x/</Uri></NamespaceUris></UANodeSet>';
     const book = buildBookFromNodeSet({ bookId: 'x', xml });
     expect(book.entries).toHaveLength(0);
-    expect(book.warnings.some((w) => w.includes('No usable variable found'))).toBe(true);
+    expect(book.warnings.some((w) => warningText(w).includes('No usable variable found'))).toBe(true);
   });
 
   it('ignores a reference into a namespace the file does not carry', () => {

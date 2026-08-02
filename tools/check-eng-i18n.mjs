@@ -42,7 +42,19 @@ const bundle = await esbuild.build({
   logLevel: 'silent'
 });
 const module_ = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
-const { MSG, ROLE_LABEL, resolveLang, fmt } = module_;
+const { MSG, ROLE_LABEL, WARNING_MSG, resolveLang, fmt } = module_;
+
+// The core's warning vocabulary, bundled the same way.
+const coreBundle = await esbuild.build({
+  entryPoints: [resolve(REPO, 'libs/wui-eng-core/src/warnings.ts')],
+  bundle: true,
+  format: 'esm',
+  platform: 'neutral',
+  write: false,
+  logLevel: 'silent'
+});
+const core = await import(`data:text/javascript;base64,${Buffer.from(coreBundle.outputFiles[0].text).toString('base64')}`);
+const CORE_CODES = Object.values(core.WARNING_CODES).flatMap((group) => Object.values(group));
 
 const LANGS = ['en', 'fr', 'de'];
 const errors = [];
@@ -76,6 +88,34 @@ for (const [key, entry] of [...entries(MSG), ...entries(ROLE_LABEL, 'ROLE_LABEL'
   }
   if (entry.fr === entry.en || entry.de === entry.en) identical.push(key);
 }
+
+// --- the core's warnings must all be translated, with matching placeholders ---
+for (const code of CORE_CODES) {
+  const entry = WARNING_MSG[code];
+  if (entry === undefined) {
+    errors.push(`WARNING_MSG: no translation for the core code "${code}" (it would render in English only)`);
+    continue;
+  }
+  count += 1;
+  for (const lang of LANGS) {
+    if (typeof entry[lang] !== 'string' || entry[lang].trim() === '') {
+      errors.push(`WARNING_MSG["${code}"]: missing or empty "${lang}"`);
+    }
+  }
+  const reference = placeholders(entry.en);
+  for (const lang of ['fr', 'de']) {
+    if (placeholders(entry[lang]) !== reference) {
+      errors.push(`WARNING_MSG["${code}"]: placeholders differ — en={${reference}} ${lang}={${placeholders(entry[lang])}}`);
+    }
+  }
+}
+// A translation nobody emits is dead weight (or a typo in the code).
+for (const code of Object.keys(WARNING_MSG)) {
+  if (!CORE_CODES.includes(code) && !code.startsWith('demo.') && !code.startsWith('ui.')) {
+    errors.push(`WARNING_MSG: "${code}" matches no core code (typo, or a removed warning)`);
+  }
+}
+console.log(`[eng-i18n] ${CORE_CODES.length} core warning codes checked against WARNING_MSG.`);
 
 // Locale identifiers the WinCC OA shell passes, plus plain tags.
 const localeCases = [

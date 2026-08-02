@@ -7,6 +7,7 @@
  * device" flow: re-generate → diff → propose the model extension.
  */
 
+import { WARNING_CODES, warn, type EngWarning } from './warnings.js';
 import type { AddressBook, BookEntry, TagAccess } from './model.js';
 
 export interface BookDiff {
@@ -71,21 +72,27 @@ export function withAccess(entries: BookEntry[], overrides: Record<string, TagAc
  * the catalog under a model without saying so is how a project ends up with
  * addresses pointing at nodes that no longer exist.
  */
-export function refreshWarnings(delta: BookDiff): string[] {
-  const warnings: string[] = [];
+export function refreshWarnings(delta: BookDiff): EngWarning[] {
+  const warnings: EngWarning[] = [];
   if (delta.removed.length > 0) {
     const shown = delta.removed.slice(0, 8).map((e) => e.path);
     warnings.push(
-      `⚠️ ${delta.removed.length} signal(s) GONE from the source since the last walk (${shown.join(', ')}${delta.removed.length > shown.length ? '…' : ''}) — check the models that reference them BEFORE any check-in.`
+      warn(
+        WARNING_CODES.book.REMOVED,
+        '⚠️ {n} signal(s) GONE from the source since the last walk ({paths}{more}) — check the models that reference them BEFORE any check-in.',
+        { n: delta.removed.length, paths: shown.join(', '), more: delta.removed.length > shown.length ? '…' : '' }
+      )
     );
   }
   if (delta.changed.length > 0) {
     warnings.push(
-      `${delta.changed.length} signal(s) CHANGED (type, access or address) — the configs generated from them must be regenerated.`
+      warn(WARNING_CODES.book.CHANGED, '{n} signal(s) CHANGED (type, access or address) — the configs generated from them must be regenerated.', {
+        n: delta.changed.length
+      })
     );
   }
   if (delta.added.length > 0) {
-    warnings.push(`${delta.added.length} new signal(s) found in the source.`);
+    warnings.push(warn(WARNING_CODES.book.ADDED, '{n} new signal(s) found in the source.', { n: delta.added.length }));
   }
   return warnings;
 }

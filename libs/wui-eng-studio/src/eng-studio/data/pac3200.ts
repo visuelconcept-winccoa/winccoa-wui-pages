@@ -28,6 +28,7 @@
  */
 
 import {
+  warn,
   modbusHoldingRef,
   modbusLeafType,
   modbusWordRef,
@@ -144,11 +145,23 @@ export function pac3200Book(profile: Pac3200Profile = 'detailed'): AddressBook {
     // interface intentionally absent → device-type catalog, mutualised.
     entries: rows.map((row) => entryOf(row)),
     types: [],
+    // Demo-fixture warnings carry their own `demo.*` codes so they translate like
+    // any core warning (see the page's WARNING_MSG).
     warnings: [
-      'Modbus : aucun browse possible — carnet issu de la cartographie de registres du constructeur.',
-      `Notations équivalentes du même registre : ${modbusHoldingRef(1)} (standard, affiché ici) = ${modbusWordRef(1)} (templates Industrial Edge) = offset ${1} du manuel.`,
-      "Vérifier l'option « Zero based addressing » du connecteur : un décalage d'un registre inverse toutes les mesures.",
-      'Compteurs d’énergie : ce carnet cible le tarif T1 (bloc 2801-2820) ; le bloc 801-820 expose les compteurs cumulés en LREAL.'
+      warn('demo.pac3200-no-browse', 'Modbus: no browse is possible — this book comes from the vendor register map.'),
+      warn(
+        'demo.pac3200-notations',
+        'Equivalent notations of the same register: {holding} (standard, shown here) = {word} (Industrial Edge templates) = offset {offset} of the manual.',
+        { holding: modbusHoldingRef(1), word: modbusWordRef(1), offset: 1 }
+      ),
+      warn(
+        'demo.pac3200-zero-based',
+        'Check the connector\'s "Zero based addressing" option: a one-register shift offsets every measurement.'
+      ),
+      warn(
+        'demo.pac3200-energy-block',
+        'Energy counters: this book targets tariff T1 (block 2801-2820); block 801-820 exposes the cumulative counters as LREAL.'
+      )
     ]
   };
 }

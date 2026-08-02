@@ -7,6 +7,7 @@
  * unbound template catalogs, unverified driver transformations).
  */
 import { describe, expect, it } from 'vitest';
+import { formatWarning as warningText } from './warnings.js';
 import { diffWorkspace } from './diff.js';
 import { generateModelFromBook, mergeProposal } from './modelgen.js';
 import { autoBindStructure } from './structure.js';
@@ -75,7 +76,7 @@ describe('structure derivation', () => {
       { typeName: 'T', equipments: [], deviceId: 'd1' }
     );
     expect(proposal.type.structure.children?.map((c) => c.name)).toEqual(['Mesures', 'Etat']);
-    expect(proposal.warnings.join('\n')).toMatch(/Common prefix "DB_Four" stripped/);
+    expect(proposal.warnings.map(warningText).join('\n')).toMatch(/Common prefix "DB_Four" stripped/);
   });
 
   it('strips a fully-shared container too (it would carry no information)', () => {
@@ -88,7 +89,7 @@ describe('structure derivation', () => {
       { typeName: 'T', equipments: [], deviceId: 'd1' }
     );
     expect(proposal.type.structure.children?.map((c) => c.name)).toEqual(['Temperature', 'Hygrometrie']);
-    expect(proposal.warnings.join('\n')).toMatch(/Common prefix "DB_Four\.Mesures" stripped/);
+    expect(proposal.warnings.map(warningText).join('\n')).toMatch(/Common prefix "DB_Four\.Mesures" stripped/);
   });
 
   it('keeps the full paths when stripping is disabled', () => {
@@ -146,7 +147,7 @@ describe('datapoints', () => {
       deviceId: 'd1'
     });
     expect(proposal.dps).toHaveLength(0);
-    expect(proposal.warnings.join('\n')).toMatch(/without any datapoint/);
+    expect(proposal.warnings.map(warningText).join('\n')).toMatch(/without any datapoint/);
   });
 });
 
@@ -204,7 +205,7 @@ describe('what it refuses to invent', () => {
     );
     expect(proposal.type.structure.children).toEqual([{ name: 'Mystere', type: 'Float' }]);
     expect(proposal.configs['Z01_EQ1.Mystere']).toBeUndefined();
-    expect(proposal.warnings.join('\n')).toMatch(/1 unqualified signal/);
+    expect(proposal.warnings.map(warningText).join('\n')).toMatch(/1 unqualified signal/);
   });
 
   it('does not bind a template catalog without a connection', () => {
@@ -220,7 +221,7 @@ describe('what it refuses to invent', () => {
     expect(proposal.configs['Z01_EQ1.Status.StateCurrent'].address).toBeUndefined();
     // …but the role's other configs still apply.
     expect(proposal.configs['Z01_EQ1.Status.StateCurrent'].archive).toBeDefined();
-    expect(proposal.warnings.join('\n')).toMatch(/from an unbound catalog/);
+    expect(proposal.warnings.map(warningText).join('\n')).toMatch(/from an unbound catalog/);
   });
 
   it('binds a template catalog once the connection is supplied', () => {
@@ -244,7 +245,7 @@ describe('what it refuses to invent', () => {
     });
     const proposal = generateModelFromBook(modbusBook, { typeName: 'T', zone: 'Z02', equipments: ['PAC1'], deviceId: 'd1' });
     expect(proposal.configs['Z02_PAC1.U_L1_N'].address?.datatype).toBe(0);
-    expect(proposal.warnings.join('\n')).toMatch(/is UNVERIFIED/);
+    expect(proposal.warnings.map(warningText).join('\n')).toMatch(/is UNVERIFIED/);
   });
 
   it('reports a signal with no address for the chosen mode', () => {
@@ -254,7 +255,7 @@ describe('what it refuses to invent', () => {
     );
     expect(proposal.configs['Z01_EQ1.X'].address).toBeUndefined();
     expect(proposal.configs['Z01_EQ1.X'].archive).toBeDefined();
-    expect(proposal.warnings.join('\n')).toMatch(/no address for mode "opcua"/);
+    expect(proposal.warnings.map(warningText).join('\n')).toMatch(/no address for mode "opcua"/);
   });
 });
 
@@ -373,7 +374,7 @@ describe('custom structure + mapping (the alternative to mirroring)', () => {
     const sp = proposal.type.structure.children?.find((c) => c.name === 'SP');
     expect(sp?.children?.map((c) => c.name)).toEqual(['Temp']); // still in the type
     expect(proposal.configs['Z9_FOUR001.SP.Temp']).toBeUndefined();
-    expect(proposal.warnings.some((w) => w.includes('with no mapped signal'))).toBe(true);
+    expect(proposal.warnings.some((w) => warningText(w).includes('with no mapped signal'))).toBe(true);
   });
 
   it('reports a binding that points at a signal the book does not have', () => {
@@ -383,7 +384,7 @@ describe('custom structure + mapping (the alternative to mirroring)', () => {
       deviceId: 'd1',
       mapping: { structure: TARGET, bindings: { 'PV.Temp': 'PLC.Disparu' } }
     });
-    expect(proposal.warnings.some((w) => w.includes('point at a signal the book does not have'))).toBe(true);
+    expect(proposal.warnings.some((w) => warningText(w).includes('point at a signal the book does not have'))).toBe(true);
   });
 
   it('keeps the MODEL type on a mismatch and names it (a mapping mistake, usually)', () => {
@@ -396,7 +397,7 @@ describe('custom structure + mapping (the alternative to mirroring)', () => {
     });
     const marche = proposal.type.structure.children?.find((c) => c.name === 'Marche');
     expect(marche?.type).toBe('Bool'); // the authored contract wins
-    expect(proposal.warnings.some((w) => w.includes('DIFFERENT TYPE'))).toBe(true);
+    expect(proposal.warnings.some((w) => warningText(w).includes('DIFFERENT TYPE'))).toBe(true);
   });
 
   it('reports the book signals the model does not use', () => {
@@ -409,7 +410,7 @@ describe('custom structure + mapping (the alternative to mirroring)', () => {
         bindings: { 'PV.Temp': 'PLC.Grp1.TempProcess', 'SP.Temp': 'PLC.Grp2.ConsigneTemp', Marche: 'PLC.Bits.CmdMarche' }
       }
     });
-    expect(proposal.warnings.some((w) => w.includes('unused by the model'))).toBe(true);
+    expect(proposal.warnings.some((w) => warningText(w).includes('unused by the model'))).toBe(true);
   });
 
   it('auto-binding a mirrored structure reproduces the mirror mode', () => {

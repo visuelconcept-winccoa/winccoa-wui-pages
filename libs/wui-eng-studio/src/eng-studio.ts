@@ -39,6 +39,7 @@ import {
   type Device,
   type DpTypeStructure,
   type EngPlan,
+  type EngWarning,
   type StructureBindings,
   type TagAccess,
   type LiveSnapshot,
@@ -50,7 +51,7 @@ import { engStudioStyles } from './eng-studio/eng-styles.js';
 import { DemoEngGateway } from './eng-studio/data/demo-gateway.js';
 import { HttpEngGateway } from './eng-studio/data/http-gateway.js';
 import type { BookDelta, EngConnection, EngGateway, EngRole } from './eng-studio/data/gateway.js';
-import { LANG_LABEL, MSG, ROLE_LABEL, fmt, resolveLang, t, type Lang, type Ml } from './eng-studio/i18n.js';
+import { LANG_LABEL, MSG, ROLE_LABEL, WARNING_MSG, fmt, resolveLang, t, type Lang, type Ml } from './eng-studio/i18n.js';
 
 type Panel = 'devices' | 'model' | 'control';
 
@@ -79,13 +80,13 @@ export class WuiEngStudio extends LitElement {
   @state() private genZone = 'Z01';
   @state() private genEquipments = '';
   /** Warnings of the last generation, shown under the form. */
-  @state() private genWarnings: string[] = [];
+  @state() private genWarnings: EngWarning[] = [];
   /** Structure mode: mirror the book's paths, or author the type and map onto it. */
   @state() private genMode: 'mirror' | 'custom' = 'mirror';
   /** Authored structure, as an editable outline (see the core's structure.ts). */
   @state() private genOutline = '';
   /** Parse errors of the outline (shown next to it, never thrown). */
-  @state() private genOutlineErrors: string[] = [];
+  @state() private genOutlineErrors: EngWarning[] = [];
   /** Target leaf path → book entry path. */
   @state() private genBindings: StructureBindings = {};
   /** Leaves auto-binding could not decide (several equal candidates). */
@@ -241,6 +242,17 @@ export class WuiEngStudio extends LitElement {
   /** Translate, with optional `{placeholder}` substitution. */
   private tr(message: Ml, params: Record<string, string | number> = {}): string {
     return fmt(t(message, this.uiLang), params);
+  }
+
+  /**
+   * Render a CORE warning in the UI language: its `code` selects a translated
+   * template, into which the core's own `params` are substituted. An unknown code
+   * (a newer core, or a `legacy` string from a book written before the structured
+   * warnings) falls back to the English message the core shipped with it.
+   */
+  private warnText(warning: EngWarning): string {
+    const translated = WARNING_MSG[warning.code];
+    return fmt(translated === undefined ? warning.message : t(translated, this.uiLang), warning.params ?? {});
   }
 
   /** Public: set the UI language (shell, demo entry and screenshot harness). */
@@ -434,7 +446,7 @@ export class WuiEngStudio extends LitElement {
       ${this.renderBrowseCard(device, book)}
       ${this.renderBookDelta()}
       ${book.warnings.length > 0
-        ? html`<section class="card warnings"><div class="card-title">${this.tr(MSG.generatorWarnings)}</div><ul>${book.warnings.map((w) => html`<li>${w}</li>`)}</ul></section>`
+        ? html`<section class="card warnings"><div class="card-title">${this.tr(MSG.generatorWarnings)}</div><ul>${book.warnings.map((w) => html`<li>${this.warnText(w)}</li>`)}</ul></section>`
         : nothing}
       ${this.renderDeviceSignals(book)}
     `;
@@ -767,7 +779,7 @@ export class WuiEngStudio extends LitElement {
           ? html`<div class="gen-hint warn-inline">${this.tr(MSG.genUnknownHint, { n: unknown })}</div>`
           : nothing}
         ${this.genWarnings.length > 0
-          ? html`<ul class="gen-warnings">${this.genWarnings.map((w) => html`<li>${w}</li>`)}</ul>`
+          ? html`<ul class="gen-warnings">${this.genWarnings.map((w) => html`<li>${this.warnText(w)}</li>`)}</ul>`
           : nothing}
       </div>
     `;
@@ -798,7 +810,7 @@ export class WuiEngStudio extends LitElement {
           @input=${(e: Event) => this.onOutlineInput((e.target as HTMLTextAreaElement).value)}
         ></textarea>
         ${this.genOutlineErrors.length > 0
-          ? html`<ul class="gen-warnings warn-inline">${this.genOutlineErrors.map((error) => html`<li>${error}</li>`)}</ul>`
+          ? html`<ul class="gen-warnings warn-inline">${this.genOutlineErrors.map((error) => html`<li>${this.warnText(error)}</li>`)}</ul>`
           : nothing}
         <div class="gen-map-head">
           <span>${this.tr(MSG.mappedCount, { n: bound, total: leaves.length })}</span>
@@ -916,7 +928,9 @@ export class WuiEngStudio extends LitElement {
       const configCount = Object.keys(proposal.configs).length;
       this.notice = this.tr(MSG.genDone, { type: proposal.type.typeName, dps: proposal.dps.length, configs: configCount });
     } catch (error) {
-      this.genWarnings = [this.tr(MSG.genFailed, { error: (error as Error).message })];
+      this.genWarnings = [
+        { code: 'ui.generation-failed', message: this.tr(MSG.genFailed, { error: (error as Error).message }) }
+      ];
     } finally {
       this.busy = false;
     }
@@ -1032,7 +1046,9 @@ export class WuiEngStudio extends LitElement {
                   </tbody>
                 </table>
               </div>
-              ${plan.warnings.length > 0 ? html`<div class="warn-text">${plan.warnings.map((w) => html`<div>⚠ ${w}</div>`)}</div>` : nothing}
+              ${plan.warnings.length > 0
+                ? html`<div class="warn-text">${plan.warnings.map((w) => html`<div>⚠ ${this.warnText(w)}</div>`)}</div>`
+                : nothing}
             `}
       ${this.report ? this.renderReport(this.report) : nothing}
     `;
