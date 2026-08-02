@@ -324,8 +324,8 @@ export class WuiEngStudio extends LitElement {
           <table class="grid">
             <thead>
               <tr>
-                <th>chemin</th><th>type</th><th>accès</th>
-                <th>type source</th><th>adresses (par mode)</th><th>commentaire</th>
+                <th>chemin</th><th>type</th><th>unité</th><th>accès</th>
+                <th>type source</th><th>gabarit</th><th>adresses (par mode)</th><th>commentaire</th>
               </tr>
             </thead>
             <tbody>
@@ -345,7 +345,9 @@ export class WuiEngStudio extends LitElement {
       <tr>
         <td class="mono dpe">${entry.path}</td>
         <td>${entry.leafType}${entry.unmapped ? html` <span class="chip conflict" title="type non mappé">?</span>` : nothing}</td>
+        <td class="unit">${entry.unit ?? html`<span class="soft">—</span>`}</td>
         <td><span class="chip acc">${entry.access}</span></td>
+        <td class="soft mono">${entry.sourceType}</td>
         <td class="soft">${entry.typeId ?? '—'}</td>
         <td class="addr-cell">
           ${ordered.length === 0

@@ -55,6 +55,24 @@ directions supported:
 
   ![Mutualisation: a catalog shared across equipments](../images/eng-studio/05-book-mutualisation.png)
 
+#### Two real-world catalogs in the demo
+
+**SENTRON PAC3200 (Siemens) — Modbus register map.** Modbus has no browse, so the
+book *is* the vendor register map: a **device-type catalog** mutualised across
+every meter. Offsets come from the PAC3200 manual `A5E01168664B-04` §3.9.3 (via
+the VC fiche `templates-import-tags-modbus-pac3200`): offset 1 → `40002` / `%MW2`,
+`REAL`/`LREAL`/`UDINT`, Big-Endian/Big-Endian, T1 energy counters at 2801+. Units
+(V, A, W, var, kWh…) ride along for the DPE unit config.
+
+![PAC3200 Modbus register catalog](../images/eng-studio/06-book-pac3200.png)
+
+**PackML (OMAC / ISA-TR88.00.02) — standard OPC UA interface.** The archetype of a
+mutualised book: one catalog describes the `Command` / `Status` / `Admin` PackTags
+of *every* PackML-compliant machine, bound to each machine's own OPC UA server at
+check-in. Here the bottling line and the case packer share it.
+
+![PackML standard OPC UA interface catalog](../images/eng-studio/07-book-packml.png)
+
 ### 2 · Modèle — book browser + signal grid
 
 Left, the **address-book browser** (filterable): each entry shows its WinCC OA leaf

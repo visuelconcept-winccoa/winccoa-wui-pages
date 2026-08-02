@@ -250,6 +250,11 @@ export const engStudioStyles = [
     .addr-cell {
       white-space: normal;
     }
+    td.unit {
+      color: var(--eng-primary);
+      font-family: 'Cascadia Code', 'Consolas', monospace;
+      font-size: 0.76rem;
+    }
     .addr-line {
       display: flex;
       align-items: center;

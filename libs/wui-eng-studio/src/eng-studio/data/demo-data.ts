@@ -31,6 +31,8 @@ import {
   DB_FOUR_OPTIMIZED_XML,
   UDT_MOTEUR_XML
 } from '@visuelconcept/wui-eng-core/samples/simaticml-fixtures.js';
+import { pac3200Book } from './pac3200.js';
+import { packMlBook } from './packml.js';
 
 // --- equipments (logical) — each references one or more books -----------------
 export const DEMO_DEVICES: Device[] = [
@@ -53,8 +55,21 @@ export const DEMO_DEVICES: Device[] = [
     driverNumber: 4,
     pollGroup: '_EngStudio_Poll',
     state: 'connected',
-    // AGGREGATION: two OPC UA interfaces, each an address book.
-    bookIds: ['book-opcua-remplisseuse', 'book-opcua-etiqueteuse']
+    // AGGREGATION: two machine-specific OPC UA interfaces + the PackML standard
+    // interface catalog (itself mutualised with the case packer below).
+    bookIds: ['book-opcua-remplisseuse', 'book-opcua-etiqueteuse', 'book-packml-v101']
+  },
+  {
+    id: 'ligne-encaisseuse',
+    name: 'Ligne_Encaisseuse',
+    protocol: 'opcua',
+    connection: { endpoint: 'opc.tcp://192.168.10.44:4840' },
+    accessModes: ['opcua'],
+    driverNumber: 4,
+    pollGroup: '_EngStudio_Poll',
+    state: 'connected',
+    // MUTUALISATION of a STANDARD interface: the same PackML catalog.
+    bookIds: ['book-packml-v101']
   },
   {
     id: 'z01-pompe1',
@@ -73,16 +88,29 @@ export const DEMO_DEVICES: Device[] = [
     state: 'disconnected',
     bookIds: ['book-catalogue-pompe']
   },
+  // Two SENTRON PAC3200 meters sharing ONE device-type register catalog
+  // (Modbus has no browse — the catalog IS the vendor register map).
   {
-    id: 'mb-compteurs',
-    name: 'MB_Compteurs',
+    id: 'pac-depart1',
+    name: 'Z02_PAC3200_Depart1',
     protocol: 'modbus',
-    connection: { ip: '192.168.10.60', unit: 1, endianness: 'big', base: 0 },
+    connection: { ip: '192.168.10.61', port: 502, unitId: 1, wordOrder: 'big', zeroBased: false },
+    accessModes: ['modbus'],
+    driverNumber: 5,
+    pollGroup: '_EngStudio_Poll',
+    state: 'connected',
+    bookIds: ['book-pac3200']
+  },
+  {
+    id: 'pac-depart2',
+    name: 'Z02_PAC3200_Depart2',
+    protocol: 'modbus',
+    connection: { ip: '192.168.10.62', port: 502, unitId: 1, wordOrder: 'big', zeroBased: false },
     accessModes: ['modbus'],
     driverNumber: 5,
     pollGroup: '_EngStudio_Poll',
     state: 'disconnected',
-    bookIds: []
+    bookIds: ['book-pac3200']
   }
 ];
 
@@ -181,7 +209,9 @@ export function demoBooks(): AddressBook[] {
       ['Etiqueteuse.EnMarche', 'ns=2;s=Etiqueteuse.EnMarche', 'Boolean', 'r'],
       ['Etiqueteuse.BourrageDetecte', 'ns=2;s=Etiqueteuse.BourrageDetecte', 'Boolean', 'r', 'Bourrage détecté']
     ]),
-    pompeCatalogueBook()
+    packMlBook(),
+    pompeCatalogueBook(),
+    pac3200Book('detailed')
   ];
 }
 

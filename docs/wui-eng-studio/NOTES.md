@@ -93,6 +93,33 @@ picks the candidate matching the device's mode.
   same "verify against the real system, not training data" culture as
   `docs/wui-para/NOTES.md` (the DPL `-filter` work).
 
+## Demo catalogs: sources and verification status
+
+The demo ships two catalogs built from real-world references, both **no-interface
+template books** (mutualised across equipments):
+
+- **SENTRON PAC3200** (`data/pac3200.ts`, Modbus) — offsets transcribed from the
+  Siemens manual **A5E01168664B-04 §3.9.3** through the VC knowledge-base fiche
+  `templates-import-tags-modbus-pac3200` (Industrial Edge import templates,
+  SIMPLE 15 / DETAILED 72 profiles). The offset↔notation triplets
+  (1 → `40002`/`%MW2`, 65 → `40066`, 801 → `40802`) are unit-tested in
+  `drivers/modbus.spec.ts`, and independently corroborated by public Modbus
+  integrations (voltage L1 at address 1, frequency at 55). Device facts carried
+  from the same source: Big-Endian/Big-Endian (no word swap), `Zero based
+  addressing` pitfall, T1 counters at 2801+ vs cumulated LREAL at 801+.
+- **PackML** (`data/packml.ts`, OPC UA) — tag names from the OPC Foundation
+  "OPC UA for PackML" companion spec (**OPC 30050**) and the OMAC implementation
+  guide, cross-checked on a vendor implementation (`StateCurrent` DINT,
+  `UnitModeCurrent` DINT, `CurMachSpeed` REAL). ⚠️ The spec reference pages could
+  not be opened directly (HTTP 403), so the catalog is a **faithful but
+  non-exhaustive subset** and its NodeIds are **illustrative** (`ns=4;s=…`) — a
+  real book comes from browsing the machine or ingesting the spec's NodeSet2.
+  Both caveats are surfaced as book warnings in the UI, not hidden.
+
+⚠️ Like `drivers/s7.ts`, `drivers/modbus.ts` leaves the WinCC OA
+`_address.._datatype` transformation constants at a sentinel
+(`MODBUS_DATATYPE_UNVERIFIED`) until verified against a live driver.
+
 ## What is proven
 
 - OPC UA address mapping (`drivers/opcua.ts`) is the **verified** tag-importer

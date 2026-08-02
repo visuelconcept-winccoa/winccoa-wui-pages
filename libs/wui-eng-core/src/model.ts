@@ -116,6 +116,8 @@ export interface BookEntry {
   addresses: Partial<Record<AccessMode, string>>;
   /** Source comment (→ DPE description). */
   comment?: string;
+  /** Engineering unit of the signal (→ DPE unit), e.g. `V`, `A`, `kWh`. */
+  unit?: string;
   /** Id of the source structured type (UDT) this entry belongs to, if any. */
   typeId?: string;
   /** True when the datatype could not be mapped (bound as default/String). */

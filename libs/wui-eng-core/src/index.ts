@@ -11,6 +11,7 @@ export * from './addressbook.js';
 export * from './configs/builders.js';
 export * from './drivers/opcua.js';
 export * from './drivers/s7.js';
+export * from './drivers/modbus.js';
 export * from './simaticml/xml.js';
 export * from './simaticml/offsets.js';
 export * from './simaticml/parse.js';
