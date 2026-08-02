@@ -49,6 +49,8 @@ export class WuiEngStudio extends LitElement {
   @state() private selectedDeviceId: string | null = null;
   @state() private book: AddressBook | null = null;
   @state() private bookFilter = '';
+  /** Filter for the signal table shown in the Devices panel's address book. */
+  @state() private signalFilter = '';
   @state() private workspace: Workspace | null = null;
   @state() private live: LiveSnapshot | null = null;
   @state() private plan: EngPlan | null = null;
@@ -197,35 +199,93 @@ export class WuiEngStudio extends LitElement {
           ? html`<button class="btn primary" ?disabled=${this.busy} @click=${this.onRefreshBook}>⟳ Rafraîchir le carnet</button>`
           : nothing}
       </div>
-      <div class="device-grid">
-        <section class="card">
-          <div class="card-title">Connexion</div>
-          <table class="kv">
-            ${Object.entries(device.connection).map(
-              ([k, v]) => html`<tr><td>${k}</td><td class="mono">${String(v)}</td></tr>`
-            )}
-            <tr><td>modes d'accès</td><td>${device.accessModes.map((m) => html`<span class="chip">${m}</span> `)}</td></tr>
-            <tr><td>driver</td><td class="mono">${device.driverNumber ?? '—'}</td></tr>
-          </table>
-        </section>
-        <section class="card">
-          <div class="card-title">Carnet d'adresses</div>
-          ${book
-            ? html`
-                <table class="kv">
-                  <tr><td>source</td><td>${book.provenance.kind}${book.provenance.file ? html` · <code>${book.provenance.file}</code>` : nothing}</td></tr>
-                  <tr><td>généré</td><td class="mono">${book.provenance.generatedAt.replace('T', ' ').slice(0, 16)}</td></tr>
-                  <tr><td>détail</td><td>${book.provenance.detail ?? '—'}</td></tr>
-                  <tr><td>entrées</td><td><b>${book.entries.length}</b> signaux · ${book.types.length} type(s)</td></tr>
-                  ${book.warnings.length > 0 ? html`<tr><td>avertissements</td><td class="warn-text">${book.warnings.length}</td></tr>` : nothing}
-                </table>
-              `
-            : html`<div class="empty small">Pas encore de carnet — ingérez un export SimaticML ou lancez un browse.</div>`}
-        </section>
+      <div class="panel-scroll">
+        <div class="device-grid">
+          <section class="card">
+            <div class="card-title">Connexion</div>
+            <table class="kv">
+              ${Object.entries(device.connection).map(
+                ([k, v]) => html`<tr><td>${k}</td><td class="mono">${String(v)}</td></tr>`
+              )}
+              <tr><td>modes d'accès</td><td>${device.accessModes.map((m) => html`<span class="chip">${m}</span> `)}</td></tr>
+              <tr><td>driver</td><td class="mono">${device.driverNumber ?? '—'}</td></tr>
+            </table>
+          </section>
+          <section class="card">
+            <div class="card-title">Carnet d'adresses</div>
+            ${book
+              ? html`
+                  <table class="kv">
+                    <tr><td>source</td><td>${book.provenance.kind}${book.provenance.file ? html` · <code>${book.provenance.file}</code>` : nothing}</td></tr>
+                    <tr><td>généré</td><td class="mono">${book.provenance.generatedAt.replace('T', ' ').slice(0, 16)}</td></tr>
+                    <tr><td>détail</td><td>${book.provenance.detail ?? '—'}</td></tr>
+                    <tr><td>entrées</td><td><b>${book.entries.length}</b> signaux · ${book.types.length} type(s)</td></tr>
+                    ${book.warnings.length > 0 ? html`<tr><td>avertissements</td><td class="warn-text">${book.warnings.length}</td></tr>` : nothing}
+                  </table>
+                `
+              : html`<div class="empty small">Pas encore de carnet — ingérez un export SimaticML ou lancez un browse.</div>`}
+          </section>
+        </div>
+        ${book && book.warnings.length > 0
+          ? html`<section class="card warnings"><div class="card-title">Avertissements du générateur</div><ul>${book.warnings.map((w) => html`<li>${w}</li>`)}</ul></section>`
+          : nothing}
+        ${book ? this.renderDeviceSignals(book) : nothing}
       </div>
-      ${book && book.warnings.length > 0
-        ? html`<section class="card warnings"><div class="card-title">Avertissements du générateur</div><ul>${book.warnings.map((w) => html`<li>${w}</li>`)}</ul></section>`
-        : nothing}
+    `;
+  }
+
+  /** Signal table of the current device's address book (in the Devices panel). */
+  private renderDeviceSignals(book: AddressBook): TemplateResult {
+    const entries = filterEntries(book, this.signalFilter);
+    const modes = this.currentDevice()?.accessModes ?? [];
+    return html`
+      <section class="card signals">
+        <div class="signals-head">
+          <div class="card-title">Signaux du carnet</div>
+          <input
+            class="filter"
+            placeholder="filtrer chemin ou commentaire…"
+            .value=${this.signalFilter}
+            @input=${(e: Event) => (this.signalFilter = (e.target as HTMLInputElement).value)}
+          />
+          <span class="soft signals-count">${entries.length} / ${book.entries.length}</span>
+        </div>
+        <div class="signals-scroll">
+          <table class="grid">
+            <thead>
+              <tr>
+                <th>chemin</th><th>type</th><th>accès</th>
+                <th>type source</th><th>adresses (par mode)</th><th>commentaire</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${entries.map((entry) => this.renderSignalRow(entry, modes))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    `;
+  }
+
+  private renderSignalRow(entry: BookEntry, deviceModes: string[]): TemplateResult {
+    // Order the candidate addresses by the device's access modes first.
+    const present = Object.keys(entry.addresses);
+    const ordered = [...deviceModes.filter((m) => present.includes(m)), ...present.filter((m) => !deviceModes.includes(m))];
+    return html`
+      <tr>
+        <td class="mono dpe">${entry.path}</td>
+        <td>${entry.leafType}${entry.unmapped ? html` <span class="chip conflict" title="type non mappé">?</span>` : nothing}</td>
+        <td><span class="chip acc">${entry.access}</span></td>
+        <td class="soft">${entry.typeId ?? '—'}</td>
+        <td class="addr-cell">
+          ${ordered.length === 0
+            ? html`<span class="soft">—</span>`
+            : ordered.map(
+                (mode) => html`<div class="addr-line"><span class="chip mode">${mode}</span><code>${entry.addresses[mode as keyof typeof entry.addresses]}</code></div>`
+              )}
+        </td>
+        <td class="soft comment">${entry.comment ?? ''}</td>
+      </tr>
     `;
   }
 

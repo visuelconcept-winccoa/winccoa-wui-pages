@@ -152,11 +152,56 @@ export const engStudioStyles = [
       color: var(--eng-success);
     }
     /* panel 1 */
+    .panel-scroll {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+    }
     .device-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 0.75rem;
       padding: 0.9rem;
+    }
+    .card.signals {
+      margin: 0 0.9rem 0.9rem;
+      padding: 0;
+    }
+    .signals-head {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.6rem 0.75rem;
+      border-bottom: 1px solid var(--eng-border);
+    }
+    .signals-head .card-title {
+      margin: 0;
+    }
+    .signals-head .filter {
+      flex: 1;
+      max-width: 22rem;
+    }
+    .signals-count {
+      font-size: 0.75rem;
+    }
+    .signals-scroll {
+      overflow: auto;
+    }
+    .addr-cell {
+      white-space: normal;
+    }
+    .addr-line {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.05rem 0;
+    }
+    .addr-line code {
+      color: var(--eng-text);
+    }
+    td.comment {
+      white-space: normal;
+      max-width: 18rem;
     }
     .card {
       background: var(--eng-surface);
