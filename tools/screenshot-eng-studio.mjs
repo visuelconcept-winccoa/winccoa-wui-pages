@@ -72,7 +72,8 @@ const DEVICE_SHOTS = [
   { device: 'ligne-embouteillage', file: '04-book-aggregation.png', desc: 'Agrégation : 2 interfaces OPC UA + PackML sur un équipement' },
   { device: 'z01-pompe1', file: '05-book-mutualisation.png', desc: 'Mutualisation : un carnet catalogue partagé entre équipements' },
   { device: 'pac-depart1', file: '06-book-pac3200.png', desc: 'PAC3200 : catalogue de registres Modbus mutualisé' },
-  { device: 'ligne-encaisseuse', file: '07-book-packml.png', desc: 'PackML : interface OPC UA standard mutualisée' }
+  { device: 'ligne-encaisseuse', file: '07-book-packml.png', desc: 'PackML : interface OPC UA standard mutualisée' },
+  { device: 'm580-station', file: '08-book-schneider-m580.png', desc: 'Schneider M580 : carnet depuis un export de variables Control Expert' }
 ];
 
 async function reachable(url) {

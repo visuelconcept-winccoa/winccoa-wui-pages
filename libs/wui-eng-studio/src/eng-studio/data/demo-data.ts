@@ -33,6 +33,7 @@ import {
 } from '@visuelconcept/wui-eng-core/samples/simaticml-fixtures.js';
 import { pac3200Book } from './pac3200.js';
 import { packMlBook } from './packml.js';
+import { m580StationBook } from './schneider.js';
 
 // --- equipments (logical) — each references one or more books -----------------
 export const DEMO_DEVICES: Device[] = [
@@ -87,6 +88,19 @@ export const DEMO_DEVICES: Device[] = [
     accessModes: ['s7plus', 'opcua'],
     state: 'disconnected',
     bookIds: ['book-catalogue-pompe']
+  },
+  // Schneider Modicon M580 — book generated from a Control Expert variables
+  // export (Modbus has no browse; UMAS symbolic browse is proprietary, see NOTES).
+  {
+    id: 'm580-station',
+    name: 'Z03_M580_Station',
+    protocol: 'modbus',
+    connection: { ip: '192.168.10.30', port: 502, unitId: 255, cpu: 'BMEP582040' },
+    accessModes: ['modbus'],
+    driverNumber: 5,
+    pollGroup: '_EngStudio_Poll',
+    state: 'connected',
+    bookIds: ['book-m580-station']
   },
   // Two SENTRON PAC3200 meters sharing ONE device-type register catalog
   // (Modbus has no browse — the catalog IS the vendor register map).
@@ -211,6 +225,7 @@ export function demoBooks(): AddressBook[] {
     ]),
     packMlBook(),
     pompeCatalogueBook(),
+    m580StationBook(),
     pac3200Book('detailed')
   ];
 }

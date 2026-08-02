@@ -120,6 +120,56 @@ template books** (mutualised across equipments):
 `_address.._datatype` transformation constants at a sentinel
 (`MODBUS_DATATYPE_UNVERIFIED`) until verified against a live driver.
 
+## Schneider (Modicon) — why a variables export, not the "extended Modbus"
+
+Schneider's **extended protocol over Modbus is UMAS** (Unified Messaging
+Application Services), carried on the **reserved function code 90 (0x5A)**: when
+a Modicon PLC receives a Modbus frame with FC `0x5A` it hands the payload to the
+UMAS layer instead of the standard Modbus handling. This is what Unity Pro /
+EcoStruxure Control Expert uses to configure, monitor and browse symbols
+(verified: Kaspersky ICS-CERT "The secrets of Schneider Electric's UMAS
+protocol", INCIBE-CERT, plus independent protocol analyses).
+
+It is deliberately **not** the studio's default generator:
+
+- it is **proprietary and undocumented by the vendor** — public knowledge comes
+  from reverse engineering, so any implementation is unsupported and version-
+  fragile (Unity OS ≥ 2.6 behaviours differ);
+- the same research published **security weaknesses** in UMAS (session-key
+  handling); emitting UMAS traffic from a SCADA server is a real OT-security
+  decision, not an implementation detail;
+- WinCC OA has no UMAS driver, so a UMAS browse would only ever feed the
+  *catalog*, never the runtime binding — the runtime stays standard Modbus.
+
+The supported path therefore mirrors the Siemens one (SimaticML export):
+`schneider/variables.ts` parses a **Control Expert data-editor variables export**
+(CSV/TSV, delimiter and column order auto-detected, EN/FR headers) and
+`schneider/address.ts` resolves located variables to the Modbus data model.
+
+**Verified mapping** (Schneider community + integrator documentation):
+`%MWn` → holding register `n` → `40001 + n` (`%MW0` → `40001`,
+`%MW4513` → `44514`); `%MD`/`%MF` overlay two `%MW` words; `%IW` → input
+register (`30001 + n`); `%M` → coil (`00001 + n`); `%I` → discrete input
+(`10001 + n`). Two facts are enforced rather than assumed:
+
+- **only located variables exist for a Modbus client** — a variable with no
+  address in the data editor is excluded with a warning;
+- **`%M` and `%I` share memory** on M340/M580 and which one FC1/FC2 actually
+  reads depends on the memory-management setting (Topological vs mixed
+  topological/state RAM) → every bit entry carries that note;
+- topological addresses (`%I0.2.3`) and non-verified prefixes (`%SW`, `%KW`) are
+  reported, never silently converted.
+
+The generator also detects **register overlaps** (a `DINT` at `%MW112` spanning
+112-113 against an `INT` at `%MW113`) — a classic "the value changes on its own"
+root cause. 21 unit tests cover the mapping and these checks.
+
+⚠️ The fixture (`samples/schneider-fixtures.ts`) is hand-authored in the shape of
+a data-editor export; re-calibrate against a **real** Control Expert export (and
+consider the native `.XVM` XML export as a second parser) when one is available.
+A UMAS-based online browse remains possible as an explicitly opt-in phase-2
+generator, with the security trade-off stated to the user.
+
 ## What is proven
 
 - OPC UA address mapping (`drivers/opcua.ts`) is the **verified** tag-importer

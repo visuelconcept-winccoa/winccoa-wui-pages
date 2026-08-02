@@ -79,11 +79,32 @@ export function modbusDatatypeCode(_dataType: ModbusDataType): number {
 }
 
 /**
- * Standard Modbus holding-register notation of a vendor-table 1-based offset:
- * `40001 + offset` (offset 1 → `40002`, offset 65 → `40066`).
+ * Standard Modbus **holding register** (4x) notation of a register index:
+ * `40001 + index`.
+ *
+ * The meaning of `index` is source-specific — the notation is not:
+ *  - vendor register tables (SENTRON PAC3200) give a **1-based table offset**
+ *    → offset 1 → `40002`;
+ *  - Schneider located variables give the **`%MW` number (0-based)**
+ *    → `%MW0` → `40001`, `%MW4513` → `44514`.
  */
 export function modbusHoldingRef(offset: number): string {
   return String(40_001 + offset);
+}
+
+/** Standard Modbus **coil** (0x) notation: `00001 + index` (`%M0` → `00001`). */
+export function modbusCoilRef(index: number): string {
+  return `0${String(index + 1).padStart(4, '0')}`;
+}
+
+/** Standard Modbus **discrete input** (1x) notation: `10001 + index`. */
+export function modbusDiscreteInputRef(index: number): string {
+  return String(10_001 + index);
+}
+
+/** Standard Modbus **input register** (3x) notation: `30001 + index`. */
+export function modbusInputRegisterRef(index: number): string {
+  return String(30_001 + index);
 }
 
 /**

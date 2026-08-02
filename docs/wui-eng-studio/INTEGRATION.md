@@ -86,6 +86,13 @@ To harden the **SimaticML/TIA** path against real data, please provide:
 3. Confirmation of the **S7 `_datatype` transformation codes** and a
    **standard-DB offset** sample from a live project, to lift the sentinels in
    `drivers/s7.ts` / verify `simaticml/offsets.ts`.
+4. A **real Control Expert variables export** (data editor → Export; the native
+   `.XVM` XML is welcome too) to calibrate `schneider/variables.ts` on actual
+   column sets, plus the WinCC OA **Modbus driver `_datatype` codes** to lift the
+   `MODBUS_DATATYPE_UNVERIFIED` sentinel.
+5. If a UMAS-based online browse is wanted (Schneider's extended Modbus, FC
+   `0x5A`), an explicit go/no-go: it is proprietary and security-sensitive — see
+   NOTES.md.
 
 Until (1) and (3) arrive, the S7 SimaticML path stays behind its verification
 markers (NOTES "verified vs pending"); OPC UA is already on the verified

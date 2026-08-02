@@ -73,6 +73,24 @@ check-in. Here the bottling line and the case packer share it.
 
 ![PackML standard OPC UA interface catalog](../images/eng-studio/07-book-packml.png)
 
+**Schneider Modicon M580 — from a Control Expert variables export.** A *project*
+book (it carries the PLC's own Modbus interface, unlike the PAC3200 template).
+The generator turns located variables into Modbus references — `%MW100` → `40101`,
+`%MF104` → `40105`, `%M10` → coil `00011`, `%IW200` → input register `30201`
+(read-only) — and runs the checks that make a Modbus book trustworthy: register
+**overlaps**, **unlocated** variables (invisible to any Modbus client),
+**topological** addresses (`%I0.2.3`, not Modbus-addressable) and unmapped derived
+types. All four are surfaced as book warnings:
+
+![Schneider M580 book from a Control Expert export](../images/eng-studio/08-book-schneider-m580.png)
+
+> **Why an export and not the "extended Modbus"?** Schneider's symbolic access
+> rides on **UMAS**, the vendor extension of Modbus on reserved function code
+> **90 (0x5A)** used by Control Expert. It is undocumented by Schneider (publicly
+> described only through reverse engineering, with published vulnerabilities), so
+> the studio's default path is the offline variables export — same symbols, no
+> proprietary traffic on the OT network. See [NOTES.md](./NOTES.md).
+
 ### 2 · Modèle — book browser + signal grid
 
 Left, the **address-book browser** (filterable): each entry shows its WinCC OA leaf
