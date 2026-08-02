@@ -58,6 +58,15 @@ export const engStudioStyles = [
       color: var(--eng-text);
       border-color: var(--eng-primary);
     }
+    .lang-picker {
+      background: var(--eng-bg);
+      color: var(--eng-soft);
+      border: 1px solid var(--eng-border);
+      border-radius: var(--eng-radius);
+      padding: 0.2rem 0.3rem;
+      font: inherit;
+      font-size: 0.72rem;
+    }
     .notice {
       padding: 0.35rem 0.9rem;
       background: var(--eng-surface-2);

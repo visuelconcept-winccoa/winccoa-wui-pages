@@ -45,16 +45,21 @@ export const SIGNAL_ROLES: SignalRole[] = [
   'unknown'
 ];
 
-/** Short tri-lingual-ish labels (FR first — the studio's UI language). */
+/**
+ * Default (English) labels. The core is the untranslated engine layer — every
+ * message it produces is English; the page localises its own strings and its own
+ * role labels (`eng-studio/i18n.ts` → `ROLE_LABEL`). These remain the fallback for
+ * any consumer without an i18n layer.
+ */
 export const SIGNAL_ROLE_LABEL: Record<SignalRole, string> = {
-  measure: 'mesure',
-  setpoint: 'consigne',
-  command: 'commande',
-  state: 'état',
-  alarm: 'alarme',
-  counter: 'compteur',
-  parameter: 'paramètre',
-  unknown: 'à qualifier'
+  measure: 'measure',
+  setpoint: 'setpoint',
+  command: 'command',
+  state: 'state',
+  alarm: 'alarm',
+  counter: 'counter',
+  parameter: 'parameter',
+  unknown: 'to qualify'
 };
 
 /** Where a role came from — manual always wins over a rule. */

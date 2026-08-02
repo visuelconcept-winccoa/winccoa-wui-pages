@@ -80,25 +80,25 @@ describe('buildBookFromSchneiderExport', () => {
   it('excludes an unlocated variable and says why', () => {
     const result = book();
     expect(result.entries.some((e) => e.path === 'Recette_Courante')).toBe(false);
-    expect(result.warnings.join('\n')).toMatch(/Recette_Courante.*non localisée/);
+    expect(result.warnings.join('\n')).toMatch(/Recette_Courante.*is not located/);
   });
 
   it('excludes a topological address and says why', () => {
     const result = book();
     expect(result.entries.some((e) => e.path === 'Securite_Niveau_Bas')).toBe(false);
-    expect(result.warnings.join('\n')).toMatch(/Securite_Niveau_Bas.*topologique/);
+    expect(result.warnings.join('\n')).toMatch(/Securite_Niveau_Bas.*topological address/);
   });
 
   it('detects the register overlap between a DINT and the next word', () => {
     const result = book();
-    expect(result.warnings.join('\n')).toMatch(/Chevauchement de registre 113 entre « Debit_Brut » et « Niveau_Cuve »/);
+    expect(result.warnings.join('\n')).toMatch(/Register 113 overlaps between "Debit_Brut" and "Niveau_Cuve"/);
   });
 
   it('keeps a derived-type variable but marks it unmapped', () => {
     const entry = book().entries.find((e) => e.path === 'Bloc_Regulation');
     expect(entry?.unmapped).toBe(true);
     expect(entry?.leafType).toBe('String');
-    expect(book().warnings.join('\n')).toMatch(/PID_Params.*sans correspondance vérifiée/);
+    expect(book().warnings.join('\n')).toMatch(/PID_Params.*has no verified mapping/);
   });
 
   it('carries the PLC interface and the provenance', () => {
@@ -110,6 +110,6 @@ describe('buildBookFromSchneiderExport', () => {
   it('falls back to positional columns when no header is recognised', () => {
     const result = book('Pompe_Marche\t%MW10\tINT\tsans en-tête\n');
     expect(result.entries[0]).toMatchObject({ path: 'Pompe_Marche', addresses: { modbus: '40011' } });
-    expect(result.warnings.join('\n')).toMatch(/Aucun en-tête reconnu/);
+    expect(result.warnings.join('\n')).toMatch(/No recognised header/);
   });
 });

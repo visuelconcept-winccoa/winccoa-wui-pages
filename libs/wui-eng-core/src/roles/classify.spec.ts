@@ -39,7 +39,7 @@ describe('layer 1 — structural', () => {
   it('explains itself (reason + rule id)', () => {
     const assignment = classifyEntry(entry('X', 'Float', 'r', { unit: '°C' }));
     expect(assignment).toMatchObject({ source: 'rule', ruleId: 'struct-numeric-unit' });
-    expect(assignment.reason).toMatch(/unité physique/);
+    expect(assignment.reason).toMatch(/physical unit/);
   });
 });
 
@@ -118,7 +118,7 @@ describe('override and unknown', () => {
   it('leaves an entry unknown when no rule matches (never a silent default)', () => {
     const assignment = classifyEntry(entry('Truc', 'Dpid' as OaLeafType, 'r'), []);
     expect(assignment).toMatchObject({ role: 'unknown', source: 'none' });
-    expect(assignment.reason).toMatch(/à qualifier/);
+    expect(assignment.reason).toMatch(/must be qualified/);
   });
 
   it('an invalid regex in a project rule never throws (rule just does not match)', () => {

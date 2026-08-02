@@ -68,11 +68,11 @@ describe('direction vs declared access (AccessLevel reconciliation)', () => {
   it('a write intent on a DECLARED read-only signal is downgraded, with a note', () => {
     const command = configsForRole(entry('r'), 'command');
     expect(command.direction).toBe(DpAddressDirection.INPUT_POLL);
-    expect(command.directionNote).toContain('LECTURE SEULE');
+    expect(command.directionNote).toContain('READ-ONLY');
 
     const setpoint = configsForRole(entry('r'), 'setpoint');
     expect(setpoint.direction).toBe(DpAddressDirection.INPUT_POLL);
-    expect(setpoint.directionNote).toContain('LECTURE SEULE');
+    expect(setpoint.directionNote).toContain('READ-ONLY');
   });
 
   it('the ROLE wins when the access is only ASSUMED (browse without AccessLevel)', () => {
@@ -87,14 +87,14 @@ describe('direction vs declared access (AccessLevel reconciliation)', () => {
   it('a MANUAL access is evidence like a declared one', () => {
     const command = configsForRole(entry('r', { accessSource: 'manual' }), 'command');
     expect(command.direction).toBe(DpAddressDirection.INPUT_POLL);
-    expect(command.directionNote).toContain('LECTURE SEULE');
+    expect(command.directionNote).toContain('READ-ONLY');
     expect(configsForRole(entry('rw', { accessSource: 'manual' }), 'command').direction).toBe(DpAddressDirection.OUTPUT);
   });
 
   it('a setpoint on a WRITE-ONLY signal becomes OUT, and says the read-back is lost', () => {
     const setpoint = configsForRole(entry('w'), 'setpoint');
     expect(setpoint.direction).toBe(DpAddressDirection.OUTPUT);
-    expect(setpoint.directionNote).toContain('ÉCRITURE SEULE');
+    expect(setpoint.directionNote).toContain('WRITE-ONLY');
   });
 
   it('a read intent stays IN even on a writable signal (no unused write path)', () => {

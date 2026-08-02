@@ -174,6 +174,14 @@ the page for `registerModuleRoles`), OPEN until an admin assigns groups:
 The page gates its affordances via `hasRole$`; the backend enforces the same on
 the write routes.
 
+## Language
+
+The page renders in EN / FR / DE. Set the element's `lang` attribute from the shell
+(`<wui-eng-studio lang="de_AT.utf8">` — WinCC OA locale identifiers are accepted) or
+let it resolve `?lang=` → `<html lang>` → `navigator.language` → English. A picker in
+the top bar switches it live. Core-generated warnings stay English in every language
+— see NOTES "Localisation boundary".
+
 ## Prerequisites
 
 - **Frontend**: none beyond the runtime (the page uses only `lit`).

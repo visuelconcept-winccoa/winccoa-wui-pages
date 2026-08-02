@@ -175,7 +175,7 @@ function mirrorLeaves(
 ): { leaves: Leaf[]; type: EngType } {
   const strip = (options.stripCommonPrefix ?? true) ? commonPrefix(selected.map((e) => e.path)).length : 0;
   if (strip > 0) {
-    warnings.push(`Préfixe commun « ${selected[0].path.split('.').slice(0, strip).join('.')} » retiré des chemins.`);
+    warnings.push(`Common prefix "${selected[0].path.split('.').slice(0, strip).join('.')}" stripped from the paths.`);
   }
   const leaves: Leaf[] = [];
   const usedPerParent = new Map<string, Set<string>>();
@@ -194,7 +194,7 @@ function mirrorLeaves(
       segments.push(name);
     }
     if (segments.length === 0) {
-      warnings.push(`Signal « ${entry.path} » sans nom exploitable — ignoré.`);
+      warnings.push(`Signal "${entry.path}" has no usable name — skipped.`);
       continue;
     }
     leaves.push({ segments, leafType: entry.leafType, entry });
@@ -250,21 +250,21 @@ function mappedLeaves(
 
   if (unbound.length > 0) {
     warnings.push(
-      `${unbound.length} élément(s) du modèle sans signal associé — DPE créés SANS config : ${unbound.slice(0, 8).join(', ')}${unbound.length > 8 ? ' …' : ''}`
+      `${unbound.length} model element(s) with no mapped signal — DPEs created WITHOUT any config: ${unbound.slice(0, 8).join(', ')}${unbound.length > 8 ? ' …' : ''}`
     );
   }
   if (dangling.length > 0) {
-    warnings.push(`${dangling.length} association(s) pointant vers un signal absent du carnet : ${dangling.slice(0, 5).join(' · ')}`);
+    warnings.push(`${dangling.length} mapping(s) point at a signal the book does not have: ${dangling.slice(0, 5).join(' · ')}`);
   }
   if (mismatched.length > 0) {
     warnings.push(
-      `${mismatched.length} association(s) avec un TYPE DIFFÉRENT (le type du modèle est conservé) : ${mismatched.slice(0, 5).join(' · ')}`
+      `${mismatched.length} mapping(s) with a DIFFERENT TYPE (the model's type is kept): ${mismatched.slice(0, 5).join(' · ')}`
     );
   }
   const bound = new Set(leaves.map((leaf) => leaf.entry.path));
   const unused = selected.filter((entry) => !bound.has(entry.path)).length;
   if (unused > 0) {
-    warnings.push(`${unused} signal(aux) du carnet non utilisé(s) par le modèle (association partielle assumée).`);
+    warnings.push(`${unused} book signal(s) unused by the model (partial mapping assumed).`);
   }
   return { leaves, type: { typeName: options.typeName, structure } };
 }
@@ -280,7 +280,7 @@ export function generateModelFromBook(book: AddressBook, options: ModelGenOption
     ? book.entries
     : book.entries.filter((entry) => options.selection?.includes(entry.path));
   if (selected.length === 0) {
-    warnings.push('Aucun signal sélectionné — rien à générer.');
+    warnings.push('No signal selected — nothing to generate.');
   }
 
   // --- leaves + type: MIRROR the book, or follow the AUTHORED structure -------
@@ -300,7 +300,7 @@ export function generateModelFromBook(book: AddressBook, options: ModelGenOption
     dps.push({ dpName: name, dpType: options.typeName, descriptions });
   }
   if (dps.length === 0) {
-    warnings.push('Aucun équipement fourni — le type est généré sans datapoint.');
+    warnings.push('No device supplied — the type is generated without any datapoint.');
   }
 
   // --- configs per DPE ------------------------------------------------------
@@ -360,30 +360,30 @@ export function generateModelFromBook(book: AddressBook, options: ModelGenOption
   const perDp = dps.length === 0 ? 1 : dps.length;
   if (unknownCount > 0) {
     warnings.push(
-      `${unknownCount / perDp} signal(aux) non qualifié(s) : leurs DPE sont créés mais AUCUNE config n’est générée — qualifier puis régénérer.`
+      `${unknownCount / perDp} unqualified signal(s): their DPEs are created but NO config is generated — qualify them, then regenerate.`
     );
   }
   if (missingAddress > 0) {
-    warnings.push(`${missingAddress / perDp} signal(aux) sans adresse pour le mode « ${mode} » — DPE créé sans adresse périphérique.`);
+    warnings.push(`${missingAddress / perDp} signal(s) with no address for mode "${mode}" — DPE created without a peripheral address.`);
   }
   if (unresolvedReference > 0) {
     warnings.push(
-      `${unresolvedReference / perDp} signal(aux) issus d’un catalogue non lié : fournir la connexion cible pour résoudre la référence (placeholder non substitué).`
+      `${unresolvedReference / perDp} signal(s) from an unbound catalog: supply the target connection to resolve the reference (placeholder left as-is).`
     );
   }
   if (directionNotes.size > 0) {
     warnings.push(
-      `Direction d’adresse ajustée pour ${directionNotes.size} signal(aux) — le rôle demandait l’écriture, l’accès déclaré par la source ne la permet pas : ${[...directionNotes].slice(0, 5).join(' · ')}${directionNotes.size > 5 ? ' …' : ''}`
+      `Address direction adjusted for ${directionNotes.size} signal(s) — the role asked to write, the access declared by the source does not allow it: ${[...directionNotes].slice(0, 5).join(' · ')}${directionNotes.size > 5 ? ' …' : ''}`
     );
   }
   if (assumedAccess > 0) {
     warnings.push(
-      `Accès NON DÉCLARÉ pour ${assumedAccess / perDp} signal(aux) (parcours sans AccessLevel) : la direction vient du rôle seul — vérifier que les commandes/consignes sont bien accessibles en écriture sur l’équipement.`
+      `Access NOT DECLARED for ${assumedAccess / perDp} signal(s) (a walk without AccessLevel): the direction comes from the role alone — check that the commands/setpoints really are writable on the device.`
     );
   }
   if (unverifiedDatatype > 0) {
     warnings.push(
-      `Transformation « _datatype » du driver « ${mode} » NON VÉRIFIÉE (valeur sentinelle) — à confirmer sur système réel avant check-in.`
+      `The "${mode}" driver's "_datatype" transformation is UNVERIFIED (sentinel value) — confirm it on a real system before checking in.`
     );
   }
   return { type, dps, configs, warnings, roleCounts };

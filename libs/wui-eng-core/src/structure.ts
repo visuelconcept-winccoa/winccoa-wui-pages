@@ -129,7 +129,7 @@ export function parseStructureOutline(text: string, rootName: string): OutlinePa
     const expanded = raw.replaceAll('\t', INDENT);
     const spaces = expanded.length - expanded.trimStart().length;
     if (spaces % INDENT.length !== 0) {
-      errors.push(`ligne ${lineNumber} : indentation de ${spaces} espace(s) — utiliser des multiples de ${INDENT.length}`);
+      errors.push(`line ${lineNumber}: indented by ${spaces} space(s) — use multiples of ${INDENT.length}`);
     }
     const depth = Math.floor(spaces / INDENT.length);
     const body = expanded.trim();
@@ -137,16 +137,16 @@ export function parseStructureOutline(text: string, rootName: string): OutlinePa
     const name = (colon === -1 ? body : body.slice(0, colon)).trim();
     const typeText = colon === -1 ? '' : body.slice(colon + 1).trim();
     if (name === '') {
-      errors.push(`ligne ${lineNumber} : nom d’élément vide`);
+      errors.push(`line ${lineNumber}: empty element name`);
       continue;
     }
     const clean = sanitizeSegment(name);
     if (clean === '') {
-      errors.push(`ligne ${lineNumber} : « ${name} » ne donne aucun identifiant WinCC OA valide`);
+      errors.push(`line ${lineNumber}: "${name}" yields no valid WinCC OA identifier`);
       continue;
     }
     if (clean !== name) {
-      errors.push(`ligne ${lineNumber} : « ${name} » assaini en « ${clean} »`);
+      errors.push(`line ${lineNumber}: "${name}" sanitised to "${clean}"`);
     }
     if (typeText === '') {
       rows.push({ depth, name: clean, line: lineNumber });
@@ -154,7 +154,7 @@ export function parseStructureOutline(text: string, rootName: string): OutlinePa
     }
     const leafType = LEAF_TYPE_BY_LOWER.get(typeText.toLowerCase());
     if (leafType === undefined) {
-      errors.push(`ligne ${lineNumber} : type « ${typeText} » inconnu — attendu : ${OUTLINE_LEAF_TYPES.join(', ')}`);
+      errors.push(`line ${lineNumber}: unknown type "${typeText}" — expected one of: ${OUTLINE_LEAF_TYPES.join(', ')}`);
       continue;
     }
     rows.push({ depth, name: clean, type: leafType, line: lineNumber });
@@ -178,13 +178,13 @@ export function parseStructureOutline(text: string, rootName: string): OutlinePa
   const stack: DpTypeStructure[] = [root];
   for (const row of body) {
     if (row.depth > stack.length - 1) {
-      errors.push(`ligne ${row.line} : « ${row.name} » indenté trop profondément (pas de parent à ce niveau)`);
+      errors.push(`line ${row.line}: "${row.name}" is indented too deep (no parent at that level)`);
       continue;
     }
     const parent = stack[row.depth];
     parent.children ??= [];
     if (parent.children.some((child) => child.name === row.name)) {
-      errors.push(`ligne ${row.line} : « ${row.name} » en doublon sous « ${parent.name} »`);
+      errors.push(`line ${row.line}: "${row.name}" duplicated under "${parent.name}"`);
       continue;
     }
     const node: DpTypeStructure =

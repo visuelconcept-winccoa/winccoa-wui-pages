@@ -4,7 +4,9 @@
 /**
  * Offline demo entry — mounts the studio with the in-memory DemoEngGateway,
  * so the page runs (and is screenshotted) WITHOUT any WinCC OA runtime.
- * A `?panel=` query selects the initial panel (used by the screenshot tool).
+ * `?panel=` selects the initial panel and `?lang=en|fr|de` the UI language — both
+ * used by the screenshot pipeline (the element resolves `?lang=` itself, see
+ * i18n.ts; this entry only needs to forward `?panel=`).
  */
 import '../src/eng-studio.js';
 import type { WuiEngStudio } from '../src/eng-studio.js';

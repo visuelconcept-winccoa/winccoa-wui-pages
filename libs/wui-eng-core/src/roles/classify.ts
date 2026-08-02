@@ -86,42 +86,42 @@ export const DEFAULT_ROLE_RULES: RoleRule[] = [
     priority: 44,
     role: 'measure',
     when: { namePattern: '^AI_' },
-    note: 'convention VC : préfixe AI_ (entrée analogique)'
+    note: 'VC convention: AI_ prefix (analog input)'
   },
   {
     id: 'vc-prefix-calc',
     priority: 44,
     role: 'measure',
     when: { namePattern: '^CALC_' },
-    note: 'convention VC : préfixe CALC_ (valeur calculée)'
+    note: 'VC convention: CALC_ prefix (computed value)'
   },
   {
     id: 'vc-prefix-ao',
     priority: 44,
     role: 'setpoint',
     when: { namePattern: '^AO_' },
-    note: 'convention VC : préfixe AO_ (sortie analogique)'
+    note: 'VC convention: AO_ prefix (analog output)'
   },
   {
     id: 'vc-prefix-do',
     priority: 44,
     role: 'command',
     when: { namePattern: '^DO_' },
-    note: 'convention VC : préfixe DO_ (sortie digitale)'
+    note: 'VC convention: DO_ prefix (digital output)'
   },
   {
     id: 'vc-prefix-di',
     priority: 44,
     role: 'state',
     when: { namePattern: '^DI_' },
-    note: 'convention VC : préfixe DI_ (entrée digitale)'
+    note: 'VC convention: DI_ prefix (digital input)'
   },
   {
     id: 'name-alarm',
     priority: 38,
     role: 'alarm',
     when: { namePattern: '(defaut|fault|alarm|alarme|trip|bourrage|securite)' },
-    note: 'nom évoquant un défaut / une alarme'
+    note: 'name suggesting a fault / an alarm'
   },
   {
     // An ENERGY unit is unambiguously cumulative (kWh, kvarh, kVAh…), which
@@ -132,7 +132,7 @@ export const DEFAULT_ROLE_RULES: RoleRule[] = [
     priority: 37,
     role: 'counter',
     when: { unitPattern: '^(k|m)?(w|var|va)h$', leafTypes: NUMERIC },
-    note: 'unité d’énergie (cumulative) → compteur'
+    note: 'energy unit (cumulative) → counter'
   },
   {
     id: 'name-counter',
@@ -142,21 +142,21 @@ export const DEFAULT_ROLE_RULES: RoleRule[] = [
       namePattern: '(compteur|counter|count|totalis|energie|energy|^nb_|_hours?$|horaire|volume)',
       leafTypes: NUMERIC
     },
-    note: 'nom évoquant un totalisateur / compteur'
+    note: 'name suggesting a totaliser / counter'
   },
   {
     id: 'name-setpoint',
     priority: 34,
     role: 'setpoint',
     when: { namePattern: '(consigne|setpoint|_sp$|tolerance)' },
-    note: 'nom évoquant une consigne'
+    note: 'name suggesting a setpoint'
   },
   {
     id: 'name-command',
     priority: 33,
     role: 'command',
     when: { namePattern: '^(marche|arret|start|stop|cmd|commande|ordre|reset|acquit|open|close)' },
-    note: 'nom évoquant une commande'
+    note: 'name suggesting a command'
   },
   // --- layer 2: source path / prefix ----------------------------------------
   {
@@ -164,35 +164,35 @@ export const DEFAULT_ROLE_RULES: RoleRule[] = [
     priority: 26,
     role: 'command',
     when: { pathPattern: BRANCH('commande?s?') },
-    note: 'branche « Command(e/s) » de la source (ex. PackML, TIA)'
+    note: '"Command(s)" branch of the source (e.g. PackML, TIA)'
   },
   {
     id: 'path-measure',
     priority: 25,
     role: 'measure',
     when: { pathPattern: BRANCH('mesures?|measures?') },
-    note: 'branche « Mesures » de la source'
+    note: '"Measures" branch of the source'
   },
   {
     id: 'path-setpoint',
     priority: 25,
     role: 'setpoint',
     when: { pathPattern: BRANCH('consignes?|setpoints?') },
-    note: 'branche « Consignes » de la source'
+    note: '"Setpoints" branch of the source'
   },
   {
     id: 'path-state',
     priority: 24,
     role: 'state',
     when: { pathPattern: BRANCH('status|etat|état') },
-    note: 'branche « Status/État » de la source'
+    note: '"Status/State" branch of the source'
   },
   {
     id: 'path-admin',
     priority: 22,
     role: 'parameter',
     when: { pathPattern: BRANCH('admin') },
-    note: 'branche « Admin » de la source (ex. PackML)'
+    note: '"Admin" branch of the source (e.g. PackML)'
   },
   {
     // PHYSICAL-QUANTITY words sit BELOW the path rules on purpose: they say what
@@ -204,7 +204,7 @@ export const DEFAULT_ROLE_RULES: RoleRule[] = [
     priority: 21,
     role: 'measure',
     when: { namePattern: '(mesure|_pv$|temperature|pression|debit|niveau|poids|tension|courant|vitesse|cadence|hygrometrie)' },
-    note: 'nom de grandeur physique → mesure'
+    note: 'physical-quantity name → measure'
   },
   // --- layer 1: structural (datatype + access + unit) -----------------------
   {
@@ -212,42 +212,42 @@ export const DEFAULT_ROLE_RULES: RoleRule[] = [
     priority: 15,
     role: 'command',
     when: { leafTypes: ['Bool'], access: ['w', 'rw'] },
-    note: 'booléen inscriptible → commande'
+    note: 'writable boolean → command'
   },
   {
     id: 'struct-bool-read',
     priority: 14,
     role: 'state',
     when: { leafTypes: ['Bool'], access: ['r'] },
-    note: 'booléen en lecture seule → état'
+    note: 'read-only boolean → state'
   },
   {
     id: 'struct-numeric-write',
     priority: 13,
     role: 'setpoint',
     when: { leafTypes: NUMERIC, access: ['w', 'rw'] },
-    note: 'numérique inscriptible → consigne'
+    note: 'writable numeric → setpoint'
   },
   {
     id: 'struct-numeric-unit',
     priority: 12,
     role: 'measure',
     when: { leafTypes: NUMERIC, access: ['r'], hasUnit: true },
-    note: 'numérique en lecture seule avec unité physique → mesure'
+    note: 'read-only numeric with a physical unit → measure'
   },
   {
     id: 'struct-numeric-read',
     priority: 11,
     role: 'measure',
     when: { leafTypes: NUMERIC, access: ['r'] },
-    note: 'numérique en lecture seule → mesure (à confirmer, pas d’unité)'
+    note: 'read-only numeric → measure (to confirm, no unit)'
   },
   {
     id: 'struct-text',
     priority: 10,
     role: 'parameter',
     when: { leafTypes: ['String', 'LangString', 'Blob', 'Time', 'Bit32'] },
-    note: 'donnée non numérique → paramètre'
+    note: 'non-numeric data → parameter'
   }
 ];
 
@@ -299,14 +299,14 @@ export function orderedRules(rules: RoleRule[]): RoleRule[] {
  */
 export function classifyEntry(entry: BookEntry, rules: RoleRule[] = DEFAULT_ROLE_RULES, manual?: SignalRole): RoleAssignment {
   if (manual !== undefined) {
-    return { role: manual, source: 'manual', ruleId: null, reason: 'rôle défini manuellement' };
+    return { role: manual, source: 'manual', ruleId: null, reason: 'role set manually' };
   }
   for (const rule of orderedRules(rules)) {
     if (ruleMatches(rule, entry)) {
       return { role: rule.role, source: 'rule', ruleId: rule.id, reason: rule.note ?? rule.id };
     }
   }
-  return { role: 'unknown', source: 'none', ruleId: null, reason: 'aucune règle ne correspond — à qualifier' };
+  return { role: 'unknown', source: 'none', ruleId: null, reason: 'no rule matched — must be qualified' };
 }
 
 /**

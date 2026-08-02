@@ -462,6 +462,34 @@ Part 6 — **not** vendor exports. The OPC Foundation pages for the PackML compa
 spec return HTTP 403 from this environment, so a real companion-spec NodeSet is
 still to be calibrated against (see INTEGRATION "Inputs still needed").
 
+## Localisation boundary
+
+The page is EN / FR / DE; the **core is English, in every language**. That line is
+deliberate, and it is where it is for two reasons:
+
+- `wui-eng-core` is a pure library with no i18n layer, and adding one would mean
+  making `warnings: string[]` a structured `{code, params}` shape — which is stored
+  in the book files, returned by the API and consumed by the backend. A localisation
+  concern should not reshape the engineering contract.
+- Its messages are part of its API: tests assert on them, the backend logs them, and
+  a warning quoted in a bug report should read the same everywhere.
+
+Consequence, stated plainly: a French or German operator sees a localised UI with
+**English generator warnings**. If that is not acceptable, the fix is
+`EngWarning { code, message, params }` in the core plus a code→`ml()` table in the
+page, falling back to `message` for unknown codes — a contained refactor of the ~57
+warning sites, not a redesign. Not done: it is a real cost and nobody has asked for
+localised engine messages yet.
+
+Two smaller decisions inside the page's i18n:
+- the module is **self-contained** (its own `ml()`/resolver) rather than importing
+  `@wincc-oa/wui-i18n-shared`, because the page must render in the offline demo and
+  the screenshot pipeline where no `@wincc-oa/*` package exists — the same reason it
+  depends on `lit` only;
+- the reactive state is `uiLang`, **not** `lang`: that would shadow the native
+  `HTMLElement.lang` property, which Lit does not observe anyway. The element's
+  `lang` attribute is read once at connect time instead.
+
 ## Backend: the runtime seam, and where the honesty lives
 
 The backend is deliberately thin — three files, no manager. Endpoint table, store

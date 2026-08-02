@@ -59,7 +59,7 @@ const BUILTIN_DATATYPE: Record<string, string> = {
 const KNOWN_TYPE_NAMES = new Set(Object.values(BUILTIN_DATATYPE));
 
 /** Connection placeholder of a template address (substituted at generation). */
-const CONNECTION_PLACEHOLDER = '<Connexion>';
+const CONNECTION_PLACEHOLDER = '<Connection>';
 
 /** Recursion guard: a NodeSet's HasComponent graph can be deep and cyclic. */
 const MAX_MEMBER_DEPTH = 12;
@@ -334,24 +334,24 @@ export function buildBookFromNodeSet(options: NodeSetBookOptions & { xml: string
   }
 
   const warnings: string[] = [
-    `⚠️ Les NodeId d’un NodeSet2 sont LOCAUX AU FICHIER : les index de namespace du serveur réel diffèrent presque toujours. Les adresses ci-dessous sont des CANDIDATES (placeholder « ${CONNECTION_PLACEHOLDER} ») — les vérifier sur le serveur, ou régénérer le carnet par un parcours en ligne, avant tout check-in.`
+    `⚠️ NodeSet2 NodeIds are FILE-LOCAL: a real server almost always assigns different namespace indices. The addresses below are CANDIDATES (placeholder "${CONNECTION_PLACEHOLDER}") — verify them against the server, or regenerate the book with an online browse, before any check-in.`
   ];
   if (instances.length === 0 && objectTypes.length > 0) {
     warnings.push(
-      `Aucune instance déclarée dans le fichier : ${objectTypes.length} type(s) catalogué(s) en GABARIT (racine = nom du type) — carnet mutualisable, à lier à chaque équipement à la génération.`
+      `No instance declared in the file: ${objectTypes.length} type(s) catalogued as TEMPLATES (rooted at the type name) — a shareable book, bound to each device at generation time.`
     );
   }
   if (out.entries.length === 0) {
-    warnings.push('Aucune variable exploitable trouvée : vérifier que le fichier contient bien des UAVariable sous des UAObject/UAObjectType.');
+    warnings.push('No usable variable found: check that the file really contains UAVariable nodes under UAObject/UAObjectType.');
   }
-  if (out.methods > 0) warnings.push(`${out.methods} méthode(s) OPC UA ignorée(s) (non modélisables en DPE).`);
+  if (out.methods > 0) warnings.push(`${out.methods} OPC UA method(s) skipped (not modelled as DPEs).`);
   if (out.arrays.length > 0) {
     warnings.push(
-      `${out.arrays.length} variable(s) TABLEAU catalogué(es) avec leur type scalaire de base et marquées « non mappé » (${out.arrays.slice(0, 5).join(', ')}${out.arrays.length > 5 ? '…' : ''}) — l’écriture d’adresse sur un DPE dynamique n’est pas vérifiée.`
+      `${out.arrays.length} ARRAY variable(s) catalogued with their scalar base type and flagged "unmapped" (${out.arrays.slice(0, 5).join(', ')}${out.arrays.length > 5 ? '…' : ''}) — the address write for a dynamic DPE is not verified.`
     );
   }
-  if (out.cycles > 0) warnings.push(`${out.cycles} référence(s) circulaire(s) coupée(s) pendant la lecture du modèle.`);
-  if (out.depthHits > 0) warnings.push(`${out.depthHits} branche(s) tronquée(s) au-delà de ${MAX_MEMBER_DEPTH} niveaux d’imbrication.`);
+  if (out.cycles > 0) warnings.push(`${out.cycles} circular reference(s) cut while reading the model.`);
+  if (out.depthHits > 0) warnings.push(`${out.depthHits} branch(es) truncated beyond ${MAX_MEMBER_DEPTH} nesting levels.`);
   warnings.push(...out.warnings);
 
   return {
@@ -361,7 +361,7 @@ export function buildBookFromNodeSet(options: NodeSetBookOptions & { xml: string
       kind: 'nodeset',
       generatedAt: options.generatedAt ?? new Date().toISOString(),
       ...(options.file === undefined ? {} : { file: options.file }),
-      detail: `${namespaces.length - 1} namespace(s) · ${objectTypes.length} type(s) · ${instances.length} instance(s) · ${out.entries.length} signaux`
+      detail: `${namespaces.length - 1} namespace(s) · ${objectTypes.length} type(s) · ${instances.length} instance(s) · ${out.entries.length} signals`
     },
     // No `interface`: a NodeSet is a MODEL, not a reachable server (see header).
     entries: out.entries,

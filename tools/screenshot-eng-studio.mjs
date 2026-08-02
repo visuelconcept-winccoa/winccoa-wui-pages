@@ -60,45 +60,51 @@ const OUT = resolve(REPO, arg('out', 'docs/images/eng-studio'));
 const WIDTH = Number(arg('width', '1600'));
 const HEIGHT = Number(arg('height', '1000'));
 let devUrl = arg('dev-url', 'http://127.0.0.1:4310');
+/**
+ * UI language of the captured screenshots. English by default so the shots match
+ * the English documentation; `--lang fr|de` re-captures the same set in another
+ * language (see `LOCALE_SHOTS` for the pair kept in the docs).
+ */
+const LANG = arg('lang', 'en');
 
 const PANELS = [
-  { id: 'devices', file: '01-devices.png', desc: 'Équipements + carnet d’adresses' },
-  { id: 'model', file: '02-model.png', desc: 'Modèle : carnet + grille de signaux' },
-  { id: 'control', file: '03-control.png', desc: 'Contrôle : diff + check-in (dry-run)' }
+  { id: 'devices', file: '01-devices.png', desc: 'Devices + address book' },
+  { id: 'model', file: '02-model.png', desc: 'Model: book + signal grid' },
+  { id: 'control', file: '03-control.png', desc: 'Control: diff + check-in (dry-run)' }
 ];
 
 // Extra Devices-panel shots that showcase the many-to-many device↔book relation.
 const DEVICE_SHOTS = [
-  { device: 'ligne-embouteillage', file: '04-book-aggregation.png', desc: 'Agrégation : 2 interfaces OPC UA + PackML sur un équipement' },
-  { device: 'z01-pompe1', file: '05-book-mutualisation.png', desc: 'Mutualisation : un carnet catalogue partagé entre équipements' },
-  { device: 'pac-depart1', file: '06-book-pac3200.png', desc: 'PAC3200 : catalogue de registres Modbus mutualisé' },
-  { device: 'ligne-encaisseuse', file: '07-book-packml.png', desc: 'PackML : interface OPC UA standard mutualisée' },
-  { device: 'm580-station', file: '08-book-schneider-m580.png', desc: 'Schneider M580 : carnet depuis un export de variables Control Expert' },
+  { device: 'ligne-embouteillage', file: '04-book-aggregation.png', desc: 'Aggregation: two OPC UA interfaces + PackML on one device' },
+  { device: 'z01-pompe1', file: '05-book-mutualisation.png', desc: 'Sharing: one catalog book across devices' },
+  { device: 'pac-depart1', file: '06-book-pac3200.png', desc: 'PAC3200: shared Modbus register catalog' },
+  { device: 'ligne-encaisseuse', file: '07-book-packml.png', desc: 'PackML: shared standard OPC UA interface' },
+  { device: 'm580-station', file: '08-book-schneider-m580.png', desc: 'Schneider M580: book from a Control Expert variables export' },
   {
     device: 'm580-station',
     book: 'book-m580-pesage-xvm',
     file: '09-book-schneider-xvm.png',
-    desc: 'Schneider XVM : second générateur (XML) sur le même équipement'
+    desc: 'Schneider XVM: a second generator (XML) on the same device'
   },
   {
     device: 'm580-station',
     book: 'book-m580-station',
     file: '10-roles-qualification.png',
-    desc: 'Qualification : rôles déduits par règles + affectation en masse'
+    desc: 'Qualification: rule-derived roles + bulk assignment'
   },
   {
     device: 'pac-depart1',
     role: 'counter',
     file: '11-roles-pac3200.png',
-    desc: 'Qualification automatique du PAC3200 : les compteurs d’énergie isolés parmi 45 signaux'
+    desc: 'PAC3200 auto-qualification: the energy counters isolated among 45 signals'
   }
 ];
 
 // The generation scenario: fill the Model panel's form from the S7 book and
 // generate, then capture the Model panel and the resulting check-in diff.
 const GENERATION_SHOTS = [
-  { file: '12-model-generation.png', panel: 'model', desc: 'Génération du modèle depuis le carnet (rôles → configs)' },
-  { file: '13-control-generated.png', panel: 'control', desc: 'Diff de check-in issu de la génération' }
+  { file: '12-model-generation.png', panel: 'model', desc: 'Model generation from the book (roles → configs)' },
+  { file: '13-control-generated.png', panel: 'control', desc: 'Check-in diff produced by the generation' }
 ];
 
 async function reachable(url) {
@@ -156,7 +162,7 @@ async function main() {
   const page = await browser.newPage({ viewport: { width: WIDTH, height: HEIGHT }, deviceScaleFactor: 2 });
   try {
     for (const panel of PANELS) {
-      await page.goto(`${devUrl}/?panel=${panel.id}`, { waitUntil: 'load' });
+      await page.goto(`${devUrl}/?panel=${panel.id}&lang=${LANG}`, { waitUntil: 'load' });
       await page.waitForSelector('wui-eng-studio');
       // Let the element boot its demo data + Lit render.
       await page.waitForTimeout(600);
@@ -177,7 +183,7 @@ async function main() {
 
     // Device-specific Devices-panel shots (many-to-many showcase).
     for (const shot of DEVICE_SHOTS) {
-      await page.goto(`${devUrl}/?panel=devices`, { waitUntil: 'load' });
+      await page.goto(`${devUrl}/?panel=devices&lang=${LANG}`, { waitUntil: 'load' });
       await page.waitForSelector('wui-eng-studio');
       await page.waitForTimeout(500);
       await page.evaluate((id) => {
@@ -205,7 +211,7 @@ async function main() {
     //   1. the book produced by the real core walker (level-by-level, warnings);
     //   2. the same book RE-BROWSED after the machine's program drifted → the
     //      delta (added / removed / changed) that makes a refresh worth doing.
-    await page.goto(`${devUrl}/?panel=devices`, { waitUntil: 'load' });
+    await page.goto(`${devUrl}/?panel=devices&lang=${LANG}`, { waitUntil: 'load' });
     await page.waitForSelector('wui-eng-studio');
     await page.waitForTimeout(500);
     await page.evaluate(() => {
@@ -215,17 +221,17 @@ async function main() {
     });
     await page.waitForTimeout(400);
     await page.screenshot({ path: resolve(OUT, '14-browse-online.png') });
-    console.log('[eng-shots] 14-browse-online.png — Carnet issu d’un parcours OPC UA en ligne');
+    console.log('[eng-shots] 14-browse-online.png — Book produced by an online OPC UA browse');
     await page.evaluate(async () => {
       await document.querySelector('wui-eng-studio')?.refreshForDemo();
     });
     await page.waitForTimeout(600);
     await page.screenshot({ path: resolve(OUT, '15-browse-refresh-delta.png') });
-    console.log('[eng-shots] 15-browse-refresh-delta.png — Re-parcours : delta ajoutés / disparus / modifiés');
+    console.log('[eng-shots] 15-browse-refresh-delta.png — Re-browse: added / removed / changed delta');
 
     // Custom structure + mapping: a house-standard type authored as an outline and
     // auto-mapped onto the S7 book, whose paths are nested and named differently.
-    await page.goto(`${devUrl}/?panel=model`, { waitUntil: 'load' });
+    await page.goto(`${devUrl}/?panel=model&lang=${LANG}`, { waitUntil: 'load' });
     await page.waitForSelector('wui-eng-studio');
     await page.waitForTimeout(500);
     await page.evaluate(() => {
@@ -238,10 +244,10 @@ async function main() {
     });
     await page.waitForTimeout(500);
     await page.screenshot({ path: resolve(OUT, '16-custom-structure-mapping.png') });
-    console.log('[eng-shots] 16-custom-structure-mapping.png — Structure personnalisée + mapping des signaux');
+    console.log('[eng-shots] 16-custom-structure-mapping.png — Custom structure + signal mapping');
 
     // Generation scenario: qualify → generate → diff, captured end to end.
-    await page.goto(`${devUrl}/?panel=model`, { waitUntil: 'load' });
+    await page.goto(`${devUrl}/?panel=model&lang=${LANG}`, { waitUntil: 'load' });
     await page.waitForSelector('wui-eng-studio');
     await page.waitForTimeout(500);
     await page.evaluate(() => {
@@ -259,6 +265,25 @@ async function main() {
       const file = resolve(OUT, shot.file);
       await page.screenshot({ path: file });
       console.log(`[eng-shots] ${shot.file} — ${shot.desc}`);
+    }
+
+    // Proof that the page is localised, kept in the docs: the same panel in FR and
+    // DE. The rest of the set stays English so it matches the documentation.
+    for (const [code, file] of [
+      ['fr', '17-i18n-fr.png'],
+      ['de', '18-i18n-de.png']
+    ]) {
+      await page.goto(`${devUrl}/?panel=devices&lang=${code}`, { waitUntil: 'load' });
+      await page.waitForSelector('wui-eng-studio');
+      await page.waitForTimeout(500);
+      await page.evaluate(() => {
+        const app = document.querySelector('wui-eng-studio');
+        app?.selectDeviceById('ligne-embouteillage');
+        app?.selectBookById('book-opcua-remplisseuse');
+      });
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: resolve(OUT, file) });
+      console.log(`[eng-shots] ${file} — UI in ${code.toUpperCase()}`);
     }
   } finally {
     await browser.close();

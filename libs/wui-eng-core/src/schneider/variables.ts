@@ -149,7 +149,7 @@ export function buildBookFromSchneiderExport(bundle: SchneiderExportBundle): Add
 
   const header = lines.length > 0 ? mapHeader(cellsOf(lines[0], delimiter)) : null;
   if (!header) {
-    warnings.push('Aucun en-tête reconnu — colonnes supposées dans l’ordre : nom, adresse, type, commentaire.');
+    warnings.push('No recognised header — columns assumed in order: name, address, type, comment.');
   }
   for (const line of lines.slice(header ? 1 : 0)) {
     const cells = cellsOf(line, delimiter);
@@ -205,21 +205,21 @@ export function entriesFromSchneiderVariables(variables: SchneiderVariable[]): {
   for (const row of variables) {
     const address = parseSchneiderAddress(row.address);
     if (!address) {
-      warnings.push(`Variable « ${row.name} » non localisée (aucune adresse) — invisible pour un client Modbus.`);
+      warnings.push(`Variable "${row.name}" is not located (no address) — invisible to a Modbus client.`);
       continue;
     }
     if (address.reference == null) {
-      warnings.push(`Variable « ${row.name} » (${address.raw}) : ${address.note ?? 'non adressable en Modbus'}.`);
+      warnings.push(`Variable "${row.name}" (${address.raw}): ${address.note ?? 'not addressable over Modbus'}.`);
       continue;
     }
     const unmapped = isUnmappedSchneiderType(row.type);
     if (unmapped && row.type.trim() !== '') {
-      warnings.push(`Variable « ${row.name} » : type « ${row.type} » sans correspondance vérifiée — lue comme String.`);
+      warnings.push(`Variable "${row.name}": type "${row.type}" has no verified mapping — read as String.`);
     }
     for (const register of occupiedRegisters(address, schneiderTypeSpan(row.type))) {
       const previous = owner.get(register);
       if (previous !== undefined && previous !== row.name) {
-        warnings.push(`Chevauchement de registre ${register} entre « ${previous} » et « ${row.name} » — vérifier l’implantation mémoire.`);
+        warnings.push(`Register ${register} overlaps between "${previous}" and "${row.name}" — check the memory layout.`);
       } else {
         owner.set(register, row.name);
       }

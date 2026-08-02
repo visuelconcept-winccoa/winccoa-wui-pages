@@ -212,46 +212,46 @@ async function walk(port: OpcUaBrowsePort, options: BrowseBookOptions): Promise<
 
   if (entries.length >= maxEntries) {
     warnings.push(
-      `Parcours TRONQUÉ à ${maxEntries} signaux (limite maxEntries) — le carnet est INCOMPLET. Réduire la racine du parcours ou relever la limite.`
+      `Walk TRUNCATED at ${maxEntries} signals (maxEntries) — the book is INCOMPLETE. Narrow the browse root or raise the limit.`
     );
   }
   if (requests >= maxRequests) {
     warnings.push(
-      `Parcours TRONQUÉ à ${maxRequests} requêtes (limite maxRequests) — le carnet est INCOMPLET. Réduire la racine du parcours ou relever la limite.`
+      `Walk TRUNCATED at ${maxRequests} requests (maxRequests) — the book is INCOMPLETE. Narrow the browse root or raise the limit.`
     );
   }
   if (depthTruncated > 0) {
-    warnings.push(`${depthTruncated} branche(s) non explorée(s) au-delà de la profondeur ${maxDepth} — carnet incomplet sur ces branches.`);
+    warnings.push(`${depthTruncated} branch(es) not explored beyond depth ${maxDepth} — the book is incomplete there.`);
   }
   if (skippedBranches.length > 0) {
     const shown = [...new Set(skippedBranches)].slice(0, 5);
-    warnings.push(`Branches abandonnées après la limite : ${shown.join(', ')}${skippedBranches.length > shown.length ? '…' : ''}.`);
+    warnings.push(`Branches abandoned after the limit: ${shown.join(', ')}${skippedBranches.length > shown.length ? '…' : ''}.`);
   }
   if (failures.length > 0) {
-    warnings.push(`${failures.length} branche(s) illisible(s) : ${failures.slice(0, 3).join(' · ')}${failures.length > 3 ? '…' : ''}.`);
+    warnings.push(`${failures.length} unreadable branch(es): ${failures.slice(0, 3).join(' · ')}${failures.length > 3 ? '…' : ''}.`);
   }
   if (methods > 0) {
-    warnings.push(`${methods} méthode(s) OPC UA ignorée(s) (non modélisables en DPE).`);
+    warnings.push(`${methods} OPC UA method(s) skipped (not modelled as DPEs).`);
   }
   if (arrays.length > 0) {
     warnings.push(
-      `${arrays.length} variable(s) TABLEAU catalogué(es) avec leur type scalaire de base et marquées « non mappé » (${arrays.slice(0, 5).join(', ')}${arrays.length > 5 ? '…' : ''}) — l’écriture d’adresse sur un DPE dynamique n’est pas vérifiée : ne pas générer d’adresse dessus sans validation.`
+      `${arrays.length} ARRAY variable(s) catalogued with their scalar base type and flagged "unmapped" (${arrays.slice(0, 5).join(', ')}${arrays.length > 5 ? '…' : ''}) — the address write for a dynamic DPE is not verified: do not generate an address on them without validating it first.`
     );
   }
   if (unnamed > 0) {
-    warnings.push(`${unnamed} nœud(s) sans DisplayName ignoré(s).`);
+    warnings.push(`${unnamed} node(s) without a DisplayName skipped.`);
   }
   if (entries.length === 0 && failures.length === 0) {
-    warnings.push(`Aucune variable trouvée sous « ${root} » — vérifier la racine du parcours et l’état de la connexion.`);
+    warnings.push(`No variable found under "${root}" — check the browse root and the connection state.`);
   }
   if (assumedAccess > 0) {
     warnings.push(
       assumedAccess === entries.length
-        ? 'Ce parcours n’a pas exposé AccessLevel : tous les signaux sont catalogués en LECTURE SEULE avec un accès « supposé ». La direction vient alors du rôle (profil) — qualifier avant de générer, ou corriger l’accès à la main.'
-        : `${assumedAccess}/${entries.length} signaux sans AccessLevel exposé : accès « supposé » (lecture seule) — la direction vient du rôle pour ceux-là.`
+        ? 'This walk did not expose AccessLevel: every signal is catalogued READ-ONLY with an "assumed" access. The direction then comes from the role (its profile) — qualify before generating, or fix the access by hand.'
+        : `${assumedAccess}/${entries.length} signals without an exposed AccessLevel: "assumed" access (read-only) — the direction comes from the role for those.`
     );
   } else if (entries.length > 0) {
-    warnings.push(`AccessLevel lu sur le serveur pour les ${entries.length} signaux : la direction d’adresse sera dérivée de l’accès réel.`);
+    warnings.push(`AccessLevel read from the server for all ${entries.length} signals: the address direction will follow the real access.`);
   }
   return { entries, warnings, requests, skippedBranches };
 }
@@ -278,7 +278,7 @@ export async function buildBookFromOpcUaBrowse(port: OpcUaBrowsePort, options: B
     provenance: {
       kind: 'opcua-browse',
       generatedAt: options.generatedAt ?? new Date().toISOString(),
-      detail: `parcours ${root} · ${result.requests} requête(s) · ${result.entries.length} signaux`,
+      detail: `walk ${root} · ${result.requests} request(s) · ${result.entries.length} signals`,
       browse: {
         connection: options.connection,
         rootNodeId: root,

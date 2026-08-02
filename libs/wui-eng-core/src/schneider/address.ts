@@ -64,7 +64,7 @@ export function parseSchneiderAddress(raw: string): SchneiderAddress | null {
       object: null,
       reference: null,
       span: 1,
-      note: 'adresse topologique (rack.module.voie) — non adressable en Modbus ; recopier vers un %MW localisé dans le programme'
+      note: 'topological address (rack.module.channel) — not addressable over Modbus; copy it to a located %MW in the program'
     };
   }
   const match = /^%([A-Z]+)(\d+)$/i.exec(text);
@@ -90,7 +90,7 @@ export function parseSchneiderAddress(raw: string): SchneiderAddress | null {
         object: 'coil',
         reference: modbusCoilRef(index),
         span: 1,
-        note: '%M et %I partagent la mémoire : la lecture FC1/FC2 dépend du réglage mémoire (Topological vs mixed topological/state RAM)'
+        note: '%M and %I share the memory: an FC1/FC2 read depends on the memory setting (Topological vs mixed topological/state RAM)'
       };
     }
     case 'I': {
@@ -101,7 +101,7 @@ export function parseSchneiderAddress(raw: string): SchneiderAddress | null {
         object: 'discrete-input',
         reference: modbusDiscreteInputRef(index),
         span: 1,
-        note: '%M et %I partagent la mémoire : la lecture FC1/FC2 dépend du réglage mémoire (Topological vs mixed topological/state RAM)'
+        note: '%M and %I share the memory: an FC1/FC2 read depends on the memory setting (Topological vs mixed topological/state RAM)'
       };
     }
     case 'IW': {
@@ -116,7 +116,7 @@ export function parseSchneiderAddress(raw: string): SchneiderAddress | null {
         object: null,
         reference: null,
         span: 1,
-        note: `préfixe %${kind} hors correspondance Modbus vérifiée — à confirmer sur l'automate`
+        note: `the %${kind} prefix is outside the verified Modbus mapping — confirm it on the PLC`
       };
     }
   }

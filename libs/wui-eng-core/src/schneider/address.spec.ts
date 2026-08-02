@@ -23,7 +23,7 @@ describe('parseSchneiderAddress', () => {
   it('maps %M to coils and %I to discrete inputs, flagging the shared memory', () => {
     const coil = parseSchneiderAddress('%M0');
     expect(coil).toMatchObject({ object: 'coil', reference: '00001' });
-    expect(coil?.note).toMatch(/partagent la mémoire/);
+    expect(coil?.note).toMatch(/share the memory/);
     expect(parseSchneiderAddress('%M10')).toMatchObject({ reference: '00011' });
     expect(parseSchneiderAddress('%I5')).toMatchObject({ object: 'discrete-input', reference: '10006' });
   });
@@ -36,13 +36,13 @@ describe('parseSchneiderAddress', () => {
     const topological = parseSchneiderAddress('%I0.2.3');
     expect(topological?.object).toBeNull();
     expect(topological?.reference).toBeNull();
-    expect(topological?.note).toMatch(/topologique/);
+    expect(topological?.note).toMatch(/topological/);
   });
 
   it('flags prefixes outside the verified mapping instead of guessing', () => {
     const system = parseSchneiderAddress('%SW60');
     expect(system?.object).toBeNull();
-    expect(system?.note).toMatch(/hors correspondance Modbus vérifiée/);
+    expect(system?.note).toMatch(/outside the verified Modbus mapping/);
   });
 
   it('returns null for an unlocated variable', () => {

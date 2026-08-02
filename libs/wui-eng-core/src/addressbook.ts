@@ -76,16 +76,16 @@ export function refreshWarnings(delta: BookDiff): string[] {
   if (delta.removed.length > 0) {
     const shown = delta.removed.slice(0, 8).map((e) => e.path);
     warnings.push(
-      `⚠️ ${delta.removed.length} signal(aux) DISPARU(S) de la source depuis le dernier parcours (${shown.join(', ')}${delta.removed.length > shown.length ? '…' : ''}) — vérifier les modèles qui les référencent AVANT tout check-in.`
+      `⚠️ ${delta.removed.length} signal(s) GONE from the source since the last walk (${shown.join(', ')}${delta.removed.length > shown.length ? '…' : ''}) — check the models that reference them BEFORE any check-in.`
     );
   }
   if (delta.changed.length > 0) {
     warnings.push(
-      `${delta.changed.length} signal(aux) MODIFIÉ(S) (type, accès ou adresse) — les configs générées à partir d’eux sont à régénérer.`
+      `${delta.changed.length} signal(s) CHANGED (type, access or address) — the configs generated from them must be regenerated.`
     );
   }
   if (delta.added.length > 0) {
-    warnings.push(`${delta.added.length} nouveau(x) signal(aux) détecté(s) dans la source.`);
+    warnings.push(`${delta.added.length} new signal(s) found in the source.`);
   }
   return warnings;
 }

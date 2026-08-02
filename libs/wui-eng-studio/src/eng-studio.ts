@@ -50,6 +50,7 @@ import { engStudioStyles } from './eng-studio/eng-styles.js';
 import { DemoEngGateway } from './eng-studio/data/demo-gateway.js';
 import { HttpEngGateway } from './eng-studio/data/http-gateway.js';
 import type { BookDelta, EngConnection, EngGateway, EngRole } from './eng-studio/data/gateway.js';
+import { LANG_LABEL, MSG, ROLE_LABEL, fmt, resolveLang, t, type Lang, type Ml } from './eng-studio/i18n.js';
 
 type Panel = 'devices' | 'model' | 'control';
 
@@ -96,6 +97,13 @@ export class WuiEngStudio extends LitElement {
   @state() private roles = new Set<EngRole>();
   @state() private busy = false;
   @state() private notice = '';
+  /**
+   * UI language. NOT named `lang`: that would shadow the native `HTMLElement.lang`
+   * property, and Lit does not observe it anyway — the element's `lang` attribute is
+   * read once at connect time instead (see `connectedCallback`). The pure core's
+   * messages stay English — see i18n.ts, "SCOPE".
+   */
+  @state() private uiLang: Lang = resolveLang(null);
   /** Live OPC UA connections available for an online browse. */
   @state() private connections: EngConnection[] = [];
   /** Online-browse form (Devices panel). */
@@ -107,6 +115,9 @@ export class WuiEngStudio extends LitElement {
 
   override async connectedCallback(): Promise<void> {
     super.connectedCallback();
+    // The shell sets `lang` on the element; the demo and the screenshot harness use
+    // `?lang=`; both fall back to <html lang> then the browser (see resolveLang).
+    this.uiLang = resolveLang(this.getAttribute('lang'));
     await this.load();
   }
 
@@ -200,7 +211,7 @@ export class WuiEngStudio extends LitElement {
       this.live = live;
       this.recomputePlan();
     } catch (error) {
-      if (token === this.loadToken) this.notice = `Chargement impossible : ${(error as Error).message}`;
+      if (token === this.loadToken) this.notice = this.tr(MSG.loadFailed, { error: (error as Error).message });
     } finally {
       if (token === this.loadToken) this.busy = false;
     }
@@ -214,6 +225,27 @@ export class WuiEngStudio extends LitElement {
 
   private can(role: EngRole): boolean {
     return this.roles.has(role);
+  }
+
+  /** Translated plan-operation label. */
+  private opLabel(op: string): string {
+    return this.tr(op === 'create' ? MSG.opCreate : op === 'update' ? MSG.opUpdate : MSG.opDelete);
+  }
+
+  /** Translated role label (the core's own labels stay French — see i18n.ts). */
+  private roleLabel(role: SignalRole): string {
+    const label = ROLE_LABEL[role];
+    return label === undefined ? SIGNAL_ROLE_LABEL[role] : this.tr(label);
+  }
+
+  /** Translate, with optional `{placeholder}` substitution. */
+  private tr(message: Ml, params: Record<string, string | number> = {}): string {
+    return fmt(t(message, this.uiLang), params);
+  }
+
+  /** Public: set the UI language (shell, demo entry and screenshot harness). */
+  setLang(lang: string): void {
+    this.uiLang = resolveLang(lang);
   }
 
   override render(): TemplateResult {
@@ -240,18 +272,25 @@ export class WuiEngStudio extends LitElement {
         <div class="title">
           <span class="logo">⚙</span>
           <div>
-            <div class="title-main">Engineering Studio</div>
-            <div class="title-sub">Modélisation DPT · DP · configs — check-in / check-out</div>
+            <div class="title-main">${this.tr(MSG.title)}</div>
+            <div class="title-sub">${this.tr(MSG.subtitle)}</div>
           </div>
         </div>
-        ${this.gateway.isDemo ? html`<span class="demo-banner">Démo hors-ligne — données d'exemple, sans WinCC OA</span>` : nothing}
+        ${this.gateway.isDemo ? html`<span class="demo-banner">${this.tr(MSG.demoBanner)}</span>` : nothing}
         <div class="spacer"></div>
         <nav class="steps">
-          ${this.renderStep('devices', '1 · Équipements')}
-          ${this.renderStep('model', '2 · Modèle')}
-          ${this.renderStep('control', `3 · Contrôle${changes > 0 ? ` (${changes})` : ''}`)}
+          ${this.renderStep('devices', this.tr(MSG.step1))}
+          ${this.renderStep('model', this.tr(MSG.step2))}
+          ${this.renderStep('control', `${this.tr(MSG.step3)}${changes > 0 ? ` (${changes})` : ''}`)}
         </nav>
-        ${conflicts > 0 ? html`<span class="chip conflict" title="Conflits avec le projet live">${conflicts} conflit${conflicts > 1 ? 's' : ''}</span>` : nothing}
+        ${conflicts > 0
+          ? html`<span class="chip conflict" title=${this.tr(MSG.conflictTitle)}>${this.tr(MSG.conflictChip)} ${conflicts}</span>`
+          : nothing}
+        <select class="lang-picker" @change=${(e: Event) => this.setLang((e.target as HTMLSelectElement).value)}>
+          ${(Object.keys(LANG_LABEL) as Lang[]).map(
+            (code) => html`<option value=${code} ?selected=${code === this.uiLang}>${LANG_LABEL[code]}</option>`
+          )}
+        </select>
       </header>
       ${this.notice === '' ? nothing : html`<div class="notice">${this.notice}</div>`}
     `;
@@ -264,10 +303,10 @@ export class WuiEngStudio extends LitElement {
   private renderRail(): TemplateResult {
     return html`
       <aside class="rail">
-        <div class="rail-head">Équipements communicants</div>
+        <div class="rail-head">${this.tr(MSG.devicesRail)}</div>
         ${this.devices.map((device) => this.renderDeviceRow(device))}
         <div class="rail-foot">
-          ${this.can('manage-devices') ? html`<button class="btn" @click=${this.onAddDevice}>+ Ajouter</button>` : nothing}
+          ${this.can('manage-devices') ? html`<button class="btn" @click=${this.onAddDevice}>${this.tr(MSG.addDevice)}</button>` : nothing}
         </div>
       </aside>
     `;
@@ -279,7 +318,7 @@ export class WuiEngStudio extends LitElement {
       <button class="device ${selected ? 'selected' : ''}" @click=${() => this.selectDevice(device.id)}>
         <span class="dot ${device.state}"></span>
         <span class="device-name">${device.name}</span>
-        ${device.bookIds.length > 1 ? html`<span class="chip">${device.bookIds.length} carnets</span>` : nothing}
+        ${device.bookIds.length > 1 ? html`<span class="chip">${this.tr(MSG.bookCount, { n: device.bookIds.length })}</span>` : nothing}
         <span class="chip proto">${this.protocolLabel(device)}</span>
       </button>
     `;
@@ -315,7 +354,7 @@ export class WuiEngStudio extends LitElement {
 
   private renderDevicesPanel(): TemplateResult {
     const device = this.currentDevice();
-    if (!device) return html`<div class="empty">Aucun équipement.</div>`;
+    if (!device) return html`<div class="empty">${this.tr(MSG.noDevice)}</div>`;
     const books = this.booksOfDevice(device);
     const book = this.activeBook();
     return html`
@@ -323,18 +362,18 @@ export class WuiEngStudio extends LitElement {
         <h2>${device.name}</h2>
         <span class="chip">${this.protocolLabel(device)}</span>
         <span class="chip"><span class="dot ${device.state}"></span>${device.state}</span>
-        <span class="chip">${books.length} carnet${books.length > 1 ? 's' : ''}</span>
+        <span class="chip">${this.tr(MSG.bookCount, { n: books.length })}</span>
         <div class="spacer"></div>
         ${this.can('manage-devices')
-          ? html`<button class="btn primary" ?disabled=${this.busy || book == null} @click=${this.onRefreshBook}>⟳ Rafraîchir le carnet</button>`
+          ? html`<button class="btn primary" ?disabled=${this.busy || book == null} @click=${this.onRefreshBook}>${this.tr(MSG.refreshBook)}</button>`
           : nothing}
       </div>
       <div class="panel-scroll">
         ${books.length === 0
-          ? html`<div class="empty small">Aucun carnet associé — ajoutez une interface (browse OPC UA) ou ingérez un export SimaticML, ou associez un carnet mutualisé.</div>`
+          ? html`<div class="empty small">${this.tr(MSG.noBookHint)}</div>`
           : html`
               <div class="book-tabs">
-                <span class="book-tabs-label">Carnets&nbsp;:</span>
+                <span class="book-tabs-label">${this.tr(MSG.books)}&nbsp;:</span>
                 ${books.map((b) => this.renderBookTab(b))}
               </div>
               ${book ? this.renderBookDetail(device, book) : nothing}
@@ -351,7 +390,7 @@ export class WuiEngStudio extends LitElement {
         <span class="book-tab-name">${book.name}</span>
         <span class="chip mode">${book.interface ? this.protocolOf(book.interface.protocol) : 'catalogue'}</span>
         <span class="chip">${book.entries.length}</span>
-        ${shared ? html`<span class="chip" title="Carnet mutualisé">⇆</span>` : nothing}
+        ${shared ? html`<span class="chip" title=${this.tr(MSG.sharedBook)}>⇆</span>` : nothing}
       </button>
     `;
   }
@@ -366,36 +405,36 @@ export class WuiEngStudio extends LitElement {
     return html`
       <div class="device-grid">
         <section class="card">
-          <div class="card-title">Interface — ${book.name}</div>
+          <div class="card-title">${this.tr(MSG.interfaceOf, { name: book.name })}</div>
           ${book.interface
             ? html`
                 <table class="kv">
-                  <tr><td>protocole</td><td>${this.protocolOf(book.interface.protocol)}</td></tr>
-                  ${book.interface.connection ? html`<tr><td>connexion</td><td class="mono">${book.interface.connection}</td></tr>` : nothing}
+                  <tr><td>${this.tr(MSG.fieldProtocol)}</td><td>${this.protocolOf(book.interface.protocol)}</td></tr>
+                  ${book.interface.connection ? html`<tr><td>${this.tr(MSG.fieldConnection)}</td><td class="mono">${book.interface.connection}</td></tr>` : nothing}
                   ${Object.entries(book.interface.params ?? {}).map(([k, v]) => html`<tr><td>${k}</td><td class="mono">${String(v)}</td></tr>`)}
-                  <tr><td>driver</td><td class="mono">${book.interface.driverNumber ?? device.driverNumber ?? '—'}</td></tr>
+                  <tr><td>${this.tr(MSG.fieldDriver)}</td><td class="mono">${book.interface.driverNumber ?? device.driverNumber ?? '—'}</td></tr>
                 </table>
               `
-            : html`<div class="empty small">Catalogue de fichier (sans interface live) — lié à l'équipement au check-in via son interface.</div>`}
+            : html`<div class="empty small">${this.tr(MSG.fileCatalogHint)}</div>`}
         </section>
         <section class="card">
-          <div class="card-title">Carnet d'adresses</div>
+          <div class="card-title">${this.tr(MSG.addressBook)}</div>
           <table class="kv">
-            <tr><td>source</td><td>${book.provenance.kind}${book.provenance.file ? html` · <code>${book.provenance.file}</code>` : nothing}</td></tr>
-            <tr><td>généré</td><td class="mono">${book.provenance.generatedAt.replace('T', ' ').slice(0, 16)}</td></tr>
-            <tr><td>détail</td><td>${book.provenance.detail ?? '—'}</td></tr>
-            <tr><td>entrées</td><td><b>${book.entries.length}</b> signaux · ${book.types.length} type(s)</td></tr>
+            <tr><td>${this.tr(MSG.fieldSource)}</td><td>${book.provenance.kind}${book.provenance.file ? html` · <code>${book.provenance.file}</code>` : nothing}</td></tr>
+            <tr><td>${this.tr(MSG.fieldGenerated)}</td><td class="mono">${book.provenance.generatedAt.replace('T', ' ').slice(0, 16)}</td></tr>
+            <tr><td>${this.tr(MSG.fieldDetail)}</td><td>${book.provenance.detail ?? '—'}</td></tr>
+            <tr><td>${this.tr(MSG.fieldEntries)}</td><td>${this.tr(MSG.entriesValue, { n: book.entries.length, types: book.types.length })}</td></tr>
             ${sharedWith.length > 0
-              ? html`<tr><td>mutualisé avec</td><td>${sharedWith.map((n) => html`<span class="chip">${n}</span> `)}</td></tr>`
+              ? html`<tr><td>${this.tr(MSG.fieldSharedWith)}</td><td>${sharedWith.map((n) => html`<span class="chip">${n}</span> `)}</td></tr>`
               : nothing}
-            ${book.warnings.length > 0 ? html`<tr><td>avertissements</td><td class="warn-text">${book.warnings.length}</td></tr>` : nothing}
+            ${book.warnings.length > 0 ? html`<tr><td>${this.tr(MSG.fieldWarnings)}</td><td class="warn-text">${book.warnings.length}</td></tr>` : nothing}
           </table>
         </section>
       </div>
       ${this.renderBrowseCard(device, book)}
       ${this.renderBookDelta()}
       ${book.warnings.length > 0
-        ? html`<section class="card warnings"><div class="card-title">Avertissements du générateur</div><ul>${book.warnings.map((w) => html`<li>${w}</li>`)}</ul></section>`
+        ? html`<section class="card warnings"><div class="card-title">${this.tr(MSG.generatorWarnings)}</div><ul>${book.warnings.map((w) => html`<li>${w}</li>`)}</ul></section>`
         : nothing}
       ${this.renderDeviceSignals(book)}
     `;
@@ -413,21 +452,21 @@ export class WuiEngStudio extends LitElement {
     const replayable = book.provenance.kind === 'opcua-browse' && book.provenance.browse !== undefined;
     return html`
       <section class="card">
-        <div class="card-title">Parcours OPC UA en ligne</div>
+        <div class="card-title">${this.tr(MSG.browseTitle)}</div>
         <div class="browse-row">
           <label>
-            connexion
+            ${this.tr(MSG.browseConnection)}
             <select
               .value=${this.browseConnection}
               @change=${(e: Event) => (this.browseConnection = (e.target as HTMLSelectElement).value)}
             >
               ${this.connections.map(
-                (c) => html`<option value=${c.name}>${c.name}${c.connected ? '' : ' (déconnectée)'}</option>`
+                (c) => html`<option value=${c.name}>${c.name}${c.connected ? '' : this.tr(MSG.disconnectedSuffix)}</option>`
               )}
             </select>
           </label>
           <label>
-            racine
+            ${this.tr(MSG.browseRoot)}
             <input
               class="mono"
               placeholder="ns=0;i=85 (Objects)"
@@ -436,9 +475,9 @@ export class WuiEngStudio extends LitElement {
             />
           </label>
           <label>
-            carnet
+            ${this.tr(MSG.browseBookId)}
             <input
-              placeholder="id (défaut : opcua-<connexion>)"
+              placeholder=${this.tr(MSG.browseBookIdPlaceholder)}
               .value=${this.browseBookId}
               @input=${(e: Event) => (this.browseBookId = (e.target as HTMLInputElement).value)}
             />
@@ -448,15 +487,13 @@ export class WuiEngStudio extends LitElement {
             ?disabled=${this.busy || !this.can('manage-devices') || this.browseConnection === ''}
             @click=${() => void this.onBrowseConnection()}
           >
-            Parcourir
+            ${this.tr(MSG.browseRun)}
           </button>
         </div>
         <div class="small">
           ${replayable
-            ? html`Ce carnet est rafraîchissable : « Rafraîchir » relance le même parcours
-                (<code>${book.provenance.browse?.rootNodeId ?? 'Objects'}</code>) et affiche le delta.`
-            : html`Ce carnet n’a pas de paramètres de parcours enregistrés : « Rafraîchir » ne rejoue que les règles de
-                qualification. Lancer un parcours ci-dessus pour le rendre rafraîchissable.`}
+            ? this.tr(MSG.browseReplayable, { root: book.provenance.browse?.rootNodeId ?? 'Objects' })
+            : this.tr(MSG.browseNotReplayable)}
         </div>
       </section>
     `;
@@ -469,26 +506,26 @@ export class WuiEngStudio extends LitElement {
     const unchanged = delta.added.length === 0 && delta.removed.length === 0 && delta.changed.length === 0;
     return html`
       <section class="card ${delta.removed.length > 0 ? 'warnings' : ''}">
-        <div class="card-title">Delta du dernier parcours</div>
+        <div class="card-title">${this.tr(MSG.deltaTitle)}</div>
         ${unchanged
-          ? html`<div class="empty small">Aucun changement : la source est identique au carnet stocké.</div>`
+          ? html`<div class="empty small">${this.tr(MSG.deltaNoChange)}</div>`
           : html`
               ${delta.removed.length > 0
                 ? html`<div class="warn-text">
-                    <b>${delta.removed.length} disparu(s)</b> — vérifier les modèles qui les référencent :
+                    <b>${this.tr(MSG.deltaRemoved, { n: delta.removed.length })}</b> ${this.tr(MSG.deltaRemovedHint)}
                     ${delta.removed.slice(0, 12).map((p) => html`<span class="chip mono">${p}</span> `)}
                     ${delta.removed.length > 12 ? html`<span class="small">…</span>` : nothing}
                   </div>`
                 : nothing}
               ${delta.changed.length > 0
                 ? html`<div>
-                    <b>${delta.changed.length} modifié(s)</b> (type, accès ou adresse) :
+                    <b>${this.tr(MSG.deltaChanged, { n: delta.changed.length })}</b> ${this.tr(MSG.deltaChangedHint)}
                     ${delta.changed.slice(0, 12).map((p) => html`<span class="chip mono">${p}</span> `)}
                   </div>`
                 : nothing}
               ${delta.added.length > 0
                 ? html`<div>
-                    <b>${delta.added.length} nouveau(x)</b> :
+                    <b>${this.tr(MSG.deltaAdded, { n: delta.added.length })}</b>&nbsp;:
                     ${delta.added.slice(0, 12).map((p) => html`<span class="chip mono">${p}</span> `)}
                   </div>`
                 : nothing}
@@ -506,10 +543,10 @@ export class WuiEngStudio extends LitElement {
     return html`
       <section class="card signals">
         <div class="signals-head">
-          <div class="card-title">Signaux du carnet</div>
+          <div class="card-title">${this.tr(MSG.bookSignals)}</div>
           <input
             class="filter"
-            placeholder="filtrer chemin ou commentaire…"
+            placeholder=${this.tr(MSG.filterPlaceholder)}
             .value=${this.signalFilter}
             @input=${(e: Event) => (this.signalFilter = (e.target as HTMLInputElement).value)}
           />
@@ -518,15 +555,15 @@ export class WuiEngStudio extends LitElement {
             .value=${this.roleFilter}
             @change=${(e: Event) => (this.roleFilter = (e.target as HTMLSelectElement).value as SignalRole | '')}
           >
-            <option value="">tous les rôles</option>
+            <option value="">${this.tr(MSG.allRoles)}</option>
             ${SIGNAL_ROLES.map(
-              (role) => html`<option value=${role} ?selected=${this.roleFilter === role}>${SIGNAL_ROLE_LABEL[role]} (${counts[role]})</option>`
+              (role) => html`<option value=${role} ?selected=${this.roleFilter === role}>${this.roleLabel(role)} (${counts[role]})</option>`
             )}
           </select>
-          <span class="soft signals-count">${entries.length} / ${book.entries.length}</span>
+          <span class="soft signals-count">${this.tr(MSG.signalsOf, { shown: entries.length, total: book.entries.length })}</span>
           ${counts.unknown > 0
-            ? html`<span class="chip conflict" title="Signaux sans rôle — à qualifier">${counts.unknown} à qualifier</span>`
-            : html`<span class="chip new" title="Tous les signaux sont qualifiés">tout qualifié</span>`}
+            ? html`<span class="chip conflict">${this.tr(MSG.toQualify, { n: counts.unknown })}</span>`
+            : html`<span class="chip new">${this.tr(MSG.allQualified)}</span>`}
         </div>
         ${this.renderRoleBar(book, entries)}
         <div class="signals-scroll">
@@ -541,8 +578,10 @@ export class WuiEngStudio extends LitElement {
                     @change=${() => this.toggleAllSignals(entries)}
                   />
                 </th>
-                <th>chemin</th><th>rôle</th><th>type</th><th>unité</th><th>accès</th>
-                <th>type source</th><th>gabarit</th><th>adresses (par mode)</th><th>commentaire</th>
+                <th>${this.tr(MSG.colPath)}</th><th>${this.tr(MSG.colRole)}</th><th>${this.tr(MSG.colType)}</th>
+                <th>${this.tr(MSG.colUnit)}</th><th>${this.tr(MSG.colAccess)}</th>
+                <th>${this.tr(MSG.colSourceType)}</th><th>${this.tr(MSG.colTemplate)}</th>
+                <th>${this.tr(MSG.colAddresses)}</th><th>${this.tr(MSG.colComment)}</th>
               </tr>
             </thead>
             <tbody>
@@ -559,30 +598,30 @@ export class WuiEngStudio extends LitElement {
     const checked = visible.filter((e) => this.checkedSignals.has(e.path)).length;
     return html`
       <div class="role-bar">
-        <button class="btn" ?disabled=${this.busy} title="Réappliquer les règles de qualification" @click=${() => this.onApplyRules(book)}>
-          ⚙ Appliquer les règles
+        <button class="btn" ?disabled=${this.busy} title=${this.tr(MSG.applyRulesTitle)} @click=${() => this.onApplyRules(book)}>
+          ${this.tr(MSG.applyRules)}
         </button>
-        <span class="soft">${checked} coché${checked > 1 ? 's' : ''}</span>
+        <span class="soft">${this.tr(MSG.checkedCount, { n: checked })}</span>
         <select
           class="filter"
           ?disabled=${checked === 0 || !this.can('edit-model')}
           @change=${(e: Event) => this.onBulkRole(book, (e.target as HTMLSelectElement).value as SignalRole)}
         >
-          <option value="">affecter un rôle aux cochés…</option>
-          ${SIGNAL_ROLES.filter((r) => r !== 'unknown').map((role) => html`<option value=${role}>${SIGNAL_ROLE_LABEL[role]}</option>`)}
+          <option value="">${this.tr(MSG.assignRole)}</option>
+          ${SIGNAL_ROLES.filter((r) => r !== 'unknown').map((role) => html`<option value=${role}>${this.roleLabel(role)}</option>`)}
         </select>
         <select
           class="filter"
           ?disabled=${checked === 0 || !this.can('manage-devices')}
           @change=${(e: Event) => this.onBulkAccess(book, (e.target as HTMLSelectElement).value)}
-          title="Corriger l’accès des signaux cochés — la direction d’adresse générée en découle"
+          title=${this.tr(MSG.fixAccessTitle)}
         >
-          <option value="">corriger l’accès des cochés…</option>
-          <option value="r">r — lecture seule</option>
-          <option value="w">w — écriture seule</option>
-          <option value="rw">rw — lecture/écriture</option>
+          <option value="">${this.tr(MSG.fixAccess)}</option>
+          <option value="r">${this.tr(MSG.accessReadOnly)}</option>
+          <option value="w">${this.tr(MSG.accessWriteOnly)}</option>
+          <option value="rw">${this.tr(MSG.accessReadWrite)}</option>
         </select>
-        ${checked > 0 ? html`<button class="btn" @click=${() => (this.checkedSignals = new Set())}>décocher</button>` : nothing}
+        ${checked > 0 ? html`<button class="btn" @click=${() => (this.checkedSignals = new Set())}>${this.tr(MSG.uncheckAll)}</button>` : nothing}
       </div>
     `;
   }
@@ -594,11 +633,9 @@ export class WuiEngStudio extends LitElement {
    */
   private renderAccessChip(entry: BookEntry): TemplateResult {
     const source = entry.accessSource ?? 'declared';
-    const title = {
-      declared: 'accès déclaré par la source',
-      assumed: 'accès NON déclaré par la source (supposé lecture seule) — la direction viendra du rôle ; corriger ici si le signal est accessible en écriture',
-      manual: 'accès corrigé manuellement'
-    }[source];
+    const title = this.tr(
+      { declared: MSG.accessDeclared, assumed: MSG.accessAssumed, manual: MSG.accessManual }[source]
+    );
     return html`<span class="chip acc acc-${source}" title=${title}>
       ${entry.access}${source === 'assumed' ? '?' : source === 'manual' ? '✎' : ''}
     </span>`;
@@ -616,7 +653,7 @@ export class WuiEngStudio extends LitElement {
         </td>
         <td class="mono dpe">${entry.path}</td>
         <td>
-          <span class="chip role role-${role}" title=${this.roleReason(entry)}>${SIGNAL_ROLE_LABEL[role]}</span>
+          <span class="chip role role-${role}" title=${this.roleReason(entry)}>${this.roleLabel(role)}</span>
         </td>
         <td>${entry.leafType}${entry.unmapped ? html` <span class="chip conflict" title="type non mappé">?</span>` : nothing}</td>
         <td class="unit">${entry.unit ?? html`<span class="soft">—</span>`}</td>
@@ -654,7 +691,7 @@ export class WuiEngStudio extends LitElement {
     return html`
       <section class="browser">
         <div class="browser-head">
-          <span>Carnet — ${device?.name ?? ''}</span>
+          <span>${this.tr(MSG.bookOf, { name: device?.name ?? '' })}</span>
           <input
             class="filter"
             placeholder="filtrer…"
@@ -671,10 +708,10 @@ export class WuiEngStudio extends LitElement {
           : nothing}
         <div class="browser-list">
           ${book == null
-            ? html`<div class="empty small">Aucun carnet pour cet équipement.</div>`
+            ? html`<div class="empty small">${this.tr(MSG.noBookForDevice)}</div>`
             : entries.map((entry) => this.renderBookEntry(entry))}
         </div>
-        <div class="browser-foot">${entries.length} / ${book?.entries.length ?? 0} signaux</div>
+        <div class="browser-foot">${this.tr(MSG.signalsOf, { shown: entries.length, total: book?.entries.length ?? 0 })}</div>
         ${book ? this.renderGenerator(book) : nothing}
       </section>
     `;
@@ -689,7 +726,7 @@ export class WuiEngStudio extends LitElement {
     const unknown = this.roleTally(book).unknown;
     return html`
       <div class="generator">
-        <div class="gen-title">Générer le modèle depuis ce carnet</div>
+        <div class="gen-title">${this.tr(MSG.genTitle)}</div>
         <label class="gen-row"><span>type</span>
           <input
             class="filter"
@@ -697,37 +734,37 @@ export class WuiEngStudio extends LitElement {
             .value=${this.genTypeName}
             @input=${(e: Event) => (this.genTypeName = (e.target as HTMLInputElement).value)}
           /></label>
-        <label class="gen-row"><span>zone</span>
+        <label class="gen-row"><span>${this.tr(MSG.genZone)}</span>
           <input
             class="filter"
             placeholder="Z01"
             .value=${this.genZone}
             @input=${(e: Event) => (this.genZone = (e.target as HTMLInputElement).value)}
           /></label>
-        <label class="gen-row"><span>équipements</span>
+        <label class="gen-row"><span>${this.tr(MSG.genEquipments)}</span>
           <input
             class="filter"
             placeholder="FOUR001, FOUR002"
             .value=${this.genEquipments}
             @input=${(e: Event) => (this.genEquipments = (e.target as HTMLInputElement).value)}
           /></label>
-        <label class="gen-row"><span>structure</span>
+        <label class="gen-row"><span>${this.tr(MSG.genStructure)}</span>
           <select
             class="filter"
             .value=${this.genMode}
             @change=${(e: Event) => this.onGenMode(book, (e.target as HTMLSelectElement).value as 'mirror' | 'custom')}
           >
-            <option value="mirror">miroir du carnet</option>
-            <option value="custom">structure personnalisée + mapping</option>
+            <option value="mirror" ?selected=${this.genMode === 'mirror'}>${this.tr(MSG.genMirror)}</option>
+            <option value="custom" ?selected=${this.genMode === 'custom'}>${this.tr(MSG.genCustom)}</option>
           </select></label>
         ${this.genMode === 'custom' ? this.renderCustomStructure(book) : nothing}
         <button
           class="btn primary gen-btn"
           ?disabled=${this.busy || !this.can('edit-model') || this.genTypeName.trim() === ''}
           @click=${() => this.onGenerateModel(book)}
-        >⚙ Générer</button>
+        >${this.tr(MSG.genRun)}</button>
         ${unknown > 0
-          ? html`<div class="gen-hint warn-inline">${unknown} signal(aux) « à qualifier » : leurs DPE seront créés sans config.</div>`
+          ? html`<div class="gen-hint warn-inline">${this.tr(MSG.genUnknownHint, { n: unknown })}</div>`
           : nothing}
         ${this.genWarnings.length > 0
           ? html`<ul class="gen-warnings">${this.genWarnings.map((w) => html`<li>${w}</li>`)}</ul>`
@@ -752,7 +789,7 @@ export class WuiEngStudio extends LitElement {
     const entries = this.visibleSignals(book);
     return html`
       <div class="gen-structure">
-        <div class="gen-sub">structure cible (indentation = imbrication, « Nom : Type » = feuille)</div>
+        <div class="gen-sub">${this.tr(MSG.outlineHint)}</div>
         <textarea
           class="outline mono"
           rows="8"
@@ -764,13 +801,13 @@ export class WuiEngStudio extends LitElement {
           ? html`<ul class="gen-warnings warn-inline">${this.genOutlineErrors.map((error) => html`<li>${error}</li>`)}</ul>`
           : nothing}
         <div class="gen-map-head">
-          <span>${bound}/${leaves.length} élément(s) associé(s)</span>
-          <button class="btn" ?disabled=${this.busy} @click=${() => this.onAutoBind(book)}>⚡ Associer automatiquement</button>
+          <span>${this.tr(MSG.mappedCount, { n: bound, total: leaves.length })}</span>
+          <button class="btn" ?disabled=${this.busy} @click=${() => this.onAutoBind(book)}>${this.tr(MSG.autoBind)}</button>
         </div>
         ${this.genAmbiguous.length > 0
           ? html`<ul class="gen-warnings warn-inline">
               ${this.genAmbiguous.map(
-                (item) => html`<li>« ${item.leaf} » : plusieurs signaux candidats (${item.candidates.join(', ')}) — choisir ci-dessous.</li>`
+                (item) => html`<li>${this.tr(MSG.ambiguousLeaf, { leaf: item.leaf, candidates: item.candidates.join(', ') })}</li>`
               )}
             </ul>`
           : nothing}
@@ -785,7 +822,7 @@ export class WuiEngStudio extends LitElement {
                   <!-- \`selected\` on the option, NOT \`.value\` on the select: Lit sets
                        a property before the options of the same update exist, so
                        \`.value\` would silently fall back to the first option. -->
-                  <option value="" ?selected=${(this.genBindings[path] ?? '') === ''}>— non associé —</option>
+                  <option value="" ?selected=${(this.genBindings[path] ?? '') === ''}>${this.tr(MSG.notMapped)}</option>
                   ${entries.map(
                     (entry) => html`<option value=${entry.path} ?selected=${this.genBindings[path] === entry.path}>
                       ${entry.path} (${entry.leafType})
@@ -838,7 +875,7 @@ export class WuiEngStudio extends LitElement {
     this.genBindings = { ...result.bindings, ...this.genBindings };
     this.genAmbiguous = result.ambiguous.filter((item) => (this.genBindings[item.leaf] ?? '') === '');
     const bound = Object.values(this.genBindings).filter((value) => value !== '').length;
-    this.notice = `Association automatique : ${bound} élément(s) associé(s), ${result.unbound.length} sans correspondance, ${result.ambiguous.length} ambigu(s).`;
+    this.notice = this.tr(MSG.autoBindDone, { bound, unbound: result.unbound.length, ambiguous: result.ambiguous.length });
   }
 
   /** Run the generator, merge into the workspace and refresh the plan. */
@@ -877,9 +914,9 @@ export class WuiEngStudio extends LitElement {
       this.recomputePlan();
       this.genWarnings = proposal.warnings;
       const configCount = Object.keys(proposal.configs).length;
-      this.notice = `Modèle généré : type « ${proposal.type.typeName} », ${proposal.dps.length} DP, ${configCount} DPE configurés — voir l’onglet Contrôle.`;
+      this.notice = this.tr(MSG.genDone, { type: proposal.type.typeName, dps: proposal.dps.length, configs: configCount });
     } catch (error) {
-      this.genWarnings = [`Génération impossible : ${(error as Error).message}`];
+      this.genWarnings = [this.tr(MSG.genFailed, { error: (error as Error).message })];
     } finally {
       this.busy = false;
     }
@@ -903,24 +940,25 @@ export class WuiEngStudio extends LitElement {
 
   private renderSignalGrid(): TemplateResult {
     const ws = this.workspace;
-    if (!ws) return html`<section class="grid-wrap"><div class="empty">Chargement…</div></section>`;
+    if (!ws) return html`<section class="grid-wrap"><div class="empty">${this.tr(MSG.loading)}</div></section>`;
     const rows = this.gridRows(ws);
     return html`
       <section class="grid-wrap">
         <div class="grid-head-bar">
-          <span>Modèle — <b>${ws.name}</b></span>
-          <span class="chip">${ws.types.length} type(s)</span>
-          <span class="chip">${ws.dps.length} DP</span>
-          <span class="chip">${Object.keys(ws.configs).length} configs</span>
+          <span>${this.tr(MSG.modelOf, { name: ws.name })}</span>
+          <span class="chip">${this.tr(MSG.typesCount, { n: ws.types.length })}</span>
+          <span class="chip">${this.tr(MSG.dpsCount, { n: ws.dps.length })}</span>
+          <span class="chip">${this.tr(MSG.configsCount, { n: Object.keys(ws.configs).length })}</span>
           <div class="spacer"></div>
-          <button class="btn" @click=${this.onTestRead} ?disabled=${this.busy}>◉ Test-read</button>
+          <button class="btn" @click=${this.onTestRead} ?disabled=${this.busy}>${this.tr(MSG.testRead)}</button>
         </div>
         <div class="grid-scroll">
           <table class="grid">
             <thead>
               <tr>
-                <th>DPE</th><th>type</th><th>adresse</th><th>dir</th>
-                <th>alarme</th><th>archive</th><th>plage</th><th>valeur live</th>
+                <th>${this.tr(MSG.colDpe)}</th><th>${this.tr(MSG.colType)}</th><th>${this.tr(MSG.colAddress)}</th>
+                <th>${this.tr(MSG.colDir)}</th><th>${this.tr(MSG.colAlarm)}</th><th>${this.tr(MSG.colArchive)}</th>
+                <th>${this.tr(MSG.colRange)}</th><th>${this.tr(MSG.colLiveValue)}</th>
               </tr>
             </thead>
             <tbody>
@@ -954,33 +992,42 @@ export class WuiEngStudio extends LitElement {
     const plan = this.plan;
     return html`
       <div class="panel-head">
-        <h2>Contrôle — check-in</h2>
+        <h2>${this.tr(MSG.controlTitle)}</h2>
         <div class="spacer"></div>
-        <button class="btn" ?disabled=${this.busy || !plan?.items.length} @click=${() => this.doCheckin(true)}>Aperçu (dry-run)</button>
+        <button class="btn" ?disabled=${this.busy || !plan?.items.length} @click=${() => this.doCheckin(true)}>${this.tr(MSG.dryRun)}</button>
         <button class="btn primary" ?disabled=${this.busy || !this.can('checkin') || !plan?.items.length} @click=${() => this.doCheckin(false)}>
-          ⇧ Check-in
+          ${this.tr(MSG.checkin)}
         </button>
       </div>
       ${plan == null
-        ? html`<div class="empty">Aucun plan.</div>`
+        ? html`<div class="empty">${this.tr(MSG.noWorkspace)}</div>`
         : plan.items.length === 0
-          ? html`<div class="empty success">✓ Le projet est à jour — rien à appliquer.</div>`
+          ? html`<div class="empty success">✓ ${this.tr(MSG.planEmpty)}</div>`
           : html`
               <div class="diff-summary">
                 ${this.summaryChip('create', plan)} ${this.summaryChip('update', plan)} ${this.summaryChip('delete', plan)}
-                ${plan.items.some((i) => i.conflict) ? html`<span class="chip conflict">${plan.items.filter((i) => i.conflict).length} conflit(s)</span>` : nothing}
+                ${plan.items.some((i) => i.conflict)
+                  ? html`<span class="chip conflict">${this.tr(MSG.conflictChip)} ${plan.items.filter((i) => i.conflict).length}</span>`
+                  : nothing}
               </div>
               <div class="diff-scroll">
                 <table class="grid">
-                  <thead><tr><th>op</th><th>objet</th><th>nom</th><th>détail</th><th></th></tr></thead>
+                  <thead><tr>
+                    <th>${this.tr(MSG.colOp)}</th><th>${this.tr(MSG.colObject)}</th><th>${this.tr(MSG.colName)}</th>
+                    <th>${this.tr(MSG.fieldDetail)}</th><th></th>
+                  </tr></thead>
                   <tbody>
                     ${plan.items.map((item) => html`
                       <tr class=${item.conflict ? 'conflict-row' : ''}>
-                        <td><span class="chip ${item.op}">${opLabel(item.op)}</span></td>
+                        <td><span class="chip ${item.op}">${this.opLabel(item.op)}</span></td>
                         <td>${item.kind}</td>
                         <td class="mono">${item.name}</td>
                         <td class="mono soft">${item.detail ?? ''}</td>
-                        <td>${item.conflict ? html`<span class="chip conflict">conflit</span>` : nothing}</td>
+                        <td>
+                          ${item.conflict
+                            ? html`<span class="chip conflict" title=${this.tr(MSG.conflictTitle)}>${this.tr(MSG.conflictChip)}</span>`
+                            : nothing}
+                        </td>
                       </tr>`)}
                   </tbody>
                 </table>
@@ -998,10 +1045,10 @@ export class WuiEngStudio extends LitElement {
     return html`
       <section class="card report">
         <div class="card-title">
-          ${report.dryRun ? 'Aperçu' : 'Résultat du check-in'} —
-          <span class="chip new">${applied} appliqué(s)</span>
-          ${skipped > 0 ? html`<span class="chip">${skipped} ignoré(s)</span>` : nothing}
-          ${failed > 0 ? html`<span class="chip conflict">${failed} échec(s)</span>` : nothing}
+          ${report.dryRun ? this.tr(MSG.reportPreview) : this.tr(MSG.reportApplied)} —
+          <span class="chip new">${this.tr(MSG.reportCreated, { n: applied })}</span>
+          ${skipped > 0 ? html`<span class="chip">${this.tr(MSG.reportSkipped, { n: skipped })}</span>` : nothing}
+          ${failed > 0 ? html`<span class="chip conflict">${this.tr(MSG.reportFailed, { n: failed })}</span>` : nothing}
         </div>
         <table class="grid compact">
           <tbody>
@@ -1021,7 +1068,7 @@ export class WuiEngStudio extends LitElement {
   private summaryChip(op: 'create' | 'update' | 'delete', plan: EngPlan): TemplateResult {
     const n = plan.items.filter((i) => i.op === op).length;
     if (n === 0) return html``;
-    return html`<span class="chip ${op}">${n} ${opLabel(op)}</span>`;
+    return html`<span class="chip ${op}">${n} ${this.opLabel(op)}</span>`;
   }
 
   // --- actions ----------------------------------------------------------------
@@ -1084,7 +1131,11 @@ export class WuiEngStudio extends LitElement {
       this.books = this.books.map((b) => (b.id === fresh.id ? fresh : b));
       this.bookDelta = delta ?? null;
       const counts = this.roleTally(fresh);
-      this.notice = `Règles appliquées sur « ${fresh.name} » : ${fresh.entries.length - counts.unknown}/${fresh.entries.length} signaux qualifiés.`;
+      this.notice = this.tr(MSG.rulesApplied, {
+        name: fresh.name,
+        n: fresh.entries.length - counts.unknown,
+        total: fresh.entries.length
+      });
     } finally {
       this.busy = false;
     }
@@ -1102,7 +1153,7 @@ export class WuiEngStudio extends LitElement {
       const fresh = await this.gateway.getBook(book.id);
       if (fresh) this.books = this.books.map((b) => (b.id === fresh.id ? fresh : b));
       this.checkedSignals = new Set();
-      this.notice = `Accès « ${access} » appliqué à ${count} signal(aux) — la direction d’adresse générée suivra.`;
+      this.notice = this.tr(MSG.accessApplied, { access, n: count });
     } finally {
       this.busy = false;
     }
@@ -1120,7 +1171,7 @@ export class WuiEngStudio extends LitElement {
       const fresh = await this.gateway.getBook(book.id);
       if (fresh) this.books = this.books.map((b) => (b.id === fresh.id ? fresh : b));
       this.checkedSignals = new Set();
-      this.notice = `${count} signal(aux) qualifié(s) « ${SIGNAL_ROLE_LABEL[role]} ».`;
+      this.notice = this.tr(MSG.rolesApplied, { n: count, role: this.roleLabel(role) });
     } finally {
       this.busy = false;
     }
@@ -1141,10 +1192,10 @@ export class WuiEngStudio extends LitElement {
       this.books = this.books.map((b) => (b.id === bookId ? fresh : b));
       this.bookDelta = delta ?? null;
       this.notice = rebrowsed
-        ? `Carnet « ${fresh.name} » re-parcouru en ligne : ${fresh.entries.length} signaux${this.describeDelta(delta)}.`
-        : `Carnet « ${fresh.name} » rafraîchi (règles seules) : ${fresh.entries.length} signaux.${note ? ` ${note}` : ''}`;
+        ? this.tr(MSG.refreshRebrowsed, { name: fresh.name, n: fresh.entries.length, delta: this.describeDelta(delta) })
+        : this.tr(MSG.refreshRulesOnly, { name: fresh.name, n: fresh.entries.length, note: note ?? '' });
     } catch (error) {
-      this.notice = `Rafraîchissement impossible : ${(error as Error).message} — le carnet stocké est conservé.`;
+      this.notice = this.tr(MSG.refreshFailed, { error: (error as Error).message });
     } finally {
       this.busy = false;
     }
@@ -1168,9 +1219,9 @@ export class WuiEngStudio extends LitElement {
       this.books = known ? this.books.map((b) => (b.id === book.id ? book : b)) : [...this.books, book];
       this.selectedBookId = book.id;
       this.bookDelta = delta ?? null;
-      this.notice = `Parcours de « ${connection} » terminé : ${book.entries.length} signaux${this.describeDelta(delta)}.`;
+      this.notice = this.tr(MSG.browseDone, { conn: connection, n: book.entries.length, delta: this.describeDelta(delta) });
     } catch (error) {
-      this.notice = `Parcours impossible : ${(error as Error).message}`;
+      this.notice = this.tr(MSG.browseFailed, { error: (error as Error).message });
     } finally {
       this.busy = false;
     }
@@ -1182,11 +1233,11 @@ export class WuiEngStudio extends LitElement {
     if (delta.added.length > 0) parts.push(`+${delta.added.length}`);
     if (delta.removed.length > 0) parts.push(`−${delta.removed.length}`);
     if (delta.changed.length > 0) parts.push(`~${delta.changed.length}`);
-    return parts.length === 0 ? ' (aucun changement)' : ` (${parts.join(' / ')})`;
+    return parts.length === 0 ? this.tr(MSG.deltaNone) : ` (${parts.join(' / ')})`;
   }
 
   private onAddDevice(): void {
-    this.notice = 'Ajout d’équipement : formulaire par protocole (à venir).';
+    this.notice = this.tr(MSG.addDeviceSoon);
   }
 
   private async onTestRead(): Promise<void> {
@@ -1208,10 +1259,10 @@ export class WuiEngStudio extends LitElement {
         this.workspace = workspace;
         this.live = await this.gateway.liveSnapshot(liveScopeOf(workspace));
         this.recomputePlan();
-        this.notice = 'Check-in appliqué.';
+        this.notice = this.tr(MSG.checkinApplied);
       }
     } catch (error) {
-      this.notice = `Check-in impossible : ${(error as Error).message}`;
+      this.notice = this.tr(MSG.checkinFailed, { error: (error as Error).message });
     } finally {
       this.busy = false;
     }
@@ -1253,10 +1304,6 @@ function flattenLeaves(children: { name: string; type: string; children?: unknow
     }
   }
   return out;
-}
-
-function opLabel(op: string): string {
-  return op === 'create' ? 'créer' : op === 'update' ? 'modifier' : 'supprimer';
 }
 
 function dirLabel(direction: number): string {

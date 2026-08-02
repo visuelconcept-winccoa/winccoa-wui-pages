@@ -240,8 +240,31 @@ npm run dev            # http://127.0.0.1:4310  (?panel=devices|model|control)
 Regenerate the screenshots above (headless Chromium, no runtime):
 
 ```bash
-node tools/screenshot-eng-studio.mjs      # → docs/images/eng-studio/*.png
+node tools/screenshot-eng-studio.mjs             # → docs/images/eng-studio/*.png (English)
+node tools/screenshot-eng-studio.mjs --lang fr   # the same set in another language
 ```
+
+## Languages (EN / FR / DE)
+
+The page is localised in **English, French and German**. Every string it renders
+comes from `src/eng-studio/i18n.ts`, a **self-contained** module: the rest of the
+suite localises through `@wincc-oa/wui-i18n-shared`, but this page's contract is to
+depend on `lit` only, so it ships its own `ml(en, fr, de)` table and resolver.
+
+The language is resolved, first match wins: the element's `lang` attribute (what the
+shell sets) → `?lang=` in the URL → `<html lang>` → `navigator.language` → English.
+WinCC OA locale identifiers (`en_US.utf8`, `de_AT.utf8`…) are accepted alongside
+plain BCP-47 tags. A picker in the top bar switches it live.
+
+| | |
+|---|---|
+| ![UI in French](../images/eng-studio/17-i18n-fr.png) | ![UI in German](../images/eng-studio/18-i18n-de.png) |
+
+> **Localisation boundary.** The screenshots in this document are the **English**
+> UI. What stays English in *every* language is the engineering **core**'s output —
+> generator warnings, browse warnings, outline parse errors: it is a pure library
+> with no i18n layer, and its messages are its API. See [NOTES.md](./NOTES.md)
+> "Localisation boundary" for why, and what it would take to localise them too.
 
 ## Run the unit tests (no WinCC OA)
 
@@ -255,6 +278,14 @@ npm run typecheck
 
 # and the backend routes, against the REAL core sources (webserver packages stubbed):
 ./node_modules/.bin/tsc -p ../../backend/tsconfig.typecheck.json
+```
+
+The page's translation table has its own verification (no test runner needed — it
+bundles the real module with esbuild): every entry present in EN/FR/DE, the same
+`{placeholders}` in all three, and the WinCC OA locale identifiers resolving:
+
+```bash
+node tools/check-eng-i18n.mjs
 ```
 
 ## Architecture

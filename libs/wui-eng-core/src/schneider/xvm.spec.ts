@@ -43,7 +43,7 @@ describe('parseXvmVariables — Unity spelling', () => {
   it('reports a member with no own address instead of guessing its offset', () => {
     const { variables, warnings } = parseXvmVariables(M580_PESAGE_XVM);
     expect(variables.some((v) => v.name === 'Recette.Libelle')).toBe(false);
-    expect(warnings.join('\n')).toMatch(/Recette\.Libelle.*sans adresse propre/);
+    expect(warnings.join('\n')).toMatch(/Recette\.Libelle.*has no address of its own/);
   });
 });
 
@@ -62,7 +62,7 @@ describe('parseXvmVariables — tolerance', () => {
       '<?xml version="1.0"?><Root><Something Foo="1"/><Other Bar="2"/><Other Bar="3"/></Root>'
     );
     expect(variables).toHaveLength(0);
-    expect(warnings.join('\n')).toMatch(/schéma XVM non vérifié/);
+    expect(warnings.join('\n')).toMatch(/XVM schema is unverified/);
     expect(warnings.join('\n')).toMatch(/Other\(2\)/);
     expect(elements['Other']).toBe(2);
   });
@@ -70,7 +70,7 @@ describe('parseXvmVariables — tolerance', () => {
   it('reports unreadable XML rather than throwing', () => {
     const { variables, warnings } = parseXvmVariables('<Root><unclosed>');
     expect(variables).toHaveLength(0);
-    expect(warnings[0]).toMatch(/XML illisible/);
+    expect(warnings[0]).toMatch(/Unreadable XML/);
   });
 });
 
@@ -93,7 +93,7 @@ describe('buildBookFromXvm', () => {
 
   it('always carries the unverified-schema warning first', () => {
     const book = buildBookFromXvm({ bookId: 'b', xml: M580_PESAGE_XVM });
-    expect(book.warnings[0]).toMatch(/schéma non vérifié par le constructeur/);
+    expect(book.warnings[0]).toMatch(/schema not verified against a vendor export/);
   });
 
   it('detects a register overlap coming from an XVM export too', () => {
@@ -102,6 +102,6 @@ describe('buildBookFromXvm', () => {
       <elementaryVariable name="Niveau" typeName="INT" topologicalAddress="%MW113"/>
     </variables></VariableList>`;
     const book = buildBookFromXvm({ bookId: 'b', xml });
-    expect(book.warnings.join('\n')).toMatch(/Chevauchement de registre 113 entre « Debit » et « Niveau »/);
+    expect(book.warnings.join('\n')).toMatch(/Register 113 overlaps between "Debit" and "Niveau"/);
   });
 });

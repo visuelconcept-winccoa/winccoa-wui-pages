@@ -93,29 +93,29 @@ describe('outline round trip', () => {
 describe('outline errors (reported, never thrown)', () => {
   it('names an unknown leaf type and skips the line', () => {
     const { structure, errors } = parseStructureOutline('Temperature : Real', 'T');
-    expect(errors[0]).toContain('type « Real » inconnu');
+    expect(errors[0]).toContain('unknown type "Real"');
     expect(structureLeaves(structure)).toEqual([]);
   });
 
   it('rejects an over-indented line (no parent at that level)', () => {
     const { errors } = parseStructureOutline('Mesures\n      Temperature : Float', 'T');
-    expect(errors.some((e) => e.includes('trop profondément'))).toBe(true);
+    expect(errors.some((e) => e.includes('indented too deep'))).toBe(true);
   });
 
   it('reports an odd indentation', () => {
     const { errors } = parseStructureOutline('Mesures\n   Temperature : Float', 'T');
-    expect(errors.some((e) => e.includes('indentation'))).toBe(true);
+    expect(errors.some((e) => e.includes('indented by'))).toBe(true);
   });
 
   it('reports a duplicate sibling and keeps the first', () => {
     const { structure, errors } = parseStructureOutline('Mesures\n  T : Float\n  T : Int', 'T');
-    expect(errors.some((e) => e.includes('doublon'))).toBe(true);
+    expect(errors.some((e) => e.includes('duplicated under'))).toBe(true);
     expect(structureLeaves(structure)).toEqual([{ segments: ['Mesures', 'T'], leafType: 'Float' }]);
   });
 
   it('sanitises an invalid identifier and says so', () => {
     const { structure, errors } = parseStructureOutline('Mesures\n  Temp érature (°C) : Float', 'T');
-    expect(errors.some((e) => e.includes('assaini'))).toBe(true);
+    expect(errors.some((e) => e.includes('sanitised to'))).toBe(true);
     expect(structureLeaves(structure)[0].segments[1]).not.toContain(' ');
   });
 });

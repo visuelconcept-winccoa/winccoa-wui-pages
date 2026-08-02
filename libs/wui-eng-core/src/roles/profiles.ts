@@ -108,7 +108,7 @@ function resolveDirection(profile: RoleProfile, entry: BookEntry): { direction: 
       if (!known || entry.access === 'w' || entry.access === 'rw') return { direction: DpAddressDirection.OUTPUT };
       return {
         direction: DpAddressDirection.INPUT_POLL,
-        note: `« ${entry.path} » est déclaré en LECTURE SEULE par la source : adresse créée en entrée (IN) au lieu de sortie — corriger l’accès ou le rôle`
+        note: `"${entry.path}" is declared READ-ONLY by the source: address created as an input (IN) instead of an output — fix the access or the role`
       };
     }
     case 'inout': {
@@ -117,12 +117,12 @@ function resolveDirection(profile: RoleProfile, entry: BookEntry): { direction: 
       if (entry.access === 'w') {
         return {
           direction: DpAddressDirection.OUTPUT,
-          note: `« ${entry.path} » est déclaré en ÉCRITURE SEULE : adresse créée en sortie (OUT), la relecture de la consigne ne sera pas possible`
+          note: `"${entry.path}" is declared WRITE-ONLY: address created as an output (OUT), the setpoint cannot be read back`
         };
       }
       return {
         direction: DpAddressDirection.INPUT_POLL,
-        note: `« ${entry.path} » est déclaré en LECTURE SEULE par la source : adresse créée en entrée (IN) au lieu d’entrée/sortie — corriger l’accès ou le rôle`
+        note: `"${entry.path}" is declared READ-ONLY by the source: address created as an input (IN) instead of input/output — fix the access or the role`
       };
     }
     default: {

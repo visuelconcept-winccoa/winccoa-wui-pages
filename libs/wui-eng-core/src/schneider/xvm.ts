@@ -126,7 +126,7 @@ export function parseXvmVariables(xml: string): XvmParseResult {
   try {
     root = parseXml(xml);
   } catch (error) {
-    return { variables: [], warnings: [`XML illisible : ${(error as Error).message}`], elements };
+    return { variables: [], warnings: [`Unreadable XML: ${(error as Error).message}`], elements };
   }
 
   const variables: SchneiderVariable[] = [];
@@ -147,7 +147,7 @@ export function parseXvmVariables(xml: string): XvmParseResult {
     const address = pick(pool, 'address') ?? '';
     if (address === '' && prefix !== '') {
       warnings.push(
-        `Membre « ${path} » sans adresse propre — implantation dérivée non calculée (déclarer une adresse localisée ou exporter le membre).`
+        `Member "${path}" has no address of its own — derived layout not computed (declare a located address, or export the member).`
       );
       return;
     }
@@ -178,7 +178,7 @@ export function parseXvmVariables(xml: string): XvmParseResult {
       .map(([tag, count]) => `${tag}(${count})`)
       .join(', ');
     warnings.push(
-      `Aucune variable reconnue dans l'export XML — schéma XVM non vérifié. Éléments rencontrés : ${seen || '(aucun)'}. Ajouter l'élément/attribut manquant aux alias de schneider/xvm.ts.`
+      `No variable recognised in the XML export — the XVM schema is unverified. Elements seen: ${seen || '(none)'}. Add the missing element/attribute to the aliases in schneider/xvm.ts.`
     );
   }
   return { variables, warnings, elements };
@@ -211,7 +211,7 @@ export function buildBookFromXvm(bundle: XvmBundle): AddressBook {
     entries: resolved.entries,
     types: [],
     warnings: [
-      'Lecteur XVM/XSY : schéma non vérifié par le constructeur (aucun export réel disponible) — vérifier les entrées avant tout check-in.',
+      'XVM/XSY reader: schema not verified against a vendor export (none available) — check the entries before any check-in.',
       ...parsed.warnings,
       ...resolved.warnings
     ]
