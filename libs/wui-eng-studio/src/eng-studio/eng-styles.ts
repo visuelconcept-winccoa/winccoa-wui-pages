@@ -163,6 +163,66 @@ export const engStudioStyles = [
       gap: 0.75rem;
       padding: 0.9rem;
     }
+    .book-tabs {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      padding: 0.75rem 0.9rem 0.25rem;
+    }
+    .book-tabs-label {
+      color: var(--eng-soft);
+      font-size: 0.8rem;
+    }
+    .book-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.3rem 0.55rem;
+      border: 1px solid var(--eng-border);
+      border-radius: var(--eng-radius);
+      background: var(--eng-surface);
+      color: var(--eng-soft);
+    }
+    .book-tab:hover {
+      border-color: var(--eng-primary);
+    }
+    .book-tab.active {
+      background: var(--eng-surface-2);
+      color: var(--eng-text);
+      border-color: var(--eng-primary);
+    }
+    .book-tab-name {
+      font-weight: 600;
+      max-width: 16rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .browser-books {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+      padding: 0.4rem 0.6rem;
+      border-bottom: 1px solid var(--eng-border);
+    }
+    .mini-tab {
+      padding: 0.2rem 0.45rem;
+      border: 1px solid var(--eng-border);
+      border-radius: var(--eng-radius);
+      background: transparent;
+      color: var(--eng-soft);
+      font-size: 0.72rem;
+      max-width: 9rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .mini-tab.active {
+      background: var(--eng-surface-2);
+      color: var(--eng-text);
+      border-color: var(--eng-primary);
+    }
     .card.signals {
       margin: 0 0.9rem 0.9rem;
       padding: 0;

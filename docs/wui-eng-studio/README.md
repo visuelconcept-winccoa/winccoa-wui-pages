@@ -41,6 +41,20 @@ rest of the studio consumes.
 
 ![Devices panel](../images/eng-studio/01-devices.png)
 
+**Books are first-class and the device↔book relation is many-to-many**, both
+directions supported:
+
+- **Aggregation** — one equipment groups **several interfaces**, each seen as an
+  address book (e.g. a bottling line with a filler + a labeller OPC UA server):
+
+  ![Aggregation: two OPC UA books on one equipment](../images/eng-studio/04-book-aggregation.png)
+
+- **Mutualisation** — one **catalog book is shared** across equipments (e.g. two
+  identical pumps reuse a `Catalogue_Pompe_KSB` file catalog; a catalog has no
+  live interface of its own and is bound to each equipment at check-in):
+
+  ![Mutualisation: a catalog shared across equipments](../images/eng-studio/05-book-mutualisation.png)
+
 ### 2 · Modèle — book browser + signal grid
 
 Left, the **address-book browser** (filterable): each entry shows its WinCC OA leaf

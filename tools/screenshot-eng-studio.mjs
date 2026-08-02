@@ -67,6 +67,12 @@ const PANELS = [
   { id: 'control', file: '03-control.png', desc: 'Contrôle : diff + check-in (dry-run)' }
 ];
 
+// Extra Devices-panel shots that showcase the many-to-many device↔book relation.
+const DEVICE_SHOTS = [
+  { device: 'ligne-embouteillage', file: '04-book-aggregation.png', desc: 'Agrégation : 2 interfaces OPC UA = 2 carnets sur un équipement' },
+  { device: 'z01-pompe1', file: '05-book-mutualisation.png', desc: 'Mutualisation : un carnet catalogue partagé entre équipements' }
+];
+
 async function reachable(url) {
   try {
     const res = await fetch(url, { method: 'GET' });
@@ -139,6 +145,20 @@ async function main() {
       const file = resolve(OUT, panel.file);
       await page.screenshot({ path: file });
       console.log(`[eng-shots] ${panel.file} — ${panel.desc}`);
+    }
+
+    // Device-specific Devices-panel shots (many-to-many showcase).
+    for (const shot of DEVICE_SHOTS) {
+      await page.goto(`${devUrl}/?panel=devices`, { waitUntil: 'load' });
+      await page.waitForSelector('wui-eng-studio');
+      await page.waitForTimeout(500);
+      await page.evaluate((id) => {
+        document.querySelector('wui-eng-studio')?.selectDeviceById(id);
+      }, shot.device);
+      await page.waitForTimeout(400);
+      const file = resolve(OUT, shot.file);
+      await page.screenshot({ path: file });
+      console.log(`[eng-shots] ${shot.file} — ${shot.desc}`);
     }
   } finally {
     await browser.close();

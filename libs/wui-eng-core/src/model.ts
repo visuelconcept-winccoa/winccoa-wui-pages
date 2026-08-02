@@ -60,9 +60,17 @@ export interface Device {
   id: string;
   /** Display name, e.g. `S7_Four1`. */
   name: string;
-  protocol: ProtocolKind;
-  /** Protocol-specific connection settings (endpoint, ip/rack/slot, …). */
-  connection: Record<string, string | number | boolean>;
+  /**
+   * Address books associated to this equipment. The relation is MANY-TO-MANY:
+   *  - a book may be listed by SEVERAL devices → the catalog is *mutualised*;
+   *  - a device may list SEVERAL books → it aggregates several interfaces
+   *    (e.g. two OPC UA servers of one machine), each seen as a book.
+   */
+  bookIds: string[];
+  /** Primary/aggregate protocol hint for the rail badge (books carry the real interface). */
+  protocol?: ProtocolKind;
+  /** Optional device-level connection (fallback; per-book interfaces are authoritative). */
+  connection?: Record<string, string | number | boolean>;
   /** Access modes this device offers (see {@link AccessMode}). */
   accessModes: AccessMode[];
   /** WinCC OA driver manager number, when known (resolved by the backend). */
@@ -122,9 +130,35 @@ export interface BookType {
   members: { path: string; sourceType: string; leafType: OaLeafType; comment?: string }[];
 }
 
+/**
+ * The concrete communication interface/source a book binds through — an OPC UA
+ * server, an S7 connection, … Absent for a pure FILE catalog (a SimaticML /
+ * NodeSet export reused as a template): such a catalog has no live binding of
+ * its own and is bound when paired with an equipment's interface.
+ */
+export interface BookInterface {
+  protocol: ProtocolKind;
+  /** Connection/server name used to build the address reference (e.g. OPC UA `<Conn>`). */
+  connection?: string;
+  /** Connection parameters (endpoint, ip/rack/slot…), for display. */
+  params?: Record<string, string | number | boolean>;
+  /** WinCC OA driver manager number of this interface, when known. */
+  driverNumber?: number;
+}
+
+/**
+ * A first-class address book: a catalog of addressable signals with its own
+ * identity, so it can be MUTUALISED across equipments and a device can hold
+ * SEVERAL of them (see {@link Device.bookIds}).
+ */
 export interface AddressBook {
-  deviceId: string;
+  /** Stable book identity, referenced by {@link Device.bookIds}. */
+  id: string;
+  /** Human name, e.g. `TIA Four1 · DB_Echange` or `OPC UA Remplisseuse`. */
+  name: string;
   provenance: BookProvenance;
+  /** The interface this book binds through, when live (absent for a file catalog). */
+  interface?: BookInterface;
   entries: BookEntry[];
   /** Structured types discovered in the source (UDTs → DPT candidates). */
   types: BookType[];

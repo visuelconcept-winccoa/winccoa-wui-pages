@@ -26,7 +26,7 @@
  * input — see docs/wui-eng-studio/README.md).
  */
 
-import type { AddressBook, BookEntry, BookProvenance, BookType, OaLeafType } from '../model.js';
+import type { AddressBook, BookEntry, BookInterface, BookProvenance, BookType, OaLeafType } from '../model.js';
 import { isUnmappedS7Type, s7LeafType, s7Operand } from '../drivers/s7.js';
 import { computeStandardOffsets, type LayoutMember, type MemberOffset } from './offsets.js';
 import { childrenOf, findAll, findFirst, localName, parseXml, type XmlNode } from './xml.js';
@@ -119,10 +119,15 @@ export function parseSimaticMlDocument(xml: string): ParsedBlock {
 
 /** Input of {@link buildBookFromSimaticMl}: the exported documents + context. */
 export interface SimaticMlBundle {
-  deviceId: string;
+  /** Stable book identity. */
+  bookId: string;
+  /** Human name for the produced book. */
+  name?: string;
   /** XML documents (any mix of DB and UDT exports). */
   documents: { fileName: string; xml: string }[];
   provenance?: Partial<BookProvenance>;
+  /** Live interface this book binds through (absent → a pure file catalog). */
+  interface?: BookInterface;
 }
 
 /** Expand UDT references into concrete members (one level of indirection at a time). */
@@ -263,12 +268,14 @@ export function buildBookFromSimaticMl(bundle: SimaticMlBundle): AddressBook {
   }
 
   return {
-    deviceId: bundle.deviceId,
+    id: bundle.bookId,
+    name: bundle.name ?? bundle.bookId,
     provenance: {
       kind: 'simaticml',
       generatedAt: bundle.provenance?.generatedAt ?? new Date().toISOString(),
       ...bundle.provenance
     },
+    interface: bundle.interface,
     entries,
     types,
     warnings

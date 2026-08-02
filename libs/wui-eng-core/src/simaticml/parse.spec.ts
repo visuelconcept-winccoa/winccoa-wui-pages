@@ -18,7 +18,7 @@ import { buildBookFromSimaticMl, parseSimaticMlDocument } from './parse.js';
 const PROVENANCE = { generatedAt: '2026-08-02T00:00:00.000Z' };
 
 function book(documents: { fileName: string; xml: string }[]) {
-  return buildBookFromSimaticMl({ deviceId: 'dev1', documents, provenance: PROVENANCE });
+  return buildBookFromSimaticMl({ bookId: 'book1', name: 'Book 1', documents, provenance: PROVENANCE });
 }
 
 describe('parseSimaticMlDocument', () => {

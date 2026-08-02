@@ -23,13 +23,7 @@ import {
   type Workspace
 } from '@visuelconcept/wui-eng-core';
 import type { EngGateway, EngRole, TestReadResult } from './gateway.js';
-import {
-  DEMO_DEVICES,
-  DEMO_LIVE_VALUES,
-  demoLiveSnapshot,
-  opcuaAddressBook,
-  s7AddressBook
-} from './demo-data.js';
+import { DEMO_DEVICES, DEMO_LIVE_VALUES, demoBooks, demoLiveSnapshot } from './demo-data.js';
 
 /** In-memory port so the demo check-in mutates a fake live project. */
 function demoPort(live: LiveSnapshot): EngPort {
@@ -53,10 +47,7 @@ function demoPort(live: LiveSnapshot): EngPort {
 export class DemoEngGateway implements EngGateway {
   readonly isDemo = true;
 
-  private books = new Map<string, AddressBook>([
-    ['s7-four1', s7AddressBook()],
-    ['opc-cellule2', opcuaAddressBook()]
-  ]);
+  private books = new Map<string, AddressBook>(demoBooks().map((b) => [b.id, b]));
   private live: LiveSnapshot = demoLiveSnapshot();
   private workspace: Workspace = this.seedWorkspace();
 
@@ -68,14 +59,18 @@ export class DemoEngGateway implements EngGateway {
     return DEMO_DEVICES;
   }
 
-  async getAddressBook(deviceId: string): Promise<AddressBook | null> {
-    return this.books.get(deviceId) ?? null;
+  async listBooks(): Promise<AddressBook[]> {
+    return [...this.books.values()];
   }
 
-  async refreshAddressBook(deviceId: string): Promise<AddressBook> {
-    const book = deviceId === 'opc-cellule2' ? opcuaAddressBook() : s7AddressBook();
-    this.books.set(deviceId, book);
-    return book;
+  async getBook(bookId: string): Promise<AddressBook | null> {
+    return this.books.get(bookId) ?? null;
+  }
+
+  async refreshBook(bookId: string): Promise<AddressBook> {
+    const fresh = demoBooks().find((b) => b.id === bookId);
+    if (fresh) this.books.set(bookId, fresh);
+    return this.books.get(bookId) as AddressBook;
   }
 
   async getWorkspace(): Promise<Workspace> {

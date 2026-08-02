@@ -49,13 +49,18 @@ export class HttpEngGateway implements EngGateway {
     return devices;
   }
 
-  async getAddressBook(deviceId: string): Promise<AddressBook | null> {
-    const { book } = await getJson<{ book: AddressBook | null }>(`/devices/${encodeURIComponent(deviceId)}/book`);
+  async listBooks(): Promise<AddressBook[]> {
+    const { books } = await getJson<{ books: AddressBook[] }>('/books');
+    return books;
+  }
+
+  async getBook(bookId: string): Promise<AddressBook | null> {
+    const { book } = await getJson<{ book: AddressBook | null }>(`/books/${encodeURIComponent(bookId)}`);
     return book;
   }
 
-  async refreshAddressBook(deviceId: string): Promise<AddressBook> {
-    const { book } = await postJson<{ book: AddressBook }>(`/devices/${encodeURIComponent(deviceId)}/book/refresh`, {});
+  async refreshBook(bookId: string): Promise<AddressBook> {
+    const { book } = await postJson<{ book: AddressBook }>(`/books/${encodeURIComponent(bookId)}/refresh`, {});
     return book;
   }
 

@@ -42,15 +42,18 @@ export interface EngGateway {
   /** Roles granted to the current user (open-by-default like the rest of the suite). */
   roles(): Promise<Set<EngRole>>;
 
-  // --- devices + address books ------------------------------------------------
+  // --- devices + address books (many-to-many) ---------------------------------
+  /** Equipments — each carries `bookIds` (see the N:N relation in the model). */
   listDevices(): Promise<Device[]>;
-  /** The current (persisted) address book of a device, or null if none yet. */
-  getAddressBook(deviceId: string): Promise<AddressBook | null>;
+  /** Every address book (registry). A book may be referenced by several devices. */
+  listBooks(): Promise<AddressBook[]>;
+  /** One book by its id, or null. */
+  getBook(bookId: string): Promise<AddressBook | null>;
   /**
-   * (Re)generate the device's address book from its configured source
-   * (browse / last ingested SimaticML bundle). Returns the fresh book.
+   * (Re)generate a book from its configured source (browse / last ingested
+   * SimaticML bundle). Returns the fresh book.
    */
-  refreshAddressBook(deviceId: string): Promise<AddressBook>;
+  refreshBook(bookId: string): Promise<AddressBook>;
 
   // --- workspace + check-in ---------------------------------------------------
   getWorkspace(): Promise<Workspace>;

@@ -41,6 +41,31 @@ Consequence: `npm test` (core) and `node tools/screenshot-eng-studio.mjs`
 - `EngPlan` is the *single* serializable object: it is both the dry-run preview
   and the check-in request body — what you preview is what gets applied.
 
+## Books are first-class — device↔book is many-to-many
+
+An `AddressBook` has its own identity (`id`, `name`) and is NOT owned by a single
+device. A `Device` (equipment) references books via `bookIds: string[]`. This one
+relation covers both requested needs:
+
+- **Aggregation** (N books on one device): an equipment groups several
+  interfaces — e.g. two OPC UA servers of one machine — each a book.
+- **Mutualisation** (one book on N devices): the same `bookId` appears in several
+  equipments' `bookIds` → the catalog is reused, not copied.
+
+A book optionally carries its **`interface`** (the concrete OPC UA/S7 connection
+it binds through). A book with **no** interface is a pure **file catalog /
+template** (a SimaticML/NodeSet export): it holds the signal structure but no
+live binding, and is bound to each equipment at check-in through that equipment's
+interface. The nuance "same catalog, different servers" is therefore modelled as
+one catalog book referenced by several devices, each supplying its own binding —
+and a future "clone catalog with a new interface" action can materialise a bound
+copy when needed.
+
+The pure domain does not depend on this wiring — `AddressBook` is a data record;
+the many-to-many is resolved in the gateway/UI (`booksOfDevice`,
+`otherDevicesSharing`). The backend store (devices + books registry) is a
+later increment.
+
 ## Address books (the iba idea), and the S7 access-mode duality
 
 Each device carries a persistent **AddressBook**; entries hold **candidate

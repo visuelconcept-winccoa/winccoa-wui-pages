@@ -18,7 +18,8 @@ function entry(path: string, sourceType = 'Real'): BookEntry {
 
 function book(entries: BookEntry[]): AddressBook {
   return {
-    deviceId: 'dev1',
+    id: 'book1',
+    name: 'Book 1',
     provenance: { kind: 'simaticml', generatedAt: '2026-08-02T00:00:00.000Z' },
     entries,
     types: [],

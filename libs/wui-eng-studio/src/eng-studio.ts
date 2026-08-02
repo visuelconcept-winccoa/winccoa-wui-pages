@@ -47,7 +47,10 @@ export class WuiEngStudio extends LitElement {
   @state() private panel: Panel = 'model';
   @state() private devices: Device[] = [];
   @state() private selectedDeviceId: string | null = null;
-  @state() private book: AddressBook | null = null;
+  /** Every address book (registry); a book may be shared by several devices. */
+  @state() private books: AddressBook[] = [];
+  /** The active book (of the selected device) driving the browser/signal views. */
+  @state() private selectedBookId: string | null = null;
   @state() private bookFilter = '';
   /** Filter for the signal table shown in the Devices panel's address book. */
   @state() private signalFilter = '';
@@ -70,6 +73,11 @@ export class WuiEngStudio extends LitElement {
     void this.load();
   }
 
+  /** Public: select an equipment by id (used by the demo/screenshot harness). */
+  selectDeviceById(id: string): void {
+    if (this.devices.some((d) => d.id === id)) this.selectDevice(id);
+  }
+
   /** Monotonic load token — only the latest load() writes state (demo swap race). */
   private loadToken = 0;
 
@@ -81,15 +89,18 @@ export class WuiEngStudio extends LitElement {
     try {
       const roles = await gateway.roles();
       const devices = await gateway.listDevices();
+      const books = await gateway.listBooks();
       const selectedDeviceId = this.selectedDeviceId ?? devices[0]?.id ?? null;
-      const book = selectedDeviceId ? await gateway.getAddressBook(selectedDeviceId) : null;
+      const device = devices.find((d) => d.id === selectedDeviceId);
+      const selectedBookId = this.selectedBookId ?? device?.bookIds[0] ?? null;
       const workspace = await gateway.getWorkspace();
       const live = await gateway.liveSnapshot();
       if (token !== this.loadToken) return; // superseded (e.g. by useDemo)
       this.roles = roles;
       this.devices = devices;
+      this.books = books;
       this.selectedDeviceId = selectedDeviceId;
-      this.book = book;
+      this.selectedBookId = selectedBookId;
       this.workspace = workspace;
       this.live = live;
       this.recomputePlan();
@@ -173,6 +184,7 @@ export class WuiEngStudio extends LitElement {
       <button class="device ${selected ? 'selected' : ''}" @click=${() => this.selectDevice(device.id)}>
         <span class="dot ${device.state}"></span>
         <span class="device-name">${device.name}</span>
+        ${device.bookIds.length > 1 ? html`<span class="chip">${device.bookIds.length} carnets</span>` : nothing}
         <span class="chip proto">${this.protocolLabel(device)}</span>
       </button>
     `;
@@ -180,57 +192,115 @@ export class WuiEngStudio extends LitElement {
 
   private protocolLabel(device: Device): string {
     const map: Record<string, string> = { opcua: 'OPC UA', s7: 'S7', s7plus: 'S7+', modbus: 'Modbus' };
-    return map[device.protocol] ?? device.protocol;
+    return device.protocol ? map[device.protocol] ?? device.protocol : '—';
   }
 
-  // --- panel 1: devices + book ------------------------------------------------
+  // --- book helpers (many-to-many) --------------------------------------------
+
+  private bookById(id: string | null): AddressBook | null {
+    return id == null ? null : this.books.find((b) => b.id === id) ?? null;
+  }
+
+  /** Books of the selected device, in its declared order. */
+  private booksOfDevice(device: Device): AddressBook[] {
+    return device.bookIds.map((id) => this.bookById(id)).filter((b): b is AddressBook => b != null);
+  }
+
+  /** The active book (selected device's chosen book). */
+  private activeBook(): AddressBook | null {
+    return this.bookById(this.selectedBookId);
+  }
+
+  /** Names of the OTHER equipments that share a book (mutualisation indicator). */
+  private otherDevicesSharing(bookId: string): string[] {
+    return this.devices.filter((d) => d.id !== this.selectedDeviceId && d.bookIds.includes(bookId)).map((d) => d.name);
+  }
+
+  // --- panel 1: devices + books -----------------------------------------------
 
   private renderDevicesPanel(): TemplateResult {
     const device = this.currentDevice();
     if (!device) return html`<div class="empty">Aucun équipement.</div>`;
-    const book = this.book;
+    const books = this.booksOfDevice(device);
+    const book = this.activeBook();
     return html`
       <div class="panel-head">
         <h2>${device.name}</h2>
         <span class="chip">${this.protocolLabel(device)}</span>
         <span class="chip"><span class="dot ${device.state}"></span>${device.state}</span>
+        <span class="chip">${books.length} carnet${books.length > 1 ? 's' : ''}</span>
         <div class="spacer"></div>
         ${this.can('manage-devices')
-          ? html`<button class="btn primary" ?disabled=${this.busy} @click=${this.onRefreshBook}>⟳ Rafraîchir le carnet</button>`
+          ? html`<button class="btn primary" ?disabled=${this.busy || book == null} @click=${this.onRefreshBook}>⟳ Rafraîchir le carnet</button>`
           : nothing}
       </div>
       <div class="panel-scroll">
-        <div class="device-grid">
-          <section class="card">
-            <div class="card-title">Connexion</div>
-            <table class="kv">
-              ${Object.entries(device.connection).map(
-                ([k, v]) => html`<tr><td>${k}</td><td class="mono">${String(v)}</td></tr>`
-              )}
-              <tr><td>modes d'accès</td><td>${device.accessModes.map((m) => html`<span class="chip">${m}</span> `)}</td></tr>
-              <tr><td>driver</td><td class="mono">${device.driverNumber ?? '—'}</td></tr>
-            </table>
-          </section>
-          <section class="card">
-            <div class="card-title">Carnet d'adresses</div>
-            ${book
-              ? html`
-                  <table class="kv">
-                    <tr><td>source</td><td>${book.provenance.kind}${book.provenance.file ? html` · <code>${book.provenance.file}</code>` : nothing}</td></tr>
-                    <tr><td>généré</td><td class="mono">${book.provenance.generatedAt.replace('T', ' ').slice(0, 16)}</td></tr>
-                    <tr><td>détail</td><td>${book.provenance.detail ?? '—'}</td></tr>
-                    <tr><td>entrées</td><td><b>${book.entries.length}</b> signaux · ${book.types.length} type(s)</td></tr>
-                    ${book.warnings.length > 0 ? html`<tr><td>avertissements</td><td class="warn-text">${book.warnings.length}</td></tr>` : nothing}
-                  </table>
-                `
-              : html`<div class="empty small">Pas encore de carnet — ingérez un export SimaticML ou lancez un browse.</div>`}
-          </section>
-        </div>
-        ${book && book.warnings.length > 0
-          ? html`<section class="card warnings"><div class="card-title">Avertissements du générateur</div><ul>${book.warnings.map((w) => html`<li>${w}</li>`)}</ul></section>`
-          : nothing}
-        ${book ? this.renderDeviceSignals(book) : nothing}
+        ${books.length === 0
+          ? html`<div class="empty small">Aucun carnet associé — ajoutez une interface (browse OPC UA) ou ingérez un export SimaticML, ou associez un carnet mutualisé.</div>`
+          : html`
+              <div class="book-tabs">
+                <span class="book-tabs-label">Carnets&nbsp;:</span>
+                ${books.map((b) => this.renderBookTab(b))}
+              </div>
+              ${book ? this.renderBookDetail(device, book) : nothing}
+            `}
       </div>
+    `;
+  }
+
+  private renderBookTab(book: AddressBook): TemplateResult {
+    const active = book.id === this.selectedBookId;
+    const shared = this.otherDevicesSharing(book.id).length > 0;
+    return html`
+      <button class="book-tab ${active ? 'active' : ''}" @click=${() => this.selectBook(book.id)} title=${book.name}>
+        <span class="book-tab-name">${book.name}</span>
+        <span class="chip mode">${book.interface ? this.protocolOf(book.interface.protocol) : 'catalogue'}</span>
+        <span class="chip">${book.entries.length}</span>
+        ${shared ? html`<span class="chip" title="Carnet mutualisé">⇆</span>` : nothing}
+      </button>
+    `;
+  }
+
+  private protocolOf(protocol: string): string {
+    const map: Record<string, string> = { opcua: 'OPC UA', s7: 'S7', s7plus: 'S7+', modbus: 'Modbus' };
+    return map[protocol] ?? protocol;
+  }
+
+  private renderBookDetail(device: Device, book: AddressBook): TemplateResult {
+    const sharedWith = this.otherDevicesSharing(book.id);
+    return html`
+      <div class="device-grid">
+        <section class="card">
+          <div class="card-title">Interface — ${book.name}</div>
+          ${book.interface
+            ? html`
+                <table class="kv">
+                  <tr><td>protocole</td><td>${this.protocolOf(book.interface.protocol)}</td></tr>
+                  ${book.interface.connection ? html`<tr><td>connexion</td><td class="mono">${book.interface.connection}</td></tr>` : nothing}
+                  ${Object.entries(book.interface.params ?? {}).map(([k, v]) => html`<tr><td>${k}</td><td class="mono">${String(v)}</td></tr>`)}
+                  <tr><td>driver</td><td class="mono">${book.interface.driverNumber ?? device.driverNumber ?? '—'}</td></tr>
+                </table>
+              `
+            : html`<div class="empty small">Catalogue de fichier (sans interface live) — lié à l'équipement au check-in via son interface.</div>`}
+        </section>
+        <section class="card">
+          <div class="card-title">Carnet d'adresses</div>
+          <table class="kv">
+            <tr><td>source</td><td>${book.provenance.kind}${book.provenance.file ? html` · <code>${book.provenance.file}</code>` : nothing}</td></tr>
+            <tr><td>généré</td><td class="mono">${book.provenance.generatedAt.replace('T', ' ').slice(0, 16)}</td></tr>
+            <tr><td>détail</td><td>${book.provenance.detail ?? '—'}</td></tr>
+            <tr><td>entrées</td><td><b>${book.entries.length}</b> signaux · ${book.types.length} type(s)</td></tr>
+            ${sharedWith.length > 0
+              ? html`<tr><td>mutualisé avec</td><td>${sharedWith.map((n) => html`<span class="chip">${n}</span> `)}</td></tr>`
+              : nothing}
+            ${book.warnings.length > 0 ? html`<tr><td>avertissements</td><td class="warn-text">${book.warnings.length}</td></tr>` : nothing}
+          </table>
+        </section>
+      </div>
+      ${book.warnings.length > 0
+        ? html`<section class="card warnings"><div class="card-title">Avertissements du générateur</div><ul>${book.warnings.map((w) => html`<li>${w}</li>`)}</ul></section>`
+        : nothing}
+      ${this.renderDeviceSignals(book)}
     `;
   }
 
@@ -301,12 +371,14 @@ export class WuiEngStudio extends LitElement {
   }
 
   private renderBookBrowser(): TemplateResult {
-    const book = this.book;
+    const device = this.currentDevice();
+    const deviceBooks = device ? this.booksOfDevice(device) : [];
+    const book = this.activeBook();
     const entries = book ? filterEntries(book, this.bookFilter) : [];
     return html`
       <section class="browser">
         <div class="browser-head">
-          <span>Carnet — ${this.currentDevice()?.name ?? ''}</span>
+          <span>Carnet — ${device?.name ?? ''}</span>
           <input
             class="filter"
             placeholder="filtrer…"
@@ -314,6 +386,13 @@ export class WuiEngStudio extends LitElement {
             @input=${(e: Event) => (this.bookFilter = (e.target as HTMLInputElement).value)}
           />
         </div>
+        ${deviceBooks.length > 1
+          ? html`<div class="browser-books">
+              ${deviceBooks.map(
+                (b) => html`<button class="mini-tab ${b.id === this.selectedBookId ? 'active' : ''}" @click=${() => this.selectBook(b.id)} title=${b.name}>${b.name}</button>`
+              )}
+            </div>`
+          : nothing}
         <div class="browser-list">
           ${book == null
             ? html`<div class="empty small">Aucun carnet pour cet équipement.</div>`
@@ -469,17 +548,26 @@ export class WuiEngStudio extends LitElement {
     return this.devices.find((d) => d.id === this.selectedDeviceId);
   }
 
-  private async selectDevice(id: string): Promise<void> {
+  private selectDevice(id: string): void {
     this.selectedDeviceId = id;
-    this.book = await this.gateway.getAddressBook(id);
+    // Activate the device's first book (reset filters for the new context).
+    this.selectedBookId = this.devices.find((d) => d.id === id)?.bookIds[0] ?? null;
+    this.signalFilter = '';
+    this.bookFilter = '';
+  }
+
+  private selectBook(id: string): void {
+    this.selectedBookId = id;
   }
 
   private async onRefreshBook(): Promise<void> {
-    if (!this.selectedDeviceId) return;
+    const bookId = this.selectedBookId;
+    if (!bookId) return;
     this.busy = true;
     try {
-      this.book = await this.gateway.refreshAddressBook(this.selectedDeviceId);
-      this.notice = `Carnet rafraîchi : ${this.book.entries.length} signaux.`;
+      const fresh = await this.gateway.refreshBook(bookId);
+      this.books = this.books.map((b) => (b.id === bookId ? fresh : b));
+      this.notice = `Carnet « ${fresh.name} » rafraîchi : ${fresh.entries.length} signaux.`;
     } finally {
       this.busy = false;
     }
