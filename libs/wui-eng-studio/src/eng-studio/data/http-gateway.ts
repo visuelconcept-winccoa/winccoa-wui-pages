@@ -15,6 +15,7 @@ import type {
   EngPlan,
   LiveSnapshot,
   SignalRole,
+  TagAccess,
   Workspace
 } from '@visuelconcept/wui-eng-core';
 import type {
@@ -83,6 +84,10 @@ export class HttpEngGateway implements EngGateway {
 
   async saveBookRoles(bookId: string, roles: Record<string, SignalRole>): Promise<void> {
     await postJson(`/books/${encodeURIComponent(bookId)}/roles`, { roles });
+  }
+
+  async saveBookAccess(bookId: string, access: Record<string, TagAccess | ''>): Promise<void> {
+    await postJson(`/books/${encodeURIComponent(bookId)}/access`, { access });
   }
 
   async getWorkspace(): Promise<Workspace> {

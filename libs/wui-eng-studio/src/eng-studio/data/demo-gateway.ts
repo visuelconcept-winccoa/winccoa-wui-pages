@@ -18,6 +18,7 @@ import {
   diffWorkspace,
   refreshWarnings,
   makeDpeName,
+  withAccess,
   withRoles,
   type SignalRole,
   type AddressBook,
@@ -27,6 +28,7 @@ import {
   type EngPlan,
   type EngPort,
   type LiveSnapshot,
+  type TagAccess,
   type Workspace
 } from '@visuelconcept/wui-eng-core';
 import type {
@@ -46,9 +48,15 @@ import { DEMO_DEVICES, DEMO_LIVE_VALUES, demoBooks, demoLiveSnapshot } from './d
  * overrides. The real backend does the same on ingestion/refresh — the roles are
  * stored WITH the book so a mutualised catalog is qualified once.
  */
-function qualify(book: AddressBook, manual: Record<string, SignalRole>): AddressBook {
-  const assignments = classifyEntries(book.entries, DEFAULT_ROLE_RULES, manual);
-  return { ...book, entries: withRoles(book.entries, assignments) };
+function qualify(
+  book: AddressBook,
+  manual: Record<string, SignalRole>,
+  access: Record<string, TagAccess> = {}
+): AddressBook {
+  // Access overrides FIRST: structural role rules match on the access mode.
+  const entries = withAccess(book.entries, access);
+  const assignments = classifyEntries(entries, DEFAULT_ROLE_RULES, manual);
+  return { ...book, entries: withRoles(entries, assignments) };
 }
 
 /** In-memory port so the demo check-in mutates a fake live project. */
@@ -76,6 +84,8 @@ export class DemoEngGateway implements EngGateway {
   private books = new Map<string, AddressBook>(demoBooks().map((b) => [b.id, qualify(b, {})]));
   /** Operator role overrides per book (path → role), kept across refreshes. */
   private manualRoles = new Map<string, Record<string, SignalRole>>();
+  /** Operator ACCESS overrides per book (path → r/w/rw), kept across refreshes. */
+  private manualAccess = new Map<string, Record<string, TagAccess>>();
   /** The fake OPC UA server the demo browses (drifts between generations). */
   private readonly browsePort = new DemoOpcUaBrowsePort();
   /** One-shot seeding of the walker-produced online book. */
@@ -137,7 +147,7 @@ export class DemoEngGateway implements EngGateway {
     }
     const fresh = demoBooks().find((b) => b.id === bookId);
     // A rules-only refresh KEEPS the operator's manual overrides.
-    if (fresh) this.books.set(bookId, qualify(fresh, this.manualRoles.get(bookId) ?? {}));
+    if (fresh) this.books.set(bookId, qualify(fresh, this.manualRoles.get(bookId) ?? {}, this.manualAccess.get(bookId) ?? {}));
     return {
       book: this.books.get(bookId) as AddressBook,
       rebrowsed: false,
@@ -167,7 +177,7 @@ export class DemoEngGateway implements EngGateway {
     });
     const delta = previous === null ? null : diffBooks(previous, fresh);
     const warned = delta === null ? fresh : { ...fresh, warnings: [...refreshWarnings(delta), ...fresh.warnings] };
-    const stored = qualify(warned, this.manualRoles.get(request.bookId) ?? {});
+    const stored = qualify(warned, this.manualRoles.get(request.bookId) ?? {}, this.manualAccess.get(request.bookId) ?? {});
     this.books.set(request.bookId, stored);
     return {
       book: stored,
@@ -186,8 +196,23 @@ export class DemoEngGateway implements EngGateway {
 
   async saveBookRoles(bookId: string, roles: Record<string, SignalRole>): Promise<void> {
     this.manualRoles.set(bookId, { ...(this.manualRoles.get(bookId) ?? {}), ...roles });
+    this.requalify(bookId);
+  }
+
+  async saveBookAccess(bookId: string, access: Record<string, TagAccess | ''>): Promise<void> {
+    const merged = { ...(this.manualAccess.get(bookId) ?? {}) };
+    for (const [path, mode] of Object.entries(access)) {
+      if (mode === '') delete merged[path];
+      else merged[path] = mode;
+    }
+    this.manualAccess.set(bookId, merged);
+    this.requalify(bookId);
+  }
+
+  private requalify(bookId: string): void {
     const book = this.books.get(bookId);
-    if (book) this.books.set(bookId, qualify(book, this.manualRoles.get(bookId) ?? {}));
+    if (!book) return;
+    this.books.set(bookId, qualify(book, this.manualRoles.get(bookId) ?? {}, this.manualAccess.get(bookId) ?? {}));
   }
 
   async getWorkspace(): Promise<Workspace> {

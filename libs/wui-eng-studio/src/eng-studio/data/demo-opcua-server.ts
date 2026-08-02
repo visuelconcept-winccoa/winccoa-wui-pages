@@ -17,7 +17,11 @@
  * a no-op refresh.
  *
  * The address space is a bottle filler exposing a PackML-ish interface, which is
- * the archetype the studio's mutualised catalogs target.
+ * the archetype the studio's mutualised catalogs target. Its nodes carry realistic
+ * `AccessLevel` values — read-only statuses, read/write setpoints, write-only
+ * commands, one setpoint the server keeps read-only (so the generator has to
+ * downgrade its direction and say so) and one node whose access the driver does not
+ * report at all (the `assumed` case).
  */
 
 import { OPCUA_OBJECTS_FOLDER, type OpcUaBrowseNode, type OpcUaBrowsePort } from '@visuelconcept/wui-eng-core';
@@ -29,10 +33,39 @@ function folder(name: string, id: string): OpcUaBrowseNode {
   return { displayName: name, nodeId: `${NS};i=${id}`, nodeClass: 'Object' };
 }
 
-/** A variable node — the walker turns these into book entries. */
-function variable(name: string, key: string, dataType: string, valueRank = -1): OpcUaBrowseNode {
-  return { displayName: name, nodeId: `${NS};s=${key}`, nodeClass: 'Variable', dataType, valueRank };
+/**
+ * A variable node — the walker turns these into book entries.
+ *
+ * `access` is the OPC UA `AccessLevel` bitmask (1 = CurrentRead, 2 = CurrentWrite,
+ * 3 = both). Pass `ACCESS_NOT_REPORTED` (null) to model a driver that does NOT
+ * expose it — the walker then catalogues the signal read-only with an `assumed`
+ * access, the case the manual override and the role-intent fallback exist for.
+ * (`null`, not `undefined`: an explicit `undefined` would silently trigger the
+ * default parameter and report a read access instead.)
+ */
+function variable(
+  name: string,
+  key: string,
+  dataType: string,
+  access: number | null = ACCESS_READ,
+  valueRank = -1
+): OpcUaBrowseNode {
+  return {
+    displayName: name,
+    nodeId: `${NS};s=${key}`,
+    nodeClass: 'Variable',
+    dataType,
+    valueRank,
+    ...(access === null ? {} : { accessLevel: access })
+  };
 }
+
+/** OPC UA AccessLevel bitmasks used by the fake address space. */
+const ACCESS_READ = 1;
+const ACCESS_WRITE = 2;
+const ACCESS_READ_WRITE = 3;
+/** The driver returned no AccessLevel for this node. */
+const ACCESS_NOT_REPORTED = null;
 
 /**
  * The demo address space, per generation.
@@ -54,21 +87,29 @@ function addressSpace(generation: number): Record<string, OpcUaBrowseNode[]> {
     variable('NiveauCuve', 'Mes.NiveauCuve', 'Float'),
     variable('DebitRemplissage', 'Mes.Debit', 'Float')
   ];
+  // Setpoints are readable AND writable on a real server — that is what makes the
+  // generated address I/O instead of a guess.
   const setpoints: OpcUaBrowseNode[] = [
-    variable('ConsigneTemperature', 'Cons.Temp', 'Double'),
-    variable('ConsigneVolume', 'Cons.Volume', 'Float'),
-    variable('ConsigneCadence', 'Cons.Cadence', 'Float')
+    variable('ConsigneTemperature', 'Cons.Temp', 'Double', ACCESS_READ_WRITE),
+    variable('ConsigneVolume', 'Cons.Volume', 'Float', ACCESS_READ_WRITE),
+    // Deliberately read-only on the server though its NAME says "consigne": the
+    // generator must downgrade the direction and SAY so (a write here would be
+    // rejected at runtime).
+    variable('ConsigneCadence', 'Cons.Cadence', 'Float', ACCESS_READ)
   ];
   const admin: OpcUaBrowseNode[] = [
     variable('ProdProcessedCount', 'Admin.ProdCount', 'UInt32'),
     variable('ProdDefectiveCount', 'Admin.DefectCount', 'UInt32'),
     variable('AlarmActive', 'Admin.AlarmActive', 'Boolean'),
-    variable('AlarmHistory', 'Admin.AlarmHistory', 'String', 1) // array → flagged
+    variable('AlarmHistory', 'Admin.AlarmHistory', 'String', ACCESS_READ, 1), // array → flagged
+    // This one models a node whose AccessLevel the driver did NOT return.
+    variable('RecetteCourante', 'Admin.Recette', 'String', ACCESS_NOT_REPORTED)
   ];
+  // Commands are write-only on this machine: OUTPUT, nothing to poll back.
   const commands: OpcUaBrowseNode[] = [
-    variable('CmdStart', 'Cmd.Start', 'Boolean'),
-    variable('CmdStop', 'Cmd.Stop', 'Boolean'),
-    variable('CmdReset', 'Cmd.Reset', 'Boolean')
+    variable('CmdStart', 'Cmd.Start', 'Boolean', ACCESS_WRITE),
+    variable('CmdStop', 'Cmd.Stop', 'Boolean', ACCESS_WRITE),
+    variable('CmdReset', 'Cmd.Reset', 'Boolean', ACCESS_WRITE)
   ];
 
   if (generation >= 2) {

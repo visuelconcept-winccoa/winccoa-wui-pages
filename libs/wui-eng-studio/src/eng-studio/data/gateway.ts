@@ -22,6 +22,7 @@ import type {
   EngPlan,
   LiveSnapshot,
   SignalRole,
+  TagAccess,
   Workspace
 } from '@visuelconcept/wui-eng-core';
 
@@ -125,6 +126,13 @@ export interface EngGateway {
    * Rule-derived roles are recomputed, manual ones are kept.
    */
   saveBookRoles(bookId: string, roles: Record<string, SignalRole>): Promise<void>;
+
+  /**
+   * Persist MANUAL access overrides (path → `r`/`w`/`rw`; `''` clears one).
+   * This is what makes a browse without `AccessLevel` usable: an override counts
+   * as evidence, so the generated address direction follows it.
+   */
+  saveBookAccess(bookId: string, access: Record<string, TagAccess | ''>): Promise<void>;
 
   // --- workspace + check-in ---------------------------------------------------
   getWorkspace(): Promise<Workspace>;

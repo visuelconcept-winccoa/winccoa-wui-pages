@@ -42,6 +42,7 @@ import {
   diffWorkspace,
   liveScopeOf,
   refreshWarnings,
+  withAccess,
   withRoles,
   type AddressBook,
   type AddressConfig,
@@ -53,6 +54,7 @@ import {
   type EngPort,
   type LiveSnapshot,
   type SignalRole,
+  type TagAccess,
   type Workspace
 } from '@visuelconcept/wui-eng-core';
 
@@ -272,11 +274,17 @@ export class EngController {
 
   // --- address books ---------------------------------------------------------
 
-  /** Books are stored qualified; re-apply the rules over the manual overrides. */
+  /**
+   * Books are stored qualified. ACCESS overrides are applied FIRST, then the role
+   * rules — several structural rules match on the access mode, so qualifying
+   * before fixing the access would classify from a value the operator corrected.
+   */
   private qualified(book: AddressBook): AddressBook {
+    const access = this.store.readAccess(book.id) as Record<string, TagAccess>;
+    const entries = withAccess(book.entries, access);
     const manual = this.store.readRoles(book.id) as Record<string, SignalRole>;
-    const assignments = classifyEntries(book.entries, DEFAULT_ROLE_RULES, manual);
-    return { ...book, entries: withRoles(book.entries, assignments) };
+    const assignments = classifyEntries(entries, DEFAULT_ROLE_RULES, manual);
+    return { ...book, entries: withRoles(entries, assignments) };
   }
 
   public listBooks = (_req: Request, res: Response): void => {
@@ -418,6 +426,37 @@ export class EngController {
     } catch (error) {
       res.status(502).json({ ok: false, error: describeError(error) });
     }
+  };
+
+  /**
+   * POST /api/eng/books/:id/access  body { access: {path: 'r'|'w'|'rw'} }
+   *
+   * Manual ACCESS overrides. This is what makes a browse without `AccessLevel`
+   * usable: the operator marks the writable signals, the override counts as
+   * evidence (`accessSource: 'manual'`) and the generated address direction follows.
+   * An empty string clears an override.
+   */
+  public saveBookAccess = (req: Request, res: Response): void => {
+    const id = String(req.params['id']);
+    const access = (req.body ?? {}).access as Record<string, string> | undefined;
+    if (access === undefined || typeof access !== 'object') {
+      res.status(400).json({ ok: false, error: "access {path: 'r'|'w'|'rw'} is required" });
+      return;
+    }
+    const invalid = Object.entries(access).filter(([, mode]) => !['r', 'w', 'rw', ''].includes(mode));
+    if (invalid.length > 0) {
+      res.status(400).json({ ok: false, error: `invalid access mode(s): ${invalid.map(([p, m]) => `${p}='${m}'`).join(', ')}` });
+      return;
+    }
+    const book = this.store.readBook<AddressBook>(id);
+    if (book === null) {
+      res.status(404).json({ ok: false, error: 'unknown book' });
+      return;
+    }
+    this.store.saveAccess(id, access);
+    const qualified = this.qualified(book);
+    this.store.saveBook(qualified);
+    res.status(200).json({ ok: true, book: qualified });
   };
 
   /** POST /api/eng/books/:id/roles  body { roles } — manual role overrides. */

@@ -7,7 +7,7 @@
  * device" flow: re-generate → diff → propose the model extension.
  */
 
-import type { AddressBook, BookEntry } from './model.js';
+import type { AddressBook, BookEntry, TagAccess } from './model.js';
 
 export interface BookDiff {
   added: BookEntry[];
@@ -42,6 +42,24 @@ export function diffBooks(before: AddressBook, after: AddressBook): BookDiff {
     if (!afterByPath.has(path)) removed.push(entry);
   }
   return { added, removed, changed };
+}
+
+/**
+ * Apply the operator's MANUAL access overrides to a book (entry path → access).
+ *
+ * Access is engineering knowledge the source may not carry: an online browse whose
+ * driver does not expose `AccessLevel` catalogues everything read-only
+ * (`accessSource: 'assumed'`), and a config generator that trusts that would refuse
+ * to write any command. An override is marked `manual` so it counts as EVIDENCE —
+ * see `roles/profiles.ts`. Stored apart from the book (like the role overrides), so
+ * a refresh keeps it.
+ */
+export function withAccess(entries: BookEntry[], overrides: Record<string, TagAccess>): BookEntry[] {
+  if (Object.keys(overrides).length === 0) return entries;
+  return entries.map((entry) => {
+    const access = overrides[entry.path];
+    return access === undefined ? entry : { ...entry, access, accessSource: 'manual' as const };
+  });
 }
 
 /**

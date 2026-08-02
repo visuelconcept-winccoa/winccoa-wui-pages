@@ -470,6 +470,15 @@ export const engStudioStyles = [
       width: 100%;
       justify-content: center;
     }
+    /* Access provenance: an ASSUMED access is not evidence — make it visible. */
+    .chip.acc-assumed {
+      color: var(--eng-warn);
+      border-color: var(--eng-warn);
+    }
+    .chip.acc-manual {
+      color: var(--eng-primary);
+      border-color: var(--eng-primary);
+    }
     /* Online OPC UA browse form (Devices panel). */
     .browse-row {
       display: flex;

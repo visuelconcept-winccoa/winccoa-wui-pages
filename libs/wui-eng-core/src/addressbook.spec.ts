@@ -3,7 +3,7 @@
 
 /** Address-book refresh diff (the re-sync mechanic). */
 import { describe, expect, it } from 'vitest';
-import { diffBooks } from './addressbook.js';
+import { diffBooks, withAccess } from './addressbook.js';
 import type { AddressBook, BookEntry } from './model.js';
 
 function entry(path: string, sourceType = 'Real'): BookEntry {
@@ -45,3 +45,28 @@ describe('diffBooks', () => {
     expect(diff.changed).toHaveLength(0);
   });
 });
+
+describe('withAccess', () => {
+  const entries: BookEntry[] = [
+    { path: 'A.Cmd', sourceType: 'Boolean', leafType: 'Bool', access: 'r', accessSource: 'assumed', addresses: {} },
+    { path: 'A.Mes', sourceType: 'Double', leafType: 'Float', access: 'r', accessSource: 'assumed', addresses: {} }
+  ];
+
+  it('overrides the access and marks it MANUAL (so it counts as evidence)', () => {
+    const out = withAccess(entries, { 'A.Cmd': 'w' });
+    expect(out[0]).toMatchObject({ access: 'w', accessSource: 'manual' });
+    // Untouched entries keep their assumed access.
+    expect(out[1]).toMatchObject({ access: 'r', accessSource: 'assumed' });
+  });
+
+  it('is a pure transform and a no-op without overrides', () => {
+    expect(withAccess(entries, {})).toBe(entries);
+    withAccess(entries, { 'A.Cmd': 'rw' });
+    expect(entries[0].access).toBe('r');
+  });
+
+  it('ignores an override for a path the book does not have', () => {
+    expect(withAccess(entries, { 'Z.Absent': 'rw' }).map((e) => e.access)).toEqual(['r', 'r']);
+  });
+});
+

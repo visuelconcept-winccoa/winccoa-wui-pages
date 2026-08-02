@@ -34,6 +34,7 @@ import {
   type BookEntry,
   type Device,
   type EngPlan,
+  type TagAccess,
   type LiveSnapshot,
   type Workspace
 } from '@visuelconcept/wui-eng-core';
@@ -538,9 +539,37 @@ export class WuiEngStudio extends LitElement {
           <option value="">affecter un rôle aux cochés…</option>
           ${SIGNAL_ROLES.filter((r) => r !== 'unknown').map((role) => html`<option value=${role}>${SIGNAL_ROLE_LABEL[role]}</option>`)}
         </select>
+        <select
+          class="filter"
+          ?disabled=${checked === 0 || !this.can('manage-devices')}
+          @change=${(e: Event) => this.onBulkAccess(book, (e.target as HTMLSelectElement).value)}
+          title="Corriger l’accès des signaux cochés — la direction d’adresse générée en découle"
+        >
+          <option value="">corriger l’accès des cochés…</option>
+          <option value="r">r — lecture seule</option>
+          <option value="w">w — écriture seule</option>
+          <option value="rw">rw — lecture/écriture</option>
+        </select>
         ${checked > 0 ? html`<button class="btn" @click=${() => (this.checkedSignals = new Set())}>décocher</button>` : nothing}
       </div>
     `;
+  }
+
+  /**
+   * Access chip + its PROVENANCE, because the two lead to different directions:
+   * an `assumed` access (a browse with no `AccessLevel`) is not evidence, so the
+   * role's write intent wins — the operator must be able to see which one it is.
+   */
+  private renderAccessChip(entry: BookEntry): TemplateResult {
+    const source = entry.accessSource ?? 'declared';
+    const title = {
+      declared: 'accès déclaré par la source',
+      assumed: 'accès NON déclaré par la source (supposé lecture seule) — la direction viendra du rôle ; corriger ici si le signal est accessible en écriture',
+      manual: 'accès corrigé manuellement'
+    }[source];
+    return html`<span class="chip acc acc-${source}" title=${title}>
+      ${entry.access}${source === 'assumed' ? '?' : source === 'manual' ? '✎' : ''}
+    </span>`;
   }
 
   private renderSignalRow(entry: BookEntry, deviceModes: string[]): TemplateResult {
@@ -559,7 +588,7 @@ export class WuiEngStudio extends LitElement {
         </td>
         <td>${entry.leafType}${entry.unmapped ? html` <span class="chip conflict" title="type non mappé">?</span>` : nothing}</td>
         <td class="unit">${entry.unit ?? html`<span class="soft">—</span>`}</td>
-        <td><span class="chip acc">${entry.access}</span></td>
+        <td>${this.renderAccessChip(entry)}</td>
         <td class="soft mono">${entry.sourceType}</td>
         <td class="soft">${entry.typeId ?? '—'}</td>
         <td class="addr-cell">
@@ -901,6 +930,24 @@ export class WuiEngStudio extends LitElement {
       this.bookDelta = delta ?? null;
       const counts = this.roleTally(fresh);
       this.notice = `Règles appliquées sur « ${fresh.name} » : ${fresh.entries.length - counts.unknown}/${fresh.entries.length} signaux qualifiés.`;
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /** Set the ACCESS of every checked signal — what fixes an `assumed` access. */
+  private async onBulkAccess(book: AddressBook, access: string): Promise<void> {
+    if (access === '' || this.checkedSignals.size === 0) return;
+    const overrides: Record<string, TagAccess | ''> = {};
+    for (const path of this.checkedSignals) overrides[path] = access as TagAccess;
+    const count = this.checkedSignals.size;
+    this.busy = true;
+    try {
+      await this.gateway.saveBookAccess(book.id, overrides);
+      const fresh = await this.gateway.getBook(book.id);
+      if (fresh) this.books = this.books.map((b) => (b.id === fresh.id ? fresh : b));
+      this.checkedSignals = new Set();
+      this.notice = `Accès « ${access} » appliqué à ${count} signal(aux) — la direction d’adresse générée suivra.`;
     } finally {
       this.busy = false;
     }

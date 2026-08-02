@@ -22,6 +22,11 @@
 //     operators may browse at once, so serialisation is not optional here.
 //   * `hasChildren` is dropped: the core walker decides what to recurse into from
 //     the node class, and a driver-reported "has children" flag adds nothing.
+//   * `AccessLevel` is READ when the driver has it. The element name is discovered
+//     by introspecting the `_OPCUAServer` DP type (the tag importer documents that
+//     a browse does not expose it; whether a given driver version does is a
+//     property of the installation, so this asks rather than assumes). When absent,
+//     the walker marks the access `assumed` and the role decides the direction.
 //
 // The walk itself (paths, caps, cycles, warnings) lives in the pure core
 // (`@visuelconcept/wui-eng-core` → `opcua/browse.ts`) and is unit-tested with a
@@ -84,6 +89,41 @@ export async function listOpcUaConnections(): Promise<OpcUaConnectionInfo[]> {
   );
 }
 
+/**
+ * Element of `_OPCUAServer.Browse` carrying the nodes' `AccessLevel`, DISCOVERED by
+ * introspecting the DP type rather than guessed — the same technique
+ * appSecurityGuard uses for the `_Users` schema.
+ *
+ * The tag importer's verified caveat is that a browse does not expose the access
+ * level; whether a given driver version does is a property of the installation, so
+ * this asks instead of assuming. `null` = the type has no such element (cached, so
+ * the introspection happens once per process).
+ *
+ * Adding a non-existent DPE to the browse `dpConnect` would make the whole browse
+ * fail, hence the up-front discovery.
+ */
+let accessLevelElement: string | null | undefined;
+
+function discoverAccessLevelElement(): string | null {
+  if (accessLevelElement !== undefined) return accessLevelElement;
+  accessLevelElement = null;
+  try {
+    const browse = (win().dpTypeGet('_OPCUAServer')?.children ?? []).find(
+      (child: any) => String(child?.name ?? '').toLowerCase() === 'browse'
+    );
+    const hit = (browse?.children ?? []).find((child: any) => /access/i.test(String(child?.name ?? '')));
+    if (hit?.name) accessLevelElement = String(hit.name);
+  } catch (error) {
+    console.warn('engOpcuaBrowse: dpTypeGet(_OPCUAServer) failed:', (error as Error)?.message ?? error);
+  }
+  console.info(
+    accessLevelElement === null
+      ? 'engOpcuaBrowse: this OPC UA driver does not expose AccessLevel in Browse — browsed signals are catalogued read-only with an "assumed" access.'
+      : `engOpcuaBrowse: AccessLevel read from Browse.${accessLevelElement}.`
+  );
+  return accessLevelElement;
+}
+
 export class WinccoaOpcUaBrowsePort implements OpcUaBrowsePort {
   /** Tail of the pending browse chain, per connection DP (the serialisation). */
   private readonly queues = new Map<string, Promise<unknown>>();
@@ -109,6 +149,7 @@ export class WinccoaOpcUaBrowsePort implements OpcUaBrowsePort {
     const w = win();
     requestCounter += 1;
     const requestId = `engstudio_${Date.now()}_${requestCounter}`;
+    const accessElement = discoverAccessLevelElement();
     const resultDpes = [
       `${connDp}.Browse.DisplayNames`,
       `${connDp}.Browse.BrowsePaths`,
@@ -144,7 +185,7 @@ export class WinccoaOpcUaBrowsePort implements OpcUaBrowsePort {
       const callback = async (): Promise<void> => {
         if (done) return;
         try {
-          const v = (await w.dpGet([
+          const readPaths = [
             `${connDp}.Browse.RequestId`,
             `${connDp}.Browse.DisplayNames`,
             `${connDp}.Browse.NodeIds`,
@@ -152,7 +193,9 @@ export class WinccoaOpcUaBrowsePort implements OpcUaBrowsePort {
             `${connDp}.Browse.ValueRanks`,
             `${connDp}.Browse.NodeClasses`,
             `${connDp}.Browse.BrowsePaths`
-          ])) as unknown[];
+          ];
+          if (accessElement !== null) readPaths.push(`${connDp}.Browse.${accessElement}`);
+          const v = (await w.dpGet(readPaths)) as unknown[];
           if (v[0] !== requestId) return; // another request's response
           const displayNames = (v[1] as unknown[]) ?? [];
           const nodeIds = (v[2] as unknown[]) ?? [];
@@ -160,17 +203,24 @@ export class WinccoaOpcUaBrowsePort implements OpcUaBrowsePort {
           const valueRanks = (v[4] as unknown[]) ?? [];
           const nodeClasses = (v[5] as unknown[]) ?? [];
           const browsePaths = (v[6] as unknown[]) ?? [];
+          const accessLevels = accessElement === null ? [] : ((v[7] as unknown[]) ?? []);
           const nodes: OpcUaBrowseNode[] = [];
           for (let i = 0; i < displayNames.length; i += 1) {
             const displayName = String(displayNames[i] ?? '');
             if (displayName.length === 0) continue;
+            // Leave `accessLevel` UNDEFINED unless a real number came back: the
+            // walker distinguishes "read the access" from "assumed read-only", and
+            // a 0 coerced from an empty slot would read as "no read, no write".
+            const rawAccess = accessLevels[i];
+            const access = rawAccess === undefined || rawAccess === null || rawAccess === '' ? Number.NaN : Number(rawAccess);
             nodes.push({
               displayName,
               nodeId: String(nodeIds[i] ?? ''),
               browsePath: String(browsePaths[i] ?? ''),
               nodeClass: String(nodeClasses[i] ?? ''),
               dataType: String(dataTypes[i] ?? ''),
-              valueRank: Number(valueRanks[i] ?? -1)
+              valueRank: Number(valueRanks[i] ?? -1),
+              ...(Number.isFinite(access) ? { accessLevel: access } : {})
             });
           }
           cleanup();

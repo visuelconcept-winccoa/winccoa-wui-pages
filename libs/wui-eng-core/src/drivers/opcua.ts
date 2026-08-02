@@ -113,6 +113,30 @@ export function opcUaDatatypeCode(dataType: string | undefined): number {
   return DATATYPE_CODE_MAP[(dataType ?? '').trim()] ?? OpcUaDatatype.DEFAULT;
 }
 
+/**
+ * OPC UA `AccessLevel` bit masks (Part 3 §5.6.2). Only the two CURRENT bits are
+ * meaningful for a peripheral address; the history bits do not affect a binding.
+ */
+export const OpcUaAccessLevel = {
+  CURRENT_READ: 1,
+  CURRENT_WRITE: 2
+} as const;
+
+/**
+ * Decode an OPC UA `AccessLevel` bitmask into the book's access mode.
+ * Shared by the NodeSet reader (the attribute is in the file) and the online
+ * browse (when the driver exposes it) so both agree.
+ */
+export function opcUaAccessFromLevel(level: number): TagAccess {
+  /* eslint-disable no-bitwise */
+  const read = (level & OpcUaAccessLevel.CURRENT_READ) !== 0;
+  const write = (level & OpcUaAccessLevel.CURRENT_WRITE) !== 0;
+  /* eslint-enable no-bitwise */
+  if (read && write) return 'rw';
+  if (write) return 'w';
+  return 'r';
+}
+
 /** Peripheral-address direction from a tag's access mode. */
 export function directionFor(access: TagAccess): number {
   switch (access) {

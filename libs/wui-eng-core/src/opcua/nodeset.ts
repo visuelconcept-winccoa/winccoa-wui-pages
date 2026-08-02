@@ -34,9 +34,9 @@
  * online, before check-in. This is the same caveat the tag importer documents.
  */
 
-import { buildOpcUaReference, isUnmappedOpcUaType, opcUaLeafType } from '../drivers/opcua.js';
+import { buildOpcUaReference, isUnmappedOpcUaType, opcUaAccessFromLevel, opcUaLeafType } from '../drivers/opcua.js';
 import { childrenOf, localName, parseXml, type XmlNode } from '../simaticml/xml.js';
-import type { AddressBook, BookEntry, BookType, TagAccess } from '../model.js';
+import type { AddressBook, BookEntry, BookType } from '../model.js';
 
 // Standard reference-type NodeIds (namespace 0, OPC UA Part 6).
 const REF_HAS_SUBTYPE = 'i=45';
@@ -57,10 +57,6 @@ const BUILTIN_DATATYPE: Record<string, string> = {
   'i=28': 'UInteger'
 };
 const KNOWN_TYPE_NAMES = new Set(Object.values(BUILTIN_DATATYPE));
-
-/** OPC UA AccessLevel bit masks (CurrentRead = 1, CurrentWrite = 2). */
-const ACCESS_CURRENT_READ = 1;
-const ACCESS_CURRENT_WRITE = 2;
 
 /** Connection placeholder of a template address (substituted at generation). */
 const CONNECTION_PLACEHOLDER = '<Connexion>';
@@ -108,16 +104,6 @@ function resolveDataTypeName(attr: string | undefined, aliases: Map<string, stri
 function stripBrowseNs(browseName: string): string {
   const colon = browseName.indexOf(':');
   return colon === -1 ? browseName : browseName.slice(colon + 1);
-}
-
-function accessFromLevel(level: number): TagAccess {
-  /* eslint-disable no-bitwise */
-  const read = (level & ACCESS_CURRENT_READ) !== 0;
-  const write = (level & ACCESS_CURRENT_WRITE) !== 0;
-  /* eslint-enable no-bitwise */
-  if (read && write) return 'rw';
-  if (write) return 'w';
-  return 'r';
 }
 
 function directText(node: XmlNode, tag: string): string | undefined {
@@ -260,7 +246,9 @@ function collectMembers(
         path: path.join('.'),
         sourceType,
         leafType,
-        access: accessFromLevel(child.accessLevel),
+        // A NodeSet DOES carry AccessLevel — unlike an online browse.
+        access: opcUaAccessFromLevel(child.accessLevel),
+        accessSource: 'declared',
         // File-local NodeId ⇒ a TEMPLATE address, bound at generation time.
         addresses: { opcua: buildOpcUaReference(CONNECTION_PLACEHOLDER, child.nodeId) },
         ...(child.description === undefined ? {} : { comment: child.description }),

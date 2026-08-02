@@ -128,6 +128,17 @@ export interface BookEntry {
   /** Mapped WinCC OA element type. */
   leafType: OaLeafType;
   access: TagAccess;
+  /**
+   * Where `access` comes from — it decides how much the config generator may
+   * TRUST it (see `roles/profiles.ts`):
+   *  - `declared` (default when absent) — the source states it: an OPC UA
+   *    `AccessLevel`, a Modbus register class, a TIA member attribute;
+   *  - `assumed`  — the generator could NOT read it and defaulted to read-only
+   *    (an online browse whose driver does not expose `AccessLevel`). A role's
+   *    write intent then WINS, because the access is not evidence;
+   *  - `manual`   — the operator set it; it wins over everything.
+   */
+  accessSource?: 'declared' | 'assumed' | 'manual';
   /** Candidate address per access mode. */
   addresses: Partial<Record<AccessMode, string>>;
   /** Source comment (→ DPE description). */

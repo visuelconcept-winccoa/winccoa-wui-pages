@@ -12,12 +12,13 @@ import { DpAddressDirection } from '../drivers/opcua.js';
 import { NEUTRAL_ROLE_PROFILES, configsForRole, roleIsInert, type RoleProfile } from './profiles.js';
 import type { SignalRole } from './roles.js';
 
-const entry = (access: BookEntry['access'] = 'r'): BookEntry => ({
+const entry = (access: BookEntry['access'] = 'r', extra: Partial<BookEntry> = {}): BookEntry => ({
   path: 'X',
   sourceType: 'REAL',
   leafType: 'Float',
   access,
-  addresses: {}
+  addresses: {},
+  ...extra
 });
 
 describe('neutral profiles', () => {
@@ -32,9 +33,9 @@ describe('neutral profiles', () => {
     expect(configsForRole(entry(), 'state').archive).toEqual({ group: 'EVENT', active: true });
   });
 
-  it('a command is written OUT, a setpoint is I/O', () => {
+  it('a command is written OUT, a setpoint on a writable signal is I/O', () => {
     expect(configsForRole(entry('rw'), 'command').direction).toBe(DpAddressDirection.OUTPUT);
-    expect(configsForRole(entry('r'), 'setpoint').direction).toBe(DpAddressDirection.IO_POLL);
+    expect(configsForRole(entry('rw'), 'setpoint').direction).toBe(DpAddressDirection.IO_POLL);
   });
 
   it('an alarm yields a binary alert on TRUE with the alert class', () => {
@@ -60,6 +61,53 @@ describe('neutral profiles', () => {
     expect(configsForRole(entry('r'), 'parameter').direction).toBe(DpAddressDirection.INPUT_POLL);
     expect(configsForRole(entry('rw'), 'parameter').direction).toBe(DpAddressDirection.IO_POLL);
     expect(configsForRole(entry('w'), 'parameter').direction).toBe(DpAddressDirection.OUTPUT);
+  });
+});
+
+describe('direction vs declared access (AccessLevel reconciliation)', () => {
+  it('a write intent on a DECLARED read-only signal is downgraded, with a note', () => {
+    const command = configsForRole(entry('r'), 'command');
+    expect(command.direction).toBe(DpAddressDirection.INPUT_POLL);
+    expect(command.directionNote).toContain('LECTURE SEULE');
+
+    const setpoint = configsForRole(entry('r'), 'setpoint');
+    expect(setpoint.direction).toBe(DpAddressDirection.INPUT_POLL);
+    expect(setpoint.directionNote).toContain('LECTURE SEULE');
+  });
+
+  it('the ROLE wins when the access is only ASSUMED (browse without AccessLevel)', () => {
+    const command = configsForRole(entry('r', { accessSource: 'assumed' }), 'command');
+    expect(command.direction).toBe(DpAddressDirection.OUTPUT);
+    expect(command.directionNote).toBeUndefined();
+
+    const setpoint = configsForRole(entry('r', { accessSource: 'assumed' }), 'setpoint');
+    expect(setpoint.direction).toBe(DpAddressDirection.IO_POLL);
+  });
+
+  it('a MANUAL access is evidence like a declared one', () => {
+    const command = configsForRole(entry('r', { accessSource: 'manual' }), 'command');
+    expect(command.direction).toBe(DpAddressDirection.INPUT_POLL);
+    expect(command.directionNote).toContain('LECTURE SEULE');
+    expect(configsForRole(entry('rw', { accessSource: 'manual' }), 'command').direction).toBe(DpAddressDirection.OUTPUT);
+  });
+
+  it('a setpoint on a WRITE-ONLY signal becomes OUT, and says the read-back is lost', () => {
+    const setpoint = configsForRole(entry('w'), 'setpoint');
+    expect(setpoint.direction).toBe(DpAddressDirection.OUTPUT);
+    expect(setpoint.directionNote).toContain('ÉCRITURE SEULE');
+  });
+
+  it('a read intent stays IN even on a writable signal (no unused write path)', () => {
+    for (const role of ['measure', 'state', 'alarm', 'counter'] as SignalRole[]) {
+      const configs = configsForRole(entry('rw'), role);
+      expect(configs.direction).toBe(DpAddressDirection.INPUT_POLL);
+      expect(configs.directionNote).toBeUndefined();
+    }
+  });
+
+  it('a declared access needs no accessSource (absent = declared)', () => {
+    expect(entry('r').accessSource).toBeUndefined();
+    expect(configsForRole(entry('r'), 'command').directionNote).toBeDefined();
   });
 });
 

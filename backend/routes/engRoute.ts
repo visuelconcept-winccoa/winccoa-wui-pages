@@ -57,6 +57,7 @@ function gate(role: 'view' | 'edit-model' | 'manage-devices' | 'checkin') {
  *   POST /books/browse     { bookId, connection, … }    (manage-devices) -> { book, delta? }
  *   POST /books/:id/refresh                             (manage-devices) -> { book, delta? }
  *   POST /books/:id/roles  { roles }                    (manage-devices) -> { book }
+ *   POST /books/:id/access { access }                   (manage-devices) -> { book }
  *
  *   GET  /workspace?name=                               (view)           -> { workspace }
  *   POST /workspace        { workspace }                (edit-model)     -> { ok }
@@ -102,6 +103,7 @@ export class EngRoute {
     router.get('/books/:id', gate('view'), controller.getBook);
     router.post('/books/:id/refresh', gate('manage-devices'), controller.refreshBook);
     router.post('/books/:id/roles', gate('manage-devices'), controller.saveBookRoles);
+    router.post('/books/:id/access', gate('manage-devices'), controller.saveBookAccess);
 
     // --- workspace -------------------------------------------------------------
     router.get('/workspace', gate('view'), controller.getWorkspace);

@@ -63,25 +63,71 @@ export interface RoleProfileContext {
 export interface RoleConfigs {
   /** `_address.._direction` value. */
   direction: number;
+  /**
+   * Set when the role's WRITE intent had to be reconciled with an access mode the
+   * source actually declares — the generator turns these into warnings, because a
+   * silently downgraded command is a command that never reaches the machine.
+   */
+  directionNote?: string;
   archive?: ArchiveConfig;
   alarm?: AlarmConfig;
   range?: RangeConfig;
 }
 
-function directionValue(profile: RoleProfile, entry: BookEntry): number {
+/** Whether the entry's access mode is EVIDENCE or just a default. */
+function accessIsKnown(entry: BookEntry): boolean {
+  return entry.accessSource !== 'assumed';
+}
+
+/**
+ * Reconcile the role's INTENT with the signal's declared access mode.
+ *
+ * The two carry different information and neither may be ignored:
+ *  - the role says what the signal is FOR (a command is written, a measure read);
+ *  - the access mode says what the server/PLC actually ALLOWS.
+ *
+ * So:
+ *  - access unknown (`assumed`, e.g. an online browse with no `AccessLevel`) →
+ *    the role intent wins outright; the access carries no evidence;
+ *  - intent to write + a read-only signal → the address is created as INPUT_POLL
+ *    and a note is raised. Writing OUT on a read-only node yields a binding the
+ *    server rejects at runtime — a silent, hard-to-diagnose failure;
+ *  - intent to write + a write-only signal → OUTPUT (there is nothing to poll);
+ *  - intent to read → INPUT_POLL even on a writable node: the studio only reads
+ *    what the role reads (IO_POLL on a measure would declare a write path nobody
+ *    uses);
+ *  - no intent → the factual access mode decides.
+ */
+function resolveDirection(profile: RoleProfile, entry: BookEntry): { direction: number; note?: string } {
+  const known = accessIsKnown(entry);
   switch (profile.direction) {
     case 'in': {
-      return DpAddressDirection.INPUT_POLL;
+      return { direction: DpAddressDirection.INPUT_POLL };
     }
     case 'out': {
-      return DpAddressDirection.OUTPUT;
+      if (!known || entry.access === 'w' || entry.access === 'rw') return { direction: DpAddressDirection.OUTPUT };
+      return {
+        direction: DpAddressDirection.INPUT_POLL,
+        note: `« ${entry.path} » est déclaré en LECTURE SEULE par la source : adresse créée en entrée (IN) au lieu de sortie — corriger l’accès ou le rôle`
+      };
     }
     case 'inout': {
-      return DpAddressDirection.IO_POLL;
+      if (!known) return { direction: DpAddressDirection.IO_POLL };
+      if (entry.access === 'rw') return { direction: DpAddressDirection.IO_POLL };
+      if (entry.access === 'w') {
+        return {
+          direction: DpAddressDirection.OUTPUT,
+          note: `« ${entry.path} » est déclaré en ÉCRITURE SEULE : adresse créée en sortie (OUT), la relecture de la consigne ne sera pas possible`
+        };
+      }
+      return {
+        direction: DpAddressDirection.INPUT_POLL,
+        note: `« ${entry.path} » est déclaré en LECTURE SEULE par la source : adresse créée en entrée (IN) au lieu d’entrée/sortie — corriger l’accès ou le rôle`
+      };
     }
     default: {
-      // Factual fallback: the source's own access mode.
-      return directionFor(entry.access);
+      // No intent stated by the profile: the source's own access mode decides.
+      return { direction: directionFor(entry.access) };
     }
   }
 }
@@ -101,7 +147,9 @@ export function configsForRole(
   ctx: RoleProfileContext = {}
 ): RoleConfigs {
   const profile = profiles[role] ?? {};
-  const result: RoleConfigs = { direction: directionValue(profile, entry) };
+  const resolved = resolveDirection(profile, entry);
+  const result: RoleConfigs = { direction: resolved.direction };
+  if (resolved.note !== undefined) result.directionNote = resolved.note;
   if (profile.archive) {
     result.archive = { group: ctx.archiveGroup ?? 'EVENT', active: true };
   }

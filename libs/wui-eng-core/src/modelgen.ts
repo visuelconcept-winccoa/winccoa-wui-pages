@@ -220,6 +220,8 @@ export function generateModelFromBook(book: AddressBook, options: ModelGenOption
   let missingAddress = 0;
   let unresolvedReference = 0;
   let unverifiedDatatype = 0;
+  let assumedAccess = 0;
+  const directionNotes = new Set<string>();
 
   for (const dp of dps) {
     for (const leaf of leaves) {
@@ -231,6 +233,8 @@ export function generateModelFromBook(book: AddressBook, options: ModelGenOption
         continue; // DPE exists in the type, but nothing is configured
       }
       const roleConfigs = configsForRole(leaf.entry, role, options.profiles, options.profileContext);
+      if (roleConfigs.directionNote !== undefined) directionNotes.add(roleConfigs.directionNote);
+      if (leaf.entry.accessSource === 'assumed') assumedAccess += 1;
       const entryConfigs: DpeConfigs = {};
       if (roleConfigs.archive) entryConfigs.archive = roleConfigs.archive;
       if (roleConfigs.alarm) entryConfigs.alarm = roleConfigs.alarm;
@@ -273,6 +277,16 @@ export function generateModelFromBook(book: AddressBook, options: ModelGenOption
   if (unresolvedReference > 0) {
     warnings.push(
       `${unresolvedReference / perDp} signal(aux) issus d’un catalogue non lié : fournir la connexion cible pour résoudre la référence (placeholder non substitué).`
+    );
+  }
+  if (directionNotes.size > 0) {
+    warnings.push(
+      `Direction d’adresse ajustée pour ${directionNotes.size} signal(aux) — le rôle demandait l’écriture, l’accès déclaré par la source ne la permet pas : ${[...directionNotes].slice(0, 5).join(' · ')}${directionNotes.size > 5 ? ' …' : ''}`
+    );
+  }
+  if (assumedAccess > 0) {
+    warnings.push(
+      `Accès NON DÉCLARÉ pour ${assumedAccess / perDp} signal(aux) (parcours sans AccessLevel) : la direction vient du rôle seul — vérifier que les commandes/consignes sont bien accessibles en écriture sur l’équipement.`
     );
   }
   if (unverifiedDatatype > 0) {

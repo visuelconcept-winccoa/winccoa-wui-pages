@@ -20,6 +20,7 @@
 //   devices.json                  Device[]
 //   books/<bookId>.json           AddressBook  (roles included, see NOTES)
 //   books/<bookId>.roles.json     Record<entryPath, SignalRole>  (manual overrides)
+//   books/<bookId>.access.json    Record<entryPath, TagAccess>   (manual overrides)
 //   workspaces/<name>.json        Workspace
 //
 // The root is $ENG_STUDIO_STORE, else <WINCCOA_PROJ>/data/eng-studio, else
@@ -105,11 +106,15 @@ export class EngStore {
     return join(this.root, 'books', `${safeId(bookId)}.roles.json`);
   }
 
+  private accessFile(bookId: string): string {
+    return join(this.root, 'books', `${safeId(bookId)}.access.json`);
+  }
+
   public listBookIds(): string[] {
     const dir = join(this.root, 'books');
     if (!existsSync(dir)) return [];
     return readdirSync(dir)
-      .filter((name) => name.endsWith('.json') && !name.endsWith('.roles.json'))
+      .filter((name) => name.endsWith('.json') && !name.endsWith('.roles.json') && !name.endsWith('.access.json'))
       .map((name) => name.slice(0, -'.json'.length));
   }
 
@@ -122,7 +127,7 @@ export class EngStore {
   }
 
   public deleteBook(bookId: string): void {
-    for (const file of [this.bookFile(bookId), this.rolesFile(bookId)]) {
+    for (const file of [this.bookFile(bookId), this.rolesFile(bookId), this.accessFile(bookId)]) {
       if (existsSync(file)) unlinkSync(file);
     }
   }
@@ -139,6 +144,21 @@ export class EngStore {
       if (role === '') delete merged[path];
     }
     writeJson(this.rolesFile(bookId), merged);
+    return merged;
+  }
+
+  /** Manual ACCESS overrides of a book (entry path → 'r' | 'w' | 'rw'). */
+  public readAccess(bookId: string): Record<string, string> {
+    return readJson<Record<string, string>>(this.accessFile(bookId), {});
+  }
+
+  /** Merge access overrides into the stored ones (an empty value clears one). */
+  public saveAccess(bookId: string, access: Record<string, string>): Record<string, string> {
+    const merged = { ...this.readAccess(bookId), ...access };
+    for (const [path, mode] of Object.entries(access)) {
+      if (mode === '') delete merged[path];
+    }
+    writeJson(this.accessFile(bookId), merged);
     return merged;
   }
 

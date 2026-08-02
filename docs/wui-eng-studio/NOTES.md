@@ -319,11 +319,8 @@ driver actually returns, not a preference:
   visited is not re-entered.
 - **One unreadable branch does not lose the catalog**: the failure is caught,
   counted and reported as a warning; the rest of the walk continues.
-- **`AccessLevel` is not browsed** (verified caveat inherited from the tag
-  importer), so every browsed signal is catalogued `r`. This is stated as a book
-  warning, and it is *why the role layer matters here*: the address direction comes
-  from the role's profile, not from the browse default. It also made a latent bug
-  visible — see the path-rule fix below.
+- **`AccessLevel` is read when the driver has it, assumed otherwise** — see the
+  dedicated section below.
 - **Array variables are flagged, not guessed.** `OaLeafType` has no `Dyn*` member
   and the `_address` write for a dynamic DPE is unverified, so an array is
   catalogued with its scalar base type, marked `unmapped`, and listed in a warning.
@@ -336,6 +333,45 @@ in `provenance.browse`, so a refresh REPLAYS the same walk and diffs the result
 it identically). `removed` is the dangerous half: those signals may still be
 referenced by a workspace. A failed re-browse **keeps the stored catalog** (HTTP
 502 + the old book) — losing a catalog because a server blinked is not acceptable.
+
+### AccessLevel, and the direction that follows from it
+
+The access mode decides whether a binding can be written at all, so the studio
+treats it as **evidence with a provenance** rather than a value:
+`BookEntry.accessSource` is `declared` (the source states it), `assumed` (the
+generator could not read it) or `manual` (the operator set it).
+
+Where each comes from:
+
+| Source | Access | Why |
+|--------|--------|-----|
+| NodeSet2 | `declared` | the `AccessLevel` attribute is in the file |
+| Control Expert / SimaticML / PAC3200 | `declared` | the export states the variable's access or register class |
+| Online browse, driver exposes it | `declared` | read from the `Browse.*` element **discovered** by introspecting the `_OPCUAServer` DP type — never a guessed element name (the same technique appSecurityGuard uses for `_Users`). A non-existent DPE in the browse `dpConnect` would kill the whole browse, hence the up-front discovery, cached per process |
+| Online browse, driver does not | `assumed` (`r`) | the tag importer's verified caveat; the book says so, per-signal and in a warning |
+| Operator override | `manual` | `POST /books/:id/access`, stored in `books/<id>.access.json` so a refresh keeps it |
+
+`configsForRole` then reconciles the **role's intent** with that access — the two
+carry different information and neither may be ignored:
+
+- access `assumed` → the role wins outright. The access is not evidence, so a
+  command still gets `OUTPUT`. This is the case the manual override exists for.
+- write intent + a **declared** read-only signal → the address is created
+  `INPUT_POLL` and a note is raised. Writing `OUTPUT` to a read-only node yields a
+  binding the server rejects at runtime: a silent, hard-to-diagnose failure. The
+  studio would rather create a working read than a broken write.
+- setpoint on a **write-only** signal → `OUTPUT`, with a note that the read-back
+  is not possible.
+- read intent (measure/state/alarm/counter) → `INPUT_POLL` even on a writable
+  node: declaring a write path nobody uses is noise.
+
+Every note becomes a generation warning naming the signals, and `assumed` accesses
+are counted in their own warning. In the UI the access chip carries its provenance
+(`r?` assumed, `rw✎` manual) and checked signals can be corrected in bulk.
+
+Order matters in `qualified()`: **access overrides are applied before the role
+rules**, because several structural rules match on the access mode — qualifying
+first would classify from a value the operator has just corrected.
 
 ### The path-rule bug the browse exposed
 

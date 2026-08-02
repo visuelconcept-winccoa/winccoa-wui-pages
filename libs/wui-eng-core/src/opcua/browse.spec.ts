@@ -21,6 +21,7 @@ function fakePort(space: Record<string, OpcUaBrowseNode[]>, calls: string[] = []
 }
 
 const object = (name: string, id: string): OpcUaBrowseNode => ({ displayName: name, nodeId: id, nodeClass: 'Object' });
+const withAccessLevel = (node: OpcUaBrowseNode, accessLevel: number): OpcUaBrowseNode => ({ ...node, accessLevel });
 const variable = (name: string, id: string, dataType: string, valueRank = -1): OpcUaBrowseNode => ({
   displayName: name,
   nodeId: id,
@@ -82,7 +83,40 @@ describe('buildBookFromOpcUaBrowse', () => {
   it('catalogues everything read-only and says so (AccessLevel is not browsed)', async () => {
     const book = await buildBookFromOpcUaBrowse(fakePort(MACHINE), { bookId: 'b1', connection: 'C' });
     expect(book.entries.every((e) => e.access === 'r')).toBe(true);
+    expect(book.entries.every((e) => e.accessSource === 'assumed')).toBe(true);
     expect(book.warnings.some((w) => w.includes('AccessLevel'))).toBe(true);
+  });
+
+  it('DECODES AccessLevel when the port provides it', async () => {
+    const space = {
+      [OPCUA_OBJECTS_FOLDER]: [
+        withAccessLevel(variable('Mesure', 'ns=2;s=m', 'Double'), 1),
+        withAccessLevel(variable('Commande', 'ns=2;s=c', 'Boolean'), 2),
+        withAccessLevel(variable('Consigne', 'ns=2;s=s', 'Double'), 3)
+      ]
+    };
+    const book = await buildBookFromOpcUaBrowse(fakePort(space), { bookId: 'b1', connection: 'C' });
+    expect(book.entries.map((e) => [e.access, e.accessSource])).toEqual([
+      ['r', 'declared'],
+      ['w', 'declared'],
+      ['rw', 'declared']
+    ]);
+    expect(book.warnings.some((w) => w.includes('AccessLevel lu sur le serveur'))).toBe(true);
+  });
+
+  it('reports the MIX when only some nodes carry an AccessLevel', async () => {
+    const space = {
+      [OPCUA_OBJECTS_FOLDER]: [withAccessLevel(variable('A', 'ns=2;s=a', 'Double'), 3), variable('B', 'ns=2;s=b', 'Double')]
+    };
+    const book = await buildBookFromOpcUaBrowse(fakePort(space), { bookId: 'b1', connection: 'C' });
+    expect(book.entries.map((e) => e.accessSource)).toEqual(['declared', 'assumed']);
+    expect(book.warnings.some((w) => w.includes('1/2 signaux sans AccessLevel'))).toBe(true);
+  });
+
+  it('treats an AccessLevel of 0 as evidence (no read, no write) — not as absent', async () => {
+    const space = { [OPCUA_OBJECTS_FOLDER]: [withAccessLevel(variable('X', 'ns=2;s=x', 'Double'), 0)] };
+    const book = await buildBookFromOpcUaBrowse(fakePort(space), { bookId: 'b1', connection: 'C' });
+    expect(book.entries[0]).toMatchObject({ access: 'r', accessSource: 'declared' });
   });
 
   it('skips methods, and reports how many', async () => {

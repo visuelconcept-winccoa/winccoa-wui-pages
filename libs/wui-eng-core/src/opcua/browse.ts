@@ -24,14 +24,17 @@
  *    nodes. Depth, node count and request count are all capped, and hitting a cap
  *    raises a book WARNING naming what was left out — a truncated catalog that
  *    looks complete is how you ship a half-configured machine.
- *  - **Access level is not browsed.** The driver's browse does not expose
- *    `AccessLevel` (verified caveat of the tag importer), so every browsed
- *    variable is catalogued read-only, with one aggregate warning. Direction is
- *    then decided by the signal's ROLE profile at generation time, not by this
- *    default — which is why the qualification step matters here.
+ *  - **Access level is used when the driver gives it, assumed otherwise.** The
+ *    tag importer's verified caveat is that the browse does not expose
+ *    `AccessLevel`; whether a given driver version does is a property of the
+ *    connection, so the PORT may fill `accessLevel` and the walker will decode it
+ *    (`opcUaAccessFromLevel`). When it is absent the entry is catalogued read-only
+ *    AND marked `accessSource: 'assumed'` — which tells the config generator that
+ *    the access is not evidence, so a command's write intent still wins. Either
+ *    way the book says which of the two happened.
  */
 
-import { buildOpcUaReference, isUnmappedOpcUaType, opcUaLeafType } from '../drivers/opcua.js';
+import { buildOpcUaReference, isUnmappedOpcUaType, opcUaAccessFromLevel, opcUaLeafType } from '../drivers/opcua.js';
 import type { AddressBook, BookEntry, BookInterface } from '../model.js';
 
 /** Standard `Objects` folder — the default browse root. */
@@ -59,6 +62,13 @@ export interface OpcUaBrowseNode {
   dataType?: string;
   /** `-1` scalar, `≥ 0` array. */
   valueRank?: number;
+  /**
+   * OPC UA `AccessLevel` bitmask, when the driver exposes it (see the backend
+   * port: the element is DISCOVERED by introspecting the connection's DP type,
+   * never assumed). Absent → the walker catalogues the signal read-only and flags
+   * the access as `assumed`.
+   */
+  accessLevel?: number;
   hasChildren?: boolean;
 }
 
@@ -130,6 +140,7 @@ async function walk(port: OpcUaBrowsePort, options: BrowseBookOptions): Promise<
   let methods = 0;
   let unnamed = 0;
   let depthTruncated = 0;
+  let assumedAccess = 0;
   const failures: string[] = [];
   const arrays: string[] = [];
 
@@ -167,12 +178,15 @@ async function walk(port: OpcUaBrowsePort, options: BrowseBookOptions): Promise<
         // hiding it and guessing.
         const array = isArrayVariable(child);
         if (array) arrays.push(path.join('.'));
+        // AccessLevel when the driver exposed it; read-only + `assumed` otherwise.
+        const known = typeof child.accessLevel === 'number' && Number.isFinite(child.accessLevel);
+        if (!known) assumedAccess += 1;
         entries.push({
           path: path.join('.'),
           sourceType: (child.dataType ?? '').trim() === '' ? 'Unknown' : `${child.dataType!.trim()}${array ? '[]' : ''}`,
           leafType: opcUaLeafType(child.dataType),
-          // The browse does not expose AccessLevel — see the file header.
-          access: 'r',
+          access: known ? opcUaAccessFromLevel(child.accessLevel!) : 'r',
+          accessSource: known ? 'declared' : 'assumed',
           addresses: { opcua: buildOpcUaReference(options.connection, child.nodeId) },
           unmapped: isUnmappedOpcUaType(child.dataType) || array || undefined
         });
@@ -230,9 +244,15 @@ async function walk(port: OpcUaBrowsePort, options: BrowseBookOptions): Promise<
   if (entries.length === 0 && failures.length === 0) {
     warnings.push(`Aucune variable trouvée sous « ${root} » — vérifier la racine du parcours et l’état de la connexion.`);
   }
-  warnings.push(
-    'Le parcours OPC UA n’expose pas AccessLevel : tous les signaux sont catalogués en lecture seule. La direction réelle vient du rôle (profil) à la génération — qualifier avant de générer.'
-  );
+  if (assumedAccess > 0) {
+    warnings.push(
+      assumedAccess === entries.length
+        ? 'Ce parcours n’a pas exposé AccessLevel : tous les signaux sont catalogués en LECTURE SEULE avec un accès « supposé ». La direction vient alors du rôle (profil) — qualifier avant de générer, ou corriger l’accès à la main.'
+        : `${assumedAccess}/${entries.length} signaux sans AccessLevel exposé : accès « supposé » (lecture seule) — la direction vient du rôle pour ceux-là.`
+    );
+  } else if (entries.length > 0) {
+    warnings.push(`AccessLevel lu sur le serveur pour les ${entries.length} signaux : la direction d’adresse sera dérivée de l’accès réel.`);
+  }
   return { entries, warnings, requests, skippedBranches };
 }
 

@@ -49,6 +49,7 @@
 | POST | `/books/browse` `{bookId,connection,…}` | `manage-devices` | walk a LIVE OPC UA server into a book |
 | POST | `/books/:id/refresh` | `manage-devices` | re-read the source (re-browse when replayable), else re-run the rules |
 | POST | `/books/:id/roles` `{roles}` | `manage-devices` | persist the operator's **manual** role overrides |
+| POST | `/books/:id/access` `{access}` | `manage-devices` | persist **manual access overrides** (drives the address direction) |
 | GET  | `/workspace?name=` | `view` | the working copy |
 | POST | `/workspace` `{workspace}` | `edit-model` | save the working copy |
 | POST | `/checkout` `{name,types?,dpes?}` | `edit-model` | read the project into a workspace **+ baseline fingerprints** |
@@ -126,15 +127,18 @@ Root, in order: `$ENG_STUDIO_STORE` → `<$WINCCOA_PROJ>/data/eng-studio` →
 devices.json                 Device[]
 books/<bookId>.json          AddressBook (entries carry their resolved roles)
 books/<bookId>.roles.json    { <entryPath>: SignalRole }  — MANUAL overrides only
+books/<bookId>.access.json   { <entryPath>: 'r'|'w'|'rw' } — MANUAL overrides only
 workspaces/<name>.json       Workspace (incl. its check-out baseline)
 ```
 
 Ids are sanitised (`safeId`) so a request can never escape the root, and every
 write is temp-file + rename, so a crash never leaves a half-written book.
 
-Manual overrides live in their **own** file on purpose: a book refresh or a
-re-ingest replaces the catalog but keeps the overrides, so re-importing a TIA
-export never loses the operator's qualification work.
+Manual overrides (roles **and** access) live in their **own** files on purpose: a
+book refresh or a re-ingest replaces the catalog but keeps the overrides, so
+re-importing a TIA export or re-browsing a server never loses the operator's
+qualification work. `POST /books/:id/access` accepts `'r' | 'w' | 'rw'`, and `''`
+to clear an override.
 
 ## Runtime coupling (the only places the backend touches OA)
 
@@ -227,11 +231,12 @@ To harden the **SimaticML/TIA** path against real data, please provide:
    vendor/server export). The reader's fixtures are hand-written `UANodeSet`
    documents following OPC UA Part 6 — faithful to the schema, but not calibrated
    against a vendor file (the OPC Foundation pages return HTTP 403 here).
-7. Confirmation, on a real server, of two browse behaviours the driver docs do not
-   settle: whether `Browse.BrowsePaths` is a full path from the browse root (that
-   would let one request cover several levels instead of one), and whether any
-   `Browse.*` element exposes `AccessLevel` (today every browsed signal is
-   catalogued read-only).
+7. Confirmation, on a real server, of one browse behaviour the driver docs do not
+   settle: whether `Browse.BrowsePaths` is a full path from the browse root — that
+   would let one request cover several levels instead of one. (The `AccessLevel`
+   question is now answered at runtime: the backend introspects the `_OPCUAServer`
+   type and logs which branch it took. Send me that log line and I can drop the
+   fallback if your driver exposes it.)
 
 Until (1) and (3) arrive, the S7 SimaticML path stays behind its verification
 markers (NOTES "verified vs pending"); OPC UA is already on the verified
