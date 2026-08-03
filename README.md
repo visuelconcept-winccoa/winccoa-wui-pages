@@ -26,6 +26,7 @@ All pages are published under the `@visuelconcept/` scope (e.g.
 | --- | --- | --- | --- |
 | `wui-audit-trail` | `/audit-trail` | Pivot table of a datapoint's NGA-archived value history (configurable period, columns, refresh) | — |
 | `wui-camera-streams` | `/camera-streams` | View RTSP IP cameras in-browser over a WebSocket relay (JSMpeg, no plugin) | `/api/rtsp` + `rtspProxy` mgr |
+| `wui-eng-studio` | `/eng-studio` | Engineering studio: model DP types, datapoints and their configs from communicating equipment (address books from an OPC UA browse / SimaticML / Control Expert export, roles → configs, live diff, transactional check-in) | `/api/eng` |
 | `wui-fleet-closures` | `/fleet-closures` | Manage fleet non-working days (year / atelier / machine filters, JSON import-export) | — |
 | `wui-fleet-kpi-analysis` | `/fleet-kpi` | Per-machine availability & TRS charts, computed live by a manager over opening time minus closures | `kpiCalc` mgr |
 | `wui-fleet-stop-analysis` | `/fleet-stops` | Downtime decomposition per stop cause (table + ECharts views) | — |

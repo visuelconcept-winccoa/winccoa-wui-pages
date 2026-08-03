@@ -225,7 +225,8 @@ the top bar switches it live. Core-generated warnings are localised too (structu
 
 - **Frontend**: none beyond the runtime (the page uses only `lit`).
 - **Backend**: `@visuelconcept/wui-webserver` (provides `/api/eng` via backend
-  module auto-discovery) + the vendored `@visuelconcept/wui-eng-core`.
+  module auto-discovery). `@visuelconcept/wui-eng-core` needs no installation — the
+  deployer vendors it into the module (see "Deployment").
 - **Write access to the store root** for the webserver's user (see above).
 - **Live address binding**: a running driver per device (OPC UA client / S7 /
   Modbus) and, for polled addresses, a poll group. Declare `driverNumber` on every
@@ -235,6 +236,41 @@ the top bar switches it live. Core-generated warnings are localised too (structu
   reads the echoed `Browse.*` arrays (the tag importer's proven protocol), so the
   webserver needs write access to that connection datapoint. Browses of one
   connection are queued server-side; a level times out after 60 s.
+
+## Deployment
+
+The page is part of the default release selection of the interactive deployer and is
+discovered automatically (`libs/wui-eng-studio/src/eng-studio.ts` + its
+`menu.fragment.jsonc` + its `tools/specs.json` entry):
+
+```bash
+node tools/scripts/deploy-release.mjs --project <winccoa-project>
+#   add --full --install-webserver on a fresh project
+```
+
+It copies the page bundle, merges the menu entry, generates the backend module
+descriptor (`modules/eng-studio/index.ts`, mount `/api/eng`) and then calls
+`deploy-backend.mjs`, which copies the route files listed in the spec's `srcFiles`.
+
+**The core library is vendored into the module.** `engController.ts` imports
+`@visuelconcept/wui-eng-core` — the engineering domain it shares with the page — and
+that specifier does not exist on a customer webserver. Installing it as a package
+would not fix it either: the library ships TypeScript sources, and `tsc` does not
+*emit* files it reads from `node_modules`, so the import would compile and fail at
+runtime. So the spec declares
+
+```jsonc
+"backend": { "vendorPackages": ["@visuelconcept/wui-eng-core"] }
+```
+
+and `deploy-backend.mjs` copies the library's sources to
+`modules/eng-studio/_vendor/wui-eng-core/` — where the webserver's own `tsc` compiles
+and emits them — then rewrites the bare specifier in the copied route files to
+`./_vendor/wui-eng-core/index.js`. Only import/export specifiers are rewritten (a
+package name inside a comment stays as written), `*.spec.ts` files are excluded (they
+import vitest, which would break the webserver build), and a specifier left
+unresolved after the rewrite is reported as a warning rather than discovered on the
+customer's build. Same rule `tools/vendor-page.mjs` applies to the frontend.
 
 ## Typecheck the backend without WinCC OA
 
@@ -249,7 +285,8 @@ cd libs/wui-eng-core && ./node_modules/.bin/tsc -p ../../backend/tsconfig.typech
 
 That catches the mistakes that matter offline (a wrong core API, a missing
 `await`, a bad narrowing). The stubs are dev-only — they are not in any spec's
-`srcFiles`, so the deploy resolves the genuine packages.
+`srcFiles`, so on a real webserver the genuine packages are used and the core is
+vendored (see "Deployment" above).
 
 ## ⚠️ Inputs still needed from you (to finish, not to demo)
 

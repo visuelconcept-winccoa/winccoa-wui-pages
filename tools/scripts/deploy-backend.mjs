@@ -7,6 +7,7 @@
 // -----------------------------------------------------------------------------
 // Source of truth is tools/specs.json: each page may declare
 //   backend: { mount, srcFiles: [...] }   -> HTTP module under the webserver
+//   backend: { vendorPackages: [...] }    -> workspace libs the routes import
 //   managers: [ "<name>", ... ]           -> JS managers under <project>/javascript/
 //
 // This script mirrors those into a target project, WITHOUT touching the module
@@ -25,15 +26,27 @@
 //   --dry-run            print what would happen, change nothing
 //
 // What it does (idempotent): copy each selected page's backend.srcFiles from
-// backend/routes/ into <ws>/src/modules/<page>/; copy each manager folder from
-// backend/managers/<m>/ into <project>/javascript/<m>/; append any missing
-// manager line to <project>/config/progs; then build the webserver (tsc).
+// backend/routes/ into <ws>/src/modules/<page>/; VENDOR any workspace library it
+// declares (see below); copy each manager folder from backend/managers/<m>/ into
+// <project>/javascript/<m>/; append any missing manager line to
+// <project>/config/progs; then build the webserver (tsc).
+//
+// Vendoring (`backend.vendorPackages`): a route module may import a pure workspace
+// library — `engController.ts` imports `@visuelconcept/wui-eng-core`, the
+// engineering domain it shares with the page. That specifier does not exist on a
+// customer webserver, and installing it as a package would not help: the library
+// ships TypeScript sources, and tsc does not EMIT files it reads from node_modules,
+// so the import would compile and then fail at runtime. So the library's sources are
+// copied INTO the module (`_vendor/<lib>/`), where the webserver's own tsc compiles
+// and emits them, and the bare specifier is rewritten to that relative path — the
+// same rule tools/vendor-page.mjs applies to the frontend. `*.spec.ts` files are
+// left out on purpose: they import vitest, which would break the webserver build.
 //
 // It NEVER restarts managers — after it finishes, in the WinCC OA console:
 //   • restart the webserver manager (loads the rebuilt modules),
 //   • start any newly-added managers.
 // -----------------------------------------------------------------------------
-import { cpSync, existsSync, mkdirSync, readFileSync, appendFileSync, statSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, appendFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
@@ -104,6 +117,86 @@ function copyFile(src, dest, label) {
   copied.push(label);
 }
 
+/** Name → directory of every workspace library (from each lib's package.json). */
+function libsByPackageName() {
+  const map = new Map();
+  const libsDir = join(ROOT, 'libs');
+  if (!existsSync(libsDir)) return map;
+  for (const dirent of readdirSync(libsDir, { withFileTypes: true })) {
+    if (!dirent.isDirectory()) continue;
+    const manifest = join(libsDir, dirent.name, 'package.json');
+    if (!existsSync(manifest)) continue;
+    try {
+      const { name } = JSON.parse(readFileSync(manifest, 'utf8'));
+      if (typeof name === 'string') map.set(name, dirent.name);
+    } catch {
+      /* unreadable manifest — the package simply stays unresolvable */
+    }
+  }
+  return map;
+}
+
+const LIB_BY_NAME = libsByPackageName();
+
+/** Every .ts file of a directory except the tests (relative paths). */
+function sourceFiles(dir, prefix = '') {
+  const out = [];
+  for (const dirent of readdirSync(dir, { withFileTypes: true })) {
+    const rel = prefix === '' ? dirent.name : `${prefix}/${dirent.name}`;
+    if (dirent.isDirectory()) out.push(...sourceFiles(join(dir, dirent.name), rel));
+    else if (dirent.name.endsWith('.ts') && !dirent.name.endsWith('.spec.ts')) out.push(rel);
+  }
+  return out;
+}
+
+/**
+ * Copy one workspace library's sources into `<moduleDir>/_vendor/<lib>/`.
+ * Returns the vendored directory name, or null when the package is unknown.
+ */
+function vendorPackage(packageName, moduleDir, page) {
+  const lib = LIB_BY_NAME.get(packageName);
+  if (lib === undefined) {
+    warnings.push(`module '${page}': vendorPackages declares '${packageName}', which matches no library manifest under libs/ — the webserver build will fail on its import.`);
+    return null;
+  }
+  const srcDir = join(ROOT, 'libs', lib, 'src');
+  if (!existsSync(srcDir)) {
+    warnings.push(`module '${page}': '${packageName}' has no src/ directory (${srcDir}).`);
+    return null;
+  }
+  const files = sourceFiles(srcDir);
+  for (const file of files) {
+    copyFile(join(srcDir, file), join(moduleDir, '_vendor', lib, file), `modules/${page}/_vendor/${lib}/${file}`);
+  }
+  return lib;
+}
+
+/**
+ * Rewrite the bare workspace specifiers of a COPIED route file to the vendored
+ * path. Only import/export specifiers are touched — a package name mentioned in a
+ * comment or a string stays as written.
+ */
+function rewriteVendorImports(file, vendored, page, label) {
+  if (dryRun || vendored.size === 0 || !existsSync(file)) return;
+  const before = readFileSync(file, 'utf8');
+  let after = before;
+  for (const [packageName, lib] of vendored) {
+    const escaped = packageName.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+    // `from '@scope/pkg'` and `from '@scope/pkg/sub/path.js'`, single or double quotes.
+    after = after.replaceAll(
+      new RegExp(String.raw`(\bfrom\s*|\bimport\s*\(\s*)(['"])${escaped}(/[^'"]*)?\2`, 'g'),
+      (_whole, head, quote, sub) => `${head}${quote}./_vendor/${lib}${sub ?? '/index.js'}${quote}`
+    );
+  }
+  if (after !== before) writeFileSync(file, after);
+  // A leftover bare specifier compiles here and fails on the customer's webserver,
+  // which is exactly the kind of gap this script exists to close — so say it loudly.
+  const leftover = [...after.matchAll(/\bfrom\s*['"](@[^'".][^'"]*)['"]/g)]
+    .map((match) => match[1])
+    .filter((specifier) => [...vendored.keys()].some((name) => specifier === name || specifier.startsWith(`${name}/`)));
+  if (leftover.length > 0) warnings.push(`module '${page}': ${label} still imports ${[...new Set(leftover)].join(', ')} after rewriting.`);
+}
+
 // 1) module srcFiles + 2) managers
 for (const page of selected) {
   const srcFiles = page.backend?.srcFiles ?? [];
@@ -114,6 +207,16 @@ for (const page of selected) {
     } else {
       for (const f of srcFiles) {
         copyFile(join(routesDir, f), join(moduleDir, f), `modules/${page.page}/${f}`);
+      }
+      // Vendor the workspace libraries the routes import, then point the copied
+      // files at them (see the header). Done AFTER the copy: it edits the copies.
+      const vendored = new Map();
+      for (const packageName of page.backend?.vendorPackages ?? []) {
+        const lib = vendorPackage(packageName, moduleDir, page.page);
+        if (lib !== null) vendored.set(packageName, lib);
+      }
+      for (const f of srcFiles) {
+        rewriteVendorImports(join(moduleDir, f), vendored, page.page, f);
       }
     }
   }
