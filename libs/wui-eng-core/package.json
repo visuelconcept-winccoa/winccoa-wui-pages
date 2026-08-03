@@ -1,0 +1,20 @@
+{
+  "name": "@visuelconcept/wui-eng-core",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Engineering Studio core — pure, WinCC-OA-free domain library: device/address-book/workspace model, check-in diff engine + plan applier (port-based), atomic config write builders (_address/_alert_hdl/_archive/_pv_range), protocol address builders (OPC UA verified, S7), SimaticML (TIA Openness export) parser with standard-block offset computation, and naming conventions. Unit-testable without any WinCC OA runtime.",
+  "author": { "name": "Visuel Concept" },
+  "keywords": ["OpenArchitecture", "WinCCOA", "engineering", "kit", "simaticml", "opcua", "s7"],
+  "license": "MIT",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.standalone.json"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  },
+  "exports": { ".": { "import": "./src/index.ts" }, "./*": { "import": "./src/*" } }
+}

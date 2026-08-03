@@ -5,8 +5,21 @@
     "title": "Parametrization (PARA)",
     "tier": 1,
     "description": "PARA datapoint-parametrization page (/para): two tabs — a nested DP-type model editor (create/change/delete types in place) and an instances/values browser (live values + config attributes). Embeds a proposal-only AI assistant (via the /api/ai bridge) and DPL ASCII import/export (multi-select DP/DPT) through the dplAscii MSA manager (WCCOAasciiSQLite). Engineering ops via the /api/para API.",
-    "backend": { "mount": "/api/para", "routeClass": "ParaRoute", "routeFile": "paraRoute", "srcFiles": ["paraController.ts", "paraRoute.ts", "paraTypeNode.ts", "dplController.ts", "appSecurityGuard.ts"] },
-    "managers": ["dplAscii"]
+    "backend": {
+      "mount": "/api/para",
+      "routeClass": "ParaRoute",
+      "routeFile": "paraRoute",
+      "srcFiles": [
+        "paraController.ts",
+        "paraRoute.ts",
+        "paraTypeNode.ts",
+        "dplController.ts",
+        "appSecurityGuard.ts"
+      ]
+    },
+    "managers": [
+      "dplAscii"
+    ]
   },
   {
     "page": "camera-streams",
@@ -14,8 +27,21 @@
     "title": "Camera Streams (RTSP)",
     "tier": 3,
     "description": "View RTSP IP cameras in-browser (JSMpeg) over a same-origin ws relay to the rtspProxy manager (ffmpeg pulls each stream once and fans MPEG1-TS out to N clients).",
-    "backend": { "mount": "/api/rtsp", "routeClass": "RtspRoute", "routeFile": "rtspRoute", "relayFn": "registerRtspRelay", "relayFile": "rtspRelay", "srcFiles": ["rtspController.ts", "rtspRoute.ts", "rtspRelay.ts"] },
-    "managers": ["rtspProxy"]
+    "backend": {
+      "mount": "/api/rtsp",
+      "routeClass": "RtspRoute",
+      "routeFile": "rtspRoute",
+      "relayFn": "registerRtspRelay",
+      "relayFile": "rtspRelay",
+      "srcFiles": [
+        "rtspController.ts",
+        "rtspRoute.ts",
+        "rtspRelay.ts"
+      ]
+    },
+    "managers": [
+      "rtspProxy"
+    ]
   },
   {
     "page": "audit-trail",
@@ -37,7 +63,9 @@
     "title": "Ampère (electrical)",
     "tier": 1,
     "description": "Ampère pages (/ampere + /ampere/:networkid) — draw single-line (mono-filaire) electrical distribution networks (TGBT/switchboards, disconnectors, breakers, busbars, transformers…) incl. railway electrification (catenary, track return, rectifier, sectioning switch, autotransformer, train) with an in-place edit mode, an IEC 60617 symbol toolbox, free per-device DP binding, live wire energisation by graph traversal through closed switchgear, free/attached live measurement labels, and a proposal-only AI assistant that generates network models. Stored as Ampere_Network DPs. The ampereSim JavaScript manager creates and drives the shared AmpereSim_Demo datapoint that every showcase binds to (live switchgear + measurement animation).",
-    "managers": ["ampereSim"]
+    "managers": [
+      "ampereSim"
+    ]
   },
   {
     "page": "report-builder",
@@ -80,7 +108,9 @@
     "title": "Fleet KPI Analysis",
     "tier": 3,
     "description": "Fleet KPI Analysis page (/fleet-kpi) — availability/TRS per machine over opening time minus closures, echarts; live per-machine TRS computed by the kpiCalc manager.",
-    "managers": ["kpiCalc"]
+    "managers": [
+      "kpiCalc"
+    ]
   },
   {
     "page": "production-orders",
@@ -88,7 +118,9 @@
     "title": "Production Orders",
     "tier": 3,
     "description": "Production Orders page (/production-orders) — manage OF stored as a single JSON-list DP (ProductionOrders_List), CRUD + status workflow + echarts Gantt + fleet link; top-page KPIs computed server-side by the productionOrdersKpi manager (ProductionOrders_Kpi DP).",
-    "managers": ["productionOrdersKpi"]
+    "managers": [
+      "productionOrdersKpi"
+    ]
   },
   {
     "page": "remote-vnc",
@@ -96,8 +128,21 @@
     "title": "Remote VNC",
     "tier": 3,
     "description": "Remote VNC page (/remote-vnc) — manage VNC connections (1 DP each) and open them in-browser with bundled noVNC over a same-origin /api/vnc/ws WebSocket↔TCP relay to the vncProxy manager (resolves id → host:port from RemoteVnc_ DPs).",
-    "backend": { "mount": "/api/vnc", "routeClass": "VncRoute", "routeFile": "vncRoute", "relayFn": "registerVncRelay", "relayFile": "vncRelay", "srcFiles": ["vncController.ts", "vncRoute.ts", "vncRelay.ts"] },
-    "managers": ["vncProxy"]
+    "backend": {
+      "mount": "/api/vnc",
+      "routeClass": "VncRoute",
+      "routeFile": "vncRoute",
+      "relayFn": "registerVncRelay",
+      "relayFile": "vncRelay",
+      "srcFiles": [
+        "vncController.ts",
+        "vncRoute.ts",
+        "vncRelay.ts"
+      ]
+    },
+    "managers": [
+      "vncProxy"
+    ]
   },
   {
     "page": "machine-fleet-3d",
@@ -105,8 +150,20 @@
     "title": "Machine Fleet",
     "tier": "hub",
     "description": "Machine Fleet 3D hub page (/machine-fleet-3d) — three.js 3D fleet view with per-machine state/KPI bubbles, stop-cause catalog, contextual machine dashboard (Gantt + Pareto), and an AI assistant. Managers: machineSim (fleet simulation), kpiCalc (live KPIs), aiAssistant (the AI assistant, via the /api/ai bridge). The assistant's MCP tools are provided by an OPTIONAL external WinCC OA MCP server (ETM @etm-professional-control/winccoa-mcp-server, ISC) — installed separately, not shipped here. AI provider tokens are read from the AI_Assistant_Config DP — NONE are shipped.",
-    "backend": { "mount": "/api/ai", "routeClass": "AiRoute", "routeFile": "aiRoute", "srcFiles": ["aiController.ts", "aiRoute.ts"] },
-    "managers": ["machineSim", "kpiCalc", "aiAssistant"]
+    "backend": {
+      "mount": "/api/ai",
+      "routeClass": "AiRoute",
+      "routeFile": "aiRoute",
+      "srcFiles": [
+        "aiController.ts",
+        "aiRoute.ts"
+      ]
+    },
+    "managers": [
+      "machineSim",
+      "kpiCalc",
+      "aiAssistant"
+    ]
   },
   {
     "page": "process-monitor",
@@ -114,8 +171,19 @@
     "title": "Process Monitor",
     "tier": 3,
     "description": "Process Monitor page (/process-monitor) — pmon manager console with one tab per connected server (distributed via per-system ProcessMonitor_Node DPs): status + start/stop/restart + restart-all, add/remove pmon configuration entries (SINGLE_MGR:INS/DEL, persisted to config/progs), plus project ZIP upload/deploy across all servers (optional folder purge, 7-Zip extraction into non-protected folders, config.env, optional restart) with GxP audit-trail tracing (session user). Bridged via /api/process-monitor to the processMonitor MSA manager (per-system agent + aggregator). Sensitive routes are role-gated server-side (Application Security roles 'control'/'edit-managers'/'deploy' — open until groups are assigned). DPL import handled elsewhere.",
-    "backend": { "mount": "/api/process-monitor", "routeClass": "ProcessMonitorRoute", "routeFile": "processMonitorRoute", "srcFiles": ["processMonitorController.ts", "processMonitorRoute.ts", "appSecurityGuard.ts"] },
-    "managers": ["processMonitor"]
+    "backend": {
+      "mount": "/api/process-monitor",
+      "routeClass": "ProcessMonitorRoute",
+      "routeFile": "processMonitorRoute",
+      "srcFiles": [
+        "processMonitorController.ts",
+        "processMonitorRoute.ts",
+        "appSecurityGuard.ts"
+      ]
+    },
+    "managers": [
+      "processMonitor"
+    ]
   },
   {
     "page": "app-security",
@@ -123,7 +191,16 @@
     "title": "Application Security",
     "tier": 3,
     "description": "Application Security page (/app-security) — discover the roles each page module expects (declared in one AppSecurity_<module> DP per module: the module writes .roles, this page writes .assignments) and map every role to WinCC OA user groups. Open by default: a role with no group stays open to all connected users. Pages gate their UI live via the wui-kit hasRole$ primitive; sensitive backend routes enforce the same rules server-side (requireRole guard). /api/app-security resolves the session user's identity + OA groups server-side (_Users/_Groups). GxP audit trail (AuditTrail_AppSecurity) on every assignment change.",
-    "backend": { "mount": "/api/app-security", "routeClass": "AppSecurityRoute", "routeFile": "appSecurityRoute", "srcFiles": ["appSecurityController.ts", "appSecurityRoute.ts", "appSecurityGuard.ts"] }
+    "backend": {
+      "mount": "/api/app-security",
+      "routeClass": "AppSecurityRoute",
+      "routeFile": "appSecurityRoute",
+      "srcFiles": [
+        "appSecurityController.ts",
+        "appSecurityRoute.ts",
+        "appSecurityGuard.ts"
+      ]
+    }
   },
   {
     "page": "tag-importer",
@@ -131,6 +208,37 @@
     "title": "Tag Importer",
     "tier": 3,
     "description": "Tag Importer page (/tag-importer) — import device tags into WinCC OA datapoint types + datapoints from an OPC UA NodeSet2 XML file (repeated node instances of one ObjectType are mutualised into a single DPType, one DP per instance) or by browsing a live OPC UA server (a selected instance's subtree becomes the DPType). Protocol-agnostic core (intermediate model + hybrid DPType generator + address binder) with pluggable source adapters — OPC UA today, extensible to other protocols. Nested ObjectTypes shared across ≥2 parents become DPT_TYPEREF references (hybrid), one-off nesting is flattened. A dry-run preview precedes every write. Online import also writes the peripheral address configs (_address/_distrib, reference <Conn>$$1$1$<NodeId>). All engineering ops go through /api/tag-importer (WsjServerGlobal.winccoa: dpTypeCreate/dpCreate/dpSetWait + OPC UA Browse.GetBranch); no dedicated manager. Sensitive routes are role-gated server-side (Application Security roles 'browse'/'create' — open until groups are assigned).",
-    "backend": { "mount": "/api/tag-importer", "routeClass": "TagImporterRoute", "routeFile": "tagImporterRoute", "srcFiles": ["tagImporterController.ts", "tagImporterRoute.ts", "appSecurityGuard.ts"] }
+    "backend": {
+      "mount": "/api/tag-importer",
+      "routeClass": "TagImporterRoute",
+      "routeFile": "tagImporterRoute",
+      "srcFiles": [
+        "tagImporterController.ts",
+        "tagImporterRoute.ts",
+        "appSecurityGuard.ts"
+      ]
+    }
+  },
+  {
+    "page": "eng-studio",
+    "name": "@visuelconcept/wui-eng-studio",
+    "title": "Engineering Studio",
+    "tier": 3,
+    "description": "Engineering Studio page (/eng-studio) — device-first, check-in/check-out studio to model DP types, datapoints and their configs (address/alarm/archive/range) from communicating equipment. Address-book-centric imports (OPC UA browse, SimaticML/TIA Openness export, CSV, AI proposal), a live diff vs the project and a transactional, atomic check-in. Pure engineering domain in @visuelconcept/wui-eng-core (unit-tested without a runtime); all I/O behind an EngGateway (HTTP /api/eng in the shell, in-memory demo for docs/screenshots). Backend applies plans through the shared core over WsjServerGlobal.winccoa; write routes are role-gated fail-closed.",
+    "backend": {
+      "mount": "/api/eng",
+      "routeClass": "EngRoute",
+      "routeFile": "engRoute",
+      "srcFiles": [
+        "engController.ts",
+        "engRoute.ts",
+        "engStore.ts",
+        "engOpcuaBrowse.ts",
+        "appSecurityGuard.ts"
+      ],
+      "vendorPackages": [
+        "@visuelconcept/wui-eng-core"
+      ]
+    }
   }
 ]

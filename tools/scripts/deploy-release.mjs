@@ -77,6 +77,7 @@ const DEFAULT_MODULES = [
   'fleet-stop-analysis',
   'audit-trail',
   'para',
+  'eng-studio',
   'process-monitor'
 ];
 

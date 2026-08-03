@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "noImplicitOverride": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": [],
+    "baseUrl": ".",
+    "paths": {
+      "@visuelconcept/wui-eng-core": ["../../wui-eng-core/src/index.ts"],
+      "@visuelconcept/wui-eng-core/*": ["../../wui-eng-core/src/*"],
+      "lit": ["node_modules/lit/index.d.ts"],
+      "lit/decorators.js": ["node_modules/lit/decorators.d.ts"],
+      "lit/directives/*": ["node_modules/lit/directives/*"]
+    }
+  },
+  "include": ["../src/**/*.ts", "./main.ts"]
+}

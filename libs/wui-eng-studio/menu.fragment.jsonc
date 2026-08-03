@@ -1,0 +1,14 @@
+// Menu fragment for @visuelconcept/wui-eng-studio.
+// Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
+// Tier 3: requires the /api/eng engineering route in the host webserver.
+[
+  {
+    "title": { "en_US": "Engineering Studio", "de_AT": "Engineering Studio", "fr": "Studio d'ingénierie" },
+    "icon": "cogwheel",
+    "path": "/eng-studio",
+    "module": "/data/dashboard-wc/pages/eng-studio.js",
+    "routeId": "eng-studio",
+    "component": "wui-eng-studio",
+    "permission": ["connected"]
+  }
+]

@@ -1,0 +1,35 @@
+{
+  // Offline typecheck of the Engineering Studio backend — no WinCC OA needed.
+  //   cd libs/wui-eng-core && ./node_modules/.bin/tsc -p ../../backend/tsconfig.typecheck.json
+  // (run from wui-eng-core: that is where the dev TypeScript and @types/node live)
+  //
+  // The webserver packages come from ./types/runtime-stubs.d.ts, but
+  // @visuelconcept/wui-eng-core resolves to its REAL sources — so this checks the
+  // controller against the actual engineering API, which is the part that matters.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "strict": true,
+    "noImplicitOverride": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "types": ["node"],
+    "typeRoots": ["../libs/wui-eng-core/node_modules/@types"],
+    "baseUrl": ".",
+    "paths": {
+      "@visuelconcept/wui-eng-core": ["../libs/wui-eng-core/src/index.ts"],
+      "@visuelconcept/wui-eng-core/*": ["../libs/wui-eng-core/src/*"]
+    }
+  },
+  "include": [
+    "types/**/*.d.ts",
+    "routes/engRoute.ts",
+    "routes/engController.ts",
+    "routes/engOpcuaBrowse.ts",
+    "routes/engStore.ts",
+    "routes/appSecurityGuard.ts"
+  ]
+}
