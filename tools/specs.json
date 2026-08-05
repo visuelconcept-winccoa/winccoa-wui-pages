@@ -240,5 +240,15 @@
         "@visuelconcept/wui-eng-core"
       ]
     }
+  },
+  {
+    "page": "agv-fleet",
+    "name": "@visuelconcept/wui-agv-fleet",
+    "title": "AGV Fleet",
+    "tier": 1,
+    "description": "AGV Fleet page (/agv-fleet) — live read-only supervision of an automated-guided-vehicle fleet: KPI strip (fleet size, moving, available, charging, faults, average battery, utilization, missions), a sortable status list with state chips and charge bars, a warehouse floor plan showing each vehicle's live position and heading, and a detail card per vehicle. One AGV_Vehicle datapoint per vehicle, followed with one dpConnect per vehicle. The agvSim JavaScript manager drives the fleet: it dispatches real transport orders (inbound dock → rack putaway, rack → pick station → outbound dock retrieval, internal replenishment) plus battery-driven charging trips, and moves every vehicle along a guide-path graph (shortest-path routing, motion interpolated along one aisle segment at a time) so vehicles follow the aisles and never cross the racking.",
+    "managers": [
+      "agvSim"
+    ]
   }
 ]

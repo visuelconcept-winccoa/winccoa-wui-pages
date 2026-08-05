@@ -1,0 +1,14 @@
+// Menu fragment for @visuelconcept/wui-agv-fleet.
+// Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
+// Tier 1: frontend only — reads the `AGV_Vehicle` datapoints, no backend route, no manager.
+[
+  {
+    "title": { "en_US": "AGV Fleet", "fr": "Flotte AGV", "de_AT": "AGV-Flotte" },
+    "icon": "truck",
+    "path": "/agv-fleet",
+    "module": "/data/dashboard-wc/pages/agv-fleet.js",
+    "routeId": "agv-fleet",
+    "component": "wui-agv-fleet",
+    "permission": ["connected"]
+  }
+]

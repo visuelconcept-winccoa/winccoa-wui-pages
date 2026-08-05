@@ -1,0 +1,41 @@
+{
+  "name": "@visuelconcept/wui-agv-fleet",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "AGV Fleet — standalone WinCC OA WebUI page: live supervision of an AGV fleet (one AGV_Vehicle datapoint per vehicle) with a KPI bar, a status list and a warehouse floor-plan map.",
+  "author": { "name": "Visuel Concept" },
+  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page", "agv"],
+  "license": "MIT",
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "tsyringe": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-models": "*",
+    "@wincc-oa/wui-data-selector-data": "*"
+  },
+  "exports": {
+    "./*": {
+      "types": "./types/*",
+      "import": "./*"
+    }
+  },
+  "wuiPage": {
+    "route": "/agv-fleet",
+    "routes": ["/agv-fleet"],
+    "routeId": "agv-fleet",
+    "component": "wui-agv-fleet",
+    "module": "/data/dashboard-wc/pages/agv-fleet.js",
+    "icon": "truck",
+    "permission": ["connected"],
+    "tier": 1,
+    "datapoints": {
+      "type": "AGV_Vehicle",
+      "prefix": "AGV_",
+      "note": "One datapoint per vehicle; read-only supervision. The page falls back to an in-memory demo fleet when no AGV_Vehicle datapoint exists."
+    }
+  }
+}
