@@ -138,6 +138,20 @@ export const MSG = {
     success: ml('Success', 'Succès', 'Erfolg'),
     failed: ml('Failed', 'Échec', 'Fehler'),
     forbidden: ml('You lack the permission for this action.', 'Permission manquante pour cette action.', 'Fehlende Berechtigung für diese Aktion.')
+  },
+  errors: {
+    load: ml(
+      'Cannot read the manager list',
+      'Impossible de lire la liste des managers',
+      'Die Managerliste kann nicht gelesen werden'
+    ),
+    action: ml('The action failed', 'L’action a échoué', 'Die Aktion ist fehlgeschlagen'),
+    /** Shown for a 502/503: the fault is on the manager side, and only a restart fixes it. */
+    bridge: ml(
+      'The "processMonitor" manager is not answering. Restart it in pmon: after a backend deployment a manager left running keeps executing its previous code, even though pmon shows it alive.',
+      'Le manager « processMonitor » ne répond pas. Redémarrez-le dans pmon : après un déploiement backend, un manager laissé en place continue d’exécuter son code précédent, même si pmon l’affiche actif.',
+      'Der Manager „processMonitor" antwortet nicht. Starten Sie ihn in pmon neu: nach einem Backend-Deployment führt ein weiterlaufender Manager weiterhin seinen alten Code aus, auch wenn pmon ihn als aktiv anzeigt.'
+    )
   }
 } as const;
 

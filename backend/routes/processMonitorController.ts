@@ -15,6 +15,13 @@
 // winccoa-manager (the MSA `Vrpc` namespace) is supplied by the WinCC OA node
 // bootstrap at runtime; loaded via a guarded require so only /api/process-monitor
 // degrades (503) if it is ever unavailable.
+//
+// The service lives in ANOTHER process, so its availability is a first-class
+// concern here: after a deploy that only restarts the webserver, the manager keeps
+// running its previous code and every call fails with 502 "Service is not
+// available" while pmon still shows it alive. GET /health probes exactly that, and
+// the cached stub is invalidated on any failure so the bridge recovers by itself
+// once the manager is restarted.
 // -----------------------------------------------------------------------------
 
 import * as fs from 'node:fs';
@@ -40,6 +47,28 @@ function getStub(): Promise<any> {
     stubPromise = Vrpc.Stub.createAndInitialize(SERVICE_NAME, new Vrpc.StubOptions());
   }
   return stubPromise as Promise<any>;
+}
+
+/**
+ * Drop the cached stub so the NEXT call reconnects.
+ *
+ * A stub is bound to one service instance: once the hosting manager is gone —
+ * stopped, or restarted with a different service contract — that stub never
+ * recovers, and keeping it would make every later call fail until the webserver
+ * itself is restarted. Invalidating on ANY failure lets the bridge heal on its
+ * own as soon as the manager is back.
+ */
+function dropStub(): void {
+  stubPromise = null;
+}
+
+/** The outcome of one vRPC invocation: the service's parsed reply, or why it failed. */
+type Outcome = { ok: true; data: unknown } | { ok: false; error: string };
+
+/** Human-readable reason from an MSA error (its status text) or a plain error. */
+function errorText(error: unknown): string {
+  const status = (error as { status?: { text?: string } })?.status;
+  return status?.text ?? (error instanceof Error ? error.message : String(error));
 }
 
 /** In-flight chunked uploads: id -> temp ZIP path. */
@@ -78,9 +107,31 @@ function projectTempDir(): string {
 }
 
 export class ProcessMonitorController {
-  /** GET /health */
-  public health = (_req: Request, res: Response): void => {
-    res.status(200).json({ ok: true, service: 'process-monitor', vrpc: Vrpc != null });
+  /**
+   * GET /health -> liveness AND reachability of the hosting manager.
+   *
+   * The presence of `winccoa-manager` alone says nothing useful: the module can
+   * load fine while the processMonitor manager is stopped — or, after a deploy
+   * where only the webserver was restarted, still running the PREVIOUS code under
+   * a different service name. Both cases make every other endpoint answer 502
+   * while pmon shows the manager alive, so health resolves the vRPC stub and
+   * reports what it finds. `serviceAvailable: false` + `error` is the one-request
+   * diagnosis for "the manager needs a restart".
+   *
+   * Always answers 200 (the endpoint answering IS the liveness signal); `ok`
+   * carries the verdict on the bridge as a whole.
+   */
+  public health = async (_req: Request, res: Response): Promise<void> => {
+    const probe = await this.probeService();
+    res.status(200).json({
+      ok: probe.available,
+      service: 'process-monitor',
+      vrpc: Vrpc != null,
+      serviceName: SERVICE_NAME,
+      serviceAvailable: probe.available,
+      serviceStatus: probe.status,
+      ...(probe.error ? { error: probe.error } : {})
+    });
   };
 
   /** GET /managers -> { ok, managers } */
@@ -216,27 +267,65 @@ export class ProcessMonitorController {
     }
   };
 
+  /**
+   * Resolve the vRPC stub and read the hosting service's status — no service
+   * method is called, so this stays cheap and side-effect free.
+   */
+  private probeService = async (): Promise<{ available: boolean; status: string; error?: string }> => {
+    if (!Vrpc) return { available: false, status: 'NoVrpc', error: 'MSA vRPC indisponible (winccoa-manager)' };
+    try {
+      // Rejects when the service cannot be reached at all (manager stopped, or
+      // hosting a service under another name) — that is the case we are after.
+      const stub = await getStub();
+      const status: unknown = stub.serviceStatus;
+      const ready: unknown = Vrpc.ServiceStatus?.Ready;
+      // The stub's handshake succeeded; `serviceStatus` refines it (a service can
+      // go down afterwards). Without that enum, the handshake stays the verdict.
+      if (typeof status !== 'number' || typeof ready !== 'number') return { available: true, status: 'Ready' };
+      const name = String(Vrpc.ServiceStatus[status] ?? status);
+      if (status === ready) return { available: true, status: name };
+      return { available: false, status: name, error: `service "${SERVICE_NAME}" ${name}` };
+    } catch (error) {
+      dropStub();
+      return { available: false, status: 'Unavailable', error: errorText(error) };
+    }
+  };
+
   /** Invoke one vRPC method with a JSON payload and relay the JSON result. */
   private call = async (fn: string, payload: object, res: Response): Promise<void> => {
     if (!Vrpc) {
       res.status(503).json({ ok: false, error: 'MSA vRPC indisponible (winccoa-manager)' });
       return;
     }
+    const outcome = await this.invoke(fn, payload);
+    if (!outcome.ok) {
+      res.status(502).json({ ok: false, error: outcome.error });
+      return;
+    }
+    res.status(200).json(outcome.data);
+  };
+
+  /**
+   * One vRPC round-trip. Every failure path invalidates the cached stub (see
+   * `dropStub`) — the current MSA client signals a bad call by THROWING an
+   * `MsaError`, but it also carries a status on the response, so both are
+   * handled: a bridge that stays broken after the manager comes back is worse
+   * than one reconnect too many.
+   */
+  private invoke = async (fn: string, payload: object): Promise<Outcome> => {
     try {
       const stub = await getStub();
       const ctx = new Vrpc.ClientContext();
       const variant = Vrpc.Variant.createString(JSON.stringify(payload));
       const resp = await stub.callFunction(fn, variant, ctx);
       if (resp.status.statusCode !== Vrpc.StatusCode.OK) {
-        res.status(502).json({ ok: false, error: String(resp.status.text ?? resp.status) });
-        return;
+        dropStub();
+        return { ok: false, error: String(resp.status.text ?? resp.status) };
       }
-      res.status(200).json(JSON.parse(resp.response.value));
+      return { ok: true, data: JSON.parse(resp.response.value) };
     } catch (error) {
-      stubPromise = null; // stale stub (manager restarted) — reconnect next call
-      const status = (error as { status?: { text?: string } })?.status;
-      const msg = status?.text ?? (error instanceof Error ? error.message : String(error));
-      res.status(502).json({ ok: false, error: msg });
+      dropStub();
+      return { ok: false, error: errorText(error) };
     }
   };
 }

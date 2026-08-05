@@ -19,7 +19,9 @@ import { ProcessMonitorController } from './processMonitorController';
  * Route definitions for the Process Monitor API.
  *
  * Endpoints (relative to the "/api/process-monitor" mount point):
- *   GET  /health
+ *   GET  /health                           -> { ok, vrpc, serviceAvailable, serviceStatus, error? }
+ *                                             (probes the manager: `serviceAvailable: false`
+ *                                              means it is stopped or needs a restart)
  *   GET  /managers                        -> { ok, managers }
  *   POST /manager   { action, index }      -> { ok, action, index }
  *   POST /manager/add    { name, startMode?, options?, index?, node? } -> { ok }

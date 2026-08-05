@@ -12,22 +12,52 @@ const BASE = '/api/process-monitor';
 /** Raw bytes per upload chunk (base64-expanded ~1.33× on the wire). */
 const CHUNK_BYTES = 256 * 1024;
 
-async function getJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
-  const data = (await res.json()) as T & { ok?: boolean; error?: string };
-  if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
+/**
+ * A backend failure, carrying the HTTP status so the UI can tell WHERE it broke:
+ * 403 is a refused permission, 502/503 mean the webserver answered but its bridge
+ * to the `processMonitor` manager is down (see `isBridgeError`).
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+/**
+ * True for the failures that are NOT about the request: the manager hosting the
+ * MSA vRPC service is stopped, or still running the code it loaded before the last
+ * backend deploy. The operator has to restart it — no retry will help.
+ */
+export function isBridgeError(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 502 || error.status === 503);
+}
+
+/** One JSON request; every non-OK answer becomes an `ApiError` carrying its status. */
+async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, init);
+  // A non-JSON body (e.g. an HTML error/login page) must not surface as a
+  // JSON.parse SyntaxError — the status is what the caller needs.
+  const data = (await res.json().catch(() => null)) as (T & { ok?: boolean; error?: string }) | null;
+  if (!res.ok || data === null || data.ok === false) {
+    throw new ApiError(data?.error || `HTTP ${res.status}`, res.status);
+  }
   return data;
 }
 
-async function postJson<T>(url: string, body: object): Promise<T> {
-  const res = await fetch(url, {
+function getJson<T>(url: string): Promise<T> {
+  return request<T>(url);
+}
+
+function postJson<T>(url: string, body: object): Promise<T> {
+  return request<T>(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
-  const data = (await res.json()) as T & { ok?: boolean; error?: string };
-  if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
-  return data;
 }
 
 /** One instance per connected server (a single instance on a standalone system). */

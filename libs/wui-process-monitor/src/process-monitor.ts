@@ -31,8 +31,9 @@ import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconce
 import appSecurityRoles from './app-security.roles.json';
 import { canEditFleet, canEditFleet$ } from '@visuelconcept/wui-kit/data/permissions.js';
 import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { MSG, confirmControlMsg, confirmRemoveMsg, localize, localizeDir, serverLabel } from './process-monitor/i18n.js';
-import { addManager, controlManager, listInstances, removeManager, restartAll } from './process-monitor/data/api.js';
+import { addManager, controlManager, isBridgeError, listInstances, removeManager, restartAll } from './process-monitor/data/api.js';
 import { ensureStores, loadHistory, traceOperation } from './process-monitor/data/stores.js';
 import type { DeployResult, HistoryEntry, Instance, ManagerSpec } from './process-monitor/types.js';
 import './process-monitor/ui/pm-console.js';
@@ -57,6 +58,11 @@ export class WuiProcessMonitor extends LitElement {
   @state() private activeDp = '';
   @state() private history: HistoryEntry[] = [];
   @state() private lastUpdate = '';
+  /** Last backend failure (null = none), kept as a message + detail so it follows the UI language. */
+  @state() private errorMsg: MultiLangString | null = null;
+  @state() private errorDetail = '';
+  /** True when that failure is the vRPC bridge (502/503) → the manager needs a restart. */
+  @state() private bridgeDown = false;
   @state() private canEdit = canEditFleet();
   /** Application-Security grants (open until the admin assigns groups). */
   @state() private roleControl = true;
@@ -119,6 +125,7 @@ export class WuiProcessMonitor extends LitElement {
             ${this.tabBtn('history', MSG.tabs.history)}
           </div>
 
+          ${this.renderError()}
           ${this.tab === 'console' ? this.renderConsole() : nothing}
           ${this.tab === 'upload'
             ? html`<pm-upload
@@ -134,6 +141,20 @@ export class WuiProcessMonitor extends LitElement {
       </div>
       ${this.renderDialogs()}
     `;
+  }
+
+  /**
+   * Banner for the last backend failure. An empty console with no message reads as
+   * "this server has no managers", when it usually means the bridge to the
+   * processMonitor manager is down — so the reason is always shown, with the
+   * restart hint when the fault is on the manager side.
+   */
+  private renderError(): TemplateResult | typeof nothing {
+    if (this.errorMsg === null) return nothing;
+    return html`<ix-message-bar class="error-bar" type="alarm" persistent>
+      ${localizeDir(this.errorMsg)}${this.errorDetail ? ` — ${this.errorDetail}` : ''}
+      ${this.bridgeDown ? html`<div class="error-hint">${localizeDir(MSG.errors.bridge)}</div>` : nothing}
+    </ix-message-bar>`;
   }
 
   private renderConsole(): TemplateResult {
@@ -214,9 +235,33 @@ export class WuiProcessMonitor extends LitElement {
         this.activeDp = this.instances[0]?.dp ?? '';
       }
       this.lastUpdate = new Date().toLocaleTimeString();
-    } catch {
-      // leave the previous list; transient pmon/webserver hiccup
+      this.clearLoadError();
+    } catch (error) {
+      // The previous list is kept (a transient hiccup must not blank the console),
+      // but the reason is surfaced — a silent empty table hides a dead bridge.
+      this.reportError(MSG.errors.load, error);
     }
+  }
+
+  /** Surface a backend failure in the banner. */
+  private reportError(message: MultiLangString, error: unknown): void {
+    this.errorMsg = message;
+    this.errorDetail = error instanceof Error ? error.message : String(error);
+    this.bridgeDown = isBridgeError(error);
+  }
+
+  private clearError(): void {
+    this.errorMsg = null;
+    this.errorDetail = '';
+    this.bridgeDown = false;
+  }
+
+  /**
+   * Clear the banner only when it holds a LOAD failure: every action refreshes the
+   * list right after, and that refresh must not wipe the reason the action failed.
+   */
+  private clearLoadError(): void {
+    if (this.errorMsg === MSG.errors.load) this.clearError();
   }
 
   private async refreshHistory(): Promise<void> {
@@ -240,8 +285,9 @@ export class WuiProcessMonitor extends LitElement {
     try {
       const res = await controlManager(target?.dp ?? '', d.action, d.index);
       ok = res.ok !== false;
-    } catch {
-      ok = false;
+      this.clearError();
+    } catch (error) {
+      this.reportError(MSG.errors.action, error);
     }
     await traceOperation(
       {
@@ -266,8 +312,9 @@ export class WuiProcessMonitor extends LitElement {
     try {
       const res = await addManager(target?.dp ?? '', spec);
       ok = res.ok !== false;
-    } catch {
-      ok = false;
+      this.clearError();
+    } catch (error) {
+      this.reportError(MSG.errors.action, error);
     }
     const parts = [spec.startMode, spec.options, spec.index === undefined ? '' : `#${spec.index}`].filter(Boolean);
     const detail = `${spec.name} — add (${parts.join(', ')})`;
@@ -296,8 +343,9 @@ export class WuiProcessMonitor extends LitElement {
     try {
       const res = await removeManager(target?.dp ?? '', d.index);
       ok = res.ok !== false;
-    } catch {
-      ok = false;
+      this.clearError();
+    } catch (error) {
+      this.reportError(MSG.errors.action, error);
     }
     await traceOperation(
       {
@@ -322,8 +370,9 @@ export class WuiProcessMonitor extends LitElement {
     try {
       const res = await restartAll(target?.dp ?? '');
       ok = res.ok !== false;
-    } catch {
-      ok = false;
+      this.clearError();
+    } catch (error) {
+      this.reportError(MSG.errors.action, error);
     }
     await traceOperation(
       {
@@ -413,6 +462,14 @@ function pageStyles(): ReturnType<typeof css> {
       display: flex;
       gap: 0.4rem;
       padding: 0.5rem 0;
+    }
+    .error-bar {
+      margin-bottom: 0.6rem;
+    }
+    .error-hint {
+      padding-top: 0.25rem;
+      font-size: 0.85rem;
+      opacity: 0.9;
     }
     .server-tabs {
       display: flex;
