@@ -1,0 +1,4 @@
+// Menu fragment for @visuelconcept/wui-alarms. Merge into the host `entries` (idempotent by routeId).
+[
+  { "title": { "en_US": "Alarms", "fr": "Alarmes", "de_AT": "Alarme" }, "icon": "alarm-bell", "path": "/alarms", "module": "/data/dashboard-wc/pages/alarms.js", "routeId": "alarms", "component": "wui-alarms" }
+]

@@ -1,0 +1,12 @@
+{
+  "name": "wui-alarms-core",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/wui-alarms-core/src",
+  "projectType": "library",
+  "tags": ["package", "kit"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  }
+}

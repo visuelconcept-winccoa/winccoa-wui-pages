@@ -38,6 +38,8 @@ import {
   type AnalysisMachine,
   type CauseRow
 } from '@visuelconcept/wui-fleet-core/engine.js';
+import { scopeFromDpes } from '@visuelconcept/wui-alarms-core/scope.js';
+import '@visuelconcept/wui-alarms-core/ui/wui-alarm-view.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import {
   MSG,
@@ -155,10 +157,7 @@ export class MfMachineDashboard extends LitElement {
             ${this.renderToolbar()}
             <section class="q q-alarms">
               <h4>${localizeDir(MSG.machineDash.alarmTracking)}</h4>
-              <div class="placeholder">
-                <ix-icon name="alarm-bell" size="24"></ix-icon>
-                <span>${localizeDir(MSG.machineDash.alarmTrackingPlaceholder)}</span>
-              </div>
+              ${this.renderAlarms()}
             </section>
             <section class="q q-kpi">
               ${this.loading
@@ -219,6 +218,48 @@ export class MfMachineDashboard extends LitElement {
       window.clearTimeout(this.historyDebounce);
       this.historyDebounce = window.setTimeout(() => void this.reload(true), HISTORY_RELOAD_DEBOUNCE_MS);
     }
+  }
+
+  /**
+   * The machine's alarms — the SHARED alarm view, in its panel form.
+   *
+   * Same component as the `/alarms` page: the tabs inside it switch between the
+   * standing alarms and the archived ones, and the archived ones use THIS
+   * dashboard's period (the toolbar above governs the whole right side), which is
+   * why the view's own period controls are hidden. `strict-scope` matters: a
+   * machine with no bound datapoint must show nothing, never the whole plant.
+   */
+  private renderAlarms(): TemplateResult {
+    const { start, end } = this.resolveRange();
+    return html`
+      <wui-alarm-view
+        layout="panel"
+        hide-period
+        strict-scope
+        .from=${start.getTime()}
+        .to=${end.getTime()}
+        .scope=${this.alarmScope()}
+      ></wui-alarm-view>
+    `;
+  }
+
+  /**
+   * Alarm scope of the machine: its bound DATAPOINTS, not their elements.
+   *
+   * An alarm may sit on any element of a datapoint the machine binds, including
+   * ones this dashboard does not read — so scoping on the datapoints is the
+   * useful reading of "this machine's alarms".
+   */
+  private alarmScope(): readonly string[] {
+    const m = this.machine;
+    return scopeFromDpes([
+      m.stateDp,
+      m.commDp,
+      m.stopCauseDp,
+      m.workOrderDp,
+      m.operationDp,
+      ...(m.kpis ?? []).map((k) => k.dp)
+    ]);
   }
 
   /** Period filter governing the whole right side (Suivi Alarmes + KPI). */
@@ -873,6 +914,10 @@ function dashboardStyles() {
     .q-alarms {
       grid-area: alarms;
       background: var(--theme-color-1);
+    }
+    .q-alarms wui-alarm-view {
+      flex: 1;
+      min-height: 0;
     }
     .q-kpi {
       grid-area: kpi;

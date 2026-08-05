@@ -187,11 +187,6 @@ export const MSG = {
     close: ml('Close', 'Fermer', 'Schließen'),
     processParams: ml('Process parameters', 'Paramètres Process', 'Prozessparameter'),
     alarmTracking: ml('Alarm tracking', 'Suivi Alarmes', 'Alarmverfolgung'),
-    alarmTrackingPlaceholder: ml(
-      'Alarm tracking — not available (coming soon).',
-      'Suivi des alarmes — non disponible (à venir).',
-      'Alarmverfolgung — nicht verfügbar (in Kürze).'
-    ),
     prevPeriod: ml('Previous period', 'Période précédente', 'Vorheriger Zeitraum'),
     nextPeriod: ml('Next period', 'Période suivante', 'Nächster Zeitraum'),
     period: ml('Period', 'Période', 'Zeitraum'),

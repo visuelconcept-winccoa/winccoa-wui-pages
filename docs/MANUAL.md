@@ -42,6 +42,11 @@ and an AI assistant. *Tier 3* — backed by the `machineSim`, `kpiCalc` and
 Opening an atelier renders the interactive **3D scene**: the workshop floor with each
 machine placed in 3D and colour-coded by state, plus contextual KPI panels.
 
+A machine's contextual dashboard shows its process parameters, its **alarms** — the
+shared view of the [Alarms](#alarms--alarms) page in panel form, scoped to that
+machine's datapoints, standing or archived over the dashboard's period — and its KPI
+(state Gantt + stop-cause Pareto).
+
 ---
 
 ## KPI Analysis — `/fleet-kpi`
@@ -114,6 +119,25 @@ prints. Works together with the report templates below.
 Authors the **configurable report templates** consumed by the Report Builder —
 parameterised sections (text, tables, datasets/charts) and a multi-level signature
 workflow definition.
+
+---
+
+## Alarms — `/alarms`
+
+![Alarms](images/manual/alarms.png)
+
+The plant's **alarm list**, in two tabs sharing one table: **Active** (the standing
+alarms, live) and **History** (the alarm archive over a period — today, 24 h, 7 d,
+30 d, current week/month or a custom range, with previous/next-period arrows). Around
+the list: the **unacknowledged** counter, the **P1–P4 severity chips** (each reading
+`total (n ack)`, click to filter), the **EEMUA-191 flood histogram** (ten alarms per
+ten minutes is the operator-load ceiling) and the **recurring bad actors** (by alarm
+text or by datapoint). Rows carry the alert class' own colour and abbreviation;
+selecting rows **holds** the live updates so nothing moves under the cursor, then
+**Acknowledge** writes the WinCC OA acknowledgement.
+
+The whole view is one shared component, embedded elsewhere as a panel — the Machine
+Fleet machine dashboard uses it for that machine's alarms.
 
 ---
 

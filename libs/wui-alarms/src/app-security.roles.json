@@ -1,0 +1,16 @@
+{
+  "module": "alarms",
+  "title": { "en_US.utf8": "Alarms", "fr.utf8": "Alarmes", "de.utf8": "Alarme" },
+  "roles": [
+    { "id": "view", "label": { "en_US.utf8": "View", "fr.utf8": "Consulter", "de.utf8": "Ansehen" } },
+    {
+      "id": "acknowledge",
+      "label": { "en_US.utf8": "Acknowledge", "fr.utf8": "Acquitter", "de.utf8": "Quittieren" },
+      "description": {
+        "en_US.utf8": "Acknowledge alarms from the list. WinCC OA write permission is still required.",
+        "fr.utf8": "Acquitter les alarmes depuis la liste. Le droit d’écriture WinCC OA reste requis.",
+        "de.utf8": "Alarme aus der Liste quittieren. Die WinCC-OA-Schreibberechtigung bleibt erforderlich."
+      }
+    }
+  ]
+}

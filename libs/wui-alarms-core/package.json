@@ -1,0 +1,25 @@
+{
+  "name": "@visuelconcept/wui-alarms-core",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Alarms core — the shared alarm domain + the embeddable alarm view. Pure domain (WinCC-OA-free): Alert→Alarm mapping (CAME/WENT pairing, severity bands, ack state), DP-scope matching, server-side-style query (filter/sort/paginate), EEMUA-191 flood histogram and bad-actor statistics, period resolution. Plus the OA-bound AlarmStore (live alert subscription + alarm archive over a period + acknowledge) and the <wui-alarm-view> component that any page embeds (full page or panel).",
+  "author": { "name": "Visuel Concept" },
+  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "alarms", "kit"],
+  "license": "MIT",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.standalone.json"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "tsyringe": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-alert-data": "*",
+    "@wincc-oa/wui-i18n-shared": "*",
+    "@wincc-oa/wui-models": "*",
+    "@wincc-oa/wui-shared": "*"
+  },
+  "exports": { "./*": { "types": "./types/*", "import": "./*" } }
+}

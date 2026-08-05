@@ -242,6 +242,13 @@
     }
   },
   {
+    "page": "alarms",
+    "name": "@visuelconcept/wui-alarms",
+    "title": "Alarms",
+    "tier": 1,
+    "description": "Alarms page (/alarms) — the plant's alarm list, live (standing alarms via the runtime AlertService) or over an archived period (alert archive), with the unacknowledged counter, the P1-P4 severity bands as a filter, the EEMUA-191 flood histogram, the recurring bad actors, free-text search, click-to-sort headers, paging and acknowledge (dpSet on <dpe>:_alert_hdl.._ack, WinCC OA write permission required). The whole view is the shared <wui-alarm-view> component of @visuelconcept/wui-alarms-core, embeddable in any page (the Machine Fleet machine dashboard shows a machine's alarms with it, scoped to its datapoints). Frontend only: no backend module, no manager. Application Security roles 'view'/'acknowledge' (open until groups are assigned)."
+  },
+  {
     "page": "agv-fleet",
     "name": "@visuelconcept/wui-agv-fleet",
     "title": "AGV Fleet",

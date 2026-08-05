@@ -96,8 +96,15 @@ pushed into the 3D bubble. `KpiType = 'TRS'|'MTBF'|'MTTR'` (TRS in `%`, MTBF/MTT
 
 ### Contextualized machine dashboard (built-in, no echarts)
 - Full-screen overlay `mf-machine-dashboard`: Process parameters · period bar ·
-  Alarm tracking (placeholder) · KPI = **state Gantt** + **unplanned-stop Pareto**
+  Alarm tracking · KPI = **state Gantt** + **unplanned-stop Pareto**
   (SVG/DOM, no echarts).
+- **Alarm tracking** = the shared `<wui-alarm-view>` of `@visuelconcept/wui-alarms-core`
+  in its `panel` layout (same component as the `/alarms` page). Its tabs switch between
+  the machine's **standing** alarms and its **archived** ones; the archived ones use
+  THIS dashboard's period (hence `hide-period`), and the scope is `scopeFromDpes(...)`
+  over the machine's bound datapoints with `strict-scope` so a machine with no bound
+  datapoint shows nothing rather than the whole plant. See
+  [docs/wui-alarms/INTEGRATION.md](../wui-alarms/INTEGRATION.md).
 - **Real-time = `dpConnect`** (no polling); a change of the state DP reloads
   (debounced) the archived history to keep the Gantt live.
 - Gantt: segments from the state DP's archived history (`resolveState` + `STATE_COLORS`),
