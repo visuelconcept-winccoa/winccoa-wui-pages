@@ -26,9 +26,14 @@
  *
  * The service exposes one unary method:
  *   Chat(Variant<string JSON {provider?, model?, prompt, system?, mcpServers?,
- *                             mcpMode?, webSearch?, effort?, maxTokens?}>)
+ *                             mcpMode?, webSearch?, effort?, maxTokens?,
+ *                             progressId?}>)
  *      -> Variant<string JSON {text, truncated, mcpTools, …}>
  *                                              (throws Vrpc.Error on failure)
+ *
+ * With a `progressId`, the loop narrates itself live into the
+ * `AI_Assistant_Progress` datapoint (see the constant below) — the reply itself
+ * cannot report progress, being a single unary call.
  *
  * After editing this file, restart the aiAssistant manager.
  */
@@ -40,6 +45,26 @@ const winccoa = new WinccoaManager();
 const SERVICE_NAME = 'AiAssistant';
 const CONFIG_TYPE = 'AI_Assistant_Config';
 const CONFIG_DP = 'AI_Assistant_Config';
+/**
+ * Live-progress channel.
+ *
+ * `Chat` is a UNARY vRPC call: the whole agentic loop runs before it answers, so
+ * there is no way to report progress on the reply itself. Rather than invent an
+ * HTTP callback into the webserver (a new URL to configure, a new unauthenticated
+ * surface to protect), progress is published to a datapoint — the WebUI already
+ * has an authenticated live subscription to those, so the browser reads it with
+ * the same `dpConnect` it uses for every other live value.
+ *
+ * Each write carries the CUMULATIVE event list for one prompt, not a delta: if two
+ * writes land faster than the client's notification, or one is coalesced away, the
+ * latest value still holds everything. That makes the channel lossless without any
+ * sequencing protocol.
+ */
+const PROGRESS_TYPE = 'AI_Assistant_Progress';
+const PROGRESS_DP = 'AI_Assistant_Progress';
+/** Events kept per prompt, and the size ceiling of one write. */
+const PROGRESS_MAX_EVENTS = 60;
+const PROGRESS_MAX_CHARS = 12_000;
 const SYS = 'System1:';
 /** WinccoaElementType enum values (see winccoa-manager dptypenode). */
 const ELEM = { Struct: 1, String: 25 };
@@ -59,6 +84,7 @@ const MAX_TOKENS_MAX = 128_000;
 const TRUNCATED_MSG =
   "\n\n_(réponse tronquée : budget de sortie atteint — augmentez « Budget de sortie » dans la configuration de l'IA, ou demandez une proposition plus petite.)_";
 const HTTP_OK = 200;
+const JSON_CT = 'application/json';
 /** Max LLM⇄tool round-trips per chat (agentic MCP loop guard). */
 const MAX_TOOL_ROUNDS = 6;
 /** Default MCP servers (the WinCC OA MCP server runs on :3000, StreamableHTTP). */
@@ -98,6 +124,11 @@ const EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 const DEFAULT_EFFORT = 'medium';
 /** Claude models that accept `output_config.effort` (it errors on Haiku 4.5). */
 const CLAUDE_EFFORT = /^claude-(opus-(5|4-8|4-7|4-6|4-5)|sonnet-(5|4-6)|fable-5|mythos-5)/;
+/**
+ * Claude models that accept adaptive thinking — the ones we can ask for a readable
+ * reasoning summary (`thinking.display`). Sending it to an older model is a 400.
+ */
+const CLAUDE_ADAPTIVE = /^claude-(opus-(5|4-8|4-7|4-6)|sonnet-(5|4-6)|fable-5|mythos-5)/;
 /** …and those that accept the `xhigh` level (added with Opus 4.7). */
 const CLAUDE_EFFORT_XHIGH = /^claude-(opus-(5|4-8|4-7)|sonnet-5|fable-5|mythos-5)/;
 /** OpenAI reasoning models that accept `reasoning_effort` (low|medium|high). */
@@ -164,6 +195,36 @@ function openAiEffort(model, effort) {
 
 // ---- data model (config DP) ------------------------------------------------
 
+/**
+ * The progress datapoint: one String element holding the current prompt's event
+ * list as JSON. One DP for the project, not one per session — creating and deleting
+ * a datapoint per chat would be far more expensive than a payload the clients
+ * filter on its `id`.
+ */
+async function ensureProgress() {
+  const root = new WinccoaDpTypeNode(PROGRESS_TYPE, ELEM.Struct, '', [
+    new WinccoaDpTypeNode('json', ELEM.String)
+  ]);
+  try {
+    await winccoa.dpTypeCreate(root);
+    log(`Type de données créé : ${PROGRESS_TYPE}`);
+  } catch {
+    try {
+      await winccoa.dpTypeChange(root);
+    } catch {
+      // already up to date
+    }
+  }
+  if (!winccoa.dpExists(`${PROGRESS_DP}.json`)) {
+    try {
+      await winccoa.dpCreate(PROGRESS_DP, PROGRESS_TYPE);
+      log(`DP de progression créé : ${PROGRESS_DP}`);
+    } catch (e) {
+      log(`Échec création DP de progression (progression live indisponible) : ${e}`);
+    }
+  }
+}
+
 async function ensureConfig() {
   const root = new WinccoaDpTypeNode(CONFIG_TYPE, ELEM.Struct, '', [
     new WinccoaDpTypeNode('provider', ELEM.String),
@@ -178,6 +239,7 @@ async function ensureConfig() {
     // Output budget in tokens (decimal string). Empty -> DEFAULT_MAX_TOKENS.
     new WinccoaDpTypeNode('maxTokens', ELEM.String)
   ]);
+  await ensureProgress();
   try {
     await winccoa.dpTypeCreate(root);
     log(`Type de données créé : ${CONFIG_TYPE}`);
@@ -287,6 +349,45 @@ async function postJson(url, headers, body) {
   return data;
 }
 
+// ---- live progress ---------------------------------------------------------
+
+/**
+ * A progress publisher for one prompt, or an inert one when the caller asked for
+ * none (`progressId` absent) — so a page that does not display progress costs
+ * nothing.
+ *
+ * Every `step()` republishes the whole list. Failures are swallowed: progress is a
+ * courtesy, and a chat must never fail because its narration could not be written.
+ */
+function makeProgress(progressId) {
+  if (!progressId) return { on: false, step: () => undefined, events: [] };
+  const events = [];
+  const publish = async () => {
+    // Drop the oldest first: on a long loop the recent steps are the interesting
+    // ones, and the final answer carries the authoritative trace anyway.
+    while (events.length > PROGRESS_MAX_EVENTS) events.shift();
+    let payload = JSON.stringify({ id: progressId, events });
+    while (payload.length > PROGRESS_MAX_CHARS && events.length > 1) {
+      events.shift();
+      payload = JSON.stringify({ id: progressId, events });
+    }
+    try {
+      await winccoa.dpSetWait(`${SYS}${PROGRESS_DP}.json`, payload);
+    } catch {
+      // best effort
+    }
+  };
+  return {
+    on: true,
+    events,
+    step(event) {
+      events.push(event);
+      // Not awaited: the loop must not wait on a datapoint write to keep working.
+      void publish();
+    }
+  };
+}
+
 // ---- MCP tools (local agentic loop) ----------------------------------------
 
 /**
@@ -357,20 +458,29 @@ function trace(text) {
   return value.length > TRACE_MAX ? `${value.slice(0, TRACE_MAX)}\n…(tronqué)` : value;
 }
 
-async function execTool(route, name, args, calls) {
+async function execTool(route, name, args, calls, progress) {
   const target = route.get(name);
   const server = target ? target.server.name || target.server.url : '';
+  // Announced BEFORE it runs: a tool that takes ten seconds is exactly when the
+  // user wants to know what is being waited on.
+  progress.step({ type: 'tool-start', name, server });
   if (!target) {
     calls.push({ name, ok: false, server, args, result: `Outil inconnu : ${name}` });
+    progress.step({ type: 'tool', name, server, ok: false });
     return { text: `Outil inconnu : ${name}`, isError: true };
   }
   try {
     const res = await mcp.callTool(target.server, target.sessionId, name, args);
     calls.push({ name, ok: !res.isError, server, args, result: trace(res.text) });
+    // Only the outcome goes on the progress channel, never the result: that
+    // datapoint is readable by every client, whereas the full trace travels back
+    // on the caller's own response.
+    progress.step({ type: 'tool', name, server, ok: !res.isError });
     return res;
   } catch (e) {
     const text = `Erreur outil ${name} : ${e.message}`;
     calls.push({ name, ok: false, server, args, result: text });
+    progress.step({ type: 'tool', name, server, ok: false });
     return { text, isError: true };
   }
 }
@@ -382,6 +492,30 @@ const TOOL_LIMIT_MSG = "(limite d'itérations d'outils atteinte)";
 /** Mark an answer the provider cut short, so the UI can say so instead of guessing. */
 function truncated(text) {
   return `${text}${TRUNCATED_MSG}`;
+}
+
+/** Longest reasoning summary published per round — a paragraph, not an essay. */
+const THINKING_MAX = 600;
+
+/**
+ * Publish this round's reasoning summary, when the provider returned one.
+ *
+ * This is per ROUND, not per token: the call is non-streaming, so the summary of a
+ * round arrives with that round's response. On an agentic loop that still means the
+ * user sees the model's reasoning unfold step by step instead of waiting in silence.
+ */
+function publishThinking(progress, content) {
+  if (!progress.on) return;
+  const text = (content || [])
+    .filter((block) => block.type === 'thinking' && block.thinking)
+    .map((block) => block.thinking)
+    .join('\n')
+    .trim();
+  if (!text) return;
+  progress.step({
+    type: 'thinking',
+    text: text.length > THINKING_MAX ? `${text.slice(0, THINKING_MAX)}…` : text
+  });
 }
 
 /**
@@ -398,18 +532,27 @@ function anthropicWebSearchTool(model) {
 }
 
 async function callAnthropic(model, token, prompt, system, tools, route, calls, options) {
-  const headers = { 'content-type': 'application/json', 'x-api-key': token, 'anthropic-version': '2023-06-01' };
+  const headers = { 'content-type': JSON_CT, 'x-api-key': token, 'anthropic-version': '2023-06-01' };
   const decls = tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.schema }));
   if (options.webSearch) decls.push(anthropicWebSearchTool(model));
   const level = claudeEffort(model, options.effort);
+  const { progress } = options;
   const messages = [{ role: 'user', content: prompt }];
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const body = { model, max_tokens: options.maxTokens, messages };
     if (system) body.system = system;
     if (decls.length > 0) body.tools = decls;
     if (level) body.output_config = { effort: level };
+    // Ask for a readable reasoning summary ONLY when someone is watching: on the
+    // models where thinking is off by default this turns it on, which costs
+    // thinking tokens. The default (`omitted`) returns empty thinking blocks.
+    if (progress.on && CLAUDE_ADAPTIVE.test(model)) {
+      body.thinking = { type: 'adaptive', display: 'summarized' };
+    }
+    progress.step({ type: 'model', round: round + 1, model });
     // eslint-disable-next-line no-await-in-loop
     const data = await postJson('https://api.anthropic.com/v1/messages', headers, body);
+    publishThinking(progress, data.content);
     if (data.stop_reason === 'pause_turn') {
       // A server-side tool (web search) hit the provider's own iteration limit.
       // Echo the assistant turn back with NO user message: the trailing
@@ -426,7 +569,7 @@ async function callAnthropic(model, token, prompt, system, tools, route, calls, 
     for (const block of data.content || []) {
       if (block.type !== 'tool_use') continue;
       // eslint-disable-next-line no-await-in-loop
-      const res = await execTool(route, block.name, block.input, calls);
+      const res = await execTool(route, block.name, block.input, calls, progress);
       results.push({ type: 'tool_result', tool_use_id: block.id, content: res.text, is_error: res.isError });
     }
     messages.push({ role: 'user', content: results });
@@ -435,9 +578,10 @@ async function callAnthropic(model, token, prompt, system, tools, route, calls, 
 }
 
 async function callOpenAiLike(url, model, token, prompt, system, tools, route, calls, options) {
-  const headers = { 'content-type': 'application/json', authorization: `Bearer ${token}` };
+  const headers = { 'content-type': JSON_CT, authorization: `Bearer ${token}` };
   const fns = tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.schema } }));
   const level = options.effort ? openAiEffort(model, options.effort) : '';
+  const { progress } = options;
   const messages = [];
   if (system) messages.push({ role: 'system', content: system });
   messages.push({ role: 'user', content: prompt });
@@ -445,6 +589,7 @@ async function callOpenAiLike(url, model, token, prompt, system, tools, route, c
     const body = { model, messages };
     if (fns.length > 0) body.tools = fns;
     if (level) body.reasoning_effort = level;
+    progress.step({ type: 'model', round: round + 1, model });
     // eslint-disable-next-line no-await-in-loop
     const data = await postJson(url, headers, body);
     const msg = data.choices?.[0]?.message;
@@ -461,7 +606,7 @@ async function callOpenAiLike(url, model, token, prompt, system, tools, route, c
         args = {};
       }
       // eslint-disable-next-line no-await-in-loop
-      const res = await execTool(route, tc.function?.name, args, calls);
+      const res = await execTool(route, tc.function?.name, args, calls, progress);
       messages.push({ role: 'tool', tool_call_id: tc.id, content: res.text });
     }
   }
@@ -485,6 +630,7 @@ function geminiSchema(schema) {
 async function callGemini(model, token, prompt, system, tools, route, calls, options) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(token)}`;
   const decls = tools.map((t) => ({ name: t.name, description: t.description, parameters: geminiSchema(t.schema) }));
+  const { progress } = options;
   const contents = [{ role: 'user', parts: [{ text: prompt }] }];
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const body = { contents, generationConfig: { maxOutputTokens: options.maxTokens } };
@@ -495,8 +641,9 @@ async function callGemini(model, token, prompt, system, tools, route, calls, opt
     // function declarations (supported from Gemini 2.x on).
     if (options.webSearch) toolDecls.push({ google_search: {} });
     if (toolDecls.length > 0) body.tools = toolDecls;
+    progress.step({ type: 'model', round: round + 1, model });
     // eslint-disable-next-line no-await-in-loop
-    const data = await postJson(url, { 'content-type': 'application/json' }, body);
+    const data = await postJson(url, { 'content-type': JSON_CT }, body);
     const candidate = data.candidates?.[0];
     const parts = candidate?.content?.parts || [];
     const fnCalls = parts.filter((p) => p.functionCall);
@@ -508,7 +655,7 @@ async function callGemini(model, token, prompt, system, tools, route, calls, opt
     const responseParts = [];
     for (const c of fnCalls) {
       // eslint-disable-next-line no-await-in-loop
-      const res = await execTool(route, c.functionCall.name, c.functionCall.args || {}, calls);
+      const res = await execTool(route, c.functionCall.name, c.functionCall.args || {}, calls, progress);
       responseParts.push({ functionResponse: { name: c.functionCall.name, response: { content: res.text } } });
     }
     contents.push({ role: 'user', parts: responseParts });
@@ -558,6 +705,21 @@ function resolveOverrides(req, cfg) {
   };
 }
 
+/** Validate the vRPC payload into a request object, or throw a vRPC error. */
+function parseChatRequest(request) {
+  if (!request.isString() || request.isNull()) {
+    throw vrpcError('InvalidArgument', 'La requête doit être une chaîne JSON');
+  }
+  let req;
+  try {
+    req = JSON.parse(request.getString());
+  } catch {
+    throw vrpcError('InvalidArgument', 'JSON de requête invalide');
+  }
+  if (!String(req.prompt ?? '').trim()) throw vrpcError('InvalidArgument', 'Le prompt est vide');
+  return req;
+}
+
 class AiAssistantService extends Vrpc.ServiceBase {
   constructor() {
     super(SERVICE_NAME);
@@ -566,17 +728,8 @@ class AiAssistantService extends Vrpc.ServiceBase {
 
   async chat(serverContext, request) {
     serverContext.cancelSignal.throwIfAborted();
-    if (!request.isString() || request.isNull()) {
-      throw vrpcError('InvalidArgument', 'La requête doit être une chaîne JSON');
-    }
-    let req;
-    try {
-      req = JSON.parse(request.getString());
-    } catch {
-      throw vrpcError('InvalidArgument', 'JSON de requête invalide');
-    }
-    const prompt = String(req.prompt ?? '').trim();
-    if (!prompt) throw vrpcError('InvalidArgument', 'Le prompt est vide');
+    const req = parseChatRequest(request);
+    const prompt = String(req.prompt).trim();
 
     const cfg = await readConfig();
     const provider = String(req.provider || cfg.provider || 'anthropic');
@@ -586,29 +739,45 @@ class AiAssistantService extends Vrpc.ServiceBase {
     if (!model) throw vrpcError('FailedPrecondition', 'Aucun modèle configuré');
 
     const { mcpServers, mcpMode, ...options } = resolveOverrides(req, cfg);
+    // Inert unless the caller passed a `progressId`, so a page that shows no
+    // progress pays nothing for the channel.
+    const progress = makeProgress(String(req.progressId ?? ''));
+    options.progress = progress;
+    progress.step({ type: 'start', provider, model });
     // The manager is the MCP client: connect locally, expose tools to the LLM,
     // and execute tool calls here (no public exposure of the MCP server needed).
     const { tools, route } = await gatherMcpTools(mcpServers, mcpMode);
+    progress.step({ type: 'mcp', count: tools.length, mode: mcpMode });
     log(
       `Chat: provider=${provider} model=${model} mcp=${mcpMode} mcp_tools=${tools.length} ` +
-        `web_search=${options.webSearch} effort=${options.effort} max_tokens=${options.maxTokens} (${prompt.length} car.)`
+        `web_search=${options.webSearch} effort=${options.effort} max_tokens=${options.maxTokens} ` +
+        `progress=${progress.on} (${prompt.length} car.)`
     );
     const calls = [];
-    const text = await runProvider(provider, model, token, prompt, req.system, tools, route, calls, options);
-    return Vrpc.Variant.createString(
-      JSON.stringify({
-        text,
-        provider,
-        model,
-        mcpMode,
-        // How many tools the model was actually offered: a page that expected read
-        // access can tell "no server reachable" from "server up, tools filtered".
-        mcpTools: tools.length,
-        ...options,
-        truncated: text.endsWith(TRUNCATED_MSG),
-        toolCalls: calls
-      })
-    );
+    try {
+      const text = await runProvider(provider, model, token, prompt, req.system, tools, route, calls, options);
+      progress.step({ type: 'done' });
+      return Vrpc.Variant.createString(
+        JSON.stringify({
+          text,
+          provider,
+          model,
+          mcpMode,
+          // How many tools the model was actually offered: a page that expected read
+          // access can tell "no server reachable" from "server up, tools filtered".
+          mcpTools: tools.length,
+          ...options,
+          progress: undefined,
+          truncated: text.endsWith(TRUNCATED_MSG),
+          toolCalls: calls
+        })
+      );
+    } catch (e) {
+      // Close the narration on failure too: a progress list left hanging would
+      // read as "still working" for as long as the panel is open.
+      progress.step({ type: 'error', message: String(e?.status?.text ?? e?.message ?? e) });
+      throw e;
+    }
   }
 }
 
