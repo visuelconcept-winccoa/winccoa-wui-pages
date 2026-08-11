@@ -11,19 +11,43 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type TemplateResult } from 'lit';
 import { state } from 'lit/decorators.js';
 import {
+  AI_EFFORTS,
+  AI_MAX_TOKENS_MAX,
+  AI_MAX_TOKENS_MIN,
   AI_PROVIDERS,
+  DEFAULT_AI_EFFORT,
+  DEFAULT_AI_MAX_TOKENS,
   DEFAULT_MCP_SERVER,
   loadAiConfig,
   saveAiConfig,
+  toMaxTokens,
   type AiConfig,
+  type AiEffort,
   type McpServer
 } from '../data/ai-store.js';
 import { AI_MSG, localize, localizeDir } from '../i18n.js';
 
+/** Effort level -> its "what this costs you" label in the picker. */
+const EFFORT_LABEL: Record<AiEffort, (typeof AI_MSG)['effortLow']> = {
+  low: AI_MSG.effortLow,
+  medium: AI_MSG.effortMedium,
+  high: AI_MSG.effortHigh,
+  xhigh: AI_MSG.effortXhigh,
+  max: AI_MSG.effortMax
+};
+
 export class MfAiConfigDialog extends LitElement {
   static override readonly styles = [IXCoreStyles, dialogStyles()];
 
-  @state() private cfg: AiConfig = { provider: 'anthropic', model: '', token: '', mcpServers: [] };
+  @state() private cfg: AiConfig = {
+    provider: 'anthropic',
+    model: '',
+    token: '',
+    mcpServers: [],
+    webSearch: true,
+    effort: DEFAULT_AI_EFFORT,
+    maxTokens: DEFAULT_AI_MAX_TOKENS
+  };
   @state() private saving = false;
   @state() private error = '';
 
@@ -77,6 +101,8 @@ export class MfAiConfigDialog extends LitElement {
             />
           </label>
 
+          ${this.renderTuning()}
+
           <div class="mcp">
             <div class="mcp-head">
               <span class="lbl">${localizeDir(AI_MSG.mcpServers)}</span>
@@ -99,6 +125,51 @@ export class MfAiConfigDialog extends LitElement {
             <ix-icon name="check" slot="icon"></ix-icon>${localizeDir(AI_MSG.save)}
           </ix-button>
         </div>
+      </div>
+    `;
+  }
+
+  /** Web search + effort: the two answer-quality/latency knobs. */
+  private renderTuning(): TemplateResult {
+    return html`
+      <div class="tuning">
+        <div class="toggle-row">
+          <span class="lbl">${localizeDir(AI_MSG.webSearch)}</span>
+          <span class="spacer"></span>
+          <ix-toggle
+            hide-text
+            ?checked=${this.cfg.webSearch}
+            @checkedChange=${(e: CustomEvent<boolean>) => (this.cfg = { ...this.cfg, webSearch: e.detail })}
+          ></ix-toggle>
+        </div>
+        <div class="hint">${localizeDir(AI_MSG.webSearchHint)}</div>
+        <label class="field">
+          <span class="lbl">${localizeDir(AI_MSG.effort)}</span>
+          <ix-select
+            .value=${this.cfg.effort}
+            @valueChange=${(e: CustomEvent<string | string[]>) => this.onEffort(e.detail)}
+          >
+            ${AI_EFFORTS.map(
+              (level) =>
+                html`<ix-select-item value=${level} label=${localize(EFFORT_LABEL[level])}></ix-select-item>`
+            )}
+          </ix-select>
+        </label>
+        <div class="hint">${localizeDir(AI_MSG.effortHint)}</div>
+        <label class="field">
+          <span class="lbl">${localizeDir(AI_MSG.maxTokens)}</span>
+          <input
+            class="in"
+            type="number"
+            min=${AI_MAX_TOKENS_MIN}
+            max=${AI_MAX_TOKENS_MAX}
+            step="1024"
+            .value=${String(this.cfg.maxTokens)}
+            @change=${(e: Event) =>
+              (this.cfg = { ...this.cfg, maxTokens: toMaxTokens((e.target as HTMLInputElement).value) })}
+          />
+        </label>
+        <div class="hint">${localizeDir(AI_MSG.maxTokensHint)}</div>
       </div>
     `;
   }
@@ -139,6 +210,11 @@ export class MfAiConfigDialog extends LitElement {
     const provider = toStr(value);
     const model = AI_PROVIDERS[provider]?.models[0] ?? this.cfg.model;
     this.cfg = { ...this.cfg, provider, model };
+  }
+
+  private onEffort(value: string | string[]): void {
+    const effort = toStr(value) as AiEffort;
+    if (AI_EFFORTS.includes(effort)) this.cfg = { ...this.cfg, effort };
   }
 
   private addMcp(): void {
@@ -250,13 +326,19 @@ function dialogStyles(): ReturnType<typeof css> {
       color: var(--theme-color-std-text);
       font: inherit;
     }
-    .mcp {
+    .mcp,
+    .tuning {
       display: flex;
       flex-direction: column;
       gap: 0.4rem;
       padding: 0.5rem;
       border: 1px solid var(--theme-color-soft-bdr);
       border-radius: var(--theme-default-border-radius);
+    }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
     }
     .mcp-head {
       display: flex;

@@ -35,6 +35,18 @@ export const AI_MSG = {
   send: ml('Send', 'Envoyer', 'Senden'),
   ask: ml('Ask the AI assistant a question…', 'Posez une question à l’assistant IA…', 'Stellen Sie dem KI-Assistenten eine Frage…'),
   tools: ml('Tools:', 'Outils :', 'Werkzeuge:'),
+  toolShow: ml(
+    'Show what this tool was asked and what it returned',
+    'Voir ce qui a été demandé à cet outil et ce qu’il a répondu',
+    'Anzeigen, was dieses Werkzeug gefragt wurde und was es geantwortet hat'
+  ),
+  toolArgs: ml('Request', 'Requête', 'Anfrage'),
+  toolResult: ml('Result', 'Réponse', 'Antwort'),
+  usingTools: ml(
+    'Reading the project through its tools…',
+    'Consultation du projet via ses outils…',
+    'Projekt wird über die Werkzeuge gelesen…'
+  ),
   success: ml('Success', 'Succès', 'Erfolg'),
   failure: ml('Failure', 'Échec', 'Fehler'),
   emptyAnswer: ml('(empty response)', '(réponse vide)', '(leere Antwort)'),
@@ -44,6 +56,29 @@ export const AI_MSG = {
   provider: ml('Provider', 'Fournisseur', 'Anbieter'),
   model: ml('Model', 'Modèle', 'Modell'),
   token: ml('API token', 'Token API', 'API-Token'),
+  webSearch: ml('Web search', 'Recherche web', 'Web-Suche'),
+  webSearchHint: ml(
+    'Lets the model search the web itself for anything outside the project (standards, device documentation, error codes). Enabled by default; supported by Anthropic (Claude) and Google Gemini, ignored by OpenAI and Mistral. The search runs at the provider, never on the WinCC OA project.',
+    'Permet au modèle de chercher lui-même sur le web ce qui n’est pas dans le projet (normes, documentation d’appareils, codes d’erreur). Activée par défaut ; prise en charge par Anthropic (Claude) et Google Gemini, ignorée par OpenAI et Mistral. La recherche s’exécute chez le fournisseur, jamais sur le projet WinCC OA.',
+    'Erlaubt dem Modell, selbst im Web nach Dingen außerhalb des Projekts zu suchen (Normen, Gerätedokumentation, Fehlercodes). Standardmäßig aktiviert; unterstützt von Anthropic (Claude) und Google Gemini, von OpenAI und Mistral ignoriert. Die Suche läuft beim Anbieter, nie im WinCC OA-Projekt.'
+  ),
+  effort: ml('Effort', 'Effort', 'Aufwand'),
+  effortHint: ml(
+    'Latency lever: the lower the effort, the faster and cheaper the answer, at the cost of depth. Default “medium”. Honored by Anthropic (Claude) and the OpenAI reasoning models (o-series), ignored by Mistral and Gemini.',
+    'Levier de latence : plus l’effort est bas, plus la réponse est rapide et économique, au prix de la profondeur. Défaut « medium ». Pris en compte par Anthropic (Claude) et les modèles de raisonnement OpenAI (série o), ignoré par Mistral et Gemini.',
+    'Latenz-Regler: je niedriger der Aufwand, desto schneller und günstiger die Antwort — auf Kosten der Tiefe. Standard „medium“. Berücksichtigt von Anthropic (Claude) und den OpenAI-Reasoning-Modellen (o-Reihe), von Mistral und Gemini ignoriert.'
+  ),
+  maxTokens: ml('Output budget (tokens)', 'Budget de sortie (tokens)', 'Ausgabebudget (Tokens)'),
+  maxTokensHint: ml(
+    'Ceiling on one answer. Too low and a long answer — a JSON proposal in particular — is cut mid-object and becomes unusable; too high only costs latency on the answers that actually need it. Default 32768. On the Claude 5 family this budget covers reasoning AND text.',
+    'Plafond d’une réponse. Trop bas, une réponse longue — en particulier une proposition JSON — est coupée en plein objet et devient inutilisable ; trop haut ne coûte que de la latence sur les réponses qui en ont besoin. Défaut 32768. Sur la famille Claude 5 ce budget couvre le raisonnement ET le texte.',
+    'Obergrenze für eine Antwort. Zu niedrig, und eine lange Antwort — besonders ein JSON-Vorschlag — wird mitten im Objekt abgeschnitten und ist unbrauchbar; zu hoch kostet nur Latenz bei den Antworten, die es brauchen. Standard 32768. Bei der Claude-5-Familie deckt dieses Budget Denken UND Text ab.'
+  ),
+  effortLow: ml('low — fastest', 'low — le plus rapide', 'low — am schnellsten'),
+  effortMedium: ml('medium — balanced (default)', 'medium — équilibré (défaut)', 'medium — ausgewogen (Standard)'),
+  effortHigh: ml('high — thorough', 'high — approfondi', 'high — gründlich'),
+  effortXhigh: ml('xhigh — very thorough', 'xhigh — très approfondi', 'xhigh — sehr gründlich'),
+  effortMax: ml('max — slowest', 'max — le plus lent', 'max — am langsamsten'),
   mcpServers: ml('MCP servers', 'Serveurs MCP', 'MCP-Server'),
   add: ml('Add', 'Ajouter', 'Hinzufügen'),
   noMcp: ml('No MCP server', 'Aucun serveur MCP', 'Kein MCP-Server'),
@@ -72,5 +107,10 @@ export const AI_MSG = {
   ),
   tokenPlaceholder: ml('(none by default)', '(aucun par défaut)', '(standardmäßig keiner)'),
   cancel: ml('Cancel', 'Annuler', 'Abbrechen'),
-  save: ml('Save', 'Enregistrer', 'Speichern')
+  save: ml('Save', 'Enregistrer', 'Speichern'),
+  saveLateFailed: ml(
+    'Provider, model, token and MCP servers were saved, but these settings could not be: the AI_Assistant_Config datapoint type does not carry them yet. Restart the aiAssistant manager, or ask for the PARA “edit-types” role, then save again',
+    'Le fournisseur, le modèle, le token et les serveurs MCP ont été enregistrés, mais pas ces réglages : le type de datapoint AI_Assistant_Config ne les contient pas encore. Redémarrez le manager aiAssistant, ou demandez le rôle PARA « edit-types », puis enregistrez de nouveau',
+    'Anbieter, Modell, Token und MCP-Server wurden gespeichert, diese Einstellungen jedoch nicht: der Datenpunkttyp AI_Assistant_Config enthält sie noch nicht. Starten Sie den aiAssistant-Manager neu oder fordern Sie die PARA-Rolle „edit-types“ an, und speichern Sie erneut'
+  )
 };
