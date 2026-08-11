@@ -1,0 +1,26 @@
+// Menu fragment for @visuelconcept/wui-gis.
+// Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
+// Tier 1: frontend only — reads the `GIS_Site` datapoints and the datapoints the
+// assets are bound to. No backend route, no manager. (Auto-creating the GIS_Site
+// DP type on first save goes through the PARA API of @visuelconcept/wui-para.)
+[
+  {
+    "title": { "en_US": "GIS (map)", "fr": "SIG (carte)", "de_AT": "GIS (Karte)" },
+    "icon": "map",
+    "path": "/gis",
+    "module": "/data/dashboard-wc/pages/gis.js",
+    "routeId": "gis",
+    "component": "wui-gis",
+    "permission": ["connected"]
+  },
+  {
+    "title": { "en_US": "GIS (map)", "fr": "SIG (carte)", "de_AT": "GIS (Karte)" },
+    "icon": "map",
+    "path": "/gis/:siteid",
+    "module": "/data/dashboard-wc/pages/gis.js",
+    "routeId": "gis-detail",
+    "component": "wui-gis",
+    "permission": ["connected"],
+    "hidden": true
+  }
+]

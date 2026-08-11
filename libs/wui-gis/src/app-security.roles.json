@@ -1,0 +1,31 @@
+{
+  "module": "gis",
+  "title": {
+    "en_US.utf8": "GIS (map)",
+    "fr.utf8": "SIG (carte)",
+    "de.utf8": "GIS (Karte)"
+  },
+  "roles": [
+    {
+      "id": "view",
+      "label": {
+        "en_US.utf8": "View",
+        "fr.utf8": "Consulter",
+        "de.utf8": "Ansehen"
+      }
+    },
+    {
+      "id": "edit",
+      "label": {
+        "en_US.utf8": "Edit sites",
+        "fr.utf8": "Éditer les sites",
+        "de.utf8": "Standorte bearbeiten"
+      },
+      "description": {
+        "en_US.utf8": "Create sites, place and move assets on the map, draw areas, bind datapoints and set the drill-down targets.",
+        "fr.utf8": "Créer des sites, placer et déplacer les équipements sur la carte, tracer les zones, lier les datapoints et définir les cibles de navigation.",
+        "de.utf8": "Standorte anlegen, Anlagen auf der Karte platzieren und verschieben, Bereiche zeichnen, Datenpunkte binden und Drilldown-Ziele festlegen."
+      }
+    }
+  ]
+}
