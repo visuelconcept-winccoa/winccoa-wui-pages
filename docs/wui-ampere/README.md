@@ -32,7 +32,7 @@ manager, no webserver rebuild.
 - **Live measurements**: value labels bound to any datapoint, placed **anchored
   to a symbol** or **free anywhere** in the circuit.
 - **AI assistant** (reuses `@visuelconcept/wui-ai-kit`): a proposal-only,
-  toolless chat that generates a network model from a prompt; the user reviews
+  read-only-tools chat that generates a network model from a prompt; the user reviews
   and applies it to the editor. Hidden unless enabled at deploy time
   (`dashboard-features.json` → `aiAssistant: true`).
 
