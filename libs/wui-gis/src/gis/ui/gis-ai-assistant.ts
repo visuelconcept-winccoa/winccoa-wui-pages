@@ -26,9 +26,15 @@ import {
   askAi,
   type ToolCall
 } from '@visuelconcept/wui-ai-kit/data/ai-store.js';
+import {
+  newProgressId,
+  subscribeAiProgress,
+  type AiProgressEvent
+} from '@visuelconcept/wui-ai-kit/data/ai-progress.js';
 import { renderMarkdown } from '@visuelconcept/wui-ai-kit/data/markdown.js';
 import { AI_MSG } from '@visuelconcept/wui-ai-kit/i18n.js';
 import '@visuelconcept/wui-ai-kit/ui/mf-ai-config-dialog.js';
+import '@visuelconcept/wui-ai-kit/ui/mf-ai-progress.js';
 import '@visuelconcept/wui-ai-kit/ui/mf-ai-tool-trace.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import {
@@ -93,6 +99,8 @@ export class WuiGisAiAssistant extends LitElement {
    * *which* tool is running while it runs.
    */
   @state() private hasTools = false;
+  /** Live steps of the prompt in flight (see `ai-progress.ts`). */
+  @state() private progress: readonly AiProgressEvent[] = [];
 
   @query('.conv') private convEl?: HTMLElement;
 
@@ -183,12 +191,15 @@ export class WuiGisAiAssistant extends LitElement {
             ${
               this.busy
                 ? html`<div class="msg msg--assistant working">
-                    <span class="dots"
-                      ><span></span><span></span><span></span
-                    ></span>
-                    <span class="working-text"
-                      >${localizeDir(this.hasTools ? AI_MSG.usingTools : MSG.ai.thinking)}</span
-                    >
+                    <div class="working-head">
+                      <span class="dots"
+                        ><span></span><span></span><span></span
+                      ></span>
+                      <span class="working-text"
+                        >${localizeDir(this.hasTools ? AI_MSG.usingTools : MSG.ai.thinking)}</span
+                      >
+                    </div>
+                    <mf-ai-progress .events=${this.progress}></mf-ai-progress>
                   </div>`
                 : nothing
             }
@@ -354,6 +365,12 @@ export class WuiGisAiAssistant extends LitElement {
     this.messages = [...this.messages, { role: 'user', text: prompt }];
     this.prompt = '';
     this.busy = true;
+    this.progress = [];
+    // The answer cannot report progress (one request, one reply), so the manager
+    // narrates into a datapoint and we follow it for exactly as long as this prompt
+    // runs — `stop()` in `finally`, including when it throws.
+    const progressId = newProgressId();
+    const stop = subscribeAiProgress(progressId, (events) => (this.progress = events));
     try {
       // The project's configured MCP servers, in READ-ONLY mode: the manager drops
       // every mutating tool before the model hears of it, so the assistant can look
@@ -362,7 +379,8 @@ export class WuiGisAiAssistant extends LitElement {
       // the tool list contains, not by the absence of a tool list.
       const answer = await askAi(prompt, {
         system: buildSystemPrompt(siteContextJson(this.site, this.siteNames)),
-        mcpMode: 'read-only'
+        mcpMode: 'read-only',
+        progressId
       });
       const text = answer.text || localize(MSG.ai.emptyAnswer);
       // Remember whether tools were on offer, so the next wait can say "reading the
@@ -388,7 +406,9 @@ export class WuiGisAiAssistant extends LitElement {
         }
       ];
     } finally {
+      stop();
       this.busy = false;
+      this.progress = [];
     }
   };
 }
@@ -538,9 +558,15 @@ function assistantStyles(): ReturnType<typeof css> {
     }
     .working {
       display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.25rem;
+      color: var(--theme-color-soft-text);
+    }
+    .working-head {
+      display: flex;
       align-items: center;
       gap: 0.5rem;
-      color: var(--theme-color-soft-text);
     }
     .dots {
       display: inline-flex;
