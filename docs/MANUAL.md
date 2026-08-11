@@ -209,10 +209,11 @@ A datapoint **parametrization** page, backed by its own webserver module
   elements, analog threshold alerts for numeric elements, with an alarm class
   chosen from the `_AlertClass` instances.
 
-A header **AI assistant** helps model the data. It is *proposal-only* (it runs
-with no MCP tools and never mutates the project): it suggests datapoint-type
-models and can load a proposal straight into the model editor, where **you
-review and save** it.
+A header **AI assistant** helps model the data. It is *proposal-only*: its MCP tools
+are read-only, so it can inspect the existing model but never changes anything. It
+suggests datapoint-type models and can load a proposal straight into the model
+editor, where **you review and save** it. Each answer shows which tools it used and
+what they returned.
 
 **DPL (ASCII) import/export.** From the *Instances & valeurs* tab you can tick
 several DPs and/or DP-types and **export** them to a WinCC OA `.dpl` file, or

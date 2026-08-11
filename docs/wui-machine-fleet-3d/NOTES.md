@@ -47,7 +47,7 @@ DP and type provisioning/CRUD via the backend's **PARA REST API** (see Backend),
 | `MachineFleet3D_Closures` | 1 JSON DP | Non-working days / closures (consumed by kpiCalc). |
 | `MachineFleet3D_Kpi` | See kpiCalc | One DP per computed KPI (1 per machine×KPI). |
 | `MachineSim` (1 per machine) | See machineSim | Simulation DPs (state + cause + parameters). |
-| `AI_Assistant_Config` | Struct String (`provider`, `model`, `token`, `mcpServers` JSON) | AI assistant config (token stored here, never shipped). |
+| `AI_Assistant_Config` | Struct String (`provider`, `model`, `token`, `mcpServers` JSON, `webSearch` `'true'`/`'false'`, `effort` `low…max`, `maxTokens`) | AI assistant config (token stored here, never shipped). The last three are opt-out: an empty element means web search ON, effort `medium`, budget 32768. |
 
 - **Workshop persistence**: **debounced** save (`wui:save`) from the 3D view. DP value
   writes via **REST `/api/para/dp/set`** (the WebSocket `dpSet` of `OaRxJsApi` is
