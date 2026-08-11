@@ -52,6 +52,18 @@ interface ChatBody {
    * answer/propose, never mutate). Omitted -> the manager uses its config DP.
    */
   mcpServers?: { name: string; url: string; token?: string }[];
+  /**
+   * Tool-exposure mode for the configured MCP servers: `read-only` keeps them but
+   * drops every mutating tool in the manager, which is how a proposal-only page can
+   * read the project without being able to change it. Defaults to `full`.
+   */
+  mcpMode?: 'full' | 'read-only';
+  /** Per-call override of the configured provider-side web search. */
+  webSearch?: boolean;
+  /** Per-call override of the configured reasoning effort (latency lever). */
+  effort?: string;
+  /** Per-call override of the configured output budget, in tokens. */
+  maxTokens?: number;
 }
 
 /**
@@ -70,7 +82,8 @@ export class AiController {
       res.status(503).json({ ok: false, error: 'MSA vRPC indisponible (winccoa-manager)' });
       return;
     }
-    const { prompt, provider, model, system, mcpServers } = (req.body ?? {}) as ChatBody;
+    const { prompt, provider, model, system, mcpServers, mcpMode, webSearch, effort, maxTokens } = (req.body ??
+      {}) as ChatBody;
     if (!prompt || typeof prompt !== 'string') {
       res.status(400).json({ ok: false, error: 'prompt (string) requis' });
       return;
@@ -82,6 +95,12 @@ export class AiController {
       // tools); otherwise let the manager fall back to its config DP.
       const request: ChatBody = { prompt, provider, model, system };
       if (Array.isArray(mcpServers)) request.mcpServers = mcpServers;
+      if (mcpMode === 'read-only' || mcpMode === 'full') request.mcpMode = mcpMode;
+      // Same rule for both: forward only when the caller set it, so the
+      // manager's config DP stays the single default.
+      if (typeof webSearch === 'boolean') request.webSearch = webSearch;
+      if (typeof effort === 'string' && effort) request.effort = effort;
+      if (typeof maxTokens === 'number' && Number.isFinite(maxTokens)) request.maxTokens = maxTokens;
       const payload = Vrpc.Variant.createString(JSON.stringify(request));
       const resp = await stub.callFunction('Chat', payload, ctx);
       if (resp.status.statusCode !== Vrpc.StatusCode.OK) {
