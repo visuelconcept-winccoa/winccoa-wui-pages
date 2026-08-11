@@ -47,6 +47,10 @@ export const AI_MSG = {
     'Consultation du projet via ses outils…',
     'Projekt wird über die Werkzeuge gelesen…'
   ),
+  // Live progress. `%n` is substituted with the count / round number.
+  reasoning: ml('Reasoning:', 'Raisonnement :', 'Überlegung:'),
+  stepTools: ml('%n tools available', '%n outils disponibles', '%n Werkzeuge verfügbar'),
+  stepModel: ml('model, round %n', 'modèle, tour %n', 'Modell, Runde %n'),
   success: ml('Success', 'Succès', 'Erfolg'),
   failure: ml('Failure', 'Échec', 'Fehler'),
   emptyAnswer: ml('(empty response)', '(réponse vide)', '(leere Antwort)'),

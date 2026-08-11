@@ -338,6 +338,12 @@ export interface AskAiOptions {
   effort?: AiEffort;
   /** Per-call output-budget override (e.g. a page that expects a large proposal). */
   maxTokens?: number;
+  /**
+   * Id of the live-progress channel for this prompt, from `newProgressId()`. When
+   * set, the manager narrates its loop into the `AI_Assistant_Progress` datapoint —
+   * see `./ai-progress.ts`. Omit it and nothing is published at all.
+   */
+  progressId?: string;
 }
 
 export async function askAi(prompt: string, options: AskAiOptions = {}): Promise<AiAnswer> {
@@ -350,6 +356,7 @@ export async function askAi(prompt: string, options: AskAiOptions = {}): Promise
   if (typeof options.webSearch === 'boolean') body.webSearch = options.webSearch;
   if (options.effort) body.effort = options.effort;
   if (options.maxTokens) body.maxTokens = options.maxTokens;
+  if (options.progressId) body.progressId = options.progressId;
   const res = await fetch(CHAT_URL, jsonPost(body));
   let data: {
     ok?: boolean;
