@@ -33,20 +33,46 @@ truth; its names MUST match the backend `ELEMENT_TYPE_MAP` keys. v1 keeps the
 **root as `Struct`** (scalar-root types are a later enhancement) and does **not**
 reorder elements.
 
-## AI assistant — proposal-only, no MCP
+## AI assistant — proposal-only, read-only MCP
 
 `para-ai-assistant.ts` reuses `@visuelconcept/wui-ai-kit` (`askAi`,
-`renderMarkdown`, `mf-ai-config-dialog`) but is deliberately toolless: every
-prompt is sent with **`mcpServers: []`**, so the LLM has no tools and cannot
-mutate the project. The user always applies/saves changes themselves via the
+`renderMarkdown`, `mf-ai-config-dialog`) and sends every prompt with
+**`mcpMode: 'read-only'`**: it gets the project's *configured* MCP servers, minus
+every mutating tool. The user always applies/saves changes themselves via the
 editor. The system prompt + JSON proposal contract live in `para-ai-context.ts`.
 
-The `mcpServers: []` per-call override only works because we extended the bridge:
-`backend/routes/aiController.ts` now forwards `mcpServers`, and
-`wui-ai-kit/data/ai-store.ts` `AskAiOptions` carries it. The manager
-(`aiAssistant/index.js`) already honored a per-call `mcpServers`. **These take
-effect only after the webserver is rebuilt/restarted**; until then the guarantee
-falls back to the system prompt alone.
+The filtering is in the **manager** (`gatherMcpTools`), not in the page, and that
+placement is the guarantee: a tool that is never declared to the model cannot be
+called, whereas a page-side rule is one prompt away from being ignored. A tool is
+kept when its MCP `annotations.readOnlyHint` says so, and — when the server sends
+no annotation — when its name does not read like a mutation (`set`, `create`,
+`delete`, `start`, …). The heuristic is deliberately over-cautious: dropping a
+harmless tool costs a capability, keeping a mutating one costs the guarantee.
+
+This replaced the earlier `mcpServers: []`, which bought the same safety by
+having no tools at all — at the price of an assistant that could not check
+anything, and had to be told never to propose a datapoint name. A page can still
+pass `mcpServers: []` for a genuinely tool-free prompt.
+
+Both `mcpServers` and `mcpMode` are per-call overrides carried by
+`wui-ai-kit/data/ai-store.ts` (`AskAiOptions`) and forwarded by
+`backend/routes/aiController.ts`. **They take effect only after the webserver is
+rebuilt/restarted**; until then the guarantee falls back to the system prompt alone.
+
+`webSearch`, `effort` and `maxTokens` ride the same three-layer path (`AskAiOptions`
+→ bridge → `resolveOverrides` in the manager), so a page can send `webSearch: false`
+for a project-only prompt, `effort: 'low'` for a latency-bound one, or a larger
+`maxTokens` when it expects a big proposal. All three default from the
+`AI_Assistant_Config` DP — web search **on**, effort **`medium`**, budget **32768** —
+and the manager only sends each field to providers whose API accepts it (web search:
+Anthropic, Gemini; effort: Anthropic, OpenAI o-series; budget: Anthropic, Gemini),
+because a field a model does not know is a provider 400 rather than a silent no-op.
+
+The budget is the one that bites in practice: a proposal that runs past it comes back
+cut mid-object, which used to surface as an answer that simply had no applicable JSON
+block. The manager now detects the provider's own truncation signal (`max_tokens` /
+`finish_reason: length` / `MAX_TOKENS`), appends a note to the answer and returns
+`truncated: true`, so a page can say why instead of staying mute.
 
 ## DPL ASCII import/export
 

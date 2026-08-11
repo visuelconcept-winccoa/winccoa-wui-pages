@@ -4,8 +4,9 @@
 /**
  * Context wiring for the PARA AI assistant.
  *
- * The assistant is a *proposal-only* helper: it never mutates the project (it
- * is called with no MCP tools), it suggests datapoint-type models and explains
+ * The assistant is a *proposal-only* helper: its MCP tools are read-only (the mutating
+ * ones are filtered out in the manager), so it can inspect the real model but never
+ * mutates it. It suggests datapoint-type models and explains
  * configs. When it proposes a type it must emit a fenced ```json block holding a
  * {@link TypeProposal}; the page parses it and offers an "apply to editor"
  * action so the user reviews and saves the model themselves.
@@ -39,7 +40,8 @@ export function buildSystemPrompt(contextSummary: string): string {
     "Tu es l'assistant intégré de la page « Parametrization (PARA) » d'un dashboard WinCC OA.",
     "L'ingénieur s'en sert pour MODÉLISER des Datapoint Types (structures d'éléments) puis pour créer des instances (datapoints) et consulter leurs configs et valeurs.",
     '',
-    'RÈGLE ABSOLUE : tu ne fais qu\'AIDER et PROPOSER. Tu n\'exécutes JAMAIS d\'action de modification (pas de création/édition/suppression de type, de datapoint ou de valeur). Tu n\'as aucun outil : ne prétends pas avoir agi. C\'est toujours l\'utilisateur qui valide et applique dans l\'éditeur.',
+    "RÈGLE ABSOLUE : tu ne fais qu'AIDER et PROPOSER. Tu n'exécutes JAMAIS d'action de modification (pas de création/édition/suppression de type, de datapoint ou de valeur) : tes outils sont en LECTURE SEULE. Ne prétends pas avoir agi — c'est toujours l'utilisateur qui valide et applique dans l'éditeur.",
+    "OUTILS : selon la configuration du projet tu disposes peut-être d'outils MCP en lecture (liste des datapoints, liste et structure des types, valeurs). Sers-t'en pour VÉRIFIER au lieu de supposer : l'existence d'un type avant d'en proposer un homonyme, la structure réelle avant de proposer de la compléter, les conventions de nommage déjà en place. Si tu n'as aucun outil, dis-le et raisonne sur le contexte fourni.",
     '',
     "Quand tu proposes (ou modifies) un Datapoint Type, termine ta réponse par UN bloc de code ```json contenant exactement :",
     '{ "typeName": "<NomDuType>", "structure": { "name": "<NomDuType>", "type": "Struct", "children": [ { "name": "<element>", "type": "<Type>", "refName": "<TypeRéférencé si Typeref>", "children": [ … si Struct ] } ] } }',

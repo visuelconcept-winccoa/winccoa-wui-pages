@@ -10,7 +10,7 @@ pre-built `.js` from another version won't work).
 1. The target has a **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) that builds its dashboard — that's the `--workspace`. (cf. the official process, `dist-packages/README.md`.)
 2. **`@visuelconcept/wui-webserver`** is installed in the project (provides `/api/para` via backend module auto-discovery).
 3. For **DPL import/export**: the **`dplAscii`** JS manager (`backend/managers/dplAscii/index.js`) deployed to the project's `javascript/` and registered in `config/progs`, plus `WCCOAasciiSQLite` on PATH (standard install).
-4. For the **AI assistant**: the `/api/ai` bridge + the **`aiAssistant`** manager (as used by the Machine-Fleet pages). The assistant is proposal-only and never uses MCP.
+4. For the **AI assistant**: the `/api/ai` bridge + the **`aiAssistant`** manager (as used by the Machine-Fleet pages). The assistant is proposal-only: it uses the configured MCP servers in **read-only** mode (mutating tools filtered out in the manager).
 
 ## Install (one command)
 ```bash

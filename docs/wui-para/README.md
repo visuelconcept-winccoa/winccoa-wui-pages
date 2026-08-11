@@ -16,7 +16,8 @@ runtime version (a page bundle is coupled to the shell's import map).
   + live values & config-attribute editor; create/rename/delete DPs, including
   batch-delete of the DPs ticked in the tree).
 - **AI assistant** (header) — *proposal-only*: scoped to PARA modeling, runs with
-  **no MCP tools** (`mcpServers: []`, so it never mutates), and can load a
+  **read-only MCP tools** (`mcpMode: 'read-only'` — the manager filters out every
+  mutating tool, so it can inspect the model but never writes), and can load a
   proposed type model straight into the editor for the user to review and save.
   Reuses `@visuelconcept/wui-ai-kit` and the `/api/ai` bridge.
 - **DPL (ASCII) import/export** — tick several DPs and/or DP-types in the
@@ -43,7 +44,7 @@ runs `build:pages` (deploying into `<project>/data/dashboard-wc/`).
 - A **WebUI Runtime workspace** for the target project (the `--workspace`).
 - **`@visuelconcept/wui-webserver`** installed in the project (provides `/api/para` via backend-module auto-discovery). See `dist-packages/README.md` for the full ordered prerequisite chain.
 - For **DPL import/export**: the **`dplAscii`** JS manager registered in `config/progs` (e.g. `node | always | 30 | 2 | 2 |dplAscii/index.js`) and restarted. It drives `WCCOAasciiSQLite` via `child_process`, so that binary must be on the project PATH (standard WinCC OA install).
-- For the **AI assistant**: the `/api/ai` bridge + the **`aiAssistant`** manager must be deployed (same as the Machine-Fleet pages). Without them the panel still opens but prompts return 5xx. The assistant never uses MCP (it sends `mcpServers: []`).
+- For the **AI assistant**: the `/api/ai` bridge + the **`aiAssistant`** manager must be deployed (same as the Machine-Fleet pages). Without them the panel still opens but prompts return 5xx. The assistant uses the project's configured MCP servers in **read-only** mode (mutating tools filtered out in the manager), so it can inspect the model without being able to change it.
 
 ## Contents
 ```

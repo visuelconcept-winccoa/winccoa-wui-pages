@@ -6,8 +6,9 @@
  *
  * It reuses the AI plumbing of `@visuelconcept/wui-ai-kit` (askAi bridge,
  * markdown renderer, config dialog) but is scoped to PARA modeling and is
- * deliberately *toolless*: every prompt is sent with `mcpServers: []`, so the
- * model has no MCP tools and cannot mutate the project. When it proposes a
+ * runs `mcpMode: 'read-only'`: it gets the project's configured MCP servers with
+ * every mutating tool filtered out in the manager, so it can inspect the real model
+ * and still cannot mutate the project. When it proposes a
  * datapoint-type model (a ```json block), this component surfaces an "apply to
  * editor" action that emits `wui:applytype`; the page then loads the proposal
  * in the model editor for the user to review and save. The user always validates.
@@ -183,8 +184,9 @@ export class WuiParaAiAssistant extends LitElement {
     this.prompt = '';
     this.busy = true;
     try {
-      // mcpServers: [] -> the assistant runs with NO tools (proposal-only).
-      const answer = await askAi(prompt, { system: buildSystemPrompt(this.contextSummary), mcpServers: [] });
+      // The project's configured MCP servers, READ-ONLY: the manager filters out every
+      // mutating tool, so the assistant can inspect the real model and still not write it.
+      const answer = await askAi(prompt, { system: buildSystemPrompt(this.contextSummary), mcpMode: 'read-only' });
       const text = answer.text || localize(MSG.ai.emptyAnswer);
       this.messages = [...this.messages, { role: 'assistant', text, proposals: extractTypeProposals(text) }];
     } catch (error) {
