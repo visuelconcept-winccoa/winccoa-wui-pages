@@ -123,8 +123,9 @@ shell's import map (its version). A `.js` built against another version won't wo
 > The page menu entries are merged into the deployed `menuconfig.json`
 > automatically — the `pageMenuMergePlugin` build hook merges every
 > `libs/wui-<page>/menu.fragment.jsonc` (idempotent by `routeId`), so no manual
-> menu edit is needed. On a **deployed** target, still do `Clear site data` in the
-> browser (the service worker caches the old `menuconfig.json`).
+> menu edit is needed. The same hook bumps `index.html`'s `Last-Modified`, which
+> makes the service worker purge its runtime caches → a plain **F5** is enough on
+> a deployed target (`Clear site data` is no longer required).
 
 ### (b) Distributable package per page
 ```bash
@@ -135,11 +136,32 @@ backend + descriptor, manager(s), `module.json`, `install.mjs`). Installation: s
 [packages/README.md](packages/README.md).
 
 ## Gotchas to know
-- **`Clear site data`** in the browser after any page or menu add/change **on a
-  deployed target**: the service worker caches `menuconfig.json` → **`Ctrl+Shift+R`
-  is not enough**. _In dev_ the SW is disabled and `pageMenuMergePlugin` re-merges
-  the fragments on every request → a plain reload (F5) is enough to see a new
-  page/menu.
+- **Dashboard deployed WITHOUT the additional pages** (only the runtime's own
+  pages, menu reduced to the shell entries) = the **scaffold is not wired**.
+  `webui-runtime-init` regenerates `apps/` and `libs/default-components/`
+  pristine (both untracked), and a restore from a stash/backup can drop them too:
+  `discoverPageLibs()` and `pageMenuMergePlugin` disappear, so the build emits
+  only `libs/default-components/.../standalone-pages/` and the base
+  `menuconfig.jsonc` — a *successful* build with an empty dashboard. It is **not**
+  a browser-cache problem. Repair (both idempotent), then redeploy:
+  `node tools/wire-workspace.mjs && node tools/install-page-dependencies.mjs`.
+  `tools/scripts/deploy-release.mjs` now refuses to build in that state, and
+  verifies after deploying that every selected module has a freshly written
+  bundle + a menu entry pointing at it.
+- **Backend deployed but NOT compiled** = the other "I redeployed and nothing
+  changed". `deploy-backend.mjs` copies the route sources into
+  `<ws>/src/modules/<page>/` and then runs the webserver's `npm run build` (tsc);
+  a tsc failure used to be a mere *warning*, so the deploy reported success while
+  the webserver kept serving the **previous** compiled routes (new endpoints 404).
+  It is now **fatal** (non-zero → `deploy-release.mjs` stops), and even a build that
+  exits 0 is checked per module: every `src/modules/<page>/*.ts` must have a
+  `dist/modules/<page>/*.js` that is **not older** than it. Remember that compiling
+  is still not loading — the `customer-webserver` manager must be restarted in pmon.
+- **Service worker**: page bundles are served **CacheFirst for ~15 days**; the SW
+  only purges when the cached `index.html`'s `Last-Modified` differs from the
+  origin's. `pageMenuMergePlugin` bumps it at the end of every build, so **F5** is
+  enough (a second reload may be needed for the purge to show). _In dev_ the SW is
+  disabled and the fragments are re-merged on every request.
 - **`@novnc/novnc` pinned `1.4.0`** (remote-vnc): `^1.4.0` floats to 1.7.0 whose
   `exports` forbid the deep import `@novnc/novnc/core/rfb.js`.
   `node tools/install-page-dependencies.mjs` installs it **exact** (`--save-exact`);
