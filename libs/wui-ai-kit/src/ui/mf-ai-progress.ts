@@ -45,7 +45,7 @@ export class MfAiProgress extends LitElement {
     switch (event.type) {
       case 'mcp': {
         return html`<li>
-          <ix-icon name="plugin" size="12"></ix-icon>${localize(AI_MSG.stepTools).replace(
+          <ix-icon name="extension" size="12"></ix-icon>${localize(AI_MSG.stepTools).replace(
             '%n',
             String(event.count ?? 0)
           )}

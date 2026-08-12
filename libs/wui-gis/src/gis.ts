@@ -705,7 +705,7 @@ export class WuiGis extends LitElement {
         title=${localize(MSG.link.drawHint)}
         @click=${() => this.setTool(TOOL_LINK)}
       >
-        <ix-icon name="network" slot="icon"></ix-icon
+        <ix-icon name="connections" slot="icon"></ix-icon
         >${localizeDir(MSG.link.draw)}
       </ix-button>
       ${this.tool === TOOL_LINK ? this.renderRoutePicker(site) : nothing}
