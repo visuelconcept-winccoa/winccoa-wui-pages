@@ -31,7 +31,7 @@ function asset(over: Partial<Asset> = {}): Asset {
     kind: 'pump',
     lat: 45.9,
     lon: 6.12,
-    areaId: 'nord',
+    areaIds: ['nord'],
     dp: 'System1:Pompe01.state',
     readings: [
       {
@@ -340,7 +340,9 @@ describe('generate — bulk without writing every object', () => {
       PALETTE
     );
     expect(after.assets).toHaveLength(6);
-    expect(after.assets.every((item) => item.areaId === 'nord')).toBe(true);
+    expect(after.assets.every((item) => item.areaIds.includes('nord'))).toBe(
+      true
+    );
     expect(after.assets[0]?.readings[0]?.label).toBe('P');
   });
 

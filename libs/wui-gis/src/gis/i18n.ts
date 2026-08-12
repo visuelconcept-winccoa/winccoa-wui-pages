@@ -204,6 +204,17 @@ export const MSG = {
     name: ml('Name', 'Nom', 'Name'),
     kind: ml('Kind', 'Type', 'Art'),
     area: ml('Area', 'Zone', 'Bereich'),
+    areas: ml('Areas', 'Zones', 'Bereiche'),
+    areasHint: ml(
+      'An asset can belong to several areas — each of them lists it and counts it.',
+      'Un équipement peut appartenir à plusieurs zones — chacune le liste et le compte.',
+      'Eine Anlage kann zu mehreren Bereichen gehören — jeder listet und zählt sie.'
+    ),
+    primaryAreaHint: ml(
+      'When areas are grouped, the marker joins the badge of its first area:',
+      'Lors du regroupement, le marqueur rejoint la pastille de sa première zone :',
+      'Beim Gruppieren gehört der Marker zur Plakette seines ersten Bereichs:'
+    ),
     position: ml('Position', 'Position', 'Position'),
     latitude: ml('Latitude', 'Latitude', 'Breite'),
     longitude: ml('Longitude', 'Longitude', 'Länge'),
@@ -489,6 +500,16 @@ export const MSG = {
     edit: ml('Edit the outline', 'Éditer le contour', 'Umriss bearbeiten'),
     done: ml('Finish the outline', 'Terminer le contour', 'Umriss abschließen'),
     draw: ml('Draw the outline', 'Tracer le contour', 'Umriss zeichnen'),
+    fit: ml(
+      'Fit around the assets',
+      'Ajuster autour des équipements',
+      'Um die Anlagen anpassen'
+    ),
+    fitHint: ml(
+      'Redraw the outline tightly around this area’s assets (convex hull, 150 m margin). Replaces the current outline.',
+      'Retrace le contour au plus près des équipements de cette zone (enveloppe convexe, marge de 150 m). Remplace le contour actuel.',
+      'Zeichnet den Umriss eng um die Anlagen dieses Bereichs (konvexe Hülle, 150 m Rand). Ersetzt den aktuellen Umriss.'
+    ),
     hint: ml(
       'Drag a corner to move it, click a corner to remove it, click a hollow midpoint to add one.',
       'Faites glisser un sommet pour le déplacer, cliquez un sommet pour le supprimer, cliquez un point milieu creux pour en ajouter un.',

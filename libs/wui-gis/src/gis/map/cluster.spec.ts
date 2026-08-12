@@ -13,7 +13,7 @@ describe('cluster grid + label rule', () => {
       kind: 'generic',
       lat,
       lon,
-      areaId: '',
+      areaIds: [],
       dp: '',
       readings: [],
       link: '',
@@ -76,16 +76,23 @@ describe('cluster grid + label rule', () => {
   }
   check('hidden count never grows as you zoom in', monotonic, true);
 
-  // 4. An asset in alarm is NEVER grouped, however far out.
+  // 4. An asset in alarm groups like any other — and the badge that swallowed it says so,
+  //    which is how the alarm survives being folded in.
   const withAlarm = declutterAssets(water, 9, (a) => a.id === 'pompN');
-  check(
-    'zoom 9  -> alarm asset stays a single',
-    withAlarm.singles.some((s) => s.asset.id === 'pompN'),
-    true
+  const holder = withAlarm.clusters.find((c) =>
+    c.assets.some((a) => a.id === 'pompN')
   );
   check(
-    'zoom 9  -> alarm asset absent from badges',
-    withAlarm.clusters.every((c) => c.assets.every((a) => a.id !== 'pompN')),
+    'zoom 9  -> the alarm asset is inside a badge',
+    holder !== undefined,
+    true
+  );
+  check('the badge holding it reports one alarm', holder?.alarms, 1);
+  check(
+    'a badge holding no alarm reports none',
+    withAlarm.clusters
+      .filter((c) => c.assets.every((a) => a.id !== 'pompN'))
+      .every((c) => c.alarms === 0),
     true
   );
 
@@ -157,7 +164,7 @@ describe('cluster grid + label rule', () => {
     true
   );
 
-  // 10. Alarms are drawn individually but still lose their plate when crowded.
+  // 10. An alarm left individual (alone in its cell) still loses its plate when crowded.
   const crowdedAlarm = declutterAssets(tight, 18, (x) => x.id === 'a');
   check(
     'crowded alarm disc is unlabelled',

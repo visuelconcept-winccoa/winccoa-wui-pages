@@ -68,7 +68,7 @@ function asset(
   init: Partial<Asset> & Pick<Asset, 'id' | 'name' | 'kind' | 'lat' | 'lon'>
 ): Asset {
   return {
-    areaId: '',
+    areaIds: [],
     dp: DP_LEVEL,
     readings: [],
     link: '',
@@ -132,7 +132,7 @@ function waterAssets(): Asset[] {
       kind: 'treatment',
       lat: 45.9048,
       lon: 6.1005,
-      areaId: AREA_CENTRE,
+      areaIds: [AREA_CENTRE],
       dp: DP_QUALITY,
       // The plant is the site's process heart: its own single-line diagram and its
       // 3D twin are both worth reaching from the map.
@@ -150,7 +150,7 @@ function waterAssets(): Asset[] {
       kind: 'well',
       lat: 45.8862,
       lon: 6.1521,
-      areaId: AREA_CENTRE,
+      areaIds: [AREA_CENTRE],
       dp: DP_FLOW,
       notes: 'Prise d’eau brute, crépine à −18 m.',
       readings: [reading('q', DP_FLOW, 'Q', 'm³/h', 0, true)]
@@ -161,7 +161,7 @@ function waterAssets(): Asset[] {
       kind: 'well',
       lat: 45.9124,
       lon: 6.0884,
-      areaId: AREA_NORD,
+      areaIds: [AREA_NORD],
       dp: DP_LEVEL,
       readings: [
         reading('n', DP_LEVEL, 'Niveau', 'm', 2, true),
@@ -174,7 +174,7 @@ function waterAssets(): Asset[] {
       kind: 'pump',
       lat: 45.9251,
       lon: 6.1347,
-      areaId: AREA_NORD,
+      areaIds: [AREA_NORD],
       dp: DP_PRESSURE,
       link: '/fleet-3d/pompage-nord',
       notes: '3 pompes, dont 1 en secours. Variateur sur P1 et P2.',
@@ -190,7 +190,7 @@ function waterAssets(): Asset[] {
       kind: 'pump',
       lat: 45.8703,
       lon: 6.1448,
-      areaId: AREA_SUD,
+      areaIds: [AREA_SUD],
       dp: DP_PRESSURE,
       link: '/fleet-3d/pompage-sud',
       readings: [
@@ -204,7 +204,7 @@ function waterAssets(): Asset[] {
       kind: 'tank',
       lat: 45.8709,
       lon: 6.1103,
-      areaId: AREA_SUD,
+      areaIds: [AREA_SUD],
       dp: DP_LEVEL,
       notes: 'Cuve 2 × 1 500 m³, cote de trop-plein 712 m NGF.',
       readings: [
@@ -218,7 +218,7 @@ function waterAssets(): Asset[] {
       kind: 'tank',
       lat: 45.8953,
       lon: 6.1052,
-      areaId: AREA_CENTRE,
+      areaIds: [AREA_CENTRE],
       dp: DP_LEVEL,
       readings: [reading('n', DP_LEVEL, 'Niveau', '%', 1, true)]
     }),
@@ -228,7 +228,7 @@ function waterAssets(): Asset[] {
       kind: 'tank',
       lat: 45.9312,
       lon: 6.1108,
-      areaId: AREA_NORD,
+      areaIds: [AREA_NORD],
       dp: DP_LEVEL,
       readings: [reading('n', DP_LEVEL, 'Niveau', '%', 1, true)]
     }),
@@ -238,7 +238,7 @@ function waterAssets(): Asset[] {
       kind: 'valve',
       lat: 45.9188,
       lon: 6.1235,
-      areaId: AREA_NORD,
+      areaIds: [AREA_NORD],
       dp: DP_PRESSURE,
       readings: [reading('p', DP_PRESSURE, 'P', 'bar', 2, true)]
     }),
@@ -248,7 +248,7 @@ function waterAssets(): Asset[] {
       kind: 'valve',
       lat: 45.8991,
       lon: 6.1288,
-      areaId: AREA_CENTRE,
+      areaIds: [AREA_CENTRE],
       dp: DP_PRESSURE,
       readings: [reading('p', DP_PRESSURE, 'P', 'bar', 2, true)]
     }),
@@ -258,7 +258,7 @@ function waterAssets(): Asset[] {
       kind: 'meter',
       lat: 45.8964,
       lon: 6.1401,
-      areaId: AREA_CENTRE,
+      areaIds: [AREA_CENTRE],
       dp: DP_FLOW,
       notes: 'Comptage de sectorisation — base du bilan de fuites.',
       readings: [
@@ -272,7 +272,7 @@ function waterAssets(): Asset[] {
       kind: 'meter',
       lat: 45.8641,
       lon: 6.1312,
-      areaId: AREA_SUD,
+      areaIds: [AREA_SUD],
       dp: DP_FLOW,
       readings: [reading('q', DP_FLOW, 'Q', 'm³/h', 1, true)]
     }),
@@ -282,7 +282,7 @@ function waterAssets(): Asset[] {
       kind: 'sensor',
       lat: 45.8577,
       lon: 6.1489,
-      areaId: AREA_SUD,
+      areaIds: [AREA_SUD],
       dp: DP_QUALITY,
       readings: [reading('cl', DP_QUALITY, 'Cl₂', 'mg/L', 2, true)]
     })
@@ -344,7 +344,7 @@ function cityAssets(): Asset[] {
       kind: 'tunnel',
       lat: 45.1988,
       lon: 5.7241,
-      areaId: AREA_HYPER,
+      areaIds: [AREA_HYPER],
       dp: DP_QUALITY,
       link: '/fleet-3d/tunnel',
       notes: '2 accélérateurs, asservis au taux de CO et à l’opacité.',
@@ -360,7 +360,7 @@ function cityAssets(): Asset[] {
       kind: 'air',
       lat: 45.1892,
       lon: 5.7238,
-      areaId: AREA_HYPER,
+      areaIds: [AREA_HYPER],
       dp: DP_QUALITY,
       readings: [
         reading('no2', DP_QUALITY, 'NO₂', 'µg/m³', 0, true),
@@ -373,7 +373,7 @@ function cityAssets(): Asset[] {
       kind: 'air',
       lat: 45.2041,
       lon: 5.7034,
-      areaId: AREA_PRESQUILE,
+      areaIds: [AREA_PRESQUILE],
       dp: DP_QUALITY,
       readings: [reading('no2', DP_QUALITY, 'NO₂', 'µg/m³', 0, true)]
     }),
@@ -383,7 +383,7 @@ function cityAssets(): Asset[] {
       kind: 'traffic',
       lat: 45.1901,
       lon: 5.7218,
-      areaId: AREA_HYPER,
+      areaIds: [AREA_HYPER],
       dp: DP_COUNT,
       notes: 'Plan de feux adaptatif, priorité tramway.',
       readings: [reading('veh', DP_COUNT, 'Véh/h', '', 0, true)]
@@ -394,7 +394,7 @@ function cityAssets(): Asset[] {
       kind: 'traffic',
       lat: 45.1918,
       lon: 5.7145,
-      areaId: AREA_HYPER,
+      areaIds: [AREA_HYPER],
       dp: DP_COUNT,
       readings: [reading('veh', DP_COUNT, 'Véh/h', '', 0, true)]
     }),
@@ -404,7 +404,7 @@ function cityAssets(): Asset[] {
       kind: 'traffic',
       lat: 45.1633,
       lon: 5.7089,
-      areaId: AREA_VILLENEUVE,
+      areaIds: [AREA_VILLENEUVE],
       dp: DP_COUNT,
       readings: [reading('veh', DP_COUNT, 'Véh/h', '', 0, true)]
     }),
@@ -414,7 +414,7 @@ function cityAssets(): Asset[] {
       kind: 'cabinet',
       lat: 45.1873,
       lon: 5.7281,
-      areaId: AREA_HYPER,
+      areaIds: [AREA_HYPER],
       dp: DP_POWER,
       link: '/ampere/ep-centre',
       notes: '148 points lumineux, abaissement nocturne 23 h – 5 h.',
@@ -429,7 +429,7 @@ function cityAssets(): Asset[] {
       kind: 'cabinet',
       lat: 45.2072,
       lon: 5.7062,
-      areaId: AREA_PRESQUILE,
+      areaIds: [AREA_PRESQUILE],
       dp: DP_POWER,
       readings: [reading('kw', DP_POWER, 'P', 'kW', 2, true)]
     }),
@@ -439,7 +439,7 @@ function cityAssets(): Asset[] {
       kind: 'light',
       lat: 45.1935,
       lon: 5.7089,
-      areaId: AREA_PRESQUILE,
+      areaIds: [AREA_PRESQUILE],
       dp: DP_POWER,
       readings: [reading('kw', DP_POWER, 'P', 'kW', 2, true)]
     }),
@@ -449,7 +449,7 @@ function cityAssets(): Asset[] {
       kind: 'charger',
       lat: 45.1922,
       lon: 5.7132,
-      areaId: AREA_HYPER,
+      areaIds: [AREA_HYPER],
       dp: DP_POWER,
       notes: '4 points 22 kW + 2 points 150 kW.',
       readings: [
@@ -463,7 +463,7 @@ function cityAssets(): Asset[] {
       kind: 'charger',
       lat: 45.1615,
       lon: 5.7124,
-      areaId: AREA_VILLENEUVE,
+      areaIds: [AREA_VILLENEUVE],
       dp: DP_POWER,
       readings: [reading('kw', DP_POWER, 'P', 'kW', 1, true)]
     }),
@@ -473,7 +473,7 @@ function cityAssets(): Asset[] {
       kind: 'building',
       lat: 45.1868,
       lon: 5.7331,
-      areaId: AREA_HYPER,
+      areaIds: [AREA_HYPER],
       dp: DP_POWER,
       notes: 'GTB raccordée — chauffage, CTA, comptage.',
       readings: [

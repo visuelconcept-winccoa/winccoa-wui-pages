@@ -9,13 +9,31 @@ A **site** is one geographic supervision scope. It holds:
 
 - **assets** — geo-located things bound to project datapoints (a pump, a reservoir, a
   traffic light, a lighting cabinet);
-- **areas** — polygons that group them (a distribution sector, a district, a catchment);
+- **areas** — polygons that group them (a distribution sector, a district, a catchment).
+  An asset can belong to **several**: a booster pump on a sector boundary is in both, a
+  shared cabinet feeds two districts, and each of them lists and counts it.
 - a **basemap** — where the background map comes from, per site.
 
 Two flagship experiences ship as the demo seed, because they are the two shapes the map
 has to serve: a **drinking-water network** (abstraction → treatment → pumping → storage →
 three distribution sectors) and a **smart-city district** (traffic lights, air quality,
 tunnel ventilation, lighting cabinets, EV chargers).
+
+### One asset, several areas
+
+`Asset.areaIds` is an ordered list. Two rules keep that from being ambiguous:
+
+- **Membership is a set** for everything that lists or counts: the area panel, the area
+  filter, the roll-up counts. `inArea(asset, id)` and `assetsOfArea(site, id)`.
+- **Drawing needs an owner.** A marker is drawn once, so exactly one area may swallow it
+  when areas collapse: `areaIds[0]`, the *primary* area (`primaryArea(asset)`). Order is
+  therefore meaningful and the inspector says which one is primary when there are several.
+  Without this the same asset would be counted into two badges and the conservation
+  invariant — no asset lost or duplicated — would break.
+
+A datapoint written before this existed holds a single `areaId`. The store folds it into
+the list on read, and the sanitiser accepts both shapes: a file exported by the old version,
+and a language model that has seen far more of the old shape than the new one.
 
 ## Coordinates
 
@@ -96,9 +114,8 @@ stylesheet and the same `--theme-*` tokens as the rest of the page, it can host 
 The alternative — a GL symbol layer — would need a **`glyphs` font endpoint** for its
 text and an SDF sprite per asset kind. The glyphs endpoint is the disqualifier: it would
 make every label on the map depend on reaching a font server, which the offline basemap
-must not. For the same reason **area names are HTML markers at the ring centroid**, not
-symbol layers: the GL layers here are only `background`, `raster`, `fill` and `line`,
-none of which need glyphs.
+must not. For the same reason the **area name tooltip is an HTML marker** too: the GL layers
+here are only `background`, `raster`, `fill` and `line`, none of which need glyphs.
 
 The trade is scale — see [Limits](#limits).
 
@@ -113,8 +130,8 @@ whole thing off to draw every asset individually.
 | Rung | What is drawn | Trigger |
 | --- | --- | --- |
 | **asset** | every asset individually; a flat 80 px grid still collapses neighbours that would overlap | zoomed in |
-| **area** | one badge per area, in the area's own colour, carrying its asset count. Its name label is dropped and its alarms escape as individual markers. Areas are independent: a small district collapses while a large one beside it does not | the area is too small on screen for its assets |
-| **site** | one badge for the whole site, carrying the asset count **and the alarm count** | the site is too small for its area badges to sit side by side |
+| **area** | one badge per area, in the area's own colour, stating **how many of its assets are in alarm** — nothing at all when none are. Areas are independent: a small district collapses while a large one beside it does not | the area is too small on screen for its assets |
+| **site** | one badge for the whole site, stating the site-wide alarm count | the site is too small for its area badges to sit side by side |
 
 On the two demo sites that lands as: water — site at z6–9, areas at z10–11, assets from z12;
 smart city — site to z10, areas z11–14, all individual from z15.
@@ -166,24 +183,42 @@ area rung is never actually seen**. That is exactly what the first implementatio
 what the hierarchy tests caught. Deriving one from the other guarantees a band at least one
 whole zoom level wide where areas are grouped and the site is not.
 
-#### Alarms
+#### What a badge says: the alarm count, and nothing else
 
-Alarms escape grouping at the asset and area rungs — an alarm folded into a badge is the
-failure this feature must not introduce — and the toolbar carries the site's alarm count as
-a synthesis. The **site** rung is the deliberate exception: a fully collapsed site is a dot
-on which individual markers would be indistinguishable anyway, so there the single badge
-turns alarm-coloured and states the alarm count. Information becomes more synthetic the
-further out you go, ending at "24 assets, 3 in alarm" — which is the multi-site semantics.
+**A badge draws the number of its members that are in alarm, and stays blank when none
+are.** Silent means nothing to do; a figure means go there.
+
+That replaced a badge carrying its member count, and the reasoning is worth keeping. Zoomed
+out, nobody is asking how many things are inside a bubble: the number changes with every pan,
+and there is no action attached to it. A map whose every badge carries a large neutral figure
+is a map the eye has to filter before it can find the one badge that matters. The member
+count is still one hover away, in the badge's tooltip, next to the alarm figure.
+
+For that number to exist, **an alarmed asset is grouped like any other**. Earlier it escaped
+every badge below the site rung, on the principle that an alarm must never be hidden. The
+principle stands; the mechanism changed. An alarm folded into a badge is not hidden — the
+badge turns alarm-coloured and states how many it swallowed, and one click zooms to exactly
+those assets. And keeping alarms out had a real cost of its own: a plant in trouble, viewed
+from far out, became a field of loose indistinguishable discs — the very pile grouping exists
+to prevent. Information gets more synthetic the further out you go, ending at one dot reading
+"3".
 
 #### Labels
 
-A name plate is drawn only for a disc that is **visually on its own**: the nearest other
-asset must be at least 40 world pixels away (the 28 px disc plus its border and alarm halo).
-That is a real distance, grid-accelerated through the cluster cells — a grid *answer* was
-the first attempt and it labelled two discs 37 px apart that happened to straddle a cell
+An asset's name plate is drawn only for a disc that is **visually on its own**: the nearest
+other asset must be at least 40 world pixels away (the 28 px disc plus its border and alarm
+halo). That is a real distance, grid-accelerated through the cluster cells — a grid *answer*
+was the first attempt and it labelled two discs 37 px apart that happened to straddle a cell
 boundary. The rule applies with grouping off too, so turning grouping off does not produce
-label soup. An **area** label disappears whenever that area is folded into a badge, since
-the badge names it in its tooltip and the label would otherwise sit on top of it.
+label soup.
+
+An **area** is not labelled on the map at all: its name appears in a **tooltip that follows
+the cursor** while the pointer is over its outline. A dozen zones carrying a dozen permanent
+plates — each competing with the asset name plates for the same pixels — is unreadable, and
+the polygon and its colour already say where a zone is. A name is what you ask about one zone
+at a time, which is the shape of a hover. Every area under the pointer is named, not only the
+topmost: zones may overlap now that an asset can belong to several, and naming just one would
+hide exactly the ambiguity worth resolving.
 
 #### Stability
 
@@ -197,9 +232,9 @@ stale.
 #### What was verified
 
 46 checks over the demo sites across zooms 4–22: nothing lost or duplicated at any zoom or
-rung; the three rungs all reachable and strictly ordered; alarms never folded below the site
-rung; a grouped area losing its label while an ungrouped neighbour keeps it; per-area and
-per-site overrides honoured; a site with no areas still decluttering; grouping independent
+rung; the three rungs all reachable and strictly ordered;
+rung; an alarmed asset grouped like any other, with the badge that swallowed it reporting
+exactly one alarm and its neighbours reporting none; per-area and per-site overrides honoured; a site with no areas still decluttering; grouping independent
 of pan and of input order; the label rule holding as an exact biconditional; and the poles
 yielding a valid cell.
 
@@ -375,6 +410,40 @@ The `[lon, lat]` order of a ring versus the named `lat`/`lon` of an asset is the
 model makes most often, so the prompt calls it out explicitly and the sanitiser validates
 both forms independently.
 
+## Fitting an outline to its assets
+
+**Fit around the assets** on a selected area redraws its outline around the assets it
+lists, pushed out so the markers sit inside the outline rather than on it
+(`encloseAssets` in `gis/enclose.ts`). Three decisions, each taken against a specific way
+the outline came out wrong:
+
+**Concave, not the convex hull.** A hull round a network is a connect-the-outer-assets
+shape closed by a long chord across empty ground, which reads on the map as "it joined the
+last asset back to the first". A water network follows mains and a district follows
+streets; both are concave. So the hull is dug inwards (a *chi-shape*): the longest boundary
+edge is repeatedly replaced by two shorter ones through the nearest unused asset, for as
+long as the polygon stays simple. Not dug maximally, either — a maximally tight outline
+threads between assets a human would have enclosed together.
+
+**A margin proportional to the group**, 8 % of its diagonal, floored and capped. A fixed
+150 m is most of a pumping station and a rounding error on a 12 km sector; both have to
+look deliberately drawn.
+
+**Rounded corners, and the outline never touches a marker.** The ring is the offset of the
+dug polygon — sides pushed outwards, convex corners turned into short arcs, reflex corners
+mitred — so a single asset becomes a disc and a straight run of valves a capsule, instead
+of a polygon with no area that a fill cannot show. A straight run is not a theoretical
+case: a line of valves along a main is exactly collinear.
+
+All of it is computed in a **local metric plane** (metres from the group's centre), since a
+margin and an edge length are distances and a degree of longitude is not a degree of
+latitude; only the input and the result are geographic. The result is always a **simple**
+polygon — the offset is validated, retried tighter, and falls back to the convex outline
+rather than handing MapLibre a self-crossing ring it would fill inside out.
+
+It uses every asset the area **lists**, shared ones included: the outline should enclose what
+the area claims, not only what it happens to own for drawing.
+
 ## Editing an area's outline
 
 Select an area in edit mode and **Edit the outline** puts handles on its ring: a solid one
@@ -484,16 +553,16 @@ operator's problem to fix.
   Decluttering keeps the *drawn* count low whatever the site holds, but the clustering
   pass itself is O(assets) per zoom change, so a site with thousands of assets still wants
   a GL layer instead — which means accepting a glyphs endpoint (or dropping on-map labels).
-- **Many simultaneous alarms defeat decluttering**, by design: alarms are never grouped, so
-  a site with a hundred concurrent alarms shows a hundred markers. The *In alarm only*
-  filter is the answer there.
+- **A badge cannot say *which* asset is in alarm**, only how many. That is the price of
+  folding alarms into badges; the answer is one click, which zooms to exactly those assets.
+  The *In alarm only* filter narrows the map to them at any zoom.
 - **Area rings are simple polygons** — one ring, no holes, no multi-polygons. Enough for
   a sector or a district; not a cadastral boundary.
 - **Point-in-area is planar.** Assigning a dropped asset to the area it landed in treats
   degrees as a plane. Over a district-sized ring the error is far below the size of a
   marker; it is not a geodesic test.
-- **Area labels sit at the ring's centroid-of-vertices**, which is not the centroid of a
-  concave polygon's area. For an L-shaped district the label can land outside it.
+- **An area's name is only ever shown on hover**, so it cannot be read from a printed
+  screenshot or by an operator who never moves the pointer. The area panel names it in text.
 - **No geodesic measurement.** The page shows a scale bar; it does not measure distances,
   lengths or areas.
 

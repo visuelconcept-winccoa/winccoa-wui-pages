@@ -36,6 +36,7 @@ export type {
   GeoJSONSource,
   LayerSpecification,
   LngLatBoundsLike,
+  MapLayerMouseEvent,
   MapLibreMap,
   MapMouseEvent,
   Marker,

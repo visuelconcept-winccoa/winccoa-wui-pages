@@ -136,7 +136,7 @@ export function siteToGeoJson(site: Site): GeoCollection {
         id: asset.id,
         name: asset.name,
         kind: asset.kind,
-        areaId: asset.areaId,
+        areaIds: asset.areaIds,
         dp: asset.dp,
         link: asset.link,
         notes: asset.notes,

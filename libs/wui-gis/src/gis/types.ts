@@ -151,8 +151,17 @@ export interface Asset {
   kind: AssetKind;
   lat: number;
   lon: number;
-  /** {@link Area.id} this asset belongs to; empty ⇒ not in any area. */
-  areaId: string;
+  /**
+   * The {@link Area}s this asset belongs to; empty ⇒ none. An asset can sit in several —
+   * a booster pump on a sector boundary belongs to both sectors, a shared cabinet feeds
+   * two districts — and every one of them lists it and counts it in its roll-up.
+   *
+   * **Order matters for drawing.** `areaIds[0]` is the asset's *primary* area: the one
+   * whose badge swallows the marker when areas collapse. A marker has to be drawn once, so
+   * one area has to own it visually, and taking the first is the only choice the user can
+   * see and reorder. See {@link primaryArea}.
+   */
+  areaIds: string[];
   /**
    * The asset's *primary* datapoint element. Its `_alert_hdl` active-state colour
    * is what highlights the marker, and it is the scope handed to the Alarms page
@@ -359,9 +368,27 @@ export function siteBounds(site: Site): Bounds | null {
   return boundsOf(points);
 }
 
-/** The assets of one area — `''` selects the ones belonging to no area. */
+/**
+ * The area that owns this asset **for drawing** — the first it belongs to, `''` when it
+ * belongs to none. Grouping, and only grouping, uses this: a marker is drawn once, so one
+ * area has to claim it.
+ */
+export function primaryArea(asset: Asset): string {
+  return asset.areaIds[0] ?? '';
+}
+
+/** True when the asset belongs to this area, primary or not. */
+export function inArea(asset: Asset, areaId: string): boolean {
+  return asset.areaIds.includes(areaId);
+}
+
+/**
+ * The assets of one area — every asset that lists it, not only those it owns for drawing.
+ * `''` selects the ones belonging to no area at all.
+ */
 export function assetsOfArea(site: Site, areaId: string): Asset[] {
-  return site.assets.filter((asset) => asset.areaId === areaId);
+  if (!areaId) return site.assets.filter((asset) => asset.areaIds.length === 0);
+  return site.assets.filter((asset) => inArea(asset, areaId));
 }
 
 /**
@@ -390,4 +417,17 @@ export function ringContains(
 /** The area a point falls in, `''` when it falls in none (first match wins). */
 export function areaAt(site: Site, lat: number, lon: number): string {
   return site.areas.find((area) => ringContains(area.ring, lat, lon))?.id ?? '';
+}
+
+/**
+ * **Every** area whose ring contains this point, in the site's own area order.
+ *
+ * Used when an asset is dropped or dragged: overlapping sectors are legitimate, so a point
+ * inside two of them joins both rather than silently picking whichever happened to be
+ * declared first.
+ */
+export function areasAt(site: Site, lat: number, lon: number): string[] {
+  return site.areas
+    .filter((area) => ringContains(area.ring, lat, lon))
+    .map((area) => area.id);
 }

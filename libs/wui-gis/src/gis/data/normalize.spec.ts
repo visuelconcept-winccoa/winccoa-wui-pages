@@ -166,17 +166,65 @@ describe('site sanitiser', () => {
     '/fleet-3d/station'
   );
 
-  // Referential integrity: areaId must name an area that exists.
+  // Referential integrity: every listed area must exist.
   const areaIds = new Set(site.areas.map((a) => a.id));
   check(
-    'every areaId resolves (or is empty)',
-    site.assets.every((a) => a.areaId === '' || areaIds.has(a.areaId)),
+    'every listed area resolves',
+    site.assets.every((a) => a.areaIds.every((id) => areaIds.has(id))),
     true
   );
   check(
-    'dangling areaId cleared',
-    site.assets.find((a) => a.name === 'Sonde')!.areaId,
-    ''
+    'a dangling area reference is dropped',
+    site.assets.find((a) => a.name === 'Sonde')!.areaIds,
+    []
+  );
+  // The legacy single `areaId` a model (or an older export) writes still lands.
+  check(
+    'a legacy scalar areaId becomes a one-area list',
+    site.assets.find((a) => a.name === 'Pompe 1')!.areaIds,
+    ['nord']
+  );
+
+  // Multi-area membership: order is kept, duplicates and unknowns go.
+  const multi = normalizeSite(
+    {
+      name: 'Multi',
+      areas: [
+        {
+          id: 'a',
+          name: 'A',
+          ring: [
+            [6, 45],
+            [6.1, 45],
+            [6.1, 45.1]
+          ]
+        },
+        {
+          id: 'b',
+          name: 'B',
+          ring: [
+            [6.2, 45],
+            [6.3, 45],
+            [6.3, 45.1]
+          ]
+        }
+      ],
+      assets: [
+        {
+          name: 'Shared',
+          kind: 'pump',
+          lat: 45.05,
+          lon: 6.05,
+          areaIds: ['b', 'a', 'b', 'ghost']
+        }
+      ]
+    },
+    AREA_PALETTE
+  ).site;
+  check(
+    'multi-area membership keeps order, drops dupes and unknowns',
+    multi.assets[0]!.areaIds,
+    ['b', 'a']
   );
 
   check(

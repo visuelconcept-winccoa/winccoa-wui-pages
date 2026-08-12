@@ -10,10 +10,14 @@ cost (MapLibre GL JS is BSD-3-Clause, OSM data is ODbL). Each site carries:
 - **alarm highlighting** taken from the datapoint's own alert state, so the map and the
   Alarms page agree by construction;
 - **grouping when zoomed out** (on by default), as a hierarchy: assets → one badge per
-  **area** → one badge for the whole **site**. Anything in alarm stays drawn individually
-  until the site itself collapses, where the badge states the alarm count. Both thresholds
-  are configurable, per area and per site, and default to automatic;
-- **areas** (districts, sectors, catchments) drawn as polygons that group the assets;
+  **area** → one badge for the whole **site**. A badge states **how many of its assets are in
+  alarm, and stays blank when none are**, so a zoomed-out map reads as *where is the trouble*
+  rather than a field of neutral counts; clicking one zooms to exactly its members. Both
+  thresholds are configurable, per area and per site, and default to automatic;
+- **areas** (districts, sectors, catchments) drawn as polygons that group the assets. An
+  asset can belong to **several** — shared equipment on a sector boundary is counted by
+  every zone that claims it — and an area's outline can be **fitted around its assets** in
+  one click, or reshaped corner by corner;
 - a configurable **drill-down**: map → area → asset → its process or 3D view;
 - **import / export**: native JSON for a complete round-trip (bindings, readings,
   drill-down, basemap), and **GeoJSON** for QGIS interop — which is also how surveyed

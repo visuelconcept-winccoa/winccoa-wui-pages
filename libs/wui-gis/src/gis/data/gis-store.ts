@@ -19,6 +19,15 @@ import {
   type Site
 } from '../types.js';
 
+/**
+ * The area list of an asset stored before multi-area membership existed: its single
+ * `areaId`, or nothing. Reads the field off the raw record, which no longer declares it.
+ */
+function legacyAreaIds(asset: object): string[] {
+  const legacy = (asset as { areaId?: unknown }).areaId;
+  return typeof legacy === 'string' && legacy !== '' ? [legacy] : [];
+}
+
 export class GisStore extends DpJsonStore<Site> {
   constructor() {
     super(
@@ -36,7 +45,10 @@ export class GisStore extends DpJsonStore<Site> {
           site.zoom = site.zoom ?? DEFAULT_ZOOM;
           for (const asset of site.assets) {
             asset.readings = asset.readings ?? [];
-            asset.areaId = asset.areaId ?? '';
+            // Migration: an asset used to belong to exactly ONE area, stored as `areaId`.
+            // A datapoint written by that version must keep its membership, so the old
+            // scalar is folded into the list and the empty string means "no area".
+            asset.areaIds = asset.areaIds ?? legacyAreaIds(asset);
           }
           site.groupZoom = site.groupZoom ?? AUTO_GROUP_ZOOM;
           for (const area of site.areas) {

@@ -4,9 +4,10 @@
 /**
  * Context wiring for the GIS AI assistant.
  *
- * The assistant is a *proposal-only* helper (called with no MCP tools): it never mutates
- * the project, it drafts and amends a {@link Site} — its areas and its assets — from a
- * natural-language brief. When it proposes something it must emit a fenced ```json block;
+ * The assistant is a *proposal-only* helper: its MCP tools are read-only (the mutating
+ * ones are filtered out in the manager), so it can look the project up — real datapoints,
+ * a geocoder if one is configured — but never mutates it. It drafts and amends a
+ * {@link Site} — its areas and its assets — from a natural-language brief. When it proposes something it must emit a fenced ```json block;
  * the page parses it into a {@link SitePatch}, merges it, **sanitises** the result through
  * {@link normalizeSite} and shows the resulting diff, so the user reviews what would change
  * on the map before anything is saved.
@@ -52,9 +53,9 @@ function kindReference(): string {
 /**
  * The patch contract — the vocabulary of *operations*, which is what keeps a proposal
  * additive. `String.raw` so the empty-string literal inside it (`""`, the "no area" value
- * of `areaId`) survives into the prompt as the model has to write it.
+ * of a text field) survives into the prompt as the model has to write it.
  */
-const PATCH_JSON_CONTRACT = String.raw`{ "mode": "patch", "site": { "name": "<optionnel>", "description": "<optionnel>", "category": "<optionnel>", "center": { "lat": <deg>, "lon": <deg> }, "zoom": <1-18> }, "areas": { "upsert": [ { "id": "<slug>", "name": "<nom>", "color": "#rrggbb", "ring": [ [<lon>, <lat>], … ] } ], "remove": [ "<id>" ] }, "assets": { "upsert": [ { "id": "<slug>", "name": "<nom>", "kind": "<kind>", "lat": <deg>, "lon": <deg>, "areaId": "<id de zone ou \"\">", "readings": [ { "label": "<Q, P, Niveau…>", "unit": "<m³/h, bar, %…>", "decimals": <0-3>, "onMap": true } ] } ], "remove": [ "<id>" ], "generate": [ { "pattern": "line|grid|ring", "count": <n>, "kind": "<kind>", "areaId": "<id>", "nameTemplate": "V-%03d", "from": { "lat": <deg>, "lon": <deg> }, "to": { "lat": <deg>, "lon": <deg> }, "radiusM": <m>, "readings": [ … ] } ] } }`;
+const PATCH_JSON_CONTRACT = String.raw`{ "mode": "patch", "site": { "name": "<optionnel>", "description": "<optionnel>", "category": "<optionnel>", "center": { "lat": <deg>, "lon": <deg> }, "zoom": <1-18> }, "areas": { "upsert": [ { "id": "<slug>", "name": "<nom>", "color": "#rrggbb", "ring": [ [<lon>, <lat>], … ] } ], "remove": [ "<id>" ] }, "assets": { "upsert": [ { "id": "<slug>", "name": "<nom>", "kind": "<kind>", "lat": <deg>, "lon": <deg>, "areaIds": ["<id de zone>"], "readings": [ { "label": "<Q, P, Niveau…>", "unit": "<m³/h, bar, %…>", "decimals": <0-3>, "onMap": true } ] } ], "remove": [ "<id>" ], "generate": [ { "pattern": "line|grid|ring", "count": <n>, "kind": "<kind>", "areaId": "<id>", "nameTemplate": "V-%03d", "from": { "lat": <deg>, "lon": <deg> }, "to": { "lat": <deg>, "lon": <deg> }, "radiusM": <m>, "readings": [ … ] } ] } }`;
 
 /**
  * Build the system instruction sent with every prompt: what the page is, the absolute
@@ -98,7 +99,7 @@ export function buildSystemPrompt(contextData: string): string {
     'Règles géographiques :',
     '- Coordonnées en WGS 84 décimal. "lat" dans ±90, "lon" dans ±180. ATTENTION à l\'ordre : dans "ring" les paires sont [lon, lat] (ordre GeoJSON), alors qu\'un asset a des champs nommés "lat" et "lon".',
     '- Un "ring" est un polygone SIMPLE et FERMABLE de 3 à 12 sommets, saisis dans l\'ordre du contour (pas de croisement). Ne répète pas le premier point à la fin.',
-    '- Place les équipements DANS la zone à laquelle tu les affectes, et renseigne "areaId" avec l\'id de cette zone.',
+    '- Place les équipements DANS les zones auxquelles tu les affectes, et renseigne "areaIds" avec la liste de leurs ids. Un équipement peut appartenir à PLUSIEURS zones (à cheval sur deux secteurs, une armoire partagée) : chacune le liste et le compte. La PREMIÈRE de la liste est sa zone principale, celle dont la pastille absorbe son marqueur quand les zones sont regroupées. Liste vide = aucune zone.',
     "- Écarte les équipements d'au moins ~150 m les uns des autres pour qu'ils restent lisibles sur la carte.",
     "- Reste cohérent avec la géographie réelle si le lieu est nommé (une station de pompage près du cours d'eau, un réservoir sur un point haut). Si tu disposes d'un outil de géocodage, utilise-le et dis-le. Sinon tes coordonnées sont APPROXIMATIVES : dis-le aussi, et rappelle que l'utilisateur devra ajuster les marqueurs sur la carte.",
     '',
@@ -193,7 +194,7 @@ export function siteContextJson(
       kind: asset.kind,
       lat: round(asset.lat),
       lon: round(asset.lon),
-      areaId: asset.areaId,
+      areaIds: asset.areaIds,
       bound: asset.dp !== '',
       readings: asset.readings.map((reading) => ({
         label: reading.label,

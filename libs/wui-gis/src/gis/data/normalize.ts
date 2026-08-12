@@ -260,6 +260,31 @@ function normalizeAreas(
   return { areas, dropped };
 }
 
+/**
+ * The areas an asset belongs to, keeping only ids that exist and dropping duplicates.
+ *
+ * Accepts both shapes on purpose: `areaIds` (a list) is current, `areaId` (a single string)
+ * is what a file exported before multi-area membership — and what a language model will
+ * write for a while yet, having seen far more of the old shape. Referencing an area that
+ * does not exist would orphan the asset out of its own area filter, so unknown ids go.
+ *
+ * Order is preserved, because the first entry is the asset's primary area.
+ */
+function asAreaIds(
+  source: Record<string, unknown>,
+  known: Set<string>
+): string[] {
+  const proposed = Array.isArray(source['areaIds'])
+    ? source['areaIds']
+    : [source['areaId']];
+  const out: string[] = [];
+  for (const value of proposed) {
+    const id = asText(value, ID_MAX);
+    if (id && known.has(id) && !out.includes(id)) out.push(id);
+  }
+  return out;
+}
+
 function normalizeAssets(
   raw: unknown,
   areaIds: Set<string>
@@ -282,7 +307,6 @@ function normalizeAssets(
       continue;
     }
     const name = asText(source['name'], NAME_MAX);
-    const areaId = asText(source['areaId'], ID_MAX);
     assets.push({
       id: uniqueId(
         asText(source['id'], ID_MAX) || name,
@@ -293,9 +317,7 @@ function normalizeAssets(
       kind: asKind(source['kind']),
       lat,
       lon,
-      // Referencing an area that was not proposed would orphan the asset out of the
-      // area filter, so an unknown id becomes "no area".
-      areaId: areaIds.has(areaId) ? areaId : '',
+      areaIds: asAreaIds(source, areaIds),
       dp: asText(source['dp'], DP_MAX),
       readings: normalizeReadings(source['readings']),
       link: asRoute(source['link']),

@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Decluttering the map: zoomed out, marker discs overlap into an unreadable pile, so
- * the quiet assets are grouped into count badges and only the ones **in alarm** stay
- * drawn individually.
+ * Decluttering the map: zoomed out, marker discs overlap into an unreadable pile, so the
+ * assets are grouped into badges, and a badge reports how many of the assets it swallowed
+ * are **in alarm** — the one figure worth reading at that altitude.
  *
  * Two decisions make this behave predictably.
  *
@@ -23,6 +23,7 @@
 import {
   areaBounds,
   boundsOf,
+  primaryArea,
   siteBounds,
   type Area,
   type Asset,
@@ -110,11 +111,10 @@ export interface Cluster {
   /** The assets this badge stands for. */
   assets: readonly Asset[];
   /**
-   * How many of them are in alarm. Non-zero only on the **site** badge: at every finer
-   * rung the alarms escape grouping and are drawn individually, but a fully collapsed
-   * site is a dot on which individual markers would be indistinguishable — so there the
-   * badge carries the alarm count instead, which is the synthesis an operator wants at
-   * that altitude.
+   * How many of them are in alarm — and **the only thing the badge draws**, blank when it
+   * is zero. Every rung reports it: an alarm folded into a badge is not hidden, because the
+   * badge turns alarm-coloured, states how many it swallowed, and zooms to exactly those
+   * assets when clicked.
    */
   alarms: number;
 }
@@ -133,7 +133,7 @@ export interface Single {
 
 /** What the map should draw: some assets individually, the rest as badges. */
 export interface Declutter {
-  /** Assets to draw as normal markers (every alarm, plus every lone asset). */
+  /** Assets to draw as normal markers — those alone in their grid cell. */
   singles: readonly Single[];
   /** Groups to draw as count badges. */
   clusters: readonly Cluster[];
@@ -186,10 +186,15 @@ export function cellOf(asset: Asset, zoom: number): string {
 /**
  * Split the assets into what to draw individually and what to summarise.
  *
- * `inAlarm` decides which assets are never grouped: an alarm the operator cannot see
- * because it was folded into a badge would be the one failure this whole feature must
- * not introduce. Everything else groups by cell, and a cell holding a single asset is
- * handed back as a single.
+ * `inAlarm` does **not** decide what stays visible — every asset groups by cell, alarmed
+ * ones included — it decides what a badge *reports*. A badge carries the number of its
+ * members in alarm, and that number is the only thing it draws; an alarm therefore does not
+ * disappear when it is folded in, it is announced by the badge that swallowed it, and one
+ * click zooms to exactly the assets behind that figure.
+ *
+ * The alternative — keeping every alarmed asset out of every badge — kept the marker
+ * visible at the cost of the badge being unable to say anything about alarms at all, and of
+ * a zoomed-out view of a plant in trouble being a field of loose discs.
  *
  * `zoom` is floored, so a cluster keeps its identity (and its DOM marker) through the
  * fractional zoom of a pinch or a scroll.
@@ -216,19 +221,15 @@ export function declutterAssets(
   }
 
   const singles: Single[] = [];
-  const quiet = new Map<string, Asset[]>();
+  const byCell = new Map<string, Asset[]>();
   for (const asset of assets) {
-    if (inAlarm(asset)) {
-      singles.push({ asset, labelled: alone(asset) });
-      continue;
-    }
     const cell = cellOf(asset, level);
-    const bucket = quiet.get(cell);
+    const bucket = byCell.get(cell);
     if (bucket) bucket.push(asset);
-    else quiet.set(cell, [asset]);
+    else byCell.set(cell, [asset]);
   }
   const clusters: Cluster[] = [];
-  for (const [id, members] of quiet) {
+  for (const [id, members] of byCell) {
     if (members.length < MIN_CLUSTER) {
       for (const asset of members)
         singles.push({ asset, labelled: alone(asset) });
@@ -241,7 +242,7 @@ export function declutterAssets(
       color: '',
       ...meanPosition(members),
       assets: members,
-      alarms: 0
+      alarms: members.filter((asset) => inAlarm(asset)).length
     });
   }
   return { singles, clusters };
@@ -257,12 +258,6 @@ export interface Grouping {
   level: GroupLevel;
   singles: readonly Single[];
   clusters: readonly Cluster[];
-  /**
-   * Ids of the areas whose NAME LABEL should be drawn. An area folded into a badge loses
-   * its label — the badge already names it in its tooltip, and leaving the label behind
-   * would put text on top of the very badge that replaced it.
-   */
-  labelledAreas: ReadonlySet<string>;
 }
 
 /**
@@ -298,10 +293,9 @@ function collapseZoom(span: number, neededPx: number): number {
  *
  * 1. **asset** — every asset individually, with the flat grid decluttering nearby discs.
  * 2. **area** — an area whose own extent has become too small collapses into one badge
- *    carrying its asset count; its alarms still escape as individual markers, and its
- *    name label is dropped. Areas are independent, so a small district can be collapsed
- *    while a large one beside it is not.
- * 3. **site** — the whole site becomes one badge, alarm count included.
+ *    reporting how many of its assets are in alarm. Areas are independent, so a small
+ *    district can be collapsed while a large one beside it is not.
+ * 3. **site** — the whole site becomes one badge, with the site-wide alarm count.
  *
  * Assets belonging to no area are never area-grouped (there is nothing to group them by);
  * they stay on the flat grid, which is also the whole behaviour of a site with no areas.
@@ -318,8 +312,10 @@ export function groupSite(
   const allAreaIds = new Set(areas.map((area) => area.id));
 
   if (!group || assets.length === 0) {
-    const flat = declutterAssets(assets, zoom, inAlarm, { group });
-    return { level: 'asset', ...flat, labelledAreas: allAreaIds };
+    return {
+      level: 'asset',
+      ...declutterAssets(assets, zoom, inAlarm, { group })
+    };
   }
 
   // --- rung 3: the whole site ------------------------------------------------
@@ -338,20 +334,19 @@ export function groupSite(
           assets,
           alarms
         }
-      ],
-      labelledAreas: new Set()
+      ]
     };
   }
 
   // --- rung 2: per area ------------------------------------------------------
   const byArea = site ? groupByArea(site, assets) : new Map<string, Asset[]>();
+  // Grouped by PRIMARY area: a marker is drawn once, so exactly one area may claim it.
+  // An asset also listed by other areas still appears in each of their panels and counts.
   const loose = assets.filter(
-    (asset) => !asset.areaId || !allAreaIds.has(asset.areaId)
+    (asset) => !primaryArea(asset) || !allAreaIds.has(primaryArea(asset))
   );
 
   const clusters: Cluster[] = [];
-  const singles: Single[] = [];
-  const labelledAreas = new Set(allAreaIds);
   const ungrouped: Asset[] = [...loose];
 
   for (const area of areas) {
@@ -360,33 +355,25 @@ export function groupSite(
       ungrouped.push(...members);
       continue;
     }
-    // The area is a dot: its quiet assets become its badge, its alarms stay visible.
-    const quiet = members.filter((asset) => !inAlarm(asset));
-    const alarmed = members.filter((asset) => inAlarm(asset));
-    if (quiet.length < MIN_CLUSTER) {
-      ungrouped.push(...members);
-      continue;
-    }
-    labelledAreas.delete(area.id);
+    // The area is a dot: all of it becomes one badge, which then states how much of
+    // what it swallowed is in alarm.
     clusters.push({
       id: `area:${area.id}`,
       kind: 'area',
       label: area.name,
       color: area.color,
-      ...(areaAnchor(area, quiet) ?? meanPosition(quiet)),
-      assets: quiet,
-      alarms: 0
+      ...(areaAnchor(area, members) ?? meanPosition(members)),
+      assets: members,
+      alarms: members.filter((asset) => inAlarm(asset)).length
     });
-    for (const asset of alarmed) singles.push({ asset, labelled: false });
   }
 
   // --- rung 1: what is left, on the flat grid --------------------------------
   const flat = declutterAssets(ungrouped, zoom, inAlarm, { group: true });
   return {
     level: clusters.length > 0 ? 'area' : 'asset',
-    singles: [...singles, ...flat.singles],
-    clusters: [...clusters, ...flat.clusters],
-    labelledAreas
+    singles: flat.singles,
+    clusters: [...clusters, ...flat.clusters]
   };
 }
 
@@ -490,7 +477,10 @@ function siteCollapsed(
   return zoom < siteCollapseZoom(site, assets);
 }
 
-/** The assets of each area, keyed by area id (assets outside every area are omitted). */
+/**
+ * The assets each area owns FOR DRAWING, keyed by area id — by primary area, so no asset is
+ * bucketed twice and the conservation invariant holds. Assets outside every area are omitted.
+ */
 function groupByArea(
   site: Site,
   assets: readonly Asset[]
@@ -498,10 +488,11 @@ function groupByArea(
   const known = new Set(site.areas.map((area) => area.id));
   const byArea = new Map<string, Asset[]>();
   for (const asset of assets) {
-    if (!asset.areaId || !known.has(asset.areaId)) continue;
-    const bucket = byArea.get(asset.areaId);
+    const owner = primaryArea(asset);
+    if (!owner || !known.has(owner)) continue;
+    const bucket = byArea.get(owner);
     if (bucket) bucket.push(asset);
-    else byArea.set(asset.areaId, [asset]);
+    else byArea.set(owner, [asset]);
   }
   return byArea;
 }

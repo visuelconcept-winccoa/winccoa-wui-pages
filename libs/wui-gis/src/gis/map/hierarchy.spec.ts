@@ -81,9 +81,8 @@ describe('grouping hierarchy', () => {
   );
   check('site badge reports the alarm count', far.clusters[0]!.alarms, 2);
   check('site rung -> no individual markers', far.singles.length, 0);
-  check('site rung -> every area label hidden', far.labelledAreas.size, 0);
 
-  // --- 4. Area rung: a badge per area, its label hidden, alarms escaping ------
+  // --- 4. Area rung: a badge per area, each reporting its own alarms ----------
   const areaZoom = Math.min(...levels['area']!);
   const mid = at(water, areaZoom, (a) => a.id === 'pompage-nord');
   const areaBadges = mid.clusters.filter((c) => c.kind === 'area');
@@ -98,26 +97,23 @@ describe('grouping hierarchy', () => {
     areaBadges.every((c) => c.color !== ''),
     true
   );
-  check(
-    'a grouped area loses its label',
-    areaBadges.every((c) => !mid.labelledAreas.has(c.id.replace('area:', ''))),
-    true
+  // An alarmed asset is grouped like any other; what makes it visible is the badge
+  // stating how many of its members are in alarm.
+  const alarmBadge = areaBadges.find((c) =>
+    c.assets.some((a) => a.id === 'pompage-nord')
   );
+  check('the alarm is inside its area badge', alarmBadge !== undefined, true);
+  check('that badge reports exactly one alarm', alarmBadge?.alarms, 1);
   check(
-    'an ungrouped area keeps its label',
-    water.areas
-      .filter((a) => !areaBadges.some((c) => c.id === `area:${a.id}`))
-      .every((a) => mid.labelledAreas.has(a.id)),
-    true
-  );
-  check(
-    'the alarm escaped its area badge',
+    'the alarm is not also drawn on its own',
     mid.singles.some((s) => s.asset.id === 'pompage-nord'),
-    true
+    false
   );
   check(
-    'no area badge contains the alarm',
-    areaBadges.every((c) => c.assets.every((a) => a.id !== 'pompage-nord')),
+    'every other area badge reports none',
+    areaBadges
+      .filter((c) => c.id !== alarmBadge?.id)
+      .every((c) => c.alarms === 0),
     true
   );
 
@@ -127,11 +123,6 @@ describe('grouping hierarchy', () => {
     'asset rung -> no area/site badges',
     near.clusters.every((c) => c.kind === 'cell'),
     true
-  );
-  check(
-    'asset rung -> every area keeps its label',
-    near.labelledAreas.size,
-    water.areas.length
   );
   check(
     'asset rung -> everything individual',
@@ -173,7 +164,7 @@ describe('grouping hierarchy', () => {
     ...water,
     areas: [],
     groupZoom: 1,
-    assets: water.assets.map((a) => ({ ...a, areaId: '' }))
+    assets: water.assets.map((a) => ({ ...a, areaIds: [] }))
   };
   const flat = groupSite(noAreas, noAreas.assets, 11, none);
   check(
@@ -193,11 +184,6 @@ describe('grouping hierarchy', () => {
     'group:false -> no badges at any zoom',
     [off.clusters.length, off.singles.length],
     [0, water.assets.length]
-  );
-  check(
-    'group:false -> all area labels kept',
-    off.labelledAreas.size,
-    water.areas.length
   );
 
   // --- 10. THE area invariant, at every zoom, on both demo sites -------------

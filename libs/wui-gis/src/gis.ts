@@ -88,9 +88,12 @@ import './gis/ui/gis-map.js';
 import type { GisMap, MapTool } from './gis/ui/gis-map.js';
 import { nextAreaColor, pageStyles } from './gis/ui/page-styles.js';
 import { MIN_RING } from './gis/map/style.js';
+import { encloseAssets } from './gis/enclose.js';
 import {
-  areaAt,
+  areasAt,
+  assetsOfArea,
   blankArea,
+  inArea,
   isValidLatLon,
   type Area,
   type Asset,
@@ -139,9 +142,9 @@ export class WuiGis extends LitElement {
   /** Restrict the map and the count to the assets currently in alarm. */
   @state() private alarmsOnly = false;
   /**
-   * Group the quiet assets into count badges when the map is zoomed out, so their
-   * markers stop overlapping. **On by default** — a site of any size is unreadable
-   * zoomed out without it. Assets in alarm are never grouped.
+   * Group the assets into badges when the map is zoomed out, so their markers stop
+   * overlapping. **On by default** — a site of any size is unreadable zoomed out without
+   * it. A badge states how many of the assets it swallowed are in alarm.
    */
   @state() private declutter = true;
   /** Area whose outline is being reshaped on the map; empty for none. */
@@ -439,6 +442,7 @@ export class WuiGis extends LitElement {
         .editingRing=${this.editingRing === area.id}
         @wui:editring=${() => this.toggleRingEditor(area.id)}
         @wui:drawring=${() => this.startDrawingFor(area.id)}
+        @wui:fitring=${() => this.fitRingToAssets(site, area)}
         @wui:select=${(event: CustomEvent<{ kind: 'asset'; id: string }>) => this.onCardSelect(event.detail.id)}
         @wui:zoomarea=${() => this.map()?.fitToArea(this.selectedArea)}
         @wui:close=${this.clearSelection}
@@ -862,6 +866,30 @@ export class WuiGis extends LitElement {
     this.tool = TOOL_AREA;
   }
 
+  /**
+   * Redraw an area outline around the assets it lists — a concave outline following the
+   * shape they actually make, pushed out so the markers sit inside it (`gis/enclose.ts`).
+   *
+   * Uses every asset the area lists, primary or shared: the outline should enclose what the
+   * area claims, not only what it happens to own for drawing.
+   */
+  private fitRingToAssets(site: Site, area: Area): void {
+    if (!this.editing) return;
+    const members = assetsOfArea(site, area.id);
+    const ring = encloseAssets(
+      members.map((asset) => ({ lat: asset.lat, lon: asset.lon }))
+    );
+    if (!ring) return;
+    this.patchSite(site, {
+      areas: site.areas.map((candidate) =>
+        candidate.id === area.id ? { ...candidate, ring } : candidate
+      )
+    });
+    // Show the result: the outline just moved, so frame it and open its handles.
+    this.editingRing = area.id;
+    this.map()?.fitToArea(area.id);
+  }
+
   /** A handle was dragged, inserted or removed: store the reshaped ring. */
   private onRingChange(
     site: Site,
@@ -923,7 +951,7 @@ export class WuiGis extends LitElement {
       lat: at.lat,
       lon: at.lon,
       // Dropping a marker inside a drawn area is a statement of belonging.
-      areaId: areaAt(site, at.lat, at.lon),
+      areaIds: areasAt(site, at.lat, at.lon),
       dp: '',
       readings: [],
       link: '',
@@ -946,7 +974,7 @@ export class WuiGis extends LitElement {
             ...asset,
             lat: moved.lat,
             lon: moved.lon,
-            areaId: areaAt(site, moved.lat, moved.lon)
+            areaIds: areasAt(site, moved.lat, moved.lon)
           }
         : asset
     );
@@ -988,7 +1016,9 @@ export class WuiGis extends LitElement {
     this.patchSite(site, {
       areas: site.areas.filter((area) => area.id !== id),
       assets: site.assets.map((asset) =>
-        asset.areaId === id ? { ...asset, areaId: '' } : asset
+        inArea(asset, id)
+          ? { ...asset, areaIds: asset.areaIds.filter((x) => x !== id) }
+          : asset
       )
     });
   }
@@ -1084,7 +1114,7 @@ export class WuiGis extends LitElement {
   private visibleAssetIds(site: Site): Set<string> {
     const ids = new Set<string>();
     for (const asset of site.assets) {
-      if (this.selectedArea && asset.areaId !== this.selectedArea) continue;
+      if (this.selectedArea && !inArea(asset, this.selectedArea)) continue;
       if (this.alarmsOnly && !this.isInAlarm(asset)) continue;
       ids.add(asset.id);
     }

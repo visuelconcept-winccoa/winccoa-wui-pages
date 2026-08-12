@@ -24,6 +24,7 @@ import { assetIcon } from '../map/glyphs.js';
 import {
   AUTO_GROUP_ZOOM,
   clamp,
+  inArea,
   type Area,
   type Asset,
   type Site
@@ -168,6 +169,19 @@ export class GisAreaPanel extends LitElement {
                 >${localizeDir(MSG.ring.draw)}
               </ix-button>`
         }
+        ${
+          this.assetsOf(area).length > 0
+            ? html`<ix-button
+                variant="secondary"
+                outline
+                title=${localize(MSG.ring.fitHint)}
+                @click=${() => this.emit('wui:fitring')}
+              >
+                <ix-icon name="zoom-in" slot="icon"></ix-icon
+                >${localizeDir(MSG.ring.fit)}
+              </ix-button>`
+            : nothing
+        }
       </div>
     `;
   }
@@ -274,9 +288,7 @@ export class GisAreaPanel extends LitElement {
   }
 
   private assetsOf(area: Area): Asset[] {
-    return (this.site?.assets ?? []).filter(
-      (asset) => asset.areaId === area.id
-    );
+    return (this.site?.assets ?? []).filter((asset) => inArea(asset, area.id));
   }
 
   /** The asset's active alert colour, `''` when it is not in alarm. */

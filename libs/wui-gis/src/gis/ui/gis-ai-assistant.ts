@@ -370,7 +370,10 @@ export class WuiGisAiAssistant extends LitElement {
     // narrates into a datapoint and we follow it for exactly as long as this prompt
     // runs — `stop()` in `finally`, including when it throws.
     const progressId = newProgressId();
-    const stop = subscribeAiProgress(progressId, (events) => (this.progress = events));
+    const stop = subscribeAiProgress(
+      progressId,
+      (events) => (this.progress = events)
+    );
     try {
       // The project's configured MCP servers, in READ-ONLY mode: the manager drops
       // every mutating tool before the model hears of it, so the assistant can look

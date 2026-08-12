@@ -519,13 +519,25 @@ function sameRing(
   );
 }
 
+/**
+ * Area membership, compared in ORDER: the first entry is the primary area, so two assets
+ * listing the same areas in a different order are not the same asset — one of them would
+ * group under a different badge.
+ */
+function sameAreaIds(a: Asset, b: Asset): boolean {
+  return (
+    a.areaIds.length === b.areaIds.length &&
+    a.areaIds.every((id, index) => id === b.areaIds[index])
+  );
+}
+
 function sameAsset(a: Asset, b: Asset): boolean {
   return (
     a.name === b.name &&
     a.kind === b.kind &&
     a.lat === b.lat &&
     a.lon === b.lon &&
-    a.areaId === b.areaId &&
+    sameAreaIds(a, b) &&
     a.dp === b.dp &&
     a.link === b.link &&
     a.notes === b.notes &&

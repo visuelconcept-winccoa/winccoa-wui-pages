@@ -42,6 +42,7 @@ import {
   clamp,
   type Asset,
   type AssetKind,
+  primaryArea,
   type Reading,
   type Site
 } from '../types.js';
@@ -59,6 +60,15 @@ interface DpChangeEvent {
 /** `ix-select` reports `string | string[]`; a single-select still needs one value. */
 function selectedValue(detail: string | string[]): string {
   return Array.isArray(detail) ? (detail[0] ?? '') : detail;
+}
+
+/**
+ * The same event, read as the list a multi-select means. Empty strings are dropped: an
+ * asset in no area has an EMPTY list, never a list holding `''`.
+ */
+function asList(detail: string | string[]): string[] {
+  const values = Array.isArray(detail) ? detail : [detail];
+  return values.filter((value) => value !== '');
 }
 
 const DECIMALS_MIN = 0;
@@ -171,17 +181,23 @@ export class GisInspector extends LitElement {
           )}
         </ix-select>
         <ix-select
-          label=${localize(MSG.inspector.area)}
-          .value=${asset.areaId}
-          @valueChange=${(event: { detail: string | string[] }) => this.patchAsset({ areaId: selectedValue(event.detail) })}
+          label=${localize(MSG.inspector.areas)}
+          mode="multiple"
+          helper-text=${localize(MSG.inspector.areasHint)}
+          .value=${[...asset.areaIds]}
+          @valueChange=${(event: { detail: string | string[] }) => this.patchAsset({ areaIds: asList(event.detail) })}
         >
-          <ix-select-item
-            value=""
-            label=${localize(MSG.map.noArea)}
-          ></ix-select-item>
           ${(this.site?.areas ?? []).map((area) => html`<ix-select-item value=${area.id} label=${area.name}></ix-select-item>`)}
         </ix-select>
       </div>
+      ${
+        asset.areaIds.length > 1
+          ? html`<div class="hint">
+              ${localizeDir(MSG.inspector.primaryAreaHint)}
+              <strong>${this.areaName(primaryArea(asset))}</strong>
+            </div>`
+          : nothing
+      }
     `;
   }
 
@@ -399,6 +415,11 @@ export class GisInspector extends LitElement {
   }
 
   // --- patching --------------------------------------------------------------
+
+  /** An area name for the hint, falling back to its id when the area has gone. */
+  private areaName(areaId: string): string {
+    return this.site?.areas.find((area) => area.id === areaId)?.name ?? areaId;
+  }
 
   private patchAsset(part: Partial<Asset>): void {
     if (!this.asset) return;

@@ -66,12 +66,15 @@ The installer:
 5. Click an **area** (its polygon, or pick it in the Area filter) → the right-hand panel
    lists its assets as cards, each showing that asset's live values, with an alarm-coloured
    edge when it is in alarm. Clicking a card opens that asset.
-5. Zoom out → the assets collapse into one numbered badge **per area**, then into a single
-   badge for the **whole site** (alarm count included). Anything in alarm stays drawn on
-   its own until that last step, and the toolbar shows how many. Clicking a badge zooms
-   into it. *Group when zoomed out* turns the behaviour off, and the collapse zoom is
+6. Hover an area's polygon → a tooltip names it, and names **every** zone under the cursor
+   where two overlap. The name is not drawn permanently on the map.
+7. Zoom out → the assets collapse into one badge **per area**, then into a single badge for
+   the **whole site**. A badge carries **only its alarm count**, in red, and is blank when
+   none of its assets are in alarm — so what stands out zoomed out is trouble, not
+   population. Its member count is in its tooltip. Clicking a badge zooms to exactly its
+   members. *Group when zoomed out* turns the behaviour off, and the collapse zoom is
    configurable per area (area panel) and per site (site settings) — 0 = automatic.
-6. **No basemap but markers present** ⇒ the tiles are the problem, not the data, and the
+8. **No basemap but markers present** ⇒ the tiles are the problem, not the data, and the
    page says which one:
    - *"blocked by the page's security policy"* → enable **"Allow external resources"** in
      the WinCC OA WebUI settings, or move to a same-origin tile server. This is the usual
@@ -115,8 +118,20 @@ Needs the Application-Security **`edit`** role (see below).
    - An area with **no outline** (hand-made, or proposed by the assistant without a usable
      ring) shows **Draw the outline** instead, which draws one for that area rather than
      creating a new one.
+   - **Fit it around its assets**: once the area has assets, **Fit around the assets**
+     redraws the outline to hug them — the smallest polygon that encloses them, plus a
+     150 m margin. Quicker and tidier than dragging corners after the equipment has moved,
+     or after the assistant has proposed assets into an area drawn too wide.
 4. **Place an asset**: click **Place an asset**, then click the map. An asset dropped
-   inside an area is assigned to it automatically.
+   inside an area is assigned to it automatically — to **every** area whose outline covers
+   that point, where they overlap.
+   - An asset can belong to **several areas**: in the inspector, **Areas** is a
+     multiple-choice list. Useful where equipment is genuinely shared — a booster pump on a
+     sector boundary, a cabinet feeding two districts. Every area it belongs to lists it in
+     its panel and counts it in its badge.
+   - The **first** area in the list is its *primary* one, and the inspector names it. It is
+     the area whose badge absorbs the marker when the map zooms out — a marker is drawn
+     once, so only one badge may claim it.
 5. In the inspector: set its **name** and **kind** (the kind picks the map glyph), then
    bind its **primary datapoint** — the one whose alarm state colours the marker and
    which the Alarms drill-down is scoped to.

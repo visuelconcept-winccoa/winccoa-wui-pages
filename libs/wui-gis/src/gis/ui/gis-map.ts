@@ -46,6 +46,7 @@ import { assetIcon } from '../map/glyphs.js';
 import maplibregl, {
   MAPLIBRE_STYLES,
   type GeoJSONSource,
+  type MapLayerMouseEvent,
   type MapLibreMap,
   type MapMouseEvent,
   type Marker
@@ -61,7 +62,6 @@ import {
   buildStyle,
   draftCollection,
   draftLayers,
-  ringCentroid,
   styleChanged,
   tileUrl
 } from '../map/style.js';
@@ -85,6 +85,8 @@ const FIT_PADDING = 56;
 const FIT_MAX_ZOOM = 17;
 /** Animation used for every programmatic camera move, in milliseconds. */
 const MOVE_DURATION = 450;
+/** Gap between the cursor and the area tooltip above it, in pixels. */
+const AREA_TIP_OFFSET_PX = 14;
 
 @customElement('gis-map')
 export class GisMap extends LitElement {
@@ -137,11 +139,8 @@ export class GisMap extends LitElement {
     string,
     { marker: Marker; element: HTMLElement }
   >();
-  /** One entry per drawn area name label. */
-  private readonly areaLabels = new Map<
-    string,
-    { marker: Marker; element: HTMLElement }
-  >();
+  /** The tooltip naming the area under the cursor; created on first hover. */
+  private areaTip: { marker: Marker; element: HTMLElement } | null = null;
   /** One entry per cluster count badge, keyed by its grid cell id. */
   private readonly clusterMarkers = new Map<
     string,
@@ -149,8 +148,6 @@ export class GisMap extends LitElement {
   >();
   /** Members behind each badge, so clicking it can zoom to exactly those assets. */
   private readonly clusterBounds = new Map<string, readonly Asset[]>();
-  /** Areas whose name label the current grouping still wants drawn. */
-  private labelledAreas: ReadonlySet<string> = new Set();
   /** Corner and midpoint handles of the outline being reshaped, keyed `v<i>` / `m<i>`. */
   private readonly ringHandles = new Map<
     string,
@@ -202,8 +199,8 @@ export class GisMap extends LitElement {
     this.resizeObserver = null;
     for (const { marker } of this.assetMarkers.values()) marker.remove();
     this.assetMarkers.clear();
-    for (const { marker } of this.areaLabels.values()) marker.remove();
-    this.areaLabels.clear();
+    this.areaTip?.marker.remove();
+    this.areaTip = null;
     for (const { marker } of this.clusterMarkers.values()) marker.remove();
     this.clusterMarkers.clear();
     this.clusterBounds.clear();
@@ -427,13 +424,15 @@ export class GisMap extends LitElement {
       this.onAreaClick(event.features)
     );
     map.on('mouseenter', AREA_FILL_LAYER, () => this.setCursor('pointer'));
-    map.on('mouseleave', AREA_FILL_LAYER, () => this.setCursor(''));
+    map.on('mousemove', AREA_FILL_LAYER, (event) => this.showAreaTip(event));
+    map.on('mouseleave', AREA_FILL_LAYER, () => {
+      this.setCursor('');
+      this.hideAreaTip();
+    });
   }
 
   private syncOverlays(): void {
     if (!this.styleReady) return;
-    // Markers first: the grouping decides which area labels survive, and `syncAreas`
-    // needs that answer in the same frame rather than one behind.
     this.syncMarkers();
     this.syncAreas();
     this.pushDraft();
@@ -445,7 +444,6 @@ export class GisMap extends LitElement {
     this.geoJsonSource(AREA_SOURCE)?.setData(
       areaCollection(this.drawnAreas(), this.selectedArea)
     );
-    this.syncAreaLabels();
     this.syncRingHandles();
   }
 
@@ -478,42 +476,64 @@ export class GisMap extends LitElement {
     return source && 'setData' in source ? (source as GeoJSONSource) : null;
   }
 
-  /** The area names, as HTML markers at each ring's centroid (no glyphs needed). */
-  private syncAreaLabels(): void {
+  /**
+   * Name the area under the cursor, in a tooltip that follows it.
+   *
+   * A tooltip rather than a permanent plate on every outline: the polygon and its colour
+   * already say *where* a zone is, and a site with a dozen zones carrying a dozen plates —
+   * each of them competing with the asset name plates for the same pixels — is a map nobody
+   * reads. The name is what you ask for about one zone, one at a time, which is exactly the
+   * shape of a hover.
+   *
+   * **Every** area under the pointer is named, not just the topmost. Zones may overlap now
+   * that an asset can belong to several, and naming only the one MapLibre happens to draw
+   * last would hide precisely the ambiguity that is worth resolving.
+   */
+  private showAreaTip(event: MapLayerMouseEvent): void {
     const map = this.map;
     if (!map) return;
-    const wanted = new Set<string>();
-    for (const area of this.site?.areas ?? []) {
-      // Grouped away: its badge names it, so a label here would sit on top of the badge.
-      if (!this.labelledAreas.has(area.id)) continue;
-      const centre =
-        area.ring.length >= MIN_RING ? ringCentroid(area.ring) : null;
-      if (!centre) continue;
-      wanted.add(area.id);
-      let entry = this.areaLabels.get(area.id);
-      if (!entry) {
-        const element = document.createElement('div');
-        element.className = 'area-label';
-        element.addEventListener('click', (event) => {
-          event.stopPropagation();
-          this.emitSelect('area', area.id);
-        });
-        const marker = new maplibregl.Marker({ element, anchor: 'center' })
-          .setLngLat([centre.lon, centre.lat])
-          .addTo(map);
-        entry = { marker, element };
-        this.areaLabels.set(area.id, entry);
-      }
-      entry.marker.setLngLat([centre.lon, centre.lat]);
-      entry.element.classList.toggle('selected', area.id === this.selectedArea);
-      entry.element.style.setProperty('--area-color', area.color);
-      entry.element.textContent = area.name;
+    const hovered = new Set(
+      (event.features ?? []).map((feature) =>
+        String(feature.properties?.['areaId'] ?? '')
+      )
+    );
+    const names = (this.site?.areas ?? [])
+      .filter((area) => hovered.has(area.id) && area.name !== '')
+      .map((area) => area.name);
+    if (names.length === 0) {
+      this.hideAreaTip();
+      return;
     }
-    for (const [id, entry] of this.areaLabels) {
-      if (wanted.has(id)) continue;
-      entry.marker.remove();
-      this.areaLabels.delete(id);
-    }
+    const tip = (this.areaTip ??= this.createAreaTip(map));
+    tip.element.textContent = names.join(' · ');
+    tip.element.hidden = false;
+    tip.marker.setLngLat(event.lngLat);
+  }
+
+  private hideAreaTip(): void {
+    if (this.areaTip) this.areaTip.element.hidden = true;
+  }
+
+  /**
+   * The single tooltip element, reused for every area. Anchored *below* the cursor's
+   * position so the label sits above the pointer and never under the hand holding it.
+   */
+  private createAreaTip(map: MapLibreMap): {
+    marker: Marker;
+    element: HTMLElement;
+  } {
+    const element = document.createElement('div');
+    element.className = 'area-tip';
+    // The tooltip must never eat the click that selects the area underneath it.
+    element.style.pointerEvents = 'none';
+    const marker = new maplibregl.Marker({
+      element,
+      anchor: 'bottom',
+      offset: [0, -AREA_TIP_OFFSET_PX]
+    })
+      .setLngLat([0, 0])
+      .addTo(map);
+    return { marker, element };
   }
 
   // --- ring editing ----------------------------------------------------------
@@ -713,16 +733,13 @@ export class GisMap extends LitElement {
     // The grouping hierarchy: assets → areas → the whole site. With grouping off every
     // asset is its own marker, but the label rule still holds: a name plate is drawn only
     // for a disc that is visually on its own.
-    const grouping = groupSite(
+    const { singles, clusters } = groupSite(
       this.site,
       drawable,
       map.getZoom(),
       (asset) => this.isInAlarm(asset),
       { group: this.declutter }
     );
-    const { singles, clusters } = grouping;
-    // Areas folded into a badge lose their name label; the badge names them instead.
-    this.labelledAreas = grouping.labelledAreas;
 
     const wanted = new Set<string>();
     for (const single of singles) {
@@ -973,19 +990,22 @@ export class GisMap extends LitElement {
 }
 
 /**
- * A badge's content: the member count, plus — on a fully collapsed site — how many of
- * them are in alarm. That second figure is the whole point of the outermost rung: from a
- * dot, "24 assets, 3 in alarm" is the only useful thing to say.
+ * A badge's content: **how many of its assets are in alarm, and nothing at all when none
+ * are**.
+ *
+ * The member count was there first and has been dropped on purpose. Zoomed out, an
+ * operator is not asking how many things are inside a bubble — that number changes with
+ * every pan and cannot be acted on. They are asking *where the trouble is*, and a map whose
+ * badges each carry a large neutral number reads as noise the eye has to filter before it
+ * can find the one badge that matters. Silent means nothing to do; a figure means go there.
+ *
+ * The count is not lost: it stays in the badge's tooltip, next to the alarm figure.
  */
 function clusterTemplate(cluster: Cluster): TemplateResult {
-  return html`<span class="count">${cluster.assets.length}</span>${
-      cluster.alarms > 0
-        ? html`<span class="alarms"
-            ><ix-icon name="alarm-bell" size="12"></ix-icon
-            >${cluster.alarms}</span
-          >`
-        : ''
-    }`;
+  if (cluster.alarms === 0) return html``;
+  return html`<span class="alarms"
+    ><ix-icon name="alarm-bell" size="16"></ix-icon>${cluster.alarms}</span
+  >`;
 }
 
 /**
@@ -1128,9 +1148,10 @@ function mapStyles(): ReturnType<typeof css> {
       background: var(--theme-color-1);
     }
 
-    /* --- cluster count badge ----------------------------------------------- */
+    /* --- cluster badge ------------------------------------------------------ */
     /* Twice the asset disc (1.75rem): a badge stands for several assets, so it has to
-       read as the heavier object and stay legible with a 3-digit count. */
+       read as the heavier object. It keeps that size when it carries no figure —
+       the disc itself is what says "a group of assets is folded in here". */
     .cluster {
       display: grid;
       place-items: center;
@@ -1177,11 +1198,12 @@ function mapStyles(): ReturnType<typeof css> {
         var(--theme-color-1)
       );
     }
+    /* The alarm figure is now the badge's only content, so it wears the badge's own
+       type size rather than sitting beneath a count that is no longer drawn. */
     .cluster .alarms {
       display: inline-flex;
       align-items: center;
-      gap: 0.0625rem;
-      font-size: 0.6875rem;
+      gap: 0.125rem;
       font-weight: 700;
       color: var(--theme-color-alarm);
     }
@@ -1230,23 +1252,19 @@ function mapStyles(): ReturnType<typeof css> {
       background: var(--theme-color-1);
     }
 
-    /* --- area label -------------------------------------------------------- */
-    .area-label {
+    /* --- area name tooltip -------------------------------------------------- */
+    .area-tip {
       padding: 0.0625rem 0.375rem;
       border-radius: var(--theme-default-border-radius);
-      border: 1px solid var(--area-color);
-      background: color-mix(in srgb, var(--theme-color-1) 82%, transparent);
+      border: 1px solid var(--theme-color-soft-bdr, var(--theme-color-4));
+      background: var(--theme-color-1);
       color: var(--theme-color-std-text);
       font-size: 0.75rem;
       font-weight: 600;
       letter-spacing: 0.02em;
       white-space: nowrap;
-      cursor: pointer;
+      box-shadow: 0 1px 6px rgb(0 0 0 / 45%);
       user-select: none;
-    }
-    .area-label.selected {
-      background: var(--area-color);
-      color: var(--theme-color-inv-text, #fff);
     }
   `;
 }
