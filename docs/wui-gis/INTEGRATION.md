@@ -119,9 +119,13 @@ Needs the Application-Security **`edit`** role (see below).
      ring) shows **Draw the outline** instead, which draws one for that area rather than
      creating a new one.
    - **Fit it around its assets**: once the area has assets, **Fit around the assets**
-     redraws the outline to hug them — the smallest polygon that encloses them, plus a
-     150 m margin. Quicker and tidier than dragging corners after the equipment has moved,
-     or after the assistant has proposed assets into an area drawn too wide.
+     redraws the outline to hug them. The outline is **concave** — it follows the shape the
+     equipment actually makes, so a C-shaped or L-shaped run keeps its bay instead of being
+     wrapped in one big polygon — with rounded corners and a margin scaled to the group
+     (8 % of its extent), so no marker ends up sitting on the boundary. A single asset gives
+     a disc, a straight run of valves a capsule. Quicker and tidier than dragging corners
+     after the equipment has moved, or after the assistant has proposed assets into an area
+     drawn too wide.
 4. **Place an asset**: click **Place an asset**, then click the map. An asset dropped
    inside an area is assigned to it automatically — to **every** area whose outline covers
    that point, where they overlap.

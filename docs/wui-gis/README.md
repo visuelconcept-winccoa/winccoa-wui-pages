@@ -17,7 +17,9 @@ cost (MapLibre GL JS is BSD-3-Clause, OSM data is ODbL). Each site carries:
 - **areas** (districts, sectors, catchments) drawn as polygons that group the assets. An
   asset can belong to **several** — shared equipment on a sector boundary is counted by
   every zone that claims it — and an area's outline can be **fitted around its assets** in
-  one click, or reshaped corner by corner;
+  one click (a concave outline following the shape they make, not a hull closed by a chord
+  across empty ground) or reshaped corner by corner. Zone names show on hover, so a dozen
+  zones do not put a dozen labels on the map;
 - a configurable **drill-down**: map → area → asset → its process or 3D view;
 - **import / export**: native JSON for a complete round-trip (bindings, readings,
   drill-down, basemap), and **GeoJSON** for QGIS interop — which is also how surveyed
