@@ -44,10 +44,16 @@
 //
 // It NEVER restarts managers — after it finishes, in the WinCC OA console:
 //   • restart the webserver manager (loads the rebuilt modules),
+//   • RESTART every manager whose folder was just overwritten. A running manager
+//     keeps executing the code it loaded at startup, so its MSA vRPC service stays
+//     on the OLD contract while the rebuilt webserver already calls the new one —
+//     the bridge then answers 502 "Service is not available" even though the
+//     manager looks perfectly alive in pmon. This is why the summary below lists
+//     the already-registered managers separately from the newly-added ones.
 //   • start any newly-added managers.
 // -----------------------------------------------------------------------------
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, appendFileSync, statSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 
@@ -101,6 +107,12 @@ const copied = [];
 const managersCopied = new Set();
 const progsAdded = [];
 const warnings = [];
+/**
+ * config/progs as it was BEFORE this run appended anything — a manager already
+ * listed there is (almost certainly) running, so overwriting its folder desyncs
+ * the live process from the deployed code until it is restarted.
+ */
+const progsBefore = existsSync(progsFile) ? readFileSync(progsFile, 'utf8') : '';
 
 function copyFile(src, dest, label) {
   if (!existsSync(src)) {
@@ -253,15 +265,65 @@ if (!noProgs && managersCopied.size > 0) {
 }
 
 // 4) build the webserver
+//
+// A FAILED build is fatal, not a warning. The sources are already copied at this
+// point, so a tsc failure leaves the project with new TypeScript and the PREVIOUS
+// compiled JavaScript: the webserver keeps serving the old routes, and the deploy
+// used to report success anyway — "I redeployed and I don't see the changes", with
+// nothing in the summary that says why. Fail loudly instead.
+let buildFailed = false;
 if (!noBuild && !dryRun) {
   try {
     console.log(`… npm run build (tsc) in ${ws}`);
     execSync('npm run build', { cwd: ws, stdio: 'inherit' });
   } catch {
-    warnings.push(`webserver build failed — run \`npm run build\` manually in ${ws}`);
+    buildFailed = true;
+  }
+  // Even a build that EXITS 0 can have emitted nothing for a module (a stale
+  // tsconfig include, an emit-blocking error in another module): check that each
+  // deployed module really has compiled output newer than the sources just written.
+  if (!buildFailed) {
+    for (const stale of staleCompiledModules(ws, selected)) {
+      warnings.push(
+        `module '${stale.page}': ${stale.reason} — the webserver still serves the previous code for it; run \`npm run build\` in ${ws} and read the errors.`
+      );
+    }
   }
 } else if (noBuild) {
   console.log(`${tag}(skipped build)`);
+}
+
+/**
+ * Modules whose compiled output is missing or older than the sources just copied.
+ *
+ * `main` of the webserver package points at `dist/`, and tsc mirrors `src/` there, so
+ * `src/modules/<page>/x.ts` compiles to `dist/modules/<page>/x.js`. Comparing the two
+ * mtimes is what distinguishes "compiled" from "copied but not compiled" — the state
+ * that makes a deploy look successful while the running webserver has none of it.
+ */
+function staleCompiledModules(webserverDirectory, deployed) {
+  const stale = [];
+  for (const { page } of deployed) {
+    const sourceDirectory = join(webserverDirectory, 'src', 'modules', page);
+    const emittedDirectory = join(webserverDirectory, 'dist', 'modules', page);
+    if (!existsSync(sourceDirectory)) continue;
+    if (!existsSync(emittedDirectory)) {
+      stale.push({ page, reason: `no compiled output in dist/modules/${page}` });
+      continue;
+    }
+    for (const file of readdirSync(sourceDirectory).filter((name) => name.endsWith('.ts'))) {
+      const emitted = join(emittedDirectory, `${file.slice(0, -'.ts'.length)}.js`);
+      if (!existsSync(emitted)) {
+        stale.push({ page, reason: `${file} produced no ${basename(emitted)}` });
+        break;
+      }
+      if (statSync(emitted).mtimeMs < statSync(join(sourceDirectory, file)).mtimeMs) {
+        stale.push({ page, reason: `${basename(emitted)} is older than ${file}` });
+        break;
+      }
+    }
+  }
+  return stale;
 }
 
 // summary
@@ -276,9 +338,35 @@ if (warnings.length > 0) {
   console.log('\nWarnings:');
   for (const w of warnings) console.log(`  ! ${w}`);
 }
-console.log('\nNext (WinCC OA console / pmon):');
+// Managers whose folder was overwritten while already registered in pmon are the
+// dangerous ones: pmon shows them "running" but the live process still serves the
+// PREVIOUS code, so the rebuilt webserver's vRPC calls fail (502 "Service is not
+// available") until each one is restarted.
+const managersToRestart = [...managersCopied].filter((m) => isRegisteredInProgs(m));
+const managersToStart = [...managersCopied].filter((m) => !isRegisteredInProgs(m));
+
+console.log('\nNext (WinCC OA console / pmon) — REQUIRED, this script restarts nothing:');
 console.log(`  • restart the "${wsName}" manager so the rebuilt modules load`);
-if (managersCopied.size > 0) console.log(`  • start newly-added managers: ${[...managersCopied].join(', ')}`);
+if (managersToRestart.length > 0) {
+  console.log(`  • RESTART these already-registered managers — their code was just overwritten: ${managersToRestart.join(', ')}`);
+  console.log('    (a running manager keeps the code it loaded at startup; skipping this leaves the');
+  console.log('     webserver bridge answering 502 "Service is not available" on a manager that looks alive)');
+}
+if (managersToStart.length > 0) console.log(`  • start newly-added managers: ${managersToStart.join(', ')}`);
+
+// A backend that did not COMPILE is not deployed, whatever was copied. Exit non-zero
+// after the full report (the operator needs the copy list and the restart lines) so
+// deploy-release.mjs stops instead of printing "✓ Déploiement terminé".
+if (buildFailed) {
+  console.error(`\n✗ webserver build (tsc) FAILED in ${ws} — the sources are copied but NOT compiled.`);
+  console.error('  The webserver keeps serving the previous routes. Run `npm run build` there and fix the errors.');
+  process.exit(1);
+}
+
+/** True when config/progs already listed this manager BEFORE this run (→ likely running). */
+function isRegisteredInProgs(manager) {
+  return new RegExp(`(^|[|\\\\/\\s])${manager}/`, 'm').test(progsBefore);
+}
 
 /** Pick a manager entry file: prefer index.js, else index_http.js, else index.js. */
 function chooseEntry(projectRoot, manager) {

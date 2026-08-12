@@ -56,10 +56,19 @@ function resolveTs(base) {
   return null;
 }
 
-// 1. copy the entire lib src into <out>/<page>/
+// 1. copy the entire lib src into <out>/<page>/, minus its tests.
+//
+// Specs are dead weight in a customer package: nothing in the page imports them, so they
+// are never bundled, and they name devDependencies (`vitest`) that the target workspace has
+// no reason to install. The vendored `_vendor/` libs are already spec-free because those are
+// walked through the import graph, which a test file is never part of — this makes the
+// page's own tree behave the same way.
 const implRoot = join(outDir, page);
 mkdirSync(implRoot, { recursive: true });
-cpSync(pageSrc, implRoot, { recursive: true });
+cpSync(pageSrc, implRoot, {
+  recursive: true,
+  filter: (src) => !/\.(?:spec|stories|mock)\.ts$/.test(src)
+});
 
 // 2. entry shim
 writeFileSync(join(outDir, `${page}.ts`), `// Auto-generated entry shim (self-contained page module). Bundled into ${page}.js.\nimport './${page}/${page}.js';\nexport * from './${page}/${page}.js';\n`);

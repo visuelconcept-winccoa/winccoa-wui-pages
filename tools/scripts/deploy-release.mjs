@@ -9,11 +9,16 @@
 // Interactive helper that:
 //   1. asks for the target WinCC OA project root (data/, javascript/, config/),
 //   2. lets you SELECT which page modules to include (pre-checked default set),
-//   3. builds the standalone pages into <project>/data/dashboard-wc,
-//   4. filters the deployed menu AND the app-security role manifest to ONLY the
+//   3. CHECKS the workspace can build them at all (scaffold wiring + the pages'
+//      external npm deps) and aborts with the repair commands if not,
+//   4. builds the standalone pages into <project>/data/dashboard-wc,
+//   5. filters the deployed menu AND the app-security role manifest to ONLY the
 //      selected modules, and prunes the non-selected page bundles from the
 //      deploy (use --no-prune to keep the bundles),
-//   5. deploys the BACKENDS (webserver modules + managers) associated with the
+//   6. VERIFIES every selected module ends up deployed (fresh bundle + menu
+//      entry) and that index.html was bumped so the service worker drops its
+//      CacheFirst script cache — exits non-zero otherwise,
+//   7. deploys the BACKENDS (webserver modules + managers) associated with the
 //      selected modules — via tools/scripts/deploy-backend.mjs, driven by
 //      tools/specs.json.
 //
@@ -59,6 +64,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
+import { EXTERNAL_DEPENDENCIES } from '../external-dependencies.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..'); // tools/scripts -> repo root
@@ -483,6 +489,148 @@ function pruneBundles(dwcDir, catalog, selected) {
   console.log(c('green', `  ✓ ${removed} bundle(s) non sélectionné(s) retiré(s).`));
 }
 
+// ---- preflight: the workspace must be able to produce the pages -------------
+
+/**
+ * The scaffold patches that make `libs/wui-*` pages reach the build at all.
+ * `webui-runtime-init` regenerates apps/ and libs/default-components/ pristine
+ * (they are untracked), which silently reverts them — the build then emits ONLY
+ * the runtime's own standalone pages and the module-less base menuconfig, i.e. a
+ * deploy that succeeds with a dashboard missing every additional page.
+ */
+const WIRING_HELPERS = [
+  'apps/dashboard-wc/scripts/discover-page-libs.mjs',
+  'apps/dashboard-wc/scripts/page-menu-merge-plugin.mjs',
+  'apps/dashboard-wc/scripts/page-appsec-merge-plugin.mjs'
+];
+
+/**
+ * Patches the wiring applies, as [file, inserted marker]. Markers match the
+ * CALL, not the identifier: an import left behind by a half-reverted file would
+ * otherwise pass while the page/menu discovery is dead.
+ */
+const WIRING_PATCHES = [
+  // discoverPageLibs() adds libs/wui-<id>/src/<id>.ts to the rollup inputs.
+  ['apps/dashboard-wc/vite.shared.ts', '...discoverPageLibs()'],
+  // Merge menu.fragment.jsonc / role fragments into the EMITTED config files.
+  ['apps/dashboard-wc/vite.config.pages.ts', 'pageMenuMergePlugin('],
+  ['apps/dashboard-wc/vite.config.pages.ts', 'pageAppsecMergePlugin(']
+];
+
+/** Abort unless the scaffold is wired (see tools/wire-workspace.mjs). */
+function assertWiring() {
+  const missing = [];
+  for (const relative of WIRING_HELPERS) {
+    if (!fs.existsSync(path.join(ROOT, relative))) missing.push(`${relative} (absent)`);
+  }
+  for (const [relative, marker] of WIRING_PATCHES) {
+    const file = path.join(ROOT, relative);
+    if (!fs.existsSync(file)) { missing.push(`${relative} (absent)`); continue; }
+    if (!fs.readFileSync(file, 'utf8').includes(marker)) missing.push(`${relative} (${marker} absent)`);
+  }
+  // The full build emits the menu/appsec config too — it needs the same plugins.
+  if (opts.full) {
+    const appConfig = path.join(ROOT, 'apps/dashboard-wc/vite.config.ts');
+    const source = fs.existsSync(appConfig) ? fs.readFileSync(appConfig, 'utf8') : '';
+    for (const marker of ['pageMenuMergePlugin(', 'pageAppsecMergePlugin(']) {
+      if (!source.includes(marker)) missing.push(`apps/dashboard-wc/vite.config.ts (${marker} absent)`);
+    }
+  }
+  if (missing.length === 0) { console.log(c('dim', '  · wiring du scaffold OK.')); return; }
+  console.error(c('red', '\n✗ Workspace NON wiré — le build produirait un dashboard sans les pages additionnelles :'));
+  for (const m of missing) console.error(c('red', `    - ${m}`));
+  console.error(c('yellow', '\n  Réparez (idempotent), puis relancez ce déploiement :'));
+  console.error('    node tools/wire-workspace.mjs');
+  console.error('    node tools/install-page-dependencies.mjs');
+  process.exit(1);
+}
+
+/**
+ * Abort unless the third-party packages the selected pages import are installed.
+ * A regenerated package.json loses them (three, @novnc/novnc, jsmpeg, …) and the
+ * pages build dies on "failed to resolve import" — loud, but only after a long
+ * build, so check it up front.
+ */
+function assertPageDependencies(chosen) {
+  const missing = new Map(); // install name -> page ids needing it
+  for (const m of chosen) {
+    const packageFile = path.join(LIBS_DIR, m.lib, 'package.json');
+    if (!fs.existsSync(packageFile)) continue;
+    let deps;
+    try {
+      const manifest = JSON.parse(fs.readFileSync(packageFile, 'utf8'));
+      // Page libs declare their third-party packages as peerDependencies (the
+      // workspace provides them) — read both keys, like install-page-dependencies.
+      deps = Object.keys({ ...manifest.dependencies, ...manifest.peerDependencies });
+    } catch {
+      continue; // unreadable lib manifest — the build will report it
+    }
+    for (const dep of deps) {
+      const installName = EXTERNAL_DEPENDENCIES[dep]?.[0];
+      if (!installName) continue; // provided by the workspace runtime deps
+      if (fs.existsSync(path.join(ROOT, 'node_modules', installName))) continue;
+      missing.set(installName, [...(missing.get(installName) ?? []), m.id]);
+    }
+  }
+  if (missing.size === 0) { console.log(c('dim', '  · dépendances externes des pages OK.')); return; }
+  console.error(c('red', '\n✗ Dépendances npm des pages manquantes dans node_modules :'));
+  for (const [name, pages] of missing) console.error(c('red', `    - ${name}  (requis par : ${pages.join(', ')})`));
+  console.error(c('yellow', '\n  Installez-les, puis relancez ce déploiement :'));
+  console.error('    node tools/install-page-dependencies.mjs');
+  process.exit(1);
+}
+
+// ---- postflight: what got deployed is what was selected ---------------------
+
+/**
+ * Verify, per selected module, that the deploy REALLY contains it: a page bundle
+ * written by THIS build (not a leftover from an older deploy) and a menu entry
+ * pointing at it. This is the net that catches every cause of the
+ * "pages absentes après déploiement" class of bug, whatever its origin
+ * (unwired scaffold, missing menu fragment, over-eager pruning).
+ *
+ * @param startedAt epoch ms captured just before the build
+ * @returns true when every selected module checks out
+ */
+function verifyDeploy(dwcDir, chosen, startedAt) {
+  const menuFile = path.join(dwcDir, 'menuconfig.json');
+  const menuSource = fs.existsSync(menuFile) ? fs.readFileSync(menuFile, 'utf8') : '';
+  const problems = [];
+  // The WebUI service worker serves scripts CacheFirst (~15 days) and only
+  // purges its caches when the cached index.html's Last-Modified stops matching
+  // the origin's. A pages-only build doesn't rewrite index.html, so
+  // page-menu-merge-plugin bumps its mtime instead — if that didn't happen, the
+  // new bundles are on disk but browsers keep serving the old ones.
+  const indexFile = path.join(dwcDir, 'index.html');
+  if (!fs.existsSync(indexFile)) {
+    problems.push('index.html absent — shell non déployé (relancez avec --full)');
+  } else if (fs.statSync(indexFile).mtimeMs < startedAt - 5000) {
+    problems.push("index.html non réécrit/touché — le service worker continuerait de servir les anciens bundles");
+  }
+  for (const m of chosen) {
+    const bundle = path.join(dwcDir, 'pages', `${m.id}.js`);
+    if (!fs.existsSync(bundle)) { problems.push(`${m.id} : pages/${m.id}.js absent (page non construite)`); continue; }
+    // Tolerate a 5 s skew: OUT_DIR writes and our timestamp aren't atomic.
+    if (fs.statSync(bundle).mtimeMs < startedAt - 5000) {
+      problems.push(`${m.id} : pages/${m.id}.js PÉRIMÉ (${new Date(fs.statSync(bundle).mtimeMs).toISOString()}) — pas réécrit par ce build`);
+    }
+    if (!menuSource.includes(`/pages/${m.id}.js`)) {
+      problems.push(`${m.id} : aucune entrée de menu ne référence pages/${m.id}.js (page inaccessible)`);
+    }
+  }
+  if (problems.length === 0) {
+    console.log(c('green', `  ✓ ${chosen.length} module(s) vérifié(s) : bundle frais + entrée de menu.`));
+    console.log(c('green', '  ✓ index.html à jour → le service worker purgera ses caches (F5 côté navigateur).'));
+    return true;
+  }
+  console.error(c('red', '\n✗ Déploiement INCOMPLET :'));
+  for (const p of problems) console.error(c('red', `    - ${p}`));
+  console.error(c('yellow', '\n  Cause la plus fréquente : scaffold non wiré (apps/ et libs/default-components/ sont'));
+  console.error(c('yellow', '  régénérés vierges par webui-runtime-init / restaurés sans wiring). Réparez puis relancez :'));
+  console.error('    node tools/wire-workspace.mjs && node tools/install-page-dependencies.mjs');
+  return false;
+}
+
 // ---- main -------------------------------------------------------------------
 
 async function main() {
@@ -507,6 +655,13 @@ async function main() {
     if (forced.length) console.log(c('dim', `  · pages système toujours incluses : ${forced.join(', ')}`));
 
     const chosen = catalog.filter((m) => selected.has(m.id));
+
+    // Fail BEFORE the (long) build if the workspace can't actually produce the
+    // selected pages — otherwise the deploy "succeeds" with pages missing.
+    console.log(c('bold', '\nContrôles préalables'));
+    assertWiring();
+    assertPageDependencies(chosen);
+
     const startPage = await promptStartPage(rl, chosen);
     const aiAssistant = await promptAiAssistant(rl);
     const dwcDir = path.join(project, 'data', 'dashboard-wc');
@@ -536,11 +691,12 @@ async function main() {
     rl.close();
 
     // 1) frontend build
-    console.log(c('bold', '\n[1/4] Build frontend…'));
+    console.log(c('bold', '\n[1/5] Build frontend…'));
+    const buildStartedAt = Date.now(); // reference for the freshness check below
     await run('npm', ['run', opts.full ? 'build' : 'build:pages'], { OUT_DIR: dwcDir });
 
     // 2) menu filter + default landing page + feature flags
-    console.log(c('bold', '\n[2/4] Filtrage du menu + page de démarrage + options…'));
+    console.log(c('bold', '\n[2/5] Filtrage du menu + page de démarrage + options…'));
     filterMenu(dwcDir, selected);
     filterAppSecurityManifest(dwcDir, catalog, selected);
     applyStartPage(dwcDir, startPage);
@@ -548,17 +704,22 @@ async function main() {
 
     // 3) optional prune
     if (opts.prune) {
-      console.log(c('bold', '\n[3/4] Élagage des bundles non sélectionnés…'));
+      console.log(c('bold', '\n[3/5] Élagage des bundles non sélectionnés…'));
       pruneBundles(dwcDir, catalog, selected);
     } else {
-      console.log(c('dim', '\n[3/4] Élagage ignoré (--no-prune : le menu est filtré mais les bundles restent sur disque).'));
+      console.log(c('dim', '\n[3/5] Élagage ignoré (--no-prune : le menu est filtré mais les bundles restent sur disque).'));
     }
 
-    // 4) backend
+    // 4) verify the deploy really contains the selection AND that browsers will
+    //    pick it up — never report success on a deploy that silently lost pages.
+    console.log(c('bold', '\n[4/5] Vérification du déploiement…'));
+    if (!verifyDeploy(dwcDir, chosen, buildStartedAt)) process.exit(1);
+
+    // 5) backend
     if (opts.noBackend || backends.length === 0) {
-      console.log(c('dim', `\n[4/4] Backend ignoré (${opts.noBackend ? '--no-backend' : 'aucun backend pour la sélection'}).`));
+      console.log(c('dim', `\n[5/5] Backend ignoré (${opts.noBackend ? '--no-backend' : 'aucun backend pour la sélection'}).`));
     } else {
-      console.log(c('bold', '\n[4/4] Déploiement des backends/managers…'));
+      console.log(c('bold', '\n[5/5] Déploiement des backends/managers…'));
       const wsModulesDir = path.join(project, 'javascript', opts.wsName, 'src', 'modules');
       if (opts.installWebserver) {
         console.log(c('cyan', `  → installation du webserver "${opts.wsName}"…`));
@@ -578,11 +739,14 @@ async function main() {
     const managers = [...new Set(backends.flatMap((m) => m.managers))];
     console.log(c('green', '\n✓ Déploiement terminé.'));
     if (managers.length) {
-      console.log(c('yellow', `\nÀ FAIRE dans la console WinCC OA / pmon (${project}) :`));
+      console.log(c('yellow', `\nÀ FAIRE dans la console WinCC OA / pmon (${project}) — OBLIGATOIRE, rien n'est redémarré automatiquement :`));
       console.log(`  • redémarrer le manager "${opts.wsName}" pour recharger les modules webserver,`);
-      console.log(`  • démarrer/redémarrer les managers : ${managers.join(', ')}.`);
+      console.log(`  • redémarrer (ou démarrer) CHAQUE manager déployé : ${managers.join(', ')}.`);
+      console.log(c('yellow', "    Un manager laissé en place continue d'exécuter le code chargé à son démarrage :"));
+      console.log(c('yellow', '    pmon l\'affiche "running" mais son service MSA vRPC reste sur l\'ancien contrat, et'));
+      console.log(c('yellow', '    l\'API du webserver répond 502 "Service is not available" tant qu\'il n\'est pas relancé.'));
     }
-    console.log(c('dim', '\nDans le navigateur : un simple F5 suffit — index.html a été touché par le build, le service worker s\'auto-invalide et recharge la nouvelle version.'));
+    console.log(c('dim', '\nDans le navigateur : un simple F5 suffit — index.html a un Last-Modified plus récent, le service worker purge ses caches et recharge la nouvelle version.'));
   } finally {
     rl.close();
   }
