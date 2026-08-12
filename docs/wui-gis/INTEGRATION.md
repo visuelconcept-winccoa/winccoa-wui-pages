@@ -68,12 +68,13 @@ The installer:
    edge when it is in alarm. Clicking a card opens that asset.
 6. Hover an area's polygon → a tooltip names it, and names **every** zone under the cursor
    where two overlap. The name is not drawn permanently on the map.
-7. Zoom out → the assets collapse into one badge **per area**, then into a single badge for
-   the **whole site**. A badge carries **only its alarm count**, in red, and is blank when
-   none of its assets are in alarm — so what stands out zoomed out is trouble, not
-   population. Its member count is in its tooltip. Clicking a badge zooms to exactly its
-   members. *Group when zoomed out* turns the behaviour off, and the collapse zoom is
-   configurable per area (area panel) and per site (site settings) — 0 = automatic.
+7. Zoom out → the assets collapse per **area**, then for the **whole site**. A badge appears
+   **only where there is an alarm**, carrying that count in red and ringed in the area's
+   colour; a zone with nothing wrong shows just its polygon. So a quiet plant zoomed out is a
+   quiet map, and anything you can see is something to go and look at. The member count is in
+   the badge's tooltip, and clicking it zooms to exactly its members. *Group when zoomed out*
+   turns the behaviour off, and the collapse zoom is configurable per area (area panel) and
+   per site (site settings) — 0 = automatic.
 8. **No basemap but markers present** ⇒ the tiles are the problem, not the data, and the
    page says which one:
    - *"blocked by the page's security policy"* → enable **"Allow external resources"** in

@@ -3,8 +3,10 @@
 
 /**
  * Decluttering the map: zoomed out, marker discs overlap into an unreadable pile, so the
- * assets are grouped into badges, and a badge reports how many of the assets it swallowed
- * are **in alarm** — the one figure worth reading at that altitude.
+ * assets are grouped, and each group reports how many of the assets it swallowed are
+ * **in alarm** — the one figure worth reading at that altitude, and the only thing its badge
+ * draws. A group reporting none is not drawn at all (see `ui/gis-map.ts`), so the map zoomed
+ * out shows the zones and the trouble in them, nothing else.
  *
  * Two decisions make this behave predictably.
  *

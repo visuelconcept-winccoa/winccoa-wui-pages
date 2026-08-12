@@ -130,8 +130,8 @@ whole thing off to draw every asset individually.
 | Rung | What is drawn | Trigger |
 | --- | --- | --- |
 | **asset** | every asset individually; a flat 80 px grid still collapses neighbours that would overlap | zoomed in |
-| **area** | one badge per area, in the area's own colour, stating **how many of its assets are in alarm** — nothing at all when none are. Areas are independent: a small district collapses while a large one beside it does not | the area is too small on screen for its assets |
-| **site** | one badge for the whole site, stating the site-wide alarm count | the site is too small for its area badges to sit side by side |
+| **area** | one badge per area **that has an alarm**, stating how many — ringed in the area's colour, so it says which zone. An area with no alarm draws nothing but its polygon. Areas are independent: a small district collapses while a large one beside it does not | the area is too small on screen for its assets |
+| **site** | one badge for the whole site, stating the site-wide alarm count — and no badge at all when the site is quiet | the site is too small for its area badges to sit side by side |
 
 On the two demo sites that lands as: water — site at z6–9, areas at z10–11, assets from z12;
 smart city — site to z10, areas z11–14, all individual from z15.
@@ -183,10 +183,21 @@ area rung is never actually seen**. That is exactly what the first implementatio
 what the hierarchy tests caught. Deriving one from the other guarantees a band at least one
 whole zoom level wide where areas are grouped and the site is not.
 
-#### What a badge says: the alarm count, and nothing else
+#### What a badge says: the alarm count, or nothing at all
 
-**A badge draws the number of its members that are in alarm, and stays blank when none
-are.** Silent means nothing to do; a figure means go there.
+**A badge is a fault synthesis and nothing else. It draws the number of its members in
+alarm — and a group with no alarm has no badge.** Zoomed out the map is therefore *zones plus
+trouble*: the area polygons say where the equipment is, and a bubble appears only where
+something is wrong. A bubble with nothing to synthesise was still an object the eye had to
+check and discard, which is the opposite of what a synthesis is for.
+
+The drop happens **in the view**, not by removing quiet groups from the grouping. The model
+still accounts for every asset, so *"no asset lost or duplicated"* remains a testable
+statement about `cluster.ts`; what is drawn is a separate, deliberately narrower question.
+One consequence to know: at the flat-grid rung, quiet assets whose discs would overlap are
+folded into a group that is then not drawn, so they are absent from the map until you zoom in
+far enough for them to stand apart — there is no polygon standing in for a grid cell the way
+there is for an area.
 
 That replaced a badge carrying its member count, and the reasoning is worth keeping. Zoomed
 out, nobody is asking how many things are inside a bubble: the number changes with every pan,
@@ -197,11 +208,11 @@ count is still one hover away, in the badge's tooltip, next to the alarm figure.
 For that number to exist, **an alarmed asset is grouped like any other**. Earlier it escaped
 every badge below the site rung, on the principle that an alarm must never be hidden. The
 principle stands; the mechanism changed. An alarm folded into a badge is not hidden — the
-badge turns alarm-coloured and states how many it swallowed, and one click zooms to exactly
-those assets. And keeping alarms out had a real cost of its own: a plant in trouble, viewed
-from far out, became a field of loose indistinguishable discs — the very pile grouping exists
-to prevent. Information gets more synthetic the further out you go, ending at one dot reading
-"3".
+badge is alarm-coloured, states how many it swallowed, and zooms to exactly those assets when
+clicked. And keeping alarms out had a real cost of its own: a plant in trouble, viewed from
+far out, became a field of loose indistinguishable discs — the very pile grouping exists to
+prevent. Information gets more synthetic the further out you go, ending at one dot reading
+"3" on an otherwise quiet map.
 
 #### Labels
 

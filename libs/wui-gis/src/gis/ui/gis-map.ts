@@ -121,9 +121,10 @@ export class GisMap extends LitElement {
   @property({ type: Boolean }) editable = false;
 
   /**
-   * Group the quiet assets into count badges so their discs stop overlapping when the
-   * map is zoomed out. Assets **in alarm** are never grouped. On by default; the host's
-   * toolbar turns it off to show every asset individually.
+   * Group the assets so their discs stop overlapping when the map is zoomed out. A group
+   * is drawn only when one of its assets is in alarm, as a badge carrying that count; a
+   * quiet group draws nothing. On by default; the host's toolbar turns it off to show
+   * every asset individually.
    */
   @property({ type: Boolean }) declutter = true;
 
@@ -141,7 +142,7 @@ export class GisMap extends LitElement {
   >();
   /** The tooltip naming the area under the cursor; created on first hover. */
   private areaTip: { marker: Marker; element: HTMLElement } | null = null;
-  /** One entry per cluster count badge, keyed by its grid cell id. */
+  /** One entry per drawn alarm badge, keyed by its cluster id. */
   private readonly clusterMarkers = new Map<
     string,
     { marker: Marker; element: HTMLElement }
@@ -759,10 +760,22 @@ export class GisMap extends LitElement {
     return this.live.alarmColors.get(alarmKey(asset.dp)) !== undefined;
   }
 
-  /** One count badge per cluster, reused across zooms by its cell id. */
+  /**
+   * One badge per cluster **that has something to report**, reused across zooms by its id.
+   *
+   * A badge is a fault synthesis and nothing else — it draws its alarm count — so a group
+   * with no alarm has nothing to draw and no badge is created for it. Zoomed out the map is
+   * therefore *zones plus trouble*: the area polygons say where the equipment is, and a
+   * bubble appears only where something is wrong.
+   *
+   * The grouping itself still accounts for every asset (see `map/cluster.ts`); this is a
+   * drawing decision, taken here rather than by dropping quiet groups from the model, so
+   * the "no asset lost or duplicated" invariant stays a statement about the grouping.
+   */
   private syncClusters(clusters: readonly Cluster[], map: MapLibreMap): void {
     const wanted = new Set<string>();
     for (const cluster of clusters) {
+      if (cluster.alarms === 0) continue;
       wanted.add(cluster.id);
       let entry = this.clusterMarkers.get(cluster.id);
       if (!entry) {
@@ -784,11 +797,11 @@ export class GisMap extends LitElement {
       entry.marker.setLngLat([cluster.lon, cluster.lat]);
       entry.element.classList.toggle(`kind-area`, cluster.kind === 'area');
       entry.element.classList.toggle(`kind-site`, cluster.kind === 'site');
-      entry.element.classList.toggle('has-alarms', cluster.alarms > 0);
-      // An area badge takes its area's colour, so it still reads as that area.
+      // An area badge is outlined in its area's colour, so it still says WHICH zone is in
+      // trouble; the alarm colour it is filled with says that it is.
       entry.element.style.setProperty(
         '--cluster-color',
-        cluster.color || 'var(--theme-color-component-1)'
+        cluster.color || 'var(--theme-color-alarm)'
       );
       render(clusterTemplate(cluster), entry.element);
       entry.element.title = clusterTitle(
@@ -990,19 +1003,16 @@ export class GisMap extends LitElement {
 }
 
 /**
- * A badge's content: **how many of its assets are in alarm, and nothing at all when none
- * are**.
+ * A badge's content: **how many of its assets are in alarm**. Only ever called for a group
+ * that has at least one — see {@link GisMap.syncClusters}.
  *
  * The member count was there first and has been dropped on purpose. Zoomed out, an
  * operator is not asking how many things are inside a bubble — that number changes with
  * every pan and cannot be acted on. They are asking *where the trouble is*, and a map whose
  * badges each carry a large neutral number reads as noise the eye has to filter before it
- * can find the one badge that matters. Silent means nothing to do; a figure means go there.
- *
- * The count is not lost: it stays in the badge's tooltip, next to the alarm figure.
+ * can find the one badge that matters. The count is not lost: it is in the tooltip.
  */
 function clusterTemplate(cluster: Cluster): TemplateResult {
-  if (cluster.alarms === 0) return html``;
   return html`<span class="alarms"
     ><ix-icon name="alarm-bell" size="16"></ix-icon>${cluster.alarms}</span
   >`;
@@ -1150,8 +1160,8 @@ function mapStyles(): ReturnType<typeof css> {
 
     /* --- cluster badge ------------------------------------------------------ */
     /* Twice the asset disc (1.75rem): a badge stands for several assets, so it has to
-       read as the heavier object. It keeps that size when it carries no figure —
-       the disc itself is what says "a group of assets is folded in here". */
+       read as the heavier object. Every badge that is drawn at all reports at least one
+       alarm, so it wears the alarm colour outright — a quiet group draws nothing. */
     .cluster {
       display: grid;
       place-items: center;
@@ -1159,9 +1169,13 @@ function mapStyles(): ReturnType<typeof css> {
       height: 3.5rem;
       padding: 0 0.5rem;
       border-radius: 999px;
-      border: 2px solid var(--theme-color-1);
-      background: var(--theme-color-4, var(--theme-color-component-1));
-      color: var(--theme-color-std-text);
+      border: 2px solid var(--theme-color-alarm);
+      background: color-mix(
+        in srgb,
+        var(--theme-color-alarm) 26%,
+        var(--theme-color-1)
+      );
+      color: var(--theme-color-alarm);
       font: inherit;
       font-size: 1.125rem;
       font-weight: 700;
@@ -1175,39 +1189,26 @@ function mapStyles(): ReturnType<typeof css> {
       background: var(--theme-color-primary);
       color: var(--theme-color-inv-text, #fff);
     }
-    /* An area badge wears its area's colour; the site badge is a step larger again,
-       because at that altitude it is the only thing on the map. */
+    /* An area badge is ringed in its area's colour — the fill says something is wrong,
+       the ring says which zone. The site badge is a step larger again, because at that
+       altitude it is the only thing on the map. */
     .cluster.kind-area {
       border-color: var(--cluster-color);
-      background: color-mix(
-        in srgb,
-        var(--cluster-color) 30%,
-        var(--theme-color-1)
-      );
     }
     .cluster.kind-site {
       min-width: 4.25rem;
       height: 4.25rem;
       font-size: 1.375rem;
     }
-    .cluster.has-alarms {
-      border-color: var(--theme-color-alarm);
-      background: color-mix(
-        in srgb,
-        var(--theme-color-alarm) 26%,
-        var(--theme-color-1)
-      );
-    }
-    /* The alarm figure is now the badge's only content, so it wears the badge's own
-       type size rather than sitting beneath a count that is no longer drawn. */
+    /* The alarm figure is the badge's only content, so it wears the badge's own type
+       size rather than sitting beneath a count that is no longer drawn. */
     .cluster .alarms {
       display: inline-flex;
       align-items: center;
       gap: 0.125rem;
       font-weight: 700;
-      color: var(--theme-color-alarm);
     }
-    .cluster.has-alarms:hover .alarms {
+    .cluster:hover .alarms {
       color: var(--theme-color-inv-text, #fff);
     }
     .cluster:focus-visible {
