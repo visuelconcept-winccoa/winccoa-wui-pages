@@ -104,3 +104,20 @@ export function parseScopeAttribute(value: string): string[] {
     .map((entry) => entry.trim())
     .filter((entry) => entry !== '');
 }
+
+/**
+ * The scope carried by a route's query string — `?dp=System1%3APress01`.
+ *
+ * Takes the **search string the router resolved**, not a datapoint name, because that is what
+ * a page receives from its router and because the decoding matters: a drill-down link
+ * percent-encodes the `:` of the system prefix (`System1%3AGisSim_x`), and a scope entry
+ * compared with the `%3A` still in it matches nothing at all. `URLSearchParams` does that
+ * decoding; hand-splitting on `=` does not.
+ *
+ * Accepts the string with or without its leading `?`, and no `dp` at all (⇒ no scope, which
+ * the caller reads as "the whole system").
+ */
+export function scopeFromSearch(search: string): string[] {
+  const parameters = new URLSearchParams(search);
+  return parseScopeAttribute(parameters.get('dp') ?? '');
+}

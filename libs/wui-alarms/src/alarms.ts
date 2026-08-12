@@ -14,13 +14,15 @@
  * Fleet machine dashboard embeds in its panel form. The page adds only what is
  * page-level — the content header, the Application-Security gate, and the
  * datapoint scope taken from the URL so a link can open the list on one machine
- * (`#/alarms?dp=System1:Press01`).
+ * (`#/alarms?dp=System1:Press01`). That scope is **pushed in by the router**
+ * ({@link WuiAlarms.onBeforeEnter}) rather than pulled while rendering; the comment there
+ * says what pulling it cost.
  *
  * Registered at `/alarms` (component `wui-alarms`).
  */
 import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
 import { MSG, localizeDir } from '@visuelconcept/wui-alarms-core/i18n.js';
-import { parseScopeAttribute } from '@visuelconcept/wui-alarms-core/scope.js';
+import { parseScopeAttribute, scopeFromSearch } from '@visuelconcept/wui-alarms-core/scope.js';
 import '@visuelconcept/wui-alarms-core/ui/wui-alarm-view.js';
 import '@visuelconcept/wui-alarms-core/ui/wui-alarm-ranges.js';
 import '@wincc-oa/wui-ix-wrappers/wui-content-header/wui-content-header.js';
@@ -58,6 +60,16 @@ export class WuiAlarms extends LitElement {
 
   @state() private rangesOpen = false;
 
+  /**
+   * The `search` of the route as the ROUTER handed it over; `null` until it does.
+   *
+   * Reactive state rather than something read during render, because the router **pushes**
+   * the resolved location into its route target and does it twice over: once before the
+   * first paint ({@link onBeforeEnter}), and again when only the query string changes — see
+   * the comment there for what pulling it instead cost.
+   */
+  @state() private routeSearch: string | null = null;
+
   private roleSub = new Subscription();
 
   override connectedCallback(): void {
@@ -78,6 +90,27 @@ export class WuiAlarms extends LitElement {
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.roleSub.unsubscribe();
+  }
+
+  /**
+   * Vaadin Router's entry hook on a route target: where the `?dp=` scope comes from.
+   *
+   * Taking it from the router facade during `render()` instead was wrong twice over, and both
+   * failures look like "it needs a reload":
+   *
+   * - it is a **pull from a global the router assigns late** in its navigation cycle, wrapped
+   *   in a `try`/`catch` that degrades silently to "no scope" — so whether the first paint
+   *   sees the scope depends on what else happened to be loaded first;
+   * - and when only the query string changes — a second asset's drill-down, `?dp=A` → `?dp=B`
+   *   — the router **reuses this very element** instead of building a new one (its
+   *   `__skipAttach` path), so nothing would pull again and the list would keep the first
+   *   scope for good.
+   *
+   * A pushed value held as reactive state has neither problem. Typed structurally, so the
+   * page keeps no dependency on `@vaadin/router`: `search` is all it needs.
+   */
+  onBeforeEnter(location: { readonly search?: string }): void {
+    this.routeSearch = location.search ?? '';
   }
 
   override render(): TemplateResult {
@@ -134,7 +167,13 @@ export class WuiAlarms extends LitElement {
     return parameter.length > 0 ? parameter : null;
   }
 
+  /**
+   * The scope the route carries: what the router pushed in, else — for a host that renders
+   * this page outside the router, where {@link onBeforeEnter} never fires — whatever the
+   * facade can tell us.
+   */
   private routerScope(): readonly string[] {
+    if (this.routeSearch !== null) return scopeFromSearch(this.routeSearch);
     try {
       const router = container.resolve<WuiRouterFacade>(WuiRouterServiceToken);
       return parseScopeAttribute(router.getSearchParam('dp') ?? '');

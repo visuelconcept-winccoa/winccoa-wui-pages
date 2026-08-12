@@ -14,7 +14,7 @@ import { isAckable, isAcked, isCame, mergeAlerts, occurrenceKey, toAlarm, ackDpe
 import { resolvePeriod, parseDateInput, toDateInput } from './period.js';
 import { applyQuery, inSource, selectAll } from './query.js';
 import { mergeOccurrences } from './occurrences.js';
-import { inScope, matchesScopeEntry, scopeFromDpes, parseScopeAttribute, splitDpe } from './scope.js';
+import { inScope, matchesScopeEntry, scopeFromDpes, parseScopeAttribute, scopeFromSearch, splitDpe } from './scope.js';
 import { compareAlarms, criticality, mostCritical } from './severity.js';
 import { alarmHistogram, bucketFor, countAlarms, thresholdFor, topActors, BUCKET_MS, EEMUA_THRESHOLD } from './statistics.js';
 import { canAcknowledge, rankFor, rangeFor, normaliseRanges, type Alarm, type AlarmRange } from './types.js';
@@ -235,6 +235,32 @@ describe('scoping', () => {
   it('parses the dps attribute', () => {
     expect(parseScopeAttribute('Press01, Oven07;Line1_*')).toEqual(['Press01', 'Oven07', 'Line1_*']);
     expect(parseScopeAttribute('  ')).toEqual([]);
+  });
+
+  it('reads the scope out of a route query string, decoded', () => {
+    // What a drill-down link actually looks like: the `:` of the system prefix is
+    // percent-encoded, and an entry still carrying `%3A` matches no datapoint at all.
+    expect(scopeFromSearch('?dp=System1%3AGisSim_saint_alban_defaut')).toEqual([
+      'System1:GisSim_saint_alban_defaut'
+    ]);
+    expect(
+      matchesScopeEntry(
+        'System1:GisSim_saint_alban_defaut.',
+        scopeFromSearch('?dp=System1%3AGisSim_saint_alban_defaut')[0] as string
+      )
+    ).toBe(true);
+  });
+
+  it('reads a query string with or without its leading ?, and several entries', () => {
+    expect(scopeFromSearch('dp=Press01,Oven07')).toEqual(['Press01', 'Oven07']);
+    expect(scopeFromSearch('?filter=x&dp=Press01')).toEqual(['Press01']);
+  });
+
+  it('yields no scope when the route carries none', () => {
+    // No scope means the whole system, so this has to be empty rather than [''].
+    expect(scopeFromSearch('')).toEqual([]);
+    expect(scopeFromSearch('?tab=live')).toEqual([]);
+    expect(scopeFromSearch('?dp=')).toEqual([]);
   });
 });
 

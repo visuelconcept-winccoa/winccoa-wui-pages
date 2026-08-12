@@ -157,6 +157,29 @@ A scope entry is a plain name (matches the element **and its subtree**, so
 must set it, otherwise a machine with no bound datapoint would present every alarm
 of the project as its own.
 
+### The `?dp=` scope is pushed in, not pulled
+
+A drill-down opens `#/alarms?dp=System1%3APress01`, and the page takes that scope from Vaadin
+Router's **`onBeforeEnter`** hook into reactive state — never by asking the router facade
+while rendering.
+
+Pulling it was wrong twice over, and both failures wear the same disguise, *"it only works
+after a reload"*:
+
+- the facade reads the router's own `location`, which the router assigns **late in its
+  navigation cycle** (it fires `location-changed` and only then attaches the element), and the
+  pull sat inside a `try`/`catch` that degrades silently to "no scope" — so whether the first
+  paint is filtered depended on what else happened to be loaded first;
+- and when only the **query string** changes — a second asset's drill-down, `?dp=A` → `?dp=B`
+  — the router **reuses the same element** rather than building a new one (its `__skipAttach`
+  path, which calls `onBeforeEnter` again and nothing else). A value pulled once during render
+  is then never pulled again, and the list keeps the first scope for good.
+
+The facade pull survives as the fallback for a host that renders the page **outside** the
+router, where the hook never fires. Decoding lives in `scopeFromSearch` (`wui-alarms-core`),
+tested there: a drill-down percent-encodes the `:` of the system prefix, and a scope entry
+still carrying `%3A` matches no datapoint at all.
+
 ## Statistics: state vs. occurrences
 
 Two different questions, two different sets — the banner shows both side by side:
