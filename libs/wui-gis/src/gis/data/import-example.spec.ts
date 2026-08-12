@@ -11,6 +11,10 @@ import { parseImport } from './io.js';
 
 const FILES = [
   ['../../../../../backend/managers/gisSim/examples/gis-dubai-metro.json', 13, 13],
+  // The Arabic edition of the same network: non-Latin names, labels and notes must survive
+  // the sanitiser's length caps and its slug rules untouched — only the IDS are Latin, and
+  // deliberately so, since they generate the simulator's datapoint names.
+  ['../../../../../backend/managers/gisSim/examples/gis-dubai-metro-ar.json', 13, 13],
   ['../../../../../backend/managers/gisSim/examples/gis-france-nucleaire.json', 27, 19]
 ] as const;
 
