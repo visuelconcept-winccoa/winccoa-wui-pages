@@ -2,7 +2,8 @@
 
 The **Machine Fleet 3D** hub page (`/fleet-3d`): a **three.js** 3D fleet view with
 per-machine **state/KPI bubbles**, a **stop-cause catalog**, a contextual machine
-dashboard (**Gantt + Pareto**), and an **AI assistant** (`/api/ai` bridge).
+dashboard (**gauge cards + Gantt + alarms + Pareto**), and an **AI assistant**
+(`/api/ai` bridge).
 Ships three managers: `machineSim` (fleet simulation), `kpiCalc` (live KPIs),
 `aiAssistant` (the AI assistant). The assistant's MCP tools come from an
 **optional, external** WinCC OA MCP server (ETM `@etm-professional-control/winccoa-mcp-server`,

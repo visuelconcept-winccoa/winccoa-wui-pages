@@ -2,7 +2,8 @@
 
 Standalone **Machine Fleet 3D** WebUI page: a 3D digital twin (Three.js) of a
 multi-machine / multi-workshop fleet, with per-machine status and KPI bubbles, a stop-cause
-catalog, a contextualized machine dashboard (Gantt + Pareto) and an AI assistant.
+catalog, a contextualized machine dashboard (gauge cards + Gantt + alarms + Pareto)
+and an AI assistant.
 
 Tier: **hub** (central fleet page, default entry point at login). `three`
 (`^0.169.0`) is a real npm dependency bundled into the page (no CDN).
@@ -95,11 +96,36 @@ pushed into the 3D bubble. `KpiType = 'TRS'|'MTBF'|'MTTR'` (TRS in `%`, MTBF/MTT
   by the bubble, the machine popup and the stop-analysis engine.
 
 ### Contextualized machine dashboard (built-in, no echarts)
-- Full-screen overlay `mf-machine-dashboard`: Process parameters · period bar ·
-  Alarm tracking · KPI = **state Gantt** + **unplanned-stop Pareto**
-  (SVG/DOM, no echarts).
+- Full-screen overlay `mf-machine-dashboard` (100 % of the viewport), four stacked
+  bands under the identity header: **period bar** (governs everything below) ·
+  **Paramètres Process** as cards · **state Gantt** · **Suivi Alarmes** and the
+  **stop-cause Pareto** side by side, one half-width each (SVG/DOM, no echarts).
+  Closed by the header button or by <kbd>Escape</kbd> — the panel covers the
+  viewport, so there is no backdrop left to click.
+- **Nothing is ever clipped** (the constraint that drove the layout): the content
+  column scrolls as a whole; the card band scrolls inside past two rows (three
+  above 1000 px of height, one below 820 px) and its cap is a whole multiple of the
+  fixed row height, so the cut always falls *between* rows; the two bottom panels
+  stack below 1100 px; the Pareto's control head wraps rather than overflow.
+- **Parameter cards**: one `ix-card` per bound parameter (live `dpConnect` value)
+  and per `kpiCalc` KPI (TRS/MTBF/MTTR read off the live machine object, TRS in its
+  threshold-band colour), each with a **radial gauge** when the value is numeric —
+  a 180° arc with `pathLength="100"`, so the filled portion *is* the percentage and
+  no arc-length maths is needed. Non-numeric parameters (programme, outil) show the
+  value instead of a gauge.
+  - **Gauge scale**: nothing in the fleet model carries an engineering range, so
+    it is derived — `%` reads 0–100, anything else is scaled from the values SEEN
+    so far (widened, never narrowed, in a non-reactive `Map` so widening during a
+    render cannot loop) and rounded outwards to a nice bound. Both bounds are
+    printed under the arc so the scale is never implicit. Add `min`/`max` to `Kpi`
+    if configured ranges are ever wanted.
+  - `ix-card-content` is a flex **row** padded `1rem` with `overflow:hidden`: the
+    card CSS overrides the direction and the padding, and the gauge is capped
+    (`max-height`) so a card stretched wider than its track cannot overflow the
+    fixed row and be clipped.
 - **Alarm tracking** = the shared `<wui-alarm-view>` of `@visuelconcept/wui-alarms-core`
-  in its `panel` layout (same component as the `/alarms` page). Its tabs switch between
+  in its `panel` layout (same component as the `/alarms` page), bottom-left half of
+  the dashboard. Its tabs switch between
   the machine's **standing** alarms and its **archived** ones; the archived ones use
   THIS dashboard's period (hence `hide-period`), and the scope is `scopeFromDpes(...)`
   over the machine's bound datapoints with `strict-scope` so a machine with no bound
@@ -109,7 +135,9 @@ pushed into the 3D bubble. `KpiType = 'TRS'|'MTBF'|'MTTR'` (TRS in `%`, MTBF/MTT
   (debounced) the archived history to keep the Gantt live.
 - Gantt: segments from the state DP's archived history (`resolveState` + `STATE_COLORS`),
   each segment carries its cause (via the cause DP's history + `causeAt` + `formatStopCause`)
-  and a bubble on hover.
+  and a bubble on hover. Its **CSV export timestamps to the second**
+  (`formatDateTimeSec`, `dd/mm/yyyy hh:mm:ss`) — at minute precision the segment
+  durations cannot be recomputed in Excel; the on-screen bubble stays at the minute.
 - Pareto: `analyseStopCauses` (single-machine) → unplanned → sort by downtime/frequency,
   Top 5/10/All, cumulative/frequency metric, planned/unplanned class, CSV export (`;`+BOM),
   print CSS. "Analyze" button → opens `/fleet-stops` (new tab) with the
@@ -236,6 +264,10 @@ All writes are best-effort (never throw into the edit), no-op when the store is 
   Deployment-safe list of link icons: `DASHBOARD_LINK_ICONS`.
 - **iX shell**: components registered globally by the shell → bare tags, do not
   re-import `@siemens/ix`.
+- **Backticks inside a `css` template**: a CSS comment that quotes an identifier
+  with backticks (`` /* `ix-card` … */ ``) CLOSES the tagged template — the file then
+  fails with a bare `Parsing error: ';' expected` far from the real cause. Quote
+  identifiers plainly inside these stylesheets.
 - **Strict lint (eslint)**: hex literals as `0xRR_GG_BB`; class member order
   (public < protected < private; arrow-function fields count as private → last);
   `CustomEvent` names = string literals `^wui:[a-z]{3,}$` (no hyphen); avoid

@@ -2,13 +2,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Default, hard-coded **machine dashboard** — a contextualised overlay opened
- * from a machine's detail card when it is NOT linked to a specific WinCC OA
- * dashboard. Four quadrants (per the agreed design):
- *   - left  : "Paramètres Process" — the machine's live process parameters;
- *   - top-r : "Suivi Alarmes" — placeholder encart (alarm tracking: à venir);
- *   - bot-r : "KPI" — a machine-state Gantt timeline + a Pareto of unplanned
- *             stop causes over a configurable period.
+ * Default, hard-coded **machine dashboard** — a contextualised full-screen
+ * overlay opened from a machine's detail card when it is NOT linked to a
+ * specific WinCC OA dashboard. Four stacked bands (per the agreed design):
+ *   - head   : machine identity + period bar (governs everything below);
+ *   - top    : "Paramètres Process" — live parameters and computed KPIs as
+ *              cards, each with a gauge when the value is numeric;
+ *   - middle : the machine-state Gantt timeline;
+ *   - bottom : "Suivi Alarmes" (half width) next to the stop-cause Pareto.
+ *
+ * Nothing is ever clipped: every band keeps a floor height, the two bottom
+ * panels stack below 1100 px, and the whole content column scrolls rather than
+ * squeezing a panel out of sight.
  *
  * Data is read live (process params from the machine object) and from the
  * archived history (state timeline + Pareto), reusing the fleet-stop-analysis
@@ -21,7 +26,9 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { normDp } from '../data/dp-utils.js';
 import {
+  KPI_TYPE_INFO,
   STATE_LABELS,
+  TRS_WINDOW_LABELS,
   formatStopCause,
   resolveState,
   stateColor,
@@ -105,6 +112,34 @@ const DAYS_PER_WEEK = 7;
 /** Debounce before re-querying the archived history after a live state change. */
 const HISTORY_RELOAD_DEBOUNCE_MS = 1500;
 
+/** Gauge geometry (SVG user units, viewBox 100 × 64): a 180° arc, centre (50,50), r 40. */
+const GAUGE_ARC = 'M 10 50 A 40 40 0 0 1 90 50';
+/** `pathLength` normalisation: the arc is exactly 100 units long, so the filled
+ * portion is the percentage itself — no arc-length maths. */
+const GAUGE_PATH_LENGTH = 100;
+const PERCENT_MAX = 100;
+/** Head-room above the highest observed value when a single value must scale the gauge. */
+const GAUGE_SOLO_HEADROOM = 1.25;
+/** Padding added on each side of an observed [min,max] band before rounding. */
+const GAUGE_BAND_PADDING = 0.1;
+/** "Nice" scale ceilings (× 10^k) used to round a gauge bound outwards. */
+const NICE_STEPS = [1, 1.5, 2, 2.5, 3, 4, 5, 7.5, 10];
+/** Above this magnitude a displayed value drops its decimals. */
+const COMPACT_VALUE_THRESHOLD = 1000;
+const VALUE_DECIMALS = 2;
+
+/** One card of the parameter band: a live value, its unit and how to scale it. */
+interface ParamCard {
+  key: string;
+  label: string;
+  value: number | string | undefined;
+  unit: string;
+  /** Gauge colour override (TRS threshold band); default = the theme primary. */
+  color?: string;
+  /** Small muted footer (e.g. the KPI's sliding window). */
+  hint?: string;
+}
+
 @customElement('mf-machine-dashboard')
 export class MfMachineDashboard extends LitElement {
   static override readonly styles = [IXCoreStyles, dashboardStyles()];
@@ -136,12 +171,14 @@ export class MfMachineDashboard extends LitElement {
   /** Normalised state-DP name (to detect state changes in the live stream). */
   private stateKey = '';
   private historyDebounce = 0;
+  /** Observed [min,max] per card key — the gauge scale of the values seen so far. */
+  private readonly observed = new Map<string, { min: number; max: number }>();
 
   override render(): TemplateResult {
     const m = this.machine;
     return html`
-      <div class="overlay" @click=${this.close}>
-        <div class="panel" @click=${(e: Event) => e.stopPropagation()}>
+      <div class="overlay">
+        <div class="panel">
           <div class="panel-head">
             <span class="dot" style="background:${stateColor(this.mapping, this.liveState())}"></span>
             <ix-typography format="h3">${m.name}</ix-typography>
@@ -149,21 +186,20 @@ export class MfMachineDashboard extends LitElement {
             <span class="grow"></span>
             <ix-icon-button ghost icon="close" title=${localize(MSG.machineDash.close)} @click=${this.close}></ix-icon-button>
           </div>
-          <div class="grid">
-            <section class="q q-params">
+          ${this.renderToolbar()}
+          <div class="content">
+            <section class="zone zone-params">
               <h4>${localizeDir(MSG.machineDash.processParams)}</h4>
               ${this.renderParams()}
             </section>
-            ${this.renderToolbar()}
-            <section class="q q-alarms">
-              <h4>${localizeDir(MSG.machineDash.alarmTracking)}</h4>
-              ${this.renderAlarms()}
-            </section>
-            <section class="q q-kpi">
-              ${this.loading
-                ? html`<div class="center"><ix-spinner></ix-spinner></div>`
-                : html`${this.renderGantt()} ${this.renderPareto()}`}
-            </section>
+            <section class="zone zone-gantt">${this.renderGantt()}</section>
+            <div class="bottom-row">
+              <section class="zone zone-alarms">
+                <h4>${localizeDir(MSG.machineDash.alarmTracking)}</h4>
+                ${this.renderAlarms()}
+              </section>
+              <section class="zone zone-pareto">${this.renderPareto()}</section>
+            </div>
           </div>
         </div>
       </div>
@@ -171,8 +207,16 @@ export class MfMachineDashboard extends LitElement {
     `;
   }
 
+  override connectedCallback(): void {
+    super.connectedCallback();
+    // The panel covers the whole viewport, so there is no backdrop left to click:
+    // Escape is the way out besides the close button.
+    window.addEventListener('keydown', this.onKeyDown);
+  }
+
   override disconnectedCallback(): void {
     super.disconnectedCallback();
+    window.removeEventListener('keydown', this.onKeyDown);
     this.dpSub.unsubscribe();
     window.clearTimeout(this.historyDebounce);
   }
@@ -322,26 +366,104 @@ export class MfMachineDashboard extends LitElement {
     return rangeLabelMsg(formatDateTime(start.getTime()), formatDateTime(end.getTime()));
   }
 
+  /** Top band: one card per bound parameter and per computed KPI, gauge included. */
   private renderParams(): TemplateResult {
-    const kpis = this.machine.kpis ?? [];
-    if (kpis.length === 0) return html`<div class="muted">${localizeDir(MSG.machineDash.noProcessParams)}</div>`;
+    const cards = this.paramCards();
+    if (cards.length === 0) return html`<div class="muted">${localizeDir(MSG.machineDash.noProcessParams)}</div>`;
+    return html`<div class="cards">${cards.map((c) => this.renderCard(c))}</div>`;
+  }
+
+  /**
+   * The cards of the top band: the machine's bound process parameters (live via
+   * `dpConnect`) followed by the KPIs the `kpiCalc` manager computes. The KPI
+   * values are read straight off the live machine object the 3D view keeps
+   * updated — they refresh with the next render, driven by the parameter stream.
+   */
+  private paramCards(): ParamCard[] {
+    const m = this.machine;
+    const cards: ParamCard[] = (m.kpis ?? []).map((k) => {
+      // Prefer the live dpConnect value; fall back to the last known value.
+      const live = k.dp ? extractScalar(this.liveValues[normDp(k.dp)]) : undefined;
+      return { key: `param:${k.key}`, label: k.label || k.key, value: live ?? k.value, unit: k.unit ?? '' };
+    });
+    for (const kpi of m.kpiCalcs ?? []) {
+      const info = KPI_TYPE_INFO[kpi.type];
+      cards.push({
+        key: `kpi:${kpi.id}`,
+        label: kpi.label && kpi.label !== '' ? kpi.label : info.label,
+        value: (m.kpiCalcValues ?? {})[kpi.id],
+        unit: info.unit,
+        color: (m.kpiCalcColors ?? {})[kpi.id],
+        hint: TRS_WINDOW_LABELS[kpi.window]
+      });
+    }
+    return cards;
+  }
+
+  /** A parameter card: gauge + value when numeric, plain value otherwise. */
+  private renderCard(card: ParamCard): TemplateResult {
+    const num = typeof card.value === 'number' ? card.value : Number.NaN;
+    const numeric = Number.isFinite(num);
     return html`
-      <div class="params">
-        ${kpis.map((k) => {
-          // Prefer the live dpConnect value; fall back to the last known value.
-          const live = k.dp ? extractScalar(this.liveValues[normDp(k.dp)]) : undefined;
-          const value = live ?? k.value;
-          return html`
-            <div class="param">
-              <span class="param-label">${k.label}</span>
-              <span class="param-value"
-                >${value ?? '—'}${value != null && k.unit ? ` ${k.unit}` : ''}</span
-              >
-            </div>
-          `;
-        })}
-      </div>
+      <ix-card class="card">
+        <ix-card-content>
+          <div class="card-label" title=${card.label}>${card.label}</div>
+          ${numeric
+            ? this.renderGauge(card, num)
+            : html`<div class="card-text" title=${String(card.value ?? '')}>
+                ${card.value == null || card.value === '' ? '—' : card.value}
+              </div>`}
+          ${card.hint ? html`<div class="card-hint">${card.hint}</div>` : ''}
+        </ix-card-content>
+      </ix-card>
     `;
+  }
+
+  /**
+   * Radial gauge for one numeric parameter.
+   *
+   * Nothing in the fleet model carries an engineering range, so the scale is
+   * derived: a percentage reads 0–100, anything else is scaled from the values
+   * SEEN so far (widened, never narrowed, as the value moves) and rounded
+   * outwards to a readable bound. Both bounds are printed under the arc so the
+   * scale the operator is reading is never implicit.
+   */
+  private renderGauge(card: ParamCard, value: number): TemplateResult {
+    const { min, max } = this.gaugeScale(card, value);
+    const ratio = (value - min) / (max - min || 1);
+    const pct = Math.min(Math.max(ratio, 0), 1) * PERCENT_MAX;
+    const color = card.color ?? 'var(--theme-color-primary)';
+    return html`
+      <svg class="gauge-svg" viewBox="0 0 100 64" role="img" aria-label=${`${card.label} ${formatValue(value)} ${card.unit}`}>
+        <path class="gauge-track" d=${GAUGE_ARC} pathLength=${GAUGE_PATH_LENGTH}></path>
+        <path
+          class="gauge-fill"
+          d=${GAUGE_ARC}
+          pathLength=${GAUGE_PATH_LENGTH}
+          stroke=${color}
+          stroke-dasharray=${`${pct.toFixed(1)} ${GAUGE_PATH_LENGTH}`}
+        ></path>
+        <text class="gauge-value" x="50" y="46" text-anchor="middle">${formatValue(value)}</text>
+        ${card.unit ? svg`<text class="gauge-unit" x="50" y="58" text-anchor="middle">${card.unit}</text>` : ''}
+        <text class="gauge-bound" x="8" y="62">${formatValue(min)}</text>
+        <text class="gauge-bound" x="92" y="62" text-anchor="end">${formatValue(max)}</text>
+      </svg>
+    `;
+  }
+
+  /**
+   * Gauge bounds for a card. Percentages are absolute (0–100); everything else
+   * tracks the observed extremes of the session in `observed` — a plain Map, not
+   * reactive state, so widening it during a render cannot loop.
+   */
+  private gaugeScale(card: ParamCard, value: number): { min: number; max: number } {
+    if (card.unit.trim() === '%') return { min: 0, max: PERCENT_MAX };
+    const seen = this.observed.get(card.key);
+    const band = seen
+      ? { min: Math.min(seen.min, value), max: Math.max(seen.max, value) }
+      : { min: value, max: value };
+    this.observed.set(card.key, band);
+    return niceScale(band.min, band.max);
   }
 
   /** Current state from the live stream when available, else the machine's state. */
@@ -368,6 +490,7 @@ export class MfMachineDashboard extends LitElement {
         ></ix-icon-button>
       </div>
     `;
+    if (this.loading) return html`${head}<div class="center"><ix-spinner></ix-spinner></div>`;
     if (segs.length === 0) {
       return html`${head}<div class="muted small">${localizeDir(MSG.machineDash.noHistory)}</div>`;
     }
@@ -406,8 +529,8 @@ export class MfMachineDashboard extends LitElement {
     ];
     for (const s of this.segments) {
       rows.push([
-        formatDateTime(s.startMs),
-        formatDateTime(s.endMs),
+        formatDateTimeSec(s.startMs),
+        formatDateTimeSec(s.endMs),
         STATE_LABELS[s.state],
         s.causeLabel ?? ''
       ]);
@@ -500,6 +623,7 @@ export class MfMachineDashboard extends LitElement {
         </ix-button>
       </div>
     `;
+    if (this.loading) return html`${head}<div class="center"><ix-spinner></ix-spinner></div>`;
     if (rows.length === 0) {
       const label = this.paretoClass === 'planned'
         ? localize(MSG.machineDash.classPlanned)
@@ -756,6 +880,47 @@ export class MfMachineDashboard extends LitElement {
   private readonly close = (): void => {
     this.dispatchEvent(new CustomEvent('wui:close', { bubbles: true, composed: true }));
   };
+
+  private readonly onKeyDown = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') this.close();
+  };
+}
+
+/** Format a gauge/card value: two decimals, dropped for large magnitudes. */
+function formatValue(v: number): string {
+  if (Number.isInteger(v) || Math.abs(v) >= COMPACT_VALUE_THRESHOLD) return String(Math.round(v));
+  return v.toFixed(VALUE_DECIMALS);
+}
+
+/**
+ * Readable gauge bounds around an observed [min,max] band.
+ *
+ * A band still collapsed on a single value gets head-room instead of a full or
+ * empty arc; a real band is padded and both ends rounded outwards to a "nice"
+ * number so the printed bounds stay legible.
+ */
+function niceScale(min: number, max: number): { min: number; max: number } {
+  if (min === max) {
+    if (min > 0) return { min: 0, max: niceBound(min * GAUGE_SOLO_HEADROOM) };
+    if (min < 0) return { min: -niceBound(-min * GAUGE_SOLO_HEADROOM), max: 0 };
+    return { min: 0, max: 1 };
+  }
+  const pad = (max - min) * GAUGE_BAND_PADDING;
+  const lo = min - pad;
+  const hi = max + pad;
+  return {
+    min: lo >= 0 ? 0 : -niceBound(-lo),
+    max: hi <= 0 ? 0 : niceBound(hi)
+  };
+}
+
+/** Smallest "nice" number (1/1.5/2/2.5/3/4/5/7.5/10 × 10^k) greater or equal to `v`. */
+function niceBound(v: number): number {
+  if (!Number.isFinite(v) || v <= 0) return 1;
+  const magnitude = 10 ** Math.floor(Math.log10(v));
+  const normalised = v / magnitude;
+  const step = NICE_STEPS.find((s) => normalised <= s) ?? 10;
+  return step * magnitude;
 }
 
 /** Truncate a label to `max` chars with an ellipsis. */
@@ -793,7 +958,7 @@ function extractScalar(raw: unknown): number | string | undefined {
   return v == null ? undefined : String(v);
 }
 
-/** Format a ms-epoch timestamp as a French date+time. */
+/** Format a ms-epoch timestamp as a French date+time (minute precision). */
 function formatDateTime(ms: number): string {
   return new Date(ms).toLocaleString('fr-FR', {
     day: '2-digit',
@@ -801,6 +966,25 @@ function formatDateTime(ms: number): string {
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit'
+  });
+}
+
+/**
+ * Same, to the SECOND — for the exports.
+ *
+ * A state change is timestamped to the millisecond in the archive, so a Gantt
+ * exported at minute precision cannot be used to compute segment durations:
+ * `dd/mm/yyyy hh:mm:ss` is what Excel needs to subtract two boundaries (and it
+ * parses that shape natively in a French locale).
+ */
+function formatDateTimeSec(ms: number): string {
+  return new Date(ms).toLocaleString('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
   });
 }
 
@@ -840,20 +1024,17 @@ function dashboardStyles() {
       background: rgba(0, 0, 0, 0.55);
       z-index: 9999;
       display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 1rem;
     }
+    /* Full screen: the four bands each need their room, so the dashboard takes
+       all of it rather than shrinking a panel out of readability. The overlay is
+       inset:0, so stretching inside it is exact — 100vw would over-shoot by a
+       scrollbar's width. */
     .panel {
       background: var(--theme-color-2);
-      border: 1px solid var(--theme-color-soft-bdr);
-      border-radius: var(--theme-default-border-radius);
-      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-      width: 1320px;
-      max-width: 96vw;
-      height: 88vh;
+      flex: 1;
       display: flex;
       flex-direction: column;
+      min-width: 0;
     }
     .panel-head {
       display: flex;
@@ -861,6 +1042,7 @@ function dashboardStyles() {
       gap: 0.6rem;
       padding: 0.6rem 1rem;
       border-bottom: 1px solid var(--theme-color-soft-bdr);
+      flex: 0 0 auto;
     }
     .panel-head .dot {
       width: 0.8rem;
@@ -870,18 +1052,32 @@ function dashboardStyles() {
     .grow {
       flex: 1;
     }
-    .grid {
+    /* The content column scrolls as a whole: a viewport too short pushes the
+       bottom band down, it never squeezes it away. */
+    .content {
       flex: 1;
-      display: grid;
-      grid-template-columns: 1fr 2fr;
-      grid-template-rows: auto 1fr 2fr;
-      grid-template-areas: 'params toolbar' 'params alarms' 'params kpi';
+      min-height: 0;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
       gap: 0.75rem;
       padding: 0.75rem;
-      overflow: hidden;
+    }
+    .bottom-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      flex: 1 1 auto;
+      min-height: 22rem;
+    }
+    /* Two half-width panels only while both stay readable; below that they stack. */
+    @media (max-width: 1100px) {
+      .bottom-row {
+        grid-template-columns: 1fr;
+      }
     }
     .toolbar {
-      grid-area: toolbar;
+      margin: 0.75rem 0.75rem 0;
       display: flex;
       align-items: center;
       flex-wrap: wrap;
@@ -898,67 +1094,154 @@ function dashboardStyles() {
       font-size: 0.8rem;
       color: var(--theme-color-soft-text);
     }
-    .q {
+    .zone {
       border: 1px solid var(--theme-color-soft-bdr);
       border-radius: var(--theme-default-border-radius);
       padding: 0.75rem;
-      overflow: auto;
       display: flex;
       flex-direction: column;
       min-height: 0;
+      min-width: 0;
     }
-    .q-params {
-      grid-area: params;
+    .zone-params {
+      flex: 0 0 auto;
       background: color-mix(in srgb, var(--theme-color-primary) 8%, transparent);
     }
-    .q-alarms {
-      grid-area: alarms;
-      background: var(--theme-color-1);
+    .zone-gantt {
+      flex: 0 0 auto;
+      background: color-mix(in srgb, #10b981 8%, transparent);
     }
-    .q-alarms wui-alarm-view {
+    .zone-alarms {
+      background: var(--theme-color-1);
+      overflow: hidden;
+    }
+    .zone-alarms wui-alarm-view {
       flex: 1;
       min-height: 0;
     }
-    .q-kpi {
-      grid-area: kpi;
+    .zone-pareto {
       background: color-mix(in srgb, #10b981 8%, transparent);
+      /* The chart keeps its floor size and the panel scrolls rather than crop it. */
+      overflow: auto;
     }
-    .q h4 {
+    .zone h4 {
       margin: 0 0 0.5rem;
       font-size: 0.95rem;
     }
-    .placeholder {
-      flex: 1;
-      display: flex;
+    /*
+     * Parameter band: cards wrap onto as many rows as needed, and the band
+     * scrolls past two rows (three on a tall screen) so a machine with a dozen
+     * bound parameters never pushes the Gantt and the bottom panels off-screen.
+     * Rows are a fixed height and the cap is a whole multiple of it — the cut
+     * always falls between two rows, never through a card.
+     */
+    .cards {
+      --card-h: 9.5rem;
+      --card-gap: 0.6rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+      grid-auto-rows: var(--card-h);
+      gap: var(--card-gap);
+      overflow: auto;
+      max-height: calc(2 * var(--card-h) + var(--card-gap));
+    }
+    @media (min-height: 1000px) {
+      .cards {
+        max-height: calc(3 * var(--card-h) + 2 * var(--card-gap));
+      }
+    }
+    /* A short screen gives the band one row: the four bands stay on screen
+       together and the extra parameters are one scroll away inside it. */
+    @media (max-height: 820px) {
+      .cards {
+        max-height: var(--card-h);
+      }
+    }
+    .card {
+      width: 100%;
+      height: 100%;
+      box-sizing: border-box;
+      /* The card is a read-out, not a control. */
+      cursor: default;
+    }
+    /* ix-card-content is a flex ROW padded 1rem — stack our three lines instead,
+       and tighten the padding so the gauge keeps its room inside the fixed row. */
+    .card ix-card-content {
       flex-direction: column;
-      align-items: center;
       justify-content: center;
-      gap: 0.5rem;
+      padding: 0.55rem 0.6rem;
+      width: 100%;
+    }
+    .card-label {
+      font-size: 0.78rem;
+      color: var(--theme-color-soft-text);
+      line-height: 1.2;
+      min-height: 2.4em;
+      flex: 0 0 auto;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+    /* A non-numeric parameter (programme, outil…): the value replaces the gauge,
+       clamped to the card's row — the full string stays in the tooltip. */
+    .card-text {
+      font-size: 1.1rem;
+      font-weight: 700;
+      padding: 1rem 0;
+      text-align: center;
+      overflow-wrap: anywhere;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+    .card-hint {
+      font-size: 0.68rem;
       color: var(--theme-color-soft-text);
       text-align: center;
+      flex: 0 0 auto;
     }
-    .params {
-      display: flex;
-      flex-direction: column;
-      gap: 0.35rem;
+    /* Capped so a card stretched wider than its track keeps the gauge inside the
+       fixed row height (ix-card clips its overflow). */
+    .gauge-svg {
+      width: 100%;
+      max-height: 5.5rem;
+      display: block;
+      flex: 0 1 auto;
+      min-height: 0;
     }
-    .param {
-      display: flex;
-      justify-content: space-between;
-      gap: 0.5rem;
-      padding: 0.3rem 0.4rem;
-      border-bottom: 1px solid var(--theme-color-soft-bdr);
+    .gauge-track {
+      fill: none;
+      stroke: var(--theme-color-soft-bdr);
+      stroke-width: 8;
+      stroke-linecap: round;
     }
-    .param-label {
-      color: var(--theme-color-soft-text);
+    .gauge-fill {
+      fill: none;
+      stroke-width: 8;
+      stroke-linecap: round;
+      transition: stroke-dasharray 0.4s ease;
     }
-    .param-value {
+    .gauge-value {
+      fill: var(--theme-color-std-text);
+      font-size: 15px;
       font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .gauge-unit {
+      fill: var(--theme-color-soft-text);
+      font-size: 9px;
+    }
+    .gauge-bound {
+      fill: var(--theme-color-soft-text);
+      font-size: 7px;
       font-variant-numeric: tabular-nums;
     }
     .block-head {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 0.5rem;
       margin: 0.6rem 0 0.3rem;
     }
@@ -971,14 +1254,19 @@ function dashboardStyles() {
     .block-head .block-title {
       margin: 0;
     }
+    /* A block that opens its zone needs no extra top margin. */
+    .zone > .block-head:first-child {
+      margin-top: 0;
+    }
     .top-select {
       min-width: 7rem;
     }
+    /* Narrow enough for the half-width Pareto panel; the head wraps beyond that. */
     .metric-select {
-      min-width: 11rem;
+      min-width: 9.5rem;
     }
     .class-select {
-      min-width: 11rem;
+      min-width: 9.5rem;
     }
     .range {
       font-size: 0.78rem;
@@ -987,7 +1275,7 @@ function dashboardStyles() {
     }
     .gantt {
       width: 100%;
-      height: 52px;
+      height: 64px;
       border-radius: 0.2rem;
       background: var(--theme-color-1);
     }
@@ -1033,11 +1321,12 @@ function dashboardStyles() {
     .pareto-svg {
       width: 100%;
       flex: 1;
-      min-height: 200px;
+      min-height: 220px;
       margin-top: 0.25rem;
     }
     .center {
       flex: 1;
+      min-height: 5rem;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1064,10 +1353,18 @@ function dashboardStyles() {
         box-shadow: none;
         border: none;
       }
-      .grid {
+      .content {
         overflow: visible;
       }
-      .q {
+      /* On paper the two bottom panels get a full width each rather than half. */
+      .bottom-row {
+        display: block;
+        min-height: 0;
+      }
+      .bottom-row .zone + .zone {
+        margin-top: 0.75rem;
+      }
+      .zone {
         overflow: visible;
         break-inside: avoid;
       }
@@ -1075,6 +1372,7 @@ function dashboardStyles() {
       .pareto-svg rect,
       .pareto-svg polyline,
       .pareto-svg circle,
+      .gauge-svg path,
       .leg i,
       .panel-head .dot {
         -webkit-print-color-adjust: exact;

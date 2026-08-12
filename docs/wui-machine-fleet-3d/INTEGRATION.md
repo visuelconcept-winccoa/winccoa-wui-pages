@@ -2,7 +2,8 @@
 
 **Standalone WinCC OA WebUI** page: a **three.js 3D view** of the machine fleet (`/fleet-3d`)
 with per-machine **status/KPI bubbles**, a **stop-cause catalog**, a contextual machine
-dashboard (**Gantt + Pareto**) and an **AI assistant** (`/api/ai` bridge).
+dashboard (**gauge cards + Gantt + alarms + Pareto**) and an **AI assistant**
+(`/api/ai` bridge).
 It is a **complete hub**: frontend + `/api/ai` backend module + **three Node
 managers** (`machineSim`, `kpiCalc`, `aiAssistant`). The assistant's MCP tools are
 served by an **optional, external** WinCC OA MCP server (ETM
