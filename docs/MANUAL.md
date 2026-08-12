@@ -130,8 +130,10 @@ workflow definition.
 The plant's **alarm list**, in two tabs sharing one table: **Active** (the standing
 alarms, live) and **History** (the alarm archive over a period — today, 24 h, 7 d,
 30 d, current week/month or a custom range, with previous/next-period arrows). Around
-the list: the **unacknowledged** counter, the **P1–P4 severity chips** (each reading
-`total (n ack)`, click to filter), the **EEMUA-191 flood histogram** (ten alarms per
+the list: the **unacknowledged** counter, the **priority-range chips** (each reading
+`total (n ack)`, click to filter — the ranges themselves, their abbreviation, colour
+and threshold, are the project's own and are edited behind the cogwheel), the
+**EEMUA-191 flood histogram** (ten alarms per
 ten minutes is the operator-load ceiling) and the **recurring bad actors** (by alarm
 text or by datapoint). Rows carry both readings — the configured range and the raw WinCC OA priority with
 its alert class — and an alarm that went **without** being acknowledged stays in the
@@ -191,6 +193,62 @@ Opening a wall lays its tiles out side by side; each embeds another view chromel
 
 ---
 
+## GIS (map) — `/gis`, `/gis/:siteid`
+
+_Screenshot pending — this page post-dates the last capture run (see
+[Regenerating this manual](#regenerating-this-manual))._
+
+**Map-based supervision** on MapLibre GL over OpenStreetMap. A **site** holds
+geo-located **assets** bound to datapoints — the marker shows the live value and takes
+the datapoint's own alarm colour, so the map and the [Alarms](#alarms--alarms) page
+agree by construction — and **areas** (districts, sectors, catchments) drawn as
+polygons that group them. An asset can belong to several areas; hovering an outline
+names every zone under the cursor.
+
+Zoomed out, markers **group** into one badge per area and then one badge for the whole
+site. A badge shows only how many of its assets are **in alarm** and stays blank when
+none are, so what stands out from far away is trouble rather than population; clicking
+one zooms to exactly its members.
+
+**Edit mode** (role `edit`) places and drags markers, draws and reshapes area
+outlines — including *fit around the assets*, which redraws an outline hugging the
+equipment it lists — and binds datapoints. An AI assistant can draft a whole site for
+review on the map before saving, and never binds a datapoint itself. Sites import and
+export as native JSON or as **GeoJSON** for QGIS/ArcGIS, which is how surveyed
+coordinates come back in.
+
+Drill-down is configuration, not code: each asset and area carries a route, so a click
+can open a Fleet-3D atelier, an Ampère network, a Mosaic wall, or the Alarms page
+scoped to that asset's datapoint.
+
+---
+
+## AGV Fleet — `/agv-fleet`
+
+_Screenshot pending — see [Regenerating this manual](#regenerating-this-manual)._
+
+Read-only supervision of an **automated-guided-vehicle fleet**: a KPI strip (fleet
+size, moving, available, charging, faults, average battery, utilisation, missions), a
+sortable status list with state chips and charge bars, a **warehouse floor plan**
+showing each vehicle's live position and heading, and a detail card per vehicle. One
+`AGV_Vehicle` datapoint per vehicle; the `agvSim` manager provides a demonstration
+fleet.
+
+---
+
+## Ampère (electrical) — `/ampere`, `/ampere/:networkid`
+
+_Screenshot pending — see [Regenerating this manual](#regenerating-this-manual)._
+
+**Single-line (mono-filaire) diagrams** of an electrical distribution network —
+switchboards, disconnectors, breakers, busbars, transformers — and of railway
+electrification (catenary, track return, rectifier, sectioning switch,
+autotransformer). An in-place edit mode with an **IEC 60617 symbol toolbox** draws the
+network and binds each device to its datapoints; wires are **energised live** from the
+state of the devices upstream, so the diagram shows where the power actually is.
+
+---
+
 ## Parametrization — `/para`
 
 ![Parametrization](images/manual/para.png)
@@ -222,6 +280,72 @@ what they returned.
 several DPs and/or DP-types and **export** them to a WinCC OA `.dpl` file, or
 **import** a `.dpl`. The export/import is run server-side by the `dplAscii` MSA
 manager (which drives `WCCOAasciiSQLite`).
+
+---
+
+## Engineering Studio — `/eng-studio`
+
+![Engineering Studio](images/eng-studio/01-devices.png)
+
+Model **DP types, datapoints and their configs from the equipment that communicates**,
+then check the result into the project in one transaction. Four tabs:
+
+- **Equipments** — the device registry: protocol, connection, driver, and a **live
+  connection lamp** read (never stored) from the connection's own `ConnState`, with
+  the raw code beside it and a tooltip saying why a lamp is grey.
+- **Catalogs** — address books built from a TIA/SimaticML export, a Control Expert CSV
+  or XVM file, an OPC UA NodeSet2 file, or a **live browse** of a server you can watch
+  and stop. Each signal is qualified with a role (measure, setpoint, command, state,
+  alarm…) that the operator can override; signals can be hidden without deleting them,
+  and re-reading the source keeps every manual override.
+- **Model** — the DP type to generate, as an outline or as a **tree** in PARA's own
+  grammar, each leaf carrying the signal it is bound to. Reusable models can be stored
+  and applied to any equipment.
+- **Control** — the diff between the working copy and the live project, item by item,
+  applied transactionally — or **forgotten** from the working copy when a plan holds
+  staged work nobody wants any more.
+
+![Generated model, ready to check in](images/eng-studio/12-model-generation.png)
+
+---
+
+## Tag Importer — `/tag-importer`
+
+_Screenshot pending — see [Regenerating this manual](#regenerating-this-manual)._
+
+Import device tags into **datapoint types and datapoints** from an OPC UA **NodeSet2**
+file, or by **browsing a live server** and picking the instance whose subtree becomes
+the type. Repeated instances of one ObjectType are mutualised into a single DP type
+(one datapoint per instance); a nested type shared by two parents or more becomes a
+`DPT_TYPEREF` reference, while one-off nesting is flattened. Every write is preceded by
+a **dry-run preview**, and an online import also writes the peripheral address configs.
+The core is protocol-agnostic — OPC UA is the adapter that exists today.
+
+---
+
+## Application Security — `/app-security`
+
+_Screenshot pending — see [Regenerating this manual](#regenerating-this-manual)._
+
+Discover the **roles every page module declares** (each module writes them into its own
+`AppSecurity_<module>` datapoint) and map each one to **WinCC OA user groups**. A role
+with no group assigned stays **open to all connected users**, so declaring a role never
+breaks a running deployment. Pages hide what the user may not do; the backend enforces
+the same rules on its own routes, so the page is a convenience and not the security
+boundary. Every assignment change is written to a GxP audit trail.
+
+---
+
+## Process Monitor — `/process-monitor`
+
+_Screenshot pending — see [Regenerating this manual](#regenerating-this-manual)._
+
+A **pmon console** with one tab per connected server: manager status, start / stop /
+restart (and restart-all), and adding or removing pmon configuration entries, persisted
+to `config/progs`. It also **uploads and deploys a project ZIP** across all servers —
+optional folder purge, extraction into non-protected folders, optional restart — with
+the session user traced in the audit trail. The sensitive actions are role-gated
+server-side (`control`, `edit-managers`, `deploy`).
 
 ---
 
