@@ -22,12 +22,13 @@ import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconce
 import { MSG, localizeDir } from '@visuelconcept/wui-alarms-core/i18n.js';
 import { parseScopeAttribute } from '@visuelconcept/wui-alarms-core/scope.js';
 import '@visuelconcept/wui-alarms-core/ui/wui-alarm-view.js';
+import '@visuelconcept/wui-alarms-core/ui/wui-alarm-ranges.js';
 import '@wincc-oa/wui-ix-wrappers/wui-content-header/wui-content-header.js';
 import '@wincc-oa/wui-oarxjs-context/components/wui-context-generator/wui-context-generator.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { WuiRouterServiceToken } from '@wincc-oa/wui-shared/tokens/wui-router-service.token.js';
 import type { WuiRouterFacade } from '@wincc-oa/wui-models/interfaces/wui-router/wui-router.facade.js';
-import { LitElement, css, html, type TemplateResult } from 'lit';
+import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
@@ -52,6 +53,11 @@ export class WuiAlarms extends LitElement {
   /** Application-Security grant for the 'acknowledge' role (open until assigned). */
   @state() private roleAck = true;
 
+  /** Application-Security grant for the 'configure' role (open until assigned). */
+  @state() private roleConfigure = true;
+
+  @state() private rangesOpen = false;
+
   private roleSub = new Subscription();
 
   override connectedCallback(): void {
@@ -60,6 +66,13 @@ export class WuiAlarms extends LitElement {
     registerModuleRoles(appSecurityRoles as AppModuleRoles);
     this.roleSub = hasRole$(MODULE_ID, 'view').subscribe((granted) => (this.roleView = granted));
     this.roleSub.add(hasRole$(MODULE_ID, 'acknowledge').subscribe((granted) => (this.roleAck = granted)));
+    this.roleSub.add(
+      hasRole$(MODULE_ID, 'configure').subscribe((granted) => {
+        this.roleConfigure = granted;
+        // Close an editor opened before the grant was revoked.
+        if (!granted) this.rangesOpen = false;
+      })
+    );
   }
 
   override disconnectedCallback(): void {
@@ -79,8 +92,31 @@ export class WuiAlarms extends LitElement {
       </wui-context-generator>
       <div class="body">
         ${this.roleView
-          ? html`<wui-alarm-view .scope=${this.scope()} .noAck=${!this.roleAck}></wui-alarm-view>`
+          ? html`${this.renderConfigBar()}
+              <wui-alarm-view .scope=${this.scope()} .noAck=${!this.roleAck}></wui-alarm-view>`
           : html`<div class="center">${localizeDir(MSG.view.forbidden)}</div>`}
+      </div>
+      ${this.rangesOpen
+        ? html`<wui-alarm-ranges
+            ?can-edit=${this.roleConfigure}
+            @wui:close=${() => (this.rangesOpen = false)}
+          ></wui-alarm-ranges>`
+        : nothing}
+    `;
+  }
+
+  /**
+   * The page-level action bar. The range editor lives HERE and not in the view:
+   * the view is embedded in other pages (a machine dashboard tile), and a project
+   * setting must not be editable from every tile that happens to show alarms.
+   */
+  private renderConfigBar(): TemplateResult | typeof nothing {
+    if (!this.roleConfigure) return nothing;
+    return html`
+      <div class="actions">
+        <ix-button variant="secondary" @click=${() => (this.rangesOpen = true)}>
+          <ix-icon name="cogwheel" slot="icon"></ix-icon>${localizeDir(MSG.ranges.open)}
+        </ix-button>
       </div>
     `;
   }
@@ -124,6 +160,11 @@ function pageStyles(): ReturnType<typeof css> {
       min-height: 0;
       padding: 1rem;
       box-sizing: border-box;
+    }
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 0.5rem;
     }
     .center {
       display: flex;

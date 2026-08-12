@@ -3,8 +3,17 @@
   "type": "module",
   "version": "0.1.0",
   "description": "Alarms — standalone WinCC OA WebUI page (/alarms): the plant's alarm list, live (standing alarms) or over an archived period, with the unacknowledged counter, the P1–P4 severity bands as a filter, the EEMUA-191 flood histogram, the recurring bad actors, free-text search, server-side-style sort/paging and acknowledge. The whole view is the shared <wui-alarm-view> component from @visuelconcept/wui-alarms-core, so the same view embeds in other pages (Machine Fleet machine dashboard).",
-  "author": { "name": "Visuel Concept" },
-  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page", "alarms"],
+  "author": {
+    "name": "Visuel Concept"
+  },
+  "keywords": [
+    "OpenArchitecture",
+    "WinCCOA",
+    "dashboard",
+    "webcomponents",
+    "standalone-page",
+    "alarms"
+  ],
   "license": "MIT",
   "dependencies": {
     "@visuelconcept/wui-kit": "*",
@@ -22,15 +31,28 @@
     "@wincc-oa/wui-oarxjs-context": "*",
     "@wincc-oa/wui-shared": "*"
   },
-  "exports": { "./*": { "types": "./types/*", "import": "./*" } },
+  "exports": {
+    "./*": {
+      "types": "./types/*",
+      "import": "./*"
+    }
+  },
   "wuiPage": {
     "route": "/alarms",
-    "routes": ["/alarms"],
+    "routes": [
+      "/alarms"
+    ],
     "routeId": "alarms",
     "component": "wui-alarms",
     "module": "/data/dashboard-wc/pages/alarms.js",
     "icon": "alarm-bell",
-    "tier": 1,
-    "backend": {}
+    "tier": 3,
+    "backend": {
+      "mount": "/api/alarms",
+      "routes": [
+        "POST /api/alarms/ack (acknowledge as the session user)",
+        "GET /api/alarms/health"
+      ]
+    }
   }
 }

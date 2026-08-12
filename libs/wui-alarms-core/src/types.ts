@@ -10,21 +10,22 @@
  * `raised` + `cleared`. That pairing is what lets the same component render the
  * live list and an archived period with one table.
  *
- * Severity vs. priority — read this before tuning anything: WinCC OA carries an
- * alert-class priority (`Alert.prior`, project-configurable) and the class'
- * own colour + abbreviation. The colour and the abbreviation are AUTHORITATIVE
- * and rendered as-is; `severity` (P1…P4) is a derived GROUPING used by the
- * counters, the priority filter and the ordering, computed from `prior` through
- * {@link DEFAULT_PRIORITY_BANDS}. The default bands assume "higher `prior` =
- * more urgent"; a project whose alert classes number priorities differently
- * passes its own bands (`bands` property of the view) — a wrong band table
- * therefore mis-groups alarms, it never mis-colours them.
+ * Ranges vs. priority — read this before tuning anything. WinCC OA carries an
+ * alert-class priority (`Alert.prior`) plus the class' own colour and
+ * abbreviation. Those two stay AUTHORITATIVE and are rendered as the project
+ * configured them, in the "class" column.
+ *
+ * On top of that the module groups priorities into {@link AlarmRange}s — the
+ * P1…P4 of the alarm list — and THOSE are the project's own: their threshold,
+ * their abbreviation and their colour are edited in the page and stored in the
+ * module's configuration datapoint. A range is what the counters count, what the
+ * chips filter on and what the ordering ranks; `Alarm.rank` is only the position
+ * of the matching range (1 = most urgent).
+ *
+ * {@link DEFAULT_RANGES} is the seed, not a rule: it assumes "higher `prior` =
+ * more urgent" over the 0…80 spread of the standard classes, and a project whose
+ * classes are numbered otherwise edits it instead of living with it.
  */
-
-/** Derived urgency band, 1 = most urgent (P1) … 4 = least (P4). */
-export type Severity = 1 | 2 | 3 | 4;
-
-export const SEVERITIES: readonly Severity[] = [1, 2, 3, 4];
 
 /**
  * Alarm lifecycle. `ACTIVE_ACK` is two facts (still standing, taken over), so it
@@ -47,8 +48,8 @@ export interface Alarm {
   /** Epoch ms it WENT, when it did; `null` = still standing. */
   cleared: number | null;
   status: AlarmStatus;
-  /** Derived band — see the file header. */
-  severity: Severity;
+  /** Position of the matching {@link AlarmRange}, 1 = most urgent. */
+  rank: number;
   /** Raw WinCC OA alert-class priority. */
   prior: number;
   /** Alert-class abbreviation, e.g. `A` (alert) / `I` (info). */
@@ -67,43 +68,103 @@ export interface Alarm {
   ackAt: number | null;
 }
 
-/** `prior >= minPrior` → this severity. Evaluated from the highest band down. */
-export interface PriorityBand {
-  severity: Severity;
+/**
+ * True when acknowledging this alarm is both allowed and useful.
+ *
+ * Two facts, deliberately kept apart: `ackable` says the alert class ACCEPTS an
+ * acknowledgement, `acked` says one already happened. The selection, the button
+ * and the write all go through this one predicate, so they can never disagree
+ * about what a click would do.
+ */
+export function canAcknowledge(alarm: Pick<Alarm, 'ackable' | 'acked'>): boolean {
+  return alarm.ackable && !alarm.acked;
+}
+
+/**
+ * One configured priority range — the project's own P1 / P2 / … .
+ *
+ * `minPrior` is the INCLUSIVE lower bound on the WinCC OA alert-class priority;
+ * ranges are read from the highest bound down. There is deliberately no
+ * "infinity" bound: the value is stored as JSON in a datapoint, and
+ * `JSON.stringify(-Infinity)` is `null`. The LOWEST range simply catches
+ * everything below it (see {@link rangeFor}).
+ */
+export interface AlarmRange {
+  /** Stable id — survives a renamed abbreviation. */
+  id: string;
+  /** Short label on the pill: `P1`, `CRIT`, … */
+  abbr: string;
+  /** Pill and row colour, a CSS hex (`#E5484D`). */
+  color: string;
+  /** Inclusive lower bound of `Alert.prior`. */
   minPrior: number;
 }
 
 /**
- * Default band table for WinCC OA alert-class priorities (0…255).
- *
- * ASSUMPTION, not a WinCC OA guarantee: a higher `_prior` is more urgent, and
- * the standard classes spread over the 0…80 range. Override per project when
- * the alert classes are numbered otherwise.
+ * The seed ranges: the four levels of the reference product, over the priority
+ * spread of the standard WinCC OA alert classes. A project edits them in the
+ * page — see {@link ./data/alarm-config-store.ts}.
  */
-export const DEFAULT_PRIORITY_BANDS: readonly PriorityBand[] = [
-  { severity: 1, minPrior: 60 },
-  { severity: 2, minPrior: 40 },
-  { severity: 3, minPrior: 20 },
-  { severity: 4, minPrior: Number.NEGATIVE_INFINITY }
+export const DEFAULT_RANGES: readonly AlarmRange[] = [
+  { id: 'p1', abbr: 'P1', color: '#E5484D', minPrior: 60 },
+  { id: 'p2', abbr: 'P2', color: '#F5A524', minPrior: 40 },
+  { id: 'p3', abbr: 'P3', color: '#00A0D2', minPrior: 20 },
+  { id: 'p4', abbr: 'P4', color: '#8B939C', minPrior: 0 }
 ];
 
-/** Band a raw priority into a {@link Severity}. */
-export function severityOf(prior: number, bands: readonly PriorityBand[] = DEFAULT_PRIORITY_BANDS): Severity {
-  const ordered = [...bands].sort((a, b) => b.minPrior - a.minPrior);
-  for (const band of ordered) {
-    if (prior >= band.minPrior) return band.severity;
-  }
-  return 4;
+/** Ranges in reading order (most urgent first), invalid entries dropped. */
+export function normaliseRanges(ranges: readonly AlarmRange[] | undefined): AlarmRange[] {
+  const kept = (ranges ?? [])
+    .filter((range) => typeof range?.id === 'string' && range.id !== '')
+    .map((range) => ({
+      id: range.id,
+      abbr: range.abbr === '' ? range.id.toUpperCase() : range.abbr,
+      color: range.color,
+      minPrior: Number.isFinite(range.minPrior) ? range.minPrior : 0
+    }));
+  if (kept.length === 0) return structuredClone(DEFAULT_RANGES) as AlarmRange[];
+  return kept.sort((first, second) => second.minPrior - first.minPrior);
+}
+
+/**
+ * The range a priority falls in.
+ *
+ * Anything below the lowest bound lands in the LOWEST range rather than nowhere:
+ * an alarm the configuration did not foresee must still be shown, at the least
+ * urgent level, instead of disappearing from every counter.
+ */
+export function rangeFor(prior: number, ranges: readonly AlarmRange[] = DEFAULT_RANGES): AlarmRange {
+  const ordered = ranges.length > 0 ? ranges : DEFAULT_RANGES;
+  const match = ordered.find((range) => prior >= range.minPrior);
+  return match ?? (ordered.at(-1) as AlarmRange);
+}
+
+/** Position of a priority's range, 1 = most urgent. */
+export function rankFor(prior: number, ranges: readonly AlarmRange[] = DEFAULT_RANGES): number {
+  const ordered = ranges.length > 0 ? ranges : DEFAULT_RANGES;
+  const index = ordered.indexOf(rangeFor(prior, ordered));
+  return index === -1 ? ordered.length : index + 1;
+}
+
+/** The range at a rank, clamped — the pill of a row keeps a colour whatever happens. */
+export function rangeAt(rank: number, ranges: readonly AlarmRange[] = DEFAULT_RANGES): AlarmRange {
+  const ordered = ranges.length > 0 ? ranges : DEFAULT_RANGES;
+  return ordered[Math.min(Math.max(1, rank), ordered.length) - 1] as AlarmRange;
 }
 
 /** Live counters of the view header. */
 export interface AlarmCounters {
   /** Standing alarms (not cleared). */
   active: number;
-  /** Standing and not taken over — the number a shift must bring to zero. */
+  /**
+   * Not taken over — the number a shift must bring to zero.
+   *
+   * Includes the alarms that already WENT without an acknowledgement: they left
+   * the field but not the operator's responsibility.
+   */
   unacknowledged: number;
-  /** Standing alarms per severity band. */
-  bySeverity: Record<Severity, number>;
+  /** Rows of the snapshot per range rank (what the tab shows). */
+  byRank: Record<number, number>;
   /**
    * Of those, how many are already acknowledged, per band.
    *
@@ -112,8 +173,8 @@ export interface AlarmCounters {
    * none are — and a single global `unacknowledged` cannot say at which band the
    * backlog sits.
    */
-  ackedBySeverity: Record<Severity, number>;
-  /** Rows that already went (only ever non-zero on an archived period). */
+  ackedByRank: Record<number, number>;
+  /** Rows that already went — on the active tab, the gone-but-unacknowledged ones. */
   cleared: number;
   /** Most recent alarm, shown in clear at the top of the view. */
   last: Alarm | null;
@@ -142,7 +203,7 @@ export interface BadActor {
   label: string;
   sublabel: string;
   count: number;
-  severity: Severity;
+  rank: number;
   color: string;
 }
 

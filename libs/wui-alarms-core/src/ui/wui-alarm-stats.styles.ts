@@ -14,8 +14,23 @@ export function alarmStatsStyles(): ReturnType<typeof css> {
     }
     .banner {
       display: grid;
-      grid-template-columns: minmax(9rem, 12rem) 1fr minmax(16rem, 26rem);
+      /* Four readings on ONE line: the backlog, the ranges, the flood, the repeat
+         offenders. They are compared against each other, so they must be seen
+         together; below 90rem the grid folds to two columns rather than shrinking
+         the histogram into illegibility. */
+      grid-template-columns: minmax(8rem, 11rem) minmax(13rem, 1fr) minmax(15rem, 1.3fr) minmax(15rem, 1.3fr);
       gap: 0.625rem;
+      align-items: stretch;
+    }
+    @media (max-width: 90rem) {
+      .banner {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    @media (max-width: 48rem) {
+      .banner {
+        grid-template-columns: minmax(0, 1fr);
+      }
     }
     .card {
       border: 1px solid var(--theme-color-soft-bdr);
@@ -93,12 +108,40 @@ export function alarmStatsStyles(): ReturnType<typeof css> {
       height: 4.625rem;
       display: block;
     }
+    .actors-card {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
     .actors {
       display: flex;
       flex-direction: column;
       gap: 0.125rem;
-      max-height: 11rem;
+      flex: 1;
+      max-height: 8.5rem;
       overflow: auto;
+    }
+    .chart {
+      position: relative;
+    }
+    .tip {
+      position: absolute;
+      transform: translate(-50%, -120%);
+      pointer-events: none;
+      white-space: nowrap;
+      background: var(--theme-color-1);
+      border: 1px solid var(--theme-color-soft-bdr);
+      border-radius: var(--theme-default-border-radius);
+      box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.35);
+      padding: 0.25rem 0.5rem;
+      font-size: 0.6875rem;
+      z-index: 2;
+    }
+    .tip-when {
+      color: var(--theme-color-soft-text);
+    }
+    .tip-over {
+      color: var(--theme-color-warning);
     }
     .actor {
       display: grid;

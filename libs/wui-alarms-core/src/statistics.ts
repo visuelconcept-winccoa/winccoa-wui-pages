@@ -6,7 +6,7 @@
  * tops. Pure functions over a snapshot, so they read the same whether the snapshot
  * is the live subscription or an archived period.
  */
-import type { ActorGrouping, Alarm, AlarmCounters, AlarmHistogram, BadActor, HistogramBucket, Severity } from './types.js';
+import type { ActorGrouping, Alarm, AlarmCounters, AlarmHistogram, BadActor, HistogramBucket } from './types.js';
 
 const MINUTE_MS = 60_000;
 export const BUCKET_MS = 10 * MINUTE_MS;
@@ -33,14 +33,26 @@ export function thresholdFor(bucketMs: number): number {
   return Math.max(1, Math.round(EEMUA_THRESHOLD * (bucketMs / BUCKET_MS)));
 }
 
-function emptyBands(): Record<Severity, number> {
-  return { 1: 0, 2: 0, 3: 0, 4: 0 };
+/** A per-rank tally that answers 0 for a rank nobody raised. */
+function emptyRanks(): Record<number, number> {
+  return {};
 }
 
-/** Counters over a snapshot. */
+function bump(tally: Record<number, number>, rank: number): void {
+  tally[rank] = (tally[rank] ?? 0) + 1;
+}
+
+/**
+ * Counters over the rows it is given — exactly the rows the tab shows.
+ *
+ * `unacknowledged` counts EVERY row nobody took over, standing or already gone.
+ * The "target 0" card is the shift's backlog, and an alarm that came and went
+ * unacknowledged is still on that backlog: excluding it would report zero while
+ * something is waiting for an answer.
+ */
 export function countAlarms(all: readonly Alarm[], now: number): AlarmCounters {
-  const bySeverity = emptyBands();
-  const ackedBySeverity = emptyBands();
+  const byRank = emptyRanks();
+  const ackedByRank = emptyRanks();
   let active = 0;
   let unacknowledged = 0;
   let cleared = 0;
@@ -48,17 +60,14 @@ export function countAlarms(all: readonly Alarm[], now: number): AlarmCounters {
 
   for (const alarm of all) {
     if (last === null || alarm.raised > last.raised) last = alarm;
-    if (alarm.cleared !== null) {
-      cleared++;
-      continue;
-    }
-    active++;
-    bySeverity[alarm.severity]++;
-    if (alarm.acked) ackedBySeverity[alarm.severity]++;
+    if (alarm.cleared === null) active++;
+    else cleared++;
+    if (alarm.acked) bump(ackedByRank, alarm.rank);
     else unacknowledged++;
+    bump(byRank, alarm.rank);
   }
 
-  return { active, unacknowledged, bySeverity, ackedBySeverity, cleared, last, updatedAt: now };
+  return { active, unacknowledged, byRank, ackedByRank, cleared, last, updatedAt: now };
 }
 
 /**
@@ -108,7 +117,7 @@ function actorOf(alarm: Alarm, grouping: ActorGrouping): { key: string; label: s
  * The recurring alarms of the snapshot — the EEMUA-191 reading of operator load.
  *
  * Grouped by alarm TEXT (the same message coming back) or by DATAPOINT (the one
- * device that floods), keeping the worst severity seen in the group.
+ * device that floods), keeping the worst range seen in the group.
  */
 export function topActors(
   all: readonly Alarm[],
@@ -120,12 +129,12 @@ export function topActors(
     const { key, label, sublabel } = actorOf(alarm, grouping);
     const current = accumulator.get(key);
     if (current === undefined) {
-      accumulator.set(key, { key, label, sublabel, count: 1, severity: alarm.severity, color: alarm.color });
+      accumulator.set(key, { key, label, sublabel, count: 1, rank: alarm.rank, color: alarm.color });
       continue;
     }
     current.count++;
-    if (alarm.severity < current.severity) {
-      current.severity = alarm.severity;
+    if (alarm.rank < current.rank) {
+      current.rank = alarm.rank;
       current.color = alarm.color;
     }
   }

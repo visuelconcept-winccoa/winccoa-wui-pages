@@ -21,7 +21,7 @@
 import { AckState } from '@wincc-oa/wui-models/enums/wui-alert/ack-state.js';
 import type { Alert } from '@wincc-oa/wui-models/interfaces/wui-alert/alert.js';
 import { splitDpe } from './scope.js';
-import { DEFAULT_PRIORITY_BANDS, severityOf, type Alarm, type AlarmStatus, type PriorityBand } from './types.js';
+import { DEFAULT_RANGES, rankFor, type Alarm, type AlarmRange, type AlarmStatus } from './types.js';
 
 /** Below this, a timestamp is seconds rather than milliseconds. */
 const SECONDS_THRESHOLD = 1e12;
@@ -42,6 +42,27 @@ export function toEpochMs(value: unknown): number {
 /** True when the alert carries an acknowledgement. */
 export function isAcked(alert: Pick<Alert, 'ackState'>): boolean {
   return alert.ackState !== AckState.DpAttrActTypeNot;
+}
+
+/**
+ * Whether the operator is allowed to take this alert over.
+ *
+ * `Alert.ackable` is the BACKEND's verdict and already folds in the alert class'
+ * acknowledgement type — a class configured as "no acknowledgement" reports false,
+ * and writing `_alert_hdl.._ack` for it would be refused. So it is the right
+ * signal, but it is read defensively:
+ *
+ *  - the flag travels in an alert tuple, so a backend that sends `1` / `"true"`
+ *    instead of `true` must not silently disable acknowledging for the whole
+ *    plant (`=== true` did exactly that);
+ *  - when the field is ABSENT, fall back to "an unacknowledged alert is
+ *    acknowledgeable" rather than locking the action — a refused write reports
+ *    itself, an action the operator cannot even attempt does not.
+ */
+export function isAckable(alert: Pick<Alert, 'ackable' | 'ackState'>): boolean {
+  const raw: unknown = alert.ackable;
+  if (raw === undefined || raw === null || raw === '') return !isAcked(alert);
+  return raw === true || raw === 1 || raw === '1' || raw === 'true';
 }
 
 /** True when the alert is a CAME event (the alarm is standing). */
@@ -97,7 +118,7 @@ function wordingOf(alert: Alert): Pick<Alarm, 'text' | 'description' | 'value'> 
 }
 
 /** One alert event as a standalone {@link Alarm} (no pairing). */
-export function toAlarm(alert: Alert, bands: readonly PriorityBand[] = DEFAULT_PRIORITY_BANDS): Alarm {
+export function toAlarm(alert: Alert, ranges: readonly AlarmRange[] = DEFAULT_RANGES): Alarm {
   const came = isCame(alert);
   const acked = isAcked(alert);
   const time = toEpochMs(alert.time);
@@ -113,11 +134,11 @@ export function toAlarm(alert: Alert, bands: readonly PriorityBand[] = DEFAULT_P
     raised,
     cleared: came ? null : time,
     status: statusOf(came, acked),
-    severity: severityOf(alertClass.prior, bands),
+    rank: rankFor(alertClass.prior, ranges),
     ...alertClass,
     ...wordingOf(alert),
     acked,
-    ackable: alert.ackable === true,
+    ackable: isAckable(alert),
     ...ackOf(alert, acked)
   };
 }
@@ -160,11 +181,11 @@ function fold(previous: Alarm, incoming: Alarm): Alarm {
  * deliver the two halves of one occurrence; a row is therefore never duplicated
  * between "it came" and "it went". Newest first.
  */
-export function mergeAlerts(alerts: readonly Alert[], bands: readonly PriorityBand[] = DEFAULT_PRIORITY_BANDS): Alarm[] {
+export function mergeAlerts(alerts: readonly Alert[], ranges: readonly AlarmRange[] = DEFAULT_RANGES): Alarm[] {
   const byOccurrence = new Map<string, Alarm>();
   for (const alert of alerts) {
     if (!alert || typeof alert.dpeName !== 'string' || alert.dpeName === '') continue;
-    const alarm = toAlarm(alert, bands);
+    const alarm = toAlarm(alert, ranges);
     const previous = byOccurrence.get(alarm.id);
     byOccurrence.set(alarm.id, previous === undefined ? alarm : fold(previous, alarm));
   }

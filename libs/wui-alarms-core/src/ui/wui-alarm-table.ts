@@ -17,17 +17,24 @@ import { property } from 'lit/decorators.js';
 import { MSG, localize, localizeDir, pagerRangeMsg } from '../i18n.js';
 import type { AlarmPage } from '../query.js';
 import type { SortDir, SortField } from '../severity.js';
-import type { Alarm } from '../types.js';
-import { alarmColor, severityTokens } from './alarm-tokens.js';
+import { canAcknowledge, DEFAULT_RANGES, type Alarm, type AlarmRange } from '../types.js';
+import { alarmColor, rangeAbbr, rangeColor, severityTokens } from './alarm-tokens.js';
 import { alarmTableStyles } from './wui-alarm-table.styles.js';
 
 /** Page buttons kept around the current one. */
 const PAGER_NEIGHBOURS = 1;
 
-/** Colour tone of the state chip: cleared, taken over, or still shouting. */
+/**
+ * Colour tone of the state chip.
+ *
+ * Acknowledgement comes FIRST: an alarm that went while nobody took it over is
+ * still an open item, so it keeps the alert class' colour instead of the grey of
+ * a closed row — greying it out is exactly how a pending acknowledgement gets
+ * overlooked.
+ */
 function stateTone(alarm: Alarm): string {
-  if (alarm.cleared !== null) return 'gone';
-  return alarm.acked ? 'ok' : '';
+  if (!alarm.acked) return '';
+  return alarm.cleared === null ? 'ok' : 'gone';
 }
 
 function ariaSort(active: boolean, dir: SortDir): 'ascending' | 'descending' | 'none' {
@@ -58,6 +65,8 @@ export class WuiAlarmTable extends LitElement {
   @property({ type: Boolean }) selectable = true;
   /** Show the "cleared" column — only meaningful on an archived period. */
   @property({ type: Boolean, attribute: 'show-cleared' }) showCleared = false;
+  /** The project's priority ranges — the pill's label and colour come from them. */
+  @property({ attribute: false }) ranges: readonly AlarmRange[] = DEFAULT_RANGES;
 
   override render(): TemplateResult {
     const rows = this.page?.rows ?? [];
@@ -83,13 +92,14 @@ export class WuiAlarmTable extends LitElement {
   private renderHead(): TemplateResult {
     if (this.compact) {
       return html`
-        ${this.th('raised', MSG.table.raised)} ${this.th('severity', MSG.table.severity)}
+        ${this.th('raised', MSG.table.raised)} ${this.th('rank', MSG.table.severity)}
         ${this.th('text', MSG.table.text)} ${this.th('status', MSG.table.status)}
       `;
     }
     return html`
       ${this.th('raised', MSG.table.raised)}
-      ${this.showCleared ? this.th('cleared', MSG.table.cleared) : nothing} ${this.th('severity', MSG.table.severity)}
+      ${this.showCleared ? this.th('cleared', MSG.table.cleared) : nothing} ${this.th('rank', MSG.table.severity)}
+      ${this.th('prior', MSG.table.prior)}
       <th>${localizeDir(MSG.table.class)}</th>
       ${this.th('dp', MSG.table.dpe)} ${this.th('text', MSG.table.text)} ${this.th('value', MSG.table.value)}
       ${this.th('status', MSG.table.status)}
@@ -102,7 +112,7 @@ export class WuiAlarmTable extends LitElement {
     return html`
       <tr
         class=${classes}
-        style=${`border-left-color:${alarmColor(alarm)}`}
+        style=${`border-left-color:${rangeColor(alarm.rank, this.ranges)}`}
         @click=${() => this.emitSelect(alarm)}
       >
         ${this.selectable ? html`<td>${this.renderCheckbox(alarm)}</td>` : nothing}
@@ -114,7 +124,7 @@ export class WuiAlarmTable extends LitElement {
   private renderCompactCells(alarm: Alarm): TemplateResult {
     return html`
       <td class="mono">${fmtTime(alarm.raised)}</td>
-      <td>${this.renderSeverity(alarm)}</td>
+      <td>${this.renderRange(alarm)}</td>
       <td class="text">
         ${alarm.text || alarm.dpe}
         <div class="muted mono ell">${alarm.dpe}</div>
@@ -127,8 +137,9 @@ export class WuiAlarmTable extends LitElement {
     return html`
       <td class="mono">${fmtDateTime(alarm.raised)}</td>
       ${this.showCleared ? html`<td class="mono">${fmtDateTime(alarm.cleared)}</td>` : nothing}
-      <td>${this.renderSeverity(alarm)}</td>
-      <td><span class="pill" style=${`background:${alarmColor(alarm)}`}>${alarm.abbr || '—'}</span></td>
+      <td>${this.renderRange(alarm)}</td>
+      <td class="num mono muted" title=${localize(MSG.table.priorHint)}>${alarm.prior}</td>
+      <td><span class="pill" style=${`background:${alarmColor(alarm, this.ranges)}`}>${alarm.abbr || '—'}</span></td>
       <td class="mono ell" style="max-width:14rem" title=${alarm.dpe}>${alarm.dpe}</td>
       <td class="text" title=${alarm.description}>${alarm.text || alarm.description || '—'}</td>
       <td class="num mono">${alarm.value || '—'}</td>
@@ -137,13 +148,17 @@ export class WuiAlarmTable extends LitElement {
     `;
   }
 
-  private renderSeverity(alarm: Alarm): TemplateResult {
-    return html`<span class="pill sev-${alarm.severity}">P${alarm.severity}</span>`;
+  /** The range pill: the project's own label and colour for that priority band. */
+  private renderRange(alarm: Alarm): TemplateResult {
+    const style = `background:${rangeColor(alarm.rank, this.ranges)}`;
+    return html`<span class="pill" style=${style} title=${`prior ${alarm.prior}`}
+      >${rangeAbbr(alarm.rank, this.ranges)}</span
+    >`;
   }
 
   private renderState(alarm: Alarm): TemplateResult {
     const tone = stateTone(alarm);
-    const style = tone === '' ? `color:${alarmColor(alarm)}` : '';
+    const style = tone === '' ? `color:${alarmColor(alarm, this.ranges)}` : '';
     const classes = `state ${tone}`;
     return html`<span class=${classes} style=${style}>${localizeDir(MSG.status[alarm.status])}</span>`;
   }
@@ -151,15 +166,16 @@ export class WuiAlarmTable extends LitElement {
   private renderCheckbox(alarm: Alarm): TemplateResult {
     return html`<input
       type="checkbox"
+      title=${alarm.ackable ? '' : localize(MSG.table.notAckable)}
       .checked=${this.selection.has(alarm.id)}
-      ?disabled=${!alarm.ackable}
+      ?disabled=${!canAcknowledge(alarm)}
       @click=${(event: Event) => event.stopPropagation()}
       @change=${() => this.toggle(alarm.id)}
     />`;
   }
 
   private renderSelectAll(rows: readonly Alarm[]): TemplateResult {
-    const ackable = rows.filter((alarm) => alarm.ackable);
+    const ackable = rows.filter((alarm) => canAcknowledge(alarm));
     const all = ackable.length > 0 && ackable.every((alarm) => this.selection.has(alarm.id));
     return html`<input
       type="checkbox"

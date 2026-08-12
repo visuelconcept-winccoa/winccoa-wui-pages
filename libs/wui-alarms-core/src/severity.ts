@@ -11,7 +11,7 @@
  */
 import type { Alarm } from './types.js';
 
-export const SORT_FIELDS = ['raised', 'cleared', 'severity', 'dp', 'text', 'status', 'value', 'criticality'] as const;
+export const SORT_FIELDS = ['raised', 'cleared', 'rank', 'prior', 'dp', 'text', 'status', 'value', 'criticality'] as const;
 export type SortField = (typeof SORT_FIELDS)[number];
 export type SortDir = 'asc' | 'desc';
 
@@ -25,11 +25,11 @@ function cmpStr(a: string, b: string): number {
 }
 
 /**
- * Criticality rank, ascending = worst first: severity band, then unacknowledged
- * before acknowledged, then still-standing before cleared, then most recent.
+ * Criticality, ascending = worst first: range rank, then unacknowledged before
+ * acknowledged, then still-standing before cleared, then most recent.
  */
 export function criticality(alarm: Alarm): readonly number[] {
-  return [alarm.severity, alarm.acked ? 1 : 0, alarm.cleared === null ? 0 : 1, -alarm.raised];
+  return [alarm.rank, alarm.acked ? 1 : 0, alarm.cleared === null ? 0 : 1, -alarm.raised];
 }
 
 function cmpCriticality(first: Alarm, second: Alarm): number {
@@ -51,8 +51,12 @@ function cmpField(first: Alarm, second: Alarm, field: SortField): number {
     case 'cleared': {
       return cmpNum(first.cleared ?? Number.MAX_SAFE_INTEGER, second.cleared ?? Number.MAX_SAFE_INTEGER);
     }
-    case 'severity': {
-      return cmpNum(first.severity, second.severity);
+    case 'rank': {
+      return cmpNum(first.rank, second.rank);
+    }
+    // The raw alert-class priority — how the project itself numbers urgency.
+    case 'prior': {
+      return cmpNum(second.prior, first.prior);
     }
     case 'dp': {
       return cmpStr(first.dpe, second.dpe);

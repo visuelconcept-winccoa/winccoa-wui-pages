@@ -1,6 +1,6 @@
 # wui-alarms — business & architecture notes
 
-WinCC OA WebUI page module, **Tier 1** (pure frontend, no backend module, no manager).
+WinCC OA WebUI page module, **Tier 3** (one small backend route, no manager).
 Route `/alarms`, component `wui-alarms`. The whole view lives in the shared kit
 **`@visuelconcept/wui-alarms-core`**, which other pages embed.
 
@@ -38,26 +38,105 @@ the wrong way round (all three are unit-tested in `alarms.spec.ts`):
 | `Alert.ackState` | `AckState.DpAttrActTypeNot` (`0`) = **NOT** acknowledged; any other value = acknowledged. Same reading as the runtime's own alert table. |
 | `Alert.atime` | Identifies the OCCURRENCE (came-time + count), so CAME and WENT share it. |
 
-### Severity vs. priority
+### Priority ranges (configurable)
 
-WinCC OA carries an alert-class priority (`Alert.prior`, project-configurable) plus
-the class' colour and abbreviation. **Colour and abbreviation are authoritative**
-and displayed as the project configured them. `severity` (P1…P4) is a *derived
-grouping* used by the counters, the band filter and the ordering, computed from
-`prior` through `DEFAULT_PRIORITY_BANDS`:
+WinCC OA carries an alert-class priority (`Alert.prior`) plus the class' colour and
+abbreviation. Those stay AUTHORITATIVE and are shown as the engineering configured
+them, in the **Class** column, next to the raw **Prior.** number.
+
+On top of that the module groups priorities into **ranges** — the P1…P4 of the
+list — and those belong to the PROJECT: each range carries an id, an
+**abbreviation**, a **colour** and the priority it starts at (`minPrior`,
+inclusive, read from the highest down). They are edited in the page (cogwheel,
+role `configure`) and stored as JSON in the **`Alarms_Config`** datapoint.
 
 ```
-prior >= 60 → P1    prior >= 40 → P2    prior >= 20 → P3    else → P4
+prior >= 60 → P1  #E5484D      seed values only —
+prior >= 40 → P2  #F5A524      the project edits them,
+prior >= 20 → P3  #00A0D2      adds or removes ranges,
+prior >=  0 → P4  #8B939C      and picks its own labels/colours
 ```
 
-> **This band table is an ASSUMPTION**, not a WinCC OA guarantee: it assumes a
-> higher `_prior` is more urgent and that the project's alert classes spread over
-> 0…80. It was NOT verified against the alert-class configuration of a live project
-> (the `_AlertClass` priority attribute is not readable through the tooling used
-> while writing this module). A project whose classes are numbered otherwise passes
-> its own table via the view's `bands` property. A wrong table **mis-groups**
-> alarms; it never mis-colours them — which is why the per-alarm colour is never
-> derived from the band.
+Design rules that matter:
+
+- **No infinite bound.** The configuration is JSON in a datapoint and
+  `JSON.stringify(-Infinity)` is `null`; instead, a priority below every range
+  falls into the LOWEST one (`rangeFor`). An alarm the configuration did not
+  foresee is shown at the least urgent level, never dropped from every counter.
+- **`Alarm.rank`** is the derived position (1 = most urgent), and it is what the
+  counters key on and the ordering compares. Editing the ranges re-maps the
+  snapshot (the view reloads), so a rank is never read against the wrong table.
+- **Where each colour is used**: the RANGE colour carries the row's left border
+  and its range pill (the project's severity scale); the ALERT CLASS colour stays
+  on the class pill and the state chip.
+- **Read once, shared**: `loadAlarmConfig()` caches the datapoint read for the
+  whole session, and a save announces itself on `window` (`wui:alarmconfig`), so
+  a dozen embedded views re-rank immediately without the page wiring anything.
+
+## The state machine
+
+An alarm leaves the **Active** list when it is cleared **AND** acknowledged —
+never on the clearing alone:
+
+| Came | Acknowledged | In "Active" | State chip |
+| --- | --- | --- | --- |
+| yes | no | ✔ | `ACTIVE` |
+| yes | yes | ✔ | `ACTIVE - ACK` |
+| **no (went)** | **no** | **✔** | `CLEARED - UNACK` |
+| no | yes | ✘ (history) | `CLEARED - ACK` |
+
+A condition that came and went while nobody took it over is precisely the one an
+operator must still answer for. It also stays in `unacknowledged` (the "target 0"
+card) and keeps the alert colour in the list instead of the grey of a closed row —
+greying it out is how a pending acknowledgement gets overlooked.
+
+## Acknowledging — under the OPERATOR's name
+
+`<dpe>:_alert_hdl.._ack = 2`, one write for the whole selection. WHO WinCC OA
+records for it is the whole difficulty, because there are only two ways to write
+and each fails at something:
+
+| Write from | Recorded user | Fails when |
+| --- | --- | --- |
+| the **browser** (`dpSet`, the operator's own session) | the operator ✔ | the project does not grant WebUI users write permission → *"User is not permitted to use dpSet"* |
+| the **webserver**, plainly (e.g. `/api/para/dp/set`) | the **webserver** ✘ | never — but the alarm list then shows a name that did not take the alarm over |
+
+So the module has its own route, **`POST /api/alarms/ack`**, which does the
+server-side write while IMPERSONATING the session user:
+`winccoa.setUserId(<operator's OA user id>)` (the JS-manager counterpart of the
+CTRL function), then `dpSetWait`, then the previous context is restored. The user
+id is resolved server-side from the `_Users` directory through `identityOf(req)` —
+**never** taken from the request body.
+
+Three consequences worth knowing:
+
+- **`setUserId` mutates the SHARED manager**, so the writes are serialised through
+  a one-at-a-time queue: user A's acknowledgement must not land while the context
+  is set to user B. The critical section is a single `dpSetWait`.
+- **Only the datapoint elements travel.** The `:_alert_hdl.._ack` suffix is
+  composed server-side and any name already carrying a config path (`:_`) is
+  rejected — the endpoint writes with the webserver's rights, so it must be able
+  to write one thing and nothing else. It is also role-gated there
+  (`requireRole('alarms', 'acknowledge')`), unlike the shared PARA endpoint which
+  is ungated by design.
+- **A failed impersonation does not cancel the acknowledgement.** If the operator
+  is unknown to `_Users`, or the webserver does not run as `root`, the write still
+  happens (an alarm left standing over a directory mismatch is the worse risk) but
+  the answer carries `attributed: false` and the page says so in clear rather than
+  implying the operator's name is on it.
+
+The fallback, when the module's backend is not deployed, is the BROWSER's write —
+it also records the operator, it simply needs the WinCC OA right.
+
+Whether a row can be acknowledged at all is `Alert.ackable`, the backend's own
+verdict — it already folds in the alert class' acknowledgement type, so a class
+configured without acknowledgement reports false and the checkbox is disabled with
+a tooltip saying why. It is read defensively (`isAckable`): the flag travels in an
+alert tuple, and a backend sending `1` instead of `true` used to disable the action
+for the whole plant; an ABSENT flag falls back to "an unacknowledged alert is
+acknowledgeable", because a refused write reports itself while an action the
+operator cannot even attempt does not. A selection with nothing acknowledgeable in
+it returns `ok: false`, never a silent success.
 
 ## Scoping
 
@@ -78,18 +157,30 @@ A scope entry is a plain name (matches the element **and its subtree**, so
 must set it, otherwise a machine with no bound datapoint would present every alarm
 of the project as its own.
 
-## Statistics
+## Statistics: state vs. occurrences
 
-- **Counters** — standing / unacknowledged, per band, and how many of each band are
-  already taken over (`P1 92 (12 ack)`: the parenthesis is the point — a global
-  unacknowledged count cannot say at which band the backlog sits).
-- **Flood histogram** — EEMUA 191: beyond ten alarms in ten minutes no operator
-  keeps up. Buckets are aligned on the bucket size so the chart does not shift
-  between refreshes, and the current bucket always extends past `now` (otherwise
-  the alarm that just came is dropped when the clock sits on a boundary). Over a
-  wide archived period the bucket is scaled up in whole ten-minute steps **and the
-  threshold is scaled with it** (`thresholdFor`), so the line keeps its meaning.
-- **Bad actors** — the recurring alarm texts, or the flooding datapoints.
+Two different questions, two different sets — the banner shows both side by side:
+
+- **The counters** (unacknowledged, per range, cleared) describe the rows of the
+  TAB: the state right now. The range chips double as the range filter, so they
+  count exactly what clicking them would reveal.
+- **The histogram and the bad actors** describe the OCCURRENCES of a window: what
+  happened over it. Counting those in the live set is wrong by construction — the
+  live subscription is a snapshot of what is active NOW, so an alarm that clears
+  leaves the set and its occurrence disappears from the tally, then reappears when
+  the condition comes back. The window is therefore seeded from the **archive**
+  (the past exists nowhere else) and kept up to date by the live stream;
+  `mergeOccurrences` is that rule — same occurrence, keep the fresher row, drop
+  whatever aged out.
+
+The histogram's title and caption are derived from the histogram itself, never
+hard-coded: over the **archived tab it spans the SELECTED PERIOD**, with buckets
+scaled up in whole ten-minute steps (`bucketFor`) and the EEMUA threshold scaled
+with them (`thresholdFor`), so the ceiling keeps its meaning at any width. Buckets
+are aligned on the bucket size so the chart does not shift between refreshes, and
+the current bucket always extends past `now` — otherwise the alarm that just came
+is dropped when the clock sits on a boundary. Hovering a bar shows its count and
+its interval.
 
 ## Live list under an operator's cursor
 
@@ -117,10 +208,15 @@ libs/wui-alarms-core/src/          the KIT (shared, vendored into each host bund
   severity.ts     criticality ordering, stable tie-break on the id
   statistics.ts   counters, EEMUA histogram, bad actors
   period.ts       period vocabulary shared with the fleet dashboards
-  data/alarm-store.ts   live subscription / archive query / acknowledge
+  occurrences.ts  the occurrence-window merge (archive + live)
+  data/alarm-store.ts        live subscription / archive query / acknowledge
+  data/alarm-config-store.ts the Alarms_Config datapoint (ranges), shared read
   ui/wui-alarm-view.ts  THE embeddable component (page | panel)
   ui/wui-alarm-table.ts dumb table (one page of a query)
   ui/wui-alarm-stats.ts counters + histogram + bad actors
+  ui/wui-alarm-ranges.ts the range editor (role `configure`)
+  ui/period-bar.ts       the archived tab's period controls
+backend/routes/alarms*.ts    POST /api/alarms/ack — the impersonated acknowledgement
 libs/wui-alarms/src/alarms.ts      the page: header, role gate, `?dp=` scope
 ```
 

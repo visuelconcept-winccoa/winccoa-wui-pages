@@ -1,15 +1,43 @@
 {
   "module": "alarms",
-  "title": { "en_US.utf8": "Alarms", "fr.utf8": "Alarmes", "de.utf8": "Alarme" },
+  "title": {
+    "en_US.utf8": "Alarms",
+    "fr.utf8": "Alarmes",
+    "de.utf8": "Alarme"
+  },
   "roles": [
-    { "id": "view", "label": { "en_US.utf8": "View", "fr.utf8": "Consulter", "de.utf8": "Ansehen" } },
+    {
+      "id": "view",
+      "label": {
+        "en_US.utf8": "View",
+        "fr.utf8": "Consulter",
+        "de.utf8": "Ansehen"
+      }
+    },
     {
       "id": "acknowledge",
-      "label": { "en_US.utf8": "Acknowledge", "fr.utf8": "Acquitter", "de.utf8": "Quittieren" },
+      "label": {
+        "en_US.utf8": "Acknowledge",
+        "fr.utf8": "Acquitter",
+        "de.utf8": "Quittieren"
+      },
       "description": {
         "en_US.utf8": "Acknowledge alarms from the list. WinCC OA write permission is still required.",
         "fr.utf8": "Acquitter les alarmes depuis la liste. Le droit d’écriture WinCC OA reste requis.",
         "de.utf8": "Alarme aus der Liste quittieren. Die WinCC-OA-Schreibberechtigung bleibt erforderlich."
+      }
+    },
+    {
+      "id": "configure",
+      "label": {
+        "en_US.utf8": "Configure the ranges",
+        "fr.utf8": "Configurer les plages",
+        "de.utf8": "Bereiche konfigurieren"
+      },
+      "description": {
+        "en_US.utf8": "Create and edit the priority ranges (abbreviation, colour, threshold) stored in the Alarms_Config datapoint.",
+        "fr.utf8": "Créer et modifier les plages de priorité (abréviation, couleur, seuil) stockées dans le datapoint Alarms_Config.",
+        "de.utf8": "Prioritätsbereiche (Kürzel, Farbe, Schwelle) im Datenpunkt Alarms_Config anlegen und bearbeiten."
       }
     }
   ]

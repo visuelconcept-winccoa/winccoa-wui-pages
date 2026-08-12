@@ -73,7 +73,7 @@ export function matchesScopeEntry(dpe: string, entry: string): boolean {
 }
 
 /** True when the alarm is inside the scope. An empty scope means "everything". */
-export function inScope(alarm: Pick<Alarm, 'dpe'>, scope: readonly string[] | undefined): boolean {
+export function inScope(alarm: Pick<Alarm, 'dpe'>, scope?: readonly string[]): boolean {
   if (!scope || scope.length === 0) return true;
   return scope.some((entry) => matchesScopeEntry(alarm.dpe, entry));
 }
