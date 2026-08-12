@@ -71,6 +71,22 @@ The alert config lives on the **datapoint**, so a binding to an element
 — otherwise an alarm raised on `Pump01` would be missed. The same widening scopes the
 Alarms drill-down.
 
+### A quiet datapoint is not an absent one
+
+The snapshot has **three** states per binding, not two: no entry at all (the datapoint could
+not be followed — it does not exist, or there is no alert config), `''` (it resolved and has
+**no active alert**), and a colour (in alarm). Every consumer must treat the first two the
+same, and `??` does not: it only replaces the absent one.
+
+That cost the network its whole rendering once the bindings pointed at datapoints that exist.
+`alarm ?? routeColour` kept the empty string, `line-color: ''` is not a colour, and MapLibre
+drew **no line at all** — while the markers, which test the same value for truthiness, were
+perfectly fine. The mirror image of the same slip made `alarmColors.get(dp) !== undefined`
+report every quiet asset as being in alarm, so each zone badge showed a red count of all its
+members. Both are now one named function each, `inAlarm` and `alarmColorOr` in
+`map/style.ts`, tested in `map/alarm-color.spec.ts` — the trap is invisible until a site is
+bound to real datapoints, which is exactly when a demo becomes a deployment.
+
 Emissions are **coalesced to one notification per animation frame**. A site can bind two
 hundred elements, and a plant that has just been switched on emits an initial value for
 every one of them within milliseconds; notifying per emission would repaint the whole map
@@ -470,7 +486,11 @@ editing can never resurrect a stale version of the site.
 
 64 areas and 10 000 assets per site (`normalize.ts`), 2000 points per `generate` op. The
 output budget is configurable per project (`AI_Assistant_Config.maxTokens`, default 32768)
-and a budget-capped answer is reported as truncated rather than silently offered.
+and a budget-capped answer is reported as truncated rather than silently offered. The
+agentic loop has its own ceiling (`AI_Assistant_Config.maxToolRounds`, default 12 LLM⇄tool
+round-trips): exploring a site through the MCP tools eats rounds quickly, and a prompt that
+exhausts them still answers — the last round runs with the tools disabled, so the assistant
+concludes from what it collected instead of losing the whole prompt.
 
 **That sanitiser ceiling is a guard against a runaway answer, not a capacity claim.** Three
 real limits sit below it, and none of them moved when it was raised from 1000 — in the order

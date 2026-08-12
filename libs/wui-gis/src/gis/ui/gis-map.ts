@@ -61,11 +61,13 @@ import {
   LINK_HIT_LAYER,
   LINK_SOURCE,
   MIN_RING,
+  alarmColorOr,
   areaCollection,
   areaLayers,
   buildStyle,
   draftCollection,
   draftLayers,
+  inAlarm,
   linkCollection,
   linkLayers,
   pathDraftCollection,
@@ -511,10 +513,11 @@ export class GisMap extends LitElement {
         site,
         this.selectedConnection,
         this.hiddenLayers,
-        (connection) => {
-          const alarm = this.live.alarmColors.get(alarmKey(connection.dp));
-          return alarm ?? connectionColor(site, connection);
-        }
+        (connection) =>
+          alarmColorOr(
+            this.live.alarmColors.get(alarmKey(connection.dp)),
+            connectionColor(site, connection)
+          )
       )
     );
   }
@@ -869,7 +872,7 @@ export class GisMap extends LitElement {
 
   /** True when the asset's primary datapoint carries an active alert state. */
   private isInAlarm(asset: Asset): boolean {
-    return this.live.alarmColors.get(alarmKey(asset.dp)) !== undefined;
+    return inAlarm(this.live.alarmColors.get(alarmKey(asset.dp)));
   }
 
   /**
@@ -985,7 +988,10 @@ export class GisMap extends LitElement {
     }
     entry.marker.setLngLat([asset.lon, asset.lat]);
     entry.marker.setDraggable(this.editable);
-    const alarmColor = this.live.alarmColors.get(alarmKey(asset.dp)) ?? '';
+    const alarmColor = alarmColorOr(
+      this.live.alarmColors.get(alarmKey(asset.dp)),
+      ''
+    );
     entry.element.classList.toggle('selected', asset.id === this.selectedAsset);
     entry.element.classList.toggle('in-alarm', alarmColor !== '');
     entry.element.classList.toggle('draggable', this.editable);
