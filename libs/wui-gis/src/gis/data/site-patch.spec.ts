@@ -77,6 +77,9 @@ function patch(over: Partial<SitePatch> = {}): SitePatch {
     site: null,
     areas: { upsert: [], remove: [] },
     assets: { upsert: [], remove: [], generate: [] },
+    layers: { upsert: [], remove: [] },
+    routes: { upsert: [], remove: [] },
+    connections: { upsert: [], remove: [], chain: [] },
     ...over
   };
 }
@@ -250,12 +253,7 @@ describe('applySitePatch — completing, not replacing', () => {
   it('replace mode drops what it does not list', () => {
     const { site: after } = applySitePatch(
       site(),
-      {
-        mode: 'replace',
-        site: { name: 'Remis à zéro' },
-        areas: { upsert: [], remove: [] },
-        assets: { upsert: [], remove: [], generate: [] }
-      },
+      patch({ mode: 'replace', site: { name: 'Remis à zéro' } }),
       PALETTE
     );
     expect(after.assets).toHaveLength(0);
@@ -485,12 +483,7 @@ describe('diffSites — what the user is shown before applying', () => {
     });
     const { site: after } = applySitePatch(
       before,
-      {
-        mode: 'replace',
-        site: null,
-        areas: { upsert: [], remove: [] },
-        assets: { upsert: [], remove: [], generate: [] }
-      },
+      patch({ mode: 'replace' }),
       PALETTE
     );
     const diff = diffSites(before, after);
@@ -510,6 +503,165 @@ describe('diffSites — what the user is shown before applying', () => {
     );
     const diff = diffSites(before, after);
     expect(diff.view).toBe(true);
+    expect(isEmptyDiff(diff)).toBe(false);
+  });
+});
+
+describe('the network in a patch — what the assistant can now propose', () => {
+  /** Two stations to join, so a chain has something to resolve against. */
+  function stations(): Site {
+    return site({
+      assets: [
+        asset({ id: 'gare', name: 'Gare', areaIds: [] }),
+        asset({
+          id: 'centre',
+          name: 'Centre',
+          areaIds: [],
+          lat: 45.92,
+          lon: 6.14
+        }),
+        asset({ id: 'parc', name: 'Parc', areaIds: [], lat: 45.94, lon: 6.16 })
+      ]
+    });
+  }
+
+  it('reads routes, connections, layers and chain out of a patch block', () => {
+    const parsed = parseSitePatch({
+      mode: 'patch',
+      routes: { upsert: [{ id: 'l1', name: 'Ligne 1' }] },
+      connections: {
+        upsert: [{ id: 'c', from: 'a', to: 'b' }],
+        chain: [{ stops: ['a', 'b'] }]
+      },
+      layers: { upsert: [{ id: 'crit', name: 'Critique' }] }
+    });
+    expect(parsed?.routes.upsert).toHaveLength(1);
+    expect(parsed?.connections.upsert).toHaveLength(1);
+    expect(parsed?.connections.chain).toHaveLength(1);
+    expect(parsed?.layers.upsert).toHaveLength(1);
+  });
+
+  it('a chain of N stops becomes the N-1 segments that join them', () => {
+    const { site: after } = applySitePatch(
+      stations(),
+      patch({
+        routes: {
+          upsert: [{ id: 'l1', name: 'Ligne 1', color: '#ff0000' }],
+          remove: []
+        },
+        connections: {
+          upsert: [],
+          remove: [],
+          chain: [
+            { stops: ['gare', 'centre', 'parc'], routeId: 'l1', kind: 'metro' }
+          ]
+        }
+      }),
+      PALETTE
+    );
+    expect(after.connections.map((c) => [c.from, c.to])).toEqual([
+      ['gare', 'centre'],
+      ['centre', 'parc']
+    ]);
+    expect(after.connections.every((c) => c.routeId === 'l1')).toBe(true);
+    expect(after.connections.every((c) => c.kind === 'metro')).toBe(true);
+  });
+
+  it('re-proposing the same chain updates it instead of duplicating it', () => {
+    const once = applySitePatch(
+      stations(),
+      patch({
+        connections: {
+          upsert: [],
+          remove: [],
+          chain: [{ stops: ['gare', 'centre'] }]
+        }
+      }),
+      PALETTE
+    ).site;
+    const twice = applySitePatch(
+      once,
+      patch({
+        connections: {
+          upsert: [],
+          remove: [],
+          chain: [{ stops: ['gare', 'centre'] }]
+        }
+      }),
+      PALETTE
+    ).site;
+    expect(twice.connections).toHaveLength(1);
+  });
+
+  it('a chain to an asset that does not exist yields nothing, not a broken line', () => {
+    const { site: after } = applySitePatch(
+      stations(),
+      patch({
+        connections: {
+          upsert: [],
+          remove: [],
+          chain: [{ stops: ['gare', 'nowhere'] }]
+        }
+      }),
+      PALETTE
+    );
+    expect(after.connections).toHaveLength(0);
+  });
+
+  it('a connection keeps its dp when a later patch renames it', () => {
+    // The same preservation guarantee assets have: the model never sees "dp".
+    const bound = applySitePatch(
+      stations(),
+      patch({
+        connections: {
+          upsert: [
+            {
+              id: 'seg',
+              from: 'gare',
+              to: 'centre',
+              dp: 'System1:Track01.state'
+            }
+          ],
+          remove: [],
+          chain: []
+        }
+      }),
+      PALETTE
+    ).site;
+    const renamed = applySitePatch(
+      bound,
+      patch({
+        connections: {
+          upsert: [{ id: 'seg', name: 'Gare → Centre' }],
+          remove: [],
+          chain: []
+        }
+      }),
+      PALETTE
+    ).site;
+    expect(renamed.connections[0]?.dp).toBe('System1:Track01.state');
+    expect(renamed.connections[0]?.name).toBe('Gare → Centre');
+  });
+
+  it('the diff counts the network, so the apply button states what it will do', () => {
+    const before = stations();
+    const { site: after } = applySitePatch(
+      before,
+      patch({
+        layers: { upsert: [{ id: 'crit', name: 'Critique' }], remove: [] },
+        routes: { upsert: [{ id: 'l1', name: 'Ligne 1' }], remove: [] },
+        connections: {
+          upsert: [],
+          remove: [],
+          chain: [{ stops: ['gare', 'centre'], routeId: 'l1' }]
+        }
+      }),
+      PALETTE
+    );
+    const diff = diffSites(before, after);
+    expect(diff.connections.added).toHaveLength(1);
+    expect(diff.routes.added).toHaveLength(1);
+    expect(diff.layers.added).toHaveLength(1);
     expect(isEmptyDiff(diff)).toBe(false);
   });
 });

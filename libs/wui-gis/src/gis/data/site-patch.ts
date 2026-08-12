@@ -38,6 +38,10 @@ import {
   isValidLatLon,
   type Area,
   type Asset,
+  type Connection,
+  type Layer,
+  type Reading,
+  type Route,
   type Site
 } from '../types.js';
 
@@ -68,6 +72,14 @@ export interface SitePatch {
   site: Record<string, unknown> | null;
   areas: { upsert: unknown[]; remove: string[] };
   assets: { upsert: unknown[]; remove: string[]; generate: unknown[] };
+  layers: { upsert: unknown[]; remove: string[] };
+  routes: { upsert: unknown[]; remove: string[] };
+  /**
+   * Connections, plus `chain`: an ordered list of asset ids turned into the N−1 segments
+   * that join them. A twenty-stop line is otherwise nineteen near-identical objects for the
+   * model to write out — the same budget problem `generate` solves for assets.
+   */
+  connections: { upsert: unknown[]; remove: string[]; chain: unknown[] };
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -101,7 +113,14 @@ export function isEmptyPatch(patch: SitePatch): boolean {
     patch.areas.remove.length === 0 &&
     patch.assets.upsert.length === 0 &&
     patch.assets.remove.length === 0 &&
-    patch.assets.generate.length === 0
+    patch.assets.generate.length === 0 &&
+    patch.layers.upsert.length === 0 &&
+    patch.layers.remove.length === 0 &&
+    patch.routes.upsert.length === 0 &&
+    patch.routes.remove.length === 0 &&
+    patch.connections.upsert.length === 0 &&
+    patch.connections.remove.length === 0 &&
+    patch.connections.chain.length === 0
   );
 }
 
@@ -120,6 +139,9 @@ export function parseSitePatch(raw: unknown): SitePatch | null {
   if (mode === 'patch') {
     const areas = record(source['areas']) ?? {};
     const assets = record(source['assets']) ?? {};
+    const layers = record(source['layers']) ?? {};
+    const routes = record(source['routes']) ?? {};
+    const connections = record(source['connections']) ?? {};
     const meta = metaOf(source['site'] === undefined ? source : source['site']);
     return {
       mode: 'patch',
@@ -129,12 +151,21 @@ export function parseSitePatch(raw: unknown): SitePatch | null {
         upsert: list(assets['upsert']),
         remove: ids(assets['remove']),
         generate: list(assets['generate'])
+      },
+      layers: { upsert: list(layers['upsert']), remove: ids(layers['remove']) },
+      routes: { upsert: list(routes['upsert']), remove: ids(routes['remove']) },
+      connections: {
+        upsert: list(connections['upsert']),
+        remove: ids(connections['remove']),
+        chain: list(connections['chain'])
       }
     };
   }
   // `mode: "replace"`, or a bare Site — both mean "this IS the site now".
   const hasContent =
-    Array.isArray(body['areas']) || Array.isArray(body['assets']);
+    Array.isArray(body['areas']) ||
+    Array.isArray(body['assets']) ||
+    Array.isArray(body['connections']);
   if (!hasContent) return null;
   return {
     mode: 'replace',
@@ -144,6 +175,13 @@ export function parseSitePatch(raw: unknown): SitePatch | null {
       upsert: list(body['assets']),
       remove: [],
       generate: list(body['generate'])
+    },
+    layers: { upsert: list(body['layers']), remove: [] },
+    routes: { upsert: list(body['routes']), remove: [] },
+    connections: {
+      upsert: list(body['connections']),
+      remove: [],
+      chain: list(body['chain'])
     }
   };
 }
@@ -164,7 +202,10 @@ export function replacePatchOf(site: Site): SitePatch {
       zoom: site.zoom
     },
     areas: { upsert: [...site.areas], remove: [] },
-    assets: { upsert: [...site.assets], remove: [], generate: [] }
+    assets: { upsert: [...site.assets], remove: [], generate: [] },
+    layers: { upsert: [...site.layers], remove: [] },
+    routes: { upsert: [...site.routes], remove: [] },
+    connections: { upsert: [...site.connections], remove: [], chain: [] }
   };
 }
 
@@ -209,6 +250,26 @@ export function applySitePatch(
       ? assetOps.upsert
       : mergeById(base.assets, assetOps);
 
+  const layers =
+    patch.mode === 'replace'
+      ? patch.layers.upsert
+      : mergeById(base.layers, patch.layers);
+  const routes =
+    patch.mode === 'replace'
+      ? patch.routes.upsert
+      : mergeById(base.routes, patch.routes);
+  const linkOps = {
+    upsert: [
+      ...patch.connections.upsert,
+      ...expandChains(patch.connections.chain)
+    ],
+    remove: patch.connections.remove
+  };
+  const connections =
+    patch.mode === 'replace'
+      ? linkOps.upsert
+      : mergeById(base.connections, linkOps);
+
   const result = normalizeSite(
     {
       ...base,
@@ -217,7 +278,10 @@ export function applySitePatch(
       // so a proposal cannot reset a project's private tile server to public OSM.
       basemap: base.basemap,
       areas,
-      assets
+      assets,
+      layers,
+      routes,
+      connections
     },
     palette
   );
@@ -237,7 +301,7 @@ export function applySitePatch(
  * collides with an existing one is the one that gets suffixed.
  */
 function mergeById(
-  existing: readonly (Area | Asset)[],
+  existing: readonly { id: string }[],
   ops: { upsert: unknown[]; remove: string[] }
 ): unknown[] {
   const removed = new Set(ops.remove);
@@ -280,6 +344,48 @@ function mergeById(
  * the truncation on its behalf. That ceiling is now 10 000, which one op cannot reach — so
  * without this flag a request for 5000 would quietly yield 2000 and say nothing.
  */
+/**
+ * Turn each `chain` op into the segments that join its stops.
+ *
+ * `{ stops: ["a","b","c"], routeId: "l1" }` becomes two connections, a→b and b→c. This is to
+ * a line what `generate` is to a field of assets: a twenty-stop metro line is nineteen
+ * near-identical objects, and asking a model to write them all out is how a proposal arrives
+ * truncated. It also removes the chance of a typo in one segment's `to` that would silently
+ * break the chain.
+ *
+ * Ids are derived from the two ends (`<from>-<to>`), so re-proposing the same chain updates
+ * the same segments instead of duplicating them — and so a segment can be referred to later.
+ * The ends are NOT validated here: the sanitiser already drops a connection whose asset does
+ * not exist, and it is the one place that knows which assets survived.
+ */
+export function expandChains(ops: unknown[]): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  for (const raw of ops) {
+    const op = record(raw);
+    if (!op) continue;
+    const stops = ids(op['stops']);
+    for (const [index, from] of stops.entries()) {
+      const to = stops[index + 1];
+      if (to === undefined || to === from) continue;
+      out.push({
+        id: `${from}-${to}`,
+        from,
+        to,
+        name: op['nameTemplate']
+          ? String(op['nameTemplate']).replace('%1', from).replace('%2', to)
+          : `${from} → ${to}`,
+        kind: op['kind'],
+        routeId: op['routeId'],
+        areaIds: op['areaIds'],
+        layerIds: op['layerIds'],
+        readings: op['readings'],
+        notes: op['notes']
+      });
+    }
+  }
+  return out;
+}
+
 export function expandGenerate(ops: unknown[], site: Site): Generated {
   const assets: Record<string, unknown>[] = [];
   let clamped = false;
@@ -446,6 +552,9 @@ export interface DiffPart {
 export interface SiteDiff {
   areas: DiffPart;
   assets: DiffPart;
+  layers: DiffPart;
+  routes: DiffPart;
+  connections: DiffPart;
   /** The map framing (centre / zoom) changed. */
   view: boolean;
   /** Name, description or category changed. */
@@ -463,7 +572,13 @@ export function isEmptyDiff(diff: SiteDiff): boolean {
 
 /** Total number of touched objects — the headline figure for the apply button. */
 export function diffCount(diff: SiteDiff): number {
-  return partSize(diff.areas) + partSize(diff.assets);
+  return (
+    partSize(diff.areas) +
+    partSize(diff.assets) +
+    partSize(diff.layers) +
+    partSize(diff.routes) +
+    partSize(diff.connections)
+  );
 }
 
 /**
@@ -476,6 +591,9 @@ export function diffSites(before: Site | null, after: Site): SiteDiff {
   return {
     areas: diffPart(base.areas, after.areas, sameArea),
     assets: diffPart(base.assets, after.assets, sameAsset),
+    layers: diffPart(base.layers, after.layers, sameLayer),
+    routes: diffPart(base.routes, after.routes, sameRoute),
+    connections: diffPart(base.connections, after.connections, sameConnection),
     view:
       base.center.lat !== after.center.lat ||
       base.center.lon !== after.center.lon ||
@@ -510,6 +628,40 @@ function entry(item: { id: string; name: string }): DiffEntry {
   return { id: item.id, name: item.name };
 }
 
+function sameLayer(a: Layer, b: Layer): boolean {
+  return a.name === b.name && a.color === b.color;
+}
+
+function sameRoute(a: Route, b: Route): boolean {
+  return (
+    a.name === b.name &&
+    a.color === b.color &&
+    a.kind === b.kind &&
+    a.link === b.link
+  );
+}
+
+/**
+ * Two connections are the same when nothing an operator would notice differs — its ends and
+ * its shaping points above all, since those ARE its geometry.
+ */
+function sameConnection(a: Connection, b: Connection): boolean {
+  return (
+    a.name === b.name &&
+    a.kind === b.kind &&
+    a.from === b.from &&
+    a.to === b.to &&
+    a.routeId === b.routeId &&
+    a.dp === b.dp &&
+    a.link === b.link &&
+    a.notes === b.notes &&
+    sameIdList(a.areaIds, b.areaIds) &&
+    sameIdList(a.layerIds, b.layerIds) &&
+    JSON.stringify(a.via) === JSON.stringify(b.via) &&
+    sameReadings(a.readings, b.readings)
+  );
+}
+
 function sameArea(a: Area, b: Area): boolean {
   return (
     a.name === b.name &&
@@ -534,15 +686,12 @@ function sameRing(
 }
 
 /**
- * Area membership, compared in ORDER: the first entry is the primary area, so two assets
- * listing the same areas in a different order are not the same asset — one of them would
- * group under a different badge.
+ * Two id lists, compared in ORDER. Order matters for area membership — the first entry is
+ * the primary area, so the same zones listed differently mean a different primary badge —
+ * and comparing tags the same way costs nothing.
  */
-function sameAreaIds(a: Asset, b: Asset): boolean {
-  return (
-    a.areaIds.length === b.areaIds.length &&
-    a.areaIds.every((id, index) => id === b.areaIds[index])
-  );
+function sameIdList(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((id, index) => id === b[index]);
 }
 
 function sameAsset(a: Asset, b: Asset): boolean {
@@ -551,18 +700,19 @@ function sameAsset(a: Asset, b: Asset): boolean {
     a.kind === b.kind &&
     a.lat === b.lat &&
     a.lon === b.lon &&
-    sameAreaIds(a, b) &&
+    sameIdList(a.areaIds, b.areaIds) &&
+    sameIdList(a.layerIds, b.layerIds) &&
     a.dp === b.dp &&
     a.link === b.link &&
     a.notes === b.notes &&
-    sameReadings(a, b)
+    sameReadings(a.readings, b.readings)
   );
 }
 
-function sameReadings(a: Asset, b: Asset): boolean {
-  if (a.readings.length !== b.readings.length) return false;
-  return a.readings.every((reading, index) => {
-    const other = b.readings[index];
+function sameReadings(a: readonly Reading[], b: readonly Reading[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((reading, index) => {
+    const other = b[index];
     return (
       other !== undefined &&
       reading.label === other.label &&
