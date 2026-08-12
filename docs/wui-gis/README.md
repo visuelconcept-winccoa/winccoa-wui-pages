@@ -72,7 +72,9 @@ entries, (3) `npm install`s **`maplibre-gl@^5.24.0`** into the workspace so
   **persisted**. The page auto-creates the `GIS_Site` DP type and its datapoints
   through that API; without it the page still runs, read-only, on the demo sites and
   says so.
-- No backend route and no manager of its own (**Tier 1**).
+- No backend route and no manager the page needs (**Tier 1**). One **optional** manager
+  ships beside it for demos and commissioning — see
+  [The network simulator](#the-network-simulator-gissim).
 - **For the AI assistant only** (optional): the `/api/ai` bridge and an assistant enabled
   at deploy time (`dashboard-features.json`). Without either, the page is unchanged and the
   assistant simply does not appear.
@@ -80,7 +82,9 @@ entries, (3) `npm install`s **`maplibre-gl@^5.24.0`** into the workspace so
 ## Prerequisites (runtime)
 
 - **The datapoints the assets bind to must already exist.** This page binds, it never
-  creates process datapoints — pick them with the autocomplete in the asset inspector.
+  creates process datapoints — pick them with the autocomplete in the asset inspector, or
+  let the optional [simulator](#the-network-simulator-gissim) create and drive a set of its
+  own.
 - **For a marker to highlight in alarm**, its primary datapoint needs `_alert_hdl`
   configured in the project (the PARA page's *Alarming* tab does that). A datapoint
   without it simply never highlights.
@@ -112,12 +116,60 @@ Per site, in *Site settings → Basemap*:
 The **Attribution** field is what the map's corner credit shows; keep whatever the tile
 licence requires (OSM data requires crediting OpenStreetMap contributors).
 
+## The network simulator (`gisSim`)
+
+**Optional**, for a demo, a training session, or a site drawn before its real datapoints
+exist. A WinCC OA JavaScript manager that reads the project's `GIS_Site` datapoints and
+brings the map to life — the page is unchanged and does not know it is there.
+
+What makes it worth having over a random-value generator: it simulates **the network**. Each
+asset gets a *family* from its kind **crossed with the kind of its links** (a `station` wired
+with `power` connections is a power plant, the same `station` wired with `pipe` connections is
+a pumping station), and each tick allocates the consumers' demand over the site's own
+topology. So:
+
+- take a plant out → the cities it fed are picked up by the plants that remain, and every
+  remaining line's flux rises;
+- trip a segment → the flow reroutes, or the consumer is visibly short and its `couverture`
+  alarms;
+- a segment's flux is the sum of what transits it, so it agrees with both of its ends;
+- close one tunnel section of a metro line → the **whole line** thins out, delays rise on its
+  other sections and on its platforms, and the other line is untouched. Nothing is consumed on
+  a metro, so this second coupling comes from the **routes** rather than from the flow.
+
+It creates **one flat datapoint per simulated value** — `GisSim_<assetId>_<element>`,
+`GisLink_<connectionId>_<element>` — and the alert configuration on the ones it creates, so
+markers and lines actually colour in alarm. It **never writes to a site**: the naming rule is
+the contract, and the companion CLI writes those names into an exported site.
+
+```bash
+# 1) bind an exported site to the simulator (writes dp + readings, touches nothing else)
+node backend/managers/gisSim/bind-site.js my-site.json --out my-site-bound.json
+# 2) import the result on /gis, then deploy + start the manager (see INTEGRATION.md)
+```
+
+Two ready-to-import sites ship already bound, in `backend/managers/gisSim/examples/`:
+**gis-france-nucleaire.json** (19 EDF plants, 8 consumption poles, 19 lines — the flow
+allocation) and **gis-dubai-metro.json** (13 underground stations, 13 track sections, 2 lines
+— the route service).
+
+Real figures go in an object's **notes**, as directives the page keeps verbatim:
+`sim:capacite=5460`, `sim:demande=15000`, `sim:etat=0` (a plant shut down for good),
+`sim:volume=` (a reservoir), `sim:famille=` (override the resolution), and
+`sim:<element>=` for any element of the family (`sim:affluence=2600` on an interchange
+station). Anything unstated is sized from a stable hash of the id and capped by what the
+topology can actually bring.
+
+Full detail in [INTEGRATION.md](./INTEGRATION.md#the-network-simulator-optional) and the
+design decisions in [NOTES.md](./NOTES.md#the-network-simulator-gissim).
+
 ## Contents
 
 ```
 module.json / install.mjs
 frontend/standalone-pages/gis.ts + gis/     (page SOURCE; kit vendored in gis/_vendor/)
 frontend/menu.fragment.jsonc                (2 entries: /gis list + /gis/:siteid detail)
+manager/gisSim/                             (OPTIONAL network simulator + bind-site.js + examples/)
 ```
 
 ## Documentation

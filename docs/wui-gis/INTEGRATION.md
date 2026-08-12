@@ -5,8 +5,11 @@ site's map): geo-located assets bound to datapoints, live values on the markers,
 highlighting from the datapoints' own alert state, areas grouping the assets, and a
 configurable drill-down to each asset's process or 3D view.
 
-**Tier 1**: frontend only — no backend route of its own, no manager. One npm dependency
-(`maplibre-gl`) is installed into the workspace and bundled into the page.
+**Tier 1**: frontend only — no backend route of its own, and no manager the page needs. One
+npm dependency (`maplibre-gl`) is installed into the workspace and bundled into the page. An
+**optional** simulator manager ships alongside for demos and commissioning; the page is
+unchanged without it — see
+[The network simulator](#the-network-simulator-optional).
 
 **Self-contained source** distribution: the shared kit (`wui-kit`) is **vendored** under
 `_vendor/`, and the page is **compiled against the target's runtime workspace** (bundle =
@@ -47,7 +50,9 @@ The installer:
 2. inserts the **two menu entries** → the workspace's `menuconfig.jsonc` (idempotent by `routeId`);
 3. `npm install`s **`maplibre-gl@^5.24.0`** in the workspace (so `build:pages` can bundle it);
 4. merges the module's **role catalog** into `app-security-manifest.json` (idempotent by module id);
-5. runs **`build:pages`** (`OUT_DIR=<project>/data/dashboard-wc`).
+5. copies the **optional** `gisSim` manager → `<project>/javascript/gisSim/` (with
+   `--register-pmon`, adds its line to `config/progs`) — it stays stopped until you start it;
+6. runs **`build:pages`** (`OUT_DIR=<project>/data/dashboard-wc`).
 
 ## After install
 
@@ -197,6 +202,114 @@ cannot reach a datapoint — see [NOTES.md](./NOTES.md#import--export).
 
 > The practical workflow for real coordinates: draft the site with the assistant, export
 > GeoJSON, correct the positions in QGIS against the survey, import it back.
+
+## The network simulator (optional)
+
+`gisSim` is a WinCC OA **JavaScript manager** shipped beside the page, for demos, training
+and commissioning a site before its real datapoints exist. The page is **unchanged** by it
+and stays Tier 1 — nothing below is needed to run `/gis`.
+
+It reads the project's `GIS_Site` datapoints, gives every asset and every connection a
+**family** (its kind crossed with the kind of its links), creates **one flat datapoint per
+simulated value** and drives them by solving the flows over the site's own topology. What it
+buys you on the map: take a plant out and the others pick up its cities, trip a segment and
+the flow reroutes or the consumer goes visibly short.
+
+### Install
+
+The installer deploys it with the page:
+
+```bash
+node install.mjs --workspace <runtime-workspace> --project <project-root> --register-pmon
+```
+
+`--register-pmon` appends its line to `<project>/config/progs` as `always` (it comes back up
+with the project). Without the flag, register it yourself in the WinCC OA console — and use
+`manual` if you would rather start the simulator by hand:
+
+```
+node | manual | 30 | 2 | 2 |gisSim/index.js
+```
+
+Either way, **start `gisSim`** in the console after the deployment: a manager that is already
+running keeps the code it loaded at startup. From this repository the same deployment is
+`node tools/scripts/deploy-backend.mjs --project <project> --only gis`.
+
+> Start it on a **demo or engineering project**. It creates datapoints and alarm
+> configurations; that is its job, and not something to run on a production system by
+> accident.
+
+### Bind a site to it
+
+The manager **never writes to a site** — a binding is the page's business. The naming rule is
+the contract (`GisSim_<assetId>_<element>`, `GisLink_<connectionId>_<element>`) and the
+companion CLI writes exactly those names into an exported site:
+
+```bash
+node manager/gisSim/bind-site.js my-site.json --out my-site-bound.json
+#   --force    rebind objects that already carry bindings (default: only fill what is empty)
+#   --system   system prefix of the bindings, `--system ''` for none (default System1:)
+```
+
+Export from `/gis` (**Export all** or **Export (JSON)**), run the command, import the result
+back. Positions, zones, layers, routes and notes come out exactly as they went in.
+
+`manager/gisSim/examples/gis-france-nucleaire.json` is a ready-to-import site — 19 EDF
+plants, 8 consumption poles, 19 lines — already bound: import it, start the manager, and the
+map is live.
+
+### Say what an object really is
+
+Simulation facts live in an object's **notes**, where the page keeps them verbatim and shows
+them in the inspector:
+
+| Directive | On | Effect |
+| --- | --- | --- |
+| `sim:capacite=5460` | source / transit / segment | Capacity, in the family's own unit (MW, m³/h, trains/h…) |
+| `sim:demande=15000` | consumer | Peak demand, before the daily curve |
+| `sim:volume=2500` | storage | Usable volume the level is integrated over |
+| `sim:etat=0` | anything | Forces the state for good (0 arrêt, 1 marche, 2 défaut, 3 maintenance) |
+| `sim:famille=pompage` | anything | Overrides the family resolved from the kind and the links |
+| `sim:<element>=2600` | anything | Baseline of **that element** — `sim:affluence=2600` on a station, `sim:trafic=18` on a track section, `sim:temperature=38` on a tunnel |
+
+Examples: `Puissance installée nette 5460 MW (6 × 910). sim:capacite=5460`, or
+`Station de correspondance. sim:affluence=2600`. Anything unstated is sized from a stable
+hash of the object's id and capped by what the topology can actually bring to it — so two
+stations of the same family would otherwise differ only by their wander, and a busy
+interchange would read like a quiet terminus. A `sim:` key that names neither a reserved word
+nor an element of the object's family is **reported in the log**, never silently ignored.
+
+### Two ready-made sites
+
+Both are already bound: import one on `/gis`, start the manager, and the map is live.
+
+| File | What it exercises |
+| --- | --- |
+| `examples/gis-france-nucleaire.json` | 19 EDF plants, 8 consumption poles, 19 lines — the **flow allocation**: take a plant out and the others pick up its cities |
+| `examples/gis-dubai-metro.json` | 13 underground stations, 13 track sections, 2 lines — the **route service**: close one tunnel section and the whole line thins out, delays rise on its sections and on its platforms, while the other line is untouched |
+
+### Verify
+
+1. The manager's log opens with the model it built — `27 asset(s) et 19 liaison(s)
+   simulé(s) : 19×production-electrique, 8×consommation-electrique…` — then how many
+   datapoints and alarm configurations it created.
+2. In PARA, `GisSim_*` and `GisLink_*` datapoints exist and their values move.
+3. On the map, the readings update, and a marker or a line turns to the alarm colour when its
+   `defaut` is raised (~30 s state ticks).
+4. The log names anything that did not work rather than failing: bindings pointing at a
+   datapoint it does not drive (a typo, or a site bound with a different rule), ids claimed by
+   two sites, alarm configurations the project refused.
+
+### Know before you rely on it
+
+- **Asset and connection ids are unique within a site, not across sites.** Two sites both
+  holding an asset `paris` would claim the same datapoints; the second is skipped and named
+  in the log.
+- **Alarm configurations are written only on the datapoints it has just created**, so a
+  threshold retuned in PARA is never overwritten.
+- **It never touches your process datapoints** — only its own.
+- Levels and totalisers restart with the manager; the site configuration is re-read every
+  minute, so an asset added on the map is simulated without a restart.
 
 ## Application Security
 
