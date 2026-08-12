@@ -98,19 +98,85 @@ export const MSG = {
   ),
   loading: ml('Loading…', 'Chargement…', 'Wird geladen…'),
   loadFailed: ml('Cannot load: {error}', 'Chargement impossible : {error}', 'Laden nicht möglich: {error}'),
-  step1: ml('1 · Devices', '1 · Équipements', '1 · Geräte'),
-  step2: ml('2 · Model', '2 · Modèle', '2 · Modell'),
-  step3: ml('3 · Control', '3 · Contrôle', '3 · Kontrolle'),
+  stepDevices: ml('Devices', 'Équipements', 'Geräte'),
+  stepBooks: ml('Catalogs', 'Catalogues', 'Kataloge'),
+  stepModel: ml('Model', 'Modèle', 'Modell'),
+  stepControl: ml('Control', 'Contrôle', 'Kontrolle'),
 
   // --- devices panel --------------------------------------------------------
   devicesRail: ml('COMMUNICATING DEVICES', 'ÉQUIPEMENTS COMMUNICANTS', 'KOMMUNIZIERENDE GERÄTE'),
-  addDevice: ml('+ Add', '+ Ajouter', '+ Hinzufügen'),
+
+  // --- connection state (the LED and what it means) -------------------------
+  // A coloured LED with no word beside it is a riddle, and a grey one is a riddle
+  // with three possible answers (see the core's `DeviceStateSource`) — so the state
+  // is spelled out, and the REASON travels with it as the badge's tooltip.
+  stateConnected: ml('Connected', 'Connecté', 'Verbunden'),
+  stateDisconnected: ml('Disconnected', 'Déconnecté', 'Getrennt'),
+  stateUnknown: ml('State unknown', 'État inconnu', 'Status unbekannt'),
+  stateVia: ml('read on “{connection}”', 'lu sur « {connection} »', 'gelesen an „{connection}“'),
+  serverUnknown: ml(
+    'This project has no connection named “{name}” (it has: {known}). Nothing refuses it — the connection may be created later — but as long as it does not exist, no state can be read and the generated addresses will not bind.',
+    'Ce projet n’a aucune connexion nommée « {name} » (il a : {known}). Rien ne l’interdit — la connexion peut être créée ensuite — mais tant qu’elle n’existe pas, aucun état ne peut être lu et les adresses générées ne se lieront pas.',
+    'Dieses Projekt hat keine Verbindung mit dem Namen „{name}“ (vorhanden: {known}). Nichts verbietet es — die Verbindung kann später erstellt werden — aber solange sie nicht existiert, kann kein Status gelesen werden und die erzeugten Adressen binden nicht.'
+  ),
+  stateWhy: {
+    connstate: ml(
+      'Read live on “{connection}” (Common.State.ConnState = {code}).',
+      'Lu en direct sur « {connection} » (Common.State.ConnState = {code}).',
+      'Live an „{connection}“ gelesen (Common.State.ConnState = {code}).'
+    ),
+    'opcua-connstate': ml(
+      'Read live on the OPC UA connection “{connection}” (State.ConnState = {code}) — its driver leaves the common element undefined.',
+      'Lu en direct sur la connexion OPC UA « {connection} » (State.ConnState = {code}) — son driver laisse l’élément commun indéfini.',
+      'Live an der OPC UA-Verbindung „{connection}“ gelesen (State.ConnState = {code}) — ihr Treiber lässt das gemeinsame Element undefiniert.'
+    ),
+    'unknown-connection': ml(
+      'No connection datapoint matches “{connection}” in this project — the declaration points at a connection that does not exist, which is not the same as a connection that is down.',
+      'Aucun datapoint de connexion ne correspond à « {connection} » dans ce projet — la déclaration désigne une connexion inexistante, ce qui n’est pas la même chose qu’une connexion coupée.',
+      'Kein Verbindungs-Datenpunkt passt zu „{connection}“ in diesem Projekt — die Deklaration verweist auf eine nicht existierende Verbindung, was nicht dasselbe ist wie eine unterbrochene Verbindung.'
+    ),
+    'ambiguous-connection': ml(
+      'SEVERAL connections of the project carry the address “{connection}” — none of them may speak for this equipment, so no state is claimed. Name the connection in the declaration.',
+      'PLUSIEURS connexions du projet portent l’adresse « {connection} » — aucune ne peut parler pour cet équipement, donc aucun état n’est affirmé. Nommer la connexion dans la déclaration.',
+      'MEHRERE Verbindungen des Projekts tragen die Adresse „{connection}“ — keine davon darf für dieses Gerät sprechen, daher wird kein Status behauptet. Die Verbindung in der Deklaration benennen.'
+    ),
+    'probe-failed': ml(
+      'The connection state of “{connection}” could not be read (driver stopped, or no permission) — reported as unknown rather than as disconnected.',
+      'L’état de la connexion « {connection} » n’a pas pu être lu (driver arrêté, ou droits insuffisants) — signalé comme inconnu et non comme déconnecté.',
+      'Der Verbindungsstatus von „{connection}“ konnte nicht gelesen werden (Treiber gestoppt oder keine Berechtigung) — als unbekannt gemeldet, nicht als getrennt.'
+    ),
+    unprobed: ml(
+      'The declaration carries nothing to find a connection with (no server name, no address), so no state is read. A running driver does not mean a reachable station — nothing is assumed from it.',
+      'La déclaration ne porte rien qui permette de retrouver une connexion (ni nom de serveur, ni adresse), donc aucun état n’est lu. Un driver démarré ne signifie pas une station joignable — rien n’en est déduit.',
+      'Die Deklaration enthält nichts, womit eine Verbindung gefunden werden könnte (kein Servername, keine Adresse), daher wird kein Status gelesen. Ein laufender Treiber bedeutet keine erreichbare Station — daraus wird nichts abgeleitet.'
+    )
+  },
+
+  /**
+   * The RAW WinCC OA `ConnState`, in the vendor's own words (message catalogue
+   * `opcua.cat`, keys `CommonConnState…`). Shown beside the LED because `1`, `3` and
+   * `5` all light one red lamp and call for three different actions: fix the link,
+   * re-enable the connection, look at the driver's error.
+   */
+  connStateCode: {
+    '-1': ml('undefined', 'indéfini', 'undefiniert'),
+    '0': ml('undefined by the driver', 'non renseigné par le driver', 'vom Treiber nicht gesetzt'),
+    '1': ml('not connected', 'non connecté', 'nicht verbunden'),
+    '3': ml('inactive (connection disabled)', 'inactive (connexion désactivée)', 'inaktiv (Verbindung deaktiviert)'),
+    '5': ml('failure', 'défaut', 'Störung'),
+    '256': ml('connected', 'connecté', 'verbunden'),
+    '257': ml('main server · main connection', 'serveur principal · connexion principale', 'Hauptserver · Hauptverbindung'),
+    '258': ml('main server · redundant connection', 'serveur principal · connexion redondante', 'Hauptserver · Redundanzverbindung'),
+    '259': ml('redundant server · main connection', 'serveur redondant · connexion principale', 'Redundanzserver · Hauptverbindung'),
+    '260': ml('redundant server · redundant connection', 'serveur redondant · connexion redondante', 'Redundanzserver · Redundanzverbindung')
+  } as Record<string, Ml>,
+  addDevice: ml('Add', 'Ajouter', 'Hinzufügen'),
   noDevice: ml('No device.', 'Aucun équipement.', 'Kein Gerät.'),
   books: ml('Books', 'Carnets', 'Adressbücher'),
   bookCount: ml('{n} books', '{n} carnets', '{n} Adressbücher'),
   catalogChip: ml('catalog', 'catalogue', 'Katalog'),
   sharedBook: ml('Shared book', 'Carnet mutualisé', 'Gemeinsames Adressbuch'),
-  refreshBook: ml('↻ Refresh the book', '↻ Rafraîchir le carnet', '↻ Adressbuch aktualisieren'),
+  refreshBook: ml('Refresh the book', 'Rafraîchir le carnet', 'Adressbuch aktualisieren'),
   noBookForDevice: ml('No book for this device.', 'Aucun carnet pour cet équipement.', 'Kein Adressbuch für dieses Gerät.'),
   noBookHint: ml(
     'No book attached — add an interface (OPC UA browse), ingest a SimaticML export, or attach a shared catalog.',
@@ -137,7 +203,7 @@ export const MSG = {
   generatorWarnings: ml('Generator warnings', 'Avertissements du générateur', 'Generator-Warnungen'),
 
   // --- device form ----------------------------------------------------------
-  deviceEdit: ml('✎ Edit', '✎ Modifier', '✎ Bearbeiten'),
+  deviceEdit: ml('Edit', 'Modifier', 'Bearbeiten'),
   deviceFormNew: ml('New device', 'Nouvel équipement', 'Neues Gerät'),
   deviceFormEdit: ml('Device — {name}', 'Équipement — {name}', 'Gerät — {name}'),
   deviceDelete: ml('Delete', 'Supprimer', 'Löschen'),
@@ -169,12 +235,38 @@ export const MSG = {
     'Pro angehakter Zugriffsart wird eine Kandidaten-Adresse erzeugt — eine S7-1500, die auf beiden Wegen erreichbar ist, trägt S7+ UND OPC UA.'
   ),
   deviceConnection: ml('Connection — {protocol}', 'Connexion — {protocol}', 'Verbindung — {protocol}'),
-  deviceDriverNumber: ml('driver number', 'numéro de driver', 'Treibernummer'),
+  deviceDriverNumber: ml('driver', 'driver', 'Treiber'),
   devicePollGroup: ml('poll group', 'groupe de poll', 'Poll-Gruppe'),
   devicePollGroupHint: ml(
-    'Both optional. The driver number is the WinCC OA manager number of the driver; the poll group names the _PollGroup datapoint the generated addresses subscribe to.',
-    'Les deux sont optionnels. Le numéro de driver est le numéro de manager WinCC OA du driver ; le groupe de poll nomme le datapoint _PollGroup auquel les adresses générées s’abonnent.',
-    'Beide optional. Die Treibernummer ist die WinCC OA-Managernummer des Treibers; die Poll-Gruppe benennt den _PollGroup-Datenpunkt, den die erzeugten Adressen abonnieren.'
+    'Both optional. The poll group names the _PollGroup datapoint the generated addresses subscribe to.',
+    'Les deux sont optionnels. Le groupe de poll nomme le datapoint _PollGroup auquel les adresses générées s’abonnent.',
+    'Beide optional. Die Poll-Gruppe benennt den _PollGroup-Datenpunkt, den die erzeugten Adressen abonnieren.'
+  ),
+
+  // --- driver picker --------------------------------------------------------
+  // The driver number is the manager number EVERY generated address of the
+  // equipment lands on, so the form offers the project's drivers instead of asking
+  // for a number from memory.
+  driverRunning: ml('{n} — {type} · running', '{n} — {type} · en marche', '{n} — {type} · läuft'),
+  driverStopped: ml('{n} — {type} · stopped', '{n} — {type} · arrêté', '{n} — {type} · gestoppt'),
+  driverStateUnknown: ml('{n} — {type} · state unknown', '{n} — {type} · état inconnu', '{n} — {type} · Status unbekannt'),
+  driverTypeUnknown: ml('type unreadable', 'type illisible', 'Typ nicht lesbar'),
+  driverOther: ml('other — enter a number…', 'autre — saisir un numéro…', 'anderer — Nummer eingeben…'),
+  driverFree: ml('manager number', 'numéro de manager', 'Managernummer'),
+  driverHint: ml(
+    'The manager number every generated address of this equipment is written to. Picked from the project’s drivers; auto-detection at check-in only covers OPC UA, so state it here for the other protocols.',
+    'Le numéro de manager sur lequel chaque adresse générée de cet équipement est écrite. Choisi parmi les drivers du projet ; l’auto-détection au check-in ne couvre qu’OPC UA : le renseigner ici pour les autres protocoles.',
+    'Die Managernummer, auf die jede erzeugte Adresse dieses Geräts geschrieben wird. Aus den Treibern des Projekts gewählt; die automatische Erkennung beim Check-in deckt nur OPC UA ab — für andere Protokolle hier angeben.'
+  ),
+  driverNoneListed: ml(
+    'No driver could be listed (no runtime, or no permission) — enter the manager number.',
+    'Aucun driver n’a pu être listé (pas de runtime, ou droits insuffisants) — saisir le numéro de manager.',
+    'Es konnte kein Treiber aufgelistet werden (kein Runtime oder keine Berechtigung) — die Managernummer eingeben.'
+  ),
+  driverMismatch: ml(
+    'Driver {n} is a “{type}”, which does not match the {protocol} protocol of this equipment.',
+    'Le driver {n} est un « {type} », ce qui ne correspond pas au protocole {protocol} de cet équipement.',
+    'Treiber {n} ist ein „{type}“ und passt nicht zum {protocol}-Protokoll dieses Geräts.'
   ),
   paramUnset: ml('— not stated —', '— non renseigné —', '— nicht angegeben —'),
   deviceDeclared: ml(
@@ -268,13 +360,301 @@ export const MSG = {
   ),
   deltaNone: ml(' (no change)', ' (aucun changement)', ' (keine Änderung)'),
 
+  // --- catalogues panel -----------------------------------------------------
+  // Books are FIRST-CLASS: a catalog exists on its own (a vendor register map, a
+  // PackML interface, a machine-model catalog) and is bound to equipments
+  // afterwards — so it must be creatable without declaring a device first.
+  booksTitle: ml('Catalogs (address books)', 'Catalogues (carnets d’adresses)', 'Kataloge (Adressbücher)'),
+  booksCount: ml('{n} catalog(s)', '{n} catalogue(s)', '{n} Katalog(e)'),
+  booksSignalsTotal: ml('{n} signals', '{n} signaux', '{n} Signale'),
+  bookNew: ml('New catalog', 'Nouveau catalogue', 'Neuer Katalog'),
+  booksEmpty: ml(
+    'No catalog yet. A catalog is created from a file (TIA/SimaticML export, Control Expert CSV or XVM, OPC UA NodeSet2) or by walking a live OPC UA server — no equipment needed.',
+    'Aucun catalogue. Un catalogue se crée depuis un fichier (export TIA/SimaticML, CSV ou XVM Control Expert, NodeSet2 OPC UA) ou en parcourant un serveur OPC UA en ligne — sans équipement.',
+    'Noch kein Katalog. Ein Katalog wird aus einer Datei erzeugt (TIA/SimaticML-Export, Control-Expert-CSV oder -XVM, OPC UA NodeSet2) oder durch das Durchlaufen eines Live-OPC-UA-Servers — ohne Gerät.'
+  ),
+  bookPickHint: ml('Pick a catalog on the left.', 'Choisir un catalogue à gauche.', 'Links einen Katalog auswählen.'),
+  bookFilterPlaceholder: ml('filter the catalogs…', 'filtrer les catalogues…', 'Kataloge filtern…'),
+  bookOrphan: ml('unused', 'inutilisé', 'unbenutzt'),
+  bookOrphanTitle: ml(
+    'This catalog serves no equipment yet — attach it below.',
+    'Ce catalogue ne sert aucun équipement — l’associer ci-dessous.',
+    'Dieser Katalog bedient noch kein Gerät — unten verknüpfen.'
+  ),
+  bookTemplate: ml('template', 'gabarit', 'Vorlage'),
+  bookUsedBy: ml('Equipments served', 'Équipements servis', 'Bediente Geräte'),
+  bookUsedByHint: ml(
+    'Check the equipments this catalog serves. The relation is many-to-many: one catalog may serve several equipments (⇆) and one equipment may aggregate several catalogs.',
+    'Cocher les équipements servis par ce catalogue. La relation est plusieurs-à-plusieurs : un catalogue peut servir plusieurs équipements (⇆) et un équipement peut agréger plusieurs catalogues.',
+    'Die Geräte anhaken, die dieser Katalog bedient. Die Beziehung ist n:m: ein Katalog kann mehrere Geräte bedienen (⇆) und ein Gerät mehrere Kataloge zusammenfassen.'
+  ),
+  bookAttachApply: ml('Apply the links', 'Appliquer les associations', 'Verknüpfungen anwenden'),
+  bookAttachDone: ml(
+    'Catalog “{name}” now serves {n} equipment(s).',
+    'Le catalogue « {name} » sert maintenant {n} équipement(s).',
+    'Der Katalog „{name}“ bedient jetzt {n} Gerät(e).'
+  ),
+  bookAttachFailed: ml('Linking refused: {error}', 'Association refusée : {error}', 'Verknüpfen abgelehnt: {error}'),
+  bookDelete: ml('Delete the catalog', 'Supprimer le catalogue', 'Katalog löschen'),
+  bookDeleteConfirm: ml('Confirm the deletion', 'Confirmer la suppression', 'Löschen bestätigen'),
+  bookDeleteHint: ml(
+    'Deleting forgets the catalog and DETACHES it from every equipment that used it. Nothing already checked in is touched: the addresses written from it live in the project. A file catalog can only be recreated by re-ingesting its source.',
+    'La suppression oublie le catalogue et le DÉTACHE de tous les équipements qui l’utilisaient. Rien de déjà checké-in n’est touché : les adresses écrites depuis lui vivent dans le projet. Un catalogue de fichier ne se recrée qu’en ré-ingérant sa source.',
+    'Das Löschen vergisst den Katalog und LÖST ihn von allen Geräten, die ihn genutzt haben. Bereits eingecheckte Objekte werden nicht angetastet: die daraus geschriebenen Adressen leben im Projekt. Ein Datei-Katalog kann nur durch erneutes Einlesen seiner Quelle wiederhergestellt werden.'
+  ),
+  bookDeleteUsedWarning: ml(
+    'Used by {n} equipment(s) — they will lose this catalog.',
+    'Utilisé par {n} équipement(s) — ils perdront ce catalogue.',
+    'Von {n} Gerät(en) genutzt — sie verlieren diesen Katalog.'
+  ),
+  bookDeleted: ml('Catalog “{name}” deleted.', 'Catalogue « {name} » supprimé.', 'Katalog „{name}“ gelöscht.'),
+  bookDeleteFailed: ml('Deletion refused: {error}', 'Suppression refusée : {error}', 'Löschen abgelehnt: {error}'),
+
+  // --- catalogue creation form ----------------------------------------------
+  bookFormNew: ml('New catalog', 'Nouveau catalogue', 'Neuer Katalog'),
+  bookIdentity: ml('Identity', 'Identité', 'Identität'),
+  bookName: ml('name', 'nom', 'Name'),
+  bookIdDerived: ml(
+    'Identifier: {id} — derived from the name and then fixed: equipments reference a catalog by id.',
+    'Identifiant : {id} — dérivé du nom puis fixé : les équipements référencent un catalogue par son id.',
+    'Kennung: {id} — aus dem Namen abgeleitet und dann fest: Geräte verweisen per ID auf einen Katalog.'
+  ),
+  bookIdExists: ml(
+    'A catalog “{id}” already exists — creating will REPLACE it (same as a re-browse).',
+    'Un catalogue « {id} » existe déjà — la création le REMPLACERA (comme un re-parcours).',
+    'Ein Katalog „{id}“ existiert bereits — das Erstellen ERSETZT ihn (wie ein erneuter Durchlauf).'
+  ),
+  bookSourceSection: ml('Source', 'Source', 'Quelle'),
+  bookFormat: ml('generator', 'générateur', 'Generator'),
+  bookFile: ml('file', 'fichier', 'Datei'),
+  bookFiles: ml('files', 'fichiers', 'Dateien'),
+  bookFileChosen: ml('{n} file(s), {size} kB', '{n} fichier(s), {size} ko', '{n} Datei(en), {size} kB'),
+  bookNoFile: ml('No file chosen.', 'Aucun fichier choisi.', 'Keine Datei gewählt.'),
+  bookReadFailed: ml('Cannot read the file: {error}', 'Lecture du fichier impossible : {error}', 'Datei nicht lesbar: {error}'),
+  bookCreate: ml('Create the catalog', 'Créer le catalogue', 'Katalog erstellen'),
+  bookCreated: ml(
+    'Catalog “{name}” created: {n} signals, {warnings} warning(s).',
+    'Catalogue « {name} » créé : {n} signaux, {warnings} avertissement(s).',
+    'Katalog „{name}“ erstellt: {n} Signale, {warnings} Warnung(en).'
+  ),
+  bookCreateFailed: ml('Creation refused: {error}', 'Création refusée : {error}', 'Erstellen abgelehnt: {error}'),
+  bookNeedName: ml('Give the catalog a name.', 'Nommer le catalogue.', 'Dem Katalog einen Namen geben.'),
+  bookNeedFile: ml('Choose the source file.', 'Choisir le fichier source.', 'Die Quelldatei wählen.'),
+  bookNeedConnection: ml(
+    'Choose the OPC UA connection to walk.',
+    'Choisir la connexion OPC UA à parcourir.',
+    'Die zu durchlaufende OPC UA-Verbindung wählen.'
+  ),
+  bookInterfaceSection: ml('Interface of the catalog', 'Interface du catalogue', 'Schnittstelle des Katalogs'),
+  bookInterfaceHint: ml(
+    'Leave the connection empty for a TEMPLATE catalog (a vendor register map, a standard interface): it carries no interface of its own and is bound to each equipment’s connection at generation. Fill it in for a PROJECT catalog — an export of one machine, which addresses through its own connection.',
+    'Laisser la connexion vide pour un catalogue GABARIT (carte de registres constructeur, interface standard) : il ne porte pas d’interface propre et est lié à la connexion de chaque équipement à la génération. La renseigner pour un catalogue PROJET — l’export d’une machine, qui adresse via sa propre connexion.',
+    'Die Verbindung leer lassen für einen VORLAGEN-Katalog (Hersteller-Registerkarte, Standardschnittstelle): er trägt keine eigene Schnittstelle und wird bei der Erzeugung an die Verbindung jedes Geräts gebunden. Für einen PROJEKT-Katalog ausfüllen — der Export einer Maschine, die über ihre eigene Verbindung adressiert.'
+  ),
+  bookNodesetNoInterface: ml(
+    'A NodeSet2 is always a template catalog: its namespace indices are file-local, so every address is emitted as a candidate with a <Connection> placeholder. Verify it against the server — or re-browse it online — before any check-in.',
+    'Un NodeSet2 est toujours un catalogue gabarit : ses indices de namespace sont locaux au fichier, donc chaque adresse est émise en candidate avec un marqueur <Connection>. À vérifier contre le serveur — ou à re-parcourir en ligne — avant tout check-in.',
+    'Ein NodeSet2 ist immer ein Vorlagen-Katalog: seine Namespace-Indizes sind dateilokal, daher wird jede Adresse als Kandidat mit einem <Connection>-Platzhalter ausgegeben. Vor jedem Check-in gegen den Server prüfen — oder online neu durchlaufen.'
+  ),
+  bookAttachSection: ml('Attach to equipments (optional)', 'Associer à des équipements (optionnel)', 'Mit Geräten verknüpfen (optional)'),
+
+  // --- workspace housekeeping (the Control tab) ------------------------------
+  // "Generate" had no counterpart: a model deleted from the library left its datapoints
+  // queued for creation with no way to take them out. These words insist on WHAT is
+  // being removed — the workspace's claim, not anything live.
+  forgetHint: ml(
+    'Ticking a row removes that object FROM THE WORKSPACE — a pending creation is cancelled, a pending update is dropped, a pending deletion is called off. The project itself is never touched.',
+    'Cocher une ligne retire cet objet DU WORKSPACE — une création en attente est annulée, une mise à jour abandonnée, une suppression en attente annulée. Le projet lui-même n’est jamais touché.',
+    'Eine Zeile anzuhaken entfernt dieses Objekt AUS DEM WORKSPACE — eine ausstehende Erstellung wird abgebrochen, eine Änderung verworfen, eine ausstehende Löschung zurückgenommen. Das Projekt selbst wird nie angetastet.'
+  ),
+  forgetSelected: ml('{n} selected', '{n} sélectionné(s)', '{n} ausgewählt'),
+  forgetSelectedAction: ml('Remove from the workspace', 'Retirer du workspace', 'Aus dem Workspace entfernen'),
+  forgetAll: ml('Select every row', 'Sélectionner toutes les lignes', 'Alle Zeilen auswählen'),
+  forgetDone: ml(
+    'Removed from the workspace: {types} type(s), {dps} datapoint(s), {configs} config(s). Nothing was changed in the project.',
+    'Retirés du workspace : {types} type(s), {dps} datapoint(s), {configs} config(s). Rien n’a été modifié dans le projet.',
+    'Aus dem Workspace entfernt: {types} Typ(en), {dps} Datenpunkt(e), {configs} Konfig(s). Im Projekt wurde nichts geändert.'
+  ),
+  forgetFailed: ml('Removal refused: {error}', 'Retrait refusé : {error}', 'Entfernen abgelehnt: {error}'),
+
+  // --- import preview -------------------------------------------------------
+  // The file is parsed AS SOON AS it is picked, with the very function the server
+  // ingests with: what the preview shows is what the catalog will contain. It is the
+  // only moment where a wrong file, a wrong generator or a source that yields 12 000
+  // signals instead of 200 costs nothing to discover.
+  bookPreviewSection: ml('File content', 'Contenu du fichier', 'Dateiinhalt'),
+  bookPreviewParsing: ml('Reading the file…', 'Lecture du fichier…', 'Datei wird gelesen…'),
+  bookPreviewCounts: ml(
+    '{signals} signal(s), {types} structured type(s)',
+    '{signals} signal(aux), {types} type(s) structuré(s)',
+    '{signals} Signal(e), {types} strukturierte(r) Typ(en)'
+  ),
+  bookPreviewUnmapped: ml(
+    '{n} datatype(s) unmapped (bound as String)',
+    '{n} type(s) de données non mappé(s) (liés en String)',
+    '{n} nicht zugeordnete(r) Datentyp(en) (als String gebunden)'
+  ),
+  bookPreviewEmpty: ml(
+    'This file yields NO signal — most likely the wrong generator for it, or an export that carries no variable.',
+    'Ce fichier ne donne AUCUN signal — probablement le mauvais générateur, ou un export qui ne contient aucune variable.',
+    'Diese Datei ergibt KEIN Signal — wahrscheinlich der falsche Generator oder ein Export ohne Variablen.'
+  ),
+  bookPreviewFailed: ml(
+    'This file cannot be read by the “{format}” generator: {error}',
+    'Ce fichier n’est pas lisible par le générateur « {format} » : {error}',
+    'Diese Datei kann der Generator „{format}“ nicht lesen: {error}'
+  ),
+  bookPreviewHint: ml(
+    'Parsed in the browser with the same generator the server ingests with — nothing has been sent or stored yet. Addresses are bound on creation from the interface below.',
+    'Analysé dans le navigateur avec le même générateur que celui du serveur — rien n’est encore envoyé ni enregistré. Les adresses sont liées à la création depuis l’interface ci-dessous.',
+    'Im Browser mit demselben Generator wie auf dem Server analysiert — es wurde noch nichts gesendet oder gespeichert. Adressen werden beim Erstellen aus der Schnittstelle unten gebunden.'
+  ),
+  bookPreviewShowing: ml(
+    'showing {n}/{total}',
+    'affichés {n}/{total}',
+    'angezeigt {n}/{total}'
+  ),
+  bookPreviewNoMatch: ml('No signal matches the filter.', 'Aucun signal ne correspond au filtre.', 'Kein Signal entspricht dem Filter.'),
+  bookPreviewTypes: ml('Structured types', 'Types structurés', 'Strukturierte Typen'),
+  bookPreviewMembers: ml('{n} member(s)', '{n} membre(s)', '{n} Element(e)'),
+
+  // --- server explorer + walk progress --------------------------------------
+  // A walk of a real server takes minutes. Two things follow: it must be possible to
+  // LOOK at the address space before committing to a catalog, and the walk itself
+  // must say where it is instead of freezing the screen.
+  explorerTitle: ml('Explore the server', 'Explorer le serveur', 'Server erkunden'),
+  explorerHint: ml(
+    'Open the branches to see what the server actually exposes, BEFORE creating anything: one request per branch, nothing is stored. The branch you open here becomes the walk root below — which is how a catalog of 200 useful signals is made instead of one of 12 000.',
+    'Ouvrir les branches pour voir ce que le serveur expose réellement, AVANT de créer quoi que ce soit : une requête par branche, rien n’est stocké. La branche ouverte ici devient la racine du parcours ci-dessous — c’est ainsi qu’on obtient un catalogue de 200 signaux utiles plutôt qu’un de 12 000.',
+    'Die Zweige öffnen, um zu sehen, was der Server wirklich anbietet, BEVOR etwas erstellt wird: eine Anfrage pro Zweig, nichts wird gespeichert. Der hier geöffnete Zweig wird zur Wurzel des Durchlaufs unten — so entsteht ein Katalog mit 200 nützlichen Signalen statt mit 12 000.'
+  ),
+  explorerOpen: ml('Explore', 'Explorer', 'Erkunden'),
+  explorerUseAsRoot: ml('Use as the walk root', 'Utiliser comme racine du parcours', 'Als Durchlauf-Wurzel verwenden'),
+  explorerRootIs: ml('Walk root: {root}', 'Racine du parcours : {root}', 'Durchlauf-Wurzel: {root}'),
+  explorerEmpty: ml('This branch exposes nothing.', 'Cette branche n’expose rien.', 'Dieser Zweig bietet nichts an.'),
+  explorerCounts: ml(
+    '{variables} variable(s) · {containers} branch(es)',
+    '{variables} variable(s) · {containers} branche(s)',
+    '{variables} Variable(n) · {containers} Zweig(e)'
+  ),
+  explorerFailed: ml('Cannot read this branch: {error}', 'Branche illisible : {error}', 'Zweig nicht lesbar: {error}'),
+  walkTitle: ml('Walking the server…', 'Parcours du serveur…', 'Server wird durchlaufen…'),
+  walkProgress: ml(
+    '{entries} signal(s) · {requests} request(s) · depth {depth}',
+    '{entries} signal(aux) · {requests} requête(s) · profondeur {depth}',
+    '{entries} Signal(e) · {requests} Anfrage(n) · Tiefe {depth}'
+  ),
+  walkAt: ml('at {path}', 'sur {path}', 'bei {path}'),
+  walkAtRoot: ml('at the root', 'à la racine', 'an der Wurzel'),
+  walkCancel: ml('Stop', 'Arrêter', 'Anhalten'),
+  walkCancelled: ml(
+    'Walk stopped — the catalog keeps what it had.',
+    'Parcours arrêté — le catalogue conserve son contenu précédent.',
+    'Durchlauf angehalten — der Katalog behält seinen vorherigen Inhalt.'
+  ),
+  walkRun: ml('Walk into this catalog', 'Parcourir dans ce catalogue', 'In diesen Katalog durchlaufen'),
+  walkRunHint: ml(
+    'The catalog is declared first and the walk fills it: nothing is lost if a walk of a large server is stopped or fails, and it can simply be run again.',
+    'Le catalogue est déclaré d’abord et le parcours le remplit : rien n’est perdu si le parcours d’un gros serveur est arrêté ou échoue, il suffit de le relancer.',
+    'Der Katalog wird zuerst deklariert und der Durchlauf füllt ihn: bei einem abgebrochenen oder fehlgeschlagenen Durchlauf eines großen Servers geht nichts verloren — er kann einfach erneut gestartet werden.'
+  ),
+  bookDeclared: ml(
+    'Catalog “{name}” declared — now walk the server into it.',
+    'Catalogue « {name} » déclaré — lancer maintenant le parcours du serveur.',
+    'Katalog „{name}“ deklariert — jetzt den Server hineinlaufen lassen.'
+  ),
+  bookEmptyYet: ml(
+    'Declared, not yet generated: no signal. Walk the server into it, or refresh it.',
+    'Déclaré, pas encore généré : aucun signal. Lancer le parcours du serveur, ou rafraîchir.',
+    'Deklariert, noch nicht erzeugt: kein Signal. Den Server hineinlaufen lassen oder aktualisieren.'
+  ),
+  walkDone: ml(
+    'Walk of “{conn}” finished: {n} signals in {requests} request(s){delta}.',
+    'Parcours de « {conn} » terminé : {n} signaux en {requests} requête(s){delta}.',
+    'Durchlauf von „{conn}“ beendet: {n} Signale in {requests} Anfrage(n){delta}.'
+  ),
+
+  // --- hiding signals by hand -----------------------------------------------
+  // A catalog is a READING of a source, so hiding is an override kept beside the
+  // book: a re-walk must not undo the operator's judgement, and nothing is lost.
+  hideSignal: ml('Hide this signal', 'Masquer ce signal', 'Dieses Signal ausblenden'),
+  hideChecked: ml('Hide the checked', 'Masquer les cochés', 'Ausgewählte ausblenden'),
+  hiddenCount: ml('{n} hidden', '{n} masqué(s)', '{n} ausgeblendet'),
+  hiddenTitle: ml(
+    'Signals hidden by hand: they take no role, no address and no config. Nothing is deleted — restore them here.',
+    'Signaux masqués à la main : ils ne prennent ni rôle, ni adresse, ni config. Rien n’est supprimé — les restaurer ici.',
+    'Manuell ausgeblendete Signale: sie erhalten keine Rolle, keine Adresse und keine Konfig. Nichts wird gelöscht — hier wiederherstellen.'
+  ),
+  restoreHidden: ml('Restore all', 'Tout restaurer', 'Alle wiederherstellen'),
+  hideDone: ml(
+    '{n} signal(s) hidden — they take no role, no address and no config.',
+    '{n} signal(aux) masqué(s) — ils ne prennent ni rôle, ni adresse, ni config.',
+    '{n} Signal(e) ausgeblendet — sie erhalten keine Rolle, keine Adresse und keine Konfig.'
+  ),
+  restoreDone: ml('{n} signal(s) restored.', '{n} signal(aux) restauré(s).', '{n} Signal(e) wiederhergestellt.'),
+  hideFailed: ml('Cannot hide: {error}', 'Masquage impossible : {error}', 'Ausblenden nicht möglich: {error}'),
+  bookNoDeviceYet: ml(
+    'No equipment declared yet — the catalog can be created now and attached later.',
+    'Aucun équipement déclaré — le catalogue peut être créé maintenant et associé plus tard.',
+    'Noch kein Gerät deklariert — der Katalog kann jetzt erstellt und später verknüpft werden.'
+  ),
+
+  /** Provenance kinds, as the catalogue list and the detail label them. */
+  sourceKind: {
+    'opcua-browse': ml('OPC UA browse', 'parcours OPC UA', 'OPC UA-Browse'),
+    simaticml: ml('SimaticML export', 'export SimaticML', 'SimaticML-Export'),
+    xvm: ml('Schneider XVM', 'XVM Schneider', 'Schneider XVM'),
+    csv: ml('Schneider CSV', 'CSV Schneider', 'Schneider CSV'),
+    nodeset: ml('OPC UA NodeSet2', 'NodeSet2 OPC UA', 'OPC UA NodeSet2'),
+    'ai-proposal': ml('AI proposal', 'proposition IA', 'KI-Vorschlag'),
+    manual: ml('entered by hand', 'saisi à la main', 'manuell erfasst')
+  },
+
+  /** Generator choices of the creation form (one per supported source). */
+  format: {
+    browse: ml('Live OPC UA server (explore, then walk)', 'Serveur OPC UA en ligne (explorer puis parcourir)', 'Live-OPC-UA-Server (erkunden, dann durchlaufen)'),
+    simaticml: ml('TIA / SimaticML export (XML)', 'Export TIA / SimaticML (XML)', 'TIA-/SimaticML-Export (XML)'),
+    csv: ml('Control Expert variables (CSV)', 'Variables Control Expert (CSV)', 'Control-Expert-Variablen (CSV)'),
+    xvm: ml('Control Expert variables (XVM/XSY)', 'Variables Control Expert (XVM/XSY)', 'Control-Expert-Variablen (XVM/XSY)'),
+    nodeset: ml('OPC UA NodeSet2 (XML)', 'NodeSet2 OPC UA (XML)', 'OPC UA NodeSet2 (XML)')
+  },
+
+  /** What each generator reads, and what it is trustworthy for. */
+  formatHint: {
+    browse: ml(
+      'Explore the address space below to choose what is worth cataloguing, then create the catalog: it is declared first and the walk fills it, reporting what it finds as it goes. Catalogues every variable under the root: path, datatype and peripheral-address reference. The walk parameters are recorded, so “Refresh” replays the exact same walk and shows what moved.',
+      'Explorer l’espace d’adressage ci-dessous pour choisir ce qui vaut d’être catalogué, puis créer le catalogue : il est déclaré d’abord et le parcours le remplit en rendant compte de ce qu’il trouve. Catalogue chaque variable sous la racine : chemin, type de données et référence d’adresse périphérique. Les paramètres du parcours sont enregistrés : « Rafraîchir » rejoue exactement le même parcours et montre ce qui a bougé.',
+      'Den Adressraum unten erkunden, um zu wählen, was katalogisiert werden soll, dann den Katalog erstellen: er wird zuerst deklariert und der Durchlauf füllt ihn und berichtet dabei, was er findet. Katalogisiert jede Variable unter der Wurzel: Pfad, Datentyp und Peripherieadress-Referenz. Die Durchlaufparameter werden gespeichert, sodass „Aktualisieren“ genau denselben Durchlauf wiederholt und zeigt, was sich geändert hat.'
+    ),
+    simaticml: ml(
+      'A TIA Openness export is a BUNDLE: select the DB documents together with the UDTs they reference, otherwise the members of an unresolved UDT are reported as warnings instead of being catalogued.',
+      'Un export TIA Openness est un LOT : sélectionner les documents DB avec les UDT qu’ils référencent, sinon les membres d’un UDT non résolu sont signalés en avertissement au lieu d’être catalogués.',
+      'Ein TIA-Openness-Export ist ein BÜNDEL: die DB-Dokumente zusammen mit den referenzierten UDTs auswählen, sonst werden die Member eines nicht aufgelösten UDT als Warnung gemeldet statt katalogisiert.'
+    ),
+    csv: ml(
+      'Located variables become Modbus references (%MW100 → 40101, %M10 → coil 00011, %IW200 → input register 30201, read-only). Register overlaps, unlocated and topological variables are reported as warnings.',
+      'Les variables localisées deviennent des références Modbus (%MW100 → 40101, %M10 → bobine 00011, %IW200 → registre d’entrée 30201, lecture seule). Chevauchements de registres, variables non localisées et adresses topologiques sont signalés en avertissement.',
+      'Lokalisierte Variablen werden zu Modbus-Referenzen (%MW100 → 40101, %M10 → Spule 00011, %IW200 → Eingangsregister 30201, nur lesend). Registerüberlappungen, nicht lokalisierte und topologische Variablen werden als Warnung gemeldet.'
+    ),
+    xvm: ml(
+      'Flattens structured variables to their members (Recette.Consigne → 40421) and picks units from the Unity-style attributes. The XVM schema is NOT vendor-verified — the book says so.',
+      'Aplatit les variables structurées en leurs membres (Recette.Consigne → 40421) et récupère les unités dans les attributs de style Unity. Le schéma XVM n’est PAS vérifié constructeur — le carnet le signale.',
+      'Flacht strukturierte Variablen auf ihre Member ab (Recette.Consigne → 40421) und übernimmt Einheiten aus den Unity-typischen Attributen. Das XVM-Schema ist NICHT herstellerverifiziert — das Adressbuch weist darauf hin.'
+    ),
+    nodeset: ml(
+      'Reads the model without touching the machine: it has the AccessLevel a browse cannot expose, folds custom supertypes into their subtypes, and catalogues each ObjectType as a candidate DP type.',
+      'Lit le modèle sans toucher à la machine : il porte l’AccessLevel qu’un parcours n’expose pas, replie les supertypes personnalisés dans leurs sous-types et catalogue chaque ObjectType en type de DP candidat.',
+      'Liest das Modell, ohne die Maschine anzufassen: es enthält den AccessLevel, den ein Browse nicht liefert, faltet eigene Supertypen in ihre Subtypen und katalogisiert jeden ObjectType als DP-Typ-Kandidaten.'
+    )
+  },
+
   // --- signal table ---------------------------------------------------------
   bookSignals: ml('Book signals', 'Signaux du carnet', 'Signale des Adressbuchs'),
   filterPlaceholder: ml('filter path or comment…', 'filtrer chemin ou commentaire…', 'Pfad oder Kommentar filtern…'),
   allRoles: ml('all roles', 'tous les rôles', 'alle Rollen'),
   allQualified: ml('all qualified', 'tout qualifié', 'alles qualifiziert'),
   toQualify: ml('{n} to qualify', '{n} à qualifier', '{n} zu qualifizieren'),
-  applyRules: ml('⚙ Apply the rules', '⚙ Appliquer les règles', '⚙ Regeln anwenden'),
+  applyRules: ml('Apply the rules', 'Appliquer les règles', 'Regeln anwenden'),
   applyRulesTitle: ml(
     'Re-run the qualification rules',
     'Réappliquer les règles de qualification',
@@ -309,6 +689,32 @@ export const MSG = {
   ),
   colPath: ml('path', 'chemin', 'Pfad'),
   colRole: ml('role', 'rôle', 'Rolle'),
+
+  // --- per-signal role tagging -----------------------------------------------
+  // The role is what drives every config at check-in, so it must be changeable on
+  // ONE signal without going through the bulk bar — and undoable.
+  roleEditHint: ml(
+    'Click to change this signal’s role',
+    'Cliquer pour changer le rôle de ce signal',
+    'Klicken, um die Rolle dieses Signals zu ändern'
+  ),
+  roleFromRule: ml('— from the rules —', '— selon les règles —', '— gemäß den Regeln —'),
+  roleOverridden: ml(
+    'role set BY HAND (the rules would have proposed “{rule}”) — pick “{fromRule}” to hand it back to them',
+    'rôle imposé À LA MAIN (les règles auraient proposé « {rule} ») — choisir « {fromRule} » pour le leur rendre',
+    'Rolle MANUELL gesetzt (die Regeln hätten „{rule}“ vorgeschlagen) — „{fromRule}“ wählen, um sie ihnen zurückzugeben'
+  ),
+  roleSetOne: ml(
+    '“{path}” qualified as “{role}” — a manual role outranks every rule.',
+    '« {path} » qualifié « {role} » — un rôle manuel prime sur toutes les règles.',
+    '„{path}“ als „{role}“ qualifiziert — eine manuelle Rolle hat Vorrang vor allen Regeln.'
+  ),
+  roleClearedOne: ml(
+    '“{path}” handed back to the rules: “{role}”.',
+    '« {path} » rendu aux règles : « {role} ».',
+    '„{path}“ den Regeln zurückgegeben: „{role}“.'
+  ),
+  roleSetFailed: ml('Cannot set the role: {error}', 'Rôle non enregistré : {error}', 'Rolle nicht gesetzt: {error}'),
   colType: ml('type', 'type', 'Typ'),
   colUnit: ml('unit', 'unité', 'Einheit'),
   colAccess: ml('access', 'accès', 'Zugriff'),
@@ -330,6 +736,13 @@ export const MSG = {
   accessManual: ml('access set manually', 'accès corrigé manuellement', 'Zugriff manuell gesetzt'),
 
   // --- model panel ----------------------------------------------------------
+  composerTitle: ml('Compose the model', 'Composer le modèle', 'Modell zusammenstellen'),
+  composerCatalog: ml('catalog', 'catalogue', 'Katalog'),
+  composerNoCatalog: ml(
+    'No catalog yet — create one in the Catalogs tab, then compose a model from it.',
+    'Aucun catalogue — en créer un dans l’onglet Catalogues, puis composer un modèle depuis lui.',
+    'Noch kein Katalog — im Reiter Kataloge einen erstellen, dann daraus ein Modell zusammenstellen.'
+  ),
   bookOf: ml('Book — {name}', 'Carnet — {name}', 'Adressbuch — {name}'),
   filterShort: ml('filter…', 'filtrer…', 'filtern…'),
   signalsOf: ml('{shown} / {total} signals', '{shown} / {total} signaux', '{shown} / {total} Signale'),
@@ -337,7 +750,7 @@ export const MSG = {
   typesCount: ml('{n} type(s)', '{n} type(s)', '{n} Typ(en)'),
   dpsCount: ml('{n} DP', '{n} DP', '{n} DP'),
   configsCount: ml('{n} configs', '{n} configs', '{n} Konfigs'),
-  testRead: ml('◉ Test-read', '◉ Test-read', '◉ Testlesen'),
+  testRead: ml('Test-read', 'Test-read', 'Testlesen'),
   colDpe: ml('DPE', 'DPE', 'DPE'),
   colAddress: ml('address', 'adresse', 'Adresse'),
   colDir: ml('dir', 'dir', 'Ri.'),
@@ -356,10 +769,48 @@ export const MSG = {
   genType: ml('type', 'type', 'Typ'),
   genZone: ml('zone', 'zone', 'Zone'),
   genEquipments: ml('devices', 'équipements', 'Geräte'),
+  genTarget: ml('apply to', 'appliquer à', 'anwenden auf'),
+
+  // --- reusable models -------------------------------------------------------
+  // A house-standard type is authored once and applied to machine after machine, so
+  // it is stored — with its structure and its mappings, but WITHOUT the target, the
+  // zone or the equipment names, which are what differ between two applications.
+  modelLibrary: ml('model', 'modèle', 'Modell'),
+  modelNone: ml('— compose a new one —', '— en composer un nouveau —', '— ein neues zusammenstellen —'),
+  modelSave: ml('Save the model', 'Enregistrer le modèle', 'Modell speichern'),
+  modelSaveHint: ml(
+    'Stores the type’s structure and its mappings under its type name, reusable on any equipment. The zone, the equipment names and the target are NOT stored — they are what differs between two applications.',
+    'Enregistre la structure du type et ses mappings sous le nom du type, réutilisable sur n’importe quel équipement. La zone, les noms d’équipements et la cible ne sont PAS enregistrés — c’est ce qui diffère entre deux applications.',
+    'Speichert die Struktur des Typs und seine Zuordnungen unter dem Typnamen, wiederverwendbar auf jedem Gerät. Zone, Gerätenamen und Ziel werden NICHT gespeichert — genau das unterscheidet zwei Anwendungen.'
+  ),
+  modelDelete: ml('Delete', 'Supprimer', 'Löschen'),
+  modelLoaded: ml(
+    'Model “{name}” loaded (type “{type}”) — pick the target equipment, the zone and the names, then generate.',
+    'Modèle « {name} » chargé (type « {type} ») — choisir l’équipement cible, la zone et les noms, puis générer.',
+    'Modell „{name}“ geladen (Typ „{type}“) — Zielgerät, Zone und Namen wählen, dann erzeugen.'
+  ),
+  modelSaved: ml('Model “{name}” saved.', 'Modèle « {name} » enregistré.', 'Modell „{name}“ gespeichert.'),
+  modelDeleted: ml('Model “{name}” deleted.', 'Modèle « {name} » supprimé.', 'Modell „{name}“ gelöscht.'),
+  modelSaveFailed: ml('Model refused: {error}', 'Modèle refusé : {error}', 'Modell abgelehnt: {error}'),
+  modelCoverage: ml(
+    'Against this catalog: {bound} mapped, {missing} pointing at a missing signal, {unbound} not mapped.',
+    'Sur ce catalogue : {bound} associé(s), {missing} pointant un signal absent, {unbound} non associé(s).',
+    'Für diesen Katalog: {bound} zugeordnet, {missing} auf ein fehlendes Signal zeigend, {unbound} nicht zugeordnet.'
+  ),
+  genTargetMissing: ml(
+    'No target equipment — declare one in the Devices tab: the generated addresses need its connection and driver.',
+    'Aucun équipement cible — en déclarer un dans l’onglet Équipements : les adresses générées ont besoin de sa connexion et de son driver.',
+    'Kein Zielgerät — im Reiter Geräte eines deklarieren: die erzeugten Adressen brauchen seine Verbindung und seinen Treiber.'
+  ),
+  genTargetNotServed: ml(
+    '“{name}” does not reference this catalog. Generating still works — the addresses use its own connection — but link the catalog to it if it is meant to serve it.',
+    '« {name} » ne référence pas ce catalogue. La génération fonctionne quand même — les adresses utilisent sa propre connexion — mais associez-lui le catalogue s’il doit le servir.',
+    '„{name}“ verweist nicht auf diesen Katalog. Die Erzeugung funktioniert dennoch — die Adressen nutzen seine eigene Verbindung — aber verknüpfen Sie den Katalog, wenn er ihn bedienen soll.'
+  ),
   genStructure: ml('structure', 'structure', 'Struktur'),
   genMirror: ml('mirror the book', 'miroir du carnet', 'Spiegel des Adressbuchs'),
   genCustom: ml('custom structure + mapping', 'structure personnalisée + mapping', 'eigene Struktur + Zuordnung'),
-  genRun: ml('⚙ Generate', '⚙ Générer', '⚙ Erzeugen'),
+  genRun: ml('Generate', 'Générer', 'Erzeugen'),
   genUnknownHint: ml(
     '{n} signal(s) “to qualify”: their DPEs will be created without any config.',
     '{n} signal(aux) « à qualifier » : leurs DPE seront créés sans config.',
@@ -377,7 +828,32 @@ export const MSG = {
     'Zielstruktur (Einrückung = Verschachtelung, „Name : Typ“ = Blatt)'
   ),
   mappedCount: ml('{n}/{total} element(s) mapped', '{n}/{total} élément(s) associé(s)', '{n}/{total} Element(e) zugeordnet'),
-  autoBind: ml('⚡ Map automatically', '⚡ Associer automatiquement', '⚡ Automatisch zuordnen'),
+
+  // --- structure tree (the graphical authoring of a custom type) --------------
+  // The outline text stays the storage format; the tree is the way to SHAPE it, and
+  // it carries each leaf's mapping so nothing has to be held in one's head.
+  genViewTree: ml('Tree', 'Arbre', 'Baum'),
+  genViewText: ml('Outline (text)', 'Plan (texte)', 'Gliederung (Text)'),
+  genViewHint: ml(
+    'Two views of the SAME structure: shape it as a tree, or edit it as an outline (indentation = nesting, “Name : Type” = leaf) to paste it between projects. The text is derived from the tree, so they cannot disagree.',
+    'Deux vues de la MÊME structure : la façonner en arbre, ou l’éditer en plan (indentation = imbrication, « Nom : Type » = feuille) pour la copier entre projets. Le texte découle de l’arbre : ils ne peuvent pas diverger.',
+    'Zwei Ansichten der GLEICHEN Struktur: als Baum formen oder als Gliederung bearbeiten (Einrückung = Verschachtelung, „Name : Typ“ = Blatt), um sie zwischen Projekten zu kopieren. Der Text wird aus dem Baum abgeleitet, sie können nicht auseinanderlaufen.'
+  ),
+  treeEmpty: ml(
+    'Empty type — add an element or a group.',
+    'Type vide — ajouter un élément ou un groupe.',
+    'Leerer Typ — ein Element oder eine Gruppe hinzufügen.'
+  ),
+  treeAddLeaf: ml('Element', 'Élément', 'Element'),
+  treeAddGroup: ml('Group', 'Groupe', 'Gruppe'),
+  treeGroupType: ml('group', 'groupe', 'Gruppe'),
+  treeRemove: ml('Remove — its mapping goes with it', 'Supprimer — son mapping part avec', 'Entfernen — sein Mapping geht mit'),
+  treeUnbound: ml(
+    'Not mapped: this element would be created with no address and no config.',
+    'Non associé : cet élément serait créé sans adresse ni config.',
+    'Nicht zugeordnet: dieses Element würde ohne Adresse und ohne Konfig erstellt.'
+  ),
+  autoBind: ml('Map automatically', 'Associer automatiquement', 'Automatisch zuordnen'),
   notMapped: ml('— not mapped —', '— non associé —', '— nicht zugeordnet —'),
   ambiguousLeaf: ml(
     '“{leaf}”: several candidate signals ({candidates}) — choose below.',
@@ -393,7 +869,31 @@ export const MSG = {
   // --- control panel --------------------------------------------------------
   controlTitle: ml('Control — check-in', 'Contrôle — check-in', 'Kontrolle — Check-in'),
   dryRun: ml('Preview (dry-run)', 'Aperçu (dry-run)', 'Vorschau (Dry-Run)'),
-  checkin: ml('⇧ Check-in', '⇧ Check-in', '⇧ Check-in'),
+  checkin: ml('Check-in', 'Check-in', 'Check-in'),
+
+  // --- why check-in is (un)available -----------------------------------------
+  // A permanently greyed primary button is a dead end: "not allowed" and "nothing to
+  // apply" call for opposite actions, so the reason is stated, never left to guess.
+  checkinReady: ml(
+    'Apply the diff to the project, transactionally.',
+    'Appliquer le diff au projet, de façon transactionnelle.',
+    'Das Diff transaktional auf das Projekt anwenden.'
+  ),
+  checkinNothing: ml(
+    'Nothing to check in — generate a model first (Model tab), the diff appears here.',
+    'Rien à checker-in — générer d’abord un modèle (onglet Modèle), le diff apparaît ici.',
+    'Nichts einzuchecken — zuerst ein Modell erzeugen (Reiter Modell), das Diff erscheint hier.'
+  ),
+  checkinNoWorkspace: ml(
+    'No workspace loaded yet.',
+    'Aucun workspace chargé pour l’instant.',
+    'Noch kein Workspace geladen.'
+  ),
+  checkinNoRole: ml(
+    'The “Check-in” role is not granted to you — the diff and the dry-run stay available.',
+    'Le rôle « Check-in » ne vous est pas accordé — le diff et l’aperçu restent disponibles.',
+    'Die Rolle „Check-in“ ist Ihnen nicht zugewiesen — Diff und Vorschau bleiben verfügbar.'
+  ),
   planEmpty: ml(
     'Nothing to check in: the workspace matches the project.',
     'Rien à checker-in : le workspace est identique au projet.',
@@ -479,6 +979,21 @@ export function fmt(template: string, params: Record<string, string | number> = 
 }
 
 /**
+ * Render a CORE warning in the UI language: its `code` selects a translated template
+ * from {@link WARNING_MSG}, into which the core's own `params` are substituted. An
+ * unknown code (a newer core, or a `legacy` string from a book written before the
+ * structured warnings) falls back to the English message the core shipped with it.
+ *
+ * Lives here rather than in each component: the page, the catalogues panel and the
+ * creation form all show core warnings, and three copies of the fallback rule is
+ * three chances for one of them to render `undefined` when the core adds a code.
+ */
+export function warnText(warning: { code: string; message: string; params?: Record<string, string | number> }, lang: Lang): string {
+  const translated = WARNING_MSG[warning.code];
+  return fmt(translated === undefined ? warning.message : t(translated, lang), warning.params ?? {});
+}
+
+/**
  * Translations of the CORE's warnings, keyed by `EngWarning.code`.
  *
  * The core stays language-neutral: it emits a stable code, an English template and
@@ -550,6 +1065,28 @@ export const WARNING_MSG: Record<string, Ml> = {
     '{n} Signal(e) GEÄNDERT (Typ, Zugriff oder Adresse) — die daraus erzeugten Konfigs müssen neu erzeugt werden.'
   ),
   'book.added': ml('{n} new signal(s) found in the source.', '{n} nouveau(x) signal(aux) détecté(s) dans la source.', '{n} neue(s) Signal(e) in der Quelle gefunden.'),
+  'book.excluded': ml(
+    '{n}/{total} signal(s) hidden by hand — they take no role, no address and no config. Restore them from the signal table.',
+    '{n}/{total} signal(aux) masqué(s) à la main — ils ne prennent ni rôle, ni adresse, ni config. Les restaurer depuis la table des signaux.',
+    '{n}/{total} Signal(e) manuell ausgeblendet — sie erhalten keine Rolle, keine Adresse und keine Konfig. In der Signaltabelle wiederherstellen.'
+  ),
+  'book.duplicate-paths': ml(
+    '{n} duplicate signal path(s) dropped ({paths}{more}) — a book is keyed by path, so two signals sharing one would collapse into a single DPE. Report this: the generator should not produce them.',
+    '{n} chemin(s) de signal en doublon écarté(s) ({paths}{more}) — un catalogue est indexé par chemin, donc deux signaux partageant le même se réduiraient à un seul DPE. À signaler : le générateur ne devrait pas en produire.',
+    '{n} doppelte(r) Signalpfad(e) verworfen ({paths}{more}) — ein Katalog wird über den Pfad indiziert, zwei Signale mit demselben Pfad würden also zu einem einzigen DPE verschmelzen. Bitte melden: der Generator sollte keine erzeugen.'
+  ),
+
+  // --- reusable models --------------------------------------------------------
+  'template.missing-entries': ml(
+    '{n} mapping(s) point at signals this catalog does not have ({pairs}{more}) — those elements would be created with no address and no config.',
+    '{n} mapping(s) pointent vers des signaux absents de ce catalogue ({pairs}{more}) — ces éléments seraient créés sans adresse ni config.',
+    '{n} Zuordnung(en) zeigen auf Signale, die dieser Katalog nicht hat ({pairs}{more}) — diese Elemente würden ohne Adresse und ohne Konfig erstellt.'
+  ),
+  'template.unbound-leaves': ml(
+    '{n} element(s) of the model are not mapped: they get no config.',
+    '{n} élément(s) du modèle ne sont pas associés : ils n’auront aucune config.',
+    '{n} Element(e) des Modells sind nicht zugeordnet: sie erhalten keine Konfig.'
+  ),
 
   // --- online browse ----------------------------------------------------------
   'browse.truncated-entries': ml(
@@ -862,6 +1399,11 @@ export const WARNING_MSG: Record<string, Ml> = {
   'ui.generation-failed': ml('{message}', '{message}', '{message}'),
 
   // --- check-in diff ----------------------------------------------------------
+  'diff.dp-type-missing': ml(
+    '{n} datapoint(s) staged for creation with a DP type that exists NEITHER in the workspace NOR in the project ({dps}{more}) — most likely a model that was deleted. They would fail at check-in: select them below and remove them from the workspace.',
+    '{n} datapoint(s) en attente de création avec un type DP qui n’existe NI dans le workspace NI dans le projet ({dps}{more}) — probablement un modèle supprimé. Ils échoueraient au check-in : les sélectionner ci-dessous et les retirer du workspace.',
+    '{n} Datenpunkt(e) zur Erstellung vorgemerkt mit einem DP-Typ, der WEDER im Workspace NOCH im Projekt existiert ({dps}{more}) — wahrscheinlich ein gelöschtes Modell. Beim Check-in würden sie fehlschlagen: unten auswählen und aus dem Workspace entfernen.'
+  ),
   'diff.retype-unsupported': ml(
     'Datapoint "{dp}" exists with type "{live}" (workspace: "{wanted}") — retype is not supported; item skipped.',
     'Le datapoint « {dp} » existe avec le type « {live} » (workspace : « {wanted} ») — le changement de type n’est pas supporté ; élément ignoré.',

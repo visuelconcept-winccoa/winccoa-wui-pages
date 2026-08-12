@@ -14,7 +14,8 @@
 //
 //   view            reads (health excepted), plan/diff, test-read
 //   manage-devices  the device registry and the address-book catalog (ingest,
-//                   refresh, role overrides) — the engineering INPUTS
+//                   refresh, role overrides, DELETE a catalog) — the engineering
+//                   INPUTS
 //   edit-model      the workspace (check-out, save) — the engineering OUTPUT
 //   checkin         apply a plan to the project (create/update/DELETE types,
 //                   datapoints and configs) — the only route that writes OA
@@ -47,20 +48,31 @@ function gate(role: 'view' | 'edit-model' | 'manage-devices' | 'checkin') {
  *   GET  /roles                                         (open) -> { roles }
  *
  *   GET  /devices                                       (view)           -> { devices }
+ *   GET  /devices/state                                 (view)           -> { states }
  *   POST /devices          { device }                   (manage-devices) -> 201 { device, devices }
  *   POST /devices/:id      { device }                   (manage-devices) -> { device, devices }
  *   PUT  /devices          { devices }                  (manage-devices) -> { devices }
  *   DEL  /devices/:id                                   (manage-devices) -> { devices }
  *
  *   GET  /connections                                   (view)           -> { connections }
+ *   GET  /drivers                                       (view)           -> { drivers }
+ *   POST /browse/level     { connection, nodeId? }      (view)           -> { nodes }
  *
  *   GET  /books                                         (view)           -> { books }
  *   GET  /books/:id                                     (view)           -> { book }
- *   POST /books/ingest     { bookId, format, … }        (manage-devices) -> { book }
+ *   POST /books            { bookId, name?, interface? } (manage-devices) -> 201 { book, books }
+ *   PUT  /books/:id        { book }                      (manage-devices) -> { book, books }
+ *   POST /books/ingest     { bookId, format, … }        (manage-devices) -> { book, books }
  *   POST /books/browse     { bookId, connection, … }    (manage-devices) -> { book, delta? }
  *   POST /books/:id/refresh                             (manage-devices) -> { book, delta? }
  *   POST /books/:id/roles  { roles }                    (manage-devices) -> { book }
  *   POST /books/:id/access { access }                   (manage-devices) -> { book }
+ *   POST /books/:id/exclude { excluded }                (manage-devices) -> { book }
+ *   DEL  /books/:id                                     (manage-devices) -> { books, devices }
+ *
+ *   GET  /models                                         (view)           -> { models }
+ *   POST /models           { model }                     (edit-model)     -> { model }
+ *   DEL  /models/:id                                     (edit-model)     -> { ok }
  *
  *   GET  /workspace?name=                               (view)           -> { workspace }
  *   POST /workspace        { workspace }                (edit-model)     -> { ok }
@@ -97,6 +109,10 @@ export class EngRoute {
     // in the path (`/devices/`) would match the collection route with Express's
     // default non-strict routing, and quietly hit the registry-replace handler.
     router.get('/devices', gate('view'), controller.listDevices);
+    // The LIVE part only, for the page's state refresh: a connection state is the one
+    // thing about an equipment that changes on its own, and re-sending the registry
+    // every few seconds would also let a poll overwrite an operator's in-flight edit.
+    router.get('/devices/state', gate('view'), controller.deviceStates);
     router.post('/devices', gate('manage-devices'), controller.createDevice);
     router.post('/devices/:id', gate('manage-devices'), controller.saveDevice);
     router.put('/devices', gate('manage-devices'), controller.saveDevices);
@@ -105,14 +121,31 @@ export class EngRoute {
     // --- OPC UA connections (browsable sources) --------------------------------
     router.get('/connections', gate('view'), controller.connections);
 
+    // --- drivers (the manager numbers the device form offers) ------------------
+    router.get('/drivers', gate('view'), controller.drivers);
+
+    // --- one browse LEVEL ------------------------------------------------------
+    // `view`, not `manage-devices`: it only READS an address space. It is what the
+    // server explorer and the client-driven (progress-reporting) walk are built on.
+    router.post('/browse/level', gate('view'), controller.browseLevel);
+
     // --- address books ---------------------------------------------------------
     router.get('/books', gate('view'), controller.listBooks);
+    router.post('/books', gate('manage-devices'), controller.createBook);
     router.post('/books/ingest', gate('manage-devices'), controller.ingestBook);
     router.post('/books/browse', gate('manage-devices'), controller.browseBook);
     router.get('/books/:id', gate('view'), controller.getBook);
+    router.put('/books/:id', gate('manage-devices'), controller.putBook);
+    router.delete('/books/:id', gate('manage-devices'), controller.deleteBook);
     router.post('/books/:id/refresh', gate('manage-devices'), controller.refreshBook);
     router.post('/books/:id/roles', gate('manage-devices'), controller.saveBookRoles);
     router.post('/books/:id/access', gate('manage-devices'), controller.saveBookAccess);
+    router.post('/books/:id/exclude', gate('manage-devices'), controller.saveBookExcluded);
+
+    // --- reusable model templates ----------------------------------------------
+    router.get('/models', gate('view'), controller.listModels);
+    router.post('/models', gate('edit-model'), controller.saveModel);
+    router.delete('/models/:id', gate('edit-model'), controller.deleteModel);
 
     // --- workspace -------------------------------------------------------------
     router.get('/workspace', gate('view'), controller.getWorkspace);

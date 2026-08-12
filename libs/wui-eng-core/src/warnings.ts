@@ -88,7 +88,13 @@ export const WARNING_CODES = {
   book: {
     REMOVED: 'book.removed',
     CHANGED: 'book.changed',
-    ADDED: 'book.added'
+    ADDED: 'book.added',
+    EXCLUDED: 'book.excluded',
+    DUPLICATE_PATHS: 'book.duplicate-paths'
+  },
+  template: {
+    MISSING_ENTRIES: 'template.missing-entries',
+    UNBOUND_LEAVES: 'template.unbound-leaves'
   },
   browse: {
     TRUNCATED_ENTRIES: 'browse.truncated-entries',
@@ -158,7 +164,8 @@ export const WARNING_CODES = {
     DATATYPE_UNMAPPED: 'simaticml.datatype-unmapped'
   },
   diff: {
-    RETYPE_UNSUPPORTED: 'diff.retype-unsupported'
+    RETYPE_UNSUPPORTED: 'diff.retype-unsupported',
+    DP_TYPE_MISSING: 'diff.dp-type-missing'
   },
   device: {
     NAME_REQUIRED: 'device.name-required',

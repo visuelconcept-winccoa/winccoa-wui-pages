@@ -18,10 +18,14 @@
 import type {
   AddressBook,
   ApplyReport,
+  BrowseProgress,
   Device,
   DeviceDraft,
+  DeviceStateUpdate,
   EngPlan,
   LiveSnapshot,
+  ModelTemplate,
+  OpcUaBrowseNode,
   SignalRole,
   TagAccess,
   Workspace
@@ -60,6 +64,62 @@ export interface EngConnection {
   connected: boolean;
 }
 
+/**
+ * One driver of the project, as the device form offers it.
+ *
+ * `driverNumber` is the manager number every `_address` write of the equipment
+ * lands on: the form OFFERS the project's drivers rather than asking an engineer
+ * to remember a number, because a wrong one silently binds the datapoint to
+ * another driver. Stopped drivers are listed too (an equipment is declared before
+ * its driver is started) — with their state, never filtered out.
+ */
+export interface EngDriver {
+  /** Manager number (`_Driver<n>`). */
+  number: number;
+  /** Raw driver type (`_Driver<n>.DT`: 'OPCUAC', 'S7', 'MODBUS'…), '' when unknown. */
+  type: string;
+  /**
+   * ABSENT when the backend could not read the running set — which is not "stopped".
+   * Labelling a live driver as down is a false claim, so the picker shows the three
+   * states it can actually distinguish.
+   */
+  running?: boolean;
+  /** Access mode, only for the driver types whose mapping is verified (OPC UA). */
+  mode?: string;
+}
+
+/**
+ * Ingest an address book from a FILE — the path that creates a catalog without
+ * any equipment and without touching a machine (see the Catalogues panel).
+ *
+ * The payload is the union of what the four generators need; the backend picks by
+ * `format` and refuses a mismatch, so a `csv` with no `text` is an error rather
+ * than an empty book. `interface` binds the catalog to a live connection where
+ * that makes sense (a project export carries its own PLC interface) and is
+ * IGNORED for `nodeset`: a NodeSet's namespace indices are file-local, so it is
+ * always a template catalog bound per equipment at generation.
+ */
+export interface IngestRequest {
+  bookId: string;
+  name?: string;
+  format: 'simaticml' | 'xvm' | 'csv' | 'nodeset';
+  /** Source file name, recorded in the book's provenance. */
+  file?: string;
+  interface?: AddressBook['interface'];
+  /** `simaticml` only: a TIA export is a BUNDLE of documents. */
+  documents?: { fileName: string; xml: string }[];
+  /** `xvm` / `nodeset`: the XML document. */
+  xml?: string;
+  /** `csv`: the Control Expert variables export. */
+  text?: string;
+}
+
+/** Both registries a catalog deletion changes (it detaches from every device). */
+export interface BookDeletion {
+  books: AddressBook[];
+  devices: Device[];
+}
+
 /** Parameters of an online browse (see the core's `BrowseSource`). */
 export interface BrowseRequest {
   bookId: string;
@@ -68,6 +128,26 @@ export interface BrowseRequest {
   rootNodeId?: string;
   maxDepth?: number;
   maxEntries?: number;
+}
+
+/**
+ * A walk driven by the PAGE, one level at a time, so it can report progress.
+ *
+ * `/books/browse` walks everything server-side and answers once — minutes later on a
+ * real server, with nothing to show meanwhile and no way to explore first. So the
+ * page runs the core's own walker over {@link EngGateway.browseLevel} instead: same
+ * verified code, one HTTP round-trip per level, and a progress event per request.
+ */
+export interface WalkRequest {
+  bookId: string;
+  connection: string;
+  name?: string;
+  rootNodeId?: string;
+  driverNumber?: number;
+  maxDepth?: number;
+  maxEntries?: number;
+  /** Called on every browse request; THROW from it to cancel the walk. */
+  onProgress?: (progress: BrowseProgress) => void;
 }
 
 /** Paths touched by a re-read of a book's source. */
@@ -103,6 +183,14 @@ export interface EngGateway {
   /** Equipments — each carries `bookIds` (see the N:N relation in the model). */
   listDevices(): Promise<Device[]>;
   /**
+   * The LIVE fields only (connection state + why), for the page's periodic refresh.
+   *
+   * Apart from `listDevices` on purpose: a state refresh runs on a timer, and answering
+   * it with the whole registry would let a poll overwrite an equipment the operator is
+   * editing with a copy that is seconds old.
+   */
+  deviceStates(): Promise<DeviceStateUpdate[]>;
+  /**
    * Create or update ONE equipment (a single-device upsert, not a registry
    * replacement: replacing the list from a UI that loaded it minutes ago would
    * discard whatever another operator added since). Returns the fresh registry.
@@ -126,8 +214,58 @@ export interface EngGateway {
    */
   refreshBook(bookId: string): Promise<BookRefresh>;
 
+  /**
+   * Build a book from a FILE and store it — no equipment involved, no machine
+   * touched. Returns the fresh registry alongside the book: an ingestion adds a row
+   * to a list the caller is already showing, and re-fetching it would race.
+   */
+  ingestBook(request: IngestRequest): Promise<{ book: AddressBook; books: AddressBook[] }>;
+
+  /**
+   * Create an EMPTY catalog (identity + interface only).
+   *
+   * What makes "declare the catalog, then browse into it" possible: a walk of a large
+   * server takes minutes, so the identity is committed first — the operator is not
+   * holding a form open while it runs, and a walk that fails half-way leaves a
+   * catalog to retry into rather than nothing.
+   */
+  createBook(request: { bookId: string; name?: string; interface?: AddressBook['interface'] }): Promise<{
+    book: AddressBook;
+    books: AddressBook[];
+  }>;
+
+  /** Direct children of one node of an OPC UA address space (one round-trip). */
+  browseLevel(connection: string, nodeId?: string): Promise<OpcUaBrowseNode[]>;
+
+  /**
+   * Walk a live server into a book from the PAGE, reporting progress as it goes.
+   * Same result as {@link browseBook}, but level by level — see {@link WalkRequest}.
+   */
+  walkIntoBook(request: WalkRequest): Promise<BookRefresh>;
+
+  /**
+   * HIDE or restore signals of a book by hand (`{path: true}` hides, `false`
+   * restores). Stored apart from the book like the role and access overrides, so a
+   * re-browse keeps the operator's choices and nothing is ever really lost.
+   */
+  saveBookExcluded(bookId: string, excluded: Record<string, boolean>): Promise<AddressBook>;
+
+  /**
+   * Forget a catalog. It is DETACHED from every equipment that referenced it (the
+   * relation is many-to-many, so both registries come back), and nothing already
+   * checked in is touched.
+   */
+  deleteBook(bookId: string): Promise<BookDeletion>;
+
   /** OPC UA connections available for an online browse (empty in the demo). */
   listConnections(): Promise<EngConnection[]>;
+
+  /**
+   * The project's drivers, offered as the equipment's `driverNumber`. An empty list
+   * means "could not tell" (no runtime, no permission) — the form then falls back to
+   * free entry rather than blocking the declaration.
+   */
+  listDrivers(): Promise<EngDriver[]>;
 
   /**
    * Walk a live OPC UA server into a book and store it under `bookId`.
@@ -137,8 +275,13 @@ export interface EngGateway {
   /**
    * Persist the operator's MANUAL role overrides of a book (path → role).
    * Rule-derived roles are recomputed, manual ones are kept.
+   *
+   * `''` CLEARS an override, handing the signal back to the rule engine. Tagging a
+   * role has to be undoable: a manual role outranks every rule, so without this a
+   * mis-click would pin a wrong role for good and no amount of "Apply the rules"
+   * would shift it.
    */
-  saveBookRoles(bookId: string, roles: Record<string, SignalRole>): Promise<void>;
+  saveBookRoles(bookId: string, roles: Record<string, SignalRole | ''>): Promise<void>;
 
   /**
    * Persist MANUAL access overrides (path → `r`/`w`/`rw`; `''` clears one).
@@ -146,6 +289,16 @@ export interface EngGateway {
    * as evidence, so the generated address direction follows it.
    */
   saveBookAccess(bookId: string, access: Record<string, TagAccess | ''>): Promise<void>;
+
+  // --- reusable model templates ----------------------------------------------
+  /**
+   * The project's saved models. A model is a type's structure plus how its leaves
+   * reach a catalog — authored once, applied to equipment after equipment.
+   */
+  listModels(): Promise<ModelTemplate[]>;
+  /** Create or replace one (the id is derived from the name when absent). */
+  saveModel(model: ModelTemplate): Promise<ModelTemplate>;
+  deleteModel(id: string): Promise<void>;
 
   // --- workspace + check-in ---------------------------------------------------
   getWorkspace(): Promise<Workspace>;

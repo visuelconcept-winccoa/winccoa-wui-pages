@@ -17,6 +17,7 @@
  */
 
 import { comparableConfigs } from './configs/read.js';
+import { orphanStagedDps } from './workspace.js';
 import { WARNING_CODES, warn, type EngWarning } from './warnings.js';
 import {
   fingerprint,
@@ -162,6 +163,21 @@ export function diffWorkspace(workspace: Workspace, snapshot: LiveSnapshot): Eng
   items.sort(
     (a, b) => kindRank[a.kind] - kindRank[b.kind] || opRank[a.op] - opRank[b.op] || a.name.localeCompare(b.name)
   );
+  // A staged datapoint whose TYPE exists nowhere is what a DELETED model leaves behind:
+  // the plan would offer to create it and `dpCreate` would refuse it, one by one, at
+  // check-in. Said here, with the names, next to the button that can clean it up.
+  const orphans = orphanStagedDps(workspace, snapshot);
+  if (orphans.length > 0) {
+    const shown = orphans.slice(0, 8);
+    warnings.push(
+      warn(
+        WARNING_CODES.diff.DP_TYPE_MISSING,
+        '{n} datapoint(s) staged for creation with a DP type that exists NEITHER in the workspace NOR in the project ({dps}{more}) — most likely a model that was deleted. They would fail at check-in: select them below and remove them from the workspace.',
+        { n: orphans.length, dps: shown.join(', '), more: orphans.length > shown.length ? '…' : '' }
+      )
+    );
+  }
+
   return { workspace: workspace.name, items, warnings };
 }
 

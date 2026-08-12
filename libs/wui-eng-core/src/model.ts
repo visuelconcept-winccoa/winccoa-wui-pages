@@ -58,6 +58,38 @@ export type AccessMode = ProtocolKind;
 /** Connection state as last probed by the backend (demo: simulated). */
 export type DeviceState = 'connected' | 'disconnected' | 'unknown';
 
+/**
+ * WHY a device's {@link DeviceState} says what it says.
+ *
+ * `unknown` is a real answer, not a failure, and it has several causes an operator
+ * must be able to tell apart — a grey LED can equally mean "the driver has not filled
+ * the state in", "the connection you named does not exist" and "two connections match
+ * this declaration". So the reason travels with the state:
+ *  - `connstate`            — read from `<connection>.Common.State.ConnState`, the
+ *                             driver-agnostic connection state every WinCC OA
+ *                             connection type carries (`_OPCUAServer`, `_S7_Conn`,
+ *                             `_S7PlusConnection`, `_Mod_Plc`, …);
+ *  - `opcua-connstate`      — read from `_OPCUAServer.State.ConnState`, used when the
+ *                             common element is undefined (`0`/`-1`);
+ *  - `unknown-connection`   — nothing in the project matches the declaration: a
+ *                             declaration error, not a downtime;
+ *  - `ambiguous-connection` — SEVERAL connections match it, so no single one may
+ *                             speak for the equipment;
+ *  - `probe-failed`         — the read itself failed (driver stopped, no permission).
+ *                             Deliberately NOT reported as disconnected;
+ *  - `unprobed`             — the declaration carries nothing to match a connection
+ *                             on (no server name, no address). A running driver is not
+ *                             a connected station, so a driver's state is never
+ *                             borrowed to fill this in.
+ */
+export type DeviceStateSource =
+  | 'connstate'
+  | 'opcua-connstate'
+  | 'unknown-connection'
+  | 'ambiguous-connection'
+  | 'probe-failed'
+  | 'unprobed';
+
 export interface Device {
   /** Stable id (referenced by books and bindings). */
   id: string;
@@ -81,6 +113,25 @@ export interface Device {
   /** Poll group DP used for its bound addresses. */
   pollGroup?: string;
   state: DeviceState;
+  /** Why `state` says what it says — see {@link DeviceStateSource}. */
+  stateSource?: DeviceStateSource;
+  /**
+   * The connection the state was read on (or looked for), so a wrong declaration
+   * names itself instead of leaving the operator to guess which of the device's
+   * interfaces the LED is talking about.
+   */
+  stateConnection?: string;
+  /**
+   * The RAW WinCC OA `ConnState` behind {@link state}, when one was read.
+   *
+   * Three states cannot carry what the driver actually said: `1` (not connected), `3`
+   * (inactive — somebody disabled the connection) and `5` (failure) all light the same
+   * red lamp, yet they call for three different actions. The number travels so the UI
+   * can name it, and it is passed through rather than interpreted here: the mapping
+   * to connected / disconnected / unknown follows the driver plugin shipped with
+   * WinCC OA (`>= 256` connected, `1` or `5` down, anything else undefined).
+   */
+  stateCode?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -200,6 +251,16 @@ export interface AddressBook {
   types: BookType[];
   /** Non-fatal issues raised by the generator (unsupported members, …). */
   warnings: EngWarning[];
+  /**
+   * Entry paths the operator has HIDDEN by hand, present only on a book being shown
+   * (`entries` already excludes them — see `withoutExcluded`).
+   *
+   * Carried here so a UI can say how many are hidden and offer them back: a catalog
+   * that quietly shows less than its source would have the next engineer model from
+   * an incomplete reading. It is NOT part of a stored book — the exclusions live
+   * beside it, so a re-read of the source cannot erase them.
+   */
+  excludedPaths?: string[];
 }
 
 // ---------------------------------------------------------------------------

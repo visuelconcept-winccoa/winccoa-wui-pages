@@ -7,8 +7,15 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  CONN_STATE,
   PROTOCOL_PARAMS,
+  connectionVerdict,
+  deviceStateOf,
+  statesUnreadable,
+  withDeviceStates,
+  declaredAddressOf,
   blockingProblems,
+  deviceStateFromConnState,
   deviceIdFrom,
   draftFromDevice,
   emptyDraft,
@@ -182,5 +189,150 @@ describe('PROTOCOL_PARAMS', () => {
 
   it('starts a blank draft on the chosen protocol, with it as the access mode', () => {
     expect(emptyDraft('modbus')).toMatchObject({ protocol: 'modbus', accessModes: ['modbus'], name: '', bookIds: [] });
+  });
+});
+
+describe('deviceStateFromConnState', () => {
+  it('is connected from 256 up — including the redundancy variants', () => {
+    expect(deviceStateFromConnState(CONN_STATE.CONNECTED)).toBe('connected');
+    for (const code of [257, 258, 259, 260, 1024]) expect(deviceStateFromConnState(code)).toBe('connected');
+  });
+
+  it('is disconnected on "not connected" (1) and "failure" (5) — the vendor lamp red', () => {
+    expect(deviceStateFromConnState(CONN_STATE.NOT_CONNECTED)).toBe('disconnected');
+    expect(deviceStateFromConnState(CONN_STATE.FAILURE)).toBe('disconnected');
+  });
+
+  it('leaves undefined and INACTIVE unknown rather than calling them a disconnection', () => {
+    // The para lamp paints these yellow: nobody unplugged anything, so the studio may
+    // not report a downtime — the raw code says which case it is.
+    expect(deviceStateFromConnState(CONN_STATE.UNDEFINED)).toBe('unknown');
+    expect(deviceStateFromConnState(CONN_STATE.UNDEFINED_BY_DRIVER)).toBe('unknown');
+    expect(deviceStateFromConnState(CONN_STATE.INACTIVE)).toBe('unknown');
+  });
+
+  it('is unknown for a non-numeric read', () => {
+    expect(deviceStateFromConnState(Number.NaN)).toBe('unknown');
+  });
+});
+
+describe('declaredAddressOf', () => {
+  const device = (connection: Record<string, string | number | boolean>): Device => ({
+    id: 'x',
+    name: 'X',
+    protocol: 'opcua',
+    accessModes: ['opcua'],
+    connection,
+    bookIds: [],
+    state: 'unknown'
+  });
+
+  it('prefers the declared ip', () => {
+    expect(declaredAddressOf(device({ ip: ' 192.168.10.21 ', endpoint: 'opc.tcp://10.0.0.1:4840' }))).toBe('192.168.10.21');
+  });
+
+  it('falls back to the HOST of an OPC UA endpoint (a connection DP stores its own shape)', () => {
+    expect(declaredAddressOf(device({ endpoint: 'opc.tcp://192.168.10.44:4840' }))).toBe('192.168.10.44');
+    expect(declaredAddressOf(device({ endpoint: 'opc.tcp://plc-four1:4840/UA/Server' }))).toBe('plc-four1');
+    expect(declaredAddressOf(device({ endpoint: 'opc.tcp://[fe80::1]:4840' }))).toBe('fe80::1');
+  });
+
+  it('is empty when the declaration carries neither — never a guess', () => {
+    expect(declaredAddressOf(device({ rack: 0, slot: 1 }))).toBe('');
+    expect(declaredAddressOf(device({ endpoint: 'not-a-url' }))).toBe('');
+  });
+});
+
+/**
+ * The two cases MEASURED on a live WinCC OA project (3.21), which is what these
+ * expectations encode:
+ *  - `_test`      — connected: Common.State.ConnState = 257, stamped now;
+ *  - `_Simulator1`— never connected: BOTH elements read 0, stamped 1970-01-01.
+ * The second one is the trap: a plain `> 0` test on a never-written element reports a
+ * disconnection about a machine nobody ever tried to reach.
+ */
+describe('connectionVerdict', () => {
+  it('trusts the common element when the driver wrote it', () => {
+    expect(connectionVerdict({ code: 257, written: true }, { code: 1, written: true })).toEqual({
+      state: 'connected',
+      source: 'connstate',
+      code: 257
+    });
+    expect(connectionVerdict({ code: 1, written: true }, null)).toEqual({ state: 'disconnected', source: 'connstate', code: 1 });
+    expect(connectionVerdict({ code: 3, written: true }, null)).toEqual({ state: 'unknown', source: 'connstate', code: 3 });
+  });
+
+  it('falls back to the OPC UA element when the common one is undefined by the driver', () => {
+    expect(connectionVerdict({ code: 0, written: true }, { code: 1, written: true })).toEqual({
+      state: 'connected',
+      source: 'opcua-connstate',
+      code: 1
+    });
+    expect(connectionVerdict({ code: -1, written: true }, { code: 0, written: true })).toEqual({
+      state: 'disconnected',
+      source: 'opcua-connstate',
+      code: 0
+    });
+  });
+
+  it('reports a NEVER-WRITTEN state as unknown, not as a disconnection', () => {
+    // _Simulator1 on the live project: 0 / 0, both stamped at the epoch.
+    expect(connectionVerdict({ code: 0, written: false }, { code: 0, written: false })).toEqual({
+      state: 'unknown',
+      source: 'connstate',
+      code: 0
+    });
+    // A connected value that was written stays connected, obviously.
+    expect(connectionVerdict({ code: 257, written: true }, { code: 0, written: false }).state).toBe('connected');
+  });
+
+  it('says the PROBE failed when neither element could be read', () => {
+    expect(connectionVerdict(null, null)).toEqual({ state: 'unknown', source: 'probe-failed' });
+  });
+});
+
+describe('withDeviceStates / statesUnreadable', () => {
+  const registry = (): Device[] => [
+    { id: 'a', name: 'A', protocol: 'opcua', accessModes: ['opcua'], bookIds: ['book-a'], state: 'unknown' },
+    { id: 'b', name: 'B', protocol: 'modbus', accessModes: ['modbus'], bookIds: [], state: 'connected', stateCode: 257 }
+  ];
+
+  it('moves ONLY the state fields — a refresh must not overwrite an edit in progress', () => {
+    const merged = withDeviceStates(registry(), [
+      { id: 'a', state: 'connected', stateSource: 'connstate', stateConnection: '_test', stateCode: 257 }
+    ]);
+    expect(merged[0]).toMatchObject({ id: 'a', name: 'A', bookIds: ['book-a'], state: 'connected', stateCode: 257 });
+    // Untouched: the refresh said nothing about it.
+    expect(merged[1]).toEqual(registry()[1]);
+  });
+
+  it('clears a field the refresh no longer carries (a state must not keep a stale reason)', () => {
+    const merged = withDeviceStates(registry(), [{ id: 'b', state: 'unknown', stateSource: 'unprobed' }]);
+    expect(merged[1]?.stateCode).toBeUndefined();
+    expect(merged[1]?.stateSource).toBe('unprobed');
+  });
+
+  it('ignores updates for devices it does not know, and an empty refresh', () => {
+    expect(withDeviceStates(registry(), [{ id: 'ghost', state: 'connected' }])).toEqual(registry());
+    expect(withDeviceStates(registry(), [])).toEqual(registry());
+  });
+
+  it('turns every lamp grey when the refresh itself cannot be trusted any more', () => {
+    const stale = statesUnreadable(withDeviceStates(registry(), [
+      { id: 'a', state: 'connected', stateSource: 'connstate', stateConnection: '_test', stateCode: 257 }
+    ]));
+    for (const device of stale) {
+      expect(device.state).toBe('unknown');
+      expect(device.stateSource).toBe('probe-failed');
+      // The code goes with it: `257` beside "unknown" would suggest it is current.
+      expect(device.stateCode).toBeUndefined();
+    }
+    // The connection it was reading stays named — that is still true.
+    expect(stale[0]?.stateConnection).toBe('_test');
+  });
+
+  it('deviceStateOf carries the live fields and nothing else', () => {
+    const device = { ...registry()[1], stateSource: 'connstate' as const, stateConnection: '_x' } as Device;
+    expect(deviceStateOf(device)).toEqual({ id: 'b', state: 'connected', stateSource: 'connstate', stateConnection: '_x', stateCode: 257 });
   });
 });

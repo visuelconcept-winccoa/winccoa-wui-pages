@@ -128,6 +128,129 @@ to record which one it is. Hence the `flag` kind rendering as a select with
 *— not stated —*, and the `choice` kind validating its value server-side
 (`device.param-invalid`) since an API client can send anything.
 
+## Connection state: a LED, a word, and the driver's own code
+
+`GET /api/eng/devices` returns the stored equipments **decorated with a live
+connection state** — `engController.withLiveState`, mirrored by the offline demo
+(`DemoEngGateway.withLiveState`) so both teach the same behaviour. Four decisions:
+
+**The state is DERIVED at read time, never stored.** A JSON registry cannot know
+whether a PLC answers, and a "connected" persisted from last week would be worse than
+no lamp at all. `normalizeDevice` therefore still writes `state: 'unknown'`, and the
+demo fixtures cannot even *carry* a state (`DeviceDeclaration = Omit<Device, 'state'>`).
+
+**One element covers every protocol, and it is verified.** Every connection type of the
+WinCC OA base data carries `Common.State.ConnState` — checked against the installed
+`3.21/dbdfiles/version_3.21/dptypes.txt`: `_OPCUAServer`, `_S7_Conn`,
+`_S7PlusConnection`, `_Mod_Plc`, plus 12 more (`_IecConnection`, `_BacnetDevice`,
+`_EIPConn`, `_MqttConnection`, `_Dnp3Station`, `_IEC61850_IED`, …). So the probe is one
+`dpGet`, not a per-driver special case. Its codes come from the shipped message
+catalogue (`msg/*/opcua.cat`, keys `CommonConnState…`): `-1` undefined, `0` undefined by
+the driver, `1` not connected, `3` inactive, `5` failure, `256`+ connected (`257…260`
+naming which server/connection of a redundant pair answered).
+
+**The three-state mapping is the vendor's own.** `deviceStateFromConnState` follows
+`scripts/libs/opcuaDriver_plugin.ctl` → `setCommonConnStateShape`, which paints the para
+lamp: **green from 256 up**, **red on `1` and `5`**, **yellow for everything else**. It
+matters that this is copied rather than invented: an operator reads both screens, and a
+studio that called `3` (*inactive* — somebody disabled the connection) a red
+disconnection where para shows yellow would be teaching a state the project does not
+have. The raw code travels with the state (`Device.stateCode`) and is shown beside the
+LED whenever it says more than the lamp does, because `1`, `3` and `5` call for three
+different actions: fix the link, re-enable the connection, look at the driver error.
+`_OPCUAServer.State.ConnState` (`0`/`1`, its own scale) is read as a **fallback** when a
+driver leaves the common element undefined — without it, a perfectly connected server
+whose driver fills only its own element would show a grey lamp.
+
+**A device is matched to its connection, or the state stays unknown.** OPC UA by
+REFERENCE NAME (the `server` parameter, else the connection of one of its OPC UA
+catalogs) — the same name its addresses are bound through, so the match is exact.
+Otherwise by declared ADDRESS: `declaredAddressOf` (the `ip`, or the *host* of an
+`endpoint`) searched in the connection type's own address element
+(`_S7_Conn.Address`, `_S7PlusConnection.Config.Address`, `_Mod_Plc.HostsAndPorts`,
+`_OPCUAServer.Config.ConnInfo`). **Several** matches are reported as
+`ambiguous-connection` rather than resolved by picking the first: two stations behind one
+address is exactly the case where a wrong LED sends an engineer to the wrong panel.
+Nothing matched is `unknown-connection` (a declaration error, not a downtime), nothing to
+match on is `unprobed`, and a failed read is `probe-failed` — all of them `unknown`,
+never `disconnected`. The reason is what the badge's tooltip says; a lamp whose grey has
+three possible causes is a riddle, not information.
+
+**A never-written state is unknown, not a disconnection.** Measured on a live 3.21
+project: a connected connection reads `Common.State.ConnState = 257` stamped *now*, while
+an `_OPCUAServer` that has never connected reads `0` on BOTH elements stamped
+`1970-01-01`. A plain `> 0` test would therefore announce a disconnection about a machine
+nobody ever tried to reach — the same class of defect as `Number(null) === 0` reporting
+"driver 0 is running". So each read carries its source time (`:_original.._stime`, the
+path the PARA page already uses) and the verdict is taken by the pure
+`connectionVerdict(common, own)` in the core, unit-tested against exactly those two
+measured cases.
+
+**The `server` parameter is a PICKER, and that was the actual bug.** A device in the test
+project declared `server: "simu1"` where the project's connections are `Simulator1` and
+`test`: the badge said "unknown" for a machine that was answering (`ConnState 257`), and
+nothing had ever told the operator the name was wrong. A free-text field for a value that
+must match a datapoint is the defect; the fix is to offer the project's own connections
+(`eng-connection-select.ts`, same degradations as the driver picker) and to state the
+mismatch inline when a name matches nothing. The backend also stopped giving up at a
+failed name lookup: it falls through to the declared address (`ip`, or the host of an
+`endpoint`), which is often enough to identify the connection — and reports
+`ambiguous-connection` rather than picking one when several match.
+
+**The lamps are polled, and they say when they stop being trustworthy.** A read-once
+state is a state that is wrong a minute later, so the page re-reads every 5 s through
+`GET /devices/state` — the live fields only, merged by id (`withDeviceStates`), never the
+registry: a poll landing on a form being filled would overwrite the operator's work. It is
+a timer rather than a `dpConnect` subscription because this page's contract is to depend on
+`lit` alone (see "the decoupling contract"), and a subscription through the suite's shared
+libraries would break the offline demo and the screenshot pipeline. Two behaviours that
+matter more than the cadence: the poll pauses while the tab is hidden and fires immediately
+when it returns, and after THREE consecutive failures every lamp goes grey with
+`probe-failed` (`statesUnreadable`) — a frozen green LED is the one outcome worse than no
+LED, and 5 s of tolerance for a reload is not worth turning the screen grey.
+
+What is deliberately NOT done: borrowing the **driver's** state. `_Connections.Driver.ManNums`
+says a manager runs, which says nothing about a given station being reachable — dressing
+one as the other would be the kind of plausible lie an operator would trust.
+
+## Workspace housekeeping (`forgetInWorkspace`) — the missing half of "generate"
+
+Reported from the field: *"l'onglet control est mal géré, je me retrouve avec des instances
+qui attendent d'être créées alors que leurs modèles ont été supprimés. Je n'ai pas la
+possibilité de faire le ménage."* Both halves were true, and they were two different bugs.
+
+**The plan was silent about impossible items.** A datapoint staged for creation whose DP
+type exists neither in the workspace nor in the project cannot be created — `dpCreate`
+refuses it — but `diffWorkspace` emitted the item without a word. It now warns
+(`diff.dp-type-missing`) with the names, above the table, because the fix is a click away
+there. Deliberately a WARNING and not a check-in blocker: one orphan must not hold back the
+rest of a plan, and the applier already reports per-item failures.
+
+**The Control tab was read-only.** Every other panel could add to the workspace; nothing
+could take anything out. `forgetInWorkspace(workspace, selection)` is the counterpart, and
+its semantics are worth stating because two of the three are counter-intuitive:
+
+| plan row | what "forget" means |
+|---|---|
+| create | drop the object from the working copy — nothing gets created |
+| update | drop it — the live object is left exactly as it is |
+| delete | drop its BASELINE key — the workspace stops claiming the object should go |
+
+That third line is the trap. A plan says *delete* because the object is in the check-out
+baseline and absent from the workspace, so removing an object from `types`/`dps`/`configs`
+**without** its baseline key turns a pending creation into a pending DELETION in the live
+project — the exact opposite of housekeeping. One test does nothing but pin that
+(`drops the BASELINE with the object…`).
+
+It CASCADES and says so: a type takes the workspace datapoints declared with it and their
+configs, because leaving them is how the orphans above are created in the first place. The
+counts come back in the notice (`1 type, 24 datapoints, 312 configs`) rather than being
+discovered in the next diff. And it returns a NEW workspace: a save that fails must not
+leave the page holding a half-cleaned copy.
+
+No arming step, unlike the device deletion: nothing here reaches the project, and the bar
+says that in as many words. What it discards is staged work, which regenerating restores.
+
 ## Signal roles: the rule engine and its calibration
 
 `roles/` qualifies each book entry (measure / setpoint / command / state / alarm /
@@ -189,12 +312,39 @@ descriptions, warnings) is shared:
   of its leaves to a book signal. That is what a HOUSE STANDARD needs: one DP type
   across machines whose PLCs name and nest things differently.
 
-The authoring format is an **outline** (`structure.ts`): indentation is nesting,
-`Name : Type` is a leaf. A textarea, not a tree widget — the outline is readable,
-diffable, pasteable between projects, and it is what a standard looks like in a
-spec document. Switching to custom mode pre-fills it from the MIRRORED structure,
-so authoring starts from something that already works, and `parseStructureOutline`
-never throws: a bad line is reported next to the editor and skipped.
+The storage format is an **outline** (`structure.ts`): indentation is nesting,
+`Name : Type` is a leaf. It stays the format because it is readable, diffable,
+pasteable between projects, and it is what a standard looks like in a spec document.
+Switching to custom mode pre-fills it from the MIRRORED structure, so authoring
+starts from something that already works, and `parseStructureOutline` never throws:
+a bad line is reported next to the editor and skipped.
+
+**Two views, one value.** Shaping a type reads better as a tree than as text, so the
+editor offers both — `ui/eng-structure-tree.ts`, in PARA's own grammar (an indented
+row per element, its name, its element type, add/delete on the right), with the
+outline still editable as text behind a toggle. They cannot disagree because there is
+only one value: `genOutline`. The tree parses it, emits a whole new structure, and the
+page writes the text back from it. What the tree adds that PARA has no reason to:
+each **leaf carries its mapping** (and its ambiguity, if auto-binding could not
+decide), so what is still unbound is visible in place instead of in a second flat
+list that had to be read against the tree.
+
+The edits themselves are pure and live in the core (`renameStructureNode`,
+`setStructureNodeType`, `addStructureChild`, `removeStructureNode`), and every one of
+them takes the BINDINGS with it — because a binding is keyed by a leaf's dotted path:
+
+- **renaming a group re-keys every mapping under it.** Not a nicety: without it,
+  renaming `DB_Four` to `Mesures` would leave ten bindings pointing at paths that no
+  longer exist, and the type would generate with no addresses at all;
+- **deleting a node prunes its own** (a deleted subtree binds nothing);
+- **leaving `Struct`** drops the children and their bindings; **becoming** one drops
+  the leaf's own — a group is not addressable;
+- a **rename that collides with a sibling is refused**, because two siblings sharing a
+  name make a binding key ambiguous and collapse two DPE names into one;
+- an added node's name is made **unique** instead of refused: the "+" button must
+  always produce something to type over.
+
+All of it unit-tested (`structure.spec.ts`), the re-keying included.
 
 One parser decision worth keeping: the first line is treated as the type ROOT (and
 dropped) **only when it names the type**. `Mesures` followed by indented members is
@@ -478,6 +628,64 @@ it identically). `removed` is the dangerous half: those signals may still be
 referenced by a workspace. A failed re-browse **keeps the stored catalog** (HTTP
 502 + the old book) — losing a catalog because a server blinked is not acceptable.
 
+### Who drives the walk: the client, for anything an operator watches
+
+The walk is the same core function either way; what changed is where it is driven
+from, and that follows from a fact about real servers: **a walk takes minutes**.
+
+`POST /books/browse` runs it entirely on the backend and answers when it is finished.
+That is right for a machine-to-machine caller and wrong for a person: nothing to
+watch, no way to look at the address space first, no way to stop. So the page drives
+the walk itself over `POST /browse/level` (`data/walk.ts`), and three things follow
+from the same seam:
+
+- **progress** — the core's walker gained an `onProgress(BrowseProgress)` hook, called
+  before each request with the counts so far and the branch it is waiting on;
+- **cancellation** — the hook is the only place a sequential recursive walk can be
+  interrupted, so "Stop" is a flag the callback reads and THROWS on. The walker
+  unwinds, the partial book is never stored;
+- **exploration** — one level on demand is exactly what a tree explorer needs, so the
+  same endpoint serves "show me what is on this server" before anything is created.
+
+`POST /browse/level` takes `view`, not `manage-devices`: it only reads an address
+space. The finished book is stored by `PUT /books/:id`, gated like every other catalog
+write, with the id taken from the PATH — a body claiming another id cannot overwrite
+another catalog, and the server still applies qualification (roles, access,
+exclusions) exactly as for a server-side browse.
+
+**No percentage.** The size of an address space is not known until it has been walked,
+so a bar filling towards an invented total would be a lie. The counts and the current
+branch are true, and they are what an operator actually needs: they distinguish "still
+working" from "stuck on one branch".
+
+**Declare, then walk** — for the same reason. `POST /books` creates the catalog from
+its identity alone (id, name, interface, driver) and the walk fills it afterwards. A
+walk that is stopped or fails then leaves a catalog to run again rather than nothing,
+and the operator is not holding a form open for minutes. It also makes "re-walk this
+catalog" the same operation as "walk it the first time".
+
+### Hiding signals: an override, never a deletion
+
+A generated catalog holds what the source exposes, which is not always what the
+project wants (diagnostics counters, vendor scratch registers, a whole `Admin`
+branch). Those can be hidden — and the implementation is deliberately an **override
+stored beside the book** (`books/<id>.excluded.json`), like the role and access ones:
+
+- a catalog is a *reading* of a source, and the source gets **re-read**. Had hiding
+  rewritten the book, the next refresh would bring the signal straight back — the
+  operator's judgement lost to a mechanical re-read;
+- it stays **reversible**: nothing is destroyed, and every hidden signal can come back;
+- the exclusion is applied on the way OUT, never before storing (`presented()` vs
+  `qualified()` in the controller, mirrored in the demo gateway). Folding it into what
+  is stored would make hiding a deletion, and "restore" would have nothing to restore;
+- and the catalog **states the count** — in the signal bar and as a book warning
+  (`book.excluded`). This is the risk the feature itself introduces: a catalog that
+  quietly shows less than the machine has would have the next engineer model from an
+  incomplete reading. So it is not allowed to be quiet.
+
+A hidden signal is dropped before the role rules run, so it takes no role, no address
+and no config: it costs nothing downstream.
+
 ### AccessLevel, and the direction that follows from it
 
 The access mode decides whether a binding can be written at all, so the studio
@@ -562,6 +770,69 @@ and the caveat is the book's first warning. Unlike a browse, a NodeSet *does* ca
 Part 6 — **not** vendor exports. The OPC Foundation pages for the PackML companion
 spec return HTTP 403 from this environment, so a real companion-spec NodeSet is
 still to be calibrated against (see INTEGRATION "Inputs still needed").
+
+### Reading a REAL vendor NodeSet: five fixes, one symptom
+
+Verified against the file that produced the report — a SiOME 3.0.2 export
+(`Opc.Ua.CC.NodeSet_v1.1`, 24 `Pnn` parameters + a station). A verbatim subset is kept as
+`samples/opcua-cc-fixtures.ts`, and `nodeset.spec.ts` asserts its exact output:
+`P01.Config.RawRange.MinimumValue` & co, 13 signals per parameter, zero duplicates.
+
+**`Organizes` is a hierarchical reference too — and it is the one used for sub-objects.**
+The decisive detail of that file: an instance's sub-OBJECTS hang off `Organizes`
+(`Config`, `RawRange`, `Processing`, `EngRange`) while their VARIABLES use `HasComponent`.
+Following components only, every `Config` was unattached from its `P01`, so it became a
+root of its own — 24 parameters × ~5 collapsing paths ≈ the 115 duplicates. The member
+walk, the root detection and the component-type scan now all read one index built over
+`HasComponent`, `HasProperty` **and** `Organizes`.
+
+**A NodeSet also describes ITSELF, and that is not a machine.** The same file carries a
+`NamespaceMetadataType` object (`i=11616`: `NamespaceUri`, `NamespaceVersion`,
+`StaticNodeIdTypes`…) and a `DataTypeEncodingType` (`i=76`) per structured DataType. Read
+as equipment, the first produced entries like `http://framatome.com/UA/msp.NamespaceUri` —
+not a signal, and not a usable DPE name. Both standard types are excluded from the
+instance candidates (`FILE_METADATA_TYPES`).
+
+
+**A hierarchical reference may be written from EITHER end — and usually is written on the
+child.** `HasComponent` / `HasProperty` exists once in the address space, and NodeSet2
+serialises it either forward on the parent or INVERSE on the child
+(`<Reference ReferenceType="HasComponent" IsForward="false">parent</Reference>`). The
+reader followed forward references only, so in a real exporter's file every instance looked
+childless: `P01` produced nothing, each of its sub-objects (`Config`, `Processing`,
+`RawRange`) looked like a machine of its own, and the book came out with a bare
+`Config.SampleRate` per probe instead of `P01.Config.SampleRate`. The hierarchy is now
+resolved ONCE per document from both directions (`buildChildrenIndex`, `NodeGraph`) and
+every walk — members, root detection, component types — reads that one index. This was the
+root cause of the "115 duplicate signal path(s)" report; the three below made it worse.
+
+
+An import of a real device model reported *"115 duplicate signal path(s) dropped
+(Config.SampleRate, Processing.Function, RawRange.MinimumValue…)"* instead of a structure.
+Three defects, each of which alone produced garbage:
+
+**An object nested in a TYPE is not a machine.** The instance test was "a `UAObject` with
+a `HasTypeDefinition` and no `HasModellingRule`", and real vendor files very often put NO
+modelling rule on a type's nested declaration (`ProbeType` → `Config` → `SampleRate`) — the
+rule sits on the leaves, or nowhere. So every `Config` of every type was read as a machine
+of its own and rooted its own entries: with 40 types, `Config.SampleRate` came out 40
+times. `rootInstances` now refuses any candidate whose ancestry reaches a type node
+(`UAObjectType`/`UAVariableType`/`UADataType`) — what lives under a type belongs to that
+type, and the type loop already catalogues it as `TypeName.Config.SampleRate`, unique per
+type.
+
+**A COMPONENT type must not root entries of its own.** When a file declares no instance,
+entries come from the types — but `ConfigType` behind `ProbeType.Config` is a component,
+not an equipment. Rooting entries at it too catalogued the same signals a second time
+under a name no machine carries. It stays a `BookType` (a legitimate DP-type candidate);
+it just no longer produces entries (`componentTypeIds`).
+
+**The cycle guard was hiding half the model.** `visited` was scoped to the whole walk, so a
+type used TWICE (`Channel1: ChannelType`, `Channel2: ChannelType` — an IO card, a two-way
+valve) was catalogued for the first use and silently skipped for every other. Only an
+ancestry loop is a cycle, so the guard is now scoped to the BRANCH. This one is worth
+remembering: the symptom of a walk-wide guard is not an error, it is a structure that looks
+complete and is not.
 
 ## Localisation: structured warnings (`EngWarning`)
 

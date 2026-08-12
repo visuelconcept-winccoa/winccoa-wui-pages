@@ -211,3 +211,36 @@ describe('buildBookFromOpcUaBrowse', () => {
     expect(BROWSE_DEFAULTS.maxEntries).toBeGreaterThan(100);
   });
 });
+
+describe('buildBookFromOpcUaBrowse — progress', () => {
+  it('reports one progress event per browse request, monotonically', async () => {
+    const seen: { requests: number; entries: number; path: string; depth: number }[] = [];
+    const book = await buildBookFromOpcUaBrowse(fakePort(MACHINE), {
+      bookId: 'b1',
+      connection: 'Remplisseuse1',
+      onProgress: (progress) => seen.push({ ...progress })
+    });
+    // One per container visited, and the first is the root: '' at depth 0.
+    expect(seen.length).toBeGreaterThan(1);
+    expect(seen[0]).toMatchObject({ requests: 1, entries: 0, path: '', depth: 0 });
+    expect(seen.map((p) => p.requests)).toEqual(seen.map((_, index) => index + 1));
+    // The counts never go backwards, and the last one matches the finished book.
+    for (let index = 1; index < seen.length; index += 1) {
+      expect(seen[index].entries).toBeGreaterThanOrEqual(seen[index - 1].entries);
+    }
+    expect(book.entries.length).toBeGreaterThanOrEqual(seen.at(-1)!.entries);
+    // The path names the container being waited on, so a slow branch is visible.
+    expect(seen.some((p) => p.path !== '' && p.depth > 0)).toBe(true);
+  });
+
+  it('lets the caller CANCEL by throwing from the callback', async () => {
+    const attempt = buildBookFromOpcUaBrowse(fakePort(MACHINE), {
+      bookId: 'b1',
+      connection: 'Remplisseuse1',
+      onProgress: () => {
+        throw new Error('cancelled by the operator');
+      }
+    });
+    await expect(attempt).rejects.toThrow('cancelled by the operator');
+  });
+});

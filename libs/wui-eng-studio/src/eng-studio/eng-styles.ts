@@ -1,78 +1,42 @@
 // SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/** Layout styles for the Engineering Studio page (theme tokens in eng-theme). */
+/**
+ * Layout of the Engineering Studio page. The iX core stylesheet, the `--eng-*`
+ * token aliases and the primitives shared with the sub-elements live in
+ * `eng-theme.ts`; this file only places the page's own regions.
+ */
 import { css } from 'lit';
 import { engTheme } from './eng-theme.js';
 
 export const engStudioStyles = [
   engTheme,
   css`
+    /* --- top bar + tabs ---------------------------------------------------- */
     .topbar {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
-      padding: 0.5rem 0.9rem;
-      background: var(--eng-surface);
+      gap: 0.5rem;
+      padding-right: 0.9rem;
       border-bottom: 1px solid var(--eng-border);
       flex-shrink: 0;
     }
-    .title {
-      display: flex;
-      align-items: center;
-      gap: 0.6rem;
-    }
-    .logo {
-      font-size: 1.5rem;
-    }
-    .title-main {
-      font-weight: 700;
-    }
-    .title-sub {
-      font-size: 0.72rem;
-      color: var(--eng-soft);
-    }
-    .demo-banner {
-      font-size: 0.72rem;
-      color: var(--eng-warn);
-      border: 1px dashed var(--eng-warn);
-      border-radius: var(--eng-radius);
-      padding: 0.15rem 0.5rem;
-    }
-    .spacer {
-      flex: 1;
-    }
-    .steps {
-      display: flex;
-      gap: 0.25rem;
-    }
-    .step {
-      padding: 0.35rem 0.7rem;
-      border: 1px solid var(--eng-border);
-      border-radius: var(--eng-radius);
-      background: transparent;
-      color: var(--eng-soft);
-    }
-    .step.active {
-      background: var(--eng-surface-2);
-      color: var(--eng-text);
-      border-color: var(--eng-primary);
+    .topbar wui-content-header {
+      min-width: 0;
     }
     .lang-picker {
-      background: var(--eng-bg);
-      color: var(--eng-soft);
-      border: 1px solid var(--eng-border);
-      border-radius: var(--eng-radius);
-      padding: 0.2rem 0.3rem;
-      font: inherit;
-      font-size: 0.72rem;
+      width: 6.5rem;
+      flex-shrink: 0;
+    }
+    ix-tabs {
+      flex-shrink: 0;
+      padding: 0 0.5rem;
+      border-bottom: 1px solid var(--eng-border);
     }
     .notice {
-      padding: 0.35rem 0.9rem;
-      background: var(--eng-surface-2);
-      border-bottom: 1px solid var(--eng-border);
-      font-size: 0.8rem;
-      color: var(--eng-soft);
+      display: block;
+      flex-shrink: 0;
+      margin: 0.5rem 0.9rem 0;
     }
     .body {
       flex: 1;
@@ -104,13 +68,16 @@ export const engStudioStyles = [
       border: none;
       border-left: 2px solid transparent;
       background: transparent;
+      color: inherit;
+      font: inherit;
       text-align: left;
+      cursor: pointer;
     }
     .device:hover {
-      background: var(--eng-surface-2);
+      background: var(--eng-hover);
     }
     .device.selected {
-      background: var(--eng-surface-2);
+      background: var(--eng-selected);
       border-left-color: var(--eng-primary);
     }
     .device-name {
@@ -118,12 +85,6 @@ export const engStudioStyles = [
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-    }
-    .chip.proto,
-    .chip.mode,
-    .chip.acc {
-      font-size: 0.66rem;
-      padding: 0.05rem 0.35rem;
     }
     .rail-foot {
       padding: 0.6rem 0.75rem;
@@ -140,7 +101,7 @@ export const engStudioStyles = [
       display: flex;
       align-items: center;
       gap: 0.6rem;
-      padding: 0.6rem 0.9rem;
+      padding: 0.5rem 0.9rem;
       border-bottom: 1px solid var(--eng-border);
       flex-shrink: 0;
     }
@@ -148,19 +109,11 @@ export const engStudioStyles = [
       margin: 0;
       font-size: 1rem;
     }
-    .empty {
-      padding: 2rem;
-      color: var(--eng-soft);
-      text-align: center;
+    .empty-action {
+      margin-top: 0.75rem;
     }
-    .empty.small {
-      padding: 1rem;
-      font-size: 0.8rem;
-    }
-    .empty.success {
-      color: var(--eng-success);
-    }
-    /* panel 1 */
+
+    /* --- panel 1: devices + books ------------------------------------------ */
     .panel-scroll {
       flex: 1;
       min-height: 0;
@@ -192,6 +145,8 @@ export const engStudioStyles = [
       border-radius: var(--eng-radius);
       background: var(--eng-surface);
       color: var(--eng-soft);
+      font: inherit;
+      cursor: pointer;
     }
     .book-tab:hover {
       border-color: var(--eng-primary);
@@ -221,11 +176,13 @@ export const engStudioStyles = [
       border-radius: var(--eng-radius);
       background: transparent;
       color: var(--eng-soft);
+      font: inherit;
       font-size: 0.72rem;
       max-width: 9rem;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      cursor: pointer;
     }
     .mini-tab.active {
       background: var(--eng-surface-2);
@@ -259,7 +216,18 @@ export const engStudioStyles = [
     .addr-cell {
       white-space: normal;
     }
-    /* role qualification */
+    .card.warnings,
+    .card.report {
+      margin: 0 0.9rem 0.9rem;
+    }
+    .warn-text {
+      padding: 0 0.9rem;
+    }
+    .card.warnings .warn-text {
+      padding: 0;
+    }
+
+    /* --- role qualification bar ------------------------------------------- */
     .role-bar {
       display: flex;
       align-items: center;
@@ -271,57 +239,48 @@ export const engStudioStyles = [
     .role-filter {
       max-width: 12rem;
     }
-    select.filter {
-      background: var(--eng-bg);
-      border: 1px solid var(--eng-border);
-      border-radius: var(--eng-radius);
-      color: var(--eng-text);
-      padding: 0.2rem 0.4rem;
-      font: inherit;
-    }
     .cb-col {
       width: 1.6rem;
       text-align: center;
     }
-    .cb-col input {
-      accent-color: var(--eng-primary);
+    /* The role chip AS a button: click-to-edit (see renderRoleCell). It must still
+       look exactly like the chip it replaces, so only the affordance is added. */
+    .chip.role-tag {
       cursor: pointer;
-    }
-    .chip.role {
+      font: inherit;
+      font-size: 0.6875rem;
       font-weight: 600;
     }
-    .chip.role-measure {
-      color: #4aa3f0;
-      border-color: #4aa3f0;
+    .chip.role-tag:hover:not(:disabled) {
+      background: var(--eng-hover);
     }
-    .chip.role-setpoint {
-      color: #9b8cf0;
-      border-color: #9b8cf0;
+    .chip.role-tag:disabled {
+      cursor: default;
     }
-    .chip.role-command {
-      color: var(--eng-primary);
-      border-color: var(--eng-primary);
+    /* The picker that replaces it, sized so the row height does not jump. */
+    select.role-cell {
+      max-width: 9rem;
+      padding-top: 0;
+      padding-bottom: 0;
+      height: 1.4rem;
+      font-size: 0.72rem;
     }
-    .chip.role-state {
-      color: var(--eng-soft);
-      border-color: var(--eng-border);
+    /* Per-row "hide this signal": a bare glyph, because the grid has one per row and
+       an ix-icon-button there would be thousands of Stencil components. */
+    .row-hide {
+      border: none;
+      background: transparent;
+      color: var(--eng-weak);
+      font: inherit;
+      cursor: pointer;
+      padding: 0;
     }
-    .chip.role-alarm {
+    .row-hide:hover:not(:disabled) {
       color: var(--eng-alarm);
-      border-color: var(--eng-alarm);
     }
-    .chip.role-counter {
-      color: var(--eng-success);
-      border-color: var(--eng-success);
-    }
-    .chip.role-parameter {
-      color: #c0a080;
-      border-color: #c0a080;
-    }
-    .chip.role-unknown {
-      color: var(--eng-warn);
-      border-color: var(--eng-warn);
-      border-style: dashed;
+    .row-hide:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
     }
     td.unit {
       color: var(--eng-primary);
@@ -341,50 +300,52 @@ export const engStudioStyles = [
       white-space: normal;
       max-width: 18rem;
     }
-    .card {
-      background: var(--eng-surface);
-      border: 1px solid var(--eng-border);
-      border-radius: var(--eng-radius);
-      padding: 0.75rem;
+
+    /* --- device / catalogue forms ----------------------------------------- */
+    .eng-form {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      padding: 0.9rem;
+      max-width: 46rem;
     }
-    .card.warnings,
-    .card.report {
-      margin: 0 0.9rem 0.9rem;
+
+    /* --- online browse form ----------------------------------------------- */
+    .browse-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 0.5rem;
+      margin-bottom: 0.4rem;
     }
-    .card-title {
-      font-weight: 600;
-      margin-bottom: 0.5rem;
+    .browse-row ix-input,
+    .browse-row ix-select {
+      min-width: 11rem;
     }
-    table.kv {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    table.kv td {
-      padding: 0.2rem 0.35rem;
-      border-bottom: 1px solid var(--eng-border);
-      vertical-align: top;
-    }
-    table.kv td:first-child {
-      color: var(--eng-soft);
-      width: 9rem;
-    }
-    .warn-text {
-      color: var(--eng-warn);
-      font-size: 0.8rem;
-      padding: 0 0.9rem;
-    }
-    .card.warnings ul {
-      margin: 0;
-      padding-left: 1.1rem;
-      color: var(--eng-warn);
-      font-size: 0.8rem;
-    }
-    /* panel 2 */
+
+    /* --- panel 3: model (composer + generated grid) ----------------------- */
     .split2 {
       flex: 1;
       min-height: 0;
       display: grid;
       grid-template-columns: 22rem 1fr;
+    }
+    /* The composition column carries a form AND the structure tree, so it takes the
+       width the equipment rail and the old entries browser used to eat. */
+    .split2.model {
+      grid-template-columns: minmax(28rem, 38%) 1fr;
+    }
+    .composer {
+      min-width: 0;
+    }
+    .composer-scroll {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: 0.6rem;
+    }
+    .composer .gen-row span {
+      width: 7rem;
     }
     .browser {
       border-right: 1px solid var(--eng-border);
@@ -403,12 +364,6 @@ export const engStudioStyles = [
     }
     .filter {
       flex: 1;
-      min-width: 0;
-      background: var(--eng-bg);
-      border: 1px solid var(--eng-border);
-      border-radius: var(--eng-radius);
-      color: var(--eng-text);
-      padding: 0.2rem 0.4rem;
     }
     .browser-list {
       flex: 1;
@@ -470,14 +425,15 @@ export const engStudioStyles = [
       width: 6rem;
       flex-shrink: 0;
     }
+    .gen-row ix-input,
+    .gen-row ix-select,
     .gen-row .filter {
       flex: 1;
       min-width: 0;
     }
     .gen-btn {
       margin-top: 0.35rem;
-      width: 100%;
-      justify-content: center;
+      display: block;
     }
     /* Custom structure + mapping (generation form). */
     .gen-structure {
@@ -496,11 +452,12 @@ export const engStudioStyles = [
       width: 100%;
       box-sizing: border-box;
       resize: vertical;
-      background: var(--eng-surface);
+      background: var(--eng-field-bg);
       color: var(--eng-text);
-      border: 1px solid var(--eng-border);
+      border: 1px solid var(--eng-field-bdr);
       border-radius: var(--eng-radius);
       padding: 0.3rem 0.4rem;
+      font-family: 'Cascadia Code', 'Consolas', monospace;
       font-size: 0.72rem;
       line-height: 1.4;
     }
@@ -535,105 +492,10 @@ export const engStudioStyles = [
       min-width: 0;
       font-size: 0.7rem;
     }
-    /* Access provenance: an ASSUMED access is not evidence — make it visible. */
-    .chip.acc-assumed {
-      color: var(--eng-warn);
-      border-color: var(--eng-warn);
-    }
-    .chip.acc-manual {
-      color: var(--eng-primary);
-      border-color: var(--eng-primary);
-    }
-    /* Device declaration form (Devices panel, in place of the device detail). */
-    .device-form {
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-      padding: 0.9rem;
-      max-width: 46rem;
-    }
-    .form-row {
-      display: flex;
-      align-items: center;
-      gap: 0.6rem;
-      margin-bottom: 0.4rem;
-      font-size: 0.8rem;
-    }
-    .form-row > span:first-child {
-      width: 12rem;
-      flex-shrink: 0;
-      color: var(--eng-soft);
-    }
-    .form-row .filter {
-      max-width: 22rem;
-    }
-    .form-hint {
-      font-size: 0.72rem;
-      color: var(--eng-soft);
-      margin-bottom: 0.5rem;
-    }
-    .form-hint.danger {
-      color: var(--eng-alarm);
-      border: 1px solid var(--eng-alarm);
-      border-radius: var(--eng-radius);
-      padding: 0.4rem 0.6rem;
-      margin-bottom: 0;
-    }
-    .mode-boxes,
-    .book-boxes {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.35rem 0.75rem;
-    }
-    .mode-box {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.3rem;
-      white-space: nowrap;
-    }
-    .book-boxes .mode-box {
-      max-width: 22rem;
-    }
-    /* Ellipsis has to live on the TEXT, not on the flex label — otherwise a long
-       book name pushes its chips out of the box instead of being truncated. */
-    .box-name {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    /* Online OPC UA browse form (Devices panel). */
-    .browse-row {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: flex-end;
-      gap: 0.5rem;
-      margin-bottom: 0.4rem;
-    }
-    .browse-row label {
-      display: flex;
-      flex-direction: column;
-      gap: 0.15rem;
-      font-size: 0.7rem;
-      color: var(--eng-soft);
-    }
-    .browse-row input,
-    .browse-row select {
-      background: var(--eng-bg);
-      color: var(--eng-text);
-      border: 1px solid var(--eng-border);
-      border-radius: var(--eng-radius);
-      padding: 0.2rem 0.4rem;
-      font-size: 0.78rem;
-      font-family: inherit;
-      min-width: 11rem;
-    }
     .gen-hint,
     .gen-warnings {
       font-size: 0.72rem;
       margin: 0.4rem 0 0;
-    }
-    .warn-inline {
-      color: var(--eng-warn);
     }
     .gen-warnings {
       padding-left: 1rem;
@@ -661,26 +523,6 @@ export const engStudioStyles = [
       overflow: auto;
       min-height: 0;
     }
-    table.grid {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.8rem;
-    }
-    table.grid th,
-    table.grid td {
-      text-align: left;
-      padding: 0.3rem 0.5rem;
-      border-bottom: 1px solid var(--eng-border);
-      white-space: nowrap;
-    }
-    table.grid th {
-      position: sticky;
-      top: 0;
-      background: var(--eng-surface-2);
-      color: var(--eng-soft);
-      font-weight: 600;
-      z-index: 1;
-    }
     table.grid td.dpe {
       font-size: 0.76rem;
     }
@@ -692,13 +534,12 @@ export const engStudioStyles = [
     td.live {
       color: var(--eng-primary);
     }
-    .soft {
-      color: var(--eng-soft);
+
+    /* --- panel 4: control ------------------------------------------------- */
+    .checkin-why {
+      max-width: 34rem;
+      text-align: right;
     }
-    table.grid.compact td {
-      padding: 0.2rem 0.5rem;
-    }
-    /* panel 3 */
     .diff-summary {
       display: flex;
       gap: 0.4rem;
@@ -706,6 +547,25 @@ export const engStudioStyles = [
     }
     .conflict-row {
       background: color-mix(in srgb, var(--eng-alarm) 12%, transparent);
+    }
+    /* The plan's own warnings, read BEFORE acting on the rows they talk about. */
+    .plan-warnings {
+      margin: 0 0.9rem 0.5rem;
+    }
+    /* Workspace housekeeping: the row picker and its one action. */
+    .forget-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0 0.9rem 0.5rem;
+    }
+    .forget-bar .soft {
+      max-width: 46rem;
+    }
+    table.grid th.pick,
+    table.grid td.pick {
+      width: 1.6rem;
+      padding-right: 0;
     }
     .report {
       margin-top: 0.5rem;

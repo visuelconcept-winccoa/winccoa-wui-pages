@@ -29,9 +29,19 @@ const REPO = resolve(HERE, '..');
 const DEMO_DIR = resolve(REPO, 'libs/wui-eng-studio/demo');
 const SOURCE = resolve(REPO, 'libs/wui-eng-studio/src/eng-studio/i18n.ts');
 
-// esbuild comes with the demo harness (which already builds this page).
-const demoRequire = createRequire(pathToFileURL(resolve(DEMO_DIR, 'package.json')));
-const esbuild = demoRequire('esbuild');
+// esbuild comes with the demo harness (which already builds this page); the
+// workspace root install is the fallback, so this check runs on a checkout where
+// only `npm install` at the root was done.
+const esbuild = await (async () => {
+  for (const from of [resolve(DEMO_DIR, 'package.json'), resolve(REPO, 'package.json')]) {
+    try {
+      return createRequire(pathToFileURL(from))('esbuild');
+    } catch {
+      continue;
+    }
+  }
+  throw new Error('esbuild not found — run npm install at the repo root or in libs/wui-eng-studio/demo');
+})();
 
 const bundle = await esbuild.build({
   entryPoints: [SOURCE],
@@ -167,6 +177,14 @@ for (const code of Object.keys(WARNING_MSG)) {
 console.log(`[eng-i18n] ${CORE_CODES.length} core warning codes checked against WARNING_MSG.`);
 
 // Locale identifiers the WinCC OA shell passes, plus plain tags.
+//
+// `navigator` is neutralised first: Node ≥21 exposes it with the MACHINE's locale,
+// and `resolveLang` legitimately consults it (step 4 of its documented order). The
+// cases below assert the LAST resort — English — so on a French workstation the
+// browser step has to be out of the way, or the check would fail on the resolver
+// doing exactly what it promises.
+Object.defineProperty(globalThis, 'navigator', { value: undefined, configurable: true });
+
 const localeCases = [
   ['en_US.utf8', 'en'],
   ['fr.utf8', 'fr'],

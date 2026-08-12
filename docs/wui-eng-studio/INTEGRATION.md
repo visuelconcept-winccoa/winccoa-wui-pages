@@ -40,19 +40,29 @@
 |--------|------|------|---------|
 | GET  | `/health` | — | liveness + the resolved store path |
 | GET  | `/roles` | — | the **caller's own** studio grants (what the UI gates on) |
-| GET  | `/devices` | `view` | the device registry |
+| GET  | `/devices` | `view` | the device registry, each device decorated with its **live connection state** (read, never stored — see below) |
+| GET  | `/devices/state` | `view` | the LIVE fields only (`{states: DeviceStateUpdate[]}`) — what the page's 5 s refresh polls |
 | POST | `/devices` `{device}` | `manage-devices` | **create** one device — the **server** derives the id → `201 {device, devices}` |
 | POST | `/devices/:id` `{device}` | `manage-devices` | **update** that device (`404` if unknown; the body's `id` is ignored) |
 | DELETE | `/devices/:id` | `manage-devices` | forget one device; **its books are kept** (the relation is N:N) |
 | PUT  | `/devices` `{devices}` | `manage-devices` | replace the whole registry (bulk provisioning / migration) |
 | GET  | `/connections` | `view` | the project's OPC UA connections (`_OPCUAServer`), browsable |
-| GET  | `/books` | `view` | every address book, re-qualified (roles) |
+| GET  | `/drivers` | `view` | every `_Driver<n>` with its `DT` and whether it runs — what the forms OFFER as `driverNumber` |
+| POST | `/browse/level` `{connection,nodeId?}` | `view` | **one level** of an address space: the server explorer, and the client-driven walk |
+| GET  | `/books` | `view` | every address book, re-qualified (roles) minus the signals hidden by hand |
 | GET  | `/books/:id` | `view` | one book |
+| POST | `/books` `{bookId,name?,interface?}` | `manage-devices` | create an **empty** catalog (declare first, walk into it after) → `201` |
+| PUT  | `/books/:id` `{book}` | `manage-devices` | store a book the CLIENT built — the landing point of the progress-reporting walk |
 | POST | `/books/ingest` `{bookId,format,…}` | `manage-devices` | build a book from a file source (`simaticml` \| `xvm` \| `csv` \| `nodeset`) |
-| POST | `/books/browse` `{bookId,connection,…}` | `manage-devices` | walk a LIVE OPC UA server into a book |
+| POST | `/books/browse` `{bookId,connection,…}` | `manage-devices` | walk a LIVE OPC UA server into a book, **server-side in one call** (no progress) |
 | POST | `/books/:id/refresh` | `manage-devices` | re-read the source (re-browse when replayable), else re-run the rules |
 | POST | `/books/:id/roles` `{roles}` | `manage-devices` | persist the operator's **manual** role overrides |
 | POST | `/books/:id/access` `{access}` | `manage-devices` | persist **manual access overrides** (drives the address direction) |
+| POST | `/books/:id/exclude` `{excluded}` | `manage-devices` | HIDE (`true`) or restore (`false`) signals by hand — an override, so a re-walk keeps it |
+| DELETE | `/books/:id` | `manage-devices` | forget a catalog and **detach it from every equipment** that used it |
+| GET  | `/models` | `view` | the reusable models (structure + mappings, applied to any equipment) |
+| POST | `/models` `{model}` | `edit-model` | create or replace one (id derived from the name when absent) |
+| DELETE | `/models/:id` | `edit-model` | forget one |
 | GET  | `/workspace?name=` | `view` | the working copy |
 | POST | `/workspace` `{workspace}` | `edit-model` | save the working copy |
 | POST | `/checkout` `{name,types?,dpes?}` | `edit-model` | read the project into a workspace **+ baseline fingerprints** |
@@ -78,6 +88,30 @@ default deployment these guards are inert and an API caller bypasses the UI
 gating. Enable webserver auth in production.
 
 ### Payloads worth knowing
+
+**`GET /devices`** — the stored registry, each device carrying a state the server
+**read** rather than one it stored:
+
+| field | meaning |
+|-------|---------|
+| `state` | `connected` \| `disconnected` \| `unknown` — mapped from the raw code with the thresholds the WinCC OA driver panel itself uses (`>= 256` connected, `1`/`5` down, the rest undefined) |
+| `stateSource` | why: `connstate` (read on `<connection>.Common.State.ConnState`), `opcua-connstate` (the `_OPCUAServer.State.ConnState` fallback), `unknown-connection`, `ambiguous-connection`, `probe-failed`, `unprobed` |
+| `stateConnection` | the connection datapoint (or the reference/address) the state was read on, or looked for |
+| `stateCode` | the raw `ConnState`, when one was read — `1` not connected, `3` inactive, `5` failure, `256…260` connected |
+
+**`GET /devices/state`** — the same probe, answering `{ states: [{ id, state, stateSource,
+stateConnection, stateCode }] }` and nothing else. It exists because the page refreshes on
+a timer: the payload of a call made every few seconds should be proportional to what it
+can say, and a full registry landing on a page mid-edit would overwrite the operator's
+work. The client merges it by id into the live fields only (the core's
+`withDeviceStates`), and turns every lamp grey (`statesUnreadable`) once the refresh has
+failed three times in a row.
+
+Nothing is persisted: `normalizeDevice` always stores `state: 'unknown'`, and every
+device-mutating route re-reads the state before answering, so a client never has to
+guess whether the value it holds is current. A device the declaration cannot tie to
+exactly ONE connection stays `unknown` (with the reason) — never `disconnected`, which
+is a statement about the machine only a driver may make.
 
 **`POST /devices` / `POST /devices/:id`** — body `{ device: DeviceDraft }`:
 
@@ -167,17 +201,28 @@ books/<bookId>.json          AddressBook (entries carry their resolved roles;
                              read, see the core's `asEngWarnings`)
 books/<bookId>.roles.json    { <entryPath>: SignalRole }  — MANUAL overrides only
 books/<bookId>.access.json   { <entryPath>: 'r'|'w'|'rw' } — MANUAL overrides only
+books/<bookId>.excluded.json { <entryPath>: true }        — signals HIDDEN by hand
+models/<id>.json             ModelTemplate (structure + bindings — NOT the target,
+                             the zone or the equipment names: those differ per use)
 workspaces/<name>.json       Workspace (incl. its check-out baseline)
 ```
 
 Ids are sanitised (`safeId`) so a request can never escape the root, and every
 write is temp-file + rename, so a crash never leaves a half-written book.
 
-Manual overrides (roles **and** access) live in their **own** files on purpose: a
-book refresh or a re-ingest replaces the catalog but keeps the overrides, so
-re-importing a TIA export or re-browsing a server never loses the operator's
-qualification work. `POST /books/:id/access` accepts `'r' | 'w' | 'rw'`, and `''`
-to clear an override.
+The three manual overrides (roles, access **and** exclusions) live in their **own**
+files on purpose: a book refresh or a re-ingest replaces the catalog but keeps the
+overrides, so re-importing a TIA export or re-browsing a server never loses the
+operator's qualification work. `POST /books/:id/access` accepts `'r' | 'w' | 'rw'`,
+and `''` to clear an override; `POST /books/:id/exclude` takes `true` to hide and
+`false` to restore.
+
+The **stored book always holds the full reading of the source** — the exclusions are
+applied on the way out (`presented()`), never before `saveBook`. That is what makes
+hiding reversible: fold it into what is stored and hiding becomes deleting, with
+nothing left to restore. A book being *served* additionally carries `excludedPaths`
+(and a `book.excluded` warning), so a client can never show a shortened catalog
+without saying so.
 
 ## Runtime coupling (the only places the backend touches OA)
 

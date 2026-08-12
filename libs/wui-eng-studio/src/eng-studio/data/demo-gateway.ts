@@ -17,37 +17,54 @@ import {
   formatWarning,
   normalizeDevice,
   validateDevice,
+  buildBookFromIngest,
+  CONN_STATE,
+  declaredAddressOf,
+  deviceStateOf,
+  deviceStateFromConnState,
   buildBookFromOpcUaBrowse,
   classifyEntries,
   diffBooks,
   diffWorkspace,
+  excludedWarning,
   refreshWarnings,
   makeDpeName,
   withAccess,
   withRoles,
+  withoutExcluded,
+  templateIdFrom,
+  OPCUA_OBJECTS_FOLDER,
   type SignalRole,
   type AddressBook,
   type ApplyReport,
   type Device,
   type DeviceDraft,
+  type DeviceStateUpdate,
   type DpeConfigs,
   type EngPlan,
   type EngPort,
   type LiveSnapshot,
+  type ModelTemplate,
+  type OpcUaBrowseNode,
   type TagAccess,
   type Workspace
 } from '@visuelconcept/wui-eng-core';
 import type {
+  BookDeletion,
   BookRefresh,
   BrowseRequest,
   EngConnection,
+  EngDriver,
   EngGateway,
   EngRole,
+  IngestRequest,
   LiveScope,
-  TestReadResult
+  TestReadResult,
+  WalkRequest
 } from './gateway.js';
+import { walkIntoBook as runWalk } from './walk.js';
 import { DEMO_CONNECTIONS, DemoOpcUaBrowsePort } from './demo-opcua-server.js';
-import { DEMO_DEVICES, DEMO_LIVE_VALUES, demoBooks, demoLiveSnapshot } from './demo-data.js';
+import { DEMO_CONN_STATE, DEMO_DEVICES, DEMO_DRIVERS, DEMO_LIVE_VALUES, demoBooks, demoLiveSnapshot } from './demo-data.js';
 
 /**
  * Qualify a book with the default rule set, honouring the operator's manual
@@ -94,6 +111,8 @@ export class DemoEngGateway implements EngGateway {
   private manualRoles = new Map<string, Record<string, SignalRole>>();
   /** Operator ACCESS overrides per book (path → r/w/rw), kept across refreshes. */
   private manualAccess = new Map<string, Record<string, TagAccess>>();
+  /** Signals HIDDEN by hand, per book. An override, so a re-walk keeps them hidden. */
+  private manualExcluded = new Map<string, Set<string>>();
   /** The fake OPC UA server the demo browses (drifts between generations). */
   private readonly browsePort = new DemoOpcUaBrowsePort();
   /** One-shot seeding of the walker-produced online book. */
@@ -105,11 +124,84 @@ export class DemoEngGateway implements EngGateway {
     return new Set<EngRole>(['view', 'edit-model', 'manage-devices', 'checkin']);
   }
 
+  /**
+   * What a caller sees: the stored book minus the signals hidden by hand, plus the
+   * warning stating how many. Kept apart from what is STORED — exactly as the backend
+   * does (see `engController.presented`) — so hiding a signal stays reversible.
+   */
+  private presented(book: AddressBook): AddressBook {
+    const excluded = this.manualExcluded.get(book.id);
+    if (excluded === undefined || excluded.size === 0) return book;
+    const entries = withoutExcluded(book.entries, excluded);
+    const hidden = book.entries.length - entries.length;
+    return {
+      ...book,
+      entries,
+      excludedPaths: [...excluded],
+      warnings: hidden === 0 ? book.warnings : [excludedWarning(hidden, book.entries.length), ...book.warnings]
+    };
+  }
+
   /** Mutable in the demo, so the form's create/edit/delete actually persist. */
-  private devices: Device[] = DEMO_DEVICES.map((device) => ({ ...device }));
+  private devices: Device[] = DEMO_DEVICES.map((device) => ({ ...device, state: 'unknown' }));
 
   async listDevices(): Promise<Device[]> {
-    return this.devices.map((device) => ({ ...device }));
+    await this.ensureBrowsedBook();
+    return this.devices.map((device) => this.withLiveState(device));
+  }
+
+  /**
+   * The same derivation as `listDevices`, live fields only.
+   *
+   * DETERMINISTIC on purpose: the demo could flip a lamp every few seconds to show off
+   * the refresh, but the docs and the screenshot pipeline read this gateway too, and a
+   * state that moves on its own would make every capture a coin toss. The refresh being
+   * exercised is what matters here; what it returns is the project's business.
+   */
+  async deviceStates(): Promise<DeviceStateUpdate[]> {
+    const devices = await this.listDevices();
+    return devices.map((device) => deviceStateOf(device));
+  }
+
+  /**
+   * The same DERIVATION the backend does (see `engController.withLiveState`), so the
+   * demo shows the state the way the real page will — INCLUDING the cases where nothing
+   * can be read. A demo where every LED is green would teach an operator to expect a
+   * state the project cannot always give.
+   *
+   * Same two steps as the backend: find the connection the declaration points at (an
+   * OPC UA reference, else the declared address), then read its `ConnState` — here from
+   * `DEMO_CONN_STATE` instead of a driver. A declaration with neither is `unprobed`, and
+   * a device declared on a connection the demo project does not have is
+   * `unknown-connection`; both stay `unknown`, never `disconnected`.
+   */
+  private withLiveState(device: Device): Device {
+    const reference = this.opcUaConnectionOf(device);
+    const connection = reference ?? declaredAddressOf(device);
+    if (connection === '') return { ...device, state: 'unknown', stateSource: 'unprobed' };
+    const code = DEMO_CONN_STATE[device.id];
+    if (code === undefined) {
+      return { ...device, state: 'unknown', stateSource: 'unknown-connection', stateConnection: connection };
+    }
+    return {
+      ...device,
+      state: deviceStateFromConnState(code),
+      stateSource: code === CONN_STATE.UNDEFINED_BY_DRIVER ? 'probe-failed' : 'connstate',
+      stateConnection: connection,
+      stateCode: code
+    };
+  }
+
+  /** The OPC UA connection this device addresses through — as the backend resolves it. */
+  private opcUaConnectionOf(device: Device): string | null {
+    const declared = String(device.connection?.['server'] ?? '').trim();
+    if (device.protocol === 'opcua' && declared !== '') return declared;
+    for (const bookId of device.bookIds) {
+      const iface = this.books.get(bookId)?.interface;
+      const name = iface?.protocol === 'opcua' ? (iface.connection ?? '').trim() : '';
+      if (name !== '') return name;
+    }
+    return null;
   }
 
   /**
@@ -139,12 +231,110 @@ export class DemoEngGateway implements EngGateway {
 
   async listBooks(): Promise<AddressBook[]> {
     await this.ensureBrowsedBook();
-    return [...this.books.values()];
+    return this.allPresented();
   }
 
   async getBook(bookId: string): Promise<AddressBook | null> {
     await this.ensureBrowsedBook();
-    return this.books.get(bookId) ?? null;
+    const book = this.books.get(bookId);
+    return book === undefined ? null : this.presented(book);
+  }
+
+  /** The whole registry as a caller sees it (exclusions applied). */
+  private allPresented(): AddressBook[] {
+    return [...this.books.values()].map((book) => this.presented(book));
+  }
+
+  async listDrivers(): Promise<EngDriver[]> {
+    return DEMO_DRIVERS.map((driver) => ({ ...driver }));
+  }
+
+  /**
+   * Ingest a file into a catalog with the REAL core generators — the demo runs the
+   * same code path as the backend, so a SimaticML export or a Control Expert CSV
+   * dropped on the offline demo produces the book (and the warnings) a live
+   * deployment would. Its refusals are the backend's too: a payload that does not
+   * match the format is an error, not an empty book.
+   */
+  async ingestBook(request: IngestRequest): Promise<{ book: AddressBook; books: AddressBook[] }> {
+    await this.ensureBrowsedBook();
+    // The SAME core function the backend stores with and the form previews with.
+    const book = buildBookFromIngest(request);
+    const stored = qualify(book, this.manualRoles.get(book.id) ?? {}, this.manualAccess.get(book.id) ?? {});
+    this.books.set(stored.id, stored);
+    return { book: this.presented(stored), books: this.allPresented() };
+  }
+
+  /** Create an EMPTY catalog — the "declare, then browse into it" first step. */
+  async createBook(request: {
+    bookId: string;
+    name?: string;
+    interface?: AddressBook['interface'];
+  }): Promise<{ book: AddressBook; books: AddressBook[] }> {
+    await this.ensureBrowsedBook();
+    if (this.books.has(request.bookId)) throw new Error(`a catalog '${request.bookId}' already exists`);
+    const book: AddressBook = {
+      id: request.bookId,
+      name: request.name ?? request.bookId,
+      provenance: {
+        kind: 'manual',
+        generatedAt: new Date().toISOString(),
+        detail: 'declared, not yet generated'
+      },
+      ...(request.interface === undefined ? {} : { interface: request.interface }),
+      entries: [],
+      types: [],
+      warnings: []
+    };
+    this.books.set(book.id, book);
+    return { book, books: this.allPresented() };
+  }
+
+  /** One level of the FAKE server — what the explorer and the walk are built on. */
+  async browseLevel(connection: string, nodeId?: string): Promise<OpcUaBrowseNode[]> {
+    return this.browsePort.browseLevel(connection, nodeId ?? OPCUA_OBJECTS_FOLDER);
+  }
+
+  /**
+   * The client-driven walk, against the fake server. Same shared code path as the
+   * live gateway (`data/walk.ts`), so the progress the demo shows is the progress a
+   * deployment shows — one event per level, on the real walker.
+   */
+  async walkIntoBook(request: WalkRequest): Promise<BookRefresh> {
+    await this.ensureBrowsedBook();
+    const previous = this.books.get(request.bookId) ?? null;
+    // A re-walk of an already-browsed book means the machine moved on since.
+    if (previous !== null && previous.entries.length > 0) this.browsePort.advance();
+    const { book, delta } = await runWalk(this.browsePort, previous, request);
+    const stored = qualify(book, this.manualRoles.get(book.id) ?? {}, this.manualAccess.get(book.id) ?? {});
+    this.books.set(stored.id, stored);
+    return { book: this.presented(stored), rebrowsed: true, ...(delta === undefined ? {} : { delta }) };
+  }
+
+  /** Hide or restore signals by hand — an override, so a re-walk keeps it. */
+  async saveBookExcluded(bookId: string, excluded: Record<string, boolean>): Promise<AddressBook> {
+    const merged = new Set(this.manualExcluded.get(bookId) ?? []);
+    for (const [path, hidden] of Object.entries(excluded)) {
+      if (hidden) merged.add(path);
+      else merged.delete(path);
+    }
+    this.manualExcluded.set(bookId, merged);
+    const book = this.books.get(bookId);
+    if (!book) throw new Error(`unknown book '${bookId}'`);
+    return this.presented(book);
+  }
+
+  /** Forget a catalog and DETACH it from every equipment (as the backend does). */
+  async deleteBook(bookId: string): Promise<BookDeletion> {
+    await this.ensureBrowsedBook();
+    if (!this.books.has(bookId)) throw new Error(`unknown book '${bookId}'`);
+    this.books.delete(bookId);
+    this.manualRoles.delete(bookId);
+    this.manualAccess.delete(bookId);
+    this.devices = this.devices.map((device) =>
+      device.bookIds.includes(bookId) ? { ...device, bookIds: device.bookIds.filter((id) => id !== bookId) } : device
+    );
+    return { books: this.allPresented(), devices: await this.listDevices() };
   }
 
   /**
@@ -185,7 +375,7 @@ export class DemoEngGateway implements EngGateway {
     // A rules-only refresh KEEPS the operator's manual overrides.
     if (fresh) this.books.set(bookId, qualify(fresh, this.manualRoles.get(bookId) ?? {}, this.manualAccess.get(bookId) ?? {}));
     return {
-      book: this.books.get(bookId) as AddressBook,
+      book: this.presented(this.books.get(bookId) as AddressBook),
       rebrowsed: false,
       note: 'Source hors ligne : seules les règles de qualification ont été rejouées.'
     };
@@ -216,7 +406,7 @@ export class DemoEngGateway implements EngGateway {
     const stored = qualify(warned, this.manualRoles.get(request.bookId) ?? {}, this.manualAccess.get(request.bookId) ?? {});
     this.books.set(request.bookId, stored);
     return {
-      book: stored,
+      book: this.presented(stored),
       rebrowsed: true,
       ...(delta === null
         ? {}
@@ -230,8 +420,14 @@ export class DemoEngGateway implements EngGateway {
     };
   }
 
-  async saveBookRoles(bookId: string, roles: Record<string, SignalRole>): Promise<void> {
-    this.manualRoles.set(bookId, { ...(this.manualRoles.get(bookId) ?? {}), ...roles });
+  /** `''` clears an override — the same merge semantics as the backend's store. */
+  async saveBookRoles(bookId: string, roles: Record<string, SignalRole | ''>): Promise<void> {
+    const merged = { ...(this.manualRoles.get(bookId) ?? {}) };
+    for (const [path, role] of Object.entries(roles)) {
+      if (role === '') delete merged[path];
+      else merged[path] = role;
+    }
+    this.manualRoles.set(bookId, merged);
     this.requalify(bookId);
   }
 
@@ -249,6 +445,27 @@ export class DemoEngGateway implements EngGateway {
     const book = this.books.get(bookId);
     if (!book) return;
     this.books.set(bookId, qualify(book, this.manualRoles.get(bookId) ?? {}, this.manualAccess.get(bookId) ?? {}));
+  }
+
+  /** Saved models live for the session — enough to demo authoring then reusing one. */
+  private models = new Map<string, ModelTemplate>();
+
+  async listModels(): Promise<ModelTemplate[]> {
+    return [...this.models.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async saveModel(model: ModelTemplate): Promise<ModelTemplate> {
+    const stored: ModelTemplate = {
+      ...model,
+      id: model.id && model.id.trim() !== '' ? model.id : templateIdFrom(model.name),
+      savedAt: new Date().toISOString()
+    };
+    this.models.set(stored.id, stored);
+    return stored;
+  }
+
+  async deleteModel(id: string): Promise<void> {
+    if (!this.models.delete(id)) throw new Error(`unknown model '${id}'`);
   }
 
   async getWorkspace(): Promise<Workspace> {

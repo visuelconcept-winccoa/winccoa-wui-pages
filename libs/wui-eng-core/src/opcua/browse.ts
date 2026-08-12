@@ -90,6 +90,23 @@ export interface BrowseSource {
   maxRequests?: number;
 }
 
+/**
+ * How far a walk has got. Reported after every browse REQUEST, which is the only
+ * unit of progress a walk actually has: the size of an address space is not known
+ * until it has been walked, so there is no percentage to give — only "still going,
+ * here is where, and here is how much so far".
+ */
+export interface BrowseProgress {
+  /** Browse requests issued so far (bounded by `maxRequests`). */
+  requests: number;
+  /** Signals catalogued so far (bounded by `maxEntries`). */
+  entries: number;
+  /** Dotted path of the container being browsed ('' at the root). */
+  path: string;
+  /** Depth of that container, in path segments. */
+  depth: number;
+}
+
 export interface BrowseBookOptions extends BrowseSource {
   bookId: string;
   name?: string;
@@ -97,6 +114,12 @@ export interface BrowseBookOptions extends BrowseSource {
   driverNumber?: number;
   /** Injected so the result is deterministic in tests. */
   generatedAt?: string;
+  /**
+   * Called after each browse request, so a UI can show a walk in progress rather
+   * than a frozen screen for the minutes a large server takes. Throwing from it is
+   * how a caller CANCELS: the walk unwinds and the partial book is not returned.
+   */
+  onProgress?: (progress: BrowseProgress) => void;
 }
 
 /** Outcome of a walk: the entries plus everything the caller must be told. */
@@ -152,6 +175,9 @@ async function walk(port: OpcUaBrowsePort, options: BrowseBookOptions): Promise<
       return;
     }
     requests += 1;
+    // Reported BEFORE the request: on a slow server the interesting information is
+    // which branch the walk is waiting on, not which one it just finished.
+    options.onProgress?.({ requests, entries: entries.length, path: segments.join('.'), depth: segments.length });
     let children: OpcUaBrowseNode[];
     try {
       children = await port.browseLevel(options.connection, nodeId);

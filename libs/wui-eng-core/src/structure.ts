@@ -318,3 +318,269 @@ export function autoBindBook(structure: DpTypeStructure, book: AddressBook, sele
   const entries = selection === undefined ? book.entries : book.entries.filter((entry) => selection.includes(entry.path));
   return autoBindStructure(structure, entries);
 }
+
+// --- structure EDITING (the graphical authoring half) ------------------------
+//
+// The outline text stays the storage format — readable, diffable, pasteable — but a
+// house standard is easier to SHAPE as a tree. These are the pure edits a tree
+// editor needs, and every one of them also takes the BINDINGS, because bindings are
+// keyed by a leaf's dotted path: rename a struct and every mapping under it points
+// at a path that no longer exists. Re-keying is not a nicety, it is the difference
+// between renaming a group and silently losing its mapping.
+
+/** Address of a node: the names from the root's children down (`['Mesures','T']`). */
+export type NodePath = string[];
+
+/** A structure and the bindings that followed the edit. */
+export interface StructureEdit {
+  structure: DpTypeStructure;
+  bindings: StructureBindings;
+}
+
+/** Dotted key of a leaf path, as {@link StructureBindings} uses it. */
+function key(path: NodePath): string {
+  return path.join('.');
+}
+
+/** Re-key every binding under `from` to sit under `to` (and keep the rest). */
+function rekeyBindings(bindings: StructureBindings, from: NodePath, to: NodePath): StructureBindings {
+  const oldPrefix = key(from);
+  const newPrefix = key(to);
+  if (oldPrefix === newPrefix) return bindings;
+  const out: StructureBindings = {};
+  for (const [leaf, entry] of Object.entries(bindings)) {
+    if (leaf === oldPrefix) out[newPrefix] = entry;
+    else if (leaf.startsWith(`${oldPrefix}.`)) out[`${newPrefix}${leaf.slice(oldPrefix.length)}`] = entry;
+    else out[leaf] = entry;
+  }
+  return out;
+}
+
+/** Drop every binding at or under `path` (a deleted subtree binds nothing). */
+function pruneBindings(bindings: StructureBindings, path: NodePath): StructureBindings {
+  const prefix = key(path);
+  return Object.fromEntries(
+    Object.entries(bindings).filter(([leaf]) => leaf !== prefix && !leaf.startsWith(`${prefix}.`))
+  );
+}
+
+/**
+ * Rebuild `structure` with `fn` applied to the node at `path`.
+ * `fn` returning null DELETES the node. Unknown paths are returned unchanged.
+ */
+function mapNodeAt(
+  structure: DpTypeStructure,
+  path: NodePath,
+  fn: (node: DpTypeStructure) => DpTypeStructure | null
+): DpTypeStructure {
+  if (path.length === 0) return structure;
+  const [head, ...rest] = path;
+  const children = structure.children ?? [];
+  const next: DpTypeStructure[] = [];
+  for (const child of children) {
+    if (child.name !== head) {
+      next.push(child);
+      continue;
+    }
+    if (rest.length === 0) {
+      const replaced = fn(child);
+      if (replaced !== null) next.push(replaced);
+    } else {
+      next.push(mapNodeAt(child, rest, fn));
+    }
+  }
+  return { ...structure, children: next };
+}
+
+/** The node at `path`, or null. */
+export function structureNodeAt(structure: DpTypeStructure, path: NodePath): DpTypeStructure | null {
+  let node: DpTypeStructure | undefined = structure;
+  for (const segment of path) {
+    node = (node?.children ?? []).find((child) => child.name === segment);
+    if (node === undefined) return null;
+  }
+  return node ?? null;
+}
+
+/**
+ * Rename the node at `path`. The name is sanitised (it becomes part of a DPE name),
+ * and the bindings of the whole subtree follow it.
+ *
+ * A name that collides with a sibling is REFUSED (returned unchanged): two siblings
+ * with one name would make a binding key ambiguous, and the generated DPE names
+ * would silently collapse onto each other.
+ */
+export function renameStructureNode(
+  structure: DpTypeStructure,
+  path: NodePath,
+  name: string,
+  bindings: StructureBindings = {}
+): StructureEdit {
+  const clean = sanitizeSegment(name);
+  if (path.length === 0 || clean === '') return { structure, bindings };
+  const parent = structureNodeAt(structure, path.slice(0, -1));
+  const taken = (parent?.children ?? []).some((child) => child.name !== path.at(-1) && child.name === clean);
+  if (taken) return { structure, bindings };
+  return {
+    structure: mapNodeAt(structure, path, (node) => ({ ...node, name: clean })),
+    bindings: rekeyBindings(bindings, path, [...path.slice(0, -1), clean])
+  };
+}
+
+/**
+ * Change the element type of the node at `path`.
+ *
+ * Leaving `Struct` drops the children — and their bindings with them, which is why
+ * this returns both. Becoming a `Struct` keeps none of the leaf's own binding: a
+ * group is not addressable.
+ */
+export function setStructureNodeType(
+  structure: DpTypeStructure,
+  path: NodePath,
+  type: OaLeafType | 'Struct',
+  bindings: StructureBindings = {}
+): StructureEdit {
+  if (path.length === 0) return { structure, bindings };
+  const node = structureNodeAt(structure, path);
+  if (node === null || node.type === type) return { structure, bindings };
+  const becomesGroup = type === 'Struct';
+  return {
+    structure: mapNodeAt(structure, path, (current) => ({
+      ...current,
+      type,
+      ...(becomesGroup ? {} : { children: undefined })
+    })),
+    bindings: becomesGroup || (node.children ?? []).length > 0 ? pruneBindings(bindings, path) : bindings
+  };
+}
+
+/**
+ * Add a child under `parentPath` (the root when empty).
+ *
+ * The name is made unique among its siblings rather than refused: this is the "+"
+ * button of a tree editor, and it must always produce a node to type over.
+ */
+export function addStructureChild(
+  structure: DpTypeStructure,
+  parentPath: NodePath,
+  child: { name: string; type: OaLeafType | 'Struct' }
+): DpTypeStructure {
+  const parent = structureNodeAt(structure, parentPath);
+  if (parent === null) return structure;
+  const taken = new Set((parent.children ?? []).map((existing) => existing.name));
+  const base = sanitizeSegment(child.name) || 'Element';
+  let name = base;
+  for (let index = 2; taken.has(name); index += 1) name = `${base}${index}`;
+  const added: DpTypeStructure = { name, type: child.type, ...(child.type === 'Struct' ? { children: [] } : {}) };
+  const append = (node: DpTypeStructure): DpTypeStructure => ({ ...node, children: [...(node.children ?? []), added] });
+  return parentPath.length === 0 ? append(structure) : mapNodeAt(structure, parentPath, append);
+}
+
+/** Remove the node at `path` and every binding it carried. */
+export function removeStructureNode(
+  structure: DpTypeStructure,
+  path: NodePath,
+  bindings: StructureBindings = {}
+): StructureEdit {
+  if (path.length === 0) return { structure, bindings };
+  return {
+    structure: mapNodeAt(structure, path, () => null),
+    bindings: pruneBindings(bindings, path)
+  };
+}
+
+// --- reusable MODEL TEMPLATES ------------------------------------------------
+//
+// A structure + its mapping is worth more than one generation. A house-standard type
+// is authored once against a catalog (PackML, a vendor register map) and then applied
+// to every machine that catalog serves — which is the same "template, then instances"
+// move the catalogs themselves got. So it is a stored object, not form state.
+//
+// What it deliberately does NOT carry: the target equipment, the zone or the
+// equipment names. Those are what differ between applications; baking them in would
+// make the template single-use.
+
+/** A named, reusable model: the type's shape and how its leaves reach a catalog. */
+export interface ModelTemplate {
+  /** Slug, derived once from the name (see {@link templateIdFrom}). */
+  id: string;
+  name: string;
+  /** DP type the template creates. */
+  typeName: string;
+  structure: DpTypeStructure;
+  bindings: StructureBindings;
+  /** Catalog it was authored against — what its bindings are paths INTO. */
+  sourceBookId?: string;
+  /** ISO timestamp; injected so a store round-trip is deterministic in tests. */
+  savedAt?: string;
+}
+
+/** Slug used as a template id (same shape as a catalog's, own fallback). */
+export function templateIdFrom(name: string): string {
+  const slug = sanitizeSegment(name)
+    .toLowerCase()
+    .replaceAll(/_+/g, '-')
+    .replaceAll(/^-+|-+$/g, '');
+  return slug === '' ? 'model' : slug;
+}
+
+/** How well a catalog can serve a template's mapping. */
+export interface TemplateCoverage {
+  /** Leaves whose bound entry EXISTS in the book. */
+  bound: number;
+  /** Leaves of the structure with no binding at all. */
+  unbound: string[];
+  /**
+   * Leaves bound to an entry the book does NOT have — the reason a template cannot
+   * be applied blindly to another catalog. Reported, never silently dropped: those
+   * leaves would be created as DPEs with no address and no config.
+   */
+  missing: { leaf: string; entry: string }[];
+}
+
+/**
+ * Check a template against the catalog it is about to be applied through.
+ *
+ * A template's bindings are paths INTO a catalog, so applying it to a machine whose
+ * catalog is a different reading of the world silently produces a type full of
+ * config-less DPEs. This is what lets the UI say so first.
+ */
+export function templateCoverage(template: ModelTemplate, book: AddressBook): TemplateCoverage {
+  const paths = new Set(book.entries.map((entry) => entry.path));
+  const coverage: TemplateCoverage = { bound: 0, unbound: [], missing: [] };
+  for (const leaf of structureLeaves(template.structure)) {
+    const key = leaf.segments.join('.');
+    const entry = template.bindings[key] ?? '';
+    if (entry === '') coverage.unbound.push(key);
+    else if (paths.has(entry)) coverage.bound += 1;
+    else coverage.missing.push({ leaf: key, entry });
+  }
+  return coverage;
+}
+
+/** Warnings a coverage check should surface before a generation (never silent). */
+export function coverageWarnings(coverage: TemplateCoverage): EngWarning[] {
+  const warnings: EngWarning[] = [];
+  if (coverage.missing.length > 0) {
+    const shown = coverage.missing.slice(0, 5);
+    warnings.push(
+      warn(
+        WARNING_CODES.template.MISSING_ENTRIES,
+        '{n} mapping(s) point at signals this catalog does not have ({pairs}{more}) — those elements would be created with no address and no config.',
+        {
+          n: coverage.missing.length,
+          pairs: shown.map((item) => `${item.leaf} → ${item.entry}`).join(', '),
+          more: coverage.missing.length > shown.length ? '…' : ''
+        }
+      )
+    );
+  }
+  if (coverage.unbound.length > 0) {
+    warnings.push(
+      warn(WARNING_CODES.template.UNBOUND_LEAVES, '{n} element(s) of the model are not mapped: they get no config.', {
+        n: coverage.unbound.length
+      })
+    );
+  }
+  return warnings;
+}

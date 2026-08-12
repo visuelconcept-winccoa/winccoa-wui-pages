@@ -8,12 +8,20 @@
  */
 import { describe, expect, it } from 'vitest';
 import { formatWarning as warningText } from './warnings.js';
-import type { BookEntry, DpTypeStructure } from './model.js';
+import type { AddressBook, BookEntry, DpTypeStructure } from './model.js';
 import {
+  addStructureChild,
   autoBindStructure,
   formatStructureOutline,
   parseStructureOutline,
-  structureLeaves
+  removeStructureNode,
+  renameStructureNode,
+  setStructureNodeType,
+  structureLeaves,
+  structureNodeAt,
+  templateCoverage,
+  templateIdFrom,
+  coverageWarnings
 } from './structure.js';
 
 const STRUCTURE: DpTypeStructure = {
@@ -182,5 +190,146 @@ describe('autoBindStructure', () => {
     expect(result.bindings['Vitesse']).toBe('M.Vitesse');
     // The second leaf finds no name match of its own → unbound, not silently reused.
     expect(result.unbound).toEqual(['Vitesse_Copie']);
+  });
+});
+
+describe('structure editing — the tree editor primitives', () => {
+  /** Two groups, three leaves, and a binding on each leaf. */
+  const tree = (): DpTypeStructure => ({
+    name: 'STD_Four',
+    type: 'Struct',
+    children: [
+      { name: 'PV', type: 'Struct', children: [{ name: 'Temperature', type: 'Float' }, { name: 'Debit', type: 'Float' }] },
+      { name: 'Etat', type: 'Struct', children: [{ name: 'Marche', type: 'Bool' }] }
+    ]
+  });
+  const bound = { 'PV.Temperature': 'Mesures.T', 'PV.Debit': 'Mesures.Q', 'Etat.Marche': 'Etat.Run' };
+
+  it('finds a node by path, and nothing for an unknown one', () => {
+    expect(structureNodeAt(tree(), ['PV', 'Debit'])?.type).toBe('Float');
+    expect(structureNodeAt(tree(), ['PV', 'Absent'])).toBeNull();
+  });
+
+  it('RE-KEYS the bindings of a whole subtree when a group is renamed', () => {
+    const out = renameStructureNode(tree(), ['PV'], 'Mesures', bound);
+    expect(structureNodeAt(out.structure, ['Mesures', 'Temperature'])).not.toBeNull();
+    // The mapping followed the rename — losing it here is the bug this guards.
+    expect(out.bindings).toEqual({
+      'Mesures.Temperature': 'Mesures.T',
+      'Mesures.Debit': 'Mesures.Q',
+      'Etat.Marche': 'Etat.Run'
+    });
+  });
+
+  it('sanitises a new name and REFUSES one already taken by a sibling', () => {
+    expect(structureNodeAt(renameStructureNode(tree(), ['PV', 'Debit'], 'Débit m³/h').structure, ['PV', 'Debit_m_h'])).not.toBeNull();
+    // 'Temperature' is taken: two siblings with one name make a binding ambiguous.
+    const refused = renameStructureNode(tree(), ['PV', 'Debit'], 'Temperature', bound);
+    expect(structureNodeAt(refused.structure, ['PV', 'Debit'])).not.toBeNull();
+    expect(refused.bindings).toEqual(bound);
+  });
+
+  it('drops the children AND their bindings when a group stops being a Struct', () => {
+    const out = setStructureNodeType(tree(), ['PV'], 'Float', bound);
+    expect(structureNodeAt(out.structure, ['PV'])?.children).toBeUndefined();
+    expect(out.bindings).toEqual({ 'Etat.Marche': 'Etat.Run' });
+  });
+
+  it('drops a leaf binding when the leaf becomes a group (a group is not addressable)', () => {
+    const out = setStructureNodeType(tree(), ['PV', 'Debit'], 'Struct', bound);
+    expect(out.bindings).toEqual({ 'PV.Temperature': 'Mesures.T', 'Etat.Marche': 'Etat.Run' });
+  });
+
+  it('adds a child under a group, making the name unique instead of refusing it', () => {
+    const once = addStructureChild(tree(), ['PV'], { name: 'Temperature', type: 'Float' });
+    const twice = addStructureChild(once, ['PV'], { name: 'Temperature', type: 'Float' });
+    expect((structureNodeAt(twice, ['PV'])?.children ?? []).map((c) => c.name)).toEqual([
+      'Temperature',
+      'Debit',
+      'Temperature2',
+      'Temperature3'
+    ]);
+  });
+
+  it('adds at the ROOT with an empty path, and a Struct child starts with no children', () => {
+    const out = addStructureChild(tree(), [], { name: 'Consignes', type: 'Struct' });
+    expect(structureNodeAt(out, ['Consignes'])).toEqual({ name: 'Consignes', type: 'Struct', children: [] });
+  });
+
+  it('removes a subtree and prunes exactly its bindings', () => {
+    const out = removeStructureNode(tree(), ['PV'], bound);
+    expect(structureNodeAt(out.structure, ['PV'])).toBeNull();
+    expect(out.bindings).toEqual({ 'Etat.Marche': 'Etat.Run' });
+  });
+
+  it('leaves the structure alone for an unknown path or an empty one', () => {
+    expect(removeStructureNode(tree(), ['Absent'], bound).bindings).toEqual(bound);
+    expect(structureLeaves(removeStructureNode(tree(), [], bound).structure)).toHaveLength(3);
+    expect(addStructureChild(tree(), ['Absent'], { name: 'X', type: 'Float' })).toEqual(tree());
+  });
+
+  it('round-trips through the outline after an edit — the text stays the storage form', () => {
+    const edited = addStructureChild(renameStructureNode(tree(), ['PV'], 'Mesures').structure, ['Etat'], {
+      name: 'Defaut',
+      type: 'Bool'
+    });
+    const reparsed = parseStructureOutline(formatStructureOutline(edited), 'STD_Four');
+    expect(reparsed.errors).toHaveLength(0);
+    expect(structureLeaves(reparsed.structure).map((l) => l.segments.join('.'))).toEqual([
+      'Mesures.Temperature',
+      'Mesures.Debit',
+      'Etat.Marche',
+      'Etat.Defaut'
+    ]);
+  });
+});
+
+describe('model templates — reuse across equipments', () => {
+  const template = {
+    id: 'std-four',
+    name: 'STD Four',
+    typeName: 'STD_Four',
+    structure: {
+      name: 'STD_Four',
+      type: 'Struct',
+      children: [
+        { name: 'PV', type: 'Struct', children: [{ name: 'Temperature', type: 'Float' }] },
+        { name: 'Etat', type: 'Struct', children: [{ name: 'Marche', type: 'Bool' }] },
+        { name: 'Reserve', type: 'Float' }
+      ]
+    } as DpTypeStructure,
+    bindings: { 'PV.Temperature': 'Mesures.T', 'Etat.Marche': 'Etat.Run' }
+  };
+  const bookWith = (paths: string[]): AddressBook => ({
+    id: 'b',
+    name: 'b',
+    provenance: { kind: 'manual', generatedAt: '2026-01-01T00:00:00.000Z' },
+    entries: paths.map((path) => ({ path, sourceType: 'Real', leafType: 'Float', access: 'r', addresses: {} })),
+    types: [],
+    warnings: []
+  });
+
+  it('slugifies a template name, with its own fallback', () => {
+    expect(templateIdFrom('STD Four (v2)')).toBe('std-four-v2');
+    expect(templateIdFrom('  ')).toBe('model');
+  });
+
+  it('counts what the catalog serves, and NAMES what it does not', () => {
+    const coverage = templateCoverage(template, bookWith(['Mesures.T', 'Etat.Run']));
+    expect(coverage).toEqual({ bound: 2, unbound: ['Reserve'], missing: [] });
+  });
+
+  it('reports a binding the target catalog LACKS — the reason reuse is not blind', () => {
+    const coverage = templateCoverage(template, bookWith(['Mesures.T']));
+    expect(coverage.bound).toBe(1);
+    expect(coverage.missing).toEqual([{ leaf: 'Etat.Marche', entry: 'Etat.Run' }]);
+    const texts = coverageWarnings(coverage).map((w) => warningText(w));
+    expect(texts[0]).toContain('Etat.Marche → Etat.Run');
+    expect(texts.join(' ')).toContain('no address and no config');
+  });
+
+  it('says nothing when the catalog covers every mapping and nothing is unbound', () => {
+    const full = { ...template, structure: { ...template.structure, children: template.structure.children!.slice(0, 2) } };
+    expect(coverageWarnings(templateCoverage(full, bookWith(['Mesures.T', 'Etat.Run'])))).toHaveLength(0);
   });
 });

@@ -36,6 +36,7 @@
 
 import { buildOpcUaReference, isUnmappedOpcUaType, opcUaAccessFromLevel, opcUaLeafType } from '../drivers/opcua.js';
 import { childrenOf, localName, parseXml, type XmlNode } from '../simaticml/xml.js';
+import { dedupeEntries, duplicateWarning } from '../addressbook.js';
 import { WARNING_CODES, warn, type EngWarning } from '../warnings.js';
 import type { AddressBook, BookEntry, BookType } from '../model.js';
 
@@ -45,6 +46,25 @@ const REF_HAS_PROPERTY = 'i=46';
 const REF_HAS_COMPONENT = 'i=47';
 const REF_HAS_TYPE_DEFINITION = 'i=40';
 const REF_HAS_MODELLING_RULE = 'i=37';
+/**
+ * `Organizes` (i=35) — the OTHER hierarchical reference, and the one SiOME-style
+ * exporters use to attach an instance's sub-OBJECTS while their variables go through
+ * `HasComponent`. Following only the component references left every such sub-object
+ * unattached: `P01` looked childless and its `Config` looked like a machine.
+ */
+const REF_ORGANIZES = 'i=35';
+/**
+ * Standard types whose instances describe the FILE, not the machine, and must never be
+ * catalogued as equipment:
+ *  - `i=11616` `NamespaceMetadataType` — the `<NamespaceUris>` bookkeeping object every
+ *    NodeSet2 carries (`NamespaceUri`, `NamespaceVersion`, `StaticNodeIdTypes`…). Read as
+ *    a machine, it produced entries like `http://vendor.com/UA/x.NamespaceUri`, a path
+ *    that is not even a usable DPE name;
+ *  - `i=76` `DataTypeEncodingType` — the `Default Binary` / `Default XML` objects attached
+ *    to every structured DataType.
+ */
+const FILE_METADATA_TYPES = new Set(['i=11616', 'i=76']);
+
 /** `BaseObjectType` — carries no useful custom member. */
 const BASE_OBJECT_TYPE = 'i=58';
 
@@ -177,6 +197,58 @@ const forwardTargets = (node: RawNode, refType: string): string[] =>
 
 const hasRef = (node: RawNode, refType: string): boolean => node.refs.some((r) => r.type === refType);
 
+/**
+ * The document, plus its hierarchy resolved ONCE — see {@link buildChildrenIndex}.
+ *
+ * Passed around instead of the bare node map because every walk needs the same answer to
+ * "what are this node's members?", and that answer is not readable from one node alone.
+ */
+interface NodeGraph {
+  nodes: Map<string, RawNode>;
+  /** Member ids of a node, in document order. */
+  children: Map<string, string[]>;
+}
+
+/**
+ * Members of every node, by parent id — merging BOTH serialisations of a hierarchical
+ * reference.
+ *
+ * A `HasComponent` / `HasProperty` reference exists ONCE in the address space, and a
+ * NodeSet2 file may write it from either end: forward on the parent
+ * (`<Reference ReferenceType="HasComponent">child</Reference>`) or INVERSE on the child
+ * (`<Reference ReferenceType="HasComponent" IsForward="false">parent</Reference>`).
+ * Real exporters routinely choose the second — and a reader that follows only forward
+ * references then sees every instance as childless: `P01` produced nothing, each of its
+ * sub-objects looked like a machine of its own, and the same `Config.SampleRate` came out
+ * once per instance (the "115 duplicate signal path(s)" report). Both directions are the
+ * same fact, so the index records both.
+ */
+function buildChildrenIndex(nodes: Map<string, RawNode>): Map<string, string[]> {
+  const index = new Map<string, string[]>();
+  const link = (parent: string, child: string): void => {
+    const list = index.get(parent);
+    if (list === undefined) index.set(parent, [child]);
+    else if (!list.includes(child)) list.push(child);
+  };
+  for (const node of nodes.values()) {
+    for (const ref of node.refs) {
+      if (!HIERARCHICAL_REFS.has(ref.type)) continue;
+      const target = canonicalNodeId(ref.target);
+      if (ref.forward) link(node.nodeId, target);
+      else link(target, node.nodeId);
+    }
+  }
+  return index;
+}
+
+/** The references that build the member hierarchy of a catalog. */
+const HIERARCHICAL_REFS = new Set([REF_HAS_COMPONENT, REF_HAS_PROPERTY, REF_ORGANIZES]);
+
+/** Members of a node — never `undefined`, so callers stay free of empty checks. */
+function membersOf(graph: NodeGraph, nodeId: string): string[] {
+  return graph.children.get(nodeId) ?? [];
+}
+
 /** The custom supertype of a type node (inverse `HasSubtype`), when modelled here. */
 function superTypeOf(node: RawNode, nodes: Map<string, RawNode>): RawNode | undefined {
   const parent = node.refs.find((r) => r.type === REF_HAS_SUBTYPE && !r.forward)?.target;
@@ -211,7 +283,7 @@ interface Collector {
  */
 function collectMembers(
   owner: RawNode,
-  nodes: Map<string, RawNode>,
+  graph: NodeGraph,
   segments: string[],
   visited: Set<string>,
   out: Collector,
@@ -222,14 +294,12 @@ function collectMembers(
     return;
   }
   // Inherited members first, so an override by the subtype wins on name.
-  const inherited = superTypeOf(owner, nodes);
+  const inherited = superTypeOf(owner, graph.nodes);
   if (inherited && !visited.has(inherited.nodeId)) {
-    visited.add(inherited.nodeId);
-    collectMembers(inherited, nodes, segments, visited, out, members);
+    collectMembers(inherited, graph, segments, new Set([...visited, inherited.nodeId]), out, members);
   }
-  const componentIds = [...forwardTargets(owner, REF_HAS_COMPONENT), ...forwardTargets(owner, REF_HAS_PROPERTY)];
-  for (const childId of componentIds) {
-    const child = nodes.get(childId);
+  for (const childId of membersOf(graph, owner.nodeId)) {
+    const child = graph.nodes.get(childId);
     if (!child) continue; // reference into a namespace this file does not carry
     const name = stripBrowseNs(child.browseName).trim();
     if (name === '') continue;
@@ -270,15 +340,19 @@ function collectMembers(
       out.cycles += 1;
       continue;
     }
-    visited.add(child.nodeId);
+    // The guard is scoped to THIS BRANCH, not to the whole walk: a model legitimately
+    // reuses a type at several paths (`Channel1: ChannelType`, `Channel2: ChannelType`),
+    // and a walk-wide "already visited" set catalogued the first one and silently
+    // dropped every other — half a structure, with nothing said about the other half.
+    // Only an ancestry loop is a cycle, which is exactly what a per-branch chain says.
+    const branch = new Set([...visited, child.nodeId]);
     const before = out.entries.length;
-    collectMembers(child, nodes, path, visited, out, members);
+    collectMembers(child, graph, path, branch, out, members);
     if (out.entries.length === before) {
       const typeId = forwardTargets(child, REF_HAS_TYPE_DEFINITION)[0];
-      const typeNode = typeId === undefined ? undefined : nodes.get(typeId);
-      if (typeNode && !visited.has(typeNode.nodeId)) {
-        visited.add(typeNode.nodeId);
-        collectMembers(typeNode, nodes, path, visited, out, members);
+      const typeNode = typeId === undefined ? undefined : graph.nodes.get(typeId);
+      if (typeNode && !branch.has(typeNode.nodeId)) {
+        collectMembers(typeNode, graph, path, new Set([...branch, typeNode.nodeId]), out, members);
       }
     }
   }
@@ -291,15 +365,111 @@ function collectMembers(
  * describes a model, not a reachable server (and its namespace indices are
  * file-local). Bind it per equipment at generation time.
  */
+/**
+ * The TOPMOST instance objects — the ones a catalog should be rooted at.
+ *
+ * "A `UAObject` with a type definition and no modelling rule" describes a machine
+ * (`P01`) *and* every typed sub-object it contains (`P01.AcquisitionConfig`): inside
+ * an instance, children carry no modelling rule either — that marks a *type's*
+ * declaration, not an instance's member. Taking all of them as roots walked each
+ * sub-object a second time as if it were a machine of its own, which produced
+ * `AcquisitionConfig.SampleRate` alongside `P01.AcquisitionConfig.SampleRate` — and,
+ * with two probes, produced it TWICE. A book is keyed by path everywhere (the refresh
+ * diff, the structure bindings, the generated DPE names), so a duplicate path is not
+ * cosmetic: it silently collapses two signals into one.
+ *
+ * So a candidate is a root only when NOTHING above it already accounts for it:
+ *
+ *  - no ancestor is a candidate — a machine's sub-object is walked through the machine.
+ *    A machine sitting under a plain folder still roots at the folder, which keeps the
+ *    paths unique and faithful to the file's own structure;
+ *  - no ancestor is a TYPE. This is the case a real vendor NodeSet exposes: an instance
+ *    declaration nested inside an `ObjectType` (`ProbeType` → `Config` → `SampleRate`)
+ *    very often carries NO `HasModellingRule` of its own — the rule sits on the leaves,
+ *    or nowhere. Judged on the modelling rule alone, every such `Config` looked like a
+ *    machine, so a file with 40 types produced `Config.SampleRate` forty times over.
+ *    Anything under a type belongs to that type's definition, and the type loop below
+ *    already catalogues it (`TypeName.Config.SampleRate`, unique per type).
+ */
+function rootInstances(graph: NodeGraph): RawNode[] {
+  const nodes = graph.nodes;
+  const candidates = [...nodes.values()].filter((node) => {
+    if (node.kind !== 'UAObject' || hasRef(node, REF_HAS_MODELLING_RULE)) return false;
+    const typeDefinition = forwardTargets(node, REF_HAS_TYPE_DEFINITION);
+    return typeDefinition.length > 0 && !typeDefinition.some((id) => FILE_METADATA_TYPES.has(id));
+  });
+  const candidateIds = new Set(candidates.map((node) => node.nodeId));
+  // parent ← child, from the two reference types the member walk follows.
+  const parentOf = new Map<string, string>();
+  for (const [parent, children] of graph.children) {
+    for (const child of children) {
+      if (!parentOf.has(child)) parentOf.set(child, parent);
+    }
+  }
+  /** True when an ancestor already accounts for this node (another instance, or a type). */
+  const accountedFor = (nodeId: string): boolean => {
+    const seen = new Set<string>([nodeId]);
+    for (let parent = parentOf.get(nodeId); parent !== undefined; parent = parentOf.get(parent)) {
+      if (candidateIds.has(parent) || isTypeNode(nodes.get(parent))) return true;
+      if (seen.has(parent)) return false; // a malformed file may still be cyclic
+      seen.add(parent);
+    }
+    return false;
+  };
+  return candidates.filter((node) => !accountedFor(node.nodeId));
+}
+
+/** A TYPE declaration node — what its children belong to, rather than to a machine. */
+function isTypeNode(node: RawNode | undefined): boolean {
+  return node !== undefined && (node.kind === 'UAObjectType' || node.kind === 'UAVariableType' || node.kind === 'UADataType');
+}
+
+/**
+ * Types that are only COMPONENTS of other types (`ConfigType` behind
+ * `ProbeType.Config`), found by following the type definition of every node that lives
+ * inside a type.
+ *
+ * They stay catalogued as `BookType`s — they are legitimate DP-type candidates — but
+ * they must not ROOT entries of their own when the file declares no instance: the same
+ * signals are already catalogued through the machine-level type that contains them, and
+ * a second copy rooted at `ConfigType` names something no equipment is.
+ */
+function componentTypeIds(graph: NodeGraph): Set<string> {
+  const inType = new Set<string>();
+  for (const node of graph.nodes.values()) {
+    if (!isTypeNode(node)) continue;
+    const stack = [...membersOf(graph, node.nodeId)];
+    const seen = new Set<string>(stack);
+    while (stack.length > 0) {
+      const id = stack.pop() as string;
+      inType.add(id);
+      for (const next of membersOf(graph, id)) {
+        if (!seen.has(next)) {
+          seen.add(next);
+          stack.push(next);
+        }
+      }
+    }
+  }
+  const components = new Set<string>();
+  for (const id of inType) {
+    const member = graph.nodes.get(id);
+    if (member === undefined) continue;
+    for (const typeId of forwardTargets(member, REF_HAS_TYPE_DEFINITION)) components.add(typeId);
+  }
+  return components;
+}
+
 export function buildBookFromNodeSet(options: NodeSetBookOptions & { xml: string }): AddressBook {
   const { nodes, namespaces } = parseDocument(options.xml);
+  // The hierarchy, resolved once from BOTH reference directions (see buildChildrenIndex).
+  const graph: NodeGraph = { nodes, children: buildChildrenIndex(nodes) };
   const out: Collector = { entries: [], types: [], warnings: [], methods: 0, arrays: [], cycles: 0, depthHits: 0 };
 
   // Real instances: an object with a type definition and NO modelling rule (a
-  // modelling rule marks an instance DECLARATION, i.e. part of a type).
-  const instances = [...nodes.values()].filter(
-    (node) => node.kind === 'UAObject' && forwardTargets(node, REF_HAS_TYPE_DEFINITION).length > 0 && !hasRef(node, REF_HAS_MODELLING_RULE)
-  );
+  // modelling rule marks an instance DECLARATION, i.e. part of a type) — and only
+  // the TOPMOST ones, see `rootInstances`.
+  const instances = rootInstances(graph);
   const objectTypes = [...nodes.values()].filter((node) => node.kind === 'UAObjectType');
 
   if (instances.length > 0) {
@@ -307,32 +477,40 @@ export function buildBookFromNodeSet(options: NodeSetBookOptions & { xml: string
       const name = stripBrowseNs(instance.browseName).trim() || instance.nodeId;
       const visited = new Set<string>([instance.nodeId]);
       const before = out.entries.length;
-      collectMembers(instance, nodes, [name], visited, out);
+      collectMembers(instance, graph, [name], visited, out);
       if (out.entries.length === before) {
         // An empty instance declaration: its members live on its type.
         const typeId = forwardTargets(instance, REF_HAS_TYPE_DEFINITION)[0];
         const typeNode = typeId === undefined ? undefined : nodes.get(typeId);
-        if (typeNode) collectMembers(typeNode, nodes, [name], new Set([typeNode.nodeId]), out);
+        if (typeNode) collectMembers(typeNode, graph, [name], new Set([typeNode.nodeId]), out);
       }
     }
   }
 
   // Types are always catalogued as BookTypes (they are the DPT candidates), and
-  // when the file declares no instance they also provide the ENTRIES.
+  // when the file declares no instance they also provide the ENTRIES — but only the
+  // TOP-LEVEL ones: a type used as the type of another type's member (`ConfigType`
+  // behind `ProbeType.Config`) is a component, and rooting entries at it too would
+  // catalogue the same signals a second time under a name no equipment carries.
+  const componentTypes = componentTypeIds(graph);
   for (const type of objectTypes) {
     const typeName = stripBrowseNs(type.browseName).trim() || type.nodeId;
     const members: BookType['members'] = [];
-    if (instances.length === 0) {
+    if (instances.length === 0 && !componentTypes.has(type.nodeId)) {
       const visited = new Set<string>([type.nodeId]);
-      collectMembers(type, nodes, [typeName], visited, out, members);
+      collectMembers(type, graph, [typeName], visited, out, members);
     } else {
       // Instances already produced the entries: collect the members separately so
       // the type catalog stays available without duplicating entries.
       const scratch: Collector = { ...out, entries: [] };
-      collectMembers(type, nodes, [], new Set([type.nodeId]), scratch, members);
+      collectMembers(type, graph, [], new Set([type.nodeId]), scratch, members);
     }
     if (members.length > 0) out.types.push({ id: type.nodeId, name: typeName, members });
   }
+
+  // Belt to rootInstances' braces: a duplicate path must never reach a book.
+  const deduped = dedupeEntries(out.entries);
+  out.entries = deduped.entries;
 
   const warnings: EngWarning[] = [
     warn(
@@ -341,6 +519,7 @@ export function buildBookFromNodeSet(options: NodeSetBookOptions & { xml: string
       { placeholder: CONNECTION_PLACEHOLDER }
     )
   ];
+  if (deduped.duplicates.length > 0) warnings.push(duplicateWarning(deduped.duplicates));
   if (instances.length === 0 && objectTypes.length > 0) {
     warnings.push(
       warn(

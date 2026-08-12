@@ -13,21 +13,29 @@ import type {
   ApplyReport,
   Device,
   DeviceDraft,
+  DeviceStateUpdate,
   EngPlan,
   LiveSnapshot,
+  ModelTemplate,
+  OpcUaBrowseNode,
   SignalRole,
   TagAccess,
   Workspace
 } from '@visuelconcept/wui-eng-core';
 import type {
+  BookDeletion,
   BookRefresh,
   BrowseRequest,
   EngConnection,
+  EngDriver,
   EngGateway,
   EngRole,
+  IngestRequest,
   LiveScope,
-  TestReadResult
+  TestReadResult,
+  WalkRequest
 } from './gateway.js';
+import { walkIntoBook as runWalk } from './walk.js';
 
 const BASE = '/api/eng';
 
@@ -37,9 +45,17 @@ async function getJson<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+async function putJson<T>(path: string, body: unknown): Promise<T> {
+  return sendJson<T>('PUT', path, body);
+}
+
 async function postJson<T>(path: string, body: unknown): Promise<T> {
+  return sendJson<T>('POST', path, body);
+}
+
+async function sendJson<T>(method: 'POST' | 'PUT', path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
-    method: 'POST',
+    method,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
@@ -51,7 +67,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
       .json()
       .then((payload: { error?: string }) => payload?.error)
       .catch(() => undefined);
-    throw new Error(reason ?? `POST ${path} → HTTP ${res.status}`);
+    throw new Error(reason ?? `${method} ${path} → HTTP ${res.status}`);
   }
   return (await res.json()) as T;
 }
@@ -67,6 +83,11 @@ export class HttpEngGateway implements EngGateway {
   async listDevices(): Promise<Device[]> {
     const { devices } = await getJson<{ devices: Device[] }>('/devices');
     return devices;
+  }
+
+  async deviceStates(): Promise<DeviceStateUpdate[]> {
+    const { states } = await getJson<{ states: DeviceStateUpdate[] }>('/devices/state');
+    return states;
   }
 
   /**
@@ -103,21 +124,86 @@ export class HttpEngGateway implements EngGateway {
     return postJson<BookRefresh>(`/books/${encodeURIComponent(bookId)}/refresh`, {});
   }
 
+  async ingestBook(request: IngestRequest): Promise<{ book: AddressBook; books: AddressBook[] }> {
+    return postJson<{ book: AddressBook; books: AddressBook[] }>('/books/ingest', request);
+  }
+
+  async createBook(request: {
+    bookId: string;
+    name?: string;
+    interface?: AddressBook['interface'];
+  }): Promise<{ book: AddressBook; books: AddressBook[] }> {
+    return postJson<{ book: AddressBook; books: AddressBook[] }>('/books', request);
+  }
+
+  async browseLevel(connection: string, nodeId?: string): Promise<OpcUaBrowseNode[]> {
+    const { nodes } = await postJson<{ nodes: OpcUaBrowseNode[] }>('/browse/level', {
+      connection,
+      ...(nodeId === undefined ? {} : { nodeId })
+    });
+    return nodes;
+  }
+
+  /**
+   * Run the walk HERE, level by level, then store the finished book.
+   *
+   * The alternative (`browseBook`, one server-side call) is still there and still
+   * correct; this path exists because it is the only one that can report progress and
+   * be cancelled. The walker is the core's either way.
+   */
+  async walkIntoBook(request: WalkRequest): Promise<BookRefresh> {
+    const previous = await this.getBook(request.bookId);
+    const { book, delta } = await runWalk({ browseLevel: (connection, nodeId) => this.browseLevel(connection, nodeId) }, previous, request);
+    const stored = await putJson<{ book: AddressBook }>(`/books/${encodeURIComponent(request.bookId)}`, { book });
+    return { book: stored.book, rebrowsed: true, ...(delta === undefined ? {} : { delta }) };
+  }
+
+  async saveBookExcluded(bookId: string, excluded: Record<string, boolean>): Promise<AddressBook> {
+    const { book } = await postJson<{ book: AddressBook }>(`/books/${encodeURIComponent(bookId)}/exclude`, { excluded });
+    return book;
+  }
+
+  async deleteBook(bookId: string): Promise<BookDeletion> {
+    const res = await fetch(`${BASE}/books/${encodeURIComponent(bookId)}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`DELETE /books/${bookId} → HTTP ${res.status}`);
+    return (await res.json()) as BookDeletion;
+  }
+
   async listConnections(): Promise<EngConnection[]> {
     const { connections } = await getJson<{ connections: EngConnection[] }>('/connections');
     return connections;
+  }
+
+  async listDrivers(): Promise<EngDriver[]> {
+    const { drivers } = await getJson<{ drivers: EngDriver[] }>('/drivers');
+    return drivers;
   }
 
   async browseBook(request: BrowseRequest): Promise<BookRefresh> {
     return postJson<BookRefresh>('/books/browse', request);
   }
 
-  async saveBookRoles(bookId: string, roles: Record<string, SignalRole>): Promise<void> {
+  async saveBookRoles(bookId: string, roles: Record<string, SignalRole | ''>): Promise<void> {
     await postJson(`/books/${encodeURIComponent(bookId)}/roles`, { roles });
   }
 
   async saveBookAccess(bookId: string, access: Record<string, TagAccess | ''>): Promise<void> {
     await postJson(`/books/${encodeURIComponent(bookId)}/access`, { access });
+  }
+
+  async listModels(): Promise<ModelTemplate[]> {
+    const { models } = await getJson<{ models: ModelTemplate[] }>('/models');
+    return models;
+  }
+
+  async saveModel(model: ModelTemplate): Promise<ModelTemplate> {
+    const { model: stored } = await postJson<{ model: ModelTemplate }>('/models', { model });
+    return stored;
+  }
+
+  async deleteModel(id: string): Promise<void> {
+    const res = await fetch(`${BASE}/models/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`DELETE /models/${id} → HTTP ${res.status}`);
   }
 
   async getWorkspace(): Promise<Workspace> {

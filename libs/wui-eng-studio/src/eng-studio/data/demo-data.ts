@@ -17,8 +17,6 @@
 import {
   buildBookFromSimaticMl,
   buildOpcUaReference,
-  directionFor,
-  opcUaDatatypeCode,
   opcUaLeafType,
   s7LeafType,
   type AddressBook,
@@ -36,8 +34,56 @@ import { pac3200Book } from './pac3200.js';
 import { packMlBook } from './packml.js';
 import { m580PesageXvmBook, m580StationBook } from './schneider.js';
 
+/**
+ * The fake project's drivers, as `GET /api/eng/drivers` would report them.
+ *
+ * Deliberately NOT all running: the device form must show that a driver can be
+ * declared and stopped (an equipment is normally declared before its driver is
+ * started), and `1` is a driver whose `DT` the runtime could not read — the case
+ * the form has to render as "unknown" rather than hide.
+ */
+export const DEMO_DRIVERS: { number: number; type: string; running: boolean; mode?: string }[] = [
+  { number: 1, type: '', running: false },
+  { number: 2, type: 'MODBUS', running: true },
+  { number: 3, type: 'S7', running: true },
+  { number: 4, type: 'OPCUAC', running: true, mode: 'opcua' },
+  { number: 7, type: 'OPCUAC', running: false, mode: 'opcua' }
+];
+
+// --- connection state (what a driver would report) ----------------------------
+/**
+ * What a driver would have written in `Common.State.ConnState` for each equipment —
+ * the demo's stand-in for the read the backend does (see `engController.withLiveState`).
+ *
+ * Keyed by device id and deliberately VARIED, because the interesting states are the
+ * ones a fixture usually forgets: `3` (inactive — somebody disabled the connection) and
+ * `5` (failure) both light the same red lamp as `1` (not connected) yet call for three
+ * different actions, which is the whole reason the raw code is shown beside the LED.
+ * Two equipments are absent from this map ON PURPOSE: `Z01_Pompe1/2` declare neither a
+ * server name nor an address, so nothing can be matched to a connection and their state
+ * stays honestly unknown.
+ */
+export const DEMO_CONN_STATE: Record<string, number> = {
+  's7-four1': 257,
+  'ligne-embouteillage': 256,
+  'ligne-encaisseuse': 5,
+  'm580-station': 3,
+  'pac-depart1': 256,
+  'pac-depart2': 1
+};
+
 // --- equipments (logical) — each references one or more books -----------------
-export const DEMO_DEVICES: Device[] = [
+/**
+ * A DECLARED equipment: everything a stored device carries EXCEPT its connection state.
+ *
+ * The omission is the point. A connection state is read from the project, never declared
+ * (see `DemoEngGateway.withLiveState`, which mirrors the backend), so a fixture must not
+ * be able to claim one — what the demo "reads" lives in {@link DEMO_CONN_STATE}.
+ */
+type DeviceDeclaration = Omit<Device, 'state'>;
+
+/** The fake plant's equipments. */
+export const DEMO_DEVICES: DeviceDeclaration[] = [
   {
     id: 's7-four1',
     name: 'S7_Four1',
@@ -46,7 +92,6 @@ export const DEMO_DEVICES: Device[] = [
     accessModes: ['s7', 's7plus', 'opcua'],
     driverNumber: 3,
     pollGroup: '_EngStudio_Poll',
-    state: 'connected',
     bookIds: ['book-s7-four']
   },
   {
@@ -56,7 +101,6 @@ export const DEMO_DEVICES: Device[] = [
     accessModes: ['opcua'],
     driverNumber: 4,
     pollGroup: '_EngStudio_Poll',
-    state: 'connected',
     // AGGREGATION: two machine-specific OPC UA interfaces + the PackML standard
     // interface catalog (itself mutualised with the case packer below).
     bookIds: ['book-opcua-remplisseuse', 'book-opcua-etiqueteuse', 'book-packml-v101']
@@ -69,7 +113,6 @@ export const DEMO_DEVICES: Device[] = [
     accessModes: ['opcua'],
     driverNumber: 4,
     pollGroup: '_EngStudio_Poll',
-    state: 'connected',
     // MUTUALISATION of a STANDARD interface: the same PackML catalog.
     bookIds: ['book-packml-v101']
   },
@@ -78,7 +121,6 @@ export const DEMO_DEVICES: Device[] = [
     name: 'Z01_Pompe1',
     protocol: 's7plus',
     accessModes: ['s7plus', 'opcua'],
-    state: 'connected',
     // MUTUALISATION: shares the catalog with Z01_Pompe2.
     bookIds: ['book-catalogue-pompe']
   },
@@ -87,7 +129,6 @@ export const DEMO_DEVICES: Device[] = [
     name: 'Z01_Pompe2',
     protocol: 's7plus',
     accessModes: ['s7plus', 'opcua'],
-    state: 'disconnected',
     bookIds: ['book-catalogue-pompe']
   },
   // Schneider Modicon M580 — book generated from a Control Expert variables
@@ -100,7 +141,6 @@ export const DEMO_DEVICES: Device[] = [
     accessModes: ['modbus'],
     driverNumber: 5,
     pollGroup: '_EngStudio_Poll',
-    state: 'connected',
     // Two generators on the SAME equipment: a CSV variables export and an XVM one.
     bookIds: ['book-m580-station', 'book-m580-pesage-xvm']
   },
@@ -114,7 +154,6 @@ export const DEMO_DEVICES: Device[] = [
     accessModes: ['modbus'],
     driverNumber: 5,
     pollGroup: '_EngStudio_Poll',
-    state: 'connected',
     bookIds: ['book-pac3200']
   },
   {
@@ -125,7 +164,6 @@ export const DEMO_DEVICES: Device[] = [
     accessModes: ['modbus'],
     driverNumber: 5,
     pollGroup: '_EngStudio_Poll',
-    state: 'disconnected',
     bookIds: ['book-pac3200']
   }
 ];

@@ -21,7 +21,12 @@
 //   books/<bookId>.json           AddressBook  (roles included, see NOTES)
 //   books/<bookId>.roles.json     Record<entryPath, SignalRole>  (manual overrides)
 //   books/<bookId>.access.json    Record<entryPath, TagAccess>   (manual overrides)
+//   books/<bookId>.excluded.json  Record<entryPath, true>        (signals hidden by hand)
 //   workspaces/<name>.json        Workspace
+//
+// The three override files sit BESIDE the book rather than inside it because the
+// book is a *reading* of a source that gets re-read (a re-browse, a re-ingest): an
+// override written into it would be erased by the next refresh.
 //
 // The root is $ENG_STUDIO_STORE, else <WINCCOA_PROJ>/data/eng-studio, else
 // ./data/eng-studio. Ids are sanitised so a request can never escape the root.
@@ -75,6 +80,9 @@ function readJson<T>(file: string, fallback: T): T {
  * types) — the store only moves JSON.
  */
 export class EngStore {
+  /** Suffixes of the OVERRIDE files, which are not books (see the layout above). */
+  private static readonly OVERRIDE_SUFFIXES = ['.roles.json', '.access.json', '.excluded.json'];
+
   private readonly root: string;
 
   constructor(root: string = storeRoot()) {
@@ -110,11 +118,15 @@ export class EngStore {
     return join(this.root, 'books', `${safeId(bookId)}.access.json`);
   }
 
+  private excludedFile(bookId: string): string {
+    return join(this.root, 'books', `${safeId(bookId)}.excluded.json`);
+  }
+
   public listBookIds(): string[] {
     const dir = join(this.root, 'books');
     if (!existsSync(dir)) return [];
     return readdirSync(dir)
-      .filter((name) => name.endsWith('.json') && !name.endsWith('.roles.json') && !name.endsWith('.access.json'))
+      .filter((name) => name.endsWith('.json') && !EngStore.OVERRIDE_SUFFIXES.some((suffix) => name.endsWith(suffix)))
       .map((name) => name.slice(0, -'.json'.length));
   }
 
@@ -127,7 +139,7 @@ export class EngStore {
   }
 
   public deleteBook(bookId: string): void {
-    for (const file of [this.bookFile(bookId), this.rolesFile(bookId), this.accessFile(bookId)]) {
+    for (const file of [this.bookFile(bookId), this.rolesFile(bookId), this.accessFile(bookId), this.excludedFile(bookId)]) {
       if (existsSync(file)) unlinkSync(file);
     }
   }
@@ -160,6 +172,63 @@ export class EngStore {
     }
     writeJson(this.accessFile(bookId), merged);
     return merged;
+  }
+
+  /**
+   * Entry paths the operator has HIDDEN by hand (`{path: true}`).
+   *
+   * A map rather than a list so a single path can be un-hidden by sending `false` —
+   * the same merge semantics as the role and access overrides, and the reason this
+   * is stored apart from the book: a re-browse must not undo the operator's
+   * judgement, and hiding a signal must stay reversible.
+   */
+  public readExcluded(bookId: string): Record<string, boolean> {
+    return readJson<Record<string, boolean>>(this.excludedFile(bookId), {});
+  }
+
+  /** Merge exclusions (`false` clears one); returns the merged set. */
+  public saveExcluded(bookId: string, excluded: Record<string, boolean>): Record<string, boolean> {
+    const merged = { ...this.readExcluded(bookId) };
+    for (const [path, hidden] of Object.entries(excluded)) {
+      if (hidden) merged[path] = true;
+      else delete merged[path];
+    }
+    writeJson(this.excludedFile(bookId), merged);
+    return merged;
+  }
+
+  // --- model templates ------------------------------------------------------
+
+  private modelFile(id: string): string {
+    return join(this.root, 'models', `${safeId(id)}.json`);
+  }
+
+  /**
+   * Reusable models (a type's structure + how its leaves reach a catalog).
+   *
+   * Their own directory, not a field of a workspace: a template outlives the
+   * workspace it was first generated into — that is the whole point of authoring one
+   * house-standard type and applying it to machine after machine.
+   */
+  public listModelIds(): string[] {
+    const dir = join(this.root, 'models');
+    if (!existsSync(dir)) return [];
+    return readdirSync(dir)
+      .filter((name) => name.endsWith('.json'))
+      .map((name) => name.slice(0, -'.json'.length));
+  }
+
+  public readModel<T>(id: string): T | null {
+    return readJson<T | null>(this.modelFile(id), null);
+  }
+
+  public saveModel<T extends { id: string }>(model: T): void {
+    writeJson(this.modelFile(model.id), model);
+  }
+
+  public deleteModel(id: string): void {
+    const file = this.modelFile(id);
+    if (existsSync(file)) unlinkSync(file);
   }
 
   // --- workspaces -----------------------------------------------------------
