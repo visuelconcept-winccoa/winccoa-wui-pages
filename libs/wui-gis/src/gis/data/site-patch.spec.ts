@@ -32,6 +32,7 @@ function asset(over: Partial<Asset> = {}): Asset {
     lat: 45.9,
     lon: 6.12,
     areaIds: ['nord'],
+    layerIds: [],
     dp: 'System1:Pompe01.state',
     readings: [
       {
@@ -382,7 +383,7 @@ describe('generate — bulk without writing every object', () => {
     expect(after.assets).toHaveLength(0);
   });
 
-  it('caps a runaway count at the site ceiling', () => {
+  it('caps a runaway count at the per-op ceiling, and says so', () => {
     const { site: after, report } = applySitePatch(
       site({ assets: [] }),
       patch({
@@ -402,7 +403,27 @@ describe('generate — bulk without writing every object', () => {
       }),
       PALETTE
     );
-    expect(after.assets).toHaveLength(1000);
+    // GENERATE_MAX bounds one op. It used to be the SITE ceiling that caught this and
+    // reported the truncation; that ceiling is now 10 000, which one op cannot reach, so
+    // the clamp has to report itself or a request for 5000 would quietly yield 2000.
+    expect(after.assets).toHaveLength(2000);
+    expect(report.truncated).toBe(true);
+  });
+
+  it('still caps the whole site when several ops together overflow it', () => {
+    const runaway = Array.from({ length: 6 }, () => ({
+      pattern: 'line',
+      count: 2000,
+      kind: 'meter',
+      from: { lat: 45, lon: 6 },
+      to: { lat: 46, lon: 6 }
+    }));
+    const { site: after, report } = applySitePatch(
+      site({ assets: [] }),
+      patch({ assets: { upsert: [], remove: [], generate: runaway } }),
+      PALETTE
+    );
+    expect(after.assets).toHaveLength(10_000);
     expect(report.truncated).toBe(true);
   });
 });

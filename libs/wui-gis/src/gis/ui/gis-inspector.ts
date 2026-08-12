@@ -40,6 +40,11 @@ import {
   ASSET_KINDS,
   blankReading,
   clamp,
+  connectionColor,
+  connectionsOfAsset,
+  inArea,
+  layersOf,
+  routeById,
   type Asset,
   type AssetKind,
   primaryArea,
@@ -136,6 +141,7 @@ export class GisInspector extends LitElement {
           : nothing
       }
       <div class="body">
+        ${this.renderMemberships(asset)}
         ${this.editable ? html`${this.renderIdentityFields(asset)}${this.renderPlacementFields(asset)}` : nothing}
         ${this.renderReadings(asset)}
         ${this.editable ? this.renderReadingEditor(asset) : nothing}
@@ -155,6 +161,76 @@ export class GisInspector extends LitElement {
         }
       </div>
     `;
+  }
+
+  /**
+   * Everything this asset **belongs to**, at a glance: its zones and the lines running
+   * through it, each as a chip.
+   *
+   * Shown in view mode above all, where the editable dropdowns are not there to answer the
+   * question. Reading a marker's context off the map is otherwise impossible — an asset can
+   * be in several zones, and its lines are drawn *under* it.
+   *
+   * Every chip **navigates**: a zone chip selects that zone (the map zooms to it and the
+   * panel lists its assets), a line chip opens the segment of that line touching this asset.
+   * A dead end is a dead end; a chip that names something and cannot take you there is one.
+   */
+  private renderMemberships(asset: Asset): TemplateResult | typeof nothing {
+    const site = this.site;
+    if (!site) return nothing;
+    const zones = site.areas.filter((area) => inArea(asset, area.id));
+    const tags = layersOf(site, asset.layerIds);
+    const links = connectionsOfAsset(site, asset.id);
+    // One chip per LINE, not per segment: two segments of Ligne 1 meet at this station and
+    // "Ligne 1, Ligne 1" says nothing. A standalone link keeps its own name.
+    const lines = new Map<
+      string,
+      { label: string; color: string; link: string }
+    >();
+    for (const connection of links) {
+      const route = routeById(site, connection.routeId);
+      const key = route?.id ?? connection.id;
+      if (lines.has(key)) continue;
+      lines.set(key, {
+        label: route?.name ?? connection.name,
+        color: connectionColor(site, connection),
+        link: connection.id
+      });
+    }
+    if (zones.length === 0 && lines.size === 0 && tags.length === 0)
+      return nothing;
+    return html`<div class="chips">
+      ${zones.map(
+        (area) =>
+          html`<button
+            class="chip"
+            type="button"
+            title=${localize(MSG.inspector.goToArea)}
+            @click=${() => this.emit('wui:navigate', { kind: 'area', id: area.id })}
+          >
+            <span class="dot" style="--chip: ${area.color}"></span>${area.name}
+          </button>`
+      )}
+      ${layersOf(site, asset.layerIds).map(
+        (layer) =>
+          html`<span class="chip static">
+            <span class="dot" style="--chip: ${layer.color}"></span
+            >${layer.name}
+          </span>`
+      )}
+      ${[...lines.values()].map(
+        (line) =>
+          html`<button
+            class="chip"
+            type="button"
+            title=${localize(MSG.inspector.goToLine)}
+            @click=${() => this.emit('wui:navigate', { kind: 'connection', id: line.link })}
+          >
+            <span class="stroke" style="--chip: ${line.color}"></span
+            >${line.label}
+          </button>`
+      )}
+    </div>`;
   }
 
   /** What the asset *is*: its name, its kind, and the area it belongs to. */
@@ -198,6 +274,37 @@ export class GisInspector extends LitElement {
             </div>`
           : nothing
       }
+      ${this.renderLayerTags(asset)}
+    `;
+  }
+
+  /**
+   * The asset's information layers, as a tag field.
+   *
+   * `editable` on the select is what makes this the *fast* path: typing a name that does not
+   * exist yet creates the layer and tags the asset in one gesture. Sending the operator to
+   * the layer browser first, to declare a tag before anything can carry it, is the wrong
+   * order — the need for the tag is discovered while looking at the asset.
+   */
+  private renderLayerTags(asset: Asset): TemplateResult {
+    return html`
+      <ix-select
+        label=${localize(MSG.layer.tags)}
+        mode="multiple"
+        editable
+        helper-text=${localize(MSG.layer.tagsHint)}
+        .value=${[...asset.layerIds]}
+        @valueChange=${(event: { detail: string | string[] }) => this.patchAsset({ layerIds: asList(event.detail) })}
+        @addItem=${(event: CustomEvent<string>) => this.emit('wui:addlayer', { name: event.detail })}
+      >
+        ${(this.site?.layers ?? []).map(
+          (layer) =>
+            html`<ix-select-item
+              value=${layer.id}
+              label=${layer.name}
+            ></ix-select-item>`
+        )}
+      </ix-select>
     `;
   }
 
@@ -483,6 +590,50 @@ function primaryDp(asset: Asset): string {
 function inspectorStyles(): ReturnType<typeof css> {
   return css`
     ${panelCore()}
+    /* What the asset belongs to: zones and lines, as navigable chips. */
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.375rem;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      padding: 0.1875rem 0.5rem;
+      border: 1px solid var(--theme-color-soft-bdr, var(--theme-color-4));
+      border-radius: 999px;
+      background: var(--theme-color-2);
+      color: var(--theme-color-std-text);
+      font: inherit;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+    /* A layer chip is informative only — there is nowhere to navigate to. */
+    .chip.static {
+      cursor: default;
+    }
+    .chip.static:hover {
+      border-color: var(--theme-color-soft-bdr, var(--theme-color-4));
+      color: var(--theme-color-std-text);
+    }
+    .chip:hover {
+      border-color: var(--theme-color-primary);
+      color: var(--theme-color-primary);
+    }
+    /* A zone reads as an area (a disc), a line as a path (a stroke). */
+    .chip .dot {
+      width: 0.5rem;
+      height: 0.5rem;
+      border-radius: 50%;
+      background: var(--chip);
+    }
+    .chip .stroke {
+      width: 0.875rem;
+      height: 0.1875rem;
+      border-radius: 999px;
+      background: var(--chip);
+    }
     .row.four {
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 5rem minmax(
           0,

@@ -11,7 +11,15 @@
  * the GL layers only draw geometry: a background, the raster basemap, and the area
  * fills and outlines. Those need no glyphs at all.
  */
-import { OSM_TILE_URL, type Area, type Basemap } from '../types.js';
+import {
+  OSM_TILE_URL,
+  connectionPath,
+  visibleUnderLayers,
+  type Area,
+  type Basemap,
+  type Connection,
+  type Site
+} from '../types.js';
 import type { LayerSpecification, StyleSpecification } from './maplibre.js';
 
 /** Source and layer ids owned by this page (a user's own style must not collide). */
@@ -21,6 +29,12 @@ export const AREA_LINE_LAYER = 'wui-gis-area-line';
 export const DRAFT_SOURCE = 'wui-gis-draft';
 export const DRAFT_FILL_LAYER = 'wui-gis-draft-fill';
 export const DRAFT_LINE_LAYER = 'wui-gis-draft-line';
+export const LINK_SOURCE = 'wui-gis-links';
+export const LINK_HIT_LAYER = 'wui-gis-link-hit';
+export const LINK_LINE_LAYER = 'wui-gis-link-line';
+export const LINK_CASING_LAYER = 'wui-gis-link-casing';
+export const LINK_DRAFT_SOURCE = 'wui-gis-link-draft';
+export const LINK_DRAFT_LAYER = 'wui-gis-link-draft-line';
 const BASEMAP_SOURCE = 'wui-gis-basemap';
 const BACKGROUND_LAYER = 'wui-gis-background';
 
@@ -41,6 +55,26 @@ const DRAFT_LINE_WIDTH = 2;
 const DRAFT_DASH_ON = 2;
 const DRAFT_DASH_OFF = 1;
 const DRAFT_DASH: [number, number] = [DRAFT_DASH_ON, DRAFT_DASH_OFF];
+
+/**
+ * Connection line widths, by role.
+ *
+ * `HIT` is an invisible fat line under the visible one: a 3 px track is nearly impossible to
+ * click, and MapLibre hit-tests the rendered geometry, so the clickable target has to exist
+ * as its own wide, fully transparent layer.
+ *
+ * `CASING` is the dark halo under the line, which is what keeps a coloured route legible
+ * over a busy raster basemap — the same trick every transit map uses.
+ */
+const LINK_WIDTH = 3.5;
+const LINK_WIDTH_SELECTED = 6;
+const LINK_CASING_EXTRA = 3;
+const LINK_HIT_WIDTH = 18;
+const LINK_CASING_COLOR = '#101319';
+const LINK_CASING_OPACITY = 0.55;
+/** Dash patterns per kind: a cable is buried, a pipe is continuous, a rail is ticked. */
+const LINK_DASH_CABLE: [number, number] = [2, 1.5];
+const LINK_DASH_RAIL: [number, number] = [3, 1];
 
 /** A polygon needs three corners before it encloses anything. */
 export const MIN_RING = 3;
@@ -189,6 +223,42 @@ export function draftCollection(
 }
 
 /**
+ * The line being drawn, as an **open** dashed path — the connection counterpart of
+ * {@link draftCollection}, which closes its points into a ring.
+ *
+ * A separate function rather than a flag on that one: a ring and a path are different
+ * geometries with different rules (a ring needs three points and repeats the first, a path
+ * needs two and must not), and one function pretending to do both reads worse than two.
+ */
+export function pathDraftCollection(
+  points: readonly (readonly [number, number])[]
+): LinkCollection {
+  const MIN_PATH = 2;
+  if (points.length < MIN_PATH) {
+    return { type: 'FeatureCollection', features: [] };
+  }
+  return {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        id: 0,
+        properties: {
+          linkId: '',
+          kind: 'draft',
+          color: DRAFT_COLOR,
+          selected: true
+        },
+        geometry: {
+          type: 'LineString',
+          coordinates: points.map(([lon, lat]) => [lon, lat])
+        }
+      }
+    ]
+  };
+}
+
+/**
  * The area fill and outline layers. Both read their colour from the feature and
  * their emphasis from its `selected` flag, so selecting an area is a `setData` on
  * the source rather than a layer rebuild.
@@ -225,6 +295,142 @@ export function areaLayers(): LayerSpecification[] {
     }
   ];
 }
+
+/**
+ * The connection layers: an invisible fat hit line, a dark casing, then the coloured line.
+ *
+ * Three layers rather than one, and the order matters — casing under line so the halo reads
+ * as a halo, hit line under both so it never paints over anything. They sit **below** the
+ * area outlines in `addOverlayLayers`, and markers are HTML so they are above everything by
+ * construction.
+ *
+ * No glyphs are involved, so an offline basemap still draws the whole network.
+ */
+export function linkLayers(): LayerSpecification[] {
+  const width: LayerSpecification['paint'] = {
+    'line-width': [
+      'case',
+      ['boolean', ['get', 'selected'], false],
+      LINK_WIDTH_SELECTED,
+      LINK_WIDTH
+    ]
+  };
+  return [
+    {
+      id: LINK_HIT_LAYER,
+      type: 'line',
+      source: LINK_SOURCE,
+      paint: {
+        'line-color': LINK_CASING_COLOR,
+        'line-opacity': 0,
+        'line-width': LINK_HIT_WIDTH
+      }
+    },
+    {
+      id: LINK_CASING_LAYER,
+      type: 'line',
+      source: LINK_SOURCE,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': LINK_CASING_COLOR,
+        'line-opacity': LINK_CASING_OPACITY,
+        'line-width': [
+          'case',
+          ['boolean', ['get', 'selected'], false],
+          LINK_WIDTH_SELECTED + LINK_CASING_EXTRA,
+          LINK_WIDTH + LINK_CASING_EXTRA
+        ]
+      }
+    },
+    {
+      id: LINK_LINE_LAYER,
+      type: 'line',
+      source: LINK_SOURCE,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': ['get', 'color'],
+        ...width,
+        // Dashes come from the kind, so a buried cable and a surface main read differently.
+        'line-dasharray': [
+          'case',
+          ['==', ['get', 'kind'], 'cable'],
+          ['literal', LINK_DASH_CABLE],
+          ['==', ['get', 'kind'], 'rail'],
+          ['literal', LINK_DASH_RAIL],
+          ['==', ['get', 'kind'], 'metro'],
+          ['literal', LINK_DASH_RAIL],
+          ['literal', [1, 0]]
+        ]
+      }
+    },
+    // The line being drawn, dashed and neutral white: it belongs to no route yet, exactly
+    // as the ring being drawn belongs to no area yet.
+    {
+      id: LINK_DRAFT_LAYER,
+      type: 'line',
+      source: LINK_DRAFT_SOURCE,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': DRAFT_COLOR,
+        'line-width': LINK_WIDTH_SELECTED,
+        'line-dasharray': ['literal', DRAFT_DASH]
+      }
+    }
+  ];
+}
+
+/** One `LineString` per connection whose two ends still resolve to assets. */
+export function linkCollection(
+  site: Site | null,
+  selectedId: string,
+  hiddenLayers: ReadonlySet<string>,
+  colorOf: (connection: Connection) => string
+): LinkCollection {
+  const features: LinkFeature[] = [];
+  for (const [index, connection] of (site?.connections ?? []).entries()) {
+    if (!visibleUnderLayers(connection.layerIds, hiddenLayers)) continue;
+    const path = site ? connectionPath(site, connection) : null;
+    if (!path) continue;
+    features.push({
+      type: 'Feature',
+      id: index,
+      properties: {
+        linkId: connection.id,
+        kind: connection.kind,
+        color: colorOf(connection),
+        selected: connection.id === selectedId
+      },
+      geometry: {
+        type: 'LineString',
+        coordinates: path.map(([lon, lat]) => [lon, lat])
+      }
+    });
+  }
+  return { type: 'FeatureCollection', features };
+}
+
+export interface LinkFeature {
+  type: 'Feature';
+  id: number;
+  properties: {
+    linkId: string;
+    kind: string;
+    color: string;
+    selected: boolean;
+  };
+  geometry: { type: 'LineString'; coordinates: number[][] };
+}
+
+export interface LinkCollection {
+  type: 'FeatureCollection';
+  features: LinkFeature[];
+}
+
+/** The initial, empty content of the connection source. */
+export const EMPTY_LINKS: LinkCollection = {
+  type: 'FeatureCollection',
+  features: []
+};
 
 /** The dashed outline of the ring being drawn, over a faint fill. */
 export function draftLayers(): LayerSpecification[] {

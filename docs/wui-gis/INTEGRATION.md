@@ -75,13 +75,21 @@ The installer:
    the badge's tooltip, and clicking it zooms to exactly its members. *Group when zoomed out*
    turns the behaviour off, and the collapse zoom is configurable per area (area panel) and
    per site (site settings) — 0 = automatic.
-8. **No basemap but markers present** ⇒ the tiles are the problem, not the data, and the
-   page says which one:
-   - *"blocked by the page's security policy"* → enable **"Allow external resources"** in
-     the WinCC OA WebUI settings, or move to a same-origin tile server. This is the usual
-     outcome of a fresh install left on the public OSM tiles.
-   - *"tiles could not be loaded"* → the tile server itself is unreachable. Check it, or
-     switch the site to *No basemap*.
+8. Hover a **line** → the tooltip names it (its route, then the segment) and shows what it
+   reads. Click it → the connection panel opens. A line whose datapoint is in alarm is drawn
+   in the alert colour, at every zoom.
+9. Open **Layers** (the toolbar icon) → the browser lists the site's tags with how many
+   objects carry each. The eye hides one, the funnel isolates one, and the map follows
+   immediately. Nothing is written: visibility is per session, so a viewer can use it too.
+10. Select an asset → the top of its panel shows chips for its **zones, layers and lines**.
+    Clicking a zone chip goes to that zone; clicking a line chip opens its segment here.
+11. **No basemap but markers present** ⇒ the tiles are the problem, not the data, and the
+    page says which one:
+    - *"blocked by the page's security policy"* → enable **"Allow external resources"** in
+      the WinCC OA WebUI settings, or move to a same-origin tile server. This is the usual
+      outcome of a fresh install left on the public OSM tiles.
+    - *"tiles could not be loaded"* → the tile server itself is unreachable. Check it, or
+      switch the site to *No basemap*.
 
 ## Authoring a site with the AI assistant
 
@@ -137,17 +145,32 @@ Needs the Application-Security **`edit`** role (see below).
    - The **first** area in the list is its *primary* one, and the inspector names it. It is
      the area whose badge absorbs the marker when the map zooms out — a marker is drawn
      once, so only one badge may claim it.
-5. In the inspector: set its **name** and **kind** (the kind picks the map glyph), then
+5. **Draw a line**: click **Tracer une ligne** (needs at least two assets), pick which line
+   the segments join in the dropdown beside it — an existing one, *Standalone*, or
+   **New line…** which creates one there and then — and click the assets **one after
+   another**. Each click after the first closes a segment and opens the next, so a 20-stop
+   line is one continuous gesture. A click on the map *between* two assets adds a shaping
+   point, so a track follows its real alignment instead of a straight chord. *Cancel* stops.
+   - The ends are assets, so dragging a marker later drags its lines with it. To change an
+     end, redraw the segment.
+   - Select a line to set its **datapoint** (this is what colours it in alarm), its kind,
+     its line, its drill-down and its notes — or to **straighten** it, dropping the shaping
+     points.
+   - Deleting an asset deletes the connections that reached it.
+6. **Tag with layers**: in the asset panel, the **Layers** field is a tag list — pick
+   existing tags, or **type a new name to create the layer** on the spot. Manage them (name,
+   colour, delete) in the layer browser.
+7. In the inspector: set its **name** and **kind** (the kind picks the map glyph), then
    bind its **primary datapoint** — the one whose alarm state colours the marker and
    which the Alarms drill-down is scoped to.
-6. Add **live values**: one row per datapoint element, with a caption, a unit and the
+8. Add **live values**: one row per datapoint element, with a caption, a unit and the
    decimals. Tick **On the map** for the one or two that belong on the marker itself;
    the rest stay in the inspector.
-7. Set the **drill-down**: pick a target view and fill in the id — e.g.
+9. Set the **drill-down**: pick a target view and fill in the id — e.g.
    `/fleet-3d/pompage-nord` for a 3D atelier, `/ampere/tgbt-usine` for a single-line
    diagram, `/mosaic/<board>` for a display wall. Any in-app route starting with `/`
    works; the presets are only shortcuts.
-8. **Done** writes the site to its datapoint, once, with one audit-trail record.
+10. **Done** writes the site to its datapoint, once, with one audit-trail record.
    Nothing is written while you drag markers or type — see
    [NOTES.md](./NOTES.md#when-a-site-is-written).
 

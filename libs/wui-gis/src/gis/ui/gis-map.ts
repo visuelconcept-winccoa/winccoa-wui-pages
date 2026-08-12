@@ -56,28 +56,38 @@ import {
   AREA_SOURCE,
   DRAFT_SOURCE,
   EMPTY_COLLECTION,
+  EMPTY_LINKS,
+  LINK_DRAFT_SOURCE,
+  LINK_HIT_LAYER,
+  LINK_SOURCE,
   MIN_RING,
   areaCollection,
   areaLayers,
   buildStyle,
   draftCollection,
   draftLayers,
+  linkCollection,
+  linkLayers,
+  pathDraftCollection,
   styleChanged,
   tileUrl
 } from '../map/style.js';
 import {
   areaBounds,
   boundsOf,
+  connectionColor,
   isValidLatLon,
+  routeById,
   siteBounds,
   type Area,
   type Asset,
   type Bounds,
+  type Reading,
   type Site
 } from '../types.js';
 
 /** What the map does with a click on empty space. */
-export type MapTool = 'select' | 'place-asset' | 'draw-area';
+export type MapTool = 'select' | 'place-asset' | 'draw-area' | 'draw-link';
 
 /** Padding, in pixels, left around the content when fitting the view to it. */
 const FIT_PADDING = 56;
@@ -109,6 +119,15 @@ export class GisMap extends LitElement {
 
   /** Id of the selected area, empty when none. */
   @property() selectedArea = '';
+
+  /** Id of the selected connection, empty when none. */
+  @property() selectedConnection = '';
+
+  /**
+   * Information layers switched off. A connection is filtered the same way an asset is —
+   * a layer that hides the stations but leaves the track drawn would be a broken layer.
+   */
+  @property({ attribute: false }) hiddenLayers: ReadonlySet<string> = new Set();
 
   /** Assets the host wants shown (ids); `null` ⇒ all of them. */
   @property({ attribute: false }) visibleAssets: ReadonlySet<string> | null =
@@ -162,6 +181,12 @@ export class GisMap extends LitElement {
   private ringDraft: { areaId: string; ring: [number, number][] } | null = null;
   /** The ring being drawn, `[lon, lat]` pairs. */
   private draft: [number, number][] = [];
+  /** Asset the segment being drawn starts at, `''` when the line tool is idle. */
+  private linkFrom = '';
+  /** Shaping points collected for the segment being drawn. */
+  private linkVia: [number, number][] = [];
+  /** Last cursor position while drawing, so the segment rubber-bands to it. */
+  private linkCursor: [number, number] | null = null;
   /** Point count last announced through `wui:draft`, so it fires only on a change. */
   private announcedDraft = 0;
   /** Basemap the current style was built from — the `setStyle` trigger. */
@@ -267,6 +292,14 @@ export class GisMap extends LitElement {
     this.pushDraft();
   }
 
+  /** Abandon the line being drawn (tool switched off, or Cancel). */
+  clearLinkDraft(): void {
+    this.linkFrom = '';
+    this.linkVia = [];
+    this.linkCursor = null;
+    this.pushLinkDraft();
+  }
+
   // --- lifecycle -------------------------------------------------------------
 
   protected override firstUpdated(): void {
@@ -331,6 +364,11 @@ export class GisMap extends LitElement {
     );
     this.map.on('style.load', () => this.onStyleLoad());
     this.map.on('click', (event: MapMouseEvent) => this.onMapClick(event));
+    this.map.on('mousemove', (event: MapMouseEvent) => {
+      if (this.tool !== 'draw-link' || this.linkFrom === '') return;
+      this.linkCursor = [event.lngLat.lng, event.lngLat.lat];
+      this.pushLinkDraft();
+    });
     this.map.on('error', (event) => this.onMapError(event.error));
     // Grouping depends on the zoom, and only on the zoom — the cluster grid is
     // anchored in world pixels, so panning cannot re-bucket anything. Recomputing on
@@ -416,7 +454,12 @@ export class GisMap extends LitElement {
       map.addSource(AREA_SOURCE, { type: 'geojson', data: EMPTY_COLLECTION });
     if (!map.getSource(DRAFT_SOURCE))
       map.addSource(DRAFT_SOURCE, { type: 'geojson', data: EMPTY_COLLECTION });
-    for (const layer of [...areaLayers(), ...draftLayers()]) {
+    if (!map.getSource(LINK_SOURCE))
+      map.addSource(LINK_SOURCE, { type: 'geojson', data: EMPTY_LINKS });
+    if (!map.getSource(LINK_DRAFT_SOURCE))
+      map.addSource(LINK_DRAFT_SOURCE, { type: 'geojson', data: EMPTY_LINKS });
+    // Connections first, so the area outlines stay readable on top of a dense network.
+    for (const layer of [...linkLayers(), ...areaLayers(), ...draftLayers()]) {
       if (!map.getLayer(layer.id)) map.addLayer(layer);
     }
     if (this.areaListenersBound) return;
@@ -430,13 +473,82 @@ export class GisMap extends LitElement {
       this.setCursor('');
       this.hideAreaTip();
     });
+    // The hit layer is the invisible fat line: clicking a 3 px track is otherwise hopeless.
+    map.on('click', LINK_HIT_LAYER, (event) => this.onLinkClick(event));
+    map.on('mouseenter', LINK_HIT_LAYER, () => this.setCursor('pointer'));
+    map.on('mousemove', LINK_HIT_LAYER, (event) => this.showLinkTip(event));
+    map.on('mouseleave', LINK_HIT_LAYER, () => {
+      this.setCursor('');
+      this.hideAreaTip();
+    });
   }
 
   private syncOverlays(): void {
     if (!this.styleReady) return;
     this.syncMarkers();
     this.syncAreas();
+    this.syncLinks();
     this.pushDraft();
+  }
+
+  // --- connections -----------------------------------------------------------
+
+  /**
+   * Push the network to its GeoJSON source.
+   *
+   * A connection in alarm is painted the datapoint's **own** alert colour, exactly as a
+   * marker is, so a faulted feeder and a faulted pump agree with the alarm list and with
+   * each other. Otherwise it takes its route's colour.
+   */
+  private syncLinks(): void {
+    const site = this.site;
+    if (!site) {
+      this.geoJsonSource(LINK_SOURCE)?.setData(EMPTY_LINKS);
+      return;
+    }
+    this.geoJsonSource(LINK_SOURCE)?.setData(
+      linkCollection(
+        site,
+        this.selectedConnection,
+        this.hiddenLayers,
+        (connection) => {
+          const alarm = this.live.alarmColors.get(alarmKey(connection.dp));
+          return alarm ?? connectionColor(site, connection);
+        }
+      )
+    );
+  }
+
+  private onLinkClick(event: MapLayerMouseEvent): void {
+    const id = String(event.features?.[0]?.properties?.['linkId'] ?? '');
+    if (!id) return;
+    // Stop the map's own click handler, which would drop an asset in place-asset mode.
+    event.preventDefault();
+    this.emitSelect('connection', id);
+  }
+
+  /** Name the connection under the cursor, and show what it reads, in the shared tooltip. */
+  private showLinkTip(event: MapLayerMouseEvent): void {
+    const map = this.map;
+    const site = this.site;
+    if (!map || !site) return;
+    const id = String(event.features?.[0]?.properties?.['linkId'] ?? '');
+    const connection = site.connections.find((item) => item.id === id);
+    if (!connection) {
+      this.hideAreaTip();
+      return;
+    }
+    const route = routeById(site, connection.routeId);
+    const values = connection.readings
+      .map((reading) => this.readingText(reading))
+      .filter((text) => text !== '');
+    const tip = (this.areaTip ??= this.createAreaTip(map));
+    tip.element.textContent = [
+      route ? `${route.name} · ${connection.name}` : connection.name,
+      ...values
+    ].join('  ');
+    tip.element.hidden = false;
+    tip.marker.setLngLat(event.lngLat);
   }
 
   // --- areas -----------------------------------------------------------------
@@ -838,6 +950,11 @@ export class GisMap extends LitElement {
         // Without this the map's own click handler would also fire and, in
         // place-asset mode, drop a new asset on top of the one just clicked.
         event.stopPropagation();
+        // While the line tool is active a marker is a *stop*, not a selection.
+        if (this.tool === 'draw-link') {
+          this.onLinkStop(asset);
+          return;
+        }
         this.emitSelect('asset', asset.id);
       });
       element.addEventListener('dblclick', (event) => {
@@ -936,9 +1053,74 @@ export class GisMap extends LitElement {
       this.pushDraft();
       return;
     }
+    if (this.tool === 'draw-link') {
+      // Only once a first stop is picked: a click on empty space shapes the segment being
+      // drawn. Before that there is nothing to shape, and the click means nothing.
+      if (this.linkFrom) {
+        this.linkVia = [...this.linkVia, [lng, lat]];
+        this.pushLinkDraft();
+      }
+      return;
+    }
     // A click on the background clears the selection — the same gesture that
     // dismisses the inspector everywhere else in the dashboard.
     this.emitSelect('none', '');
+  }
+
+  // --- drawing a connection --------------------------------------------------
+
+  /**
+   * A marker was clicked while the line tool is active: take it as the next stop.
+   *
+   * The first click picks the start. Every click after it **closes one segment and opens the
+   * next from the same asset**, so a whole line is one continuous gesture: click station,
+   * station, station… That is why the tool announces each finished segment rather than
+   * waiting for the operator to declare the line over — there is nothing to accumulate, and
+   * the host can persist as it goes.
+   *
+   * Clicking the marker *is* the snap. Snapping a free map click to a nearby asset would be
+   * guesswork with a tolerance to tune; a 28 px disc is already an easy target, and an
+   * endpoint that is always exactly an asset is what keeps the topology sound.
+   */
+  private onLinkStop(asset: Asset): void {
+    if (this.linkFrom === '') {
+      this.linkFrom = asset.id;
+      this.pushLinkDraft();
+      return;
+    }
+    if (this.linkFrom === asset.id) return;
+    this.dispatchEvent(
+      new CustomEvent('wui:link', {
+        detail: { from: this.linkFrom, to: asset.id, via: [...this.linkVia] },
+        bubbles: true,
+        composed: true
+      })
+    );
+    this.linkFrom = asset.id;
+    this.linkVia = [];
+    this.pushLinkDraft();
+  }
+
+  /**
+   * Draw the segment in progress: the start asset, its shaping points, and the cursor — a
+   * rubber band, so it is obvious what the next click will create.
+   */
+  private pushLinkDraft(): void {
+    const source = this.geoJsonSource(LINK_DRAFT_SOURCE);
+    if (!source) return;
+    const start = this.site
+      ? this.site.assets.find((asset) => asset.id === this.linkFrom)
+      : undefined;
+    if (!start) {
+      source.setData(pathDraftCollection([]));
+      return;
+    }
+    const points: [number, number][] = [
+      [start.lon, start.lat],
+      ...this.linkVia
+    ];
+    if (this.linkCursor) points.push(this.linkCursor);
+    source.setData(pathDraftCollection(points));
   }
 
   private onAreaClick(
@@ -949,7 +1131,20 @@ export class GisMap extends LitElement {
     if (areaId) this.emitSelect('area', areaId);
   }
 
-  private emitSelect(kind: 'asset' | 'area' | 'none', id: string): void {
+  /** One reading as plain text, for a tooltip that cannot host a template. */
+  private readingText(reading: Reading): string {
+    const value = formatValue(
+      this.live.values.get(normDp(reading.dp)),
+      reading.decimals
+    );
+    if (value === '') return '';
+    return `${reading.label ? `${reading.label} ` : ''}${value}${reading.unit}`;
+  }
+
+  private emitSelect(
+    kind: 'asset' | 'area' | 'connection' | 'none',
+    id: string
+  ): void {
     this.dispatchEvent(
       new CustomEvent('wui:select', {
         detail: { kind, id },

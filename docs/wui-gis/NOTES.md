@@ -12,6 +12,10 @@ A **site** is one geographic supervision scope. It holds:
 - **areas** — polygons that group them (a distribution sector, a district, a catchment).
   An asset can belong to **several**: a booster pump on a sector boundary is in both, a
   shared cabinet feeds two districts, and each of them lists and counts it.
+- **connections** — supervised links between two assets (a metro segment, a feeder, a main,
+  a road), grouped into named **routes** (« Ligne 1 »);
+- **layers** — free information tags on assets and connections, switched on and off in the
+  layer browser;
 - a **basemap** — where the background map comes from, per site.
 
 Two flagship experiences ship as the demo seed, because they are the two shapes the map
@@ -102,6 +106,86 @@ editor offers presets (`gis/drill.ts`) that merely seed a route the user can the
 The **Alarms** drill-down is the exception: it needs no configuration, because any asset
 with a primary datapoint can open `/alarms?dp=<dp>` — the Alarms page reads a `dp` query
 parameter.
+
+
+## The network: connections, routes, layers
+
+Three concepts were added on top of zones, and the distinction between them is the whole
+design:
+
+| Concept | What it is | Has geometry? |
+| --- | --- | --- |
+| **Area** | *geography* — a polygon, with assets inside it, used for grouping and roll-ups | a ring |
+| **Connection** | *topology* — a supervised link between two assets | derived from its ends |
+| **Route** | a *name* for a set of connections (« Ligne 1 ») | none |
+| **Layer** | *classification* — a free tag ("critical", "phase 2") | none |
+
+### A connection is an asset in everything but position
+
+It carries a primary datapoint whose alert state **paints the line**, live readings, a
+drill-down route, zone membership, layer tags, notes. A line on this map is a supervised
+object, not decoration — a feeder has a current, a track section has a status. Without that,
+the network would have to be drawn twice: once as geometry, once as invisible assets on top.
+
+It is **not** the same *type* as an asset, though, and that was deliberate. `Asset` is a
+point, and the module leans on it hard: `cluster.ts` grids assets in Web-Mercator world
+pixels, `enclose.ts` hulls their coordinates, assets render as HTML markers while polylines
+must be GL layers, and the sanitiser drops any asset without a usable `lat`/`lon`. Putting
+paths into `Site.assets` would have turned every one of those into a branch, and the tested
+"no asset lost or duplicated" invariant into a statement with exceptions.
+
+### Its ends are references, not coordinates
+
+`from` and `to` name assets, so **dragging a substation drags every line attached to it** —
+for free, with nothing recomputed. Storing endpoint coordinates instead desynchronises the
+network on the first edit, which is how this kind of feature ends up switched off. `via`
+only *shapes* the line between those two ends.
+
+The consequences are enforced rather than hoped for: a connection whose end no longer
+resolves is **dropped** by the sanitiser and counted in the report (an invisible line is
+worse than none), deleting an asset takes its connections with it in the page, and a
+connection from an asset to itself has no geometry and goes the same way.
+
+### A metro line is not one object
+
+The tempting model is `Route { stops: string[] }` with segments implied between consecutive
+stops. **It breaks the first time a station is inserted**: every segment after it shifts by
+one, and so does every datapoint binding attached by index — a silent mis-binding, the worst
+kind of defect. So segments are explicit objects with stable ids, which is also physically
+right: a fault occurs *between* two stations, not on "line 1".
+
+A route therefore **does not list its stops**. The order is derived by walking the
+`from`/`to` chain (`routeOrder`), and a branching line — the demo’s `Refoulement`, one plant
+feeding three reservoirs — returns `null` rather than an invented sequence. Storing an order
+beside the segments would be two versions of the same truth.
+
+### Layers are not zones
+
+A zone is geography; a layer is classification, with no shape and no containment rule.
+Forcing one concept to do both jobs is how you end up with zones that overlap for reasons
+that have nothing to do with the map.
+
+**Visibility is not stored.** Which layers an operator is looking at is a property of the
+operator, not of the site, so it lives in the page for the session — which is also why a
+viewer without the `edit` grant can use the browser freely. A stored default would be a
+second kind of truth about visibility, and the first question would be whose default it is.
+
+The visibility rule is the one users feel: **an untagged object is never hidden**, and a
+tagged one survives while *at least one* of its tags is still on. Hiding everything untagged
+the moment one layer is switched off would make the browser unusable.
+
+### Rendering
+
+Three GL layers per connection, in order: an invisible fat **hit line** (clicking a 3.5 px
+track is otherwise hopeless — MapLibre hit-tests the rendered geometry), a dark **casing**
+that keeps a coloured route legible over a busy raster basemap, then the line itself, dashed
+by kind. They sit below the area outlines, and markers are HTML so they are above
+everything by construction. No glyphs are involved, so the whole network still draws on an
+offline basemap.
+
+Connections are **not** clustered: lines are GL geometry, they do not collide like discs, so
+they stay drawn at every zoom — which is how transit maps work anyway, and it means a
+faulted feeder is visible even when its zone has collapsed to a badge.
 
 ## Rendering
 
@@ -384,12 +468,24 @@ editing can never resurrect a stale version of the site.
 
 ### Ceilings
 
-64 areas and 1000 assets per site (`normalize.ts`), 2000 points per `generate` op. The real
-ceiling beyond that is not those constants but the size of the JSON a site is persisted as,
-in **one WinCC OA String element** (`DpJsonStore`): a few thousand assets is where that
-becomes the question, and the answer would be chunking the store, not raising the cap. The
+64 areas and 10 000 assets per site (`normalize.ts`), 2000 points per `generate` op. The
 output budget is configurable per project (`AI_Assistant_Config.maxTokens`, default 32768)
-and a budget-capped answer is now reported as truncated rather than silently offered.
+and a budget-capped answer is reported as truncated rather than silently offered.
+
+**That sanitiser ceiling is a guard against a runaway answer, not a capacity claim.** Three
+real limits sit below it, and none of them moved when it was raised from 1000 — in the order
+they bite:
+
+| Ceiling | Where | What it costs at 10 000 assets |
+| --- | --- | --- |
+| One `dpConnect` per datapoint element | `data/live.ts`, deliberately — a batched subscription fails wholesale on one bad name | ~30 000 individual subscriptions for a primary DP plus two readings each |
+| One HTML marker per drawn asset | `ui/gis-map.ts` | Grouping holds the count down while zoomed out, but zoomed in — or with grouping off — every asset standing alone is a DOM node MapLibre repositions each frame |
+| The site JSON in **one WinCC OA String element** | `data/gis-store.ts` (`DpJsonStore`) | ~250 bytes per asset, so a couple of megabytes in a single DPE |
+
+Moving the real limit means chunking the store, drawing assets as a GL layer instead of
+markers, and sharing subscriptions — three separate pieces of work, none of them a constant.
+A site in the low thousands is comfortable today; ten thousand on one map is not something
+this page has been shown to do.
 
 ### Coordinates are the honest weak point
 

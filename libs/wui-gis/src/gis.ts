@@ -82,6 +82,8 @@ import { isEmbedded, nowLocal, uid } from './gis/page-utils.js';
 import './gis/ui/gis-ai-assistant.js';
 import './gis/ui/gis-area-panel.js';
 import './gis/ui/gis-inspector.js';
+import './gis/ui/gis-layer-panel.js';
+import './gis/ui/gis-link-panel.js';
 import './gis/ui/gis-site-dialog.js';
 import './gis/ui/gis-site-table.js';
 import './gis/ui/gis-map.js';
@@ -91,14 +93,26 @@ import { MIN_RING } from './gis/map/style.js';
 import { encloseAssets } from './gis/enclose.js';
 import {
   areasAt,
+  assetById,
   assetsOfArea,
   blankArea,
+  blankConnection,
+  blankLayer,
+  blankRoute,
   inArea,
   isValidLatLon,
+  routeById,
+  visibleUnderLayers,
   type Area,
   type Asset,
+  type Connection,
+  type ConnectionKind,
+  type Layer,
   type Site
 } from './gis/types.js';
+
+/** Kind given to a segment drawn onto no route — the neutral one. */
+const DEFAULT_CONNECTION_KIND: ConnectionKind = 'generic';
 
 /**
  * Localise an import failure. `io.ts` throws a problem CODE rather than a string, so the
@@ -125,6 +139,16 @@ const HEADER_CONFIG = {
 /** The two authoring tools, named — the toolbar reads each state more than once. */
 const TOOL_ASSET: MapTool = 'place-asset';
 const TOOL_AREA: MapTool = 'draw-area';
+const TOOL_LINK: MapTool = 'draw-link';
+
+/** A line needs two assets to join; below that the tool has nothing to work with. */
+const MIN_LINK_ASSETS = 2;
+
+/** Sentinel value of the route picker meaning "make a new line". */
+const NEW_ROUTE = '::new::';
+
+/** Same ceiling the sanitiser applies to a layer name, so the two cannot disagree. */
+const LAYER_NAME_MAX = 80;
 
 export class WuiGis extends LitElement {
   static override readonly styles = [IXCoreStyles, pageStyles()];
@@ -147,6 +171,21 @@ export class WuiGis extends LitElement {
    * it. A badge states how many of the assets it swallowed are in alarm.
    */
   @state() private declutter = true;
+  /** Id of the selected connection, empty when none. */
+  @state() private selectedConnection = '';
+  /**
+   * Layers switched OFF for this session. Deliberately not part of the site: which layers
+   * an operator is looking at is a property of the operator, not of the data (see
+   * {@link Layer}), so it is never written and never shared.
+   */
+  @state() private hiddenLayers: ReadonlySet<string> = new Set();
+  /** The layer browser is open. */
+  @state() private layersOpen = false;
+  /**
+   * Route the line tool is drawing onto, empty when the segments are standalone. Held while
+   * drawing so a whole line lands as ONE named object rather than a pile of loose links.
+   */
+  @state() private drawingRoute = '';
   /** Area whose outline is being reshaped on the map; empty for none. */
   @state() private editingRing = '';
   /**
@@ -399,9 +438,11 @@ export class WuiGis extends LitElement {
           id="map"
           .site=${site}
           .live=${this.live}
-          .visibleAssets=${this.alarmsOnly || this.selectedArea ? visible : null}
+          .visibleAssets=${this.filtering() ? visible : null}
+          .hiddenLayers=${this.hiddenLayers}
           selectedAsset=${this.selectedAsset}
           selectedArea=${this.selectedArea}
+          selectedConnection=${this.selectedConnection}
           tool=${this.tool}
           .editable=${this.editing}
           .declutter=${this.declutter}
@@ -414,6 +455,13 @@ export class WuiGis extends LitElement {
           @wui:place=${(event: CustomEvent<{ lat: number; lon: number }>) => this.onPlace(site, event.detail)}
           @wui:move=${(event: CustomEvent<{ id: string; lat: number; lon: number }>) => this.onMove(site, event.detail)}
           @wui:draft=${(event: CustomEvent<{ points: number }>) => (this.draftPoints = event.detail.points)}
+          @wui:link=${(
+            event: CustomEvent<{
+              from: string;
+              to: string;
+              via: [number, number][];
+            }>
+          ) => this.onLinkDrawn(site, event.detail)}
           @wui:tilesfailed=${() => (this.tilesFailed = true)}
           @wui:cspblocked=${() => (this.cspBlocked = true)}
           @wui:webglfailed=${() => (this.webglFailed = true)}
@@ -429,6 +477,38 @@ export class WuiGis extends LitElement {
    * below are shared.
    */
   private renderPanel(site: Site): TemplateResult {
+    // The browser wins the panel while it is open: it is a mode the operator asked for,
+    // and a selection made while filtering must not close the thing doing the filtering.
+    if (this.layersOpen) {
+      return html`<gis-layer-panel
+        .site=${site}
+        .hiddenLayers=${this.hiddenLayers}
+        .editable=${this.editing}
+        @wui:toggle=${(event: CustomEvent<{ id: string }>) => this.toggleLayer(event.detail.id)}
+        @wui:isolate=${(event: CustomEvent<{ id: string }>) => this.isolateLayer(site, event.detail.id)}
+        @wui:showall=${() => (this.hiddenLayers = new Set())}
+        @wui:create=${() => this.createLayer(site)}
+        @wui:patch=${(event: CustomEvent<{ layer: Layer }>) => this.patchLayer(site, event.detail.layer)}
+        @wui:delete=${(event: CustomEvent<{ id: string }>) => this.deleteLayer(site, event.detail.id)}
+        @wui:close=${() => (this.layersOpen = false)}
+      ></gis-layer-panel>`;
+    }
+    const connection = site.connections.find(
+      (link) => link.id === this.selectedConnection
+    );
+    if (connection) {
+      return html`<gis-link-panel
+        .site=${site}
+        .connection=${connection}
+        .live=${this.live}
+        .editable=${this.editing}
+        @wui:patch=${(event: CustomEvent<{ connection?: Connection }>) => this.onPatch(site, event.detail)}
+        @wui:delete=${() => this.onDeleteSelection(site)}
+        @wui:straighten=${() => this.onPatch(site, { connection: { ...connection, via: [] } })}
+        @wui:open=${(event: CustomEvent<{ route: string }>) => this.openRoute(event.detail.route)}
+        @wui:close=${this.clearSelection}
+      ></gis-link-panel>`;
+    }
     const area = this.selectedAreaOf(site);
     if (area) {
       return html`<gis-area-panel
@@ -456,6 +536,10 @@ export class WuiGis extends LitElement {
       @wui:patch=${(event: CustomEvent<{ asset?: Asset }>) => this.onPatch(site, event.detail)}
       @wui:delete=${() => this.onDeleteSelection(site)}
       @wui:open=${(event: CustomEvent<{ route: string }>) => this.openRoute(event.detail.route)}
+      @wui:navigate=${(
+        event: CustomEvent<{ kind: 'area' | 'connection'; id: string }>
+      ) => this.onChipNavigate(event.detail)}
+      @wui:addlayer=${(event: CustomEvent<{ name: string }>) => this.onAddLayer(site, event.detail.name)}
       @wui:close=${this.clearSelection}
     ></gis-inspector>`;
   }
@@ -490,6 +574,13 @@ export class WuiGis extends LitElement {
         </ix-button>
         <span class="site-name">${site.name}</span>
         ${this.renderAreaFilter(site)}
+        <ix-icon-button
+          ghost
+          icon="layers"
+          class=${this.hiddenLayers.size > 0 ? 'filtering' : ''}
+          title=${localize(MSG.layer.open)}
+          @click=${() => (this.layersOpen = !this.layersOpen)}
+        ></ix-icon-button>
         <ix-button
           variant=${this.alarmsOnly ? 'primary' : 'secondary'}
           @click=${() => (this.alarmsOnly = !this.alarmsOnly)}
@@ -608,6 +699,16 @@ export class WuiGis extends LitElement {
         <ix-icon name="map" slot="icon"></ix-icon
         >${localizeDir(MSG.map.drawArea)}
       </ix-button>
+      <ix-button
+        variant=${this.tool === TOOL_LINK ? 'primary' : 'secondary'}
+        ?disabled=${site.assets.length < MIN_LINK_ASSETS}
+        title=${localize(MSG.link.drawHint)}
+        @click=${() => this.setTool(TOOL_LINK)}
+      >
+        <ix-icon name="network" slot="icon"></ix-icon
+        >${localizeDir(MSG.link.draw)}
+      </ix-button>
+      ${this.tool === TOOL_LINK ? this.renderRoutePicker(site) : nothing}
       ${
         this.tool === TOOL_AREA
           ? html`<ix-button
@@ -631,6 +732,53 @@ export class WuiGis extends LitElement {
     `;
   }
 
+  /**
+   * Which line the segments being drawn join.
+   *
+   * This is where a **route gets created**: picking *New line…* makes one on the spot, named
+   * and coloured from the palette, and every segment drawn from then on joins it. Creating
+   * the line first and its segments afterwards would be the wrong order — nobody wants to
+   * fill a form before they can draw.
+   */
+  private renderRoutePicker(site: Site): TemplateResult {
+    return html`
+      <ix-select
+        class="route-picker"
+        .value=${this.drawingRoute}
+        @valueChange=${(event: CustomEvent<string | string[]>) => this.onRoutePick(site, event.detail)}
+      >
+        <ix-select-item
+          value=""
+          label=${localize(MSG.link.noRoute)}
+        ></ix-select-item>
+        ${site.routes.map((route) => html`<ix-select-item value=${route.id} label=${route.name}></ix-select-item>`)}
+        <ix-select-item
+          value=${NEW_ROUTE}
+          label=${localize(MSG.link.newRoute)}
+        ></ix-select-item>
+      </ix-select>
+      <ix-button variant="secondary" ghost @click=${() => this.cancelDraw()}
+        >${localizeDir(MSG.map.cancel)}</ix-button
+      >
+    `;
+  }
+
+  private onRoutePick(site: Site, detail: string | string[]): void {
+    const value = Array.isArray(detail) ? (detail[0] ?? '') : detail;
+    if (value !== NEW_ROUTE) {
+      this.drawingRoute = value;
+      return;
+    }
+    const route = blankRoute(
+      uid('ligne'),
+      `${localize(MSG.link.route)} ${site.routes.length + 1}`,
+      nextAreaColor(site.routes.length),
+      DEFAULT_CONNECTION_KIND
+    );
+    this.drawingRoute = route.id;
+    this.patchSite(site, { routes: [...site.routes, route] });
+  }
+
   private renderEditHint(): TemplateResult | typeof nothing {
     if (this.editingRing)
       return html`<div class="hint">${localizeDir(MSG.ring.hint)}</div>`;
@@ -640,6 +788,8 @@ export class WuiGis extends LitElement {
       return html`<div class="hint">${localizeDir(MSG.map.addAssetHint)}</div>`;
     if (this.tool === TOOL_AREA)
       return html`<div class="hint">${localizeDir(MSG.map.drawAreaHint)}</div>`;
+    if (this.tool === TOOL_LINK)
+      return html`<div class="hint">${localizeDir(MSG.link.drawHint)}</div>`;
     return nothing;
   }
 
@@ -838,6 +988,8 @@ export class WuiGis extends LitElement {
     // Re-pressing the active tool releases it; leaving the draw tool drops its ring.
     const next = this.tool === tool ? 'select' : tool;
     if (this.tool === TOOL_AREA && next !== TOOL_AREA) this.map()?.clearDraft();
+    if (this.tool === TOOL_LINK && next !== TOOL_LINK)
+      this.map()?.clearLinkDraft();
     this.tool = next;
   }
 
@@ -905,6 +1057,7 @@ export class WuiGis extends LitElement {
 
   private cancelDraw(): void {
     this.map()?.clearDraft();
+    this.map()?.clearLinkDraft();
     this.tool = 'select';
   }
 
@@ -952,6 +1105,8 @@ export class WuiGis extends LitElement {
       lon: at.lon,
       // Dropping a marker inside a drawn area is a statement of belonging.
       areaIds: areasAt(site, at.lat, at.lon),
+      // Layers are classification, so nothing can be inferred from where it landed.
+      layerIds: [],
       dp: '',
       readings: [],
       link: '',
@@ -981,7 +1136,19 @@ export class WuiGis extends LitElement {
     this.patchSite(site, { assets });
   }
 
-  private onPatch(site: Site, patch: { asset?: Asset; area?: Area }): void {
+  private onPatch(
+    site: Site,
+    patch: { asset?: Asset; area?: Area; connection?: Connection }
+  ): void {
+    if (patch.connection) {
+      const edited = patch.connection;
+      this.patchSite(site, {
+        connections: site.connections.map((link) =>
+          link.id === edited.id ? edited : link
+        )
+      });
+      return;
+    }
     if (patch.asset) {
       const edited = patch.asset;
       this.patchSite(site, {
@@ -1001,11 +1168,25 @@ export class WuiGis extends LitElement {
 
   private onDeleteSelection(site: Site): void {
     if (!this.editing) return;
+    if (this.selectedConnection) {
+      const id = this.selectedConnection;
+      this.selectedConnection = '';
+      this.patchSite(site, {
+        connections: site.connections.filter((link) => link.id !== id)
+      });
+      return;
+    }
     if (this.selectedAsset) {
       const id = this.selectedAsset;
       this.selectedAsset = '';
+      // Its connections go with it: a link to an asset that no longer exists has no
+      // geometry, so it would be dropped by the sanitiser on the next read anyway —
+      // better to do it here, visibly, than to let it vanish silently later.
       this.patchSite(site, {
-        assets: site.assets.filter((asset) => asset.id !== id)
+        assets: site.assets.filter((asset) => asset.id !== id),
+        connections: site.connections.filter(
+          (link) => link.from !== id && link.to !== id
+        )
       });
       return;
     }
@@ -1026,21 +1207,68 @@ export class WuiGis extends LitElement {
   // --- selection & navigation ------------------------------------------------
 
   private onMapSelect(
-    event: CustomEvent<{ kind: 'asset' | 'area' | 'none'; id: string }>
+    event: CustomEvent<{
+      kind: 'asset' | 'area' | 'connection' | 'none';
+      id: string;
+    }>
   ): void {
     const { kind, id } = event.detail;
     if (kind === 'asset') {
       this.selectedAsset = this.selectedAsset === id ? '' : id;
       this.selectedArea = '';
+      this.selectedConnection = '';
       return;
     }
     if (kind === 'area') {
       this.selectedArea = this.selectedArea === id ? '' : id;
       this.selectedAsset = '';
+      this.selectedConnection = '';
       if (this.selectedArea) this.map()?.fitToArea(this.selectedArea);
       return;
     }
+    if (kind === 'connection') {
+      this.selectedConnection = this.selectedConnection === id ? '' : id;
+      this.selectedAsset = '';
+      this.selectedArea = '';
+      return;
+    }
     this.clearSelection();
+  }
+
+  /**
+   * One segment was drawn: append it to the site.
+   *
+   * The line tool announces each finished segment as it goes rather than at the end, so the
+   * site grows one connection per click and nothing is held in the map component waiting to
+   * be committed. It joins the route currently being drawn onto, which is what makes a
+   * multi-stop line one named object instead of a pile of unrelated links.
+   */
+  private onLinkDrawn(
+    site: Site,
+    detail: { from: string; to: string; via: [number, number][] }
+  ): void {
+    if (!this.editing) return;
+    const kind =
+      routeById(site, this.drawingRoute)?.kind ?? DEFAULT_CONNECTION_KIND;
+    const link = blankConnection(
+      uid('liaison'),
+      detail.from,
+      detail.to,
+      kind,
+      this.drawingRoute
+    );
+    const from = assetById(site, detail.from);
+    const to = assetById(site, detail.to);
+    this.patchSite(site, {
+      connections: [
+        ...site.connections,
+        {
+          ...link,
+          via: detail.via,
+          name: from && to ? `${from.name} → ${to.name}` : link.name
+        }
+      ]
+    });
   }
 
   /**
@@ -1077,6 +1305,118 @@ export class WuiGis extends LitElement {
   private clearSelection(): void {
     this.selectedAsset = '';
     this.selectedArea = '';
+    this.selectedConnection = '';
+  }
+
+  /**
+   * A membership chip in the asset panel was clicked: go there.
+   *
+   * Plain navigation, not the toggle {@link onMapSelect} performs — the chip names one
+   * destination, so clicking it must always arrive, never bounce back.
+   */
+  // --- information layers ----------------------------------------------------
+
+  /** Switch one layer off, or back on. Session-only: nothing is written. */
+  private toggleLayer(id: string): void {
+    const next = new Set(this.hiddenLayers);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    this.hiddenLayers = next;
+  }
+
+  /**
+   * Show only this layer — the gesture a browser needs most, because reaching one layer by
+   * switching a dozen others off is nobody's idea of a filter. Pressing it on the layer
+   * already isolated shows everything again.
+   */
+  private isolateLayer(site: Site, id: string): void {
+    const others = site.layers
+      .filter((layer) => layer.id !== id)
+      .map((layer) => layer.id);
+    const isolated =
+      this.hiddenLayers.size === others.length &&
+      others.every((other) => this.hiddenLayers.has(other));
+    this.hiddenLayers = isolated ? new Set() : new Set(others);
+  }
+
+  private createLayer(site: Site): void {
+    if (!this.editing) return;
+    const layer = blankLayer(
+      uid('layer'),
+      `${localize(MSG.layer.title)} ${site.layers.length + 1}`,
+      nextAreaColor(site.layers.length)
+    );
+    this.patchSite(site, { layers: [...site.layers, layer] });
+  }
+
+  private patchLayer(site: Site, edited: Layer): void {
+    if (!this.editing) return;
+    this.patchSite(site, {
+      layers: site.layers.map((layer) =>
+        layer.id === edited.id ? edited : layer
+      )
+    });
+  }
+
+  /**
+   * Delete a layer, and untag everything that carried it — otherwise the tag would survive
+   * as an id nothing can name, and the sanitiser would drop it silently on the next read.
+   */
+  private deleteLayer(site: Site, id: string): void {
+    if (!this.editing) return;
+    const without = (ids: string[]): string[] =>
+      ids.filter((current) => current !== id);
+    this.patchSite(site, {
+      layers: site.layers.filter((layer) => layer.id !== id),
+      assets: site.assets.map((asset) => ({
+        ...asset,
+        layerIds: without(asset.layerIds)
+      })),
+      connections: site.connections.map((link) => ({
+        ...link,
+        layerIds: without(link.layerIds)
+      }))
+    });
+  }
+
+  /** The inspector asked for a brand-new layer by name, for the selected asset. */
+  private onAddLayer(site: Site, name: string): void {
+    const asset = this.selectedAssetOf(site);
+    if (asset) this.createLayerFor(site, asset, name);
+  }
+
+  /** Tag an asset with a layer that does not exist yet — created from its own panel. */
+  private createLayerFor(site: Site, asset: Asset, name: string): void {
+    if (!this.editing) return;
+    const layer = blankLayer(
+      uid('layer'),
+      name.trim().slice(0, LAYER_NAME_MAX),
+      nextAreaColor(site.layers.length)
+    );
+    if (!layer.name) return;
+    this.patchSite(site, {
+      layers: [...site.layers, layer],
+      assets: site.assets.map((current) =>
+        current.id === asset.id
+          ? { ...current, layerIds: [...current.layerIds, layer.id] }
+          : current
+      )
+    });
+  }
+
+  private onChipNavigate(detail: {
+    kind: 'area' | 'connection';
+    id: string;
+  }): void {
+    this.selectedAsset = '';
+    if (detail.kind === 'area') {
+      this.selectedConnection = '';
+      this.selectedArea = detail.id;
+      this.map()?.fitToArea(detail.id);
+      return;
+    }
+    this.selectedArea = '';
+    this.selectedConnection = detail.id;
   }
 
   /** Drill-down: hand the route to the shell's router. */
@@ -1110,15 +1450,26 @@ export class WuiGis extends LitElement {
     return site.areas.find((area) => area.id === this.selectedArea) ?? null;
   }
 
-  /** The assets the map and the count currently show (area filter, alarm filter). */
+  /**
+   * The assets the map and the count currently show: the area filter, the alarm filter, and
+   * the layers switched off in the browser — three independent narrowings of the same set.
+   */
   private visibleAssetIds(site: Site): Set<string> {
     const ids = new Set<string>();
     for (const asset of site.assets) {
       if (this.selectedArea && !inArea(asset, this.selectedArea)) continue;
       if (this.alarmsOnly && !this.isInAlarm(asset)) continue;
+      if (!visibleUnderLayers(asset.layerIds, this.hiddenLayers)) continue;
       ids.add(asset.id);
     }
     return ids;
+  }
+
+  /** True while any narrowing is active, so the map is handed a set rather than `null`. */
+  private filtering(): boolean {
+    return (
+      this.alarmsOnly || this.selectedArea !== '' || this.hiddenLayers.size > 0
+    );
   }
 
   private isInAlarm(asset: Asset): boolean {

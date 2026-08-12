@@ -26,7 +26,7 @@ import {
 } from '@visuelconcept/wui-kit/data/io.js';
 import { normalizeSite, type NormalizedSite } from './normalize.js';
 import { MIN_RING } from '../map/style.js';
-import { AREA_PALETTE, type Site } from '../types.js';
+import { AREA_PALETTE, connectionPath, type Site } from '../types.js';
 
 /** Why an import was refused. The CALLER localises it — see {@link ImportError}. */
 export type ImportProblem = 'not-json' | 'no-site';
@@ -93,6 +93,7 @@ interface GeoFeature {
   properties: Record<string, unknown>;
   geometry:
     | { type: 'Point'; coordinates: [number, number] }
+    | { type: 'LineString'; coordinates: number[][] }
     | { type: 'Polygon'; coordinates: number[][][] };
 }
 
@@ -145,6 +146,37 @@ export function siteToGeoJson(site: Site): GeoCollection {
       geometry: { type: 'Point', coordinates: [asset.lon, asset.lat] }
     });
   }
+  // Connections as LineStrings, so QGIS shows the network and not just its ends. The
+  // geometry is resolved (endpoints + shaping points) because that is what a foreign tool
+  // can read; `from`/`to` ride along in the properties so OUR importer can rebuild the
+  // topology rather than a frozen pair of coordinates.
+  for (const connection of site.connections) {
+    const path = connectionPath(site, connection);
+    if (!path) continue;
+    features.push({
+      type: 'Feature',
+      properties: {
+        gisType: 'connection',
+        id: connection.id,
+        name: connection.name,
+        kind: connection.kind,
+        from: connection.from,
+        to: connection.to,
+        via: connection.via,
+        routeId: connection.routeId,
+        areaIds: connection.areaIds,
+        layerIds: connection.layerIds,
+        dp: connection.dp,
+        link: connection.link,
+        notes: connection.notes,
+        readings: connection.readings
+      },
+      geometry: {
+        type: 'LineString',
+        coordinates: path.map(([lon, lat]) => [lon, lat])
+      }
+    });
+  }
   return {
     type: 'FeatureCollection',
     properties: {
@@ -155,7 +187,12 @@ export function siteToGeoJson(site: Site): GeoCollection {
       center: site.center,
       zoom: site.zoom,
       basemap: site.basemap,
-      groupZoom: site.groupZoom
+      groupZoom: site.groupZoom,
+      // Routes and layers have no geometry of their own, so they travel as collection
+      // metadata. Dropping them would turn a round-trip into a silent loss of every line
+      // name, colour and tag.
+      routes: site.routes,
+      layers: site.layers
     },
     features
   };
@@ -240,6 +277,7 @@ export function geoJsonToSite(
   const meta = collection.properties ?? {};
   const areas: Record<string, unknown>[] = [];
   const assets: Record<string, unknown>[] = [];
+  const connections: Record<string, unknown>[] = [];
   for (const feature of collection.features ?? []) {
     const properties = feature?.properties ?? {};
     const geometry = feature?.geometry;
@@ -257,6 +295,14 @@ export function geoJsonToSite(
     if (geometry.type === 'Point') {
       const [lon, lat] = geometry.coordinates ?? [];
       assets.push({ ...properties, lat, lon });
+      continue;
+    }
+    // A LineString is only a connection when it says which assets it joins. A foreign line
+    // (a QGIS track with no `from`/`to`) has no topology to rebuild, and inventing one by
+    // snapping to whatever marker is nearest would quietly wire up the wrong network — so
+    // it is dropped, and the sanitiser's report says how many.
+    if (geometry.type === 'LineString') {
+      connections.push({ ...properties });
     }
   }
   return normalizeSite(
@@ -267,7 +313,8 @@ export function geoJsonToSite(
           ? meta['name']
           : fallbackName,
       areas,
-      assets
+      assets,
+      connections
     },
     AREA_PALETTE
   );

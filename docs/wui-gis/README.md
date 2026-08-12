@@ -21,6 +21,12 @@ cost (MapLibre GL JS is BSD-3-Clause, OSM data is ODbL). Each site carries:
   one click (a concave outline following the shape they make, not a hull closed by a chord
   across empty ground) or reshaped corner by corner. Zone names show on hover, so a dozen
   zones do not put a dozen labels on the map;
+- **connections**: supervised links between two assets — a metro segment, a feeder, a main,
+  a road — each with its own datapoint, its own alarm colour and its own drill-down, grouped
+  into named **lines**. Their ends are the assets themselves, so moving a marker moves every
+  line attached to it;
+- **information layers**: free tags on assets and connections, created from the layer browser
+  or straight from an asset, and switched on and off to filter the map;
 - a configurable **drill-down**: map → area → asset → its process or 3D view;
 - **import / export**: native JSON for a complete round-trip (bindings, readings,
   drill-down, basemap), and **GeoJSON** for QGIS interop — which is also how surveyed

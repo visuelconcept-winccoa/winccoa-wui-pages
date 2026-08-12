@@ -16,7 +16,7 @@
  */
 import { localize } from '@wincc-oa/wui-i18n-shared/localize-multilang.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
-import type { AssetKind, BasemapKind } from './types.js';
+import type { AssetKind, BasemapKind, ConnectionKind } from './types.js';
 
 export {
   localize,
@@ -248,6 +248,8 @@ export const MSG = {
       'Une route doit commencer par une barre oblique, ex. /fleet-3d/station-nord',
       'Eine Route muss mit einem Schrägstrich beginnen, z. B. /fleet-3d/station-nord'
     ),
+    goToArea: ml('Go to this area', 'Aller à cette zone', 'Zu diesem Bereich'),
+    goToLine: ml('Go to this line', 'Aller à cette ligne', 'Zu dieser Linie'),
     openTarget: ml(
       'Open the target view',
       'Ouvrir la vue cible',
@@ -561,8 +563,97 @@ export const MSG = {
       'Un nom est requis.',
       'Ein Name ist erforderlich.'
     )
+  },
+  /** Information layers: the tags on assets, and their browser. */
+  layer: {
+    title: ml('Layers', 'Layers', 'Layer'),
+    open: ml('Layers', 'Layers', 'Layer'),
+    empty: ml(
+      'No layer yet. Create one here, or tag an asset directly from its panel.',
+      'Aucun layer. Créez-en un ici, ou taguez un équipement directement depuis son panneau.',
+      'Noch kein Layer. Erstellen Sie hier einen, oder taggen Sie eine Anlage direkt in ihrem Panel.'
+    ),
+    create: ml('New layer', 'Nouveau layer', 'Neuer Layer'),
+    remove: ml(
+      'Delete this layer',
+      'Supprimer ce layer',
+      'Diesen Layer löschen'
+    ),
+    show: ml('Show this layer', 'Afficher ce layer', 'Diesen Layer anzeigen'),
+    hide: ml('Hide this layer', 'Masquer ce layer', 'Diesen Layer ausblenden'),
+    isolate: ml(
+      'Show only this layer',
+      'N’afficher que ce layer',
+      'Nur diesen Layer anzeigen'
+    ),
+    showAll: ml(
+      'Show every layer',
+      'Afficher tous les layers',
+      'Alle Layer anzeigen'
+    ),
+    count: ml('%n layer(s)', '%n layer(s)', '%n Layer'),
+    tags: ml('Layers', 'Layers', 'Layer'),
+    tagsHint: ml(
+      'Free tags, unrelated to the zones. Type a name to create one.',
+      'Tags libres, indépendants des zones. Saisissez un nom pour en créer un.',
+      'Freie Tags, unabhängig von den Bereichen. Namen eingeben, um einen zu erstellen.'
+    )
+  },
+
+  /** Connections and the named lines they belong to. */
+  link: {
+    draw: ml('Draw a line', 'Tracer une ligne', 'Linie zeichnen'),
+    drawHint: ml(
+      'Click assets one after another to link them. A click on the map between two assets shapes the segment. Escape or Cancel stops.',
+      'Cliquez les équipements l’un après l’autre pour les relier. Un clic sur la carte entre deux équipements met le tracé en forme. Échap ou Annuler arrête.',
+      'Klicken Sie die Anlagen nacheinander an, um sie zu verbinden. Ein Klick auf die Karte zwischen zwei Anlagen formt den Verlauf. Escape oder Abbrechen beendet.'
+    ),
+    title: ml('Connection', 'Liaison', 'Verbindung'),
+    name: ml('Name', 'Nom', 'Name'),
+    kind: ml('Type', 'Type', 'Typ'),
+    route: ml('Line', 'Ligne', 'Linie'),
+    noRoute: ml('Standalone', 'Autonome', 'Eigenständig'),
+    newRoute: ml('New line…', 'Nouvelle ligne…', 'Neue Linie…'),
+    routeHint: ml(
+      'The line carries the colour and the style; a standalone connection uses the neutral one.',
+      'La ligne porte la couleur et le style ; une liaison autonome prend la couleur neutre.',
+      'Die Linie trägt Farbe und Stil; eine eigenständige Verbindung nutzt die neutrale Farbe.'
+    ),
+    ends: ml('From → to', 'De → vers', 'Von → nach'),
+    endsHint: ml(
+      'The ends are assets, so the line follows them when a marker is moved. Redraw the connection to change them.',
+      'Les extrémités sont des équipements : la ligne les suit quand un marqueur est déplacé. Retracez la liaison pour les changer.',
+      'Die Enden sind Anlagen, die Linie folgt ihnen beim Verschieben eines Markers. Zeichnen Sie die Verbindung neu, um sie zu ändern.'
+    ),
+    shapePoints: ml(
+      '%n shaping point(s)',
+      '%n point(s) de forme',
+      '%n Formpunkt(e)'
+    ),
+    straighten: ml('Straighten', 'Redresser', 'Gerade ziehen'),
+    delete: ml(
+      'Delete this connection',
+      'Supprimer cette liaison',
+      'Diese Verbindung löschen'
+    )
   }
 } as const;
+
+/** Label of a connection kind in the active language. */
+export function connectionKindLabel(kind: ConnectionKind): string {
+  return localize(CONNECTION_KIND_LABELS[kind]);
+}
+
+/** What each connection kind is called — the line-style picker reads these. */
+const CONNECTION_KIND_LABELS: Record<ConnectionKind, MultiLangString> = {
+  generic: ml('Link', 'Liaison', 'Verbindung'),
+  metro: ml('Metro', 'Métro', 'Metro'),
+  rail: ml('Rail', 'Voie ferrée', 'Bahn'),
+  power: ml('Power line', 'Ligne électrique', 'Stromleitung'),
+  cable: ml('Cable', 'Câble', 'Kabel'),
+  pipe: ml('Pipe', 'Conduite', 'Leitung'),
+  road: ml('Road', 'Route', 'Straße')
+};
 
 /** Label of an asset kind in the active language. */
 export function assetKindLabel(kind: AssetKind): string {
@@ -601,6 +692,16 @@ export function clusterTitle(
  * `"2 in alarm"` — the synthesis shown next to the asset count, so an operator sees how
  * many alarms the site holds without hunting for the markers that carry them.
  */
+/** `"3 layer(s)"` — how many layers the site declares. */
+export function layerUsageMsg(count: number): string {
+  return localize(MSG.layer.count).replace('%n', String(count));
+}
+
+/** `"3 point(s) de forme"` — how many shaping vertices a connection's path carries. */
+export function shapePointsMsg(count: number): string {
+  return localize(MSG.link.shapePoints).replace('%n', String(count));
+}
+
 export function alarmCountMsg(count: number): string {
   return localize(
     ml(

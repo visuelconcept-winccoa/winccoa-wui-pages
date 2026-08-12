@@ -31,7 +31,11 @@ import {
   defaultBasemap,
   type Area,
   type Asset,
+  type Connection,
+  type ConnectionKind,
+  type Layer,
   type Reading,
+  type Route,
   type Site
 } from '../types.js';
 
@@ -42,6 +46,38 @@ const AREA_SUD = 'sud';
 const AREA_HYPER = 'hyper-centre';
 const AREA_PRESQUILE = 'presquile';
 const AREA_VILLENEUVE = 'villeneuve';
+
+/**
+ * Asset ids, named because the network below references them by id as well — the same
+ * reason the area ids above are named.
+ */
+const A_USINE = 'usine-traitement';
+const A_CAPTAGE = 'captage-lac';
+const A_FORAGE = 'forage-fier';
+const A_POMPE_N = 'pompage-nord';
+const A_POMPE_S = 'pompage-sud';
+const A_RES_SEMNOZ = 'reservoir-semnoz';
+const A_RES_PUISOTS = 'reservoir-puisots';
+const A_RES_NORD = 'reservoir-nord';
+const A_VANNE_N = 'vanne-nord-1';
+const A_VANNE_C = 'vanne-centre-1';
+const A_DEBIT_C = 'debitmetre-centre';
+const A_DEBIT_S = 'debitmetre-sud';
+const A_SONDE_S = 'sonde-chlore-sud';
+const A_TUNNEL = 'tunnel-bastille';
+const A_FEU_HUGO = 'feu-hugo';
+const A_FEU_GARE = 'feu-gare';
+const A_FEU_VILLENEUVE = 'feu-villeneuve';
+const A_EP_CENTRE = 'ep-centre';
+const A_EP_PRESQUILE = 'ep-presquile';
+const A_LAMPE = 'lampe-berriat';
+const A_IRVE_GARE = 'irve-gare';
+
+/** Route ids, named because every segment of a line repeats its id. */
+const R_ADDUCTION = 'adduction';
+const R_REFOULEMENT = 'refoulement';
+const R_AXE = 'axe-structurant';
+const R_HTA = 'hta-eclairage';
 
 /** The example datapoints the demo readings bind to (see the module docs). */
 const DP_FLOW = 'System1:ExampleDP_Trend1.';
@@ -64,11 +100,42 @@ function reading(
 }
 
 /** Build an asset in one line, defaulting the parts most demo assets share. */
+/**
+ * Build a supervised link in one line. Its ends are asset **ids**, so the demo network
+ * follows its markers when any of them is dragged.
+ */
+function link(
+  id: string,
+  name: string,
+  kind: ConnectionKind,
+  from: string,
+  to: string,
+  routeId: string,
+  readings: Reading[] = []
+): Connection {
+  return {
+    id,
+    name,
+    kind,
+    from,
+    to,
+    via: [],
+    routeId,
+    areaIds: [],
+    layerIds: [],
+    dp: DP_FLOW,
+    readings,
+    link: '',
+    notes: ''
+  };
+}
+
 function asset(
   init: Partial<Asset> & Pick<Asset, 'id' | 'name' | 'kind' | 'lat' | 'lon'>
 ): Asset {
   return {
     areaIds: [],
+    layerIds: [],
     dp: DP_LEVEL,
     readings: [],
     link: '',
@@ -127,7 +194,7 @@ function waterAreas(): Area[] {
 function waterAssets(): Asset[] {
   return [
     asset({
-      id: 'usine-traitement',
+      id: A_USINE,
       name: 'Usine de traitement',
       kind: 'treatment',
       lat: 45.9048,
@@ -145,7 +212,7 @@ function waterAssets(): Asset[] {
       ]
     }),
     asset({
-      id: 'captage-lac',
+      id: A_CAPTAGE,
       name: 'Captage lac',
       kind: 'well',
       lat: 45.8862,
@@ -156,7 +223,7 @@ function waterAssets(): Asset[] {
       readings: [reading('q', DP_FLOW, 'Q', 'm³/h', 0, true)]
     }),
     asset({
-      id: 'forage-fier',
+      id: A_FORAGE,
       name: 'Forage du Fier',
       kind: 'well',
       lat: 45.9124,
@@ -169,7 +236,7 @@ function waterAssets(): Asset[] {
       ]
     }),
     asset({
-      id: 'pompage-nord',
+      id: A_POMPE_N,
       name: 'Pompage Nord',
       kind: 'pump',
       lat: 45.9251,
@@ -185,7 +252,7 @@ function waterAssets(): Asset[] {
       ]
     }),
     asset({
-      id: 'pompage-sud',
+      id: A_POMPE_S,
       name: 'Pompage Sud',
       kind: 'pump',
       lat: 45.8703,
@@ -199,7 +266,7 @@ function waterAssets(): Asset[] {
       ]
     }),
     asset({
-      id: 'reservoir-semnoz',
+      id: A_RES_SEMNOZ,
       name: 'Réservoir Semnoz',
       kind: 'tank',
       lat: 45.8709,
@@ -213,7 +280,7 @@ function waterAssets(): Asset[] {
       ]
     }),
     asset({
-      id: 'reservoir-puisots',
+      id: A_RES_PUISOTS,
       name: 'Réservoir des Puisots',
       kind: 'tank',
       lat: 45.8953,
@@ -223,7 +290,7 @@ function waterAssets(): Asset[] {
       readings: [reading('n', DP_LEVEL, 'Niveau', '%', 1, true)]
     }),
     asset({
-      id: 'reservoir-nord',
+      id: A_RES_NORD,
       name: 'Réservoir Nord',
       kind: 'tank',
       lat: 45.9312,
@@ -233,7 +300,7 @@ function waterAssets(): Asset[] {
       readings: [reading('n', DP_LEVEL, 'Niveau', '%', 1, true)]
     }),
     asset({
-      id: 'vanne-nord-1',
+      id: A_VANNE_N,
       name: 'Vanne sectorisation N1',
       kind: 'valve',
       lat: 45.9188,
@@ -243,7 +310,7 @@ function waterAssets(): Asset[] {
       readings: [reading('p', DP_PRESSURE, 'P', 'bar', 2, true)]
     }),
     asset({
-      id: 'vanne-centre-1',
+      id: A_VANNE_C,
       name: 'Vanne sectorisation C1',
       kind: 'valve',
       lat: 45.8991,
@@ -253,7 +320,7 @@ function waterAssets(): Asset[] {
       readings: [reading('p', DP_PRESSURE, 'P', 'bar', 2, true)]
     }),
     asset({
-      id: 'debitmetre-centre',
+      id: A_DEBIT_C,
       name: 'Débitmètre Centre',
       kind: 'meter',
       lat: 45.8964,
@@ -267,7 +334,7 @@ function waterAssets(): Asset[] {
       ]
     }),
     asset({
-      id: 'debitmetre-sud',
+      id: A_DEBIT_S,
       name: 'Débitmètre Sud',
       kind: 'meter',
       lat: 45.8641,
@@ -277,7 +344,7 @@ function waterAssets(): Asset[] {
       readings: [reading('q', DP_FLOW, 'Q', 'm³/h', 1, true)]
     }),
     asset({
-      id: 'sonde-chlore-sud',
+      id: A_SONDE_S,
       name: 'Sonde Cl₂ Sud',
       kind: 'sensor',
       lat: 45.8577,
@@ -339,7 +406,7 @@ function cityAreas(): Area[] {
 function cityAssets(): Asset[] {
   return [
     asset({
-      id: 'tunnel-bastille',
+      id: A_TUNNEL,
       name: 'Ventilation tunnel',
       kind: 'tunnel',
       lat: 45.1988,
@@ -378,7 +445,7 @@ function cityAssets(): Asset[] {
       readings: [reading('no2', DP_QUALITY, 'NO₂', 'µg/m³', 0, true)]
     }),
     asset({
-      id: 'feu-hugo',
+      id: A_FEU_HUGO,
       name: 'Carrefour Victor Hugo',
       kind: 'traffic',
       lat: 45.1901,
@@ -389,7 +456,7 @@ function cityAssets(): Asset[] {
       readings: [reading('veh', DP_COUNT, 'Véh/h', '', 0, true)]
     }),
     asset({
-      id: 'feu-gare',
+      id: A_FEU_GARE,
       name: 'Carrefour Gare',
       kind: 'traffic',
       lat: 45.1918,
@@ -399,7 +466,7 @@ function cityAssets(): Asset[] {
       readings: [reading('veh', DP_COUNT, 'Véh/h', '', 0, true)]
     }),
     asset({
-      id: 'feu-villeneuve',
+      id: A_FEU_VILLENEUVE,
       name: 'Carrefour Villeneuve',
       kind: 'traffic',
       lat: 45.1633,
@@ -409,7 +476,7 @@ function cityAssets(): Asset[] {
       readings: [reading('veh', DP_COUNT, 'Véh/h', '', 0, true)]
     }),
     asset({
-      id: 'ep-centre',
+      id: A_EP_CENTRE,
       name: 'Armoire EP Centre',
       kind: 'cabinet',
       lat: 45.1873,
@@ -424,7 +491,7 @@ function cityAssets(): Asset[] {
       ]
     }),
     asset({
-      id: 'ep-presquile',
+      id: A_EP_PRESQUILE,
       name: 'Armoire EP Presqu’île',
       kind: 'cabinet',
       lat: 45.2072,
@@ -434,7 +501,7 @@ function cityAssets(): Asset[] {
       readings: [reading('kw', DP_POWER, 'P', 'kW', 2, true)]
     }),
     asset({
-      id: 'lampe-berriat',
+      id: A_LAMPE,
       name: 'Éclairage Berriat',
       kind: 'light',
       lat: 45.1935,
@@ -444,7 +511,7 @@ function cityAssets(): Asset[] {
       readings: [reading('kw', DP_POWER, 'P', 'kW', 2, true)]
     }),
     asset({
-      id: 'irve-gare',
+      id: A_IRVE_GARE,
       name: 'Recharge Gare',
       kind: 'charger',
       lat: 45.1922,
@@ -484,6 +551,245 @@ function cityAssets(): Asset[] {
   ];
 }
 
+/** The two readings the water mains repeat, as their own helpers. */
+const flow = (): Reading[] => [reading('q', DP_FLOW, 'Q', 'm³/h', 0, true)];
+const pressure = (): Reading[] => [
+  reading('p', DP_PRESSURE, 'P', 'bar', 1, true)
+];
+
+// --- the demo networks -------------------------------------------------------
+
+/**
+ * The water network as supervised links: the raw-water mains up to the treatment plant,
+ * then the pumped mains out to the reservoirs, then distribution. Two named lines, because
+ * that is how an operator talks about them.
+ */
+function waterRoutes(): Route[] {
+  return [
+    {
+      id: R_ADDUCTION,
+      name: 'Adduction',
+      color: '#3ba1d9',
+      kind: 'pipe',
+      link: ''
+    },
+    {
+      id: R_REFOULEMENT,
+      name: 'Refoulement',
+      color: '#00b3a4',
+      kind: 'pipe',
+      link: ''
+    }
+  ];
+}
+
+function waterConnections(): Connection[] {
+  return [
+    link(
+      'add-captage',
+      'Captage → Usine',
+      'pipe',
+      A_CAPTAGE,
+      A_USINE,
+      R_ADDUCTION,
+      flow()
+    ),
+    link(
+      'add-forage',
+      'Forage → Usine',
+      'pipe',
+      A_FORAGE,
+      A_USINE,
+      R_ADDUCTION,
+      flow()
+    ),
+    link(
+      'ref-nord',
+      'Usine → Pompage Nord',
+      'pipe',
+      A_USINE,
+      A_POMPE_N,
+      R_REFOULEMENT,
+      pressure()
+    ),
+    link(
+      'ref-sud',
+      'Usine → Pompage Sud',
+      'pipe',
+      A_USINE,
+      A_POMPE_S,
+      R_REFOULEMENT,
+      pressure()
+    ),
+    link(
+      'ref-res-nord',
+      'Pompage Nord → Réservoir Nord',
+      'pipe',
+      A_POMPE_N,
+      A_RES_NORD,
+      R_REFOULEMENT
+    ),
+    link(
+      'ref-res-semnoz',
+      'Pompage Sud → Réservoir Semnoz',
+      'pipe',
+      A_POMPE_S,
+      A_RES_SEMNOZ,
+      R_REFOULEMENT
+    ),
+    link(
+      'ref-res-puisots',
+      'Usine → Réservoir Puisots',
+      'pipe',
+      A_USINE,
+      A_RES_PUISOTS,
+      R_REFOULEMENT
+    ),
+    link(
+      'dist-nord',
+      'Réservoir Nord → Vanne Nord',
+      'pipe',
+      A_RES_NORD,
+      A_VANNE_N,
+      ''
+    ),
+    link(
+      'dist-centre',
+      'Réservoir Puisots → Vanne Centre',
+      'pipe',
+      A_RES_PUISOTS,
+      A_VANNE_C,
+      ''
+    ),
+    link(
+      'dist-centre-2',
+      'Vanne Centre → Débitmètre Centre',
+      'pipe',
+      A_VANNE_C,
+      A_DEBIT_C,
+      ''
+    ),
+    link(
+      'dist-sud',
+      'Réservoir Semnoz → Débitmètre Sud',
+      'pipe',
+      A_RES_SEMNOZ,
+      A_DEBIT_S,
+      ''
+    ),
+    link(
+      'dist-sud-2',
+      'Débitmètre Sud → Sonde chlore',
+      'pipe',
+      A_DEBIT_S,
+      A_SONDE_S,
+      ''
+    )
+  ];
+}
+
+/**
+ * The city as supervised links: a structuring road axis through its signalled junctions,
+ * and the feeder supplying the public-lighting cabinets.
+ */
+function cityRoutes(): Route[] {
+  return [
+    {
+      id: R_AXE,
+      name: 'Axe structurant',
+      color: '#f0a30a',
+      kind: 'road',
+      link: ''
+    },
+    {
+      id: R_HTA,
+      name: 'Départ HTA éclairage',
+      color: '#e2001a',
+      kind: 'power',
+      link: ''
+    }
+  ];
+}
+
+function cityConnections(): Connection[] {
+  const traffic = (): Reading[] => [
+    reading('n', DP_COUNT, 'Débit', 'véh/h', 0, true)
+  ];
+  return [
+    link(
+      'axe-1',
+      'Gare → Victor Hugo',
+      'road',
+      A_FEU_GARE,
+      A_FEU_HUGO,
+      R_AXE,
+      traffic()
+    ),
+    link(
+      'axe-2',
+      'Victor Hugo → Villeneuve',
+      'road',
+      A_FEU_HUGO,
+      A_FEU_VILLENEUVE,
+      R_AXE,
+      traffic()
+    ),
+    link(
+      'axe-tunnel',
+      'Villeneuve → Tunnel Bastille',
+      'road',
+      A_FEU_VILLENEUVE,
+      A_TUNNEL,
+      R_AXE
+    ),
+    link(
+      'hta-1',
+      'Armoire Centre → Armoire Presqu’île',
+      'power',
+      A_EP_CENTRE,
+      A_EP_PRESQUILE,
+      R_HTA,
+      [reading('p', DP_POWER, 'P', 'kW', 1, true)]
+    ),
+    link(
+      'hta-2',
+      'Armoire Presqu’île → Berriat',
+      'power',
+      A_EP_PRESQUILE,
+      A_LAMPE,
+      R_HTA
+    ),
+    link(
+      'irve-feed',
+      'Armoire Centre → IRVE Gare',
+      'cable',
+      A_EP_CENTRE,
+      A_IRVE_GARE,
+      ''
+    )
+  ];
+}
+
+/**
+ * Information layers of the demo sites — classification, not geography: what an operator
+ * wants to switch on and off while looking at the same map.
+ */
+function waterLayers(): Layer[] {
+  return [
+    { id: 'critique', name: 'Ouvrages critiques', color: '#e2001a' },
+    { id: 'sectorisation', name: 'Sectorisation', color: '#3ba1d9' },
+    { id: 'tranche-2', name: 'Tranche 2', color: '#f0a30a' }
+  ];
+}
+
+function cityLayers(): Layer[] {
+  return [
+    { id: 'mobilite', name: 'Mobilité', color: '#f0a30a' },
+    { id: 'environnement', name: 'Environnement', color: '#00b3a4' },
+    { id: 'energie', name: 'Énergie', color: '#e2001a' }
+  ];
+}
+
 // --- seeds -------------------------------------------------------------------
 
 /**
@@ -504,6 +810,9 @@ export function demoSites(): Site[] {
       groupZoom: AUTO_GROUP_ZOOM,
       areas: waterAreas(),
       assets: waterAssets(),
+      layers: waterLayers(),
+      routes: waterRoutes(),
+      connections: waterConnections(),
       updatedAt: ''
     },
     {
@@ -518,6 +827,9 @@ export function demoSites(): Site[] {
       groupZoom: AUTO_GROUP_ZOOM,
       areas: cityAreas(),
       assets: cityAssets(),
+      layers: cityLayers(),
+      routes: cityRoutes(),
+      connections: cityConnections(),
       updatedAt: ''
     }
   ];

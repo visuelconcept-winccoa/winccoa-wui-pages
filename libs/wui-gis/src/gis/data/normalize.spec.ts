@@ -241,14 +241,14 @@ describe('site sanitiser', () => {
   // fixture has to exceed the real MAX_ASSETS to exercise truncation at all.
   const huge = {
     name: 'Huge',
-    assets: Array.from({ length: 1200 }, (_, i) => ({
+    assets: Array.from({ length: 10_200 }, (_, i) => ({
       name: `a${i}`,
-      lat: 45 + i / 10_000,
+      lat: 45 + i / 1_000_000,
       lon: 6
     }))
   };
   const big = normalizeSite(huge, AREA_PALETTE);
-  check('assets capped at MAX_ASSETS', big.site.assets.length, 1000);
+  check('assets capped at MAX_ASSETS', big.site.assets.length, 10_000);
   check('truncation reported', big.report.truncated, true);
 
   // Garbage in, empty site out — never a throw.

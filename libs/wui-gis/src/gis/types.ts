@@ -163,6 +163,11 @@ export interface Asset {
    */
   areaIds: string[];
   /**
+   * Information layers tagging this asset — free classification, unrelated to geography.
+   * See {@link Layer}.
+   */
+  layerIds: string[];
+  /**
    * The asset's *primary* datapoint element. Its `_alert_hdl` active-state colour
    * is what highlights the marker, and it is the scope handed to the Alarms page
    * on drill-down. Empty ⇒ the asset shows no state (a purely locational marker).
@@ -179,6 +184,154 @@ export interface Asset {
   link: string;
   /** Free-text note shown in the inspector. */
   notes: string;
+}
+
+// --- information layers ------------------------------------------------------
+
+/**
+ * An **information layer**: a free tag put on assets and connections, and switched on and
+ off in the layer browser.
+ *
+ * Orthogonal to an {@link Area} on purpose. A zone is *geography* — a polygon, with assets
+ * inside it, used for grouping and roll-ups. A layer is *classification* — "critical",
+ * "phase 2", "public lighting", "to be renewed" — with no shape of its own and no
+ * containment rule. Forcing one concept to do both jobs is how you end up with zones that
+ * overlap for reasons that have nothing to do with the map.
+ *
+ * **Visibility is not stored here.** Which layers are shown is a property of *the person
+ * looking*, not of the site, so it lives in the page for the session and every layer is
+ * visible when a site opens. A stored default would be a second kind of truth about
+ * visibility, and the first question would be whose default it is.
+ */
+export interface Layer {
+  /** Stable id, unique within the site. */
+  id: string;
+  /** Display name — what the tag reads as (e.g. `Critique`, `Tranche 2`). */
+  name: string;
+  /** Colour of its chip and of the dot on a tagged marker, as `#rrggbb`. */
+  color: string;
+}
+
+/**
+ * Is this object drawn, given the layers currently switched off?
+ *
+ * An object carrying **no** layer is always drawn — it is untagged, not hidden, and hiding
+ * everything untagged the moment one layer is switched off would make the browser unusable.
+ * A tagged object survives while **at least one** of its layers is still on, which is the
+ * useful reading for tags: something both `Critique` and `Tranche 2` stays visible while
+ * either of those is being looked at.
+ */
+export function visibleUnderLayers(
+  layerIds: readonly string[],
+  hidden: ReadonlySet<string>
+): boolean {
+  if (layerIds.length === 0) return true;
+  return layerIds.some((id) => !hidden.has(id));
+}
+
+/** The layers of this site named by these ids, in the site's own order. */
+export function layersOf(site: Site, layerIds: readonly string[]): Layer[] {
+  return site.layers.filter((layer) => layerIds.includes(layer.id));
+}
+
+/** How many assets and connections carry this layer. */
+export function layerUsage(site: Site, layerId: string): number {
+  const tagged = (ids: readonly string[]): boolean => ids.includes(layerId);
+  return (
+    site.assets.filter((asset) => tagged(asset.layerIds)).length +
+    site.connections.filter((link) => tagged(link.layerIds)).length
+  );
+}
+
+/** A blank layer. */
+export function blankLayer(id: string, name: string, color: string): Layer {
+  return { id, name, color };
+}
+
+// --- connections and routes --------------------------------------------------
+
+/**
+ * What a connection represents, which picks how the line is drawn (width, dashes) —
+ * a closed list for the same reason {@link AssetKind} is one.
+ */
+export type ConnectionKind =
+  'generic' | 'metro' | 'rail' | 'power' | 'cable' | 'pipe' | 'road';
+
+export const CONNECTION_KINDS: readonly ConnectionKind[] = [
+  'generic',
+  'metro',
+  'rail',
+  'power',
+  'cable',
+  'pipe',
+  'road'
+];
+
+/**
+ * A **supervised link between two assets** — a metro segment, a feeder, a main, a road.
+ *
+ * It carries everything an {@link Asset} carries except a position: a primary datapoint
+ * whose alert state colours it, live readings, a drill-down route, zone membership. A line
+ * on this map is a supervised object, not decoration; that is the whole point of the
+ * concept, because a feeder has a current and a track section has a status.
+ *
+ * **Its geometry is topology, not coordinates.** `from` and `to` name assets, so dragging a
+ * substation drags every line attached to it. Storing endpoint coordinates instead would
+ * desynchronise the network on the first edit, which is how this kind of feature ends up
+ * switched off. `via` only *shapes* the line between those two ends.
+ */
+export interface Connection {
+  /** Stable id, unique within the site. */
+  id: string;
+  /** Display name (e.g. `Gare → Centre`, `Départ HTA n°3`). */
+  name: string;
+  /** Which line style is drawn. */
+  kind: ConnectionKind;
+  /** Id of the {@link Asset} this starts at. A connection with no such asset is dropped. */
+  from: string;
+  /** Id of the {@link Asset} this ends at. */
+  to: string;
+  /**
+   * Optional shaping vertices between the two ends, as `[lon, lat]` pairs (GeoJSON axis
+   * order, like {@link Area.ring}). Empty ⇒ a straight line. This is what lets a track
+   * follow its real alignment rather than a chord.
+   */
+  via: readonly (readonly [number, number])[];
+  /** The {@link Route} this belongs to; empty ⇒ standalone. */
+  routeId: string;
+  /** Zones this connection belongs to — several, exactly as {@link Asset.areaIds}. */
+  areaIds: string[];
+  /** Information layers tagging this connection, exactly as {@link Asset.layerIds}. */
+  layerIds: string[];
+  /** Primary datapoint element: its alert colour paints the line. Same contract as an asset's. */
+  dp: string;
+  /** Live values, shown on hover and in the inspector. */
+  readings: Reading[];
+  /** Drill-down target (same contract as {@link Asset.link}). */
+  link: string;
+  /** Free-text note shown in the inspector. */
+  notes: string;
+}
+
+/**
+ * A named line made of {@link Connection}s — « Ligne 1 », « Départ HTA n°3 ».
+ *
+ * **It deliberately does not list its stops.** The order is derived by walking the
+ * `from`/`to` chain of its connections ({@link routeOrder}); storing a stop list beside the
+ * segments would be two versions of the same truth, and they diverge on the first insertion.
+ * A branching line has no single order, and the derivation says so rather than inventing one.
+ */
+export interface Route {
+  /** Stable id, unique within the site. */
+  id: string;
+  /** Display name (e.g. `Ligne 1`). */
+  name: string;
+  /** Colour of every connection on this line, as `#rrggbb`. */
+  color: string;
+  /** Default kind offered when drawing onto this line. */
+  kind: ConnectionKind;
+  /** Drill-down target for the line itself (same contract as {@link Asset.link}). */
+  link: string;
 }
 
 // --- areas -------------------------------------------------------------------
@@ -233,6 +386,12 @@ export interface Site {
   basemap: Basemap;
   areas: Area[];
   assets: Asset[];
+  /** Information layers: free tags on assets and connections, toggled in the browser. */
+  layers: Layer[];
+  /** Named lines grouping the connections below (« Ligne 1 »). */
+  routes: Route[];
+  /** Supervised links between assets — the network drawn over the map. */
+  connections: Connection[];
   /**
    * Zoom below which the WHOLE site collapses into a single count badge — the outermost
    * step of the grouping hierarchy.
@@ -260,6 +419,9 @@ export function blankSite(): Site {
     basemap: defaultBasemap(),
     areas: [],
     assets: [],
+    layers: [],
+    routes: [],
+    connections: [],
     groupZoom: AUTO_GROUP_ZOOM,
     updatedAt: ''
   };
@@ -389,6 +551,142 @@ export function inArea(asset: Asset, areaId: string): boolean {
 export function assetsOfArea(site: Site, areaId: string): Asset[] {
   if (!areaId) return site.assets.filter((asset) => asset.areaIds.length === 0);
   return site.assets.filter((asset) => inArea(asset, areaId));
+}
+
+// --- connection queries ------------------------------------------------------
+
+/** One asset by id, or `null`. */
+export function assetById(site: Site, id: string): Asset | null {
+  return site.assets.find((asset) => asset.id === id) ?? null;
+}
+
+/** One route by id, or `null`. */
+export function routeById(site: Site, id: string): Route | null {
+  return site.routes.find((route) => route.id === id) ?? null;
+}
+
+/**
+ * The drawable path of a connection: its start asset, its shaping vertices, its end asset,
+ * as `[lon, lat]` pairs. `null` when either end no longer resolves to an asset — the caller
+ * then draws nothing rather than a line to (0, 0).
+ *
+ * Resolved on every read instead of stored, which is what makes a dragged asset take its
+ * lines with it for free.
+ */
+export function connectionPath(
+  site: Site,
+  connection: Connection
+): [number, number][] | null {
+  const start = assetById(site, connection.from);
+  const end = assetById(site, connection.to);
+  if (!start || !end) return null;
+  if (!isValidLatLon(start.lat, start.lon)) return null;
+  if (!isValidLatLon(end.lat, end.lon)) return null;
+  return [
+    [start.lon, start.lat],
+    ...connection.via.map(([lon, lat]) => [lon, lat] as [number, number]),
+    [end.lon, end.lat]
+  ];
+}
+
+/** Every connection touching this asset — what has to go when the asset does. */
+export function connectionsOfAsset(site: Site, assetId: string): Connection[] {
+  return site.connections.filter(
+    (connection) => connection.from === assetId || connection.to === assetId
+  );
+}
+
+/** The connections of one route, in declaration order. `''` selects the standalone ones. */
+export function connectionsOfRoute(site: Site, routeId: string): Connection[] {
+  if (!routeId)
+    return site.connections.filter((connection) => connection.routeId === '');
+  return site.connections.filter(
+    (connection) => connection.routeId === routeId
+  );
+}
+
+/** The colour a connection is drawn in: its route's, else the neutral default. */
+export function connectionColor(site: Site, connection: Connection): string {
+  return routeById(site, connection.routeId)?.color ?? DEFAULT_LINE_COLOR;
+}
+
+/** Colour of a connection belonging to no route. */
+export const DEFAULT_LINE_COLOR = '#8a93a6';
+
+/**
+ * The asset ids of a route in travel order, or `null` when its connections do not form one
+ * simple path — a Y-shaped feeder, a gap, a loop.
+ *
+ * Derived rather than stored: a stored stop list is a second version of the same truth and
+ * diverges the first time a segment is inserted. Returning `null` is the honest answer for a
+ * branching line, so the UI can list its segments instead of showing an invented sequence.
+ */
+export function routeOrder(site: Site, routeId: string): string[] | null {
+  const segments = connectionsOfRoute(site, routeId);
+  if (segments.length === 0) return null;
+  const neighbours = new Map<string, string[]>();
+  for (const segment of segments) {
+    if (segment.from === segment.to) return null;
+    neighbours.set(segment.from, [
+      ...(neighbours.get(segment.from) ?? []),
+      segment.to
+    ]);
+    neighbours.set(segment.to, [
+      ...(neighbours.get(segment.to) ?? []),
+      segment.from
+    ]);
+  }
+  // A simple path has exactly two ends (one neighbour each); anything else branches or loops.
+  const ends = [...neighbours].filter(([, next]) => next.length === 1);
+  if (ends.length !== 2) return null;
+  if ([...neighbours].some(([, next]) => next.length > 2)) return null;
+
+  const order: string[] = [(ends[0] as [string, string[]])[0]];
+  const seen = new Set(order);
+  while (order.length <= segments.length) {
+    const current = order.at(-1) as string;
+    const next = (neighbours.get(current) ?? []).find((id) => !seen.has(id));
+    if (next === undefined) break;
+    order.push(next);
+    seen.add(next);
+  }
+  // Every segment walked exactly once ⇒ one connected path, not two disjoint runs.
+  return order.length === segments.length + 1 ? order : null;
+}
+
+/** A connection with nothing filled in but its ends — what the draw tool produces. */
+export function blankConnection(
+  id: string,
+  from: string,
+  to: string,
+  kind: ConnectionKind,
+  routeId: string
+): Connection {
+  return {
+    id,
+    name: '',
+    kind,
+    from,
+    to,
+    via: [],
+    routeId,
+    areaIds: [],
+    layerIds: [],
+    dp: '',
+    readings: [],
+    link: '',
+    notes: ''
+  };
+}
+
+/** A blank named line. */
+export function blankRoute(
+  id: string,
+  name: string,
+  color: string,
+  kind: ConnectionKind
+): Route {
+  return { id, name, color, kind, link: '' };
 }
 
 /**

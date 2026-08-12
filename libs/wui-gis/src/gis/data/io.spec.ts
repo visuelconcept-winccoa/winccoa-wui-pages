@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   baseName,
   exportSiteGeoJson,
+  geoJsonToSite,
   parseImport,
   siteToGeoJson
 } from './io.js';
@@ -71,8 +72,18 @@ describe('import / export', () => {
   );
   check(
     'area membership round-trips',
-    rt.assets.map((a) => a.areaId),
-    water.assets.map((a) => a.areaId)
+    rt.assets.map((a) => a.areaIds),
+    water.assets.map((a) => a.areaIds)
+  );
+  check(
+    'layer tags round-trip',
+    rt.assets.map((a) => a.layerIds),
+    water.assets.map((a) => a.layerIds)
+  );
+  check(
+    'the network round-trips',
+    rt.connections.map((c) => [c.id, c.from, c.to, c.routeId]),
+    water.connections.map((c) => [c.id, c.from, c.to, c.routeId])
   );
   check('basemap round-trips', rt.basemap, water.basemap);
 
@@ -101,9 +112,44 @@ describe('import / export', () => {
   const geo = siteToGeoJson(water);
   check('GeoJSON is a FeatureCollection', geo.type, 'FeatureCollection');
   check(
-    'one feature per area with a ring, plus one per asset',
+    'one feature per area with a ring, per asset, and per connection',
     geo.features.length,
-    water.areas.filter((a) => a.ring.length >= 3).length + water.assets.length
+    water.areas.filter((a) => a.ring.length >= 3).length +
+      water.assets.length +
+      water.connections.length
+  );
+  check(
+    'connections travel as LineStrings',
+    geo.features.filter((f) => f.geometry.type === 'LineString').length,
+    water.connections.length
+  );
+  check(
+    'a connection keeps its topology, not just its coordinates',
+    geo.features
+      .filter((f) => f.properties['gisType'] === 'connection')
+      .every((f) => f.properties['from'] !== '' && f.properties['to'] !== ''),
+    true
+  );
+  // Routes and layers have no geometry, so a round-trip has to carry them as metadata or
+  // every line name and every tag is silently lost.
+  check(
+    'routes and layers survive the GeoJSON round-trip',
+    [
+      (geo.properties?.['routes'] as unknown[] | undefined)?.length,
+      (geo.properties?.['layers'] as unknown[] | undefined)?.length
+    ],
+    [water.routes.length, water.layers.length]
+  );
+  const network = geoJsonToSite(geo, 'fallback').site;
+  check(
+    'and come back as the same network',
+    [network.connections.length, network.routes.length, network.layers.length],
+    [water.connections.length, water.routes.length, water.layers.length]
+  );
+  check(
+    'a connection comes back joined to the same two assets',
+    network.connections.map((c) => `${c.from}->${c.to}`).sort(),
+    water.connections.map((c) => `${c.from}->${c.to}`).sort()
   );
   check(
     'polygon rings are closed for GeoJSON',
@@ -152,8 +198,8 @@ describe('import / export', () => {
   );
   check(
     'GeoJSON keeps area membership',
-    g.assets.map((a) => a.areaId),
-    water.assets.map((a) => a.areaId)
+    g.assets.map((a) => a.areaIds),
+    water.assets.map((a) => a.areaIds)
   );
   check(
     'GeoJSON keeps the readings',
@@ -200,6 +246,11 @@ describe('import / export', () => {
     ]
   };
   const f = parseImport(JSON.stringify(foreign), 'Survey 2026').sites[0]!.site;
+  check(
+    'a foreign LineString is dropped, not wired to the nearest markers',
+    f.connections.length,
+    0
+  );
   check('a foreign layer names itself from the file', f.name, 'Survey 2026');
   check('a polygon becomes an area', f.areas.length, 1);
   check('a point becomes an asset', f.assets.length, 1);

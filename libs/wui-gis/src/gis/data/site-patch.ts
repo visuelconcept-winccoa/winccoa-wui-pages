@@ -45,6 +45,13 @@ import {
 const METERS_PER_DEGREE = 111_320;
 /** Hard ceiling on ONE generate op, so a runaway `count` cannot lock the page. */
 const GENERATE_MAX = 2000;
+
+/** What {@link expandGenerate} produced, and whether it had to cut an op short. */
+export interface Generated {
+  assets: Record<string, unknown>[];
+  /** True when an op asked for more than {@link GENERATE_MAX}. */
+  clamped: boolean;
+}
 const MIN_RING = 3;
 const FULL_TURN = 360;
 const DEG_TO_RAD = Math.PI / 180;
@@ -192,11 +199,9 @@ export function applySitePatch(
     patch.mode === 'replace'
       ? patch.areas.upsert
       : mergeById(base.areas, patch.areas);
+  const generated = expandGenerate(patch.assets.generate, base);
   const assetOps = {
-    upsert: [
-      ...patch.assets.upsert,
-      ...expandGenerate(patch.assets.generate, base)
-    ],
+    upsert: [...patch.assets.upsert, ...generated.assets],
     remove: patch.assets.remove
   };
   const assets =
@@ -204,7 +209,7 @@ export function applySitePatch(
       ? assetOps.upsert
       : mergeById(base.assets, assetOps);
 
-  return normalizeSite(
+  const result = normalizeSite(
     {
       ...base,
       ...patch.site,
@@ -216,6 +221,11 @@ export function applySitePatch(
     },
     palette
   );
+  // A generate op cut down to its own ceiling is a truncation the user must be told about,
+  // exactly as an over-long asset list is.
+  return generated.clamped
+    ? { ...result, report: { ...result.report, truncated: true } }
+    : result;
 }
 
 /**
@@ -264,18 +274,22 @@ function mergeById(
  * This is the answer to bulk creation: `{ pattern: "line", count: 120, … }` is a
  * handful of tokens that becomes 120 assets here, deterministically, instead of
  * 120 objects the model has to write out (and truncate).
+ *
+ * It reports its own clamping, because nothing else can any more: an op asking for more
+ * than {@link GENERATE_MAX} used to overflow the site ceiling, and the sanitiser reported
+ * the truncation on its behalf. That ceiling is now 10 000, which one op cannot reach — so
+ * without this flag a request for 5000 would quietly yield 2000 and say nothing.
  */
-export function expandGenerate(
-  ops: unknown[],
-  site: Site
-): Record<string, unknown>[] {
-  const out: Record<string, unknown>[] = [];
+export function expandGenerate(ops: unknown[], site: Site): Generated {
+  const assets: Record<string, unknown>[] = [];
+  let clamped = false;
   for (const raw of ops) {
     const op = record(raw);
     if (!op) continue;
-    out.push(...expandOne(op, site));
+    if (num(op['count'], 0) > GENERATE_MAX) clamped = true;
+    assets.push(...expandOne(op, site));
   }
-  return out;
+  return { assets, clamped };
 }
 
 function expandOne(
