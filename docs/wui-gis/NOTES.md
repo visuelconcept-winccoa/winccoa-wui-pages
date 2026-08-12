@@ -412,34 +412,53 @@ both forms independently.
 
 ## Fitting an outline to its assets
 
-**Fit around the assets** on a selected area redraws its outline around the assets it
-lists, pushed out so the markers sit inside the outline rather than on it
-(`encloseAssets` in `gis/enclose.ts`). Three decisions, each taken against a specific way
-the outline came out wrong:
+**Fit around the assets** redraws a selected area's outline around the assets it lists
+(`gis/enclose.ts`). Three decisions, each taken against a way the outline looked wrong.
 
-**Concave, not the convex hull.** A hull round a network is a connect-the-outer-assets
-shape closed by a long chord across empty ground, which reads on the map as "it joined the
-last asset back to the first". A water network follows mains and a district follows
-streets; both are concave. So the hull is dug inwards (a *chi-shape*): the longest boundary
-edge is repeatedly replaced by two shorter ones through the nearest unused asset, for as
-long as the polygon stays simple. Not dug maximally, either — a maximally tight outline
-threads between assets a human would have enclosed together.
+**Concave, not the convex hull.** The first version was the convex hull, and on a real
+network it reads as *"it joined the last asset back to the first"*: the hull's closing edge is
+a long chord across empty ground, and a C-shaped or L-shaped layout has its bay swallowed
+whole. A water network follows mains and a district follows streets — both concave. The hull
+is therefore **dug inwards** (a *chi-shape*): the longest boundary edge is replaced by two
+edges through the nearest asset not yet on the boundary, repeatedly, as long as that keeps
+the polygon simple.
 
-**A margin proportional to the group**, 8 % of its diagonal, floored and capped. A fixed
-150 m is most of a pumping station and a rounding error on a 12 km sector; both have to
-look deliberately drawn.
+Two things about the digging are worth keeping, because both were wrong first:
 
-**Rounded corners, and the outline never touches a marker.** The ring is the offset of the
-dug polygon — sides pushed outwards, convex corners turned into short arcs, reflex corners
-mitred — so a single asset becomes a disc and a straight run of valves a capsule, instead
-of a polygon with no area that a fill cannot show. A straight run is not a theoretical
-case: a line of valves along a main is exactly collinear.
+- **The detour is bounded, not required to shrink.** The textbook rule accepts an insertion
+  only when both new edges are shorter than the one they replace. That rule *cannot carve a
+  square bay*: reaching the inner corner of an arm always costs one edge longer than the
+  chord across the mouth, so the bay stayed filled. What actually bounds the work is the
+  pool, not the geometry — every insertion consumes an asset for good, and a refused edge is
+  abandoned for good, so it terminates either way.
+- **The threshold is measured in asset spacings**, so one default fits a city district and a
+  15 km main: an edge spanning several asset-gaps is bridging a hole, whatever the scale.
+  The usable band is narrow and was *measured*, not guessed — a clearly C-shaped layout has a
+  mouth only about **two** spacings wide, so any factor above 2 leaves the bay filled. That
+  is exactly what the first calibration (1.5–12, default ≈ 5.7) did: it never dug anything.
+  The band is now 1.2–3 with the default at 1.74.
 
-All of it is computed in a **local metric plane** (metres from the group's centre), since a
-margin and an edge length are distances and a degree of longitude is not a degree of
-latitude; only the input and the result are geographic. The result is always a **simple**
-polygon — the offset is validated, retried tighter, and falls back to the convex outline
-rather than handing MapLibre a self-crossing ring it would fill inside out.
+Aggressive digging is safer than it looks: an insertion can only ever use an asset that is
+**not** on the hull, so a sparse layout has nothing to reach for and stays convex regardless.
+
+**The margin is proportional to the group.** 150 m — the first version, fixed — is most of a
+pumping station and a rounding error on a 12 km sector. The outline sits at **8 % of the
+group's diagonal**, floored at 50 m and capped at 500 m.
+
+**Corners are rounded, so no marker sits on the boundary.** The ring is the *offset* of the
+dug polygon: each side pushed out along its outward normal, each convex corner turned into a
+short arc, each reflex corner mitred (and, past a mitre four margins long, cut off rather
+than allowed to shoot away). One asset therefore becomes a disc and a straight run of valves
+a capsule — a polygon with no area, which the earlier version could produce, has no fill to
+show.
+
+### Guarantees, and how they are kept
+
+| Guarantee | How |
+| --- | --- |
+| Every asset the area lists is inside | Digging only moves the boundary onto assets; the offset then moves it outwards. Asserted over the demo sites and 60 pseudo-random layouts |
+| The ring never crosses itself | Insertions are rejected when they would cross; the offset is validated and retried at half the margin, then falls back to the convex outline, which is always offsettable |
+| The ring is at most 64 points | The sanitiser keeps 64 (`MAX_RING_POINTS`), and a truncated ring is a *different shape*. Corners are capped at 20 and the arc detail is fitted into what is left; corners the margin would hide are dropped first, and a hull still over budget after that — a genuinely round blob of a hundred assets — becomes the enclosing disc |
 
 It uses every asset the area **lists**, shared ones included: the outline should enclose what
 the area claims, not only what it happens to own for drawing.

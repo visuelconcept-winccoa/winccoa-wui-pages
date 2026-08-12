@@ -16,8 +16,7 @@ describe('fitting an outline around assets', () => {
       a: readonly [number, number],
       b: readonly [number, number],
       c: readonly [number, number]
-    ): number =>
-      (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    ): number => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
     for (let i = 0; i < ring.length; i++) {
       for (let j = i + 1; j < ring.length; j++) {
         if (j === i + 1 || (i === 0 && j === ring.length - 1)) continue;
@@ -122,7 +121,7 @@ describe('fitting an outline around assets', () => {
       return span / own;
     };
     const small = relative([p(45.9, 6.1), p(45.902, 6.1), p(45.901, 6.103)]);
-    const large = relative([p(45.7, 6.0), p(46.1, 6.0), p(45.9, 6.4)]);
+    const large = relative([p(45.7, 6), p(46.1, 6), p(45.9, 6.4)]);
     // Both grow by a similar *proportion*; a fixed margin would blow the small one up.
     expect(small).toBeLessThan(4);
     expect(large).toBeGreaterThan(1.02);
@@ -215,7 +214,9 @@ describe('fitting an outline around assets', () => {
     for (let i = 0; i < 300; i++) {
       const angle = (i / 300) * Math.PI * 2;
       const radius = 0.02 + 0.01 * Math.sin(i);
-      many.push(p(45.9 + Math.sin(angle) * radius, 6.1 + Math.cos(angle) * radius));
+      many.push(
+        p(45.9 + Math.sin(angle) * radius, 6.1 + Math.cos(angle) * radius)
+      );
     }
     const ring = encloseAssets(many)!;
     expect(ring.length).toBeLessThanOrEqual(64);

@@ -58,9 +58,15 @@ export function encloseAssets(
   if (usable.length === 0) return null;
   const centre = meanOf(usable);
   const plane = planeAt(centre.lat);
-  const projected = dedupe(usable.map((point) => project(point, centre, plane)));
+  const projected = dedupe(
+    usable.map((point) => project(point, centre, plane))
+  );
   const margin = options.marginM ?? autoMargin(projected);
-  const ring = outline(projected, margin, options.tightness ?? DEFAULT_TIGHTNESS);
+  const ring = outline(
+    projected,
+    margin,
+    options.tightness ?? DEFAULT_TIGHTNESS
+  );
   return ring.map((point) => unproject(point, centre, plane));
 }
 
@@ -245,7 +251,11 @@ function autoMargin(points: readonly Pt[]): number {
  * offset of the dug hull — falling back tighter, then convex, so the result is always a
  * simple polygon.
  */
-function outline(points: readonly Pt[], margin: number, tightness: number): Pt[] {
+function outline(
+  points: readonly Pt[],
+  margin: number,
+  tightness: number
+): Pt[] {
   const hull = decimate(convexHull(points), margin);
   if (hull.length < MIN_HULL) return capsule(hull, points, margin);
   // A hull still over budget after decimation is a genuinely round blob: two dozen corners
@@ -313,7 +323,11 @@ function enclosingCircle(points: readonly Pt[], margin: number): Pt[] {
 }
 
 /** A disc round one point, or a capsule round two — what a degenerate hull deserves. */
-function capsule(hull: readonly Pt[], points: readonly Pt[], margin: number): Pt[] {
+function capsule(
+  hull: readonly Pt[],
+  points: readonly Pt[],
+  margin: number
+): Pt[] {
   const first = hull[0] ?? points[0] ?? { x: 0, y: 0 };
   const second = hull[1];
   if (!second) {
@@ -361,8 +375,8 @@ function convexHull(points: readonly Pt[]): Pt[] {
       while (
         out.length >= 2 &&
         cross(
-          sub(out[out.length - 1] as Pt, out[out.length - 2] as Pt),
-          sub(point, out[out.length - 1] as Pt)
+          sub(out.at(-1) as Pt, out.at(-2) as Pt),
+          sub(point, out.at(-1) as Pt)
         ) <= 0
       ) {
         out.pop();
@@ -406,7 +420,11 @@ function digThreshold(points: readonly Pt[], tightness: number): number {
  * {@link DETOUR_MAX} and neither new edge crosses the boundary. It terminates because every
  * pass either consumes an asset from the pool for good or abandons an edge for good.
  */
-function dig(hull: readonly Pt[], points: readonly Pt[], maxEdge: number): Pt[] {
+function dig(
+  hull: readonly Pt[],
+  points: readonly Pt[],
+  maxEdge: number
+): Pt[] {
   const ring = [...hull];
   const pool = points.filter((point) => !hull.includes(point));
   const abandoned = new Set<Pt>();
@@ -535,11 +553,14 @@ function offsetRing(ring: readonly Pt[], margin: number): Pt[] {
       continue;
     }
     const mitre = mitred(corner, incoming, outgoing, margin);
-    if (mitre) out.push(mitre);
-    else {
-      out.push(offsetBy(corner, incoming, margin));
-      out.push(offsetBy(corner, outgoing, margin));
-    }
+    out.push(
+      ...(mitre
+        ? [mitre]
+        : [
+            offsetBy(corner, incoming, margin),
+            offsetBy(corner, outgoing, margin)
+          ])
+    );
   }
   return out;
 }
@@ -559,14 +580,22 @@ function cornerArc(
   const from = Math.atan2(incoming.y, incoming.x);
   let to = Math.atan2(outgoing.y, outgoing.x);
   while (to < from) to += FULL_TURN;
-  return [...arc(corner, margin, from, to, steps + 1), offsetBy(corner, outgoing, margin)];
+  return [
+    ...arc(corner, margin, from, to, steps + 1),
+    offsetBy(corner, outgoing, margin)
+  ];
 }
 
 /**
  * A reflex corner's exact offset: where the two offset sides meet. `null` when the corner
  * is so sharp that the meeting point runs away past {@link MITER_CAP}.
  */
-function mitred(corner: Pt, incoming: Pt, outgoing: Pt, margin: number): Pt | null {
+function mitred(
+  corner: Pt,
+  incoming: Pt,
+  outgoing: Pt,
+  margin: number
+): Pt | null {
   const bisector = { x: incoming.x + outgoing.x, y: incoming.y + outgoing.y };
   const len = length(bisector);
   if (len === 0) return null;
