@@ -34,7 +34,13 @@
 //        --modules machine-fleet-3d,fleet-closures,audit-trail,para,process-monitor --yes
 //
 // Options:
-//   --project <root>      Target WinCC OA project root (else prompted).
+//   --project <root>      Target WinCC OA project root (else prompted, else the
+//                         one remembered from the last run).
+//   --workspace <dir>     The @wincc-oa/webui-runtime workspace that BUILDS the
+//                         pages. Defaults to `<repo>/.runtime` when it exists,
+//                         else the remembered one, else this repo (scaffold laid
+//                         on top). Sources (libs/, tools/specs.json) are ALWAYS
+//                         read here; only the npm build runs in the workspace.
 //   --modules <a,b,...>   Page ids to include (else interactive selection).
 //   --name <dir>          Webserver dir under javascript/ (default customer-webserver).
 //   --full                Full rebuild (shared bundles + app + pages) instead of pages-only.
@@ -52,7 +58,20 @@
 //                          Writes dashboard-features.json { aiAssistant: true|false } that
 //                          the pages read at runtime.
 //   --no-backend          Skip backend/manager deployment (frontend only).
-//   --yes                 Don't ask for confirmation (non-interactive).
+//   --yes                 Ask NOTHING: reuse every remembered answer and go.
+//
+// Every interactive answer is REMEMBERED in .deploy-release-cache.json (gitignored)
+// so a redeploy is Entrée, Entrée, Entrée — and `--yes` alone needs no argument:
+//   lastWorkspace                            the workspace that built last time
+//   lastProject                              the target project root
+//   modulesByProject[project]                the module selection, per project
+//   settingsByProject[project].startPage     the landing route, per project
+//   settingsByProject[project].aiAssistant   the AI assistant flag, per project
+// Per project on purpose: a dev target and a customer target rarely want the same
+// modules or the same landing page. An explicit flag always beats the cache, a
+// remembered start page is dropped when its module is no longer selected, and the
+// answers are saved BEFORE the build so a failed build costs nothing. Delete the
+// file to start fresh.
 //
 // Backend step also auto-generates any missing <ws>/src/modules/<page>/index.ts
 // descriptor (from specs.json) so the routes mount. It NEVER restarts managers or
@@ -70,7 +89,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..'); // tools/scripts -> repo root
 const LIBS_DIR = path.join(ROOT, 'libs');
 const SPECS_FILE = path.join(ROOT, 'tools', 'specs.json');
-const BASE_MENU_FILE = path.join(ROOT, 'apps', 'dashboard-wc', 'config', 'menuconfig.jsonc');
 // Local (gitignored) cache remembering the last-used project root, offered as the
 // default on the next run. Mirrors the .license-cache.json convention.
 const STATE_FILE = path.join(ROOT, '.deploy-release-cache.json');
@@ -98,6 +116,7 @@ const has = (name) => argv.includes(`--${name}`);
 
 const opts = {
   project: arg('project'),
+  workspace: arg('workspace'),
   modules: arg('modules')?.split(',').map((s) => s.trim()).filter(Boolean),
   wsName: arg('name') || 'customer-webserver',
   full: has('full'),
@@ -115,6 +134,27 @@ const opts = {
 
 /** Default landing route when none is chosen (the dashboard overview). */
 const DEFAULT_START_PAGE = '/dashboard';
+
+/**
+ * The runtime workspace that owns apps/, node_modules and the npm scripts.
+ *
+ * Resolution order: --workspace, then `<repo>/.runtime` (the separate-workspace
+ * layout), then the workspace remembered from the last run, then ROOT itself
+ * (scaffold laid on top). Everything below that reads a SCAFFOLD file must use
+ * this, never ROOT. `readState` is a hoisted function declaration, so reading the
+ * cache here is fine.
+ */
+const localRuntime = path.join(ROOT, '.runtime');
+const WORKSPACE = path.resolve(
+  opts.workspace ??
+    (fs.existsSync(path.join(localRuntime, 'apps')) ? localRuntime : undefined) ??
+    readState().lastWorkspace ??
+    ROOT
+);
+const SEPARATE_WORKSPACE = WORKSPACE !== ROOT;
+const BASE_MENU_FILE = path.join(WORKSPACE, 'apps', 'dashboard-wc', 'config', 'menuconfig.jsonc');
+/** Suffix for the repair commands we print, so they are copy-pasteable. */
+const wsFlag = SEPARATE_WORKSPACE ? ` --workspace "${WORKSPACE}"` : '';
 
 // ---- small utils ------------------------------------------------------------
 
@@ -136,8 +176,11 @@ function run(cmd, args, extraEnv = {}) {
     // Use a shell only for `npm` (npm.cmd on Windows). For `node` keep shell off
     // and call the real binary so args with spaces (project paths) are preserved.
     const isNpm = cmd === 'npm';
+    // npm scripts (build, build:pages) belong to the WORKSPACE — that is where
+    // apps/, nx and node_modules live. Our own node scripts stay in ROOT, where
+    // libs/ and tools/specs.json are.
     const child = spawn(isNpm ? cmd : process.execPath, args, {
-      cwd: ROOT,
+      cwd: isNpm ? WORKSPACE : ROOT,
       stdio: 'inherit',
       shell: isNpm && process.platform === 'win32',
       env: { ...process.env, ...extraEnv }
@@ -248,9 +291,47 @@ function saveLastModules(project, ids) {
   writeState({ modulesByProject: map });
 }
 
+/** Remember which runtime workspace built this deploy (default for next time). */
+function saveLastWorkspace(workspace) {
+  writeState({ lastWorkspace: workspace });
+}
+
+/**
+ * Per-project answers to the remaining questions (start page, AI assistant).
+ * Kept in their own map so an existing cache with only modulesByProject keeps
+ * working untouched.
+ */
+function readProjectSettings(project) {
+  const map = readState().settingsByProject;
+  const settings = map && typeof map === 'object' ? map[project] : null;
+  return settings && typeof settings === 'object' ? settings : {};
+}
+
+function saveProjectSettings(project, patch) {
+  const map = readState().settingsByProject;
+  const previous = map && typeof map === 'object' ? map : {};
+  writeState({
+    settingsByProject: {
+      ...previous,
+      [project]: { ...readProjectSettings(project), ...patch }
+    }
+  });
+}
+
 async function promptProject(rl) {
   if (opts.project) return validateProject(opts.project);
   const last = readLastProject();
+  // --yes means "ask nothing": reuse the remembered project rather than block on
+  // a prompt that a scripted run can never answer.
+  if (opts.yes) {
+    const valid = last ? validateProject(last, true) : null;
+    if (valid) {
+      console.log(c('dim', `  · --yes : projet mémorisé repris (${valid}).`));
+      return valid;
+    }
+    console.error(c('red', '✗ --yes sans --project, et aucun projet mémorisé valide.'));
+    process.exit(1);
+  }
   const hint = last ? c('dim', `\n  [Entrée = ${last}]`) : '';
   for (;;) {
     const ans = (await rl.question(c('cyan', 'Dossier du projet WinCC OA (racine, contient data/ javascript/ config/)') + hint + c('cyan', ' : '))).trim().replace(/^"|"$/g, '');
@@ -295,6 +376,14 @@ async function promptModules(rl, catalog, project) {
     }
     return new Set(opts.modules);
   }
+  // --yes means "ask nothing": take the remembered selection (or the default set)
+  // instead of stopping on the toggle list, which would hang a scripted run.
+  if (opts.yes) {
+    console.log(
+      c('dim', `  · --yes : sélection ${remembered ? 'mémorisée' : 'par défaut'} reprise (${[...selected].join(', ')}).`)
+    );
+    return selected;
+  }
   for (;;) {
     console.log(`\n${c('bold', 'Modules disponibles')} ${c('dim', '([x] = inclus)')}`);
     catalog.forEach((m, i) => {
@@ -317,27 +406,41 @@ async function promptModules(rl, catalog, project) {
 }
 
 /** Choose the default landing page among the selected modules (or the dashboard). */
-async function promptStartPage(rl, chosen) {
+async function promptStartPage(rl, chosen, project) {
   const choices = [{ label: 'Tableau de bord (overview)', route: DEFAULT_START_PAGE }, ...chosen.map((m) => ({ label: m.title, route: m.route, id: m.id }))];
   if (opts.startPage) {
     const want = opts.startPage.startsWith('/') ? opts.startPage : `/${opts.startPage}`;
     const match = choices.find((ch) => ch.route === want || ch.id === opts.startPage);
     return match ? match.route : want; // accept an explicit custom route too
   }
-  if (opts.yes) return DEFAULT_START_PAGE; // non-interactive: keep the default
+  // Reuse the remembered answer, but only while that route is still reachable:
+  // the module it pointed at may have been deselected since, and redirecting "/"
+  // to an undeployed page is a dead landing page.
+  const remembered = readProjectSettings(project).startPage;
+  const fallback = choices.some((ch) => ch.route === remembered) ? remembered : DEFAULT_START_PAGE;
+  if (opts.yes) return fallback;
   console.log(`\n${c('bold', 'Page de démarrage par défaut')} ${c('dim', '(redirection de "/")')}`);
-  choices.forEach((ch, i) => console.log(`  ${String(i + 1).padStart(2)}. ${ch.route.padEnd(22)} ${c('dim', ch.label)}`));
-  const ans = (await rl.question(`\n${c('cyan', `Numéro [1=${DEFAULT_START_PAGE} par défaut] : `)}`)).trim();
-  if (ans === '') return DEFAULT_START_PAGE;
+  choices.forEach((ch, i) => {
+    const mark = ch.route === fallback ? c('green', ' ←') : '';
+    console.log(`  ${String(i + 1).padStart(2)}. ${ch.route.padEnd(22)} ${c('dim', ch.label)}${mark}`);
+  });
+  const origin = remembered && remembered === fallback ? 'mémorisé' : 'défaut';
+  const ans = (await rl.question(`\n${c('cyan', `Numéro [Entrée = ${fallback}, ${origin}] : `)}`)).trim();
+  if (ans === '') return fallback;
   const idx = Number.parseInt(ans, 10) - 1;
-  return choices[idx]?.route ?? DEFAULT_START_PAGE;
+  return choices[idx]?.route ?? fallback;
 }
 
 /** Ask whether to enable the AI assistant in the pages (OFF by default). */
-async function promptAiAssistant(rl) {
+async function promptAiAssistant(rl, project) {
   if (opts.aiAssistant) return true; // --ai-assistant forces it on
-  if (opts.yes) return false; // non-interactive: keep the default (off)
-  const ans = (await rl.question(`\n${c('cyan', 'Activer l\'assistant IA dans les pages ? [o/N] : ')}`)).trim().toLowerCase();
+  const remembered = readProjectSettings(project).aiAssistant;
+  const fallback = typeof remembered === 'boolean' ? remembered : false;
+  if (opts.yes) return fallback;
+  // Capitalise the remembered branch, so [O/n] vs [o/N] shows the default.
+  const shape = fallback ? '[O/n]' : '[o/N]';
+  const ans = (await rl.question(`\n${c('cyan', `Activer l'assistant IA dans les pages ? ${shape} : `)}`)).trim().toLowerCase();
+  if (ans === '') return fallback;
   return ans === 'o' || ans === 'oui' || ans === 'y';
 }
 
@@ -521,16 +624,16 @@ const WIRING_PATCHES = [
 function assertWiring() {
   const missing = [];
   for (const relative of WIRING_HELPERS) {
-    if (!fs.existsSync(path.join(ROOT, relative))) missing.push(`${relative} (absent)`);
+    if (!fs.existsSync(path.join(WORKSPACE, relative))) missing.push(`${relative} (absent)`);
   }
   for (const [relative, marker] of WIRING_PATCHES) {
-    const file = path.join(ROOT, relative);
+    const file = path.join(WORKSPACE, relative);
     if (!fs.existsSync(file)) { missing.push(`${relative} (absent)`); continue; }
     if (!fs.readFileSync(file, 'utf8').includes(marker)) missing.push(`${relative} (${marker} absent)`);
   }
   // The full build emits the menu/appsec config too — it needs the same plugins.
   if (opts.full) {
-    const appConfig = path.join(ROOT, 'apps/dashboard-wc/vite.config.ts');
+    const appConfig = path.join(WORKSPACE, 'apps/dashboard-wc/vite.config.ts');
     const source = fs.existsSync(appConfig) ? fs.readFileSync(appConfig, 'utf8') : '';
     for (const marker of ['pageMenuMergePlugin(', 'pageAppsecMergePlugin(']) {
       if (!source.includes(marker)) missing.push(`apps/dashboard-wc/vite.config.ts (${marker} absent)`);
@@ -540,8 +643,54 @@ function assertWiring() {
   console.error(c('red', '\n✗ Workspace NON wiré — le build produirait un dashboard sans les pages additionnelles :'));
   for (const m of missing) console.error(c('red', `    - ${m}`));
   console.error(c('yellow', '\n  Réparez (idempotent), puis relancez ce déploiement :'));
-  console.error('    node tools/wire-workspace.mjs');
-  console.error('    node tools/install-page-dependencies.mjs');
+  console.error(`    node tools/wire-workspace.mjs${wsFlag}`);
+  process.exit(1);
+}
+
+/**
+ * With a separate workspace the pages are NOT in it — they stay here, and the
+ * scaffold finds them through the generated wui-pages-root.json. Two things must
+ * hold, and neither fails loudly on its own:
+ *
+ *   • that file must point at THIS repo. Pointing elsewhere (another checkout, a
+ *     moved folder) builds someone else's pages, or none, and the build succeeds.
+ *   • <repo>/node_modules must resolve, because a bundled import is looked up by
+ *     walking up from the page source, i.e. from here.
+ */
+function assertPagesRoot() {
+  if (!SEPARATE_WORKSPACE) return;
+  const problems = [];
+
+  const rootFile = path.join(WORKSPACE, 'apps/dashboard-wc/scripts/wui-pages-root.json');
+  if (!fs.existsSync(rootFile)) {
+    problems.push('wui-pages-root.json absent — le scaffold ignore où sont les pages');
+  } else {
+    try {
+      const declared = JSON.parse(fs.readFileSync(rootFile, 'utf8')).libsDirectory;
+      if (typeof declared !== 'string' || !fs.existsSync(declared)) {
+        problems.push(`wui-pages-root.json pointe sur "${declared}" qui n'existe pas`);
+      } else if (fs.realpathSync(declared) !== fs.realpathSync(LIBS_DIR)) {
+        problems.push(`wui-pages-root.json pointe sur ${declared} — pas sur ${LIBS_DIR}`);
+      }
+    } catch (error) {
+      problems.push(`wui-pages-root.json illisible : ${error.message}`);
+    }
+  }
+
+  // Resolve a package the pages certainly import, rather than just testing that
+  // the directory exists — a dangling link passes existsSync on some platforms.
+  if (!fs.existsSync(path.join(ROOT, 'node_modules', 'lit', 'package.json'))) {
+    problems.push('node_modules ne résout pas depuis le repo (lit introuvable)');
+  }
+
+  if (problems.length === 0) {
+    console.log(c('dim', `  · pages rattachées au workspace OK (${WORKSPACE}).`));
+    return;
+  }
+  console.error(c('red', '\n✗ Le workspace ne trouverait pas ces pages — le build les omettrait silencieusement :'));
+  for (const p of problems) console.error(c('red', `    - ${p}`));
+  console.error(c('yellow', '\n  Réparez (idempotent), puis relancez ce déploiement :'));
+  console.error(`    node tools/wire-workspace.mjs${wsFlag}`);
   process.exit(1);
 }
 
@@ -568,7 +717,7 @@ function assertPageDependencies(chosen) {
     for (const dep of deps) {
       const installName = EXTERNAL_DEPENDENCIES[dep]?.[0];
       if (!installName) continue; // provided by the workspace runtime deps
-      if (fs.existsSync(path.join(ROOT, 'node_modules', installName))) continue;
+      if (fs.existsSync(path.join(WORKSPACE, 'node_modules', installName))) continue;
       missing.set(installName, [...(missing.get(installName) ?? []), m.id]);
     }
   }
@@ -576,7 +725,7 @@ function assertPageDependencies(chosen) {
   console.error(c('red', '\n✗ Dépendances npm des pages manquantes dans node_modules :'));
   for (const [name, pages] of missing) console.error(c('red', `    - ${name}  (requis par : ${pages.join(', ')})`));
   console.error(c('yellow', '\n  Installez-les, puis relancez ce déploiement :'));
-  console.error('    node tools/install-page-dependencies.mjs');
+  console.error(`    node tools/install-page-dependencies.mjs${wsFlag}`);
   process.exit(1);
 }
 
@@ -627,7 +776,7 @@ function verifyDeploy(dwcDir, chosen, startedAt) {
   for (const p of problems) console.error(c('red', `    - ${p}`));
   console.error(c('yellow', '\n  Cause la plus fréquente : scaffold non wiré (apps/ et libs/default-components/ sont'));
   console.error(c('yellow', '  régénérés vierges par webui-runtime-init / restaurés sans wiring). Réparez puis relancez :'));
-  console.error('    node tools/wire-workspace.mjs && node tools/install-page-dependencies.mjs');
+  console.error(`    node tools/wire-workspace.mjs${wsFlag}`);
   return false;
 }
 
@@ -659,16 +808,23 @@ async function main() {
     // Fail BEFORE the (long) build if the workspace can't actually produce the
     // selected pages — otherwise the deploy "succeeds" with pages missing.
     console.log(c('bold', '\nContrôles préalables'));
+    assertPagesRoot();
     assertWiring();
     assertPageDependencies(chosen);
 
-    const startPage = await promptStartPage(rl, chosen);
-    const aiAssistant = await promptAiAssistant(rl);
+    const startPage = await promptStartPage(rl, chosen, project);
+    const aiAssistant = await promptAiAssistant(rl, project);
+    // Remember every answer + the workspace, so the next run is `--yes` alone.
+    // Saved BEFORE the build: a build that dies halfway must not cost the answers.
+    saveProjectSettings(project, { startPage, aiAssistant });
+    saveLastWorkspace(WORKSPACE);
     const dwcDir = path.join(project, 'data', 'dashboard-wc');
     const backends = chosen.filter((m) => m.hasBackend || m.managers.length);
 
     // summary
     console.log(`\n${c('bold', 'Récapitulatif')}`);
+    console.log(`  Sources     : ${ROOT}`);
+    console.log(`  Workspace   : ${WORKSPACE}${SEPARATE_WORKSPACE ? '' : c('dim', ' (scaffold dans le repo)')}`);
     console.log(`  Projet      : ${project}`);
     console.log(`  Sortie web  : ${dwcDir}`);
     console.log(`  Build       : ${opts.full ? 'complet (shared bundles + app + pages)' : 'pages seulement'}`);
