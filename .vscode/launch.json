@@ -1,0 +1,198 @@
+{
+  // Two folders, three journeys (see DEVELOPMENT.md):
+  //
+  //   .runtime/            the @wincc-oa/webui-runtime scaffold + node_modules (gitignored)
+  //   <this repo>          the pages, the backends, the tooling — the only versioned part
+  //   <WinCC OA project>   the deploy target, data/dashboard-wc/
+  //
+  // No --workspace flag anywhere: every tool defaults to `<repo>/.runtime` when it
+  // exists. The only path ever asked for is the WinCC OA project, and
+  // deploy-release remembers it.
+  //
+  // NX_WORKSPACE_ROOT_PATH is pinned on the npm configs on purpose: nx reads it
+  // BEFORE walking up for nx.json, so a stale value inherited from the shell
+  // silently makes nx target the wrong workspace.
+  "version": "0.2.0",
+  "inputs": [
+    {
+      "id": "baseUrl",
+      "type": "promptString",
+      "description": "Live WinCC OA the dev server proxies to (https://host:httpsPort)",
+      "default": "https://127.0.0.1:8443"
+    },
+    {
+      "id": "oaProject",
+      "type": "promptString",
+      "description": "WinCC OA project root (contains data/, javascript/, config/)",
+      "default": "../wui-scada-project"
+    },
+    {
+      "id": "pageId",
+      "type": "promptString",
+      "description": "Page id or lib name (para, wui-para, eng-studio, …)",
+      "default": "para"
+    },
+    {
+      // The WinCC OA VERSION ROOT — not its javascript/ subfolder. webserver/install.mjs
+      // rewrites the webserver's two file: deps to <path>/javascript/webserver-js and
+      // <path>/javascript/@types/winccoa-manager.
+      //
+      // It must be a version that actually ships `javascript/webserver-js` (3.21+ /
+      // the WebUI Runtime add-on). npm links file: deps WITHOUT checking the target,
+      // so a wrong path here installs two dangling junctions: `npm install` looks
+      // fine and `tsc` then fails with "Cannot find module '@winccoa/backend'" on
+      // every module.
+      "id": "oaPath",
+      "type": "promptString",
+      "description": "WinCC OA install path (version root, must contain javascript/webserver-js)",
+      "default": "C:/Program Files/Siemens/WinCC_OA/3.21"
+    }
+  ],
+  "configurations": [
+    {
+      // ---- journey 3: deploy ------------------------------------------------
+      // Zero questions, zero arguments: replays the last deploy exactly — same
+      // workspace, project, modules, landing page and AI flag, from
+      // .deploy-release-cache.json. Fails fast if nothing is remembered yet.
+      "name": "Deploy → cible (redéployer à l'identique)",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/tools/scripts/deploy-release.mjs",
+      "args": ["--yes"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      // Interactive. Each answer is pre-filled with what you chose last time for
+      // this project, so Entrée everywhere reuses it. integratedTerminal is
+      // required — the script uses readline.
+      "name": "Deploy → cible (interactif)",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/tools/scripts/deploy-release.mjs",
+      "args": ["--project", "${input:oaProject}"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "name": "Deploy → cible (interactif, rebuild complet)",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/tools/scripts/deploy-release.mjs",
+      "args": ["--project", "${input:oaProject}", "--full"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      // FIRST installation on a project: --full PLUS installing the
+      // customer-webserver (copy, npm install, tsc, pmon line). Only needed once,
+      // when <webserver>/src/modules does not exist yet — afterwards use the
+      // plain "interactif" / "redéployer" configs, which reuse the webserver.
+      //
+      // Asks for the WinCC OA path because that is what the webserver's two file:
+      // deps are rewritten against. Get it wrong and the failure is misleading:
+      // npm links without checking, so the install passes and tsc fails on every
+      // module with "Cannot find module '@winccoa/backend'".
+      "name": "Deploy → cible (1re installation : --full --install-webserver)",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/tools/scripts/deploy-release.mjs",
+      "args": [
+        "--project",
+        "${input:oaProject}",
+        "--full",
+        "--install-webserver",
+        "--winccoa",
+        "${input:oaPath}"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      // ---- journey 2: develop ----------------------------------------------
+      // Dev server with HMR. Serves the frontend from .runtime/ but reads the page
+      // sources HERE; all live data is proxied to BASE_URL, so a running WinCC OA
+      // is required.
+      "name": "Dev server (vite, HMR)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "start"],
+      "cwd": "${workspaceFolder}/.runtime",
+      "env": {
+        "BASE_URL": "${input:baseUrl}",
+        "NX_WORKSPACE_ROOT_PATH": "${workspaceFolder}/.runtime"
+      },
+      "console": "integratedTerminal",
+      "serverReadyAction": {
+        "pattern": "Local:.+(https?://\\S+)",
+        "uriFormat": "%s",
+        "action": "openExternally"
+      },
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      // Frontend only, no menu filtering and no backend — the fast loop when you
+      // just want fresh bundles on the target. Raw npm, so nothing is verified:
+      // prefer the "Deploy → cible" configs unless you know why you want this.
+      "name": "Build pages → cible (brut, sans filtrage ni backend)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "build:pages"],
+      "cwd": "${workspaceFolder}/.runtime",
+      "env": {
+        "OUT_DIR": "${workspaceFolder}/${input:oaProject}/data/dashboard-wc",
+        "NX_WORKSPACE_ROOT_PATH": "${workspaceFolder}/.runtime"
+      },
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      // The raw full build: shared bundles + shell + pages + deploy:oa-data.
+      // Same caveat — no menu/role filtering, no pruning, no verification.
+      "name": "Build complet → cible (brut, shell + shared bundles + pages)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "build"],
+      "cwd": "${workspaceFolder}/.runtime",
+      "env": {
+        "OUT_DIR": "${workspaceFolder}/${input:oaProject}/data/dashboard-wc",
+        "NX_WORKSPACE_ROOT_PATH": "${workspaceFolder}/.runtime"
+      },
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      // ---- journey 1: bootstrap / repair -----------------------------------
+      // THE single command after a re-scaffold or after adding a page lib:
+      // deploys the plugins, points them at this repo, copies the skills, links
+      // node_modules, re-applies the shell fixes, installs the pages' deps.
+      "name": "Workspace : câbler (après re-scaffold / nouvelle page)",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/tools/wire-workspace.mjs",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "name": "Qualité : tests d'une page (débogable)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vitest", "run"],
+      "cwd": "${workspaceFolder}/libs/wui-${input:pageId}",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    }
+  ]
+  // No "compounds": VSCode starts compound configurations in PARALLEL. Nothing
+  // here needs chaining any more — wire-workspace is a single command.
+}

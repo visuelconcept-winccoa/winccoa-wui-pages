@@ -1,0 +1,193 @@
+{
+  // Terminal counterparts to .vscode/launch.json, plus the quality tasks.
+  // Everything runs with cwd = ${workspaceFolder} unless it is an npm/npx script
+  // that belongs to the runtime workspace, in which case cwd = .runtime.
+  "version": "2.0.0",
+  "inputs": [
+    {
+      "id": "pageId",
+      "type": "promptString",
+      "description": "Page id or lib name (para, wui-para, eng-studio, …)",
+      "default": "para"
+    },
+    {
+      "id": "oaProject",
+      "type": "promptString",
+      "description": "WinCC OA project root (contains data/, javascript/, config/)",
+      "default": "../wui-scada-project"
+    },
+    {
+      // The WinCC OA VERSION ROOT — not its javascript/ subfolder. Must be a
+      // version that actually ships `javascript/webserver-js` (3.21+ / the WebUI
+      // Runtime add-on): npm links file: deps without checking the target, so a
+      // wrong path installs dangling junctions and tsc then fails on every module
+      // with "Cannot find module '@winccoa/backend'".
+      "id": "oaPath",
+      "type": "promptString",
+      "description": "WinCC OA install path (version root, must contain javascript/webserver-js)",
+      "default": "C:/Program Files/Siemens/WinCC_OA/3.21"
+    }
+  ],
+  "tasks": [
+    {
+      // ---- journey 1: bootstrap / repair -----------------------------------
+      "label": "1. Workspace : câbler (après re-scaffold / nouvelle page)",
+      "type": "shell",
+      "command": "node",
+      "args": ["tools/wire-workspace.mjs"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      // Read-only. Since the edits are now chained in memory, this no longer
+      // raises a false "anchor not found" on a freshly scaffolded workspace.
+      "label": "1. Workspace : vérifier (n'écrit rien)",
+      "type": "shell",
+      "command": "node",
+      "args": ["tools/wire-workspace.mjs", "--check", "--no-deps"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      // ---- journey 2: develop ----------------------------------------------
+      // BASE_URL must point at a running WinCC OA; set it in your environment or
+      // use the "Dev server" launch config, which asks for it.
+      "label": "2. Dev server (vite, HMR)",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "start"],
+      "options": {
+        "cwd": "${workspaceFolder}/.runtime",
+        "env": { "NX_WORKSPACE_ROOT_PATH": "${workspaceFolder}/.runtime" }
+      },
+      "isBackground": true,
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      // ---- journey 3: deploy ------------------------------------------------
+      "label": "3. Deploy → cible (redéployer à l'identique)",
+      "type": "shell",
+      "command": "node",
+      "args": ["tools/scripts/deploy-release.mjs", "--yes"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      // --full rebuilds the shell and the shared bundles too. Needed when the
+      // SHELL side changed and not just your pages: a runtime version bump (the
+      // import map moved, and a page bundle is welded to the import map of the
+      // shell that built it), a change to appconfig/menuconfig/branding, or a
+      // target with no index.html yet. A pages-only deploy in those cases
+      // succeeds and serves a broken dashboard.
+      "label": "3. Deploy → cible (redéployer à l'identique, rebuild complet)",
+      "type": "shell",
+      "command": "node",
+      "args": ["tools/scripts/deploy-release.mjs", "--yes", "--full"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "3. Deploy → cible (interactif)",
+      "type": "shell",
+      "command": "node",
+      "args": ["tools/scripts/deploy-release.mjs", "--project", "${input:oaProject}"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "3. Deploy → cible (interactif, rebuild complet)",
+      "type": "shell",
+      "command": "node",
+      "args": [
+        "tools/scripts/deploy-release.mjs",
+        "--project",
+        "${input:oaProject}",
+        "--full"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      // FIRST installation only: also installs the customer-webserver, whose two
+      // file: deps are rewritten against the WinCC OA path asked for here.
+      // Afterwards use the tasks above, which reuse the installed webserver.
+      "label": "3. Deploy → cible (1re installation : webserver + WinCC OA)",
+      "type": "shell",
+      "command": "node",
+      "args": [
+        "tools/scripts/deploy-release.mjs",
+        "--project",
+        "${input:oaProject}",
+        "--full",
+        "--install-webserver",
+        "--winccoa",
+        "${input:oaPath}"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      // ---- quality ----------------------------------------------------------
+      // eslint config and plugins belong to the workspace, the sources are here:
+      // run from .runtime with an explicit config, and resolve plugins from there.
+      // `nx run-many --target=lint` cannot do this — nx never sees the page libs
+      // as projects, since they are not inside its workspace.
+      "label": "Qualité : lint (toutes les pages)",
+      "type": "shell",
+      "command": "npx",
+      "args": [
+        "eslint",
+        "../libs",
+        "--ext",
+        ".ts",
+        "--no-eslintrc",
+        "--config",
+        ".eslintrc.json",
+        "--resolve-plugins-relative-to",
+        "."
+      ],
+      "options": { "cwd": "${workspaceFolder}/.runtime" },
+      "group": "build",
+      "problemMatcher": ["$eslint-stylish"]
+    },
+    {
+      "label": "Qualité : lint --fix (une page)",
+      "type": "shell",
+      "command": "npx",
+      "args": [
+        "eslint",
+        "../libs/wui-${input:pageId}",
+        "--ext",
+        ".ts",
+        "--fix",
+        "--no-eslintrc",
+        "--config",
+        ".eslintrc.json",
+        "--resolve-plugins-relative-to",
+        "."
+      ],
+      "options": { "cwd": "${workspaceFolder}/.runtime" },
+      "problemMatcher": ["$eslint-stylish"]
+    },
+    {
+      // Each lib owns its vitest.config.ts and runs unchanged from here — the
+      // node_modules junction makes ordinary Node resolution work, so `exports`
+      // conditions are honoured (an alias to a directory path would bypass them
+      // and load browser builds under the 'node' environment).
+      "label": "Qualité : tests d'une page",
+      "type": "shell",
+      "command": "npx",
+      "args": ["vitest", "run"],
+      "options": { "cwd": "${workspaceFolder}/libs/wui-${input:pageId}" },
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    }
+  ]
+}
