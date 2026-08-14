@@ -1,0 +1,122 @@
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "sourceMap": true,
+    "declaration": false,
+    "moduleResolution": "Bundler",
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "importHelpers": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "baseUrl": ".",
+    "incremental": true,
+    "moduleDetection": "auto",
+    "paths": {
+      "@visuelconcept/wui-agv-fleet/*": [
+        "libs/wui-agv-fleet/src/*"
+      ],
+      "@visuelconcept/wui-ai-kit/*": [
+        "libs/wui-ai-kit/src/*"
+      ],
+      "@visuelconcept/wui-alarms/*": [
+        "libs/wui-alarms/src/*"
+      ],
+      "@visuelconcept/wui-alarms-core/*": [
+        "libs/wui-alarms-core/src/*"
+      ],
+      "@visuelconcept/wui-ampere/*": [
+        "libs/wui-ampere/src/*"
+      ],
+      "@visuelconcept/wui-app-security/*": [
+        "libs/wui-app-security/src/*"
+      ],
+      "@visuelconcept/wui-audit-trail/*": [
+        "libs/wui-audit-trail/src/*"
+      ],
+      "@visuelconcept/wui-camera-streams/*": [
+        "libs/wui-camera-streams/src/*"
+      ],
+      "@visuelconcept/wui-diagnosis/*": [
+        "libs/wui-diagnosis/src/*"
+      ],
+      "@visuelconcept/wui-eng-core/*": [
+        "libs/wui-eng-core/src/*"
+      ],
+      "@visuelconcept/wui-eng-studio/*": [
+        "libs/wui-eng-studio/src/*"
+      ],
+      "@visuelconcept/wui-fleet-closures/*": [
+        "libs/wui-fleet-closures/src/*"
+      ],
+      "@visuelconcept/wui-fleet-core/*": [
+        "libs/wui-fleet-core/src/*"
+      ],
+      "@visuelconcept/wui-fleet-kpi-analysis/*": [
+        "libs/wui-fleet-kpi-analysis/src/*"
+      ],
+      "@visuelconcept/wui-fleet-stop-analysis/*": [
+        "libs/wui-fleet-stop-analysis/src/*"
+      ],
+      "@visuelconcept/wui-gis/*": [
+        "libs/wui-gis/src/*"
+      ],
+      "@visuelconcept/wui-kit/*": [
+        "libs/wui-kit/src/*"
+      ],
+      "@visuelconcept/wui-machine-fleet-3d/*": [
+        "libs/wui-machine-fleet-3d/src/*"
+      ],
+      "@visuelconcept/wui-mosaic/*": [
+        "libs/wui-mosaic/src/*"
+      ],
+      "@visuelconcept/wui-para/*": [
+        "libs/wui-para/src/*"
+      ],
+      "@visuelconcept/wui-process-monitor/*": [
+        "libs/wui-process-monitor/src/*"
+      ],
+      "@visuelconcept/wui-production-orders/*": [
+        "libs/wui-production-orders/src/*"
+      ],
+      "@visuelconcept/wui-remote-vnc/*": [
+        "libs/wui-remote-vnc/src/*"
+      ],
+      "@visuelconcept/wui-report-builder/*": [
+        "libs/wui-report-builder/src/*"
+      ],
+      "@visuelconcept/wui-report-templates/*": [
+        "libs/wui-report-templates/src/*"
+      ],
+      "@visuelconcept/wui-tag-importer/*": [
+        "libs/wui-tag-importer/src/*"
+      ],
+      "@visuelconcept/wui-thermal-reports/*": [
+        "libs/wui-thermal-reports/src/*"
+      ]
+    }
+  },
+  "exclude": [
+    "node_modules",
+    "tmp",
+    ".runtime"
+  ]
+}
