@@ -28,8 +28,11 @@
 // What it does (idempotent): copy each selected page's backend.srcFiles from
 // backend/routes/ into <ws>/src/modules/<page>/; VENDOR any workspace library it
 // declares (see below); copy each manager folder from backend/managers/<m>/ into
-// <project>/javascript/<m>/; append any missing manager line to
-// <project>/config/progs; then build the webserver (tsc).
+// <project>/javascript/<m>/ AND `npm install` there when it ships a package.json
+// with dependencies (rtspProxy needs express, express-ws, ffmpeg-static,
+// rtsp-relay — a manager has no node_modules unless we make one, and without it
+// it dies at STARTUP in the WinCC OA log, not here); append any missing manager
+// line to <project>/config/progs; then build the webserver (tsc).
 //
 // Vendoring (`backend.vendorPackages`): a route module may import a pure workspace
 // library — `engController.ts` imports `@visuelconcept/wui-eng-core`, the
@@ -106,6 +109,8 @@ console.log(`${tag}Pages: ${selected.map((p) => p.page).join(', ')}`);
 const copied = [];
 const managersCopied = new Set();
 const progsAdded = [];
+/** Managers whose own npm dependencies were installed in the target project. */
+const managerDepsInstalled = [];
 const warnings = [];
 /**
  * config/progs as it was BEFORE this run appended anything — a manager already
@@ -237,7 +242,55 @@ for (const page of selected) {
       if (managersCopied.has(m)) continue;
       managersCopied.add(m);
       copyFile(join(managersDir, m), join(project, 'javascript', m), `javascript/${m}/`);
+      installManagerDependencies(m);
     }
+  }
+}
+
+/**
+ * `npm install` inside a freshly copied manager that ships its own package.json.
+ *
+ * A manager runs as a plain node process under pmon, from
+ * <project>/javascript/<name>/ — it has no node_modules of its own unless we make
+ * one. Skipping this copies the code and then fails at STARTUP, in the WinCC OA
+ * log, far from this script:
+ *
+ *   SEVERE 0/javascript, Error: Cannot find module 'express'
+ *   Require stack: <project>\javascript\rtspProxy\index.js
+ *
+ * `tools/install.template.mjs` (the packaged installer) has always done this, so a
+ * manager deployed from a distributable worked while the same manager deployed
+ * from here did not. Mirrors that behaviour, including the non-fatal failure: a
+ * missing network must not abort a deploy whose frontend part already landed.
+ *
+ * Idempotent: npm reports "up to date" on a second run. Skipped by --no-build,
+ * like the webserver build, and by --dry-run.
+ */
+function installManagerDependencies(name) {
+  const managerDir = join(project, 'javascript', name);
+  const manifest = join(managerDir, 'package.json');
+  if (noBuild || dryRun || !existsSync(manifest)) return;
+
+  // Nothing to fetch for a manager whose package.json declares no dependencies
+  // (ampereSim, machineSim ship one only for its metadata).
+  let dependencies;
+  try {
+    const parsed = JSON.parse(readFileSync(manifest, 'utf8'));
+    dependencies = { ...parsed.dependencies, ...parsed.optionalDependencies };
+  } catch (error) {
+    warnings.push(`manager '${name}': package.json unreadable (${error.message}) — deps NOT installed.`);
+    return;
+  }
+  if (Object.keys(dependencies).length === 0) return;
+
+  try {
+    console.log(`${tag}  … npm install (manager ${name}: ${Object.keys(dependencies).join(', ')})`);
+    execSync('npm install --omit=dev --no-audit --no-fund', { cwd: managerDir, stdio: 'inherit' });
+    managerDepsInstalled.push(name);
+  } catch {
+    warnings.push(
+      `manager '${name}': npm install FAILED — it will die at startup on "Cannot find module". Run it by hand in ${managerDir}`
+    );
   }
 }
 
@@ -330,6 +383,9 @@ function staleCompiledModules(webserverDirectory, deployed) {
 console.log('');
 console.log(`${tag}Copied ${copied.length} item(s):`);
 for (const c of copied) console.log(`  ✓ ${c}`);
+if (managerDepsInstalled.length > 0) {
+  console.log(`${tag}Manager npm deps installed: ${managerDepsInstalled.join(', ')}`);
+}
 if (progsAdded.length > 0) {
   console.log('Added to config/progs (verify manager number/order in pmon):');
   for (const l of progsAdded) console.log(`  + ${l}`);
