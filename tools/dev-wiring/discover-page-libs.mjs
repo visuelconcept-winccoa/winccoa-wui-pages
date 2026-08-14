@@ -29,12 +29,11 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { pagesLibsDirectory } from './wui-pages-root.mjs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// scripts/ -> apps/dashboard-wc -> apps -> <workspace root> -> libs
-const defaultLibsDirectory = path.resolve(__dirname, '../../../libs');
+// `<workspace>/libs` when the scaffold sits on top of the repo, the source repo's
+// `libs/` when the workspace is separate. See wui-pages-root.mjs.
+const defaultLibsDirectory = pagesLibsDirectory;
 
 function isTestOrMockFile(filename) {
   return (

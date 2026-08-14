@@ -27,20 +27,19 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { pagesLibsDirectory, workspaceRoot } from './wui-pages-root.mjs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// scripts/ -> apps/dashboard-wc -> apps -> <workspace root>
-const workspaceRoot = path.resolve(__dirname, '../../..');
 // Two layouts carry the fragments:
-//   • dev repo (this workspace): libs/wui-<page>/src/app-security.roles.json
+//   • dev repo: libs/wui-<page>/src/app-security.roles.json — this is
+//     `<workspace>/libs` with the scaffold on top, and the source repo's `libs/`
+//     when the workspace is separate (see wui-pages-root.mjs).
 //   • installed runtime workspace: pages are vendored (vendor-page.mjs copies the
 //     whole src/, incl. the JSON) under default-components/standalone-pages/<page>/.
+//     This one is ALWAYS workspace-relative — it is the scaffold's own tree.
 // A module installed from ANOTHER repo lands in the standalone-pages layout, so
 // scanning both makes its fragment show up on the next build:pages — no
 // app-security edit, no central list.
-const libsDirectory = path.join(workspaceRoot, 'libs');
+const libsDirectory = pagesLibsDirectory;
 const standalonePagesDirectory = path.join(
   workspaceRoot,
   'libs',
