@@ -52,12 +52,49 @@ console.log('  ✓ copied run.js, package.json, tsconfig.json, src/ (with the mo
 
 // 2. optionally retarget the WinCC OA install path in the file: deps
 if (winccoa) {
+  // Backslashes MUST go: this is a textual substitution into a JSON string, and a
+  // Windows path like C:\Program Files\Siemens\WinCC_OA\3.21 injects \P \S \W \3 —
+  // none of them valid JSON escapes. The file then no longer parses, and every
+  // later `npm install` / `npm run build` in the webserver dies on it. Forward
+  // slashes are also what npm wants in a `file:` specifier, so this is a fix in
+  // both directions. A trailing separator would double up; drop it too.
+  const oaPath = winccoa.replaceAll('\\', '/').replace(/\/+$/, '');
+
+  // npm creates a `file:` link WITHOUT checking its target, so a wrong path here
+  // yields two dangling junctions: `npm install` looks fine and tsc then fails on
+  // EVERY module with "Cannot find module '@winccoa/backend'", never naming the
+  // real cause. Refuse up front instead.
+  const required = [
+    `${oaPath}/javascript/webserver-js`,
+    `${oaPath}/javascript/@types/winccoa-manager`
+  ];
+  const missing = required.filter((p) => !existsSync(p));
+  if (missing.length > 0) {
+    console.error(`\n✗ --winccoa ${winccoa} does not look like a WinCC OA install root:`);
+    for (const p of missing) console.error(`    missing ${p}`);
+    console.error(
+      '  Pass the VERSION ROOT (the folder containing javascript/), from a version that\n' +
+        '  ships the WebUI Runtime webserver — e.g. C:/Program Files/Siemens/WinCC_OA/3.21.\n' +
+        '  Left package.json untouched.'
+    );
+    process.exit(1);
+  }
+
   const pkgPath = join(dest, 'package.json');
   const patched = readFileSync(pkgPath, 'utf8')
-    .replace(/file:[^"]*\/javascript\/webserver-js/g, `file:${winccoa}/javascript/webserver-js`)
-    .replace(/file:[^"]*\/javascript\/@types\/winccoa-manager/g, `file:${winccoa}/javascript/@types/winccoa-manager`);
+    .replace(/file:[^"]*\/javascript\/webserver-js/g, `file:${oaPath}/javascript/webserver-js`)
+    .replace(/file:[^"]*\/javascript\/@types\/winccoa-manager/g, `file:${oaPath}/javascript/@types/winccoa-manager`);
+  // Cheap guarantee that we did not just break the file (the bug above shipped
+  // silently precisely because nothing re-read it).
+  try {
+    JSON.parse(patched);
+  } catch (error) {
+    console.error(`\n✗ rewriting package.json would produce invalid JSON: ${error.message}`);
+    console.error('  Left package.json untouched.');
+    process.exit(1);
+  }
   writeFileSync(pkgPath, patched);
-  console.log(`  ✓ pointed WinCC OA deps at ${winccoa}`);
+  console.log(`  ✓ pointed WinCC OA deps at ${oaPath}`);
 }
 
 // 3. install + build
