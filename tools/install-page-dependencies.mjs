@@ -35,10 +35,21 @@ const argumentValue = (name) => {
 const hasFlag = (name) => process.argv.includes(`--${name}`);
 
 const checkOnly = hasFlag('check') || hasFlag('dry-run');
-const workspace = path.resolve(
-  argumentValue('workspace') ?? path.resolve(__dirname, '..')
-);
-const libsDirectory = path.join(workspace, 'libs');
+const repoRoot = path.resolve(__dirname, '..');
+/**
+ * Defaults to `<repo>/.runtime` when that folder exists (separate-workspace
+ * layout), else to the repo itself (scaffold on top) — so no flag in either case.
+ */
+const defaultWorkspace = existsSync(path.join(repoRoot, '.runtime', 'apps'))
+  ? path.join(repoRoot, '.runtime')
+  : repoRoot;
+const workspace = path.resolve(argumentValue('workspace') ?? defaultWorkspace);
+/**
+ * The page libs are read from THIS repo — they are never copied or linked into
+ * the workspace (see tools/wire-workspace.mjs). Only the target of the install
+ * (the root package.json / node_modules) belongs to the workspace.
+ */
+const libsDirectory = path.join(repoRoot, 'libs');
 const rootPackagePath = path.join(workspace, 'package.json');
 
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'));

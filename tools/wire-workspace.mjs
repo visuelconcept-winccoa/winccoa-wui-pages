@@ -3,19 +3,31 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // -----------------------------------------------------------------------------
-// One-shot dev-workspace wiring for the `libs/wui-*` pages.
+// THE single command that makes a freshly scaffolded runtime workspace usable.
 //
-// `webui-runtime-init` scaffolds an un-versioned runtime workspace (apps/,
-// tsconfig.base.json, package.json). This script patches that scaffold so the
-// Vite dev server discovers, serves and menu-links every `libs/wui-<page>` —
-// the integration described in DEVELOPMENT.md, applied automatically.
+// `webui-runtime-init` regenerates an un-versioned workspace (apps/,
+// libs/default-components/, tsconfig.base.json, package.json) — pristine, every
+// time. So this is not a setup script but a REAPPLIABLE PATCH SET: it re-teaches
+// that scaffold about the `libs/wui-*` pages, re-applies the shell fixes we own,
+// and finishes by installing the pages' third-party deps.
 //
-//   node tools/wire-workspace.mjs [--workspace <dir>] [--check]
+// Run it after every re-scaffold and after adding or removing a page lib.
 //
-//   --workspace <dir>  workspace root to patch (default: repo root, the parent
-//                      of tools/). Use it to wire a separate runtime workspace.
+//   node tools/wire-workspace.mjs [--workspace <dir>] [--check] [--no-deps]
+//
+//   --workspace <dir>  workspace root to patch. Defaults to `<repo>/.runtime`
+//                      when that exists (the separate-workspace layout), else to
+//                      the repo root (scaffold laid on top) — so the usual case
+//                      needs no flag.
 //   --check            report what would change, write nothing (exit 1 if any
-//                      file still needs wiring).
+//                      file still needs wiring). Chains the edits in memory, so a
+//                      patch anchored on an earlier patch's output is judged
+//                      correctly instead of raising a false "anchor not found".
+//   --no-deps          skip the final install-page-dependencies step.
+//
+// The pages are NEVER copied or linked into the workspace: their location is
+// written to apps/dashboard-wc/scripts/wui-pages-root.json and read by the three
+// deployed plugins. Config, not filesystem links — see wui-pages-root.mjs for why.
 //
 // What it does (all idempotent — safe to re-run after every re-scaffold):
 //   1. deploy tools/dev-wiring/{discover-page-libs,page-menu-merge-plugin,page-appsec-merge-plugin}.mjs
@@ -37,12 +49,21 @@
 // -----------------------------------------------------------------------------
 import {
   copyFileSync,
+  cpSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
+  rmdirSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  unlinkSync,
   writeFileSync
 } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -55,17 +76,44 @@ const argumentValue = (name) => {
 const hasFlag = (name) => process.argv.includes(`--${name}`);
 
 const checkOnly = hasFlag('check');
-const workspace = path.resolve(
-  argumentValue('workspace') ?? path.resolve(__dirname, '..')
-);
+const repoRoot = path.resolve(__dirname, '..');
+/**
+ * The workspace defaults to `<repo>/.runtime` when that folder exists (the
+ * separate-workspace layout), else to the repo itself (scaffold on top). So the
+ * common case needs no `--workspace` flag at all.
+ */
+const defaultWorkspace = existsSync(path.join(repoRoot, '.runtime', 'apps'))
+  ? path.join(repoRoot, '.runtime')
+  : repoRoot;
+const workspace = path.resolve(argumentValue('workspace') ?? defaultWorkspace);
+const separateWorkspace = workspace !== repoRoot;
 const wiringSourceDirectory = path.join(__dirname, 'dev-wiring');
+const repoLibs = path.join(repoRoot, 'libs');
 
-const HELPERS = ['discover-page-libs.mjs', 'page-menu-merge-plugin.mjs', 'page-appsec-merge-plugin.mjs'];
+const HELPERS = [
+  'wui-pages-root.mjs',
+  'discover-page-libs.mjs',
+  'page-menu-merge-plugin.mjs',
+  'page-appsec-merge-plugin.mjs'
+];
 const PUBLIC_URL_PREFIX = '/data/dashboard-wc';
 
 let changed = 0;
 let pending = 0;
 const log = (mark, message) => console.log(`  ${mark} ${message}`);
+
+/**
+ * Pending edits, in `--check` mode only: relativePath -> content as it WOULD be.
+ *
+ * Several files take more than one patch, and a later patch anchors on text an
+ * earlier one inserts (e.g. the appsec plugin anchors on the menu plugin's import
+ * line). Since `--check` writes nothing, the later patch used to read the
+ * untouched file, miss its anchor and abort with
+ * "anchor not found — the runtime version likely changed it" — a FALSE alarm on a
+ * perfectly fine fresh scaffold, and one that hid real problems. Chaining the
+ * edits in memory makes `--check` see exactly what `--apply` would produce.
+ */
+const virtualFiles = new Map();
 
 /** Apply `edit` to a file unless `isWired(content)` is already true. */
 function patchFile(relativePath, isWired, edit) {
@@ -76,7 +124,7 @@ function patchFile(relativePath, isWired, edit) {
     return;
   }
 
-  const before = readFileSync(file, 'utf8');
+  const before = virtualFiles.get(relativePath) ?? readFileSync(file, 'utf8');
   if (isWired(before)) {
     log('•', `${relativePath} already wired`);
     return;
@@ -84,6 +132,7 @@ function patchFile(relativePath, isWired, edit) {
 
   const after = edit(before); // throws if an anchor is missing
   if (checkOnly) {
+    virtualFiles.set(relativePath, after);
     log('→', `${relativePath} WOULD be patched`);
     pending += 1;
     return;
@@ -138,6 +187,65 @@ function deployHelpers() {
     log('✓', `scripts/${helper} deployed`);
     changed += 1;
   }
+}
+
+// --- 1b. tell the deployed helpers where the pages live -----------------------
+/**
+ * Write `apps/dashboard-wc/scripts/wui-pages-root.json`, the ONE place that says
+ * where the `wui-*` page libs are. This is what replaces linking the libs into
+ * the workspace: config instead of junctions/symlinks — nothing for a `readdir`
+ * to mis-detect, identical on every OS, and it survives a zip or a CI checkout.
+ *
+ * Removed again when the workspace IS the repo, so switching back to the
+ * scaffold-on-top layout cannot leave a stale pointer behind.
+ */
+function writePagesRoot() {
+  const relativePath = path.join('apps', 'dashboard-wc', 'scripts', 'wui-pages-root.json');
+  const file = path.join(workspace, relativePath);
+  const pretty = relativePath.replaceAll('\\', '/');
+
+  if (!separateWorkspace) {
+    if (!existsSync(file)) {
+      log('•', `${pretty} not needed (workspace IS the repo)`);
+      return;
+    }
+    if (checkOnly) {
+      log('→', `${pretty} WOULD be removed (workspace IS the repo)`);
+      pending += 1;
+      return;
+    }
+    rmSync(file);
+    log('✓', `${pretty} removed (workspace IS the repo)`);
+    changed += 1;
+    return;
+  }
+
+  // Forward slashes: the file is read by JS on every platform, and a Windows
+  // backslash would need escaping in JSON.
+  const fresh = `${JSON.stringify(
+    {
+      _comment:
+        'Generated by tools/wire-workspace.mjs — do not edit. Says where the wui-* page libs live.',
+      repoRoot: repoRoot.replaceAll('\\', '/'),
+      libsDirectory: repoLibs.replaceAll('\\', '/')
+    },
+    null,
+    2
+  )}\n`;
+
+  if (existsSync(file) && readFileSync(file, 'utf8') === fresh) {
+    log('•', `${pretty} up to date`);
+    return;
+  }
+  if (checkOnly) {
+    log('→', `${pretty} WOULD point at ${repoLibs}`);
+    pending += 1;
+    return;
+  }
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, fresh);
+  log('✓', `${pretty} -> ${repoLibs}`);
+  changed += 1;
 }
 
 // --- 2. vite.shared.ts --------------------------------------------------------
@@ -283,10 +391,6 @@ function patchViteConfigAppsec() {
   );
 }
 
-// --- 4d. vite.config.pages.ts — app-security manifest merge (build) -----------
-// Build counterpart: emits <outDir>/app-security-manifest.json. Anchored on the
-// pageMenuMergePlugin line patched in by patchViteConfigPages (last array item,
-// no trailing comma) — add a comma and append the appsec plugin.
 function patchViteConfigPagesAppsec() {
   patchFile(
     'apps/dashboard-wc/vite.config.pages.ts',
@@ -311,16 +415,215 @@ function patchViteConfigPagesAppsec() {
   );
 }
 
-// --- 5. tsconfig.base.json ----------------------------------------------------
-/** Build `@visuelconcept/wui-*\/*` -> `libs/wui-*\/src/*` from the libs dir. */
-function visuelconceptPaths() {
-  const libsDirectory = path.join(workspace, 'libs');
-  const entries = {};
-  if (!existsSync(libsDirectory)) return entries;
-  for (const dirent of readdirSync(libsDirectory, { withFileTypes: true })) {
-    if (dirent.isDirectory() && dirent.name.startsWith('wui-')) {
-      entries[`@visuelconcept/${dirent.name}/*`] = [`libs/${dirent.name}/src/*`];
+// --- 4c-bis. the runtime's AI-assistant skills, copied into this repo ----------
+/**
+ * `webui-runtime-init` ships the `winccoa-*` skills (widget, standalone-page,
+ * menu, branding, shared-bundles, api-standalone, web-guide) in three flavours.
+ * They live in the workspace, but the assistant runs HERE — and Claude Code &
+ * co. only look at the project directory, they do not descend into `.runtime/`.
+ *
+ * COPIED, not linked, and that is deliberate: whether a given assistant's skill
+ * DISCOVERY walks a junction is unverifiable from inside a session (it happens at
+ * startup), and today's lesson is precisely that links get mis-detected — five
+ * `isDirectory()` filters, plus `exports` conditions on aliased packages. A copy
+ * assumes nothing. It is refreshed on every run of this script, which is already
+ * the ritual after a runtime upgrade, so staleness is bounded.
+ *
+ * Only the LEAF folders are touched: your own `.claude/settings.json`,
+ * `.claude/agents/` and `.github/workflows/` are never read or written here.
+ * All three are gitignored — third-party content that must not be committed.
+ */
+const SKILL_DIRECTORIES = [
+  path.join('.claude', 'skills'),
+  path.join('.ai', 'skills'),
+  path.join('.github', 'prompts')
+];
+
+function copySkills() {
+  if (!separateWorkspace) {
+    log('•', 'skills already in place (workspace IS the repo)');
+    return;
+  }
+  for (const relative of SKILL_DIRECTORIES) {
+    const source = path.join(workspace, relative);
+    const destination = path.join(repoRoot, relative);
+    const pretty = relative.replaceAll('\\', '/');
+
+    if (!existsSync(source)) {
+      log('•', `${pretty} not shipped by this runtime — skipped`);
+      continue;
     }
+
+    // A leftover link from an earlier layout would make cpSync write THROUGH it,
+    // back into the workspace. Unlink first (rmdir touches only the link).
+    try {
+      if (lstatSync(destination).isSymbolicLink()) {
+        if (checkOnly) {
+          log('→', `${pretty} is a link — WOULD be replaced by a copy`);
+          pending += 1;
+          continue;
+        }
+        try {
+          unlinkSync(destination);
+        } catch {
+          rmdirSync(destination);
+        }
+      }
+    } catch {
+      /* absent — nothing to unlink */
+    }
+
+    if (sameTree(source, destination)) {
+      log('•', `${pretty} up to date`);
+      continue;
+    }
+    if (checkOnly) {
+      log('→', `${pretty} WOULD be refreshed from the workspace`);
+      pending += 1;
+      continue;
+    }
+    // Replace wholesale so a skill deleted upstream disappears here too.
+    rmSync(destination, { recursive: true, force: true });
+    mkdirSync(path.dirname(destination), { recursive: true });
+    cpSync(source, destination, { recursive: true });
+    log('✓', `${pretty} refreshed from the workspace`);
+    changed += 1;
+  }
+}
+
+/** Shallow-but-sufficient equality: same relative file list, same sizes. */
+function sameTree(a, b) {
+  if (!existsSync(b)) return false;
+  const list = (root, prefix = '') => {
+    const out = [];
+    for (const dirent of readdirSync(path.join(root, prefix), { withFileTypes: true })) {
+      const rel = path.join(prefix, dirent.name);
+      if (dirent.isDirectory()) out.push(...list(root, rel));
+      else out.push(`${rel.replaceAll('\\', '/')}:${statSync(path.join(root, rel)).size}`);
+    }
+    return out.sort();
+  };
+  try {
+    return list(a).join('|') === list(b).join('|');
+  } catch {
+    return false;
+  }
+}
+
+// --- 4d. one junction: <repo>/node_modules -> <workspace>/node_modules --------
+/**
+ * The ONLY link in the whole layout, and the reason the page libs need none.
+ *
+ * The pages stay in their repo (wui-pages-root.json says where), but their bare
+ * imports — '@wincc-oa/…', 'three', '@novnc/novnc' — must resolve, and Node walks
+ * up from the IMPORTER, i.e. from the repo, which owns no node_modules. Pointing
+ * <repo>/node_modules at the workspace's makes ordinary Node resolution work:
+ *
+ *   • `exports` conditions are honoured. Aliasing a package to a directory path
+ *     instead BYPASSES them, which silently picks the browser build — vitest in
+ *     the 'node' environment then dies on `self is not defined`.
+ *   • the page libs' own vitest.config.ts files run unchanged, from the repo.
+ *   • a spec that walks up looking for node_modules/… finds it
+ *     (libs/wui-gis/src/gis/icons.spec.ts does exactly that).
+ *   • nothing to generate and nothing to keep in sync with the dep list.
+ *
+ * Why this link is safe where 27 lib links were not: nothing in this codebase
+ * scans node_modules looking for pages, so no `dirent.isDirectory()` filter can
+ * mis-detect it, and its failure mode is a loud "Cannot find package", never a
+ * silent empty build. It is also gitignored by default.
+ */
+function linkNodeModules() {
+  if (!separateWorkspace) {
+    log('•', 'node_modules link not needed (workspace IS the repo)');
+    return;
+  }
+  const linkPath = path.join(repoRoot, 'node_modules');
+  const target = path.join(workspace, 'node_modules');
+
+  if (!existsSync(target)) {
+    log('!', 'workspace has no node_modules — run npm install there first');
+    process.exitCode = 1;
+    return;
+  }
+
+  let current;
+  try {
+    current = lstatSync(linkPath).isSymbolicLink()
+      ? path.resolve(readlinkSync(linkPath).replace(/[\\/]+$/, ''))
+      : undefined;
+  } catch {
+    current = undefined; // absent
+  }
+
+  if (current === path.resolve(target)) {
+    log('•', 'node_modules already linked');
+    return;
+  }
+  // A real node_modules here is someone's own install: never touch it.
+  if (current === undefined && existsSync(linkPath)) {
+    log('!', 'node_modules exists as a real directory — remove it by hand, then re-run');
+    process.exitCode = 1;
+    return;
+  }
+  if (checkOnly) {
+    log('→', `node_modules WOULD be linked -> ${target}`);
+    pending += 1;
+    return;
+  }
+  if (current !== undefined) {
+    // Stale link (workspace moved). rmdir unlinks without touching the target.
+    try {
+      unlinkSync(linkPath);
+    } catch {
+      rmdirSync(linkPath);
+    }
+  }
+  symlinkSync(target, linkPath, process.platform === 'win32' ? 'junction' : 'dir');
+  log('✓', `node_modules -> ${target}`);
+  changed += 1;
+}
+
+// --- 4e. vite: serve page sources that live outside the workspace --------------
+// Vite refuses to serve files outside its root, so the repo has to be added to
+// server.fs.allow or every page 403s in `npm start`. Build-only config
+// (vite.config.pages.ts) never serves, so it needs nothing.
+function patchViteServeOutOfRoot() {
+  if (!separateWorkspace) {
+    log('•', 'vite server.fs patch not needed (workspace IS the repo)');
+    return;
+  }
+  const repoPosix = repoRoot.replaceAll('\\', '/');
+  patchFile(
+    'apps/dashboard-wc/vite.config.ts',
+    (c) => c.includes('fs: { allow:'),
+    (c) =>
+      replaceAnchor(
+        c,
+        `\n    base: '',\n`,
+        `\n    base: '',\n\n    // Serve the page sources from the separate source repo (npm start).\n    server: { fs: { allow: ['.', '${repoPosix}'] } },\n`,
+        'vite.config.ts (server.fs.allow)'
+      )
+  );
+}
+
+// --- 5. tsconfig.base.json ----------------------------------------------------
+/**
+ * Build `@visuelconcept/wui-*\/*` -> the repo's `libs/wui-*\/src/*`.
+ *
+ * Always scans the REPO's libs — that is the source of truth — and emits paths
+ * relative to the workspace root (tsconfig `paths` resolve against `baseUrl`,
+ * which is `.`). With the scaffold on top that yields `libs/wui-x/src/*`; with a
+ * separate workspace it yields `../libs/wui-x/src/*`, which TypeScript accepts.
+ */
+function visuelconceptPaths() {
+  const entries = {};
+  if (!existsSync(repoLibs)) return entries;
+  for (const dirent of readdirSync(repoLibs, { withFileTypes: true })) {
+    if (!dirent.isDirectory() || !dirent.name.startsWith('wui-')) continue;
+    const target = path
+      .relative(workspace, path.join(repoLibs, dirent.name, 'src'))
+      .replaceAll('\\', '/');
+    entries[`@visuelconcept/${dirent.name}/*`] = [`${target}/*`];
   }
   return entries;
 }
@@ -506,6 +809,10 @@ console.log(
 );
 try {
   deployHelpers();
+  writePagesRoot();
+  copySkills();
+  linkNodeModules();
+  patchViteServeOutOfRoot();
   patchViteShared();
   patchViteConfig();
   patchViteConfigPages();
@@ -529,8 +836,31 @@ if (checkOnly) {
   );
   process.exit(pending ? 1 : 0);
 }
+
+// --- last step: the pages' third-party deps ------------------------------------
+// Chained here on purpose, so ONE command makes a freshly scaffolded workspace
+// usable. It must run AFTER the wiring: it reads the page libs' manifests through
+// the layout this script just established. `--no-deps` skips it (offline, or when
+// you know nothing changed).
+if (!hasFlag('no-deps')) {
+  const dependencies = path.join(__dirname, 'install-page-dependencies.mjs');
+  console.log('\nPage dependencies');
+  const result = spawnSync(
+    process.execPath,
+    [dependencies, '--workspace', workspace],
+    { stdio: 'inherit' }
+  );
+  if (result.status !== 0) {
+    console.error(
+      `\n✗ install-page-dependencies failed (exit ${result.status}). The wiring itself is done;\n` +
+        `  fix the install and re-run:  node tools/install-page-dependencies.mjs --workspace "${workspace}"`
+    );
+    process.exit(1);
+  }
+}
+
 console.log(
   changed
-    ? `\nDone — ${changed} change(s). Start the dev server:  npm start`
-    : '\nAlready fully wired — nothing to do.'
+    ? `\nDone — ${changed} change(s). Start the dev server:  npm start  (from ${workspace})`
+    : `\nAlready fully wired. Start the dev server:  npm start  (from ${workspace})`
 );
