@@ -17,6 +17,16 @@
       "default": "../wui-scada-project"
     },
     {
+      // PIN IT to the runtime version of the TARGET project: a page bundle is
+      // welded to the import map of the shell that built it. `latest` is fine for
+      // a first look, not for a deploy — keep one .runtime/ per runtime version.
+      //   npm view @wincc-oa/webui-runtime versions
+      "id": "runtimeVersion",
+      "type": "promptString",
+      "description": "Version de @wincc-oa/webui-runtime (celle de la cible ; latest = dernière)",
+      "default": "latest"
+    },
+    {
       // The WinCC OA VERSION ROOT — not its javascript/ subfolder. Must be a
       // version that actually ships `javascript/webserver-js` (3.21+ / the WebUI
       // Runtime add-on): npm links file: deps without checking the target, so a
@@ -30,7 +40,40 @@
   ],
   "tasks": [
     {
-      // ---- journey 1: bootstrap / repair -----------------------------------
+      // ---- journey 0: first clone ------------------------------------------
+      // Creates and populates .runtime/ (npm install @wincc-oa/webui-runtime +
+      // webui-runtime-init + init:oa-data), then chains the wiring below. Run it
+      // ONCE per clone / per runtime version — task 1 alone is not enough on a
+      // fresh clone: with no .runtime/apps, wire-workspace falls back to the repo
+      // root and patches the wrong place.
+      "label": "0. Workspace : bootstrap (créer + peupler .runtime)",
+      "type": "shell",
+      "command": "node",
+      "args": [
+        "tools/bootstrap-workspace.mjs",
+        "--version",
+        "${input:runtimeVersion}"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      // Read-only preview of the bootstrap: prints the commands, writes nothing.
+      "label": "0. Workspace : bootstrap — simulation (n'écrit rien)",
+      "type": "shell",
+      "command": "node",
+      "args": [
+        "tools/bootstrap-workspace.mjs",
+        "--check",
+        "--version",
+        "${input:runtimeVersion}"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      // ---- journey 1: re-wire / repair -------------------------------------
       "label": "1. Workspace : câbler (après re-scaffold / nouvelle page)",
       "type": "shell",
       "command": "node",
