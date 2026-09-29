@@ -1,0 +1,10 @@
+{
+  "values": {
+    "System1:ExampleDP_Arg1.": 12.5,
+    "System1:ExampleDP_Arg2.": 47.0,
+    "System1:ExampleDP_Trend1.": 3.2
+  },
+  "simulate": {
+    "ExampleDP_*": { "min": 0, "max": 100, "step": 4 }
+  }
+}
