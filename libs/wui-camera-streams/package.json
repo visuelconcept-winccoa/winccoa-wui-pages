@@ -37,8 +37,23 @@
     "permission": ["connected"],
     "tier": 3,
     "backend": {
-      "managers": ["rtspProxy (rtsp-relay + ffmpeg-static: resolves id -> rtsp URL from RtspCamera_ DPs, one shared pull fanned out)"],
-      "routes": ["/api/rtsp/* + the /api/rtsp/ws raw ws<->ws relay (same-origin)"]
+      "mount": "/api/rtsp",
+      "routeClass": "RtspRoute",
+      "routeFile": "rtspRoute",
+      "relayFn": "registerRtspRelay",
+      "relayFile": "rtspRelay",
+      "files": [
+        "rtspController.ts",
+        "rtspRoute.ts",
+        "rtspRelay.ts"
+      ],
+      "managers": [
+        "rtspProxy"
+      ],
+      "notes": [
+        "/api/rtsp/* + the /api/rtsp/ws raw ws<->ws relay (same-origin)",
+        "rtspProxy (rtsp-relay + ffmpeg-static: resolves id -> rtsp URL from RtspCamera_ DPs, one shared pull fanned out)"
+      ]
     }
   }
 }

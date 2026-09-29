@@ -29,6 +29,16 @@
     "module": "/data/dashboard-wc/pages/app-security.js",
     "icon": "shield",
     "permission": ["connected"],
-    "tier": 3
+    "tier": 3,
+    "backend": {
+      "mount": "/api/app-security",
+      "routeClass": "AppSecurityRoute",
+      "routeFile": "appSecurityRoute",
+      "files": [
+        "appSecurityController.ts",
+        "appSecurityRoute.ts",
+        "appSecurityGuard.ts"
+      ]
+    }
   }
 }

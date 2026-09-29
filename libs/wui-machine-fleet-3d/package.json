@@ -38,8 +38,23 @@
     "tier": 2,
     "assets": ["data/dashboard-wc/semifab-icons/** (billboard textures)"],
     "backend": {
-      "managers": ["machineSim (optional, simulation)", "kpiCalc (optional, real-time TRS/MTBF/MTTR)"],
-      "routes": ["/api/ai/chat (optional, AI assistant via wui-ai-kit)"]
+      "mount": "/api/ai",
+      "routeClass": "AiRoute",
+      "routeFile": "aiRoute",
+      "shared": [
+        "@visuelconcept/wui-ai-kit/aiController.ts",
+        "@visuelconcept/wui-ai-kit/aiRoute.ts"
+      ],
+      "managers": [
+        "machineSim",
+        "kpiCalc",
+        "aiAssistant"
+      ],
+      "notes": [
+        "/api/ai/chat (optional, AI assistant via wui-ai-kit)",
+        "machineSim (optional, simulation)",
+        "kpiCalc (optional, real-time TRS/MTBF/MTTR)"
+      ]
     }
   }
 }

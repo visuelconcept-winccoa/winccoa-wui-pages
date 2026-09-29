@@ -5,10 +5,12 @@
 // -----------------------------------------------------------------------------
 // deploy-backend.mjs — deploy page-module backends + managers to a WinCC OA project
 // -----------------------------------------------------------------------------
-// Source of truth is tools/specs.json: each page may declare
-//   backend: { mount, srcFiles: [...] }   -> HTTP module under the webserver
+// Source of truth is each module's package.json#wuiPage.backend, read through
+// tools/module-backends.mjs (the files live in the module: libs/wui-<page>/backend/,
+// libs/wui-<owner>/managers/<name>/):
+//   backend: { mount, files, shared }     -> HTTP module under the webserver
 //   backend: { vendorPackages: [...] }    -> workspace libs the routes import
-//   managers: [ "<name>", ... ]           -> JS managers under <project>/javascript/
+//   backend: { managers: [ "<name>" ] }   -> JS managers under <project>/javascript/
 //
 // This script mirrors those into a target project, WITHOUT touching the module
 // `index.ts` descriptors (created once by each page's own installer) and WITHOUT
@@ -25,9 +27,9 @@
 //   --no-build           skip the webserver `npm run build`
 //   --dry-run            print what would happen, change nothing
 //
-// What it does (idempotent): copy each selected page's backend.srcFiles from
-// backend/routes/ into <ws>/src/modules/<page>/; VENDOR any workspace library it
-// declares (see below); copy each manager folder from backend/managers/<m>/ into
+// What it does (idempotent): copy each selected page's backend files (its own
+// backend/ files + the `shared` ones) into <ws>/src/modules/<page>/; VENDOR any
+// workspace library it declares (see below); copy each manager folder into
 // <project>/javascript/<m>/ AND `npm install` there when it ships a package.json
 // with dependencies (rtspProxy needs express, express-ws, ffmpeg-static,
 // rtsp-relay — a manager has no node_modules unless we make one, and without it
@@ -59,6 +61,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
+import { loadModuleBackends } from '../module-backends.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..', '..');
@@ -84,8 +87,6 @@ if (!project) {
 
 const ws = join(project, 'javascript', wsName);
 const modulesDir = join(ws, 'src', 'modules');
-const routesDir = join(ROOT, 'backend', 'routes');
-const managersDir = join(ROOT, 'backend', 'managers');
 const progsFile = join(project, 'config', 'progs');
 
 if (!existsSync(modulesDir)) {
@@ -94,11 +95,12 @@ if (!existsSync(modulesDir)) {
   process.exit(1);
 }
 
-const specs = JSON.parse(readFileSync(join(ROOT, 'tools', 'specs.json'), 'utf8'));
-const selected = specs.filter((p) => (only ? only.includes(p.page) : true) && (p.backend?.srcFiles?.length || p.managers?.length));
+const selected = [...loadModuleBackends(ROOT).values()].filter(
+  (p) => (only ? only.includes(p.page) : true) && (p.backend?.files.length || p.managers.length)
+);
 
 if (selected.length === 0) {
-  console.error(only ? `No matching pages with backend/managers for --only ${only.join(',')}` : 'No pages with backend/managers in specs.json');
+  console.error(only ? `No matching pages with backend/managers for --only ${only.join(',')}` : 'No module declares a backend (package.json#wuiPage.backend)');
   process.exit(1);
 }
 
@@ -214,16 +216,16 @@ function rewriteVendorImports(file, vendored, page, label) {
   if (leftover.length > 0) warnings.push(`module '${page}': ${label} still imports ${[...new Set(leftover)].join(', ')} after rewriting.`);
 }
 
-// 1) module srcFiles + 2) managers
+// 1) module backend files (own + shared) + 2) managers
 for (const page of selected) {
-  const srcFiles = page.backend?.srcFiles ?? [];
+  const srcFiles = page.backend?.files ?? [];
   if (srcFiles.length > 0) {
     const moduleDir = join(modulesDir, page.page);
     if (!existsSync(join(moduleDir, 'index.ts'))) {
-      warnings.push(`module '${page.page}' has no index.ts in ${moduleDir} — the page module must be installed once before its backend can mount (skipping its srcFiles).`);
+      warnings.push(`module '${page.page}' has no index.ts in ${moduleDir} — the page module must be installed once before its backend can mount (skipping its backend files).`);
     } else {
       for (const f of srcFiles) {
-        copyFile(join(routesDir, f), join(moduleDir, f), `modules/${page.page}/${f}`);
+        copyFile(f.source, join(moduleDir, f.name), `modules/${page.page}/${f.name}`);
       }
       // Vendor the workspace libraries the routes import, then point the copied
       // files at them (see the header). Done AFTER the copy: it edits the copies.
@@ -233,16 +235,16 @@ for (const page of selected) {
         if (lib !== null) vendored.set(packageName, lib);
       }
       for (const f of srcFiles) {
-        rewriteVendorImports(join(moduleDir, f), vendored, page.page, f);
+        rewriteVendorImports(join(moduleDir, f.name), vendored, page.page, f.name);
       }
     }
   }
   if (!noManagers) {
-    for (const m of page.managers ?? []) {
-      if (managersCopied.has(m)) continue;
-      managersCopied.add(m);
-      copyFile(join(managersDir, m), join(project, 'javascript', m), `javascript/${m}/`);
-      installManagerDependencies(m);
+    for (const m of page.managers) {
+      if (managersCopied.has(m.name)) continue;
+      managersCopied.add(m.name);
+      copyFile(m.source, join(project, 'javascript', m.name), `javascript/${m.name}/`);
+      installManagerDependencies(m.name);
     }
   }
 }

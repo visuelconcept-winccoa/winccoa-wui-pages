@@ -37,8 +37,23 @@
     "permission": ["connected"],
     "tier": 3,
     "backend": {
-      "managers": ["vncProxy (MSA vRPC: resolves connection id -> host:port from RemoteVnc_ DPs)"],
-      "routes": ["/api/vnc/* + the /api/vnc/ws raw ws<->TCP relay (websockify-style)"]
+      "mount": "/api/vnc",
+      "routeClass": "VncRoute",
+      "routeFile": "vncRoute",
+      "relayFn": "registerVncRelay",
+      "relayFile": "vncRelay",
+      "files": [
+        "vncController.ts",
+        "vncRoute.ts",
+        "vncRelay.ts"
+      ],
+      "managers": [
+        "vncProxy"
+      ],
+      "notes": [
+        "/api/vnc/* + the /api/vnc/ws raw ws<->TCP relay (websockify-style)",
+        "vncProxy (MSA vRPC: resolves connection id -> host:port from RemoteVnc_ DPs)"
+      ]
     }
   }
 }

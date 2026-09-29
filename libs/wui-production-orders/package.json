@@ -30,6 +30,13 @@
     "icon": "capacity",
     "permission": ["connected"],
     "tier": 1,
-    "backend": { "managers": ["productionOrdersKpi (optional, server-computed KPI strip)"] }
+    "backend": {
+      "managers": [
+        "productionOrdersKpi"
+      ],
+      "notes": [
+        "productionOrdersKpi (optional, server-computed KPI strip)"
+      ]
+    }
   }
 }

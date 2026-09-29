@@ -19,13 +19,15 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 import { EXTERNAL_DEPENDENCIES as REGISTRY } from './external-dependencies.mjs';
+import { loadModuleBackends } from './module-backends.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));   // <repo>/tools
 const ROOT = dirname(HERE);                             // <repo>
 const DIST = join(ROOT, 'packages');                    // generated, self-contained packages
 const LIBS = join(ROOT, 'libs');                        // page + shared lib SOURCE
-const WS_SRC = join(ROOT, 'backend', 'routes');         // backend route module SOURCE (flat)
-const MGR_SRC = join(ROOT, 'backend', 'managers');      // JS managers (node_modules-free)
+// Backend route files + managers: owned by each module (libs/wui-<page>/backend/,
+// libs/wui-<owner>/managers/<name>/), described in its package.json#wuiPage.backend.
+const BACKENDS = loadModuleBackends(ROOT);
 
 function walk(d) {
   const o = [];
@@ -69,12 +71,13 @@ function build(spec) {
   }
 
   // 4. backend module
+  const owned = BACKENDS.get(page);
   let backend;
-  if (spec.backend) {
-    const b = spec.backend;
+  if (owned?.backend) {
+    const b = owned.backend;
     const modDir = join(PKG, 'backend', 'modules', page);
     mkdirSync(modDir, { recursive: true });
-    for (const f of b.srcFiles) copyFileSync(join(WS_SRC, f), join(modDir, f));
+    for (const f of b.files) copyFileSync(f.source, join(modDir, f.name));
     const L = [
       `// Backend module descriptor for the ${spec.title} page — auto-discovered by`,
       `// @visuelconcept/wui-webserver (mountModuleRoutes${b.relayFn ? ' + mountModuleRelays' : ''}).`,
@@ -92,12 +95,12 @@ function build(spec) {
 
   // 5. managers
   let managers;
-  if (spec.managers && spec.managers.length) {
+  if (owned?.managers.length) {
     managers = [];
-    for (const name of spec.managers) {
+    for (const { name, source } of owned.managers) {
       const dst = join(PKG, 'manager', name);
       mkdirSync(dst, { recursive: true });
-      cpSync(join(MGR_SRC, name), dst, { recursive: true, filter: mgrFilter });
+      cpSync(source, dst, { recursive: true, filter: mgrFilter });
       managers.push({ dir: `manager/${name}`, name, pmon: `node | always | 30 | 3 | 1 |${name}/index.js` });
     }
   }
@@ -125,7 +128,7 @@ function build(spec) {
     for (const f of readdirSync(docsDir)) if (f.endsWith('.md')) copyFileSync(join(docsDir, f), join(PKG, f));
   }
 
-  console.log(`✓ ${spec.name}  npmDeps=${Object.keys(npmDeps).join(',') || 'none'}  backend=${backend ? spec.backend.mount : 'no'}  managers=${(managers || []).map((x) => x.name).join(',') || 'none'}`);
+  console.log(`✓ ${spec.name}  npmDeps=${Object.keys(npmDeps).join(',') || 'none'}  backend=${backend ? owned.backend.mount : 'no'}  managers=${(managers || []).map((x) => x.name).join(',') || 'none'}`);
 }
 
 const raw = JSON.parse(readFileSync(process.argv[2], 'utf8'));

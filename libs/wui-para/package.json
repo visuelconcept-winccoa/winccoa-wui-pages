@@ -35,12 +35,29 @@
     "permission": ["connected"],
     "tier": 3,
     "backend": {
-      "routes": [
-        "/api/para/* (datapoint/type engineering — ParaRoute; required for any mutation, no offline fallback)",
-        "/api/para/dpl/* (DPL ASCII import/export — bridges to the dplAscii MSA manager / WCCOAasciiSQLite)"
+      "mount": "/api/para",
+      "routeClass": "ParaRoute",
+      "routeFile": "paraRoute",
+      "files": [
+        "paraController.ts",
+        "paraRoute.ts",
+        "paraTypeNode.ts",
+        "dplController.ts"
       ],
-      "managers": ["dplAscii (MSA service DplAscii — DPL export/import via WCCOAasciiSQLite)"],
-      "dependsOn": ["/api/ai bridge + aiAssistant manager (proposal-only AI assistant)"]
+      "shared": [
+        "@visuelconcept/wui-app-security/appSecurityGuard.ts"
+      ],
+      "managers": [
+        "dplAscii"
+      ],
+      "notes": [
+        "/api/para/* (datapoint/type engineering — ParaRoute; required for any mutation, no offline fallback)",
+        "/api/para/dpl/* (DPL ASCII import/export — bridges to the dplAscii MSA manager / WCCOAasciiSQLite)",
+        "dplAscii (MSA service DplAscii — DPL export/import via WCCOAasciiSQLite)"
+      ],
+      "dependsOn": [
+        "/api/ai bridge + aiAssistant manager (proposal-only AI assistant)"
+      ]
     }
   }
 }

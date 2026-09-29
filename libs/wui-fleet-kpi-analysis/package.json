@@ -30,6 +30,13 @@
     "module": "/data/dashboard-wc/pages/fleet-kpi-analysis.js",
     "hidden": true,
     "tier": 1,
-    "backend": { "managers": ["kpiCalc (optional, server-computed TRS)"] }
+    "backend": {
+      "managers": [
+        "kpiCalc"
+      ],
+      "notes": [
+        "kpiCalc (optional, server-computed TRS)"
+      ]
+    }
   }
 }

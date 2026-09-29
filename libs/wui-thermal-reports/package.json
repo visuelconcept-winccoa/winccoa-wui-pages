@@ -30,6 +30,10 @@
     "icon": "thermometer",
     "permission": ["connected"],
     "tier": 1,
-    "backend": { "managers": ["machineSim (optional, supplies the archived furnace temperature curve)"] }
+    "backend": {
+      "notes": [
+        "machineSim (optional, supplies the archived furnace temperature curve)"
+      ]
+    }
   }
 }

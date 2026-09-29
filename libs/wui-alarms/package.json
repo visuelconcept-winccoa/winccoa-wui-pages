@@ -49,7 +49,16 @@
     "tier": 3,
     "backend": {
       "mount": "/api/alarms",
-      "routes": [
+      "routeClass": "AlarmsRoute",
+      "routeFile": "alarmsRoute",
+      "files": [
+        "alarmsController.ts",
+        "alarmsRoute.ts"
+      ],
+      "shared": [
+        "@visuelconcept/wui-app-security/appSecurityGuard.ts"
+      ],
+      "notes": [
         "POST /api/alarms/ack (acknowledge as the session user)",
         "GET /api/alarms/health"
       ]

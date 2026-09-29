@@ -28,7 +28,18 @@
     "tier": 3,
     "backend": {
       "mount": "/api/tag-importer",
-      "routes": ["/api/tag-importer/*"]
+      "routeClass": "TagImporterRoute",
+      "routeFile": "tagImporterRoute",
+      "files": [
+        "tagImporterController.ts",
+        "tagImporterRoute.ts"
+      ],
+      "shared": [
+        "@visuelconcept/wui-app-security/appSecurityGuard.ts"
+      ],
+      "notes": [
+        "/api/tag-importer/*"
+      ]
     }
   }
 }

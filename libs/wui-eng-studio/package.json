@@ -23,7 +23,23 @@
     "tier": 3,
     "backend": {
       "mount": "/api/eng",
-      "routes": ["/api/eng/*"]
+      "routeClass": "EngRoute",
+      "routeFile": "engRoute",
+      "files": [
+        "engController.ts",
+        "engRoute.ts",
+        "engStore.ts",
+        "engOpcuaBrowse.ts"
+      ],
+      "shared": [
+        "@visuelconcept/wui-app-security/appSecurityGuard.ts"
+      ],
+      "vendorPackages": [
+        "@visuelconcept/wui-eng-core"
+      ],
+      "notes": [
+        "/api/eng/*"
+      ]
     }
   }
 }

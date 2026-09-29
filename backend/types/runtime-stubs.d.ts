@@ -12,7 +12,8 @@
 // without pretending to be the real typings.
 //
 // They are used ONLY by backend/tsconfig.typecheck.json. They are NOT deployed:
-// deploy-release.mjs copies the files listed in each spec's `srcFiles`, where the
+// deploy-release.mjs copies each module's backend files (`package.json#wuiPage.backend`
+// `files` + `shared`) into the webserver, where the
 // genuine packages resolve. Keep them lean — a stub that drifts wider than the
 // real API turns a compile error into a runtime one.
 // -----------------------------------------------------------------------------

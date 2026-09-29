@@ -32,7 +32,12 @@
     "permission": ["connected"],
     "tier": 1,
     "backend": {
-      "managers": ["ampereSim (optional showcase simulator — creates + drives the shared AmpereSim_Demo datapoint)"]
+      "managers": [
+        "ampereSim"
+      ],
+      "notes": [
+        "ampereSim (optional showcase simulator — creates + drives the shared AmpereSim_Demo datapoint)"
+      ]
     }
   }
 }

@@ -27,8 +27,22 @@
     "permission": ["connected"],
     "tier": 3,
     "backend": {
-      "managers": ["processMonitor"],
-      "routes": ["/api/process-monitor/*"]
+      "mount": "/api/process-monitor",
+      "routeClass": "ProcessMonitorRoute",
+      "routeFile": "processMonitorRoute",
+      "files": [
+        "processMonitorController.ts",
+        "processMonitorRoute.ts"
+      ],
+      "shared": [
+        "@visuelconcept/wui-app-security/appSecurityGuard.ts"
+      ],
+      "managers": [
+        "processMonitor"
+      ],
+      "notes": [
+        "/api/process-monitor/*"
+      ]
     }
   }
 }

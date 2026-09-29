@@ -6,7 +6,7 @@
  * the PARA model editor (and referenced by the AI assistant's system prompt).
  *
  * Names MUST match the backend `ELEMENT_TYPE_MAP` keys in
- * `backend/routes/paraTypeNode.ts`; the backend rejects any other type name.
+ * `libs/wui-para/backend/paraTypeNode.ts`; the backend rejects any other type name.
  * The JSON node shape ({@link ParaStructureNode}) mirrors the backend
  * `ParaTypeStructure` accepted by `/api/para/dptype/create` and `/dptype/change`.
  */

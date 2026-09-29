@@ -36,6 +36,11 @@
       "type": "AGV_Vehicle",
       "prefix": "AGV_",
       "note": "One datapoint per vehicle; read-only supervision. The page falls back to an in-memory demo fleet when no AGV_Vehicle datapoint exists."
+    },
+    "backend": {
+      "managers": [
+        "agvSim"
+      ]
     }
   }
 }

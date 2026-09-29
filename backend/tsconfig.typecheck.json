@@ -19,17 +19,22 @@
     "types": ["node"],
     "typeRoots": ["../libs/wui-eng-core/node_modules/@types"],
     "baseUrl": ".",
+    // At deploy time a module's own backend/ files and its `shared` ones
+    // (appSecurityGuard.ts, owned by wui-app-security) land in ONE folder, so
+    // `import './appSecurityGuard'` is relative. rootDirs reproduces that merge.
+    "rootDirs": ["../libs/wui-eng-studio/backend", "../libs/wui-app-security/backend"],
     "paths": {
       "@visuelconcept/wui-eng-core": ["../libs/wui-eng-core/src/index.ts"],
       "@visuelconcept/wui-eng-core/*": ["../libs/wui-eng-core/src/*"]
     }
   },
+  // The route sources live in the modules that own them (libs/wui-<page>/backend/).
   "include": [
     "types/**/*.d.ts",
-    "routes/engRoute.ts",
-    "routes/engController.ts",
-    "routes/engOpcuaBrowse.ts",
-    "routes/engStore.ts",
-    "routes/appSecurityGuard.ts"
+    "../libs/wui-eng-studio/backend/engRoute.ts",
+    "../libs/wui-eng-studio/backend/engController.ts",
+    "../libs/wui-eng-studio/backend/engOpcuaBrowse.ts",
+    "../libs/wui-eng-studio/backend/engStore.ts",
+    "../libs/wui-app-security/backend/appSecurityGuard.ts"
   ]
 }

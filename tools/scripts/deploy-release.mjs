@@ -20,7 +20,7 @@
 //      CacheFirst script cache — exits non-zero otherwise,
 //   7. deploys the BACKENDS (webserver modules + managers) associated with the
 //      selected modules — via tools/scripts/deploy-backend.mjs, driven by
-//      tools/specs.json.
+//      each module's package.json#wuiPage.backend (tools/module-backends.mjs).
 //
 // A page module is a `libs/wui-<id>/` with a `src/<id>.ts` entry (e.g.
 // wui-process-monitor → id "process-monitor"). Kit libs (wui-fleet-core,
@@ -39,7 +39,7 @@
 //   --workspace <dir>     The @wincc-oa/webui-runtime workspace that BUILDS the
 //                         pages. Defaults to `<repo>/.runtime` when it exists,
 //                         else the remembered one, else this repo (scaffold laid
-//                         on top). Sources (libs/, tools/specs.json) are ALWAYS
+//                         on top). Sources (libs/ and their backends) are ALWAYS
 //                         read here; only the npm build runs in the workspace.
 //   --modules <a,b,...>   Page ids to include (else interactive selection).
 //   --name <dir>          Webserver dir under javascript/ (default customer-webserver).
@@ -74,7 +74,7 @@
 // file to start fresh.
 //
 // Backend step also auto-generates any missing <ws>/src/modules/<page>/index.ts
-// descriptor (from specs.json) so the routes mount. It NEVER restarts managers or
+// descriptor (from the module's wuiPage.backend) so the routes mount. It NEVER restarts managers or
 // the webserver (production actions) — it prints what to restart afterwards.
 // -----------------------------------------------------------------------------
 
@@ -84,11 +84,11 @@ import path from 'node:path';
 import readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { EXTERNAL_DEPENDENCIES } from '../external-dependencies.mjs';
+import { loadModuleBackends } from '../module-backends.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..'); // tools/scripts -> repo root
 const LIBS_DIR = path.join(ROOT, 'libs');
-const SPECS_FILE = path.join(ROOT, 'tools', 'specs.json');
 // Local (gitignored) cache remembering the last-used project root, offered as the
 // default on the next run. Mirrors the .license-cache.json convention.
 const STATE_FILE = path.join(ROOT, '.deploy-release-cache.json');
@@ -178,7 +178,7 @@ function run(cmd, args, extraEnv = {}) {
     const isNpm = cmd === 'npm';
     // npm scripts (build, build:pages) belong to the WORKSPACE — that is where
     // apps/, nx and node_modules live. Our own node scripts stay in ROOT, where
-    // libs/ and tools/specs.json are.
+    // libs/ (and the backends the modules own) are.
     const child = spawn(isNpm ? cmd : process.execPath, args, {
       cwd: isNpm ? WORKSPACE : ROOT,
       stdio: 'inherit',
@@ -192,10 +192,9 @@ function run(cmd, args, extraEnv = {}) {
 
 // ---- module catalog ---------------------------------------------------------
 
-/** Discover page modules: libs/wui-<id>/src/<id>.ts, enriched with menu title + specs backend. */
+/** Discover page modules: libs/wui-<id>/src/<id>.ts, enriched with menu title + the backend it owns. */
 function discoverModules() {
-  const specs = JSON.parse(fs.readFileSync(SPECS_FILE, 'utf8'));
-  const specByPage = new Map(specs.map((s) => [s.page, s]));
+  const backends = loadModuleBackends(ROOT);
   const out = [];
   for (const dirent of fs.readdirSync(LIBS_DIR, { withFileTypes: true })) {
     if (!dirent.isDirectory() || !dirent.name.startsWith('wui-')) continue;
@@ -212,10 +211,10 @@ function discoverModules() {
     } catch {
       /* no/invalid fragment — keep id */
     }
-    const spec = specByPage.get(id);
-    const hasBackend = Boolean(spec?.backend?.srcFiles?.length);
-    const managers = spec?.managers ?? [];
-    out.push({ id, lib: dirent.name, title, route, hasBackend, mount: spec?.backend?.mount, managers, backend: spec?.backend });
+    const owned = backends.get(id);
+    const hasBackend = Boolean(owned?.backend?.files.length);
+    const managers = owned?.managers.map((manager) => manager.name) ?? [];
+    out.push({ id, lib: dirent.name, title, route, hasBackend, mount: owned?.backend?.mount, managers, backend: owned?.backend });
   }
   return out.sort((a, b) => a.id.localeCompare(b.id));
 }
@@ -549,7 +548,7 @@ async function installWebserver(project) {
 
 /**
  * Create the `<ws>/src/modules/<page>/index.ts` descriptor for each selected
- * backend page when missing, derived from specs.json (mount, routeClass,
+ * backend page when missing, derived from its wuiPage.backend (mount, routeClass,
  * routeFile). Without it the webserver loader can't mount the module and
  * deploy-backend skips the routes. Returns false if the modules dir is absent.
  */

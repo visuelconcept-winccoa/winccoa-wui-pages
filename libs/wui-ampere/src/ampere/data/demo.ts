@@ -46,7 +46,7 @@ const CAT_RAIL = (): string => t('Railway electrification', 'Électrification fe
 /**
  * Shared simulator datapoint. Every showcase binds its switchgear, sources and
  * measurements to elements of this ONE datapoint — created and driven live by
- * the `ampereSim` JavaScript manager (`backend/managers/ampereSim`). The element
+ * the `ampereSim` JavaScript manager (`libs/wui-ampere/managers/ampereSim`). The element
  * names below are the contract between the demos and the simulator; keep them in
  * sync with the manager's POSITIONS / SOURCES / ANALOG tables. No system prefix
  * is stored (the page normalises it away), so it resolves on the local system.
