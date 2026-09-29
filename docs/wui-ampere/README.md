@@ -68,7 +68,7 @@ the downstream catenary section live.
 
 All demo networks bind their switchgear, sources and measurements to elements of
 **one shared datapoint** `AmpereSim_Demo` (type `AmpereSim`). The WinCC OA
-JavaScript manager [`backend/managers/ampereSim`](../../backend/managers/ampereSim/index.js)
+JavaScript manager [`libs/wui-ampere/managers/ampereSim`](../../libs/wui-ampere/managers/ampereSim/index.js)
 **creates** that type + datapoint and **drives** it live:
 
 - switchgear positions (`feeder1`, `mainBreaker`, `sectioning`, `busCoupler`, …)
@@ -84,7 +84,7 @@ keep the two in sync. No system prefix is stored, so the binding resolves on the
 local system and the page's `normDp` matches it against the emitted DP.
 
 Register it in the project's `config/progs` (deploy-release wires it from
-`tools/specs.json` `managers`):
+`libs/wui-ampere/package.json` → `wuiPage.backend.managers`):
 
 ```
 node | manual | 30 | 2 | 2 |ampereSim/index.js

@@ -61,23 +61,25 @@ node install.mjs --project <root> --webserver <root>/javascript/<name>/src
 
 ## Redeploy page backends from this repo (dev) — `deploy:backend`
 
-During development the backend sources live in this repo under `backend/routes/`
-(HTTP controllers/routes) and `backend/managers/` (JS managers); the page→module
-and page→manager mapping is declared in `tools/specs.json`. To push them into an
-already-installed project webserver, use the specs-driven deployer instead of
+During development each module owns its backend sources in this repo:
+`libs/wui-<page>/backend/` (HTTP controllers/routes) and
+`libs/wui-<owner>/managers/<name>/` (JS managers); the page→module and
+page→manager mapping is declared in each module's `libs/wui-<page>/package.json`
+→ `wuiPage.backend` (`files`, `shared`, `managers`, …). To push them into an
+already-installed project webserver, use the manifest-driven deployer instead of
 copying files by hand (the manual `Copy-Item` approach is error-prone — an unset
 shell variable silently copies nothing, which then 404s the new routes):
 
 ```bash
 # all pages:
 npm run deploy:backend -- --project "D:/WinCC_OA_Proj_321/WebDemo2"
-# one or more pages, leaving managers/progs untouched (srcFiles only):
+# one or more pages, leaving managers/progs untouched (backend files only):
 npm run deploy:backend -- --project "D:/WinCC_OA_Proj_321/WebDemo2" --only para,machine-fleet-3d --no-managers
 # preview without changing anything:
 npm run deploy:backend -- --project "D:/..." --dry-run
 ```
 
-It copies each selected page's `backend.srcFiles` into
+It copies each selected page's backend files (`wuiPage.backend.files` + `shared`) into
 `<project>/javascript/<name>/src/modules/<page>/` (never the module `index.ts`,
 which each page's own installer creates once), copies its managers into
 `<project>/javascript/<m>/`, idempotently appends any missing manager line to

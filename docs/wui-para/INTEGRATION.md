@@ -9,7 +9,7 @@ pre-built `.js` from another version won't work).
 ## Prerequisites
 1. The target has a **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) that builds its dashboard — that's the `--workspace`. (cf. the official process, `dist-packages/README.md`.)
 2. **`@visuelconcept/wui-webserver`** is installed in the project (provides `/api/para` via backend module auto-discovery).
-3. For **DPL import/export**: the **`dplAscii`** JS manager (`backend/managers/dplAscii/index.js`) deployed to the project's `javascript/` and registered in `config/progs`, plus `WCCOAasciiSQLite` on PATH (standard install).
+3. For **DPL import/export**: the **`dplAscii`** JS manager (`libs/wui-para/managers/dplAscii/index.js`) deployed to the project's `javascript/` and registered in `config/progs`, plus `WCCOAasciiSQLite` on PATH (standard install).
 4. For the **AI assistant**: the `/api/ai` bridge + the **`aiAssistant`** manager (as used by the Machine-Fleet pages). The assistant is proposal-only: it uses the configured MCP servers in **read-only** mode (mutating tools filtered out in the manager).
 
 ## Install (one command)
@@ -27,7 +27,7 @@ The installer:
 4. runs **`build:pages`** in the workspace with `OUT_DIR=<project>/data/dashboard-wc` → `para.js` compiled **against the correct runtime** + `menuconfig.json` redeployed.
 
 ## After install (mandatory)
-0. **Dev backend redeploy** (when iterating on the backend in this repo): `npm run deploy:backend -- --project <project> --only para,machine-fleet-3d` copies the para srcFiles (incl. `dplController.ts`) + the machine-fleet-3d `aiController.ts` into the project webserver and rebuilds it (see `webserver/SETUP.md`). It does NOT restart managers.
+0. **Dev backend redeploy** (when iterating on the backend in this repo): `npm run deploy:backend -- --project <project> --only para,machine-fleet-3d` copies the para backend files (`libs/wui-para/backend/`, incl. `dplController.ts`) + the machine-fleet-3d `/api/ai` route (`aiController.ts`, shared from `libs/wui-ai-kit/backend/`) into the project webserver and rebuilds it (see `webserver/SETUP.md`). It does NOT restart managers.
 1. **Backend**: `cd <project>/javascript/customer-webserver && npm run build`, then **restart** the webserver manager (it compiles and auto-mounts the `/api/para` module, incl. the `/api/para/dpl/*` bridge). ⚠️ A successful build alone is not enough — the running webserver keeps the old code in memory until it is **restarted**, so a missed restart leaves `/api/para/dpl/*` returning 404.
 2. **DPL manager**: register `dplAscii` in `config/progs` (e.g. `node | always | 30 | 2 | 2 |dplAscii/index.js`) and (re)start it. Required for DPL import/export; the rest of the page works without it.
 3. **Browser**: DevTools → Application → Storage → **`Clear site data`**, then reload (**logged in**).

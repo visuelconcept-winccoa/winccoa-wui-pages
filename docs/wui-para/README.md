@@ -61,5 +61,5 @@ frontend/menu.fragment.jsonc        menu entry (permission: connected)
 backend/modules/para/               /api/para module
   paraController/Route/TypeNode       type/DP engineering (in-process winccoa)
   dplController.ts                    /api/para/dpl/* bridge -> DplAscii MSA service
-backend/managers/dplAscii/index.js  MSA manager: DPL export/import via WCCOAasciiSQLite
+manager/dplAscii/index.js           MSA manager: DPL export/import via WCCOAasciiSQLite
 ```

@@ -10,8 +10,10 @@ Two folders, and the boundary matters:
 
 ```
 <this repo>/
-  libs/wui-<page>/     the pages and the kits          — yours, versioned
-  backend/ webserver/  routes and WinCC OA managers    — yours, versioned
+  libs/wui-<page>/     the pages and the kits, + each module's own
+                       backend/ routes and managers/   — yours, versioned
+  webserver/           the dashboard webserver (module auto-discovery) — yours, versioned
+  backend/             offline typecheck only (tsconfig + stubs) — yours, versioned
   tools/               the wiring and the deploy chain — yours, versioned
   tsconfig.base.json   see below                       — yours, versioned
   .runtime/            the @wincc-oa/webui-runtime workspace — THIRD-PARTY, gitignored

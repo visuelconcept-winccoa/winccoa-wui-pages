@@ -22,8 +22,8 @@ All pages are published under the `@visuelconcept/` scope (e.g.
 `@visuelconcept/wui-para`). Source: `libs/wui-<page>/`. Per-page docs, where the
 module has them: `docs/wui-<page>/{README,INTEGRATION,NOTES}.md` — `wui-agv-fleet`,
 `wui-diagnosis` and `wui-process-monitor` currently document themselves in their
-source header and their entry in [`tools/specs.json`](./tools/specs.json), the
-catalog the deploy script reads. A visual tour of the pages is in
+source header and their `wuiPage` manifest in `libs/wui-<page>/package.json`
+(backend + managers), which the deploy scripts read. A visual tour of the pages is in
 [docs/MANUAL.md](./docs/MANUAL.md).
 
 | Module | Route | What it does | Backend |
@@ -181,8 +181,8 @@ menu to the selection **and removes the non-selected page bundles** so only the
 chosen modules are actually published (use `--no-prune` to keep them and filter
 the menu only), writes `dashboard-features.json` (the AI-assistant flag),
 and deploys the **backend modules + managers** of the selected pages (via
-`deploy-backend.mjs`; webserver module descriptors are generated from
-`tools/specs.json`).
+`deploy-backend.mjs`; webserver module descriptors are generated from each
+module's `package.json#wuiPage.backend`).
 
 | Option | Effect |
 |---|---|

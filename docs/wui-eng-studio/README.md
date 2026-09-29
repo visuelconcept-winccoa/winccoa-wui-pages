@@ -714,7 +714,7 @@ libs/wui-eng-studio/      the page (Siemens iX + lit; renders with no runtime)
                           + demo-opcua-server.ts: a FAKE OPC UA server (drifts, for the delta)
   demo/                   standalone demo harness (docs + screenshots)
                           + ix-bootstrap.ts: registers iX (elements, icons, theme)
-backend/routes/           thin runtime seam, fail-closed
+libs/wui-eng-studio/backend/  thin runtime seam, fail-closed
   engRoute.ts             the endpoint table + role gating
   engController.ts        EngPort over WsjServerGlobal.winccoa, read-back, handlers
   engStore.ts             JSON file store (devices · books · roles · workspaces)

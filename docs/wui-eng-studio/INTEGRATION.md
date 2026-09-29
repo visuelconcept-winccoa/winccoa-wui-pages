@@ -5,32 +5,29 @@
 
 ## Manifest
 
-`tools/specs.json` entry (page id `eng-studio`):
+`libs/wui-eng-studio/package.json` → `wuiPage.backend` (page id `eng-studio`; the
+route sources live in `libs/wui-eng-studio/backend/`, `tools/specs.json` keeps only
+the packaging metadata):
 
 ```json
-{
-  "page": "eng-studio",
-  "name": "@visuelconcept/wui-eng-studio",
-  "title": "Engineering Studio",
-  "tier": 3,
-  "backend": {
-    "mount": "/api/eng",
-    "routeClass": "EngRoute",
-    "routeFile": "engRoute",
-    "srcFiles": [
-      "engController.ts", "engRoute.ts", "engStore.ts",
-      "engOpcuaBrowse.ts", "appSecurityGuard.ts"
-    ],
-    "vendorPackages": ["@visuelconcept/wui-eng-core"]
-  }
+"backend": {
+  "mount": "/api/eng",
+  "routeClass": "EngRoute",
+  "routeFile": "engRoute",
+  "files": ["engController.ts", "engRoute.ts", "engStore.ts", "engOpcuaBrowse.ts"],
+  "shared": ["@visuelconcept/wui-app-security/appSecurityGuard.ts"],
+  "vendorPackages": ["@visuelconcept/wui-eng-core"],
+  "notes": ["/api/eng/*"]
 }
 ```
 
+- `shared` — the role guard, sourced from `libs/wui-app-security/backend/` and
+  copied into the module folder at deploy time.
 - No dedicated manager — the backend runs against `WsjServerGlobal.winccoa`
   (like para / tag-importer).
 - `vendorPackages` — the backend `engController` imports the **pure**
   `@visuelconcept/wui-eng-core` (the shared diff/apply/builders). It is vendored
-  next to the `srcFiles` at deploy time, exactly as page **kits** are vendored
+  next to the backend files at deploy time, exactly as page **kits** are vendored
   for the frontend (`_vendor/`). Keeping the logic in the core — not re-copied
   into the backend — is the whole point of the decoupling.
 
@@ -286,7 +283,7 @@ the top bar switches it live. Core-generated warnings are localised too (structu
 
 The page is part of the default release selection of the interactive deployer and is
 discovered automatically (`libs/wui-eng-studio/src/eng-studio.ts` + its
-`menu.fragment.jsonc` + its `tools/specs.json` entry):
+`menu.fragment.jsonc` + its `tools/specs.json` entry + its `package.json#wuiPage.backend`):
 
 ```bash
 node tools/scripts/deploy-release.mjs --project <winccoa-project>
@@ -295,14 +292,15 @@ node tools/scripts/deploy-release.mjs --project <winccoa-project>
 
 It copies the page bundle, merges the menu entry, generates the backend module
 descriptor (`modules/eng-studio/index.ts`, mount `/api/eng`) and then calls
-`deploy-backend.mjs`, which copies the route files listed in the spec's `srcFiles`.
+`deploy-backend.mjs`, which copies the route files listed in the manifest's `files`
+(from `libs/wui-eng-studio/backend/`) and `shared` (the app-security guard).
 
 **The core library is vendored into the module.** `engController.ts` imports
 `@visuelconcept/wui-eng-core` — the engineering domain it shares with the page — and
 that specifier does not exist on a customer webserver. Installing it as a package
 would not fix it either: the library ships TypeScript sources, and `tsc` does not
 *emit* files it reads from `node_modules`, so the import would compile and fail at
-runtime. So the spec declares
+runtime. So the manifest declares
 
 ```jsonc
 "backend": { "vendorPackages": ["@visuelconcept/wui-eng-core"] }
@@ -329,8 +327,8 @@ cd libs/wui-eng-core && ./node_modules/.bin/tsc -p ../../backend/tsconfig.typech
 ```
 
 That catches the mistakes that matter offline (a wrong core API, a missing
-`await`, a bad narrowing). The stubs are dev-only — they are not in any spec's
-`srcFiles`, so on a real webserver the genuine packages are used and the core is
+`await`, a bad narrowing). The stubs are dev-only — they are not in any module's
+backend `files`, so on a real webserver the genuine packages are used and the core is
 vendored (see "Deployment" above).
 
 ## ⚠️ Inputs still needed from you (to finish, not to demo)

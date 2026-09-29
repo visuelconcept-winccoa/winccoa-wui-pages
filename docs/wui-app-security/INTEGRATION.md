@@ -95,8 +95,24 @@ Existing gates compose: `.canEdit=${this.canPublish && this.roleEdit}`
 
 UI gating is UX, not security. For every sensitive route:
 
-1. Add `"appSecurityGuard.ts"` to the module's `backend.srcFiles` in
-   `tools/specs.json` (each module ships its own copy — no cross-module import).
+1. Add `"@visuelconcept/wui-app-security/appSecurityGuard.ts"` to the module's
+   `wuiPage.backend.shared` in `libs/wui-<page>/package.json` (the single source is
+   `libs/wui-app-security/backend/appSecurityGuard.ts`; at deploy time it is copied
+   into the module's own folder, so each module still ships its own copy — no
+   cross-module import at runtime). E.g. `libs/wui-alarms/package.json`:
+
+```json
+"backend": {
+  "mount": "/api/alarms",
+  "routeClass": "AlarmsRoute",
+  "routeFile": "alarmsRoute",
+  "files": ["alarmsController.ts", "alarmsRoute.ts"],
+  "shared": ["@visuelconcept/wui-app-security/appSecurityGuard.ts"],
+  "notes": ["POST /api/alarms/ack (acknowledge as the session user)", "GET /api/alarms/health"]
+}
+```
+
+   The module's own route files live in `libs/wui-<page>/backend/`.
 2. Wrap the routes:
 
 ```ts

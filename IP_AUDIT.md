@@ -101,8 +101,8 @@ Once unpacked, it contains 25 files mixing **Siemens/SDK-derived material** and 
 | Area | Files | Verdict | Evidence |
 |---|---|---|---|
 | `libs/wui-*` (20 page libraries) | 285 tracked | **VC original** | `package.json` `author: "Visuel Concept"`; descriptive source headers without third-party copyright; Git history 100% `orelmi`/visuelconcept |
-| `backend/managers/*` **except** mcpServer (aiAssistant, aliMcp, dplAscii, kpiCalc, machineSim, processMonitor, productInfo, productionOrdersKpi, rtspProxy, vncProxy) | ~30 | **VC original** | VC headers; standard `winccoa-manager` usage; "Siemens PIH" referenced only as an **external HTTP API**, not embedded |
-| `backend/routes/*` | ~ | **VC original** | HTTP→vRPC controllers, bridge to the managers |
+| `libs/wui-*/managers/*` (formerly `backend/managers/*` **except** mcpServer) (aiAssistant, aliMcp, dplAscii, kpiCalc, machineSim, processMonitor, productInfo, productionOrdersKpi, rtspProxy, vncProxy) | ~30 | **VC original** | VC headers; standard `winccoa-manager` usage; "Siemens PIH" referenced only as an **external HTTP API**, not embedded |
+| `libs/wui-*/backend/*` (formerly `backend/routes/*`) | ~ | **VC original** | HTTP→vRPC controllers, bridge to the managers |
 | `webserver/` | 10 | **VC original** | `@visuelconcept/wui-webserver`, depends on `@winccoa/backend` (dependency, not embedded) |
 | `tools/` (`wire-workspace.mjs`, `dev-wiring/`, `scripts/`) | 12 | **VC original** | Own tooling, no third-party attribution |
 | `apps/dashboard-wc/src/` + Vite configs | untracked | **VC original** (minimal entry point) bootstrapping the scaffolded shell | `main.ts`, `polyfills.ts`, VC Vite plugins |

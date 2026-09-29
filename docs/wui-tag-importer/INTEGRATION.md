@@ -2,25 +2,24 @@
 
 ## Manifest
 
-`tools/specs.json` entry (page id `tag-importer`):
+`libs/wui-tag-importer/package.json` → `wuiPage.backend` (page id `tag-importer`;
+the route sources live in `libs/wui-tag-importer/backend/`, `tools/specs.json` keeps
+only the packaging metadata):
 
 ```json
-{
-  "page": "tag-importer",
-  "name": "@visuelconcept/wui-tag-importer",
-  "title": "Tag Importer",
-  "tier": 3,
-  "backend": {
-    "mount": "/api/tag-importer",
-    "routeClass": "TagImporterRoute",
-    "routeFile": "tagImporterRoute",
-    "srcFiles": ["tagImporterController.ts", "tagImporterRoute.ts", "appSecurityGuard.ts"]
-  }
+"backend": {
+  "mount": "/api/tag-importer",
+  "routeClass": "TagImporterRoute",
+  "routeFile": "tagImporterRoute",
+  "files": ["tagImporterController.ts", "tagImporterRoute.ts"],
+  "shared": ["@visuelconcept/wui-app-security/appSecurityGuard.ts"],
+  "notes": ["/api/tag-importer/*"]
 }
 ```
 
 No `managers` — the page needs no dedicated WinCC OA manager. `deploy-release.mjs`
-generates the module descriptor, copies the three `srcFiles` into
+generates the module descriptor, copies the two own `files` plus the shared
+`appSecurityGuard.ts` (from `libs/wui-app-security/backend/`) into
 `<ws>/src/modules/tag-importer/`, and `build:pages` bundles the front end; the
 menu and app-security fragments are merged automatically by the dev-wiring
 plugins from `menu.fragment.jsonc` and `src/app-security.roles.json`.

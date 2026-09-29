@@ -216,7 +216,7 @@ libs/wui-alarms-core/src/          the KIT (shared, vendored into each host bund
   ui/wui-alarm-stats.ts counters + histogram + bad actors
   ui/wui-alarm-ranges.ts the range editor (role `configure`)
   ui/period-bar.ts       the archived tab's period controls
-backend/routes/alarms*.ts    POST /api/alarms/ack — the impersonated acknowledgement
+libs/wui-alarms/backend/alarms*.ts  POST /api/alarms/ack — the impersonated acknowledgement
 libs/wui-alarms/src/alarms.ts      the page: header, role gate, `?dp=` scope
 ```
 
