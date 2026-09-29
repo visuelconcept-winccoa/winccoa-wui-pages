@@ -221,8 +221,9 @@ restart. Then do the **Clear site data + reload** in the browser
 
 ## Develop
 
-To work on a page with hot reload, wire this repo into a runtime workspace and run
-the Vite dev server against a live WinCC OA. See **[DEVELOPMENT.md](./DEVELOPMENT.md)**
+To work on a page with hot reload, create the runtime workspace this repo plugs
+into — `node tools/bootstrap-workspace.mjs` (once per clone / per runtime version)
+— then run the Vite dev server against a live WinCC OA. See **[DEVELOPMENT.md](./DEVELOPMENT.md)**
 for the dev workspace setup, HMR loop, the "add a new page" convention, the two
 build outputs, and the runtime API reference (services, DI, routing, i18n).
 

@@ -40,6 +40,23 @@ Two consequences to keep in mind:
 
 ## 1. Bootstrap the workspace — one command
 
+On a fresh clone, from this repo:
+
+```bash
+node tools/bootstrap-workspace.mjs [--version <runtime-version>]
+```
+VS Code: task **“0. Workspace : bootstrap (créer + peupler .runtime)”** (it asks for
+the version; `--check` variant next to it prints the plan without writing).
+
+It creates `.runtime/`, runs the five steps below inside it, then chains the wiring
+of section 1bis. `--version` defaults to `latest`; **pin it to the runtime version
+of the target project** — a page bundle is welded to the import map of the shell
+that built it, so you keep one `.runtime/` per runtime version. Re-running is a
+no-op: an already-scaffolded workspace skips `webui-runtime-init` (`--reinit`
+forces it) and is simply re-wired.
+
+The five steps, if you ever need them by hand:
+
 ```bash
 # once, inside .runtime/
 cd .runtime
@@ -49,7 +66,15 @@ npm install --save-dev --no-audit --no-fund
 npm run init:oa-data
 cd ..
 ```
-Then, from this repo, **a single command** — no flag, it finds `.runtime/` itself:
+⚠️ Never run them at the repo root — the scaffold’s postinstall overwrites
+`LICENSE`, `README.md`, `AGENTS.md`, `CLAUDE.md` and `.gitignore` in the calling
+directory. `bootstrap-workspace.mjs` refuses to target a directory holding a
+`.git/` for that reason.
+
+## 1bis. Re-wire the scaffold — one command
+
+Chained by the bootstrap above, and run on its own afterwards — no flag, it finds
+`.runtime/` itself:
 ```bash
 node tools/wire-workspace.mjs
 ```
