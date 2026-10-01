@@ -3,11 +3,22 @@
   "type": "module",
   "version": "0.1.0",
   "description": "Application Security — standalone WinCC OA WebUI page (/app-security): discover the ROLES each page module expects (para, fleet-3d, process-monitor…) and map every role to WinCC OA user GROUPS. One datapoint per module (AppSecurity_<module>): the providing module declares its roles (.roles), this page writes the group assignments (.assignments). Pages gate their UI with the wui-kit hasRole$ primitive; sensitive backend routes enforce the same rules server-side (/api/app-security identity endpoints + requireRole guard).",
-  "author": { "name": "Visuel Concept" },
-  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page", "security", "roles", "rbac"],
+  "author": {
+    "name": "Visuel Concept"
+  },
+  "keywords": [
+    "OpenArchitecture",
+    "WinCCOA",
+    "dashboard",
+    "webcomponents",
+    "standalone-page",
+    "security",
+    "roles",
+    "rbac"
+  ],
   "license": "AGPL-3.0-only",
   "dependencies": {
-    "@visuelconcept/wui-kit": "*"
+    "@visuelconcept/wui-kit": "^0.1.0"
   },
   "peerDependencies": {
     "lit": "*",
@@ -20,15 +31,24 @@
     "@wincc-oa/wui-data-selector-data": "*",
     "@wincc-oa/wui-models": "*"
   },
-  "exports": { "./*": { "types": "./types/*", "import": "./*" } },
+  "exports": {
+    "./*": {
+      "types": "./types/*",
+      "import": "./*"
+    }
+  },
   "wuiPage": {
     "route": "/app-security",
-    "routes": ["/app-security"],
+    "routes": [
+      "/app-security"
+    ],
     "routeId": "app-security",
     "component": "wui-app-security",
     "module": "/data/dashboard-wc/pages/app-security.js",
     "icon": "shield",
-    "permission": ["connected"],
+    "permission": [
+      "connected"
+    ],
     "tier": 3,
     "backend": {
       "mount": "/api/app-security",
@@ -40,5 +60,50 @@
         "appSecurityGuard.ts"
       ]
     }
+  },
+  "peerDependenciesMeta": {
+    "lit": {
+      "optional": true
+    },
+    "rxjs": {
+      "optional": true
+    },
+    "tsyringe": {
+      "optional": true
+    },
+    "@etm-professional-control/oa-rx-js-api": {
+      "optional": true
+    },
+    "@wincc-oa/wui-shared": {
+      "optional": true
+    },
+    "@wincc-oa/wui-ix-wrappers": {
+      "optional": true
+    },
+    "@wincc-oa/wui-oarxjs-context": {
+      "optional": true
+    },
+    "@wincc-oa/wui-data-selector-data": {
+      "optional": true
+    },
+    "@wincc-oa/wui-models": {
+      "optional": true
+    }
+  },
+  "files": [
+    "src",
+    "backend",
+    "menu.fragment.jsonc",
+    "!**/*.spec.ts",
+    "!**/*.test.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/visuelconcept-winccoa/winccoa-wui-pages.git",
+    "directory": "libs/wui-app-security"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
   }
 }

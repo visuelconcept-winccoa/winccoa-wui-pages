@@ -9,12 +9,14 @@ plugs into the dashboard shell, displays live WinCC OA process data over WebSock
 ([OaRxJsApi](https://www.winccoa.com/documentation/WinCCOA/latest/en_US/apis/oarxjsapi/oarxjsapi_overview.html)),
 and — when needed — ships its own webserver module and WinCC OA manager(s).
 
-This repo is the **source of truth**: pages live in `libs/wui-<page>/`, and the
-self-contained distributable packages under `packages/` are **generated** from
-them (and git-ignored). You develop a page by wiring this repo into a runtime
-workspace (see [DEVELOPMENT.md](./DEVELOPMENT.md)); you ship a page by generating
-its package and running its installer against a WinCC OA project (see
-[Getting Started](#getting-started--deploy-to-a-wincc-oa-project) below).
+This repo is the **source of truth**: pages live in `libs/wui-<page>/`. Each lib
+is published **as is** — sources, backend, managers — as an npm package on GitHub
+Packages, and a WinCC OA project consumes it with wui-toolkit (see
+[Use the modules in a WinCC OA project](#use-the-modules-in-a-wincc-oa-project--wui-toolkit)).
+You develop a page by wiring this repo into a runtime workspace (see
+[DEVELOPMENT.md](./DEVELOPMENT.md)). The older route — self-contained packages
+**generated** under `packages/` (git-ignored) and their installers — is still
+described under [Getting Started](#getting-started--deploy-to-a-wincc-oa-project).
 
 ## Modules
 
@@ -75,6 +77,60 @@ into that page's `_vendor/`, so a page stays one self-contained bundle.
 | `wui-fleet-core` | The atelier / machine / stop-cause model, the `FleetStore`, the stop-cause analysis engine and the closures model | the four fleet pages |
 | `wui-eng-core` | Pure, WinCC-OA-free engineering domain: device and address-book model, check-in diff and plan applier, config write builders, protocol address builders, SimaticML / CSV / NodeSet2 readers | `wui-eng-studio` |
 | `wui-ai-kit` | The AI prompt bar and its config dialog, the `/api/ai/chat` client store, live progress and a dependency-free markdown renderer | pages embedding an assistant (`wui-machine-fleet-3d`, `wui-gis`, `wui-ampere`, `wui-para`) |
+
+## Use the modules in a WinCC OA project — wui-toolkit
+
+The libs are **private** npm packages of the `visuelconcept` organisation on
+GitHub Packages, published from their sources: a WinCC OA project compiles them
+against its own runtime, with the kits they need (`wui-para` brings `wui-kit`,
+`wui-ai-kit` and `wui-app-security`).
+
+| Published | Ready to publish |
+| --- | --- |
+| `wui-kit`, `wui-ai-kit`, `wui-app-security`, `wui-para` — `0.1.0` | `wui-alarms-core`, `wui-alarms` |
+
+In the WinCC OA project's site (`<project>/web`, created by `wui init project`):
+
+```powershell
+# once per machine: a token with read:packages (a classic PAT works too; fine-grained tokens are refused)
+gh auth refresh -h github.com -s read:packages
+npm config set "//npm.pkg.github.com/:_authToken" (gh auth token)
+
+# the site's .npmrc (committed, no token): @visuelconcept:registry=https://npm.pkg.github.com
+npx wui use para            # npm install @visuelconcept/wui-para + select it
+npx wui build prod          # compile and deploy pages + backends into the WinCC OA project
+```
+
+Read access is granted **per package** (*Package settings → Manage access*, to a
+team): the packages belong to `visuelconcept`, this repo to `visuelconcept-winccoa`,
+so they inherit nothing from it. A CI workflow can read them with its
+`GITHUB_TOKEN` only from a repo of `visuelconcept` (*Manage Actions access*);
+elsewhere it needs a classic PAT secret.
+
+### Publish a module (maintainers)
+
+A publishable lib's `package.json` carries:
+
+- `"files"`: `src`, `backend`, `managers`, `menu.fragment.jsonc`, `mock` — what
+  exists; no tsconfig/Nx wiring, no tests (`!**/*.spec.ts`);
+- `"dependencies"` on the other libs it imports **or whose backend files it
+  copies** (`wuiPage.backend.shared`), with real ranges (`^0.1.0`), never `"*"`;
+- the platform (`lit`, `rxjs`, `tsyringe`, `@wincc-oa/*`, the OA API) as
+  `peerDependencies` marked **optional** (`peerDependenciesMeta`): the WebUI
+  runtime provides it, npm must not install it;
+- `"publishConfig": { "registry": "https://npm.pkg.github.com", "access": "restricted" }`
+  and `"repository"` with `"directory": "libs/wui-<id>"`.
+
+```powershell
+gh auth refresh -h github.com -s write:packages
+npm config set "//npm.pkg.github.com/:_authToken" (gh auth token)   # again after each refresh
+npm pack ./libs/wui-<id> --dry-run       # check the file list
+npm publish ./libs/wui-<id>              # dependencies first: kits before the pages using them
+```
+
+A published version is immutable: change → bump `"version"` in
+`libs/wui-<id>/package.json` (and the ranges of the libs depending on it, when the
+change breaks them) → publish.
 
 ## Getting Started — deploy to a WinCC OA project
 
