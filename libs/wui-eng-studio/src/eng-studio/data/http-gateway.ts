@@ -5,7 +5,7 @@
  * HttpEngGateway — the live {@link EngGateway} over the `/api/eng/*` backend
  * (engController). Same-origin fetch; the backend runs against the shared
  * WinCC OA API. This is a thin transport; all engineering logic lives in
- * `@visuelconcept/wui-eng-core` (shared by the backend applier).
+ * `@visuelconcept-winccoa/wui-eng-core` (shared by the backend applier).
  */
 
 import type {
@@ -21,7 +21,7 @@ import type {
   SignalRole,
   TagAccess,
   Workspace
-} from '@visuelconcept/wui-eng-core';
+} from '@visuelconcept-winccoa/wui-eng-core';
 import type {
   BookDeletion,
   BookRefresh,

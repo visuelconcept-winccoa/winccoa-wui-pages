@@ -23,7 +23,7 @@ import {
   JSON_INDENT,
   download,
   timestampSlug
-} from '@visuelconcept/wui-kit/data/io.js';
+} from '@visuelconcept-winccoa/wui-kit/data/io.js';
 import { normalizeSite, type NormalizedSite } from './normalize.js';
 import { MIN_RING } from '../map/style.js';
 import { AREA_PALETTE, connectionPath, type Site } from '../types.js';

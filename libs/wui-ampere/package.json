@@ -1,35 +1,55 @@
 {
-  "name": "@visuelconcept/wui-ampere",
+  "name": "@visuelconcept-winccoa/wui-ampere",
   "type": "module",
   "version": "0.1.0",
   "description": "Ampère — standalone WinCC OA WebUI page (/ampere + /ampere/:networkid): draw single-line (mono-filaire) electrical distribution networks (switchboards/TGBT, disconnectors, circuit breakers, busbars, transformers…) including railway electrification (catenary sections, track return, rectifier, sectioning switch, autotransformer, train) with an in-place edit mode, an IEC 60617 symbol toolbox, free DP binding per device, live wire energisation computed by graph traversal through closed switchgear, free/attached live measurement labels, and a proposal-only AI assistant that generates network models. Frontend-only, 1 DP per network (Ampere_Network).",
-  "author": { "name": "Visuel Concept" },
-  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page", "electrical", "single-line-diagram"],
+  "author": {
+    "name": "Visuel Concept"
+  },
+  "keywords": [
+    "OpenArchitecture",
+    "WinCCOA",
+    "dashboard",
+    "webcomponents",
+    "standalone-page",
+    "electrical",
+    "single-line-diagram"
+  ],
   "license": "MIT",
   "dependencies": {
-    "@visuelconcept/wui-kit": "*",
-    "@visuelconcept/wui-ai-kit": "*"
+    "@visuelconcept-winccoa/wui-ai-kit": "^0.1.0",
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0"
   },
   "peerDependencies": {
     "lit": "*",
     "rxjs": "*",
     "tsyringe": "*",
     "@etm-professional-control/oa-rx-js-api": "*",
-    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-i18n-shared": "*",
     "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-models": "*",
     "@wincc-oa/wui-oarxjs-context": "*",
-    "@wincc-oa/wui-data-selector-data": "*",
-    "@wincc-oa/wui-models": "*"
+    "@wincc-oa/wui-shared": "*"
   },
-  "exports": { "./*": { "types": "./types/*", "import": "./*" } },
+  "exports": {
+    "./*": {
+      "types": "./types/*",
+      "import": "./*"
+    }
+  },
   "wuiPage": {
     "route": "/ampere",
-    "routes": ["/ampere", "/ampere/:networkid"],
+    "routes": [
+      "/ampere",
+      "/ampere/:networkid"
+    ],
     "routeId": "ampere",
     "component": "wui-ampere",
     "module": "/data/dashboard-wc/pages/ampere.js",
     "icon": "electrical-energy",
-    "permission": ["connected"],
+    "permission": [
+      "connected"
+    ],
     "tier": 1,
     "backend": {
       "managers": [
@@ -39,5 +59,50 @@
         "ampereSim (optional showcase simulator — creates + drives the shared AmpereSim_Demo datapoint)"
       ]
     }
+  },
+  "peerDependenciesMeta": {
+    "lit": {
+      "optional": true
+    },
+    "rxjs": {
+      "optional": true
+    },
+    "tsyringe": {
+      "optional": true
+    },
+    "@etm-professional-control/oa-rx-js-api": {
+      "optional": true
+    },
+    "@wincc-oa/wui-i18n-shared": {
+      "optional": true
+    },
+    "@wincc-oa/wui-ix-wrappers": {
+      "optional": true
+    },
+    "@wincc-oa/wui-models": {
+      "optional": true
+    },
+    "@wincc-oa/wui-oarxjs-context": {
+      "optional": true
+    },
+    "@wincc-oa/wui-shared": {
+      "optional": true
+    }
+  },
+  "files": [
+    "src",
+    "managers",
+    "menu.fragment.jsonc",
+    "!**/*.spec.ts",
+    "!**/*.test.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/visuelconcept-winccoa/winccoa-wui-pages.git",
+    "directory": "libs/wui-ampere"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
   }
 }

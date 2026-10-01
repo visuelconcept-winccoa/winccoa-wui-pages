@@ -1,5 +1,5 @@
 {
-  "name": "@visuelconcept/wui-kit",
+  "name": "@visuelconcept-winccoa/wui-kit",
   "type": "module",
   "version": "0.1.0",
   "description": "Shared kit for WinCC OA WebUI standalone pages: generic datapoint JSON stores (DpJsonStore / DpSingleJsonStore), a GxP audit-trail writer (AuditTrailWriter), shared dialog styles, a neutral confirm dialog, a datapoint-name input and a publish-permission gate.",

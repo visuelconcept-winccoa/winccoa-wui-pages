@@ -1,25 +1,46 @@
 {
-  "name": "@visuelconcept/wui-eng-studio",
+  "name": "@visuelconcept-winccoa/wui-eng-studio",
   "type": "module",
   "version": "0.1.0",
-  "description": "Engineering Studio — standalone WinCC OA WebUI page (/eng-studio): device-first, check-in/check-out studio to model DP types, datapoints and their configs (address/alarm/archive/range) from communicating equipment. Address-book-centric imports (OPC UA browse, SimaticML/TIA Openness export, CSV, AI proposal) with a live diff and transactional check-in. Pure domain in @visuelconcept/wui-eng-core; all I/O behind an EngGateway (HTTP /api/eng in the shell, in-memory demo for docs/screenshots).",
-  "author": { "name": "Visuel Concept" },
-  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page", "engineering", "simaticml", "opcua"],
+  "description": "Engineering Studio — standalone WinCC OA WebUI page (/eng-studio): device-first, check-in/check-out studio to model DP types, datapoints and their configs (address/alarm/archive/range) from communicating equipment. Address-book-centric imports (OPC UA browse, SimaticML/TIA Openness export, CSV, AI proposal) with a live diff and transactional check-in. Pure domain in @visuelconcept-winccoa/wui-eng-core; all I/O behind an EngGateway (HTTP /api/eng in the shell, in-memory demo for docs/screenshots).",
+  "author": {
+    "name": "Visuel Concept"
+  },
+  "keywords": [
+    "OpenArchitecture",
+    "WinCCOA",
+    "dashboard",
+    "webcomponents",
+    "standalone-page",
+    "engineering",
+    "simaticml",
+    "opcua"
+  ],
   "license": "MIT",
   "dependencies": {
-    "@visuelconcept/wui-eng-core": "*"
+    "@visuelconcept-winccoa/wui-app-security": "^0.1.0",
+    "@visuelconcept-winccoa/wui-eng-core": "^0.1.0"
   },
   "peerDependencies": {
-    "lit": "*"
+    "lit": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-shared": "*"
   },
-  "exports": { "./*": { "types": "./types/*", "import": "./*" } },
+  "exports": {
+    "./*": {
+      "types": "./types/*",
+      "import": "./*"
+    }
+  },
   "wuiPage": {
     "route": "/eng-studio",
     "routeId": "eng-studio",
     "component": "wui-eng-studio",
     "module": "/data/dashboard-wc/pages/eng-studio.js",
     "icon": "cogwheel",
-    "permission": ["connected"],
+    "permission": [
+      "connected"
+    ],
     "tier": 3,
     "backend": {
       "mount": "/api/eng",
@@ -32,14 +53,41 @@
         "engOpcuaBrowse.ts"
       ],
       "shared": [
-        "@visuelconcept/wui-app-security/appSecurityGuard.ts"
+        "@visuelconcept-winccoa/wui-app-security/appSecurityGuard.ts"
       ],
       "vendorPackages": [
-        "@visuelconcept/wui-eng-core"
+        "@visuelconcept-winccoa/wui-eng-core"
       ],
       "notes": [
         "/api/eng/*"
       ]
     }
+  },
+  "peerDependenciesMeta": {
+    "lit": {
+      "optional": true
+    },
+    "@wincc-oa/wui-ix-wrappers": {
+      "optional": true
+    },
+    "@wincc-oa/wui-shared": {
+      "optional": true
+    }
+  },
+  "files": [
+    "src",
+    "backend",
+    "menu.fragment.jsonc",
+    "!**/*.spec.ts",
+    "!**/*.test.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/visuelconcept-winccoa/winccoa-wui-pages.git",
+    "directory": "libs/wui-eng-studio"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
   }
 }

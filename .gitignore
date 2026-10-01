@@ -1,44 +1,22 @@
 # =============================================================================
-# WebUI Runtime Workspace .gitignore
-#
-# This workspace can be deployed standalone (without the monorepo root),
-# so this file must be self-contained and not rely on a parent .gitignore.
+# winccoa-wui-pages — libs/wui-<id>/ are independent npm packages; building,
+# developing and deploying them is wui-toolkit's job, nothing is built here.
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# Dependencies
+# Dependencies (a lib's own install: libs/wui-eng-core, libs/wui-eng-studio/demo…)
 # -----------------------------------------------------------------------------
 node_modules/
 
 # -----------------------------------------------------------------------------
-# Build output
+# Build / pack output
 # -----------------------------------------------------------------------------
 dist/
-dev-dist/
-out-tsc/
 *.tgz
-*.tgz.bak
 *.tar.gz
-.license-cache.json
-.deploy-release-cache.json
-
-# -----------------------------------------------------------------------------
-# Vite / Vitest
-# -----------------------------------------------------------------------------
+**/.tsbuildinfo
 vite.config.*.timestamp*
 vitest.config.*.timestamp*
-
-# -----------------------------------------------------------------------------
-# TypeScript
-# -----------------------------------------------------------------------------
-**/.tsbuildinfo
-
-# -----------------------------------------------------------------------------
-# Nx
-# -----------------------------------------------------------------------------
-**/.nx/cache
-**/.nx/workspace-data
-**/.nx/artifacts
 
 # -----------------------------------------------------------------------------
 # Test artifacts
@@ -47,25 +25,6 @@ coverage/
 **/test-results/
 **/*test-report.xml
 
-# E2E (Playwright)
-apps/*-e2e/*videos
-apps/*-e2e/*screenshots
-!apps/*-e2e/*screenshots/baseline
-apps/*-e2e/playwright/.auth/
-apps/*-e2e/test-results/
-apps/*-e2e/src/downloads/
-apps/*-e2e/coverage/
-
-# NFR tests
-apps/*-nfr/playwright/.auth/
-apps/*-nfr/test-results/
-apps/*-nfr/nfr-results/
-
-# -----------------------------------------------------------------------------
-# Build cache / generated intermediates
-# -----------------------------------------------------------------------------
-apps/dashboard-wc/scripts/.license-cache.json
-
 # -----------------------------------------------------------------------------
 # Environment & secrets
 # -----------------------------------------------------------------------------
@@ -73,7 +32,6 @@ apps/dashboard-wc/scripts/.license-cache.json
 .env.*
 !.env.example
 .npmrc
-!standalone.npmrc
 
 # -----------------------------------------------------------------------------
 # IDE & editors
@@ -82,8 +40,6 @@ apps/dashboard-wc/scripts/.license-cache.json
 .vs/
 .vscode/*
 !.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
 !.vscode/extensions.json
 *.sublime-workspace
 *.launch
@@ -91,10 +47,6 @@ apps/dashboard-wc/scripts/.license-cache.json
 .classpath
 .c9/
 .settings/
-
-# AI assistant generated rules (auto-synced, not committed)
-.cursor/rules/nx-rules.mdc
-.github/instructions/nx.instructions.md
 
 # -----------------------------------------------------------------------------
 # OS files
@@ -117,47 +69,23 @@ pnpm-debug.log*
 tmp/
 
 # -----------------------------------------------------------------------------
+# Leftovers of the former runtime workspace (.runtime/ + Nx) — delete them locally;
+# ignored so they cannot be committed by mistake.
+# -----------------------------------------------------------------------------
+/.runtime/
+.nx/
+/apps/
+/oa-data/
+/libs/default-components/
+# The runtime's `winccoa-*` assistant skills it used to copy in (third-party content).
+/.claude/skills/
+/.ai/skills/
+/.github/prompts/
+
+# -----------------------------------------------------------------------------
 # Third-party IP — MUST NOT be published under this project's license.
 # (See IP_AUDIT.md. Kept out of the open-source repo; not authored by Visuel Concept.)
 # -----------------------------------------------------------------------------
 # WinCC OA project archive: contains Siemens/WinCC-OA-SDK-derived .ctl scripts,
 # GEDI panels and a WinCC OA logo. Referenced only in comments (legacy model).
 /winccoa_projectmanager.zip
-# Industrial symbol set of third-party origin (replace with original/licensed art).
-/apps/dashboard-wc/public/semifab-icons/
-# ETM WinCC OA MCP server (ISC) — consume via npm @etm-professional-control/winccoa-mcp-server,
-# do not re-vendor it into the repo.
-/backend/managers/mcpServer/
-
-# =============================================================================
-# The WebUI-runtime workspace lives in .runtime/ — see DEVELOPMENT.md
-#
-# `webui-runtime-init` is run INSIDE .runtime/, never here, so its output cannot
-# land in this repo. That matters beyond a clean `git status`: the same postinstall
-# overwrites LICENSE (AGPL -> MIT), README.md, AGENTS.md, CLAUDE.md and this file
-# when it is run from a repo root.
-#
-# So if apps/, nx.json, package.json, project.json, oa-data/ or
-# libs/default-components/ EVER show up as untracked here, that is the signal the
-# scaffold was laid on top by mistake. Do NOT ignore them: check `git diff` first
-# (see above), then delete them. They are deliberately not listed below.
-#
-# `node_modules` is a junction into .runtime/node_modules created by
-# tools/wire-workspace.mjs; it is already covered by the `node_modules/` rule at
-# the top of this file.
-# =============================================================================
-
-# The runtime workspace itself: third-party, regenerable, never committed.
-/.runtime/
-
-# Build artifact of the repo-owned tsconfig.base.json ("incremental": true)
-/tsconfig.base.tsbuildinfo
-
-# The runtime's `winccoa-*` assistant skills, COPIED in from the workspace by
-# tools/wire-workspace.mjs so the assistant running here can use them. Third-party
-# content that happens to sit in the repo — never commit it. Only these three leaf
-# folders are written: .claude/settings.json, .claude/agents/, .github/workflows/
-# … stay yours and stay versioned.
-/.claude/skills/
-/.ai/skills/
-/.github/prompts/

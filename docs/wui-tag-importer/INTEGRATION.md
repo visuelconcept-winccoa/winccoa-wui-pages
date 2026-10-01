@@ -3,8 +3,8 @@
 ## Manifest
 
 `libs/wui-tag-importer/package.json` → `wuiPage.backend` (page id `tag-importer`;
-the route sources live in `libs/wui-tag-importer/backend/`, `tools/specs.json` keeps
-only the packaging metadata):
+the route sources live in `libs/wui-tag-importer/backend/`; wui-toolkit reads this
+contract at `wui build`):
 
 ```json
 "backend": {
@@ -12,17 +12,20 @@ only the packaging metadata):
   "routeClass": "TagImporterRoute",
   "routeFile": "tagImporterRoute",
   "files": ["tagImporterController.ts", "tagImporterRoute.ts"],
-  "shared": ["@visuelconcept/wui-app-security/appSecurityGuard.ts"],
+  "shared": ["@visuelconcept-winccoa/wui-app-security/appSecurityGuard.ts"],
   "notes": ["/api/tag-importer/*"]
 }
 ```
 
-No `managers` — the page needs no dedicated WinCC OA manager. `deploy-release.mjs`
+No `managers` — the page needs no dedicated WinCC OA manager. From the project's
+site, `npx wui use tag-importer` then `npx wui build prod`: the build bundles the
+front end, upserts the menu entry from `menu.fragment.jsonc` into `menuconfig.json`,
 generates the module descriptor, copies the two own `files` plus the shared
 `appSecurityGuard.ts` (from `libs/wui-app-security/backend/`) into
-`<ws>/src/modules/tag-importer/`, and `build:pages` bundles the front end; the
-menu and app-security fragments are merged automatically by the dev-wiring
-plugins from `menu.fragment.jsonc` and `src/app-security.roles.json`.
+`<webserver>/src/modules/tag-importer/` and rebuilds the webserver (restart it from
+the WinCC OA console). The `src/app-security.roles.json` fragment is **not** merged into
+`app-security-manifest.json` by wui-toolkit: the roles self-register when the page is
+opened.
 
 ## Backend API (`/api/tag-importer`)
 

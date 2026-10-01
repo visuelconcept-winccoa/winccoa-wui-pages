@@ -24,12 +24,12 @@ import {
   type BookInterface,
   type Device,
   type LiveSnapshot
-} from '@visuelconcept/wui-eng-core';
+} from '@visuelconcept-winccoa/wui-eng-core';
 import {
   DB_ECHANGE_STANDARD_XML,
   DB_FOUR_OPTIMIZED_XML,
   UDT_MOTEUR_XML
-} from '@visuelconcept/wui-eng-core/samples/simaticml-fixtures.js';
+} from '@visuelconcept-winccoa/wui-eng-core/samples/simaticml-fixtures.js';
 import { pac3200Book } from './pac3200.js';
 import { packMlBook } from './packml.js';
 import { m580PesageXvmBook, m580StationBook } from './schneider.js';

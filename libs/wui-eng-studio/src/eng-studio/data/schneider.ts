@@ -14,8 +14,8 @@
  * warnings are visible in the UI.
  */
 
-import { buildBookFromSchneiderExport, buildBookFromXvm, type AddressBook } from '@visuelconcept/wui-eng-core';
-import { M580_PESAGE_XVM, M580_STATION_CSV } from '@visuelconcept/wui-eng-core/samples/schneider-fixtures.js';
+import { buildBookFromSchneiderExport, buildBookFromXvm, type AddressBook } from '@visuelconcept-winccoa/wui-eng-core';
+import { M580_PESAGE_XVM, M580_STATION_CSV } from '@visuelconcept-winccoa/wui-eng-core/samples/schneider-fixtures.js';
 
 /** The M580 station's book (project book: carries the PLC's Modbus interface). */
 export function m580StationBook(): AddressBook {

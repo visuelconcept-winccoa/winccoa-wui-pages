@@ -4,7 +4,7 @@
 /**
  * Ampère AI assistant — a proposal-only chat embedded in the editor header.
  *
- * It reuses the AI plumbing of `@visuelconcept/wui-ai-kit` (askAi bridge,
+ * It reuses the AI plumbing of `@visuelconcept-winccoa/wui-ai-kit` (askAi bridge,
  * markdown renderer, config dialog) but is scoped to single-line electrical
  * modelling and runs `mcpMode: 'read-only'`: it gets the project's configured MCP
  * servers with every mutating tool filtered out in the manager, so it can look up
@@ -14,10 +14,10 @@
  * proposal into the canvas for the user to review and save. The user always
  * validates. Rendered only when the AI assistant is enabled at deploy time.
  */
-import { askAi } from '@visuelconcept/wui-ai-kit/data/ai-store.js';
-import { isAiAssistantEnabled } from '@visuelconcept/wui-ai-kit/data/ai-feature.js';
-import { renderMarkdown } from '@visuelconcept/wui-ai-kit/data/markdown.js';
-import '@visuelconcept/wui-ai-kit/ui/mf-ai-config-dialog.js';
+import { askAi } from '@visuelconcept-winccoa/wui-ai-kit/data/ai-store.js';
+import { isAiAssistantEnabled } from '@visuelconcept-winccoa/wui-ai-kit/data/ai-feature.js';
+import { renderMarkdown } from '@visuelconcept-winccoa/wui-ai-kit/data/markdown.js';
+import '@visuelconcept-winccoa/wui-ai-kit/ui/mf-ai-config-dialog.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { property, query, state } from 'lit/decorators.js';

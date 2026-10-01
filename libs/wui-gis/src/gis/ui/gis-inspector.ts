@@ -10,14 +10,14 @@
  * Outside edit mode it is a read-only status card; with the Application-Security
  * `edit` grant and edit mode on, the same fields become inputs.
  *
- * The datapoint fields use the shared `<wui-dp-input>` from `@visuelconcept/wui-kit`,
+ * The datapoint fields use the shared `<wui-dp-input>` from `@visuelconcept-winccoa/wui-kit`,
  * so binding an asset autocompletes against the project's real datapoint names
  * instead of asking an operator to type them exactly.
  *
  * Emits `wui:patch` (`{ asset }`), `wui:delete`, `wui:open` (`{ route }`) and
  * `wui:close`.
  */
-import '@visuelconcept/wui-kit/ui/wui-dp-input.js';
+import '@visuelconcept-winccoa/wui-kit/ui/wui-dp-input.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';

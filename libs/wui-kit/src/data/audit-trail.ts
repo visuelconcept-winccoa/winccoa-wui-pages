@@ -8,7 +8,7 @@
  * entity into a dedicated WinCC OA datapoint of the fixed system type
  * `_AuditTrail` — the same GxP structure (time · username · uinum · batchid ·
  * item · itemtype · action · oldval → newval · reason · host) that the
- * Audit-trail page (`@visuelconcept/wui-audit-trail`) visualizes. Each module
+ * Audit-trail page (`@visuelconcept-winccoa/wui-audit-trail`) visualizes. Each module
  * owns one audit DP (e.g. `AuditTrail_CameraStreams`); pass its bare name to the
  * constructor.
  *

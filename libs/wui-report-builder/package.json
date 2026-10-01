@@ -1,13 +1,21 @@
 {
-  "name": "@visuelconcept/wui-report-builder",
+  "name": "@visuelconcept-winccoa/wui-report-builder",
   "type": "module",
   "version": "0.1.0",
   "description": "Report Builder — standalone WinCC OA WebUI page: create and fill report instances from reusable templates (parameterised sections + dataset aggregation from archives + multi-level signature workflow), with print. Also exposes its template engine to the companion Report Templates page.",
-  "author": { "name": "Visuel Concept" },
-  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page"],
+  "author": {
+    "name": "Visuel Concept"
+  },
+  "keywords": [
+    "OpenArchitecture",
+    "WinCCOA",
+    "dashboard",
+    "webcomponents",
+    "standalone-page"
+  ],
   "license": "MIT",
   "dependencies": {
-    "@visuelconcept/wui-kit": "*"
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0"
   },
   "peerDependencies": {
     "lit": "*",
@@ -15,22 +23,82 @@
     "tsyringe": "*",
     "echarts": "*",
     "@etm-professional-control/oa-rx-js-api": "*",
-    "@wincc-oa/wui-shared": "*",
-    "@wincc-oa/wui-data-selector-data": "*",
-    "@wincc-oa/wui-ix-wrappers": "*",
-    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-i18n-shared": "*",
     "@wincc-oa/wui-iam-data": "*",
-    "@wincc-oa/wui-models": "*"
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-models": "*",
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-shared": "*"
   },
-  "exports": { "./*": { "types": "./types/*", "import": "./*" } },
+  "exports": {
+    "./*": {
+      "types": "./types/*",
+      "import": "./*"
+    }
+  },
   "wuiPage": {
     "route": "/report-builder",
-    "routes": ["/report-builder", "/report-builder/:reportid"],
+    "routes": [
+      "/report-builder",
+      "/report-builder/:reportid"
+    ],
     "routeId": "report-builder",
     "component": "wui-report-builder",
     "module": "/data/dashboard-wc/pages/report-builder.js",
     "icon": "document",
-    "permission": ["connected"],
+    "permission": [
+      "connected"
+    ],
     "tier": 1
+  },
+  "peerDependenciesMeta": {
+    "lit": {
+      "optional": true
+    },
+    "rxjs": {
+      "optional": true
+    },
+    "tsyringe": {
+      "optional": true
+    },
+    "echarts": {
+      "optional": true
+    },
+    "@etm-professional-control/oa-rx-js-api": {
+      "optional": true
+    },
+    "@wincc-oa/wui-i18n-shared": {
+      "optional": true
+    },
+    "@wincc-oa/wui-iam-data": {
+      "optional": true
+    },
+    "@wincc-oa/wui-ix-wrappers": {
+      "optional": true
+    },
+    "@wincc-oa/wui-models": {
+      "optional": true
+    },
+    "@wincc-oa/wui-oarxjs-context": {
+      "optional": true
+    },
+    "@wincc-oa/wui-shared": {
+      "optional": true
+    }
+  },
+  "files": [
+    "src",
+    "menu.fragment.jsonc",
+    "!**/*.spec.ts",
+    "!**/*.test.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/visuelconcept-winccoa/winccoa-wui-pages.git",
+    "directory": "libs/wui-report-builder"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
   }
 }

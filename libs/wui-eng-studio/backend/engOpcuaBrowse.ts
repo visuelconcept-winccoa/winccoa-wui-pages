@@ -29,12 +29,12 @@
 //     the walker marks the access `assumed` and the role decides the direction.
 //
 // The walk itself (paths, caps, cycles, warnings) lives in the pure core
-// (`@visuelconcept/wui-eng-core` → `opcua/browse.ts`) and is unit-tested with a
+// (`@visuelconcept-winccoa/wui-eng-core` → `opcua/browse.ts`) and is unit-tested with a
 // fake port and no runtime.
 // -----------------------------------------------------------------------------
 
 import { WsjServerGlobal } from '@winccoa/backend';
-import type { OpcUaBrowseNode, OpcUaBrowsePort } from '@visuelconcept/wui-eng-core';
+import type { OpcUaBrowseNode, OpcUaBrowsePort } from '@visuelconcept-winccoa/wui-eng-core';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function win(): any {

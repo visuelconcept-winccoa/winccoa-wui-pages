@@ -1,37 +1,35 @@
-# @visuelconcept/wui-fleet-closures — source module (Tier 1)
+# @visuelconcept-winccoa/wui-fleet-closures — source module (Tier 1)
 
 Manage **non-working days** for the fleet on the **`/fleet-closures`** page:
 year / workshop / machine filters, JSON import-export, and overlap handling
 (replace / ignore / cancel). Frontend-only — no backend module, no manager.
 
-Self-contained **source** distribution: the shared kit / fleet-core / ai-kit is
-**vendored** under `_vendor/` (no separate `@visuelconcept/wui-kit` prerequisite),
-and the page is built on the target's runtime workspace so the bundle always
-matches that runtime version (a page bundle is coupled to the shell's import map).
+npm package, deployed with **wui-toolkit** (the `wui` CLI): the shared kit /
+fleet-core come as its npm dependencies, and the page is built against the target's
+own import map so the bundle always matches that runtime version (a page bundle is coupled to the shell's import map).
 
-## Install (one command)
-```bash
-node install.mjs --workspace <runtime-workspace> --project <winccoa-project-root>
+## Install
+In the WinCC OA project's site (`<project>/web`), once the target is equipped
+(`npx wui init target prod`):
+```powershell
+npx wui use fleet-closures   # npm-installs @visuelconcept-winccoa/wui-fleet-closures with its kits, selects it
+npx wui build prod           # compiles the page into <project>/data/dashboard-wc/, upserts its menu entry
+npx wui check prod
 ```
-It copies the page source (vendored kit included) into the workspace, adds the
-menu entry to the workspace's `menuconfig.jsonc`, installs the page's npm deps
-into the workspace, and runs `build:pages` (deploying into
-`<project>/data/dashboard-wc/`).
 
 ## After install (required)
 1. **Browser:** DevTools → Application → Storage → **`Clear site data`**, then reload (logged in).
    ⚠️ The service worker caches `menuconfig.json` — **`Ctrl+Shift+R` is NOT enough**; only `Clear site data` purges it.
 
 ## Prerequisites
-- A **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) for the target project (the `--workspace`).
+- A **wui-toolkit site** for the target project (`npx wui init target prod` done once).
 - No webserver / backend prerequisite (frontend-only page).
-- npm deps declared in `module.json` (`three ^0.169.0`) are **auto-installed into the workspace** by the installer so `build:pages` can bundle them.
+- npm deps (`three`, via `@visuelconcept-winccoa/wui-fleet-core`) are installed by npm with the package and bundled by `wui build`.
 
 ## Contents
 ```
-module.json                                          manifest (mode: source, tier 1)
-install.mjs                                           installer
-frontend/standalone-pages/fleet-closures.ts          page entry SOURCE
-frontend/standalone-pages/fleet-closures/            page sub-components (kit vendored in fleet-closures/_vendor/)
-frontend/menu.fragment.jsonc                         menu entry (1 entry, hidden — reached from the fleet overview)
+package.json                                         npm package; wuiPage (route, tier 1)
+src/fleet-closures.ts                                page entry
+src/i18n.ts, src/app-security.roles.json             strings, the module's role catalog
+menu.fragment.jsonc                                  menu entry (1 entry, hidden — reached from the fleet overview)
 ```

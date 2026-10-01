@@ -1,27 +1,38 @@
 {
-  "name": "@visuelconcept/wui-fleet-closures",
+  "name": "@visuelconcept-winccoa/wui-fleet-closures",
   "type": "module",
   "version": "0.1.0",
   "description": "Fleet Closures — standalone WinCC OA WebUI page: manage non-worked periods (jours non travaillés) per atelier/machine, used as the TRS opening-time denominator by the KPI page. One app-level JSON datapoint.",
-  "author": { "name": "Visuel Concept" },
-  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page"],
+  "author": {
+    "name": "Visuel Concept"
+  },
+  "keywords": [
+    "OpenArchitecture",
+    "WinCCOA",
+    "dashboard",
+    "webcomponents",
+    "standalone-page"
+  ],
   "license": "MIT",
   "dependencies": {
-    "@visuelconcept/wui-kit": "*",
-    "@visuelconcept/wui-fleet-core": "*"
+    "@visuelconcept-winccoa/wui-fleet-core": "^0.1.0",
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0"
   },
   "peerDependencies": {
     "lit": "*",
     "rxjs": "*",
-    "tsyringe": "*",
-    "@etm-professional-control/oa-rx-js-api": "*",
-    "@wincc-oa/wui-shared": "*",
-    "@wincc-oa/wui-data-selector-data": "*",
-    "@wincc-oa/wui-models": "*",
+    "@wincc-oa/wui-i18n-shared": "*",
     "@wincc-oa/wui-ix-wrappers": "*",
-    "@wincc-oa/wui-oarxjs-context": "*"
+    "@wincc-oa/wui-models": "*",
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-shared": "*"
   },
-  "exports": { "./*": { "types": "./types/*", "import": "./*" } },
+  "exports": {
+    "./*": {
+      "types": "./types/*",
+      "import": "./*"
+    }
+  },
   "wuiPage": {
     "route": "/fleet-closures",
     "routeId": "fleet-closures",
@@ -29,5 +40,43 @@
     "module": "/data/dashboard-wc/pages/fleet-closures.js",
     "hidden": true,
     "tier": 1
+  },
+  "peerDependenciesMeta": {
+    "lit": {
+      "optional": true
+    },
+    "rxjs": {
+      "optional": true
+    },
+    "@wincc-oa/wui-i18n-shared": {
+      "optional": true
+    },
+    "@wincc-oa/wui-ix-wrappers": {
+      "optional": true
+    },
+    "@wincc-oa/wui-models": {
+      "optional": true
+    },
+    "@wincc-oa/wui-oarxjs-context": {
+      "optional": true
+    },
+    "@wincc-oa/wui-shared": {
+      "optional": true
+    }
+  },
+  "files": [
+    "src",
+    "menu.fragment.jsonc",
+    "!**/*.spec.ts",
+    "!**/*.test.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/visuelconcept-winccoa/winccoa-wui-pages.git",
+    "directory": "libs/wui-fleet-closures"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
   }
 }

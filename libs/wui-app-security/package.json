@@ -1,5 +1,5 @@
 {
-  "name": "@visuelconcept/wui-app-security",
+  "name": "@visuelconcept-winccoa/wui-app-security",
   "type": "module",
   "version": "0.1.0",
   "description": "Application Security — standalone WinCC OA WebUI page (/app-security): discover the ROLES each page module expects (para, fleet-3d, process-monitor…) and map every role to WinCC OA user GROUPS. One datapoint per module (AppSecurity_<module>): the providing module declares its roles (.roles), this page writes the group assignments (.assignments). Pages gate their UI with the wui-kit hasRole$ primitive; sensitive backend routes enforce the same rules server-side (/api/app-security identity endpoints + requireRole guard).",
@@ -18,7 +18,7 @@
   ],
   "license": "AGPL-3.0-only",
   "dependencies": {
-    "@visuelconcept/wui-kit": "^0.1.0"
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0"
   },
   "peerDependencies": {
     "lit": "*",

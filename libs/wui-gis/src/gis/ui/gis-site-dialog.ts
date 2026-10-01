@@ -14,7 +14,7 @@
  *
  * Emits `wui:save` with the updated {@link Site} and `wui:cancel` on dismiss.
  */
-import { dialogCore } from '@visuelconcept/wui-kit/ui/dialog-styles.js';
+import { dialogCore } from '@visuelconcept-winccoa/wui-kit/ui/dialog-styles.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import {
   LitElement,

@@ -4,7 +4,7 @@
 /**
  * GIS AI assistant — a proposal-only chat for configuring a site quickly.
  *
- * It reuses the AI plumbing of `@visuelconcept/wui-ai-kit` (the `askAi` bridge, the
+ * It reuses the AI plumbing of `@visuelconcept-winccoa/wui-ai-kit` (the `askAi` bridge, the
  * markdown renderer, the config dialog) but is scoped to geographic modelling and runs
  * `mcpMode: 'read-only'`: it gets the project's configured MCP servers with every mutating
  * tool filtered out in the manager, so it can *look up* real datapoints — and geocode, if
@@ -21,21 +21,21 @@
  * Rendered only when the AI assistant is enabled at deploy time
  * (`dashboard-features.json`), like every other assistant in this dashboard.
  */
-import { isAiAssistantEnabled } from '@visuelconcept/wui-ai-kit/data/ai-feature.js';
+import { isAiAssistantEnabled } from '@visuelconcept-winccoa/wui-ai-kit/data/ai-feature.js';
 import {
   askAi,
   type ToolCall
-} from '@visuelconcept/wui-ai-kit/data/ai-store.js';
+} from '@visuelconcept-winccoa/wui-ai-kit/data/ai-store.js';
 import {
   newProgressId,
   subscribeAiProgress,
   type AiProgressEvent
-} from '@visuelconcept/wui-ai-kit/data/ai-progress.js';
-import { renderMarkdown } from '@visuelconcept/wui-ai-kit/data/markdown.js';
-import { AI_MSG } from '@visuelconcept/wui-ai-kit/i18n.js';
-import '@visuelconcept/wui-ai-kit/ui/mf-ai-config-dialog.js';
-import '@visuelconcept/wui-ai-kit/ui/mf-ai-progress.js';
-import '@visuelconcept/wui-ai-kit/ui/mf-ai-tool-trace.js';
+} from '@visuelconcept-winccoa/wui-ai-kit/data/ai-progress.js';
+import { renderMarkdown } from '@visuelconcept-winccoa/wui-ai-kit/data/markdown.js';
+import { AI_MSG } from '@visuelconcept-winccoa/wui-ai-kit/i18n.js';
+import '@visuelconcept-winccoa/wui-ai-kit/ui/mf-ai-config-dialog.js';
+import '@visuelconcept-winccoa/wui-ai-kit/ui/mf-ai-progress.js';
+import '@visuelconcept-winccoa/wui-ai-kit/ui/mf-ai-tool-trace.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import {
   LitElement,

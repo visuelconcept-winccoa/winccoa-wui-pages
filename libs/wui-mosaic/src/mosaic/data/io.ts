@@ -12,7 +12,7 @@
  *   so importing one or several mosaics works from any of these shapes.
  */
 import { blankMosaic, blankTile, type Mosaic, type Tile, type TileKind } from '../types.js';
-import { JSON_INDENT, download, timestampSlug } from '@visuelconcept/wui-kit/data/io.js';
+import { JSON_INDENT, download, timestampSlug } from '@visuelconcept-winccoa/wui-kit/data/io.js';
 
 const KIND = 'mosaic-boards';
 const SLUG_MAX = 40;

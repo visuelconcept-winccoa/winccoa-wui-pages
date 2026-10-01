@@ -48,7 +48,7 @@ The dashboard SPA uses **hash routing**: the deployed bootstrap redirects `/` �
 
 ### Chromeless / embed mode — split across TWO layers
 User constraint: "don't change the WebUI Runtime source code, only options for my page".
-1. **Menu/header hidden by ONE shell flag** (one line) in the project's override file `webui-app-ix.ts` (compiled into `entry/wui.js`): `isEmbedded()` = `new URLSearchParams(location.search).has('embed')`; `renderTemplate()` returns only a `<div id="outlet" class="embed-outlet">` when embedded (no `wui-ix-template` / header / menu / `ix-application`). Robust because the Vaadin outlet only needs an element with `id="outlet"`. Backward compatible (no `?embed` → full chrome).
+1. **Menu/header hidden by ONE shell flag** (one line) in the project's override file `webui-app-ix.ts` (compiled into `entry/wui.js`; a shell patch the repo's former workspace tooling applied — the pristine shell deployed by wui-toolkit does not have it): `isEmbedded()` = `new URLSearchParams(location.search).has('embed')`; `renderTemplate()` returns only a `<div id="outlet" class="embed-outlet">` when embedded (no `wui-ix-template` / header / menu / `ix-application`). Robust because the Vaadin outlet only needs an element with `id="outlet"`. Backward compatible (no `?embed` → full chrome).
 2. **Everything else on the page side** in `mo-canvas.ts` (no other runtime change), via **same-origin** iframe manipulation on `@load` + a bounded poll (`FRAME_POLL_MS` / `MAX`, since the routed page and its nested components render async):
    - **theme**: the chromeless loses the theme controller (it lived in `wui-ix-template`), so `syncTheme()` copies all `data-ix*` attributes from the host `<html>` to the iframe's `<html>` + injects `customstyles.css`; a `MutationObserver` on the host `<html>` re-propagates on theme switch.
    - **hide the page name**: `injectHideStyles()` creates a `CSSStyleSheet` **in the iframe's realm** (`doc.defaultView.CSSStyleSheet` — cross-realm sheets are rejected) and **adopts it recursively** into the document + each open shadow root (`adoptInto`), rule `wui-content-header,wui-context-generator{display:none}`.
@@ -72,7 +72,7 @@ User constraint: "don't change the WebUI Runtime source code, only options for m
 
 ## Components / files
 
-`standalone-pages/mosaic.ts` + `mosaic/` folder:
+`src/mosaic.ts` + `src/mosaic/` folder:
 - `types.ts` — model + helpers (see above).
 - `data/mosaic-store.ts`, `data/demo-mosaics.ts` (2 demo walls), `data/source-catalog.ts`, `data/io.ts`.
 - `ui/`: `dialog-styles.ts` (shared overlay/panel), `mo-confirm-dialog`, `mo-mosaic-table` (preview list: name / source chips / tile count / updated; open/rename/delete), `mo-mosaic-dialog` (name + description), `mo-tile-dialog` (kind select + catalog dropdown OR manual id + url + interactive/refresh; VNC toggle disabled), **`mo-canvas`** (the core: absolute `%` tiles, drag via pointer-capture on the header + resize via bottom-right gripper, commit of the rounded layout via `wui:layout`; per-tile auto-reload via `setInterval` → `iframe.src=iframe.src`).
@@ -81,7 +81,7 @@ User constraint: "don't change the WebUI Runtime source code, only options for m
 
 ## Pitfalls / things to know
 
-- **Tier 1, no backend or manager** (cf. `module.json`): all the logic is on the frontend side. No `/api` module, no ws relay, no manager specific to this page. (The embedded sources — VNC, RTSP — have their own backends, but they belong to their respective pages.)
+- **Tier 1, no backend or manager** (cf. `package.json#wuiPage`): all the logic is on the frontend side. No `/api` module, no ws relay, no manager specific to this page. (The embedded sources — VNC, RTSP — have their own backends, but they belong to their respective pages.)
 - **CSP / external URL iframes**: this is NOT a mosaic limitation. The `WuiCspService` (in `wui.js`) injects a restrictive `<meta>` CSP (`default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:`, without `frame-src`) when the WebUI option `allowExternalResources` is false (read from `/WebUI_Settings`; also forced if the server's CSP header is restrictive). **Fix** = set `allowExternalResources` in the WebUI server config (`config/config`), then restart — it's a server option, not code. **Hard caveat**: public sites (google) send their own `X-Frame-Options` / `frame-ancestors` → refuse embedding no matter what; only intranet/own sites without these headers embed (watch out for the self-signed cert and mixed-content). Internal (same-origin) tiles are never blocked. A webserver reverse-proxy (same origin + strip X-Frame-Options, with an anti-SSRF allow-list) remains a possible follow-up but won't make the big public sites work.
 - **Cross-realm CSSStyleSheet rejected**: create the stylesheet in the iframe's realm (`doc.defaultView.CSSStyleSheet`), never from the host document.
 - **Hide / read-only must traverse shadow roots**: `adoptInto` adopts the sheet recursively into every open shadow root (otherwise nested components keep their header/toolbar visible).

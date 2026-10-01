@@ -1,4 +1,4 @@
-// Menu fragment for @visuelconcept/wui-agv-fleet.
+// Menu fragment for @visuelconcept-winccoa/wui-agv-fleet.
 // Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
 // Tier 1: frontend only — reads the `AGV_Vehicle` datapoints, no backend route, no manager.
 [

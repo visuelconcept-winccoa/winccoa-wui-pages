@@ -24,7 +24,7 @@
  * re-implemented: it is the same table as the Devices panel's, with the same
  * filter and role state, which the page owns because the model generator reads it.
  */
-import type { AddressBook, BrowseProgress, Device, OpcUaBrowseNode } from '@visuelconcept/wui-eng-core';
+import type { AddressBook, BrowseProgress, Device, OpcUaBrowseNode } from '@visuelconcept-winccoa/wui-eng-core';
 import { LitElement, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import type { EngConnection, EngDriver } from '../data/gateway.js';

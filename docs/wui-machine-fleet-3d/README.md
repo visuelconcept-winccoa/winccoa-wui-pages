@@ -1,4 +1,4 @@
-# @visuelconcept/wui-machine-fleet-3d — source module (Tier hub)
+# @visuelconcept-winccoa/wui-machine-fleet-3d — source module (Tier hub)
 
 The **Machine Fleet 3D** hub page (`/fleet-3d`): a **three.js** 3D fleet view with
 per-machine **state/KPI bubbles**, a **stop-cause catalog**, a contextual machine
@@ -9,38 +9,43 @@ Ships three managers: `machineSim` (fleet simulation), `kpiCalc` (live KPIs),
 **optional, external** WinCC OA MCP server (ETM `@etm-professional-control/winccoa-mcp-server`,
 ISC) — installed separately, **not shipped** here.
 
-Self-contained **source** distribution: the shared kit is **vendored** under
-`machine-fleet-3d/_vendor/` (`wui-kit`, `wui-fleet-core`, `wui-ai-kit` — no separate
-`@visuelconcept/*` prerequisite), and the page is built on the target's runtime
-workspace, so the bundle always matches its version.
+npm package, deployed with **wui-toolkit** (the `wui` CLI): the shared kits
+(`wui-kit`, `wui-fleet-core`, `wui-ai-kit`, `wui-alarms-core`) come as its npm
+dependencies, and the page is built against the target's own import map, so the
+bundle always matches its runtime.
 
-## Install (one command)
-```bash
-node install.mjs --workspace <runtime-workspace> --project <winccoa-project-root> --register-pmon
+## Install
+In the WinCC OA project's site (`<project>/web`), once the target is equipped
+(`npx wui init target prod`):
+```powershell
+npx wui use machine-fleet-3d
+npx wui build prod
+npx wui check prod
 ```
-It (1) copies the page source (vendored kit) into the workspace, (2) adds the menu
-entries, (3) installs `three` in the workspace, (4) drops the `/api/ai` backend
-module into the webserver, (5) deploys + `npm install`s the three managers
-(`machineSim`, `kpiCalc`, `aiAssistant`) and, with `--register-pmon`,
-adds them to `config/progs`, then (6) runs `build:pages` into
-`<project>/data/dashboard-wc/`.
+`wui use` npm-installs the package with its kits and `three`; `wui build` (1) compiles
+the page into `<project>/data/dashboard-wc/`, (2) adds the menu entries, (3) deploys the
+`/api/ai` backend module into the webserver and rebuilds it, (4) deploys + `npm install`s
+the three managers (`machineSim`, `kpiCalc`, `aiAssistant`) and appends them to
+`config/progs` when missing. The AI assistant stays hidden until
+`<project>/data/dashboard-wc/dashboard-features.json` holds `{ "aiAssistant": true }` —
+wui-toolkit does not write that file.
 
 ## After install (required)
-1. **Webserver:** `cd <project>/javascript/customer-webserver && npm run build`, then restart the webserver manager (it auto-mounts `/api/ai`).
+1. **Webserver:** restart the webserver manager (already rebuilt by `wui build`; it auto-mounts `/api/ai`).
 2. **Managers:** start **`machineSim`**, **`kpiCalc`**, **`aiAssistant`** in the WinCC OA console. (MCP tools need the optional external MCP server — see NOTES.)
 3. **Browser:** DevTools → Application → Storage → **`Clear site data`**, then reload (logged in).
    ⚠️ The service worker caches `menuconfig.json` — **`Ctrl+Shift+R` is NOT enough**; only `Clear site data` purges it.
 
 ## Prerequisites
-- A **WebUI Runtime workspace** for the target project (the `--workspace`).
-- **`@visuelconcept/wui-webserver`** installed in the project (hosts the `/api/ai` backend module via auto-discovery). See `dist-packages/README.md` for the ordered prerequisite chain.
-- The npm dep in `module.json.frontend.npmDeps` (**`three`**) is auto-installed into the workspace by the installer.
+- A **wui-toolkit site** for the target project (`npx wui init target prod` done once).
+- The **dashboard webserver** installed by `npx wui init target prod` (hosts the `/api/ai` backend module via auto-discovery).
+- The npm dep **`three`** is in the package's `dependencies`: npm installs it.
 
 ## Contents
 ```
-module.json / install.mjs
-frontend/standalone-pages/machine-fleet-3d.ts + machine-fleet-3d/   (page SOURCE; kit vendored in machine-fleet-3d/_vendor/)
-frontend/menu.fragment.jsonc                                       (2 entries: /fleet-3d list + /fleet-3d/:atelier detail)
-backend/modules/machine-fleet-3d/                                  index.ts (mount /api/ai + acl) + aiController/aiRoute
-manager/machineSim/  manager/kpiCalc/  manager/aiAssistant/   (Node managers + package.json; MCP server is external/optional)
+package.json                                                       npm package; wuiPage.backend (mount /api/ai, shared aiController/aiRoute, 3 managers)
+src/machine-fleet-3d.ts + src/machine-fleet-3d/                    (page source)
+menu.fragment.jsonc                                                (2 entries: /fleet-3d list + /fleet-3d/:atelier detail)
+managers/machineSim/                                               Node manager (simulation)
+kpiCalc (libs/wui-fleet-kpi-analysis/managers/), aiAssistant + aiController/aiRoute (libs/wui-ai-kit/) — resolved by name at build; MCP server is external/optional
 ```

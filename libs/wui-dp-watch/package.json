@@ -1,5 +1,5 @@
 {
-  "name": "@visuelconcept/wui-dp-watch",
+  "name": "@visuelconcept-winccoa/wui-dp-watch",
   "type": "module",
   "version": "0.1.0",
   "description": "DP Watch — standalone WinCC OA WebUI page and embeddable element: live values of every datapoint element matching a pattern (dpNames + dpConnect). Read-only; ships its own mock fixtures for `wui dev`.",
@@ -15,15 +15,13 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@visuelconcept/wui-kit": "*"
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0"
   },
   "peerDependencies": {
     "lit": "*",
     "rxjs": "*",
     "tsyringe": "*",
-    "@etm-professional-control/oa-rx-js-api": "*",
-    "@wincc-oa/wui-i18n-shared": "*",
-    "@wincc-oa/wui-models": "*"
+    "@etm-professional-control/oa-rx-js-api": "*"
   },
   "exports": {
     "./*": {
@@ -37,7 +35,39 @@
     "component": "wui-dp-watch",
     "module": "/data/dashboard-wc/pages/dp-watch.js",
     "icon": "eye",
-    "permission": ["connected"],
+    "permission": [
+      "connected"
+    ],
     "tier": 1
+  },
+  "peerDependenciesMeta": {
+    "lit": {
+      "optional": true
+    },
+    "rxjs": {
+      "optional": true
+    },
+    "tsyringe": {
+      "optional": true
+    },
+    "@etm-professional-control/oa-rx-js-api": {
+      "optional": true
+    }
+  },
+  "files": [
+    "src",
+    "menu.fragment.jsonc",
+    "mock",
+    "!**/*.spec.ts",
+    "!**/*.test.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/visuelconcept-winccoa/winccoa-wui-pages.git",
+    "directory": "libs/wui-dp-watch"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
   }
 }

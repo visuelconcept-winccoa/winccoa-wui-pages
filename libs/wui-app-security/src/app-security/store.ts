@@ -16,7 +16,7 @@ import { WuiDpeService } from '@wincc-oa/wui-data-selector-data/wui-dpe/wui-dpe.
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { firstValueFrom } from 'rxjs';
 import { container } from 'tsyringe';
-import { AuditTrailWriter } from '@visuelconcept/wui-kit/data/audit-trail.js';
+import { AuditTrailWriter } from '@visuelconcept-winccoa/wui-kit/data/audit-trail.js';
 import {
   APP_SECURITY_TYPE,
   appSecurityDp,
@@ -25,7 +25,7 @@ import {
   type AppModuleRoles,
   type AppRoleAssignments,
   type AppRoleDeclaration
-} from '@visuelconcept/wui-kit/data/app-security.js';
+} from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 
 const DP_SET_URL = '/api/para/dp/set';
 const GROUPS_URL = '/api/app-security/groups';

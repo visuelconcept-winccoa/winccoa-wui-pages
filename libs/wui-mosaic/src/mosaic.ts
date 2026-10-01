@@ -25,7 +25,7 @@ import { RouterEvent } from '@wincc-oa/wui-models/events/router-event.js';
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { property, query, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
-import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import appSecurityRoles from './app-security.roles.json';
 import { MosaicStore } from './mosaic/data/mosaic-store.js';
 import { DEMO_MOSAICS } from './mosaic/data/demo-mosaics.js';
@@ -40,7 +40,7 @@ import {
   mosaicCountMsg,
   tileCountMsg
 } from './mosaic/i18n.js';
-import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
+import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
 import './mosaic/ui/mo-canvas.js';
 import './mosaic/ui/mo-mosaic-dialog.js';
 import './mosaic/ui/mo-mosaic-table.js';

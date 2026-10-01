@@ -1,27 +1,76 @@
 {
-  "name": "@visuelconcept/wui-fleet-core",
+  "name": "@visuelconcept-winccoa/wui-fleet-core",
   "type": "module",
   "version": "0.1.0",
   "description": "Shared fleet domain for the Machine Fleet pages: the atelier/machine/stop-cause domain model (types), the FleetStore persistence + offline fallback, the stop-cause analysis engine, closures (opening-time) model, the stop-cause catalog editor and the shared page styles.",
-  "author": { "name": "Visuel Concept" },
-  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents"],
+  "author": {
+    "name": "Visuel Concept"
+  },
+  "keywords": [
+    "OpenArchitecture",
+    "WinCCOA",
+    "dashboard",
+    "webcomponents"
+  ],
   "license": "MIT",
   "dependencies": {
-    "@visuelconcept/wui-kit": "*"
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0",
+    "three": "^0.169.0"
   },
   "peerDependencies": {
     "lit": "*",
     "rxjs": "*",
     "tsyringe": "*",
-    "three": "*",
     "@etm-professional-control/oa-rx-js-api": "*",
-    "@wincc-oa/wui-shared": "*",
-    "@wincc-oa/wui-data-selector-data": "*"
+    "@wincc-oa/wui-data-selector-data": "*",
+    "@wincc-oa/wui-i18n-shared": "*",
+    "@wincc-oa/wui-models": "*",
+    "@wincc-oa/wui-shared": "*"
   },
   "exports": {
     "./*": {
       "types": "./types/*",
       "import": "./*"
     }
+  },
+  "peerDependenciesMeta": {
+    "lit": {
+      "optional": true
+    },
+    "rxjs": {
+      "optional": true
+    },
+    "tsyringe": {
+      "optional": true
+    },
+    "@etm-professional-control/oa-rx-js-api": {
+      "optional": true
+    },
+    "@wincc-oa/wui-data-selector-data": {
+      "optional": true
+    },
+    "@wincc-oa/wui-i18n-shared": {
+      "optional": true
+    },
+    "@wincc-oa/wui-models": {
+      "optional": true
+    },
+    "@wincc-oa/wui-shared": {
+      "optional": true
+    }
+  },
+  "files": [
+    "src",
+    "!**/*.spec.ts",
+    "!**/*.test.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/visuelconcept-winccoa/winccoa-wui-pages.git",
+    "directory": "libs/wui-fleet-core"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
   }
 }

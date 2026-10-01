@@ -1,30 +1,27 @@
-# Integrate the Fleet Stop-Cause Analysis page (`@visuelconcept/wui-fleet-stop-analysis`) — source mode, Tier 1
+# Integrate the Fleet Stop-Cause Analysis page (`@visuelconcept-winccoa/wui-fleet-stop-analysis`) — source mode, Tier 1
 
 **Standalone WinCC OA WebUI page** for **stop-cause analysis** (`/fleet-stops`):
 breakdown of stop time (`dpGetPeriod` + interval algorithm) split
 **by cause**, in **table + ECharts** tabs. This is a **Tier 1**: **frontend
-only** (no backend module, no manager). **Self-contained source**
-distribution: the shared kit (`wui-kit`, `wui-fleet-core`) is **vendored** under
-`fleet-stop-analysis/_vendor/` (no `@visuelconcept/wui-kit` prerequisite), and the page
-is **compiled against the target's runtime workspace** (bundle = correct version).
+only** (no backend module, no manager). Distributed as the npm
+package `@visuelconcept-winccoa/wui-fleet-stop-analysis`, deployed with **wui-toolkit** (`wui`
+CLI): the shared kits (`wui-kit`, `wui-fleet-core`) are npm dependencies, and the page
+is **compiled against the target's own import map** (bundle = correct version).
 
 ## Prerequisites
-1. A **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) — the `--workspace`.
-2. **No** backend module or manager. The frontend npm deps (`@siemens/ix-echarts`, `three`) are **installed automatically into the workspace** by the installer.
+1. A **wui-toolkit site** for the project (`<project>/web`) whose `prod` target was equipped once with `npx wui init target prod`.
+2. **No** backend module or manager. Frontend npm deps: `three` comes with `@visuelconcept-winccoa/wui-fleet-core` (installed by npm); `echarts` is a peer dependency, expected from the WebUI platform.
 
-## Install (one command)
-```bash
-node install.mjs --workspace <workspace-runtime> --project <project-root>
+## Install
+In the project's site (`<project>/web`):
+```powershell
+npx wui use fleet-stop-analysis   # npm-installs @visuelconcept-winccoa/wui-fleet-stop-analysis (+ its kits), selects it
+npx wui build prod                # compiles the page, upserts its menu entry
+npx wui check prod
 ```
-Example (WebDemo2):
-```bash
-node install.mjs --workspace D:\WinCC_OA_Proj_321\WebDemo2\webui-workspace --project D:\WinCC_OA_Proj_321\WebDemo2
-```
-The installer:
-1. copies the **source** (vendored kit) → `<workspace>/…/standalone-pages/`;
-2. inserts the **menu entry** → the workspace's `menuconfig.jsonc` (idempotent by `routeId`);
-3. installs the **frontend npm deps** (`@siemens/ix-echarts`, `three`) into the workspace (so `build:pages` bundles them);
-4. runs **`build:pages`** (OUT_DIR=`<project>/data/dashboard-wc`).
+`wui build`:
+1. compiles the page → `<project>/data/dashboard-wc/pages/`;
+2. upserts the **menu entry** (`menu.fragment.jsonc`) into `menuconfig.json` (idempotent by `routeId`).
 
 ## After install (mandatory)
 1. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).
@@ -36,4 +33,4 @@ The installer:
 
 ## Notes / security
 - **Frontend-only** page: no `/api/*` route exposed, no manager to start. Data is read through the dashboard's existing WinCC OA connection.
-- The menu entry is `hidden` (reached from the fleet overview); change this flag in `frontend/menu.fragment.jsonc` if you want to expose it directly.
+- The menu entry is `hidden` (reached from the fleet overview); change this flag in `menu.fragment.jsonc` if you want to expose it directly.

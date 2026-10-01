@@ -5,7 +5,7 @@
 // -----------------------------------------------------------------------------
 // Verify the Engineering Studio's translation table — EN / FR / DE.
 // -----------------------------------------------------------------------------
-//   node tools/check-eng-i18n.mjs
+//   node libs/wui-eng-studio/demo/check-i18n.mjs
 //
 // Checks, on the REAL module (bundled with esbuild, no test runner needed):
 //   1. every entry has a non-empty string in all three languages;
@@ -25,8 +25,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO = resolve(HERE, '..');
-const DEMO_DIR = resolve(REPO, 'libs/wui-eng-studio/demo');
+const REPO = resolve(HERE, '../../..');
+const DEMO_DIR = HERE;
 const SOURCE = resolve(REPO, 'libs/wui-eng-studio/src/eng-studio/i18n.ts');
 
 // esbuild comes with the demo harness (which already builds this page); the

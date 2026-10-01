@@ -1,7 +1,7 @@
 <!-- SPDX-FileCopyrightText: 2026 VISUEL CONCEPT -->
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
-# @visuelconcept/wui-ampere — Ampère (electrical single-line diagrams)
+# @visuelconcept-winccoa/wui-ampere — Ampère (electrical single-line diagrams)
 
 **Ampère** is a standalone WinCC OA WebUI page to **draw, wire and animate
 single-line (mono-filaire) electrical distribution networks** — substations
@@ -31,7 +31,7 @@ manager, no webserver rebuild.
   binding needed.
 - **Live measurements**: value labels bound to any datapoint, placed **anchored
   to a symbol** or **free anywhere** in the circuit.
-- **AI assistant** (reuses `@visuelconcept/wui-ai-kit`): a proposal-only,
+- **AI assistant** (reuses `@visuelconcept-winccoa/wui-ai-kit`): a proposal-only,
   read-only-tools chat that generates a network model from a prompt; the user reviews
   and applies it to the editor. Hidden unless enabled at deploy time
   (`dashboard-features.json` → `aiAssistant: true`).
@@ -83,8 +83,9 @@ The element names are the contract between the demos (`data/demo.ts`, via the
 keep the two in sync. No system prefix is stored, so the binding resolves on the
 local system and the page's `normDp` matches it against the emitted DP.
 
-Register it in the project's `config/progs` (deploy-release wires it from
-`libs/wui-ampere/package.json` → `wuiPage.backend.managers`):
+Register it in the project's `config/progs` (`npx wui build` deploys it from
+`libs/wui-ampere/package.json` → `wuiPage.backend.managers` and appends the line
+when missing):
 
 ```
 node | manual | 30 | 2 | 2 |ampereSim/index.js
@@ -163,5 +164,6 @@ GxP audit trail (`AuditTrail_Ampere`) and an offline in-memory demo fallback.
   persisted.
 - Switchgear with no bound datapoint (or before the first live value) is treated
   as **closed**, so a freshly drawn diagram lights up during design.
-- The AI assistant is OFF by default; deploy with
-  `tools/scripts/deploy-release.mjs … --ai-assistant` to enable it.
+- The AI assistant is OFF by default; it is enabled by
+  `<project>/data/dashboard-wc/dashboard-features.json` = `{ "aiAssistant": true }`.
+  wui-toolkit does not write that file: create it by hand.

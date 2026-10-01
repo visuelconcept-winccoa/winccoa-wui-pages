@@ -24,7 +24,7 @@ import { RouterEvent } from '@wincc-oa/wui-models/events/router-event.js';
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { property, query, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
-import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import appSecurityRoles from './app-security.roles.json';
 import { StreamStore } from './camera-streams/data/stream-store.js';
 import { DEMO_STREAMS } from './camera-streams/data/demo-streams.js';
@@ -36,8 +36,8 @@ import {
   auditDiff,
   auditSnapshot,
   type AuditRecord
-} from '@visuelconcept/wui-kit/data/audit-trail.js';
-import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
+} from '@visuelconcept-winccoa/wui-kit/data/audit-trail.js';
+import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
 import './camera-streams/ui/cs-stream-dialog.js';
 import './camera-streams/ui/cs-stream-table.js';
 import './camera-streams/ui/cs-viewer.js';

@@ -19,29 +19,20 @@
 - **UI Library**: Siemens iX (`@siemens/ix`, `@siemens/ix-echarts`, `@siemens/ix-icons`)
 - **Stack**: Lit 3 WebComponents, TypeScript, RxJS, Vaadin Router
 - **DI**: tsyringe (singleton services, `container.resolve()`)
-- **Build**: Vite
+- **Build / dev / deploy**: [wui-toolkit](https://github.com/visuelconcept-winccoa/winccoa-wui-tools) (`wui` CLI, Vite) — this repo has no tooling of its own
+- **Layout**: each `libs/wui-<id>/` is an independent npm package (`@visuelconcept-winccoa/wui-<id>`), published as is on GitHub Packages
 
 ## Commands
 
 ```bash
-# Development
-npm run start                    # Start dev server (port 4300)
+# Run / deploy — from a wui-toolkit site whose wui.project.jsonc "sources" point at this checkout (README "Develop")
+npx wui dev                      # selected pages with mock data, hot reload (port 4300)
+npx wui build <target>           # compile + deploy pages and backends into a WinCC OA project
 
-# Build
-npm run build                    # Full build (shared bundles + app)
-npm run build:shared-bundles     # Build shared bundles only
-npm run build:pages              # Build standalone pages only
-
-# Deploy a curated set of pages + backends to a WinCC OA project (interactive)
-node tools/scripts/deploy-release.mjs --project <project>   # see README "Quick deploy"
-#   add --full --install-webserver on a fresh project; --ai-assistant to enable the AI assistant (off by default)
-
-# Quality
-npm run lint                     # Lint all projects
-npm run test                     # Run all tests
-npx eslint path/to/file.ts      # Lint single file
-npx tsc --noEmit -p tsconfig.base.json  # Type check
-npx prettier --write path/to/file.ts    # Format
+# Per lib (cd libs/wui-<id>)
+npx vitest run                   # unit tests, when the lib has a "test" script
+npm run typecheck                # wui-eng-core, wui-alarms-core
+npm pack --dry-run               # check what would be published
 ```
 
 ## Coding Standards
@@ -63,7 +54,7 @@ Standards are documented in `docs/knowledge/` - reference these files for full d
 ### Always Do
 
 - **Before modifying any module/page/library, re-read its own documentation first** — its `docs/<module>/README.md` + `NOTES.md` + `INTEGRATION.md` (when present), the module's source-header comment block, and any matching `docs/knowledge/*.md`. Do this every time, even for a change that looks like a one-liner: the docs record install/runtime coupling, backend contracts and caveats that the code alone does not surface. (E.g. for `libs/wui-para` read `docs/wui-para/README.md` and `docs/wui-para/INTEGRATION.md` before touching it.)
-- **Application Security roles are part of every feature.** When you create a page module, when the user asks to "secure" / "add roles to" a module, and — without being asked — whenever a change **adds or removes a capability worth restricting** (edit mode, deploy/control action, signing, destructive operation…), apply [docs/wui-app-security/INTEGRATION.md](./docs/wui-app-security/INTEGRATION.md) in the same change: declare/update the module's roles in its own `libs/wui-<page>/src/app-security.roles.json` fragment (imported by the page for `registerModuleRoles` — single source of truth, no central manifest), gate the UI (`hasRole$`) and wrap sensitive backend routes (`requireRole` + `"@visuelconcept/wui-app-security/appSecurityGuard.ts"` in the module's `package.json#wuiPage.backend.shared`). Roles are open until an admin assigns groups, so declaring them never breaks a deployment. Never write `.assignments` from a module; never rename a role id silently.
+- **Application Security roles are part of every feature.** When you create a page module, when the user asks to "secure" / "add roles to" a module, and — without being asked — whenever a change **adds or removes a capability worth restricting** (edit mode, deploy/control action, signing, destructive operation…), apply [docs/wui-app-security/INTEGRATION.md](./docs/wui-app-security/INTEGRATION.md) in the same change: declare/update the module's roles in its own `libs/wui-<page>/src/app-security.roles.json` fragment (imported by the page for `registerModuleRoles` — single source of truth, no central manifest), gate the UI (`hasRole$`) and wrap sensitive backend routes (`requireRole` + `"@visuelconcept-winccoa/wui-app-security/appSecurityGuard.ts"` in the module's `package.json#wuiPage.backend.shared`). Roles are open until an admin assigns groups, so declaring them never breaks a deployment. Never write `.assignments` from a module; never rename a role id silently.
 - Use iX components and CSS custom properties
 - Use Shadow DOM for WebComponents
 - Run lint on changed files

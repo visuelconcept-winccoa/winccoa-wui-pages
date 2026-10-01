@@ -9,7 +9,7 @@
  * and keeps the page-specific method names. The `afterRead` hook backfills the
  * graph arrays on legacy records that pre-date a field.
  */
-import { DpJsonStore } from '@visuelconcept/wui-kit/data/dp-json-store.js';
+import { DpJsonStore } from '@visuelconcept-winccoa/wui-kit/data/dp-json-store.js';
 import { demoNetworks } from './demo.js';
 import type { Network } from '../types.js';
 

@@ -9,7 +9,7 @@
 // with Playwright (Chromium is preinstalled in the environment) and writes one
 // PNG per panel to docs/images/eng-studio/.
 //
-//   node tools/screenshot-eng-studio.mjs [--dev-url <url>] [--out <dir>]
+//   node libs/wui-eng-studio/demo/screenshot.mjs [--dev-url <url>] [--out <dir>]
 //                                        [--width 1600] [--height 1000]
 //
 // If --dev-url is not reachable it starts the demo Vite server itself
@@ -23,8 +23,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO = resolve(HERE, '..');
-const DEMO_DIR = resolve(REPO, 'libs/wui-eng-studio/demo');
+const REPO = resolve(HERE, '../../..');
+const DEMO_DIR = HERE;
 
 // Playwright and Vite come from the demo harness when it has its own install, and
 // from the workspace root otherwise — the demo's page sources already resolve

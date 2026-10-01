@@ -34,8 +34,8 @@ import {
   hasRole$,
   registerModuleRoles,
   type AppModuleRoles
-} from '@visuelconcept/wui-kit/data/app-security.js';
-import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
+} from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
+import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
 import { RouterEvent } from '@wincc-oa/wui-models/events/router-event.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import '@wincc-oa/wui-ix-wrappers/wui-content-header/wui-content-header.js';

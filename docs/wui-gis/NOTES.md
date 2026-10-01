@@ -343,7 +343,9 @@ WebGL1 support; neither buys this page anything.
 
 `maplibre-gl` 5.x also publishes **one UMD bundle** while declaring `"type": "module"`.
 The **default import** is what survives both the dev server (esbuild interop) and
-`build:pages` (Rollup's commonjs transform, enabled by `transformMixedEsModules`); named
+the production build (Rollup's commonjs transform; the repo's former `build:pages`
+enabled it with `transformMixedEsModules` — wui-toolkit's `wui build` does not set that
+option, so check the map after a build); named
 value imports are not reliable across both. That is why `gis/map/maplibre.ts` is the
 single place the library is imported.
 
@@ -397,7 +399,7 @@ which yields the stylesheet as a **string**, and adopted into the component's ow
 ## The AI assistant
 
 A **proposal-only** helper for the slow part of this page: authoring a site's areas and
-assets from scratch. It reuses the shared plumbing of `@visuelconcept/wui-ai-kit` (the
+assets from scratch. It reuses the shared plumbing of `@visuelconcept-winccoa/wui-ai-kit` (the
 `askAi` bridge to `/api/ai/chat`, the markdown renderer, the config dialog) and follows
 the same contract as the Ampère assistant.
 
@@ -713,6 +715,6 @@ operator's problem to fix.
 
 The isolated-`dpConnect` + `_act_state_color` pattern in `gis/data/live.ts` also exists,
 inline, in `libs/wui-ampere/src/ampere.ts`. Both pages arrived at it for the same reason.
-It is a fair candidate for extraction into `@visuelconcept/wui-kit`, which is why it is
+It is a fair candidate for extraction into `@visuelconcept-winccoa/wui-kit`, which is why it is
 noted here rather than silently copied a third time — that change touches the shared kit
 and belongs in its own review.

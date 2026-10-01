@@ -22,7 +22,7 @@ import {
   refreshWarnings,
   type AddressBook,
   type OpcUaBrowsePort
-} from '@visuelconcept/wui-eng-core';
+} from '@visuelconcept-winccoa/wui-eng-core';
 import type { BookDelta, WalkRequest } from './gateway.js';
 
 /** A walked book plus what moved since the stored generation. */

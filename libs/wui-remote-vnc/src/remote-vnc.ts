@@ -23,14 +23,14 @@ import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { property, query, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
-import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import appSecurityRoles from './app-security.roles.json';
 import { ConnectionStore } from './remote-vnc/data/connection-store.js';
 import { DEMO_CONNECTIONS } from './remote-vnc/data/demo-connections.js';
 import { exportConnection, exportJson, parseConnections } from './remote-vnc/data/io.js';
 import { MSG, confirmDeleteMsg, localize, localizeDir } from './remote-vnc/i18n.js';
 import type { VncConnection, VncStatus } from './remote-vnc/types.js';
-import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
+import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
 import './remote-vnc/ui/rv-connection-dialog.js';
 import './remote-vnc/ui/rv-connection-table.js';
 import './remote-vnc/ui/rv-viewer.js';

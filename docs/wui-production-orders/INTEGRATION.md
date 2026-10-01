@@ -1,37 +1,34 @@
-# Integrate the Production Orders page (`@visuelconcept/wui-production-orders`) — source mode, Tier 3
+# Integrate the Production Orders page (`@visuelconcept-winccoa/wui-production-orders`) — source mode, Tier 3
 
 **Standalone WinCC OA WebUI** page to manage **production orders (OF)**
 on **`/production-orders`**: the orders are stored in a **single JSON list DP**
 (`ProductionOrders_List`), with CRUD + status workflow + an **echarts Gantt** and
 a link to the fleet. The KPIs at the top of the page are computed **server-side** by the
 **`productionOrdersKpi`** manager (DP `ProductionOrders_Kpi`). It is a **Tier 3** page
-with no HTTP backend: frontend + one **Node manager**. **Self-contained source**
-distribution: the shared kit / fleet-core is **vendored** under `_vendor/`
-(no `@visuelconcept/wui-kit` prerequisite), and the page is **compiled against the
-target's runtime workspace** (bundle = correct version).
+with no HTTP backend: frontend + one **Node manager**. Distributed as the npm
+package `@visuelconcept-winccoa/wui-production-orders`, deployed with **wui-toolkit** (`wui`
+CLI): the shared kit / fleet-core are npm dependencies, and the page is **compiled
+against the target's own import map** (bundle = correct version).
 
 ## Prerequisites
-1. A **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) — the `--workspace`.
-2. No `@visuelconcept/wui-webserver` required: **no backend module** (no `/api` route).
-3. The npm deps from `module.json` (`@siemens/ix-echarts`, `three`) are **installed automatically** into the workspace by the installer.
+1. A **wui-toolkit site** for the project (`<project>/web`) whose `prod` target was equipped once with `npx wui init target prod`.
+2. The dashboard webserver is not required: **no backend module** (no `/api` route).
+3. npm deps: `three` comes with `@visuelconcept-winccoa/wui-fleet-core` (installed by npm); `echarts` is a peer dependency, expected from the WebUI platform.
 
-## Install (one command)
-```bash
-node install.mjs --workspace <workspace-runtime> --project <project-root> --register-pmon
+## Install
+In the project's site (`<project>/web`):
+```powershell
+npx wui use production-orders   # npm-installs @visuelconcept-winccoa/wui-production-orders (+ its kits), selects it
+npx wui build prod              # page + menu entry, productionOrdersKpi manager
+npx wui check prod
 ```
-Example (WebDemo2):
-```bash
-node install.mjs --workspace D:\WinCC_OA_Proj_321\WebDemo2\webui-workspace --project D:\WinCC_OA_Proj_321\WebDemo2 --register-pmon
-```
-The installer:
-1. copies the **source** (vendored kit) → `<workspace>/…/standalone-pages/`;
-2. inserts the **menu entry** → the workspace's `menuconfig.jsonc` (idempotent);
-3. installs **`@siemens/ix-echarts`** and **`three`** into the workspace (so `build:pages` bundles them);
-4. deploys the **`productionOrdersKpi`** manager → `<project>/javascript/productionOrdersKpi/` + `npm install`; with `--register-pmon`, adds the line to `config/progs`;
-5. runs **`build:pages`** (OUT_DIR=`<project>/data/dashboard-wc`).
+`wui build`:
+1. compiles the page → `<project>/data/dashboard-wc/pages/`;
+2. upserts the **menu entry** (`menu.fragment.jsonc`) into `menuconfig.json` (idempotent);
+3. deploys the **`productionOrdersKpi`** manager → `<project>/javascript/productionOrdersKpi/` (+ `npm install` if it has dependencies), and appends its line to `config/progs` when missing.
 
 ## After install (mandatory)
-1. **Manager**: start **`productionOrdersKpi`** in the WinCC OA console (it `dpConnect`s the order list and recomputes the `ProductionOrders_Kpi` DP). Check the manager order/number if pmon was edited.
+1. **Manager**: start **`productionOrdersKpi`** in the WinCC OA console (it `dpConnect`s the order list and recomputes the `ProductionOrders_Kpi` DP). Check the manager order/number (`wui build` appended its `config/progs` line).
 2. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).
    ⚠️ The SW caches `menuconfig.json` → **`Ctrl+Shift+R` is not enough**; only `Clear site data` purges it.
 

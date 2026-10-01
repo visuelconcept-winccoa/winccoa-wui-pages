@@ -10,7 +10,7 @@
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import '@visuelconcept/wui-kit/ui/wui-dp-input.js';
+import '@visuelconcept-winccoa/wui-kit/ui/wui-dp-input.js';
 import { dialogStyles } from './dialog-styles.js';
 import { DEFAULTS_MSG, MSG, localize, localizeDir } from '../i18n.js';
 import {

@@ -24,17 +24,17 @@ import { LitElement, html, type PropertyValues, type TemplateResult } from 'lit'
 import { customElement, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
-import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import appSecurityRoles from './app-security.roles.json';
-import { pageStyles } from '@visuelconcept/wui-fleet-core/styles.js';
-import { FleetStore } from '@visuelconcept/wui-fleet-core/data/fleet-store.js';
+import { pageStyles } from '@visuelconcept-winccoa/wui-fleet-core/styles.js';
+import { FleetStore } from '@visuelconcept-winccoa/wui-fleet-core/data/fleet-store.js';
 import {
   DEFAULT_TRS_THRESHOLDS,
   resolveTrsColor,
   type Atelier,
   type StopCause,
   type TrsThresholds
-} from '@visuelconcept/wui-fleet-core/types.js';
+} from '@visuelconcept-winccoa/wui-fleet-core/types.js';
 import {
   analyseKpi,
   collectMachines,
@@ -49,7 +49,7 @@ import {
   emptyClosureConfig,
   normaliseClosures,
   type ClosureConfig
-} from '@visuelconcept/wui-fleet-core/closures.js';
+} from '@visuelconcept-winccoa/wui-fleet-core/closures.js';
 import { MSG, localize, localizeDir } from './fleet-kpi-analysis/i18n.js';
 
 const TAB_TABLE = 0;

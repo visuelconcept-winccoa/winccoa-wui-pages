@@ -123,7 +123,7 @@ pushed into the 3D bubble. `KpiType = 'TRS'|'MTBF'|'MTTR'` (TRS in `%`, MTBF/MTT
     card CSS overrides the direction and the padding, and the gauge is capped
     (`max-height`) so a card stretched wider than its track cannot overflow the
     fixed row and be clipped.
-- **Alarm tracking** = the shared `<wui-alarm-view>` of `@visuelconcept/wui-alarms-core`
+- **Alarm tracking** = the shared `<wui-alarm-view>` of `@visuelconcept-winccoa/wui-alarms-core`
   in its `panel` layout (same component as the `/alarms` page), bottom-left half of
   the dashboard. Its tabs switch between
   the machine's **standing** alarms and its **archived** ones; the archived ones use
@@ -204,7 +204,7 @@ are shipped**.
 Every user edit across the fleet feature (this page + the KPI and stop-cause
 sub-pages + closures) is traced into one shared `_AuditTrail` DP
 **`AuditTrail_Fleet`**, via the shared-kit `AuditTrailWriter`
-(`@visuelconcept/wui-kit/data/audit-trail.ts`). The `item` (Élément) column is the
+(`@visuelconcept-winccoa/wui-kit/data/audit-trail.ts`). The `item` (Élément) column is the
 **impacted DPE**; the `itemtype` distinguishes the entity kind. Two integration points:
 
 - **Atelier CRUD** is traced in the **page shell** (`machine-fleet-3d.ts`

@@ -1,8 +1,8 @@
 {
-  "name": "@visuelconcept/wui-alarms",
+  "name": "@visuelconcept-winccoa/wui-alarms",
   "type": "module",
   "version": "0.1.0",
-  "description": "Alarms — standalone WinCC OA WebUI page (/alarms): the plant's alarm list, live (standing alarms) or over an archived period, with the unacknowledged counter, the P1–P4 severity bands as a filter, the EEMUA-191 flood histogram, the recurring bad actors, free-text search, server-side-style sort/paging and acknowledge. The whole view is the shared <wui-alarm-view> component from @visuelconcept/wui-alarms-core, so the same view embeds in other pages (Machine Fleet machine dashboard).",
+  "description": "Alarms — standalone WinCC OA WebUI page (/alarms): the plant's alarm list, live (standing alarms) or over an archived period, with the unacknowledged counter, the P1–P4 severity bands as a filter, the EEMUA-191 flood histogram, the recurring bad actors, free-text search, server-side-style sort/paging and acknowledge. The whole view is the shared <wui-alarm-view> component from @visuelconcept-winccoa/wui-alarms-core, so the same view embeds in other pages (Machine Fleet machine dashboard).",
   "author": {
     "name": "Visuel Concept"
   },
@@ -16,9 +16,9 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@visuelconcept/wui-kit": "^0.1.0",
-    "@visuelconcept/wui-alarms-core": "^0.1.0",
-    "@visuelconcept/wui-app-security": "^0.1.0"
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0",
+    "@visuelconcept-winccoa/wui-alarms-core": "^0.1.0",
+    "@visuelconcept-winccoa/wui-app-security": "^0.1.0"
   },
   "peerDependencies": {
     "lit": "*",
@@ -57,7 +57,7 @@
         "alarmsRoute.ts"
       ],
       "shared": [
-        "@visuelconcept/wui-app-security/appSecurityGuard.ts"
+        "@visuelconcept-winccoa/wui-app-security/appSecurityGuard.ts"
       ],
       "notes": [
         "POST /api/alarms/ack (acknowledge as the session user)",

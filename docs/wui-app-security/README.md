@@ -1,7 +1,7 @@
 <!-- SPDX-FileCopyrightText: 2026 VISUEL CONCEPT -->
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
-# @visuelconcept/wui-app-security — Application Security (roles ↔ WinCC OA groups)
+# @visuelconcept-winccoa/wui-app-security — Application Security (roles ↔ WinCC OA groups)
 
 Standalone WebUI page (`/app-security`, Tier 3) to **discover the ROLES each
 page module expects** (view, edit, deploy, control, sign…) and **map every role
@@ -19,17 +19,17 @@ page itself.
 | Piece | Where | Job |
 | --- | --- | --- |
 | `AppSecurity_<module>` DP (type `AppSecurity_Module`) | one per module | `.roles` = declaration (written by the module), `.assignments` = `{role: [groups]}` (written ONLY by this page) |
-| `hasRole$(module, role)` / `registerModuleRoles(decl)` | `@visuelconcept/wui-kit/data/app-security.js` | live UI gating + self-registration at page load |
+| `hasRole$(module, role)` / `registerModuleRoles(decl)` | `@visuelconcept-winccoa/wui-kit/data/app-security.js` | live UI gating + self-registration at page load |
 | `/api/app-security` (`/me`, `/groups`) | webserver module | resolves the SESSION user + their OA groups server-side (`_Users`/`_Groups`) |
 | `requireRole(module, role)` | `libs/wui-app-security/backend/appSecurityGuard.ts` (listed in `wuiPage.backend.shared`, copied into each consuming module) | express middleware → 403 server-side |
-| Per-module fragment | `libs/wui-<page>/src/app-security.roles.json` (aggregated into `app-security-manifest.json` by the `page-appsec-merge` Vite plugin) | single source of truth for a module's roles — feeds both self-registration and the "Discover modules" seeding; no central manifest |
+| Per-module fragment | `libs/wui-<page>/src/app-security.roles.json` (once aggregated into `app-security-manifest.json` by the repo's former `page-appsec-merge` Vite plugin — wui-toolkit does not build that asset) | single source of truth for a module's roles — feeds both self-registration and the "Discover modules" seeding; no central manifest |
 
 ## Install
 
-Standard page-module flow: `node packages/wui-app-security/install.mjs
---workspace <runtime-workspace> --project <project>`, rebuild the
-customer-webserver, restart it. **Prerequisite**: the `wui-para` backend
-(`/api/para`) — it creates the DP type/instances and writes values (like every
+Standard wui-toolkit flow in the project's site: `npx wui use app-security`,
+`npx wui build prod` (deploys `/api/app-security` into the dashboard webserver and
+rebuilds it), then restart the webserver manager from the WinCC OA console.
+**Prerequisite**: the `wui-para` backend (`/api/para`) — it creates the DP type/instances and writes values (like every
 DP-JSON-store page).
 
 ## Usage

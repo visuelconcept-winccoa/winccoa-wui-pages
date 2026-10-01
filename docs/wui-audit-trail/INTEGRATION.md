@@ -1,4 +1,4 @@
-# Integrate the Audit Trail page (`@visuelconcept/wui-audit-trail`) — source mode, Tier 1
+# Integrate the Audit Trail page (`@visuelconcept-winccoa/wui-audit-trail`) — source mode, Tier 1
 
 **Standalone WinCC OA WebUI page**: a **GxP audit-trail viewer + manager** over
 the **fixed `_AuditTrail` datapoint type**. It lists the project's `_AuditTrail`
@@ -8,26 +8,25 @@ datapoints, shows the selected one's **NGA-archived history as a log table**
 (always NGA-archived, archive group like Para), reassigns their group and
 deletes them — all via the existing **PARA REST** endpoints. View state is
 persisted in a DP **`AuditTrail_Config`**. This is a **Tier 1**: **frontend
-only** (no backend module, no manager). **Self-contained source** distribution:
-the shared kit is **vendored** under `audit-trail/_vendor/`, and the page is
-**compiled against the target's runtime workspace** (bundle = correct version).
+only** (no backend module, no manager). Distributed as the npm
+package `@visuelconcept-winccoa/wui-audit-trail`, deployed with **wui-toolkit** (`wui` CLI):
+the shared kit is an npm dependency, and the page is **compiled against the
+target's own import map** (bundle = correct version).
 
 ## Prerequisites
-1. A **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) — the `--workspace`.
-2. No backend or manager required. `module.json.frontend.npmDeps` is empty: the installer adds no npm dependency to the workspace.
+1. A **wui-toolkit site** for the project (`<project>/web`) whose `prod` target was equipped once with `npx wui init target prod`.
+2. No backend or manager required, no npm dependency beyond the `@visuelconcept-winccoa/wui-*` kit.
 
-## Install (one command)
-```bash
-node install.mjs --workspace <workspace-runtime> --project <project-root>
+## Install
+In the project's site (`<project>/web`):
+```powershell
+npx wui use audit-trail   # npm-installs @visuelconcept-winccoa/wui-audit-trail (+ its kit) and selects it
+npx wui build prod        # compiles the page, upserts its menu entry
+npx wui check prod
 ```
-Example (WebDemo2):
-```bash
-node install.mjs --workspace D:\WinCC_OA_Proj_321\WebDemo2\webui-workspace --project D:\WinCC_OA_Proj_321\WebDemo2
-```
-The installer:
-1. copies the **source** (vendored kit) → `<workspace>/…/standalone-pages/`;
-2. inserts the **menu entry** → the workspace's `menuconfig.jsonc` (idempotent by `routeId`);
-3. runs **`build:pages`** (OUT_DIR=`<project>/data/dashboard-wc`).
+`wui build`:
+1. compiles the page against the target's import map → `<project>/data/dashboard-wc/pages/`;
+2. upserts the **menu entry** (`menu.fragment.jsonc`) into `menuconfig.json` (idempotent by `routeId`).
 
 ## After install (mandatory)
 1. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).

@@ -74,7 +74,7 @@ import {
   type TagAccess,
   type LiveSnapshot,
   type Workspace
-} from '@visuelconcept/wui-eng-core';
+} from '@visuelconcept-winccoa/wui-eng-core';
 import '@wincc-oa/wui-ix-wrappers/wui-content-header/wui-content-header.js';
 import { LitElement, html, nothing, type TemplateResult } from 'lit';
 import { state } from 'lit/decorators.js';

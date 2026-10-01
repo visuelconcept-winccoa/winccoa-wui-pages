@@ -48,7 +48,7 @@ import {
   type OpcUaBrowseNode,
   type TagAccess,
   type Workspace
-} from '@visuelconcept/wui-eng-core';
+} from '@visuelconcept-winccoa/wui-eng-core';
 import type {
   BookDeletion,
   BookRefresh,

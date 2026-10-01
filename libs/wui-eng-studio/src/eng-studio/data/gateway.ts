@@ -29,7 +29,7 @@ import type {
   SignalRole,
   TagAccess,
   Workspace
-} from '@visuelconcept/wui-eng-core';
+} from '@visuelconcept-winccoa/wui-eng-core';
 
 /** A named role the studio gates its affordances with. */
 export type EngRole = 'view' | 'edit-model' | 'manage-devices' | 'checkin';

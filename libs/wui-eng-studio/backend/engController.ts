@@ -4,7 +4,7 @@
 // -----------------------------------------------------------------------------
 // EngController — backend of the Engineering Studio page (/api/eng).
 // -----------------------------------------------------------------------------
-// The engineering LOGIC lives in the pure `@visuelconcept/wui-eng-core` (diff,
+// The engineering LOGIC lives in the pure `@visuelconcept-winccoa/wui-eng-core` (diff,
 // plan applier, atomic config builders, config read-back mapping, address-book
 // generators, role rules) — unit-tested with no runtime. This controller is the
 // THIN runtime seam:
@@ -69,7 +69,7 @@ import {
   type SignalRole,
   type TagAccess,
   type Workspace
-} from '@visuelconcept/wui-eng-core';
+} from '@visuelconcept-winccoa/wui-eng-core';
 
 import { EngStore } from './engStore';
 import { WinccoaOpcUaBrowsePort, listOpcUaConnections } from './engOpcuaBrowse';

@@ -17,7 +17,7 @@ import { LitElement, css, html, type PropertyValues, type TemplateResult } from 
 import { customElement, property, state } from 'lit/decorators.js';
 import { Subscription, of, switchMap } from 'rxjs';
 import { container } from 'tsyringe';
-import { localize, ml } from '@visuelconcept/wui-kit/i18n.js';
+import { localize, ml } from '@visuelconcept-winccoa/wui-kit/i18n.js';
 
 const MSG = {
   title: ml('DP Watch', 'Surveillance DP', 'DP-Beobachtung'),

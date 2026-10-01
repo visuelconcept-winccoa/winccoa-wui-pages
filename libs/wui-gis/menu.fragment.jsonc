@@ -1,8 +1,8 @@
-// Menu fragment for @visuelconcept/wui-gis.
+// Menu fragment for @visuelconcept-winccoa/wui-gis.
 // Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
 // Tier 1: frontend only — reads the `GIS_Site` datapoints and the datapoints the
 // assets are bound to. No backend route, no manager. (Auto-creating the GIS_Site
-// DP type on first save goes through the PARA API of @visuelconcept/wui-para.)
+// DP type on first save goes through the PARA API of @visuelconcept-winccoa/wui-para.)
 [
   {
     "title": { "en_US": "GIS (map)", "fr": "SIG (carte)", "de_AT": "GIS (Karte)" },

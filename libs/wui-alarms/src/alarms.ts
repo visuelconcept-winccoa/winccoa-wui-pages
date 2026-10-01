@@ -10,7 +10,7 @@
  * click-to-sort headers, paging and acknowledge.
  *
  * The page is deliberately THIN: everything above is the shared
- * `<wui-alarm-view>` of {@link @visuelconcept/wui-alarms-core}, which the Machine
+ * `<wui-alarm-view>` of {@link @visuelconcept-winccoa/wui-alarms-core}, which the Machine
  * Fleet machine dashboard embeds in its panel form. The page adds only what is
  * page-level — the content header, the Application-Security gate, and the
  * datapoint scope taken from the URL so a link can open the list on one machine
@@ -18,11 +18,11 @@
  *
  * Registered at `/alarms` (component `wui-alarms`).
  */
-import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
-import { MSG, localizeDir } from '@visuelconcept/wui-alarms-core/i18n.js';
-import { parseScopeAttribute } from '@visuelconcept/wui-alarms-core/scope.js';
-import '@visuelconcept/wui-alarms-core/ui/wui-alarm-view.js';
-import '@visuelconcept/wui-alarms-core/ui/wui-alarm-ranges.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
+import { MSG, localizeDir } from '@visuelconcept-winccoa/wui-alarms-core/i18n.js';
+import { parseScopeAttribute } from '@visuelconcept-winccoa/wui-alarms-core/scope.js';
+import '@visuelconcept-winccoa/wui-alarms-core/ui/wui-alarm-view.js';
+import '@visuelconcept-winccoa/wui-alarms-core/ui/wui-alarm-ranges.js';
 import '@wincc-oa/wui-ix-wrappers/wui-content-header/wui-content-header.js';
 import '@wincc-oa/wui-oarxjs-context/components/wui-context-generator/wui-context-generator.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';

@@ -35,7 +35,7 @@ reorder elements.
 
 ## AI assistant — proposal-only, read-only MCP
 
-`para-ai-assistant.ts` reuses `@visuelconcept/wui-ai-kit` (`askAi`,
+`para-ai-assistant.ts` reuses `@visuelconcept-winccoa/wui-ai-kit` (`askAi`,
 `renderMarkdown`, `mf-ai-config-dialog`) and sends every prompt with
 **`mcpMode: 'read-only'`**: it gets the project's *configured* MCP servers, minus
 every mutating tool. The user always applies/saves changes themselves via the
@@ -112,11 +112,11 @@ Backend: `dplController.ts` bridges HTTP → the **`DplAscii`** MSA service
   The command is centralized in `dplAscii/index.js` (`ASCII_MANAGER` + the
   `runAscii([...])` args).
 
-Deployment (dev): `npm run deploy:backend -- --project <root> --only para,machine-fleet-3d`
-(manifest-driven; see `webserver/SETUP.md`). It copies the para backend files
-(incl. `dplController.ts`) + the machine-fleet-3d `aiController.ts` and rebuilds
+Deployment: `npx wui build prod` from the project's site (manifest-driven:
+`package.json#wuiPage.backend`). It copies the para backend files
+(incl. `dplController.ts`) + the machine-fleet-3d `aiController.ts` (when selected) and rebuilds
 the webserver. Then in pmon: **restart `customer-webserver`** so `/api/para/dpl/*`
-mounts, register/start the **`dplAscii`** manager. Skipping the restart leaves the
+mounts, start the **`dplAscii`** manager (registered by the build). Skipping the restart leaves the
 new routes 404 even after a successful build.
 
 ## Application Security (roles — added 2026-07)

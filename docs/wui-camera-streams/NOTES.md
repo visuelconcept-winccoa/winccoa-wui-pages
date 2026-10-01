@@ -50,7 +50,7 @@ Browser (JSMpeg)
 - Reads `RtspCamera_<id>.json`, injects the creds, maps the options to ffmpeg flags.
 - Env variables: `RTSP_PROXY_PORT` (9999), `RTSP_PROXY_HOST` (127.0.0.1).
 
-**Backend module `/api/rtsp`** (hosted by `@visuelconcept/wui-webserver`, TS, uWS):
+**Backend module `/api/rtsp`** (hosted by the dashboard webserver that `wui init target` installs, TS, uWS):
 - Relay **`rtspRelay.ts`**: `registerRtspRelay(app)` → `app.uwsApp.ws('/api/rtsp/ws', behavior)`. Like remote-vnc's `vncRelay.ts` but **ws↔ws** (not ws↔TCP): opens an upstream `ws` client to the manager, pipes both ways, handles backpressure (pauses the upstream `_socket` based on uWS `getBufferedAmount`). Requires the `ws` dep.
 - `rtspController.ts`: builds the `127.0.0.1:9999` URL (regex guard on the `id`), `health`, client counter (`incrClient`/`decrClient`/`getClientCounts`), `fetchManagerStatus` (proxies the manager's `GET /status` via `http.get`).
 - `rtspRoute.ts`: `GET /health`, `GET /api/rtsp/clients`, `GET /api/rtsp/status`.
@@ -59,8 +59,8 @@ Browser (JSMpeg)
 
 Every camera **edit** is traced into a dedicated `_AuditTrail` datapoint
 **`AuditTrail_CameraStreams`**, following the DP model of the Audit-trail page
-(`@visuelconcept/wui-audit-trail`). The reusable primitive lives in the **shared
-kit** (`@visuelconcept/wui-kit/data/audit-trail.ts` → `AuditTrailWriter` +
+(`@visuelconcept-winccoa/wui-audit-trail`). The reusable primitive lives in the **shared
+kit** (`@visuelconcept-winccoa/wui-kit/data/audit-trail.ts` → `AuditTrailWriter` +
 `auditSnapshot`/`auditDiff`) so other modules can trace their own edits the same
 way (each module owns one `AuditTrail_<Module>` DP).
 

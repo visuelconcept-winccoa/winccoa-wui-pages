@@ -7,8 +7,8 @@
  * Whether the embedded AI assistant is shown in the dashboard pages is a
  * deployment choice, not a code one. It is read from a small static file
  * `dashboard-features.json` at the dashboard root
- * (`/data/dashboard-wc/dashboard-features.json`), written by the deploy tooling
- * (`tools/scripts/deploy-release.mjs --ai-assistant`). When the file is absent,
+ * (`/data/dashboard-wc/dashboard-features.json`, `{ "aiAssistant": true }`), put
+ * there by whoever deploys the dashboard. When the file is absent,
  * unreadable, or the flag is not the boolean `true`, the assistant stays HIDDEN.
  *
  * The file is fetched once and cached; this helper never throws.

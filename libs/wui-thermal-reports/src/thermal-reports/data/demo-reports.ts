@@ -8,7 +8,7 @@
  * couple of placeholder furnaces are fabricated so the page still demos (the
  * temperature curve is then synthesised by the engine, since no DPE resolves).
  */
-import type { Atelier } from '@visuelconcept/wui-fleet-core/types.js';
+import type { Atelier } from '@visuelconcept-winccoa/wui-fleet-core/types.js';
 import {
   blankReport,
   tempDpForMachine,

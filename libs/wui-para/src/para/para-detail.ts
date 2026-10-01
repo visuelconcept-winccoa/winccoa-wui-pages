@@ -9,7 +9,7 @@
  * units and descriptions, and lets the user write new values back (dpSet).
  */
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
-import { hasRole$ } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$ } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import { WuiDpeService } from '@wincc-oa/wui-data-selector-data/wui-dpe/wui-dpe.service.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';

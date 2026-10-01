@@ -1,5 +1,5 @@
 {
-  "name": "@visuelconcept/wui-alarms-core",
+  "name": "@visuelconcept-winccoa/wui-alarms-core",
   "type": "module",
   "version": "0.1.0",
   "description": "Alarms core — the shared alarm domain + the embeddable alarm view. Pure domain (WinCC-OA-free): Alert→Alarm mapping (CAME/WENT pairing, severity bands, ack state), DP-scope matching, server-side-style query (filter/sort/paginate), EEMUA-191 flood histogram and bad-actor statistics, period resolution. Plus the OA-bound AlarmStore (live alert subscription + alarm archive over a period + acknowledge) and the <wui-alarm-view> component that any page embeds (full page or panel).",
@@ -37,7 +37,7 @@
     }
   },
   "dependencies": {
-    "@visuelconcept/wui-kit": "^0.1.0"
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0"
   },
   "peerDependenciesMeta": {
     "lit": {

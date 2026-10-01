@@ -4,9 +4,9 @@
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  // The lib's tsconfig.json extends the RUNTIME WORKSPACE's tsconfig.base.json
-  // (absent in a standalone checkout). Bypass tsconfig discovery so the tests
-  // run anywhere — type checking is `npm run typecheck` (tsconfig.standalone).
+  // No tsconfig discovery: the compiler options the tests need are given here,
+  // so the tests run from the lib alone, whatever surrounds it.
+  // Type checking is `npm run typecheck` (tsconfig.standalone).
   esbuild: {
     tsconfigRaw: '{"compilerOptions":{"target":"ES2022","verbatimModuleSyntax":false}}'
   },

@@ -1,4 +1,4 @@
-# @visuelconcept/wui-alarms — source module (Tier 3)
+# @visuelconcept-winccoa/wui-alarms — source module (Tier 3)
 
 **Alarms** page for a WinCC OA WebUI dashboard, on **`/alarms`**: the plant's alarm
 list either **live** (the standing alarms) or over an **archived period**, with the
@@ -7,32 +7,32 @@ list either **live** (the standing alarms) or over an **archived period**, with 
 click-to-sort headers, paging and **acknowledge**.
 
 The whole view is the shared component **`<wui-alarm-view>`** of
-`@visuelconcept/wui-alarms-core`, so the same view **embeds in other pages** — the
+`@visuelconcept-winccoa/wui-alarms-core`, so the same view **embeds in other pages** — the
 Machine Fleet machine dashboard shows a machine's alarms with it.
 
-Self-contained **source** distribution: the shared kits are **vendored** under
-`alarms/_vendor/` (no `@visuelconcept/wui-*` prerequisite), and the page is built on
-the target's runtime workspace (so the bundle matches its version).
+npm package, deployed with **wui-toolkit** (the `wui` CLI): the shared kits come as
+its npm dependencies, and the page is built against the target's own import map (so
+the bundle matches its runtime).
 
-## Install (one command)
-```bash
-node install.mjs --workspace <runtime-workspace> --project <winccoa-project-root>
+## Install
+In the WinCC OA project's site (`<project>/web`), once the target is equipped
+(`npx wui init target prod`):
+```powershell
+npx wui use alarms     # npm-installs @visuelconcept-winccoa/wui-alarms with its kits, selects it
+npx wui build prod     # compiles the page, upserts its menu entry, deploys /api/alarms
+npx wui check prod
 ```
-- `--workspace` = the `@wincc-oa/webui-runtime` workspace that builds this project's dashboard (e.g. `…/WebDemo2/webui-workspace`).
-- `--project` = the WinCC OA project root (its `data/dashboard-wc/` is the deploy target).
-
-It copies the page source (kits vendored) into the workspace, adds the menu entry to
-the workspace's `menuconfig.jsonc`, and runs `build:pages` (deploying into
-`<project>/data/dashboard-wc/`).
+The page lands in `<project>/data/dashboard-wc/`, its menu entry in `menuconfig.json`;
+restart the webserver manager from the WinCC OA console for the backend route.
 
 ## After install
 1. **Browser:** reload (logged in). The build touches `index.html`, which makes the
    service worker purge its runtime caches, so a plain **F5** is enough.
 
 ## Prerequisites
-- A **WebUI Runtime workspace** for the target project (the `--workspace`).
+- A **wui-toolkit site** for the target project (`npx wui init target prod` done once).
 - One small **backend route** (`/api/alarms`, no manager) — deployed with the page; see [INTEGRATION.md](./INTEGRATION.md).
-- `module.json.frontend.npmDeps` is empty: no extra npm dependency is added to the workspace.
+- No npm dependency beyond the `@visuelconcept-winccoa/wui-*` kits.
 
 ## Prerequisites (runtime)
 - **Alarms configured in the project** (`_alert_hdl` on the datapoint elements) — the
@@ -73,13 +73,12 @@ the list even to someone who may not change them.
 
 ## Contents
 ```
-module.json                                   manifest (mode: source, tier 3)
-install.mjs                                   installer
+package.json                                  npm package; wuiPage (route, tier 3, backend)
+menu.fragment.jsonc                           menu entry
 backend/alarmsRoute.ts + alarmsController.ts  POST /api/alarms/ack (impersonated)
-frontend/standalone-pages/alarms.ts           page entry SOURCE
-frontend/standalone-pages/alarms/             page SOURCE (kits vendored in alarms/_vendor/)
-  └─ app-security.roles.json                  the module's role catalog
-frontend/standalone-pages/alarms/_vendor/@visuelconcept/wui-alarms-core/
+src/alarms.ts                                 page entry
+src/app-security.roles.json                   the module's role catalog
+@visuelconcept-winccoa/wui-alarms-core (npm dependency, libs/wui-alarms-core/src/)
   ├─ types.ts / mapping.ts / scope.ts / query.ts / severity.ts / statistics.ts
   ├─ period.ts / occurrences.ts               period vocabulary, occurrence-window merge
   ├─ data/alarm-store.ts                      live subscription, archive query, acknowledge
@@ -90,8 +89,8 @@ README.md / INTEGRATION.md / NOTES.md         this documentation
 
 ## Embedding the view in another page
 ```ts
-import '@visuelconcept/wui-alarms-core/ui/wui-alarm-view.js';
-import { scopeFromDpes } from '@visuelconcept/wui-alarms-core/scope.js';
+import '@visuelconcept-winccoa/wui-alarms-core/ui/wui-alarm-view.js';
+import { scopeFromDpes } from '@visuelconcept-winccoa/wui-alarms-core/scope.js';
 ```
 ```html
 <wui-alarm-view

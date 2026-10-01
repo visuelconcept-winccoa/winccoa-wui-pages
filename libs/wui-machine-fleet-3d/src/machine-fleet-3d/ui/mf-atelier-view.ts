@@ -61,7 +61,7 @@ import {
 import './mf-ai-prompt.js';
 import './mf-building-dialog.js';
 import './mf-config-panel.js';
-import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
+import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
 import './mf-graphics-catalog.js';
 import './mf-machine-dashboard.js';
 import './mf-machine-dialog.js';

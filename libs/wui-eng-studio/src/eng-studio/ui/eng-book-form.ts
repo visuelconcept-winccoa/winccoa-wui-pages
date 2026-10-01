@@ -30,7 +30,7 @@ import {
   type BookInterface,
   type Device,
   type OpcUaBrowseNode
-} from '@visuelconcept/wui-eng-core';
+} from '@visuelconcept-winccoa/wui-eng-core';
 import { LitElement, html, nothing, type TemplateResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import type { EngConnection, EngDriver, IngestRequest } from '../data/gateway.js';

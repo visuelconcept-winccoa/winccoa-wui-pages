@@ -24,7 +24,7 @@
  * report at all (the `assumed` case).
  */
 
-import { OPCUA_OBJECTS_FOLDER, type OpcUaBrowseNode, type OpcUaBrowsePort } from '@visuelconcept/wui-eng-core';
+import { OPCUA_OBJECTS_FOLDER, type OpcUaBrowseNode, type OpcUaBrowsePort } from '@visuelconcept-winccoa/wui-eng-core';
 
 const NS = 'ns=4';
 

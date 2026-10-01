@@ -76,7 +76,7 @@ function readJson<T>(file: string, fallback: T): T {
 
 /**
  * File-backed store. Generic over the domain shapes so this module stays free of
- * `@visuelconcept/wui-eng-core` typing at build time (the controller supplies the
+ * `@visuelconcept-winccoa/wui-eng-core` typing at build time (the controller supplies the
  * types) — the store only moves JSON.
  */
 export class EngStore {

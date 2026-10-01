@@ -1,31 +1,29 @@
-# Integrate the Thermal Treatment Reports page (`@visuelconcept/wui-thermal-reports`) — source mode, Tier 1
+# Integrate the Thermal Treatment Reports page (`@visuelconcept-winccoa/wui-thermal-reports`) — source mode, Tier 1
 
 **Standalone WinCC OA WebUI page** for **thermal treatment reports**
 (`/thermal-reports`): one report per load, with recipe steps + a tolerance band
 overlaid on the **actual furnace temperature curve** (`dpGetPeriod`),
 quality/conformity evaluation, echarts chart (band) and printing. Storage:
 **1 DP per report**. This is a **Tier 1**: **frontend only** (no backend module,
-no Node manager). **Self-contained source** distribution: the shared kit is
-**vendored** under `_vendor/` (no `@visuelconcept/wui-kit` prerequisite), and the
-page is **compiled against the target's runtime workspace** (bundle = correct version).
+no Node manager). Distributed as the npm package `@visuelconcept-winccoa/wui-thermal-reports`,
+deployed with **wui-toolkit** (`wui` CLI): the shared kits (kit / fleet-core) are npm
+dependencies, and the page is **compiled against the target's own import map** (bundle =
+correct version).
 
 ## Prerequisites
-1. A **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) — the `--workspace`.
-2. The frontend npm deps declared in `module.json` (`@siemens/ix-echarts ~3.0.0`, `three ^0.169.0`) are **installed automatically** into the workspace by the installer — nothing to add by hand.
+1. A **wui-toolkit site** for the project (`<project>/web`) whose `prod` target was equipped once with `npx wui init target prod`.
+2. Frontend npm deps: `three ^0.169.0` comes with `@visuelconcept-winccoa/wui-fleet-core` (installed by npm — nothing to add by hand); `echarts` is a peer dependency, expected from the WebUI platform.
 
-## Install (one command)
-```bash
-node install.mjs --workspace <workspace-runtime> --project <project-root>
+## Install
+In the project's site (`<project>/web`):
+```powershell
+npx wui use thermal-reports   # npm-installs @visuelconcept-winccoa/wui-thermal-reports (+ its kits), selects it
+npx wui build prod            # compiles the page, upserts its menu entry
+npx wui check prod
 ```
-Example (WebDemo2):
-```bash
-node install.mjs --workspace D:\WinCC_OA_Proj_321\WebDemo2\webui-workspace --project D:\WinCC_OA_Proj_321\WebDemo2
-```
-The installer:
-1. copies the **source** (vendored kit under `_vendor/`) → `<workspace>/libs/default-components/src/lib/standalone-pages/`;
-2. inserts the **menu entry** → the workspace's `menuconfig.jsonc` (idempotent);
-3. installs the **frontend npm deps** (`@siemens/ix-echarts`, `three`) into the workspace (so that `build:pages` bundles them);
-4. runs **`build:pages`** (OUT_DIR=`<project>/data/dashboard-wc`).
+`wui build`:
+1. compiles the page → `<project>/data/dashboard-wc/pages/`;
+2. upserts the **menu entry** (`menu.fragment.jsonc`) into `menuconfig.json` (idempotent).
 
 ## After install (mandatory)
 1. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).

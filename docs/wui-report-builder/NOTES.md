@@ -2,7 +2,7 @@
 
 Generic, configurable version of the thermal-reports (TTD) page, whose mechanisms it
 reuses (1-DP persistence, client-side archive reading, printing). Tier 1: no
-dedicated backend or manager (see `module.json`). npm dep: `@siemens/ix-echarts`.
+dedicated backend or manager (see `package.json#wuiPage`). npm dep: `@siemens/ix-echarts`.
 Sub-component prefix: `rb-`.
 
 ## Domain / object

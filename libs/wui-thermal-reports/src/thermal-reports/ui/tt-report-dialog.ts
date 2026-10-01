@@ -14,7 +14,7 @@ import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import type { Atelier, MachineDef } from '@visuelconcept/wui-fleet-core/types.js';
+import type { Atelier, MachineDef } from '@visuelconcept-winccoa/wui-fleet-core/types.js';
 import { MSG, localize, localizeDir } from '../i18n.js';
 import {
   CONFORMITY_LABELS,

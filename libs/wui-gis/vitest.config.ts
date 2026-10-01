@@ -5,19 +5,18 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  // The lib's tsconfig.json extends the RUNTIME WORKSPACE's tsconfig.base.json
-  // (absent in a standalone checkout). Bypass tsconfig discovery so the tests
-  // run anywhere — type checking is the lib's own tsconfig.lib.json.
+  // No tsconfig discovery: the compiler options the tests need are given here,
+  // so the tests run from the lib alone, whatever surrounds it.
   esbuild: {
     tsconfigRaw:
       '{"compilerOptions":{"target":"ES2022","verbatimModuleSyntax":false}}'
   },
-  // `data/io.ts` imports the shared kit by package name. In the runtime workspace that
-  // resolves through the tsconfig paths, which are bypassed above — so the one alias the
+  // `data/io.ts` imports the shared kit by package name, which nothing resolves
+  // here (no install of wui-kit, no tsconfig paths) — so the one alias the
   // tests need is declared here. Without it `io.spec.ts` cannot load at all.
   resolve: {
     alias: {
-      '@visuelconcept/wui-kit': fileURLToPath(
+      '@visuelconcept-winccoa/wui-kit': fileURLToPath(
         new URL('../wui-kit/src', import.meta.url)
       )
     }

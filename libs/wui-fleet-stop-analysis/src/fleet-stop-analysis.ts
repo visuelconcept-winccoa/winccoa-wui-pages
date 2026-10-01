@@ -27,18 +27,18 @@ import { LitElement, html, type PropertyValues, type TemplateResult } from 'lit'
 import { customElement, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
-import { pageStyles } from '@visuelconcept/wui-fleet-core/styles.js';
-import { FleetStore } from '@visuelconcept/wui-fleet-core/data/fleet-store.js';
-import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { pageStyles } from '@visuelconcept-winccoa/wui-fleet-core/styles.js';
+import { FleetStore } from '@visuelconcept-winccoa/wui-fleet-core/data/fleet-store.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import appSecurityRoles from './app-security.roles.json';
-import { canEditFleet, canEditFleet$ } from '@visuelconcept/wui-kit/data/permissions.js';
-import '@visuelconcept/wui-fleet-core/ui/mf-stop-causes.js';
+import { canEditFleet, canEditFleet$ } from '@visuelconcept-winccoa/wui-kit/data/permissions.js';
+import '@visuelconcept-winccoa/wui-fleet-core/ui/mf-stop-causes.js';
 import {
   STOP_CLASSIFICATION_LABELS,
   type Atelier,
   type StopCause,
   type StopClassification
-} from '@visuelconcept/wui-fleet-core/types.js';
+} from '@visuelconcept-winccoa/wui-fleet-core/types.js';
 import {
   analyseStopCauses,
   collectMachines,
@@ -49,13 +49,13 @@ import {
   type CauseRow,
   type RawStop,
   type SortKey
-} from '@visuelconcept/wui-fleet-core/engine.js';
+} from '@visuelconcept-winccoa/wui-fleet-core/engine.js';
 import {
   buildNonWorkedMap,
   emptyClosureConfig,
   normaliseClosures,
   type ClosureConfig
-} from '@visuelconcept/wui-fleet-core/closures.js';
+} from '@visuelconcept-winccoa/wui-fleet-core/closures.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { MSG, localize, localizeDir, rawStopCountMsg } from './i18n.js';
 

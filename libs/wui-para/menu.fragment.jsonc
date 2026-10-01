@@ -1,4 +1,4 @@
-// Menu fragment for @visuelconcept/wui-para.
+// Menu fragment for @visuelconcept-winccoa/wui-para.
 // Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
 // Tier 3: requires the /api/para engineering route in the host webserver (see installer spec).
 [

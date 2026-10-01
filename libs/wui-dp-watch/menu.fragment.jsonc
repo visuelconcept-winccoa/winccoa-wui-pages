@@ -1,4 +1,4 @@
-// Menu fragment for @visuelconcept/wui-dp-watch.
+// Menu fragment for @visuelconcept-winccoa/wui-dp-watch.
 // Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
 [
   {

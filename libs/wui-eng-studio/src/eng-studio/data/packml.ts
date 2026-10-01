@@ -44,7 +44,7 @@ import {
   type AddressBook,
   type BookEntry,
   type TagAccess
-} from '@visuelconcept/wui-eng-core';
+} from '@visuelconcept-winccoa/wui-eng-core';
 
 /** One PackTag of the standard interface. */
 interface PackTag {

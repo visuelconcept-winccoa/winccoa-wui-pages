@@ -38,7 +38,7 @@ MultiLangString labels use the same keys as `ml()` (`en_US.utf8`, `fr.utf8`,
 ```jsonc
 // libs/wui-<page>/src/app-security.roles.json
 {
-  "module": "<page-id>",                       // the specs.json/menuconfig page id, e.g. "ampere"
+  "module": "<page-id>",                       // the menuconfig page id (wuiPage.routeId), e.g. "ampere"
   "title": { "en_US.utf8": "My Module", "fr.utf8": "Mon module", "de.utf8": "Mein Modul" },
   "roles": [
     { "id": "view", "label": { "en_US.utf8": "View", "fr.utf8": "Consulter", "de.utf8": "Ansehen" } },
@@ -55,7 +55,7 @@ SAME object also feeds the admin's discovery, so there is nothing to keep in
 sync:
 
 ```ts
-import { registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { registerModuleRoles, type AppModuleRoles } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import appSecurityRoles from './app-security.roles.json';
 
 registerModuleRoles(appSecurityRoles as AppModuleRoles);
@@ -63,9 +63,10 @@ registerModuleRoles(appSecurityRoles as AppModuleRoles);
 
 Self-registration is best-effort (no-op offline / without write rights); the
 admin's **"Discover modules"** seeds modules from the aggregated
-`app-security-manifest.json` asset — built by the `page-appsec-merge` Vite
-plugin from every `app-security.roles.json` present in the build (and merged
-into the workspace by each module's installer). Discover only seeds the
+`app-security-manifest.json` asset (`/data/dashboard-wc/`) — an aggregate of every
+`app-security.roles.json` of the deployment. **wui-toolkit does not build or merge
+this asset** (the repo's former Vite plugin and installers did): without it,
+modules are seeded by self-registration only, i.e. once their page is visited. Discover only seeds the
 modules whose page bundle is referenced by the deployed `menuconfig.json`
 (this is why the fragment's `module` id MUST equal the page-bundle id): a
 manifest entry whose page is not installed gets **no** `AppSecurity_<module>`
@@ -95,7 +96,7 @@ Existing gates compose: `.canEdit=${this.canPublish && this.roleEdit}`
 
 UI gating is UX, not security. For every sensitive route:
 
-1. Add `"@visuelconcept/wui-app-security/appSecurityGuard.ts"` to the module's
+1. Add `"@visuelconcept-winccoa/wui-app-security/appSecurityGuard.ts"` to the module's
    `wuiPage.backend.shared` in `libs/wui-<page>/package.json` (the single source is
    `libs/wui-app-security/backend/appSecurityGuard.ts`; at deploy time it is copied
    into the module's own folder, so each module still ships its own copy — no
@@ -107,7 +108,7 @@ UI gating is UX, not security. For every sensitive route:
   "routeClass": "AlarmsRoute",
   "routeFile": "alarmsRoute",
   "files": ["alarmsController.ts", "alarmsRoute.ts"],
-  "shared": ["@visuelconcept/wui-app-security/appSecurityGuard.ts"],
+  "shared": ["@visuelconcept-winccoa/wui-app-security/appSecurityGuard.ts"],
   "notes": ["POST /api/alarms/ack (acknowledge as the session user)", "GET /api/alarms/health"]
 }
 ```
@@ -126,8 +127,9 @@ errors** (a guard outage must not take the API down).
 
 ## Step 6 — Verify
 
-- `tsc -p libs/<lib>/tsconfig.lib.json` + `nx lint` = 0 errors; `build:pages` OK.
-- In `/app-security` → Discover → the module and its roles appear.
+- `tsc -p libs/<lib>/tsconfig.lib.json` + `nx lint` = 0 errors; `npx wui build prod` OK.
+- In `/app-security` → the module and its roles appear (once the page has been
+  opened: without the aggregated manifest, Discover has nothing to seed from).
 - Assign a role to a group you are NOT in → the affordance locks, the API
   answers 403; unassign → everything opens again (no reload needed — live).
 

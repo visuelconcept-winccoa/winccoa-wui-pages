@@ -1,4 +1,4 @@
-# WinCC OA WebUI Pages — `@visuelconcept/wui-*`
+# WinCC OA WebUI Pages — `@visuelconcept-winccoa/wui-*`
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
@@ -9,23 +9,22 @@ plugs into the dashboard shell, displays live WinCC OA process data over WebSock
 ([OaRxJsApi](https://www.winccoa.com/documentation/WinCCOA/latest/en_US/apis/oarxjsapi/oarxjsapi_overview.html)),
 and — when needed — ships its own webserver module and WinCC OA manager(s).
 
-This repo is the **source of truth**: pages live in `libs/wui-<page>/`. Each lib
-is published **as is** — sources, backend, managers — as an npm package on GitHub
-Packages, and a WinCC OA project consumes it with wui-toolkit (see
+This repo is the **source of truth**: pages live in `libs/wui-<page>/`, each one an
+independent npm package. Each lib is published **as is** — sources, backend,
+managers — on GitHub Packages, and a WinCC OA project consumes it with
+[wui-toolkit](https://github.com/visuelconcept-winccoa/winccoa-wui-tools) (see
 [Use the modules in a WinCC OA project](#use-the-modules-in-a-wincc-oa-project--wui-toolkit)).
-You develop a page by wiring this repo into a runtime workspace (see
-[DEVELOPMENT.md](./DEVELOPMENT.md)). The older route — self-contained packages
-**generated** under `packages/` (git-ignored) and their installers — is still
-described under [Getting Started](#getting-started--deploy-to-a-wincc-oa-project).
+The repo holds no build or deploy tooling of its own: building, developing and
+deploying are wui-toolkit's job (see [Develop](#develop)).
 
 ## Modules
 
-All pages are published under the `@visuelconcept/` scope (e.g.
-`@visuelconcept/wui-para`). Source: `libs/wui-<page>/`. Per-page docs, where the
+All pages are published under the `@visuelconcept-winccoa/` scope (e.g.
+`@visuelconcept-winccoa/wui-para`). Source: `libs/wui-<page>/`. Per-page docs, where the
 module has them: `docs/wui-<page>/{README,INTEGRATION,NOTES}.md` — `wui-agv-fleet`,
 `wui-diagnosis` and `wui-process-monitor` currently document themselves in their
 source header and their `wuiPage` manifest in `libs/wui-<page>/package.json`
-(backend + managers), which the deploy scripts read. A visual tour of the pages is in
+(backend + managers), which wui-toolkit reads. A visual tour of the pages is in
 [docs/MANUAL.md](./docs/MANUAL.md).
 
 | Module | Route | What it does | Backend |
@@ -59,16 +58,17 @@ The table is ordered alphabetically; `wui-diagnosis` sits last because its route
 - **Frontend-only** pages (`Backend = —`) deploy with just a page build onto the
   shell — no extra webserver module, no manager.
 - **Backend** pages additionally ship a webserver module (`/api/*`) and/or one or
-  more WinCC OA managers. They require the `@visuelconcept/wui-webserver` layer,
-  and managers must be registered in pmon. Their installer wires all of this and
-  pulls any extra npm deps (`three`, `@siemens/ix-echarts`, `@cycjimmy/jsmpeg-player`,
-  `@novnc/novnc`, `maplibre-gl`) automatically.
+  more WinCC OA managers. They require the dashboard webserver (`wui init target`),
+  and managers must be started in the WinCC OA console. `wui build` deploys both;
+  the extra npm deps a page bundles (`three`, `@cycjimmy/jsmpeg-player`,
+  `@novnc/novnc`, `maplibre-gl`) are `dependencies` of its package, so
+  `npm install` brings them.
 
 ### Shared kits
 
-`libs/` also holds libraries that are **not pages**. They are not deployed on their
-own: `tools/vendor-page.mjs` walks each page's import graph and copies what it uses
-into that page's `_vendor/`, so a page stays one self-contained bundle.
+`libs/` also holds libraries that are **not pages** (no `src/<id>.ts` entry). They
+are not deployed on their own: they are `dependencies` of the pages using them,
+and wui-toolkit bundles what a page imports into that page's bundle.
 
 | Kit | What it holds | Used by |
 | --- | --- | --- |
@@ -80,14 +80,14 @@ into that page's `_vendor/`, so a page stays one self-contained bundle.
 
 ## Use the modules in a WinCC OA project — wui-toolkit
 
-The libs are **private** npm packages of the `visuelconcept` organisation on
-GitHub Packages, published from their sources: a WinCC OA project compiles them
+The libs are **private** npm packages of the `visuelconcept-winccoa` organisation on
+GitHub Packages, published from their sources by this repo's CI: a WinCC OA project compiles them
 against its own runtime, with the kits they need (`wui-para` brings `wui-kit`,
 `wui-ai-kit` and `wui-app-security`).
 
-| Published | Ready to publish |
-| --- | --- |
-| `wui-kit`, `wui-ai-kit`, `wui-app-security`, `wui-para` — `0.1.0` | `wui-alarms-core`, `wui-alarms` |
+> The first `0.1.0` of `wui-kit`, `wui-ai-kit`, `wui-app-security` and `wui-para`
+> went out under the former `@visuelconcept/` scope (organisation `visuelconcept`);
+> they are superseded by the `@visuelconcept-winccoa/` packages.
 
 In the WinCC OA project's site (`<project>/web`, created by `wui init project`):
 
@@ -96,16 +96,16 @@ In the WinCC OA project's site (`<project>/web`, created by `wui init project`):
 gh auth refresh -h github.com -s read:packages
 npm config set "//npm.pkg.github.com/:_authToken" (gh auth token)
 
-# the site's .npmrc (committed, no token): @visuelconcept:registry=https://npm.pkg.github.com
-npx wui use para            # npm install @visuelconcept/wui-para + select it
+# the site's .npmrc (committed, no token): @visuelconcept-winccoa:registry=https://npm.pkg.github.com
+npx wui use para            # npm install @visuelconcept-winccoa/wui-para + select it
 npx wui build prod          # compile and deploy pages + backends into the WinCC OA project
 ```
 
-Read access is granted **per package** (*Package settings → Manage access*, to a
-team): the packages belong to `visuelconcept`, this repo to `visuelconcept-winccoa`,
-so they inherit nothing from it. A CI workflow can read them with its
-`GITHUB_TOKEN` only from a repo of `visuelconcept` (*Manage Actions access*);
-elsewhere it needs a classic PAT secret.
+The packages are linked to this repo (`"repository"`) and inherit its access by
+default; extra readers are granted per package (*Package settings → Manage
+access*, to a team). A CI workflow can read them with its `GITHUB_TOKEN` from a
+repo of `visuelconcept-winccoa` given access (*Manage Actions access*); elsewhere
+it needs a classic PAT secret with `read:packages`.
 
 ### Publish a module (maintainers)
 
@@ -114,40 +114,43 @@ A publishable lib's `package.json` carries:
 - `"files"`: `src`, `backend`, `managers`, `menu.fragment.jsonc`, `mock` — what
   exists; no tsconfig/Nx wiring, no tests (`!**/*.spec.ts`);
 - `"dependencies"` on the other libs it imports **or whose backend files it
-  copies** (`wuiPage.backend.shared`), with real ranges (`^0.1.0`), never `"*"`;
-- the platform (`lit`, `rxjs`, `tsyringe`, `@wincc-oa/*`, the OA API) as
-  `peerDependencies` marked **optional** (`peerDependenciesMeta`): the WebUI
-  runtime provides it, npm must not install it;
+  copies or whose managers it deploys** (`wuiPage.backend.shared`,
+  `vendorPackages`, `managers`), with real ranges
+  (`^0.1.0`), never `"*"` — and on the third-party packages its page bundles
+  (`three`, `maplibre-gl`, `@novnc/novnc`, `@cycjimmy/jsmpeg-player`);
+- the platform it imports (`lit`, `rxjs`, `tsyringe`, `echarts`, `@siemens/*`,
+  `@wincc-oa/*`, the OA API) as `peerDependencies` marked **optional**
+  (`peerDependenciesMeta`): the WebUI runtime provides it, npm must not install it;
 - `"publishConfig": { "registry": "https://npm.pkg.github.com", "access": "restricted" }`
   and `"repository"` with `"directory": "libs/wui-<id>"`.
 
+**Publishing is the CI's job** — [`.github/workflows/publish-libs.yml`](./.github/workflows/publish-libs.yml):
+bump `"version"` in `libs/wui-<id>/package.json` (and the ranges of the libs
+depending on it, when the change breaks them), merge to `main`, and the workflow
+packs and publishes every lib whose version is not on the registry yet, kits
+before the pages using them. It refuses to publish when a lib's range on another
+lib does not match that lib's version in the repo. On a pull request it runs the
+same checks with `npm publish --dry-run`; *Actions → Publish libs → Run workflow*
+runs it by hand. The logic is in `.github/scripts/publish-changed.mjs`; locally:
+
 ```powershell
-gh auth refresh -h github.com -s write:packages
-npm config set "//npm.pkg.github.com/:_authToken" (gh auth token)   # again after each refresh
-npm pack ./libs/wui-<id> --dry-run       # check the file list
-npm publish ./libs/wui-<id>              # dependencies first: kits before the pages using them
+npm pack ./libs/wui-<id> --dry-run                    # check the file list
+node .github/scripts/publish-changed.mjs --dry-run    # what the CI would publish (token with read:packages)
 ```
 
-A published version is immutable: change → bump `"version"` in
-`libs/wui-<id>/package.json` (and the ranges of the libs depending on it, when the
-change breaks them) → publish.
+A published version is immutable: a change ships only with a new version.
 
-## Getting Started — deploy to a WinCC OA project
+Two version constraints to keep when bumping a page's third-party dependency:
 
-A redistributable page is a **leaf**: it needs a **host stack**. Install bottom-up.
+- `@novnc/novnc` stays pinned **exactly** at `1.4.0` (`wui-remote-vnc`): `^1.4.0`
+  floats to 1.7.0, whose `exports` forbid the deep import `@novnc/novnc/core/rfb.js`;
+- `maplibre-gl` stays on **5.x** (`wui-gis`): 5.x inlines its tile worker as a
+  `blob:` URL, so the page stays one self-contained chunk; 6.x emits the worker as
+  a separate URL and drops WebGL1 (see `docs/wui-gis/NOTES.md`).
 
-```
-[3] Page modules    @visuelconcept/wui-<page>     (para, camera-streams, …)        ← the content
-[2] Webserver       @visuelconcept/wui-webserver  (serves data/ + /api, auto-discovers backend modules)
-[1] WebUI shell     @wincc-oa/webui-runtime        (data/dashboard-wc/: index.html, entry/ import map, menuconfig, SW)
-[0] WinCC OA project 3.21+, webserver.js + WebSocket, Node 22 / npm 10, valid license
-```
+## Requirements
 
-> A page (`para.js`) **externalizes** lit / `@siemens/ix` / `@wincc-oa/*` / rxjs —
-> those come from the shell's **import map** (`index.html` + `entry/*.js`). Without
-> layer **[1]** a page has no host and no way to resolve its imports.
-
-### [0] WinCC OA project (base)
+A page is a **leaf**: it plugs into the WebUI shell of a WinCC OA project.
 
 - WinCC OA **3.21+**, **Node 22 LTS**, **npm 10+**.
 - A project with **webserver.js enabled (WebSocket support)**.
@@ -155,133 +158,43 @@ A redistributable page is a **leaf**: it needs a **host stack**. Install bottom-
 - A valid **UI license**: **Client** = read/write (view, edit, publish), **Light** = view-only.
   ([Requirements and Licensing](https://www.winccoa.com/documentation/WinCCOA/latest/en_US/Dashboard/topics/Dashboard_Requirements.html).)
 
-### [1] WebUI Runtime shell — the host
+> A page bundle **externalizes** lit / `@siemens/ix` / `@wincc-oa/*` / rxjs — they
+> come from the shell's **import map**, so a page is compiled against the shell it
+> is deployed onto. That is why the libs are published **in source**, and why
+> `npx wui init target` (WebUI shell + dashboard webserver) comes before any page.
 
-The shell is third-party (installed by WinCC OA). In a separate runtime workspace:
+### After a deploy
 
-```bash
-npm install @wincc-oa/webui-runtime
-npx webui-runtime-init
-npm install --save-dev --no-audit --no-fund
-npm run init:oa-data
-```
-
-Build + deploy the shell **into the project**:
-
-```bash
-# Linux / macOS (bash)
-OUT_DIR=<project>/data/dashboard-wc npm run build
-```
-```powershell
-# Windows (PowerShell)
-$env:OUT_DIR="<project>\data\dashboard-wc"; npm run build
-```
-
-This writes `data/dashboard-wc/`: `index.html` (+ import map), `entry/` (shared
-lit/ix/rxjs/wui bundles — what pages externalize), `assets/`, `serviceworker.js`,
-`menuconfig.json`, `customstyles.css`, `worker/`, … **Verify**:
-`https://<host>:<httpsPort>/data/dashboard-wc/index.html` loads the dashboard.
-
-### [2] Webserver — `@visuelconcept/wui-webserver` (backend pages only)
-
-Required only if you install **backend** pages (those with `/api/*` or a manager).
-It serves the dashboard and auto-discovers page backend modules. **One webserver
-per httpsPort** — disable the standard `webserver-js/run.js` if it runs.
-
-```bash
-node webserver/install.mjs --project <project> [--winccoa <WinCCOA-install>] [--register-pmon]
-```
-
-Installs into `<project>/javascript/customer-webserver/`, runs `npm install` + build,
-and prints the pmon line. (Details: `webserver/SETUP.md`.)
-
-### [3] Page modules — clone this repo and deploy a page
-
-Pages are distributed **in source** and **compiled on the target's runtime
-workspace** (a page bundle is coupled to the shell's version — a `.js` pre-built
-against another version won't work).
-
-```bash
-git clone https://github.com/visuelconcept-winccoa/winccoa-wui-pages
-cd winccoa-wui-pages
-node tools/build-package.mjs tools/specs.json   # (re)generate packages/wui-<page>/  (git-ignored)
-```
-
-> `packages/` is generated, not committed. Generate it as above, or fetch it from a Release.
-
-Install a page into your project:
-
-```bash
-node packages/wui-<page>/install.mjs --workspace <runtime-workspace> --project <project> [--register-pmon]
-```
-
-The installer copies the page source into `<workspace>/…/standalone-pages/`, adds
-its entry to the workspace `menuconfig.jsonc` (idempotent by `routeId`), drops any
-backend module into `customer-webserver/src/modules/`, deploys any manager(s) into
-`<project>/javascript/<manager>/`, and runs the page build into
-`<project>/data/dashboard-wc/`. (Per-page specifics: `docs/wui-<page>/INTEGRATION.md`.)
-
-### Quick deploy from this repo — `deploy-release.mjs`
-
-To build and deploy a **curated set of pages + their backends** straight from this
-repo (no per-page packaging), use the interactive helper:
-
-```bash
-node tools/scripts/deploy-release.mjs --project <project>
-```
-
-It prompts for the project, lets you **select the modules** to include, the
-**default landing page**, and whether to enable the **AI assistant** (OFF by
-default), then: builds the pages into `<project>/data/dashboard-wc`, filters the
-menu to the selection **and removes the non-selected page bundles** so only the
-chosen modules are actually published (use `--no-prune` to keep them and filter
-the menu only), writes `dashboard-features.json` (the AI-assistant flag),
-and deploys the **backend modules + managers** of the selected pages (via
-`deploy-backend.mjs`; webserver module descriptors are generated from each
-module's `package.json#wuiPage.backend`).
-
-| Option | Effect |
-|---|---|
-| `--modules a,b,c` | pages to include (otherwise interactive selection) |
-| `--full` | full rebuild (shell + shared bundles + app + pages) — **fresh** project |
-| `--install-webserver` [`--winccoa <path>`] | install the customer-webserver first (fresh project) |
-| `--start-page <route\|id>` | landing page (redirect of `/`); default `/dashboard` |
-| `--ai-assistant` | enable the AI assistant in the pages (default **OFF**) |
-| `--no-prune` | keep the non-selected bundles (menu-only filtering); by default they are removed |
-| `--yes` | no confirmation (non-interactive) |
-
-Fresh project in one command:
-`node tools/scripts/deploy-release.mjs --project <p> --full --install-webserver`.
-The script **never restarts** the managers/webserver — it prints what to
-restart. Then do the **Clear site data + reload** in the browser
-(see *After install* below).
-
-### After install (mandatory)
-
-1. **Backend pages**: `cd <project>/javascript/customer-webserver && npm run build`,
-   restart the webserver; start any manager(s) in the WinCC OA console; register
-   Tier-3 managers in pmon (installer `--register-pmon`).
+1. **Backend pages**: restart the dashboard webserver and start the manager(s)
+   `wui build` lists, in the WinCC OA console.
 2. **Browser**: DevTools → Application → Storage → **`Clear site data`**, then reload
    while logged in. The service worker caches `menuconfig.json`, so **`Ctrl+Shift+R`
    is not enough** — only `Clear site data` purges it.
-
-### Install-order checklist
-
-1. **[0]** WinCC OA 3.21 project + webserver.js/WebSocket + Node 22 / npm 10 + license.
-2. **[1]** `@wincc-oa/webui-runtime` → `webui-runtime-init` → `build` (`OUT_DIR=<project>/data/dashboard-wc`) → `init:oa-data`. **← the shell**
-3. **[2]** `@visuelconcept/wui-webserver` (only if any page has a backend).
-4. **[3]** `@visuelconcept/wui-<page>` × N (the pages).
 
 > **No secrets in the repo**: the PIH key (`ProductInfo_Config` DP / `PRODUCT_INFO_API_KEY`)
 > and LLM tokens (`AI_Assistant_Config` DP) are provided on the target, never committed.
 
 ## Develop
 
-To work on a page with hot reload, create the runtime workspace this repo plugs
-into — `node tools/bootstrap-workspace.mjs` (once per clone / per runtime version)
-— then run the Vite dev server against a live WinCC OA. See **[DEVELOPMENT.md](./DEVELOPMENT.md)**
-for the dev workspace setup, HMR loop, the "add a new page" convention, the two
-build outputs, and the runtime API reference (services, DI, routing, i18n).
+A lib is developed from a wui-toolkit site, pointed at this checkout instead of
+the published packages — locally, never committed:
+
+```jsonc
+// <site>/wui.project.jsonc
+"sources": [{ "id": "core", "path": "../../winccoa-wui-pages/libs" }, { "id": "site", "path": "./libs" }]
+```
+
+Then `npx wui dev` runs the selected pages with mock data and hot reload (a lib's
+`mock/fixtures.json` + `mock/api.mjs`), and `npx wui build <target>` deploys them
+onto a real WinCC OA project. See the
+[wui-toolkit reference](https://github.com/visuelconcept-winccoa/winccoa-wui-tools/blob/main/docs/REFERENCE.md)
+for the module contract (`package.json`, `src/<id>.ts`, `menu.fragment.jsonc`,
+`mock/`, `backend/`, `managers/`).
+
+Libs with unit tests carry a `test` script (`npx vitest run` from the lib folder);
+`wui-eng-core` and `wui-alarms-core` also have `typecheck`. The Engineering Studio
+has its own offline demo with its i18n check and screenshot script
+(`libs/wui-eng-studio/demo/`, see `docs/wui-eng-studio/README.md`).
 
 ## Documentation
 
@@ -318,5 +231,5 @@ contact **contact@visuelconcept.com**.
 > their own licenses; the third-party dependencies (Siemens iX, `@wincc-oa/*`,
 > `@etm-professional-control/*`, …) likewise keep their respective licenses. Running
 > the pages requires a valid WinCC OA base package and UI license as described under
-> [Requirements](#0-wincc-oa-project-base).
+> [Requirements](#requirements).
 

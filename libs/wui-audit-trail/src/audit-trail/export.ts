@@ -7,7 +7,7 @@
  * order); these helpers add the headers/keys and trigger the download or open a
  * print-friendly window. CSV/JSON download primitives come from the shared kit.
  */
-import { CSV_BOM, JSON_INDENT, csvCell, download, timestampSlug } from '@visuelconcept/wui-kit/data/io.js';
+import { CSV_BOM, JSON_INDENT, csvCell, download, timestampSlug } from '@visuelconcept-winccoa/wui-kit/data/io.js';
 import { MSG, colLabel, dateLocale, localize, recordsMsg } from './i18n.js';
 import { AUDIT_FIELDS } from './types.js';
 

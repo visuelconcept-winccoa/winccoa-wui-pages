@@ -6,8 +6,8 @@
 ## Manifest
 
 `libs/wui-eng-studio/package.json` → `wuiPage.backend` (page id `eng-studio`; the
-route sources live in `libs/wui-eng-studio/backend/`, `tools/specs.json` keeps only
-the packaging metadata):
+route sources live in `libs/wui-eng-studio/backend/`; wui-toolkit reads this
+contract at `wui build`):
 
 ```json
 "backend": {
@@ -15,8 +15,8 @@ the packaging metadata):
   "routeClass": "EngRoute",
   "routeFile": "engRoute",
   "files": ["engController.ts", "engRoute.ts", "engStore.ts", "engOpcuaBrowse.ts"],
-  "shared": ["@visuelconcept/wui-app-security/appSecurityGuard.ts"],
-  "vendorPackages": ["@visuelconcept/wui-eng-core"],
+  "shared": ["@visuelconcept-winccoa/wui-app-security/appSecurityGuard.ts"],
+  "vendorPackages": ["@visuelconcept-winccoa/wui-eng-core"],
   "notes": ["/api/eng/*"]
 }
 ```
@@ -26,10 +26,9 @@ the packaging metadata):
 - No dedicated manager — the backend runs against `WsjServerGlobal.winccoa`
   (like para / tag-importer).
 - `vendorPackages` — the backend `engController` imports the **pure**
-  `@visuelconcept/wui-eng-core` (the shared diff/apply/builders). It is vendored
-  next to the backend files at deploy time, exactly as page **kits** are vendored
-  for the frontend (`_vendor/`). Keeping the logic in the core — not re-copied
-  into the backend — is the whole point of the decoupling.
+  `@visuelconcept-winccoa/wui-eng-core` (the shared diff/apply/builders). It is vendored
+  next to the backend files at deploy time (`_vendor/`). Keeping the logic in the
+  core — not re-copied into the backend — is the whole point of the decoupling.
 
 ## Backend API (`/api/eng`) — role-gated **fail-closed**
 
@@ -266,9 +265,9 @@ the top bar switches it live. Core-generated warnings are localised too (structu
 ## Prerequisites
 
 - **Frontend**: none beyond the runtime (the page uses only `lit`).
-- **Backend**: `@visuelconcept/wui-webserver` (provides `/api/eng` via backend
-  module auto-discovery). `@visuelconcept/wui-eng-core` needs no installation — the
-  deployer vendors it into the module (see "Deployment").
+- **Backend**: the dashboard webserver installed by `npx wui init target prod`
+  (provides `/api/eng` via backend module auto-discovery). `@visuelconcept-winccoa/wui-eng-core`
+  needs no installation on the webserver — `wui build` vendors it into the module (see "Deployment").
 - **Write access to the store root** for the webserver's user (see above).
 - **Live address binding**: a running driver per device (OPC UA client / S7 /
   Modbus) and, for polled addresses, a poll group. Declare `driverNumber` on every
@@ -281,44 +280,46 @@ the top bar switches it live. Core-generated warnings are localised too (structu
 
 ## Deployment
 
-The page is part of the default release selection of the interactive deployer and is
-discovered automatically (`libs/wui-eng-studio/src/eng-studio.ts` + its
-`menu.fragment.jsonc` + its `tools/specs.json` entry + its `package.json#wuiPage.backend`):
+Deployed with **wui-toolkit** from the WinCC OA project's site (`<project>/web`); the
+module is the npm package `@visuelconcept-winccoa/wui-eng-studio` (`src/eng-studio.ts` + its
+`menu.fragment.jsonc` + its `package.json#wuiPage.backend`):
 
-```bash
-node tools/scripts/deploy-release.mjs --project <winccoa-project>
-#   add --full --install-webserver on a fresh project
+```powershell
+npx wui init target prod      # once, on a fresh project (WebUI shell + dashboard webserver)
+npx wui use eng-studio
+npx wui build prod
+npx wui check prod
 ```
 
-It copies the page bundle, merges the menu entry, generates the backend module
-descriptor (`modules/eng-studio/index.ts`, mount `/api/eng`) and then calls
-`deploy-backend.mjs`, which copies the route files listed in the manifest's `files`
-(from `libs/wui-eng-studio/backend/`) and `shared` (the app-security guard).
+`wui build` compiles the page, upserts the menu entry, writes the backend module
+descriptor (`src/modules/eng-studio/index.ts` of the dashboard webserver, mount
+`/api/eng` — written once, a hand-tightened acl survives redeploys), copies the route
+files listed in the manifest's `files` (from `libs/wui-eng-studio/backend/`) and
+`shared` (the app-security guard), and rebuilds the webserver. Restart the webserver
+manager from the WinCC OA console.
 
 **The core library is vendored into the module.** `engController.ts` imports
-`@visuelconcept/wui-eng-core` — the engineering domain it shares with the page — and
+`@visuelconcept-winccoa/wui-eng-core` — the engineering domain it shares with the page — and
 that specifier does not exist on a customer webserver. Installing it as a package
 would not fix it either: the library ships TypeScript sources, and `tsc` does not
 *emit* files it reads from `node_modules`, so the import would compile and fail at
 runtime. So the manifest declares
 
 ```jsonc
-"backend": { "vendorPackages": ["@visuelconcept/wui-eng-core"] }
+"backend": { "vendorPackages": ["@visuelconcept-winccoa/wui-eng-core"] }
 ```
 
-and `deploy-backend.mjs` copies the library's sources to
+and `wui build` copies the library's sources to
 `modules/eng-studio/_vendor/wui-eng-core/` — where the webserver's own `tsc` compiles
 and emits them — then rewrites the bare specifier in the copied route files to
 `./_vendor/wui-eng-core/index.js`. Only import/export specifiers are rewritten (a
-package name inside a comment stays as written), `*.spec.ts` files are excluded (they
-import vitest, which would break the webserver build), and a specifier left
-unresolved after the rewrite is reported as a warning rather than discovered on the
-customer's build. Same rule `tools/vendor-page.mjs` applies to the frontend.
+package name inside a comment stays as written), and `*.spec.ts` files are excluded
+(they import vitest, which would break the webserver build).
 
 ## Typecheck the backend without WinCC OA
 
 `backend/tsconfig.typecheck.json` compiles the studio's route modules against the
-**real** `@visuelconcept/wui-eng-core` sources, with the webserver-only packages
+**real** `@visuelconcept-winccoa/wui-eng-core` sources, with the webserver-only packages
 (`ultimate-express`, `@winccoa/backend`, `winccoa-manager`) stubbed in
 `backend/types/runtime-stubs.d.ts`:
 

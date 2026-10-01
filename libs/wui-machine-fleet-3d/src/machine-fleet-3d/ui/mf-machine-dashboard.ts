@@ -44,9 +44,9 @@ import {
   sortRows,
   type AnalysisMachine,
   type CauseRow
-} from '@visuelconcept/wui-fleet-core/engine.js';
-import { scopeFromDpes } from '@visuelconcept/wui-alarms-core/scope.js';
-import '@visuelconcept/wui-alarms-core/ui/wui-alarm-view.js';
+} from '@visuelconcept-winccoa/wui-fleet-core/engine.js';
+import { scopeFromDpes } from '@visuelconcept-winccoa/wui-alarms-core/scope.js';
+import '@visuelconcept-winccoa/wui-alarms-core/ui/wui-alarm-view.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import {
   MSG,

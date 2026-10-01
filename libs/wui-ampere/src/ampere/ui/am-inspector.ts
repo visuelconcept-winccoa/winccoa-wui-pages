@@ -16,7 +16,7 @@
  * the shared `wui-dp-input` keeps free text but adds live `dpNames` autocomplete
  * and a browse button, like the machine-fleet dialogs.
  */
-import '@visuelconcept/wui-kit/ui/wui-dp-input.js';
+import '@visuelconcept-winccoa/wui-kit/ui/wui-dp-input.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';

@@ -17,7 +17,7 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { state } from 'lit/decorators.js';
 import { container } from 'tsyringe';
-import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
+import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
 import {
   createAuditDp,
   deleteAuditDp,

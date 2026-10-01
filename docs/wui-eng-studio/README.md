@@ -13,7 +13,7 @@ the live project — in bulk, previewed, transactional.
 > **Status: v0.2 — workflow-complete on demo data, backend implemented.** The whole
 > page runs end-to-end WITHOUT a WinCC OA runtime via an in-memory demo gateway (the
 > source of the screenshots below). The pure engineering domain
-> (`@visuelconcept/wui-eng-core`) is unit-tested (306 tests, no runtime) and the
+> (`@visuelconcept-winccoa/wui-eng-core`) is unit-tested (306 tests, no runtime) and the
 > backend (`/api/eng`: file store, config read-back, check-out/plan/check-in,
 > online OPC UA browse, fail-closed role gating) typechecks offline against those
 > same sources. Still staged: the **watched-folder ingestion** and the
@@ -625,8 +625,8 @@ workspace root, so `npm install` at the repo root is enough to run it.
 Regenerate the screenshots above (headless Chromium, no runtime):
 
 ```bash
-node tools/screenshot-eng-studio.mjs             # → docs/images/eng-studio/*.png (English)
-node tools/screenshot-eng-studio.mjs --lang fr   # the same set in another language
+node libs/wui-eng-studio/demo/screenshot.mjs             # → docs/images/eng-studio/*.png (English)
+node libs/wui-eng-studio/demo/screenshot.mjs --lang fr   # the same set in another language
 ```
 
 ## Languages (EN / FR / DE)
@@ -680,7 +680,7 @@ translation matching a code nobody emits), **every connection parameter of the
 device form labelled**, and the WinCC OA locale identifiers resolving:
 
 ```bash
-node tools/check-eng-i18n.mjs
+node libs/wui-eng-studio/demo/check-i18n.mjs
 ```
 
 ## Architecture

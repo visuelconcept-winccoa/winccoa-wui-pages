@@ -9,7 +9,7 @@ Read this (with `README.md` + `INTEGRATION.md`) **before editing** the studio.
 
 Three seams keep the runtime out of everything that must be validated offline:
 
-1. **Pure domain** — `@visuelconcept/wui-eng-core` imports **nothing** from
+1. **Pure domain** — `@visuelconcept-winccoa/wui-eng-core` imports **nothing** from
    `@wincc-oa/*` / `winccoa-manager`. All engineering logic (diff, plan, config
    builders, SimaticML parse, offsets, naming) is plain TypeScript, unit-tested
    with vitest in `node` (no DOM, no OA). The only runtime touch-point is the
@@ -23,7 +23,7 @@ Three seams keep the runtime out of everything that must be validated offline:
    and the offline demo. The screenshot tool drives the demo build via
    `vite preview` + preinstalled Chromium — no login, no WebSocket, no backend.
 
-Consequence: `npm test` (core) and `node tools/screenshot-eng-studio.mjs`
+Consequence: `npm test` (core) and `node libs/wui-eng-studio/demo/screenshot.mjs`
 (page) both run in CI with **no WinCC OA**.
 
 ## Check-in / check-out semantics
@@ -75,7 +75,7 @@ file per book (deleting a device therefore never deletes a book).
 protocol, which connection parameters exist, which are required, how each is
 entered and an example value; the page renders rows from it and only translates
 the labels (`PARAM_LABEL`). Adding a protocol is then a core change plus a few
-words — never a change to the template. `tools/check-eng-i18n.mjs` fails if a
+words — never a change to the template. `libs/wui-eng-studio/demo/check-i18n.mjs` fails if a
 declared parameter has no label, so a new one cannot ship as a raw key.
 
 **Validation lives once, in the core, and runs twice.** `validateDevice` returns
@@ -855,7 +855,7 @@ a value never has to be re-extracted from prose. An unknown code falls back to
 `message`: a warning added to the core is never invisible, merely untranslated.
 
 Two rules make that contract hold, and both are enforced mechanically by
-`tools/check-eng-i18n.mjs` (which bundles the real modules with esbuild):
+`libs/wui-eng-studio/demo/check-i18n.mjs` (which bundles the real modules with esbuild):
 
 1. **every value sits behind a `{placeholder}`** — a translator cannot re-order text
    that already has values baked in. `warnings.spec.ts` asserts that no

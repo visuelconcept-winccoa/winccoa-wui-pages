@@ -1,4 +1,4 @@
-# @visuelconcept/wui-audit-trail — source module (Tier 1)
+# @visuelconcept-winccoa/wui-audit-trail — source module (Tier 1)
 
 **GxP Audit Trail** page for a WinCC OA WebUI dashboard, built on the **fixed
 `_AuditTrail` datapoint type** (time / username / item / action / oldval →
@@ -10,29 +10,27 @@ the archived history of the selected one as a **log table**: default rolling
 print** (of the filtered/sorted view). View state is persisted to an
 **`AuditTrail_Config` DP** (search/filters/sort stay transient).
 
-Self-contained **source** distribution: the shared kit is **vendored** under
-`audit-trail/_vendor/` (no `@visuelconcept/wui-kit` prerequisite), and the page
-is built on the target's runtime workspace (so the bundle matches its version).
+npm package, deployed with **wui-toolkit** (the `wui` CLI): the shared kit
+(`@visuelconcept-winccoa/wui-kit`) comes as its npm dependency, and the page is built
+against the target's own import map (so the bundle matches its runtime).
 
-## Install (one command)
-```bash
-node install.mjs --workspace <runtime-workspace> --project <winccoa-project-root>
+## Install
+In the WinCC OA project's site (`<project>/web`), once the target is equipped
+(`npx wui init target prod`):
+```powershell
+npx wui use audit-trail   # npm-installs @visuelconcept-winccoa/wui-audit-trail with its kit, selects it
+npx wui build prod        # compiles the page into <project>/data/dashboard-wc/, upserts its menu entry
+npx wui check prod
 ```
-- `--workspace` = the `@wincc-oa/webui-runtime` workspace that builds this project's dashboard (e.g. `…/WebDemo2/webui-workspace`).
-- `--project` = the WinCC OA project root (its `data/dashboard-wc/` is the deploy target).
-
-It copies the page source (kit vendored) into the workspace, adds the menu entry
-to the workspace's `menuconfig.jsonc`, and runs `build:pages` (deploying into
-`<project>/data/dashboard-wc/`).
 
 ## After install (required)
 1. **Browser:** DevTools → Application → Storage → **`Clear site data`**, then reload (logged in).
    ⚠️ The service worker caches `menuconfig.json` — **`Ctrl+Shift+R` is NOT enough**; only `Clear site data` purges it.
 
 ## Prerequisites
-- A **WebUI Runtime workspace** for the target project (the `--workspace`).
+- A **wui-toolkit site** for the target project (`npx wui init target prod` done once).
 - No backend module and no manager — this is a **frontend-only Tier 1** page.
-- `module.json.frontend.npmDeps` is empty, so the installer adds no extra npm dependencies to the workspace.
+- No npm dependency beyond `@visuelconcept-winccoa/wui-kit`.
 
 ## Prerequisites (runtime)
 
@@ -41,15 +39,15 @@ to the workspace's `menuconfig.jsonc`, and runs `build:pages` (deploying into
 
 ## Contents
 ```
-module.json                                        manifest (mode: source, tier 1)
-install.mjs                                         installer
-frontend/standalone-pages/audit-trail.ts           page entry SOURCE
-frontend/standalone-pages/audit-trail/             page sub-components SOURCE (kit vendored in audit-trail/_vendor/)
+package.json                                        npm package; wuiPage (route, tier 1)
+src/audit-trail.ts                                  page entry
+src/app-security.roles.json                         the module's role catalog
+src/audit-trail/                                    page sub-components
   ├─ types.ts            fixed _AuditTrail fields + AuditConfig
   ├─ engine.ts           NGA history query + pivot (one row per record)
   ├─ dp-admin.ts         list/create/archive/delete _AuditTrail DPs (PARA REST)
   ├─ at-manage-dialog.ts DP manager popup (create / archive group / delete)
   ├─ export.ts           CSV / JSON download + print view
   └─ config-store.ts     AuditTrail_Config persistence (DpSingleJsonStore)
-frontend/menu.fragment.jsonc                        menu entry (permission: connected)
+menu.fragment.jsonc                                 menu entry (permission: connected)
 ```

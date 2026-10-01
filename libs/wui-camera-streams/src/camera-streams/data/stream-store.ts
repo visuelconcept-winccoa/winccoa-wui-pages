@@ -9,7 +9,7 @@
  * and keeps the page-specific method names. The `rtspProxy` JavaScript manager
  * reads these same DPs server-side to resolve a camera id → rtsp URL.
  */
-import { DpJsonStore } from '@visuelconcept/wui-kit/data/dp-json-store.js';
+import { DpJsonStore } from '@visuelconcept-winccoa/wui-kit/data/dp-json-store.js';
 import { DEMO_STREAMS } from './demo-streams.js';
 import type { CameraStream } from '../types.js';
 

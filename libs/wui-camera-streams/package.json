@@ -1,25 +1,31 @@
 {
-  "name": "@visuelconcept/wui-camera-streams",
+  "name": "@visuelconcept-winccoa/wui-camera-streams",
   "type": "module",
   "version": "0.1.0",
   "description": "Camera Streams (RTSP) — standalone WinCC OA WebUI page: manage RTSP IP cameras (one RtspCamera_Stream datapoint each) and view a stream in-browser via bundled JSMpeg over a same-origin /api/rtsp/ws relay to a shared ffmpeg pull.",
-  "author": { "name": "Visuel Concept" },
-  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page"],
+  "author": {
+    "name": "Visuel Concept"
+  },
+  "keywords": [
+    "OpenArchitecture",
+    "WinCCOA",
+    "dashboard",
+    "webcomponents",
+    "standalone-page"
+  ],
   "license": "MIT",
   "dependencies": {
-    "@visuelconcept/wui-kit": "*"
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0",
+    "@cycjimmy/jsmpeg-player": "^6.1.2"
   },
   "peerDependencies": {
     "lit": "*",
     "rxjs": "*",
-    "tsyringe": "*",
-    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-i18n-shared": "*",
     "@wincc-oa/wui-ix-wrappers": "*",
-    "@wincc-oa/wui-oarxjs-context": "*",
-    "@wincc-oa/wui-shared": "*",
     "@wincc-oa/wui-models": "*",
-    "@wincc-oa/wui-data-selector-data": "*",
-    "@cycjimmy/jsmpeg-player": "*"
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-shared": "*"
   },
   "exports": {
     "./*": {
@@ -29,12 +35,17 @@
   },
   "wuiPage": {
     "route": "/camera-streams",
-    "routes": ["/camera-streams", "/camera-streams/:streamid"],
+    "routes": [
+      "/camera-streams",
+      "/camera-streams/:streamid"
+    ],
     "routeId": "camera-streams",
     "component": "wui-camera-streams",
     "module": "/data/dashboard-wc/pages/camera-streams.js",
     "icon": "video-camera",
-    "permission": ["connected"],
+    "permission": [
+      "connected"
+    ],
     "tier": 3,
     "backend": {
       "mount": "/api/rtsp",
@@ -55,5 +66,45 @@
         "rtspProxy (rtsp-relay + ffmpeg-static: resolves id -> rtsp URL from RtspCamera_ DPs, one shared pull fanned out)"
       ]
     }
+  },
+  "peerDependenciesMeta": {
+    "lit": {
+      "optional": true
+    },
+    "rxjs": {
+      "optional": true
+    },
+    "@wincc-oa/wui-i18n-shared": {
+      "optional": true
+    },
+    "@wincc-oa/wui-ix-wrappers": {
+      "optional": true
+    },
+    "@wincc-oa/wui-models": {
+      "optional": true
+    },
+    "@wincc-oa/wui-oarxjs-context": {
+      "optional": true
+    },
+    "@wincc-oa/wui-shared": {
+      "optional": true
+    }
+  },
+  "files": [
+    "src",
+    "backend",
+    "managers",
+    "menu.fragment.jsonc",
+    "!**/*.spec.ts",
+    "!**/*.test.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/visuelconcept-winccoa/winccoa-wui-pages.git",
+    "directory": "libs/wui-camera-streams"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
   }
 }

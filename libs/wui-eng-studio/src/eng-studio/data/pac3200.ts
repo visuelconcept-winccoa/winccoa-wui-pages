@@ -35,7 +35,7 @@ import {
   type AddressBook,
   type BookEntry,
   type ModbusDataType
-} from '@visuelconcept/wui-eng-core';
+} from '@visuelconcept-winccoa/wui-eng-core';
 
 /** One row of the vendor register table. */
 interface Pac3200Row {

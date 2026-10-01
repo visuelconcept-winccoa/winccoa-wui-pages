@@ -1,4 +1,4 @@
-// Menu fragment for @visuelconcept/wui-audit-trail.
+// Menu fragment for @visuelconcept-winccoa/wui-audit-trail.
 // Merge these object(s) into the host dashboard's `entries` array
 // (apps/dashboard-wc/config/menuconfig.jsonc). Idempotent by `routeId`.
 [
