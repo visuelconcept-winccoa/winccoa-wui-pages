@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-fleet-core",
   "type": "module",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Shared fleet domain for the Machine Fleet pages: the atelier/machine/stop-cause domain model (types), the FleetStore persistence + offline fallback, the stop-cause analysis engine, closures (opening-time) model, the stop-cause catalog editor and the shared page styles.",
   "author": {
     "name": "Visuel Concept"
@@ -72,5 +72,8 @@
   "publishConfig": {
     "registry": "https://npm.pkg.github.com",
     "access": "restricted"
+  },
+  "devDependencies": {
+    "@types/three": "~0.169.0"
   }
 }

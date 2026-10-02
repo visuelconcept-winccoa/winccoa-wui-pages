@@ -439,7 +439,9 @@ export class WuiFleetKpiAnalysis extends LitElement {
     for (const a of this.ateliers) {
       const configs = a.trsThresholds ?? DEFAULT_TRS_THRESHOLDS;
       for (const m of a.machines) {
-        map.set(m.id, configs.find((c) => c.id === m.trsThresholdId) ?? configs[0] ?? DEFAULT_TRS_THRESHOLDS[0]);
+        // The machine's TRS KPI names its threshold set — as machine-fleet-3d colours it.
+        const thresholdId = m.kpiCalcs?.find((kpi) => kpi.type === 'TRS')?.thresholdId;
+        map.set(m.id, configs.find((c) => c.id === thresholdId) ?? configs[0] ?? DEFAULT_TRS_THRESHOLDS[0]);
       }
     }
     this.trsConfigByMachine = map;

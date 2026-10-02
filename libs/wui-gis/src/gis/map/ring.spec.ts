@@ -101,6 +101,7 @@ describe('area outline editing', () => {
   // --- the ring stays drawable throughout -------------------------------------
   let ring: Ring = square;
   const ops: string[] = [];
+  let failures = 0;
   for (let step = 0; step < 40; step++) {
     const pick = step % 3;
     if (pick === 0) ring = insertVertex(ring, step % ring.length);
@@ -130,7 +131,7 @@ describe('area outline editing', () => {
       console.log('FAIL  emitted ring not closed at step', step);
     }
   }
-  check('40 mixed edits keep the ring drawable and closed', true, true);
+  check('40 mixed edits keep the ring drawable and closed', failures, 0);
   console.log('   corner counts along the way:', ops.join(' '));
 
   // --- point-in-area still works on an edited ring ----------------------------

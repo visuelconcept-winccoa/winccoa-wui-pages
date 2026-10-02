@@ -36,7 +36,7 @@ function workspace(partial: Partial<Workspace> = {}): Workspace {
     configs: {
       'Z01_FOUR001.Temperature': { range: { min: 0, max: 450, inclMin: true, inclMax: true } },
       'Z01_FOUR002.Temperature': { range: { min: 0, max: 450, inclMin: true, inclMax: true } },
-      'Z01_POMPE1.Marche': { alarm: { kind: 'binary', direction: 'came', className: 'alert.' } }
+      'Z01_POMPE1.Marche': { alarm: { kind: 'binary', alarmClass: 'alert.', direction: 'ASC', active: true } }
     },
     baseline: {},
     ...partial

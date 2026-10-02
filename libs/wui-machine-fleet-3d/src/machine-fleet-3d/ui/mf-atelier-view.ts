@@ -810,7 +810,7 @@ export class MfAtelierView extends LitElement {
     if (!service || machine.dashboardId == null) return;
     try {
       const dashboard = await firstValueFrom(service.get(machine.dashboardId));
-      const kept = (dashboard.widgets ?? []).filter((w) => !isMachineWidget(w, machine.id));
+      const kept = (dashboard.widgets ?? []).filter((w: { id: string }) => !isMachineWidget(w, machine.id));
       dashboard.widgets = [
         ...kept,
         ...buildMachineWidgets(machine, this.atelier.id, this.atelierName || this.atelier.name)

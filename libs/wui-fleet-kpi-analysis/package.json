@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-fleet-kpi-analysis",
   "type": "module",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Fleet KPI Analysis — standalone WinCC OA WebUI page: per-machine availability-TRS over a period from archived histories, with closures (opening-time) handling and table + bar views.",
   "author": {
     "name": "Visuel Concept"

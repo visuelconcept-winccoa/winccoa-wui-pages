@@ -29,7 +29,7 @@ import {
   type AnalysisMachine
 } from '@visuelconcept-winccoa/wui-fleet-core/engine.js';
 import type { StopCause } from '@visuelconcept-winccoa/wui-fleet-core/types.js';
-import type { MsInterval } from './closures.js';
+import type { MsInterval } from '@visuelconcept-winccoa/wui-fleet-core/closures.js';
 
 export {
   collectMachines,

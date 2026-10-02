@@ -197,17 +197,17 @@ describe('grouping hierarchy', () => {
     for (let z = 6; z <= 20; z++) {
       const g = groupSite(site, site.assets, z, none);
       for (const area of site.areas) {
-        const owned = site.assets.filter((a) => a.areaId === area.id);
+        const owned = site.assets.filter((a) => a.areaIds[0] === area.id);
         if (owned.length === 0) continue;
         const badge = g.clusters.find((c) => c.id === `area:${area.id}`);
         const grouped = badge ? badge.assets.length : 0;
         const loose = g.singles.filter(
-          (s) => s.asset.areaId === area.id
+          (s) => s.asset.areaIds[0] === area.id
         ).length;
         const cells = g.clusters
           .filter((c) => c.kind === 'cell')
           .reduce(
-            (n, c) => n + c.assets.filter((a) => a.areaId === area.id).length,
+            (n, c) => n + c.assets.filter((a) => a.areaIds[0] === area.id).length,
             0
           );
         inAnonymousCell += cells;
