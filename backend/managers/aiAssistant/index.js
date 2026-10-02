@@ -27,7 +27,7 @@
  * The service exposes one unary method:
  *   Chat(Variant<string JSON {provider?, model?, prompt, system?, mcpServers?,
  *                             mcpMode?, webSearch?, effort?, maxTokens?,
- *                             progressId?}>)
+ *                             maxToolRounds?, progressId?}>)
  *      -> Variant<string JSON {text, truncated, mcpTools, …}>
  *                                              (throws Vrpc.Error on failure)
  *
@@ -85,8 +85,21 @@ const TRUNCATED_MSG =
   "\n\n_(réponse tronquée : budget de sortie atteint — augmentez « Budget de sortie » dans la configuration de l'IA, ou demandez une proposition plus petite.)_";
 const HTTP_OK = 200;
 const JSON_CT = 'application/json';
-/** Max LLM⇄tool round-trips per chat (agentic MCP loop guard). */
-const MAX_TOOL_ROUNDS = 6;
+/**
+ * Max LLM⇄tool round-trips per chat (agentic MCP loop guard).
+ *
+ * One round = one model call plus every tool it asked for in that call (three
+ * tools in one answer still cost one round). Exploring a project eats rounds
+ * faster than it looks: list the types, read one type, list its datapoints, read
+ * a value, query the archive — five rounds before the model has said anything.
+ * A ceiling that stops the loop mid-exploration wastes the whole prompt, so it is
+ * generous by default; the rounds that are not needed are simply never run.
+ * Configurable per project (`maxToolRounds` element); this is the default.
+ */
+const DEFAULT_MAX_TOOL_ROUNDS = 12;
+/** Bounds: below 2 no tool could ever run (see the wrap-up round), 30 is the cost guard. */
+const TOOL_ROUNDS_MIN = 2;
+const TOOL_ROUNDS_MAX = 30;
 /** Default MCP servers (the WinCC OA MCP server runs on :3000, StreamableHTTP). */
 const DEFAULT_MCP_SERVERS = [{ name: 'winccoa', url: 'http://127.0.0.1:3000/mcp', token: '' }];
 /** Max provider-side web searches per chat (cost guard). */
@@ -163,6 +176,13 @@ function parseWebSearch(raw) {
   return extractString(raw).trim().toLowerCase() !== 'false';
 }
 
+/** Tool-round ceiling from the config DP / request, clamped; unparsable -> the default. */
+function parseToolRounds(raw) {
+  const value = Number.parseInt(extractString(raw).trim(), 10);
+  if (!Number.isFinite(value)) return DEFAULT_MAX_TOOL_ROUNDS;
+  return Math.min(Math.max(value, TOOL_ROUNDS_MIN), TOOL_ROUNDS_MAX);
+}
+
 /** Effort level from the config DP / request; unknown or empty -> the default. */
 function parseEffort(raw) {
   const value = extractString(raw).trim().toLowerCase();
@@ -237,7 +257,9 @@ async function ensureConfig() {
     // 'low'|'medium'|'high'|'xhigh'|'max' — reasoning effort (latency lever).
     new WinccoaDpTypeNode('effort', ELEM.String),
     // Output budget in tokens (decimal string). Empty -> DEFAULT_MAX_TOKENS.
-    new WinccoaDpTypeNode('maxTokens', ELEM.String)
+    new WinccoaDpTypeNode('maxTokens', ELEM.String),
+    // Agentic loop ceiling (decimal string). Empty -> DEFAULT_MAX_TOOL_ROUNDS.
+    new WinccoaDpTypeNode('maxToolRounds', ELEM.String)
   ]);
   await ensureProgress();
   try {
@@ -262,6 +284,7 @@ async function ensureConfig() {
       await winccoa.dpSetWait(`${SYS}${CONFIG_DP}.webSearch`, 'true');
       await winccoa.dpSetWait(`${SYS}${CONFIG_DP}.effort`, DEFAULT_EFFORT);
       await winccoa.dpSetWait(`${SYS}${CONFIG_DP}.maxTokens`, String(DEFAULT_MAX_TOKENS));
+      await winccoa.dpSetWait(`${SYS}${CONFIG_DP}.maxToolRounds`, String(DEFAULT_MAX_TOOL_ROUNDS));
       log(`DP de configuration créé : ${CONFIG_DP}`);
     } catch (e) {
       log(`Échec création DP config : ${e}`);
@@ -278,7 +301,12 @@ async function ensureConfig() {
 
 /** Defaults for the elements added after the first release. */
 function lateDefaults() {
-  return { webSearch: true, effort: DEFAULT_EFFORT, maxTokens: DEFAULT_MAX_TOKENS };
+  return {
+    webSearch: true,
+    effort: DEFAULT_EFFORT,
+    maxTokens: DEFAULT_MAX_TOKENS,
+    maxToolRounds: DEFAULT_MAX_TOOL_ROUNDS
+  };
 }
 
 /**
@@ -291,10 +319,16 @@ async function readLateConfig() {
     const raw = await winccoa.dpGet([
       `${SYS}${CONFIG_DP}.webSearch`,
       `${SYS}${CONFIG_DP}.effort`,
-      `${SYS}${CONFIG_DP}.maxTokens`
+      `${SYS}${CONFIG_DP}.maxTokens`,
+      `${SYS}${CONFIG_DP}.maxToolRounds`
     ]);
     const arr = Array.isArray(raw) ? raw : [raw];
-    return { webSearch: parseWebSearch(arr[0]), effort: parseEffort(arr[1]), maxTokens: parseMaxTokens(arr[2]) };
+    return {
+      webSearch: parseWebSearch(arr[0]),
+      effort: parseEffort(arr[1]),
+      maxTokens: parseMaxTokens(arr[2]),
+      maxToolRounds: parseToolRounds(arr[3])
+    };
   } catch {
     return lateDefaults();
   }
@@ -360,7 +394,7 @@ async function postJson(url, headers, body) {
  * courtesy, and a chat must never fail because its narration could not be written.
  */
 function makeProgress(progressId) {
-  if (!progressId) return { on: false, step: () => undefined, events: [] };
+  if (!progressId) return { on: false, step: () => undefined, usage: () => undefined, events: [] };
   const events = [];
   const publish = async () => {
     // Drop the oldest first: on a long loop the recent steps are the interesting
@@ -384,6 +418,85 @@ function makeProgress(progressId) {
       events.push(event);
       // Not awaited: the loop must not wait on a datapoint write to keep working.
       void publish();
+    },
+    /**
+     * Publish the running token total. Unlike `step` this REPLACES the previous usage
+     * event instead of appending one: it is a counter, not a step, and one line per
+     * round would push the real steps out of the capped payload.
+     */
+    usage(total) {
+      const previous = events.find((event) => event.type === 'usage');
+      if (previous) Object.assign(previous, total);
+      else events.push({ type: 'usage', ...total });
+      void publish();
+    }
+  };
+}
+
+// ---- token accounting ------------------------------------------------------
+
+/** A usage field a provider may omit, or send as a string, or not send at all. */
+function toCount(value) {
+  const count = Number(value);
+  return Number.isFinite(count) && count > 0 ? count : 0;
+}
+
+/**
+ * Anthropic. `input_tokens` is the UNCACHED remainder only — the prompt the model
+ * actually read is that plus what was served from (or written to) the cache, so the
+ * three are summed. `cached` is kept apart because it is the cheap part.
+ */
+function anthropicUsage(usage) {
+  const cached = toCount(usage?.cache_read_input_tokens);
+  return {
+    tokensIn: toCount(usage?.input_tokens) + cached + toCount(usage?.cache_creation_input_tokens),
+    tokensOut: toCount(usage?.output_tokens),
+    tokensCached: cached
+  };
+}
+
+/** OpenAI / Mistral: `prompt_tokens` already includes the cached part. */
+function openAiUsage(usage) {
+  return {
+    tokensIn: toCount(usage?.prompt_tokens),
+    tokensOut: toCount(usage?.completion_tokens),
+    tokensCached: toCount(usage?.prompt_tokens_details?.cached_tokens)
+  };
+}
+
+/** Gemini: thinking is billed as output but counted in a field of its own. */
+function geminiUsage(meta) {
+  const tokensIn = toCount(meta?.promptTokenCount);
+  const answer = toCount(meta?.candidatesTokenCount) + toCount(meta?.thoughtsTokenCount);
+  const total = toCount(meta?.totalTokenCount);
+  return {
+    tokensIn,
+    // A model that reports only the total still gets a sensible output count.
+    tokensOut: answer > 0 ? answer : Math.max(total - tokensIn, 0),
+    tokensCached: toCount(meta?.cachedContentTokenCount)
+  };
+}
+
+/**
+ * Running token total for one prompt, narrated as it grows.
+ *
+ * Every round re-sends the whole conversation, so round N's input counts rounds
+ * 0…N−1 again. That repetition is exactly what the provider bills, so summing the
+ * rounds is the real consumption — not a double count. It is also what the number
+ * teaches the user: on an agentic loop the input dwarfs the output, and each extra
+ * tool round makes the next input bigger still.
+ */
+function makeMeter(progress) {
+  const total = { tokensIn: 0, tokensOut: 0, tokensCached: 0, rounds: 0 };
+  return {
+    total,
+    /** Fold in one provider response and republish the total. */
+    add(round) {
+      total.tokensIn += round.tokensIn;
+      total.tokensOut += round.tokensOut;
+      total.tokensCached += round.tokensCached;
+      total.rounds += 1;
+      progress.usage(total);
     }
   };
 }
@@ -487,11 +600,46 @@ async function execTool(route, name, args, calls, progress) {
 
 // ---- provider tool-use loops (agentic) -------------------------------------
 
-const TOOL_LIMIT_MSG = "(limite d'itérations d'outils atteinte)";
+/**
+ * The last round of the loop runs with tool USE forbidden (the declarations stay:
+ * dropping them would orphan the tool_use blocks already in the history). The model
+ * therefore has to write its answer from what it gathered instead of asking for one
+ * more tool that nobody would run — the previous behaviour returned this bare
+ * message and threw away every tool result of the prompt.
+ */
+const WRAP_UP_PROMPT =
+  "Le budget d'outils de cette requête est épuisé : plus aucun appel d'outil ne sera exécuté. " +
+  'Réponds maintenant, de façon complète, à partir de ce que tu as déjà obtenu. ' +
+  "S'il te manque une information, dis-le explicitement au lieu de demander un outil supplémentaire.";
+/** Appended to that wrap-up answer, so the user knows what it was composed from. */
+const TOOL_LIMIT_MSG =
+  "\n\n_(budget d'outils atteint : réponse composée à partir des informations déjà collectées — " +
+  "augmentez « Tours d'outils » dans la configuration de l'IA pour laisser l'assistant chercher plus loin.)_";
+/** Only if a provider ever ignores the wrap-up round and keeps calling tools. */
+const TOOL_LIMIT_EMPTY_MSG = "(budget d'outils atteint sans réponse)";
 
 /** Mark an answer the provider cut short, so the UI can say so instead of guessing. */
 function truncated(text) {
   return `${text}${TRUNCATED_MSG}`;
+}
+
+/** Mark the answer written on the wrap-up round — complete, but blind past that point. */
+function toolLimited(text) {
+  return `${text}${TOOL_LIMIT_MSG}`;
+}
+
+/**
+ * Is `round` the wrap-up round — the last one, reached because the previous round
+ * asked for tools? On round 0 there is nothing to wrap up yet: a prompt configured
+ * with the minimum of 2 rounds still gets one real tool round.
+ */
+function isWrapUp(round, rounds) {
+  return round > 0 && round === rounds - 1;
+}
+
+/** True when the round being prepared is the one right before the wrap-up round. */
+function nextIsWrapUp(round, rounds) {
+  return round + 1 === rounds - 1;
 }
 
 /** Longest reasoning summary published per round — a paragraph, not an essay. */
@@ -536,12 +684,17 @@ async function callAnthropic(model, token, prompt, system, tools, route, calls, 
   const decls = tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.schema }));
   if (options.webSearch) decls.push(anthropicWebSearchTool(model));
   const level = claudeEffort(model, options.effort);
-  const { progress } = options;
+  const { progress, meter } = options;
   const messages = [{ role: 'user', content: prompt }];
-  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+  const rounds = options.maxToolRounds;
+  for (let round = 0; round < rounds; round++) {
+    const wrapUp = isWrapUp(round, rounds);
     const body = { model, max_tokens: options.maxTokens, messages };
     if (system) body.system = system;
     if (decls.length > 0) body.tools = decls;
+    // Declarations stay, use is forbidden: the model must answer, and the tool_use
+    // blocks already in `messages` keep the tools they refer to.
+    if (wrapUp && decls.length > 0) body.tool_choice = { type: 'none' };
     if (level) body.output_config = { effort: level };
     // Ask for a readable reasoning summary ONLY when someone is watching: on the
     // models where thinking is off by default this turns it on, which costs
@@ -552,6 +705,9 @@ async function callAnthropic(model, token, prompt, system, tools, route, calls, 
     progress.step({ type: 'model', round: round + 1, model });
     // eslint-disable-next-line no-await-in-loop
     const data = await postJson('https://api.anthropic.com/v1/messages', headers, body);
+    // Counted before anything else can return: a paused or truncated round was
+    // billed just the same.
+    meter.add(anthropicUsage(data.usage));
     publishThinking(progress, data.content);
     if (data.stop_reason === 'pause_turn') {
       // A server-side tool (web search) hit the provider's own iteration limit.
@@ -562,7 +718,8 @@ async function callAnthropic(model, token, prompt, system, tools, route, calls, 
     }
     if (data.stop_reason !== 'tool_use') {
       const text = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
-      return data.stop_reason === 'max_tokens' ? truncated(text) : text;
+      if (data.stop_reason === 'max_tokens') return truncated(text);
+      return wrapUp ? toolLimited(text) : text;
     }
     messages.push({ role: 'assistant', content: data.content });
     const results = [];
@@ -572,30 +729,38 @@ async function callAnthropic(model, token, prompt, system, tools, route, calls, 
       const res = await execTool(route, block.name, block.input, calls, progress);
       results.push({ type: 'tool_result', tool_use_id: block.id, content: res.text, is_error: res.isError });
     }
+    // The notice rides with the tool results (after them, as the API expects), so
+    // the model reads it in the same turn it is asked to conclude.
+    if (nextIsWrapUp(round, rounds)) results.push({ type: 'text', text: WRAP_UP_PROMPT });
     messages.push({ role: 'user', content: results });
   }
-  return TOOL_LIMIT_MSG;
+  return TOOL_LIMIT_EMPTY_MSG;
 }
 
 async function callOpenAiLike(url, model, token, prompt, system, tools, route, calls, options) {
   const headers = { 'content-type': JSON_CT, authorization: `Bearer ${token}` };
   const fns = tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.schema } }));
   const level = options.effort ? openAiEffort(model, options.effort) : '';
-  const { progress } = options;
+  const { progress, meter } = options;
   const messages = [];
   if (system) messages.push({ role: 'system', content: system });
   messages.push({ role: 'user', content: prompt });
-  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+  const rounds = options.maxToolRounds;
+  for (let round = 0; round < rounds; round++) {
+    const wrapUp = isWrapUp(round, rounds);
     const body = { model, messages };
     if (fns.length > 0) body.tools = fns;
+    if (wrapUp && fns.length > 0) body.tool_choice = 'none';
     if (level) body.reasoning_effort = level;
     progress.step({ type: 'model', round: round + 1, model });
     // eslint-disable-next-line no-await-in-loop
     const data = await postJson(url, headers, body);
+    meter.add(openAiUsage(data.usage));
     const msg = data.choices?.[0]?.message;
     if (!msg || !Array.isArray(msg.tool_calls) || msg.tool_calls.length === 0) {
       const text = msg?.content?.trim() ?? '';
-      return data.choices?.[0]?.finish_reason === 'length' ? truncated(text) : text;
+      if (data.choices?.[0]?.finish_reason === 'length') return truncated(text);
+      return wrapUp ? toolLimited(text) : text;
     }
     messages.push(msg);
     for (const tc of msg.tool_calls) {
@@ -609,8 +774,11 @@ async function callOpenAiLike(url, model, token, prompt, system, tools, route, c
       const res = await execTool(route, tc.function?.name, args, calls, progress);
       messages.push({ role: 'tool', tool_call_id: tc.id, content: res.text });
     }
+    // A plain user turn after the tool messages: every `tool` role has already
+    // answered its call, so the exchange stays well-formed.
+    if (nextIsWrapUp(round, rounds)) messages.push({ role: 'user', content: WRAP_UP_PROMPT });
   }
-  return TOOL_LIMIT_MSG;
+  return TOOL_LIMIT_EMPTY_MSG;
 }
 
 /** Strip JSON-Schema keywords Gemini's functionDeclarations rejects. */
@@ -630,9 +798,11 @@ function geminiSchema(schema) {
 async function callGemini(model, token, prompt, system, tools, route, calls, options) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(token)}`;
   const decls = tools.map((t) => ({ name: t.name, description: t.description, parameters: geminiSchema(t.schema) }));
-  const { progress } = options;
+  const { progress, meter } = options;
   const contents = [{ role: 'user', parts: [{ text: prompt }] }];
-  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+  const rounds = options.maxToolRounds;
+  for (let round = 0; round < rounds; round++) {
+    const wrapUp = isWrapUp(round, rounds);
     const body = { contents, generationConfig: { maxOutputTokens: options.maxTokens } };
     if (system) body.systemInstruction = { parts: [{ text: system }] };
     const toolDecls = [];
@@ -641,15 +811,20 @@ async function callGemini(model, token, prompt, system, tools, route, calls, opt
     // function declarations (supported from Gemini 2.x on).
     if (options.webSearch) toolDecls.push({ google_search: {} });
     if (toolDecls.length > 0) body.tools = toolDecls;
+    if (wrapUp && toolDecls.length > 0) {
+      body.toolConfig = { functionCallingConfig: { mode: 'NONE' } };
+    }
     progress.step({ type: 'model', round: round + 1, model });
     // eslint-disable-next-line no-await-in-loop
     const data = await postJson(url, { 'content-type': JSON_CT }, body);
+    meter.add(geminiUsage(data.usageMetadata));
     const candidate = data.candidates?.[0];
     const parts = candidate?.content?.parts || [];
     const fnCalls = parts.filter((p) => p.functionCall);
     if (fnCalls.length === 0) {
       const text = parts.map((p) => p.text || '').join('').trim();
-      return candidate?.finishReason === 'MAX_TOKENS' ? truncated(text) : text;
+      if (candidate?.finishReason === 'MAX_TOKENS') return truncated(text);
+      return wrapUp ? toolLimited(text) : text;
     }
     contents.push({ role: 'model', parts });
     const responseParts = [];
@@ -658,13 +833,17 @@ async function callGemini(model, token, prompt, system, tools, route, calls, opt
       const res = await execTool(route, c.functionCall.name, c.functionCall.args || {}, calls, progress);
       responseParts.push({ functionResponse: { name: c.functionCall.name, response: { content: res.text } } });
     }
+    // As a part of the SAME user turn: Gemini expects the roles to alternate, so a
+    // separate text turn after the function responses would be rejected.
+    if (nextIsWrapUp(round, rounds)) responseParts.push({ text: WRAP_UP_PROMPT });
     contents.push({ role: 'user', parts: responseParts });
   }
-  return TOOL_LIMIT_MSG;
+  return TOOL_LIMIT_EMPTY_MSG;
 }
 
 /**
- * Dispatch to the provider. `options` = { webSearch, effort, maxTokens }, each
+ * Dispatch to the provider. `options` = { webSearch, effort, maxTokens,
+ * maxToolRounds }, each
  * honored wherever the provider's API exposes it on this transport: web search on
  * Anthropic and Gemini, effort on Anthropic and the OpenAI reasoning models, the
  * output budget on Anthropic and Gemini. OpenAI/Mistral keep their own default
@@ -701,7 +880,8 @@ function resolveOverrides(req, cfg) {
     mcpMode: MCP_MODES.has(req.mcpMode) ? req.mcpMode : DEFAULT_MCP_MODE,
     webSearch: typeof req.webSearch === 'boolean' ? req.webSearch : cfg.webSearch,
     effort: req.effort ? parseEffort(req.effort) : cfg.effort,
-    maxTokens: req.maxTokens ? parseMaxTokens(req.maxTokens) : cfg.maxTokens
+    maxTokens: req.maxTokens ? parseMaxTokens(req.maxTokens) : cfg.maxTokens,
+    maxToolRounds: req.maxToolRounds ? parseToolRounds(req.maxToolRounds) : cfg.maxToolRounds
   };
 }
 
@@ -743,6 +923,11 @@ class AiAssistantService extends Vrpc.ServiceBase {
     // progress pays nothing for the channel.
     const progress = makeProgress(String(req.progressId ?? ''));
     options.progress = progress;
+    // The token meter counts every round, whether or not anyone is watching: the
+    // total rides back on the reply too, so a page without live progress still knows
+    // what the answer cost.
+    const meter = makeMeter(progress);
+    options.meter = meter;
     progress.step({ type: 'start', provider, model });
     // The manager is the MCP client: connect locally, expose tools to the LLM,
     // and execute tool calls here (no public exposure of the MCP server needed).
@@ -751,12 +936,15 @@ class AiAssistantService extends Vrpc.ServiceBase {
     log(
       `Chat: provider=${provider} model=${model} mcp=${mcpMode} mcp_tools=${tools.length} ` +
         `web_search=${options.webSearch} effort=${options.effort} max_tokens=${options.maxTokens} ` +
+        `tool_rounds=${options.maxToolRounds} ` +
         `progress=${progress.on} (${prompt.length} car.)`
     );
     const calls = [];
     try {
       const text = await runProvider(provider, model, token, prompt, req.system, tools, route, calls, options);
       progress.step({ type: 'done' });
+      const { tokensIn, tokensOut, rounds } = meter.total;
+      log(`Chat terminé: rounds=${rounds} tokens_in=${tokensIn} tokens_out=${tokensOut}`);
       return Vrpc.Variant.createString(
         JSON.stringify({
           text,
@@ -768,7 +956,13 @@ class AiAssistantService extends Vrpc.ServiceBase {
           mcpTools: tools.length,
           ...options,
           progress: undefined,
+          meter: undefined,
+          // What this one prompt cost, summed over its rounds.
+          usage: meter.total,
           truncated: text.endsWith(TRUNCATED_MSG),
+          // Answered on the wrap-up round: complete, but the model stopped short of
+          // everything it wanted to look up.
+          toolLimit: text.endsWith(TOOL_LIMIT_MSG),
           toolCalls: calls
         })
       );

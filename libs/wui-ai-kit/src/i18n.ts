@@ -78,6 +78,20 @@ export const AI_MSG = {
     'Plafond d’une réponse. Trop bas, une réponse longue — en particulier une proposition JSON — est coupée en plein objet et devient inutilisable ; trop haut ne coûte que de la latence sur les réponses qui en ont besoin. Défaut 32768. Sur la famille Claude 5 ce budget couvre le raisonnement ET le texte.',
     'Obergrenze für eine Antwort. Zu niedrig, und eine lange Antwort — besonders ein JSON-Vorschlag — wird mitten im Objekt abgeschnitten und ist unbrauchbar; zu hoch kostet nur Latenz bei den Antworten, die es brauchen. Standard 32768. Bei der Claude-5-Familie deckt dieses Budget Denken UND Text ab.'
   ),
+  // Token meter. `%t` total, `%i` input, `%o` output, `%r` rounds, `%c` cached.
+  usageTokens: ml('%t tokens · %i in / %o out', '%t tokens · %i entrée / %o sortie', '%t Tokens · %i ein / %o aus'),
+  usageDetail: ml(
+    'Summed over %r model calls of this prompt — each one re-sends the whole conversation, which is what the provider bills. %c input tokens were served from the provider’s cache.',
+    'Cumul sur %r appels au modèle pour cette question — chacun renvoie toute la conversation, et c’est bien ce que le fournisseur facture. %c tokens d’entrée ont été servis par le cache du fournisseur.',
+    'Summe über %r Modellaufrufe dieser Frage — jeder sendet die ganze Konversation erneut, und genau das berechnet der Anbieter. %c Eingabe-Tokens kamen aus dem Cache des Anbieters.'
+  ),
+  usageConversation: ml('Conversation: %t', 'Conversation : %t', 'Konversation: %t'),
+  maxToolRounds: ml('Tool rounds', 'Tours d’outils', 'Werkzeug-Runden'),
+  maxToolRoundsHint: ml(
+    'How far the assistant may explore the project before it has to conclude: one round = one model call plus the tools it asked for. Listing the types, reading one, then a value is already three. The last round always runs with the tools disabled, so the answer is written from what was gathered — a low value costs depth, never the answer. Default 12.',
+    'Jusqu’où l’assistant peut explorer le projet avant de devoir conclure : un tour = un appel au modèle plus les outils qu’il a demandés. Lister les types, en lire un, puis une valeur, cela fait déjà trois. Le dernier tour s’exécute toujours outils désactivés, la réponse est donc rédigée à partir de ce qui a été collecté — une valeur basse coûte de la profondeur, jamais la réponse. Défaut 12.',
+    'Wie weit der Assistent das Projekt erkunden darf, bevor er abschließen muss: eine Runde = ein Modellaufruf plus die angeforderten Werkzeuge. Typen auflisten, einen lesen, dann einen Wert — das sind schon drei. Die letzte Runde läuft immer ohne Werkzeuge, die Antwort wird also aus dem Gesammelten verfasst — ein niedriger Wert kostet Tiefe, nie die Antwort. Standard 12.'
+  ),
   effortLow: ml('low — fastest', 'low — le plus rapide', 'low — am schnellsten'),
   effortMedium: ml('medium — balanced (default)', 'medium — équilibré (défaut)', 'medium — ausgewogen (Standard)'),
   effortHigh: ml('high — thorough', 'high — approfondi', 'high — gründlich'),

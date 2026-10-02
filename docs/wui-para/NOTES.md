@@ -59,11 +59,13 @@ Both `mcpServers` and `mcpMode` are per-call overrides carried by
 `backend/routes/aiController.ts`. **They take effect only after the webserver is
 rebuilt/restarted**; until then the guarantee falls back to the system prompt alone.
 
-`webSearch`, `effort` and `maxTokens` ride the same three-layer path (`AskAiOptions`
-→ bridge → `resolveOverrides` in the manager), so a page can send `webSearch: false`
-for a project-only prompt, `effort: 'low'` for a latency-bound one, or a larger
-`maxTokens` when it expects a big proposal. All three default from the
-`AI_Assistant_Config` DP — web search **on**, effort **`medium`**, budget **32768** —
+`webSearch`, `effort`, `maxTokens` and `maxToolRounds` ride the same three-layer path
+(`AskAiOptions` → bridge → `resolveOverrides` in the manager), so a page can send
+`webSearch: false` for a project-only prompt, `effort: 'low'` for a latency-bound one,
+a larger `maxTokens` when it expects a big proposal, or more `maxToolRounds` when its
+prompts explore the project deeply. All four default from the
+`AI_Assistant_Config` DP — web search **on**, effort **`medium`**, budget **32768**,
+tool rounds **12** —
 and the manager only sends each field to providers whose API accepts it (web search:
 Anthropic, Gemini; effort: Anthropic, OpenAI o-series; budget: Anthropic, Gemini),
 because a field a model does not know is a provider 400 rather than a silent no-op.
@@ -73,6 +75,36 @@ cut mid-object, which used to surface as an answer that simply had no applicable
 block. The manager now detects the provider's own truncation signal (`max_tokens` /
 `finish_reason: length` / `MAX_TOKENS`), appends a note to the answer and returns
 `truncated: true`, so a page can say why instead of staying mute.
+
+The tool-round ceiling is the other one, and it used to bite much harder: when the
+agentic loop ran out of rounds the manager returned the bare string *"(limite
+d'itérations d'outils atteinte)"* — every tool result of the prompt thrown away, the
+user left with nothing after a minute of work. The loop now spends its **last round
+with tool USE forbidden** (`tool_choice: none` on Anthropic and OpenAI/Mistral,
+`functionCallingConfig.mode: NONE` on Gemini; the declarations stay, or the `tool_use`
+blocks already in the history would be orphaned) and hands the model a wrap-up notice
+with the last tool results. The model therefore answers from what it gathered, the
+answer carries a note saying so, and the reply sets `toolLimit: true`. Raising
+`maxToolRounds` buys depth of exploration — never the answer itself.
+
+### The token meter
+
+Every provider reports what a call consumed, so the manager normalises the three
+dialects into one shape (`AiUsage`: `tokensIn`, `tokensOut`, `tokensCached`, `rounds`)
+and accumulates it round by round. **Summing the rounds is not double counting**: each
+round re-sends the whole conversation, and that repetition is exactly what the provider
+bills — which is also the point the number makes to the user, since one extra tool round
+makes the next input bigger. Anthropic reports `input_tokens` as the *uncached remainder
+only*, so the cached and cache-written parts are added back to get the prompt the model
+actually read; Gemini counts thinking in a field of its own, next to the candidates.
+
+The total travels twice, and the same shape both times: **live** on the progress
+datapoint, as a single `usage` event the manager rewrites in place (a counter, not a
+step — one line per round would push the real steps out of the capped payload), and
+**final** on the reply as `usage`. So a page shows the running cost while the loop
+turns, the per-answer cost once it lands, and — by summing its answers — what the whole
+conversation has spent. `formatTokens` keeps counts exact below 10 000 and switches to
+thousands above, because the last three digits of a live counter are unreadable.
 
 ## DPL ASCII import/export
 

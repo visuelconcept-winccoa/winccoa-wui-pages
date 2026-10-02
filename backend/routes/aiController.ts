@@ -65,6 +65,12 @@ interface ChatBody {
   /** Per-call override of the configured output budget, in tokens. */
   maxTokens?: number;
   /**
+   * Per-call override of the configured agentic-loop ceiling (LLM⇄tool round-trips).
+   * The last round always runs with tools disabled, so the answer is written from
+   * what was gathered rather than lost.
+   */
+  maxToolRounds?: number;
+  /**
    * Live-progress channel id. With it, the manager narrates its agentic loop into
    * the `AI_Assistant_Progress` datapoint, which the browser follows over its
    * existing authenticated subscription — this HTTP call cannot report progress
@@ -89,8 +95,19 @@ export class AiController {
       res.status(503).json({ ok: false, error: 'MSA vRPC indisponible (winccoa-manager)' });
       return;
     }
-    const { prompt, provider, model, system, mcpServers, mcpMode, webSearch, effort, maxTokens, progressId } =
-      (req.body ?? {}) as ChatBody;
+    const {
+      prompt,
+      provider,
+      model,
+      system,
+      mcpServers,
+      mcpMode,
+      webSearch,
+      effort,
+      maxTokens,
+      maxToolRounds,
+      progressId
+    } = (req.body ?? {}) as ChatBody;
     if (!prompt || typeof prompt !== 'string') {
       res.status(400).json({ ok: false, error: 'prompt (string) requis' });
       return;
@@ -108,6 +125,9 @@ export class AiController {
       if (typeof webSearch === 'boolean') request.webSearch = webSearch;
       if (typeof effort === 'string' && effort) request.effort = effort;
       if (typeof maxTokens === 'number' && Number.isFinite(maxTokens)) request.maxTokens = maxTokens;
+      if (typeof maxToolRounds === 'number' && Number.isFinite(maxToolRounds)) {
+        request.maxToolRounds = maxToolRounds;
+      }
       if (typeof progressId === 'string' && progressId) request.progressId = progressId;
       const payload = Vrpc.Variant.createString(JSON.stringify(request));
       const resp = await stub.callFunction('Chat', payload, ctx);

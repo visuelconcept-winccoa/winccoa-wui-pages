@@ -27,10 +27,14 @@ import {
   type ToolCall
 } from '@visuelconcept/wui-ai-kit/data/ai-store.js';
 import {
+  addUsage,
+  emptyUsage,
   newProgressId,
   subscribeAiProgress,
-  type AiProgressEvent
+  type AiProgressEvent,
+  type AiUsage
 } from '@visuelconcept/wui-ai-kit/data/ai-progress.js';
+import { usageDetail, usageLabel } from '@visuelconcept/wui-ai-kit/data/ai-usage.js';
 import { renderMarkdown } from '@visuelconcept/wui-ai-kit/data/markdown.js';
 import { AI_MSG } from '@visuelconcept/wui-ai-kit/i18n.js';
 import '@visuelconcept/wui-ai-kit/ui/mf-ai-config-dialog.js';
@@ -57,6 +61,8 @@ import {
   applySitePatch,
   diffSites,
   isEmptyDiff,
+  type DiffEntry,
+  type DiffPart,
   type SiteDiff,
   type SitePatch
 } from '../data/site-patch.js';
@@ -65,6 +71,20 @@ import { MSG, diffSummaryMsg, localize, localizeDir } from '../i18n.js';
 
 const PROMPT_ROWS = 3;
 
+/** The parts of the diff, in the order the chips list them. */
+const DIFF_PARTS = [
+  'areas',
+  'assets',
+  'layers',
+  'routes',
+  'connections'
+] as const satisfies readonly (keyof SiteDiff)[];
+
+/** Everything added (or updated, or removed) across the whole diff, as one flat list. */
+function pick(diff: SiteDiff, change: keyof DiffPart): DiffEntry[] {
+  return DIFF_PARTS.flatMap((part) => diff[part][change]);
+}
+
 interface ChatMessage {
   role: 'user' | 'assistant' | 'error';
   text: string;
@@ -72,6 +92,8 @@ interface ChatMessage {
   patches?: SitePatch[];
   /** The MCP tools this answer used, with their arguments and results. */
   tools?: ToolCall[];
+  /** What this answer cost. Summed across the thread for the header total. */
+  usage?: AiUsage;
 }
 
 export class WuiGisAiAssistant extends LitElement {
@@ -152,12 +174,20 @@ export class WuiGisAiAssistant extends LitElement {
   }
 
   private renderPanel(): TemplateResult {
+    const spent = this.conversationUsage();
     return html`
       <div class="panel">
         <div class="panel-head">
           <ix-icon name="ai"></ix-icon
           ><span>${localizeDir(MSG.ai.panelTitle)}</span>
           <span class="spacer"></span>
+          ${
+            spent.rounds > 0
+              ? html`<span class="head-usage" title=${usageDetail(spent)}
+                  >${localize(AI_MSG.usageConversation).replace('%t', usageLabel(spent))}</span
+                >`
+              : nothing
+          }
           ${
             this.messages.length > 0
               ? html`<ix-icon-button
@@ -261,7 +291,26 @@ export class WuiGisAiAssistant extends LitElement {
       <mf-ai-tool-trace .calls=${message.tools ?? []}></mf-ai-tool-trace>
       <div class="md">${unsafeHTML(renderMarkdown(message.text))}</div>
       ${(message.patches ?? []).map((patch) => this.renderProposal(patch))}
+      ${message.usage && message.usage.rounds > 0
+        ? html`<div class="usage" title=${usageDetail(message.usage)}>
+            ${usageLabel(message.usage)}
+          </div>`
+        : nothing}
     </div>`;
+  }
+
+  /**
+   * Everything this thread has spent, so far.
+   *
+   * Per-answer totals answer "what did that question cost"; only the sum answers
+   * "what is this conversation costing me" — and on an agentic assistant the two are
+   * an order of magnitude apart after a handful of questions.
+   */
+  private conversationUsage(): AiUsage {
+    return this.messages.reduce(
+      (total, message) => (message.usage ? addUsage(total, message.usage) : total),
+      emptyUsage()
+    );
   }
 
   /**
@@ -274,7 +323,13 @@ export class WuiGisAiAssistant extends LitElement {
   private renderProposal(patch: SitePatch): TemplateResult {
     const merged = applySitePatch(this.site, patch, AREA_PALETTE);
     const diff = diffSites(this.site, merged.site);
-    const dropped = merged.report.droppedAssets + merged.report.droppedAreas;
+    // Connections included: a dangling end is the easiest thing for a model to emit, and
+    // the sanitiser drops it silently — without this the whole proposal would just fail to
+    // appear.
+    const dropped =
+      merged.report.droppedAssets +
+      merged.report.droppedAreas +
+      merged.report.droppedConnections;
     if (isEmptyDiff(diff)) {
       // A patch that changes nothing (already applied, or aimed at ids that do not
       // exist): saying so is more useful than a button that does nothing.
@@ -302,22 +357,28 @@ export class WuiGisAiAssistant extends LitElement {
     </div>`;
   }
 
-  /** The diff as three counted chips, each listing the objects behind it on hover. */
+  /**
+   * The diff as three counted chips, each listing the objects behind it on hover.
+   *
+   * Every part of the diff is counted, network included: a proposal that only draws lines
+   * would otherwise show an apply button with no numbers next to it — indistinguishable
+   * from one that does nothing.
+   */
   private renderDiff(diff: SiteDiff): TemplateResult {
     const parts = [
       {
         kind: 'add',
-        entries: [...diff.areas.added, ...diff.assets.added],
+        entries: pick(diff, 'added'),
         msg: MSG.ai.diffAdded
       },
       {
         kind: 'mod',
-        entries: [...diff.areas.updated, ...diff.assets.updated],
+        entries: pick(diff, 'updated'),
         msg: MSG.ai.diffUpdated
       },
       {
         kind: 'del',
-        entries: [...diff.areas.removed, ...diff.assets.removed],
+        entries: pick(diff, 'removed'),
         msg: MSG.ai.diffRemoved
       }
     ].filter((part) => part.entries.length > 0);
@@ -397,6 +458,7 @@ export class WuiGisAiAssistant extends LitElement {
           role: 'assistant',
           text,
           tools: answer.toolCalls,
+          usage: answer.usage,
           patches: answer.truncated ? [] : extractSitePatches(text)
         }
       ];
@@ -488,6 +550,17 @@ function assistantStyles(): ReturnType<typeof css> {
     .panel-head .spacer {
       flex: 1;
     }
+    /*
+     * The running cost of the whole thread, next to the buttons that act on it —
+     * including "clear", which is what resets it.
+     */
+    .head-usage {
+      font-weight: 400;
+      font-size: 0.7rem;
+      color: var(--theme-color-soft-text);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
     .conv {
       flex: 1;
       min-height: 0;
@@ -542,6 +615,13 @@ function assistantStyles(): ReturnType<typeof css> {
       background: color-mix(in srgb, var(--theme-color-alarm) 16%, transparent);
       border: 1px solid var(--theme-color-alarm);
       color: var(--theme-color-alarm);
+    }
+    /* What this one answer cost — under it, and quieter than it. */
+    .msg--assistant .usage {
+      margin-top: 0.375rem;
+      font-size: 0.6875rem;
+      color: var(--theme-color-soft-text);
+      font-variant-numeric: tabular-nums;
     }
     .md {
       white-space: normal;

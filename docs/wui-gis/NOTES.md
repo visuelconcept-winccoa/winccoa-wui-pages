@@ -492,6 +492,13 @@ round-trips): exploring a site through the MCP tools eats rounds quickly, and a 
 exhausts them still answers — the last round runs with the tools disabled, so the assistant
 concludes from what it collected instead of losing the whole prompt.
 
+The panel says what that costs, as it happens: the manager publishes a running token total
+on the progress channel, so the counter climbs round by round under the working indicator;
+each answer then keeps its own total underneath it, and the panel header carries the sum for
+the thread (cleared with the conversation). On an agentic assistant the input dwarfs the
+output — every round re-sends the whole conversation — and that is precisely what a user
+about to raise « Tours d'outils » should be able to see before doing it.
+
 **That sanitiser ceiling is a guard against a runaway answer, not a capacity claim.** Three
 real limits sit below it, and none of them moved when it was raised from 1000 — in the order
 they bite:
