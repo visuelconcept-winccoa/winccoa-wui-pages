@@ -61,14 +61,15 @@ idea was rejected for that reason). Role/group direction is role → groups
   list/discover clears the offline flag.
 - **Discover seeds INSTALLED modules only.** The static manifest aggregates
   every fragment of the build tree, but a deployment usually ships only a subset
-  of pages. `discover()` therefore restricts the catalog
-  to the page-bundle ids referenced by the deployed `menuconfig.json`
-  (fragment module id == page-bundle id, cf. INTEGRATION Step 2) so no
-  `AppSecurity_<module>` DP is created for a module that is not deployed.
-  When the menu is unreachable the restriction is skipped (fail open — dev
-  server, tests). wui-toolkit already limits the manifest to the selected and
-  headless modules; a headless module has no menu entry, so Discover leaves it
-  out (its roles stay open until it self-registers — it never does, having no page).
+  of pages. `discover()` therefore restricts the catalog to the deployed
+  modules: the page-bundle ids referenced by the deployed `menuconfig.json`
+  (fragment module id == page-bundle id, cf. INTEGRATION Step 2), plus every
+  module of wui-toolkit's deploy registry `wui-deploy.json` — the only list of a
+  HEADLESS module (backend only, no menu entry, its routes still enforce its
+  roles, and it never self-registers: it has no page). No `AppSecurity_<module>`
+  DP is created for a module that is not deployed. When neither the menu nor the
+  registry lists a module the restriction is skipped (fail open — tests, an
+  older deployment).
 - **Stale assignments** (role assigned but no longer declared) are badged, kept,
   and never auto-deleted.
 - **Audit**: every `.assignments` write logs one UPDATE row (old/new JSON) into

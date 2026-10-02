@@ -68,10 +68,11 @@ admin's **"Discover modules"** seeds modules from the aggregated
 every `wui build` / `wui pack` install from the selected and headless modules (and
 served by `wui dev`). With an older toolkit there is no asset: modules are then
 seeded by self-registration only, i.e. once their page is visited. Discover only seeds the
-modules whose page bundle is referenced by the deployed `menuconfig.json`
-(this is why the fragment's `module` id MUST equal the page-bundle id): a
-manifest entry whose page is not installed gets **no** `AppSecurity_<module>`
-DP. **A module built in another
+deployed modules — those whose page bundle is referenced by the deployed
+`menuconfig.json`, plus every module of wui-toolkit's deploy registry
+`wui-deploy.json`, headless ones included (this is why the fragment's `module` id
+MUST equal the page-bundle id): a manifest entry whose module is not deployed gets
+**no** `AppSecurity_<module>` DP. **A module built in another
 repository never touches app-security**: it ships its fragment + calls
 `registerModuleRoles`, and appears at runtime (first visit) or in Discover once
 the site that deploys it is rebuilt (its fragment then lands in the asset).
