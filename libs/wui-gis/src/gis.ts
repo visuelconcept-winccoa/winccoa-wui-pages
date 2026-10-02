@@ -66,6 +66,7 @@ import {
 import { AREA_PALETTE } from './gis/ai-context.js';
 import {
   applySitePatch,
+  patchedContent,
   replacePatchOf,
   type SitePatch
 } from './gis/data/site-patch.js';
@@ -839,15 +840,7 @@ export class WuiGis extends LitElement {
     }
     if (!this.editing) this.setEditing(true);
     this.clearSelection();
-    this.patchSite(target, {
-      name: draft.name,
-      description: draft.description,
-      category: draft.category,
-      areas: draft.areas,
-      assets: draft.assets,
-      center: draft.center,
-      zoom: draft.zoom
-    });
+    this.patchSite(target, patchedContent(draft));
     // Re-frame only when the patch itself asked to: on an additive patch the operator's
     // current view is deliberate, and yanking the map elsewhere loses their place.
     if (

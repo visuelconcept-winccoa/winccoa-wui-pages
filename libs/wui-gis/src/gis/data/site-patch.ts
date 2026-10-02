@@ -293,6 +293,32 @@ export function applySitePatch(
 }
 
 /**
+ * The fields an applied proposal hands to the open site: its CONTENT, and nothing of its
+ * identity — `id`, `dp`, `basemap`, `groupZoom` and `updatedAt` were configured by the
+ * operator and are not the model's business.
+ *
+ * It is a named function rather than an object literal at the call site because the call
+ * site is where it went wrong: `layers`, `routes` and `connections` arrived with the
+ * network and were left out of the hand-written list, so a proposal that only drew lines
+ * applied to nothing — and said nothing, since the merge itself had worked. Listing the
+ * fields HERE, next to the merge, puts them under the test that counts them.
+ */
+export function patchedContent(draft: Site): Partial<Site> {
+  return {
+    name: draft.name,
+    description: draft.description,
+    category: draft.category,
+    center: draft.center,
+    zoom: draft.zoom,
+    areas: draft.areas,
+    assets: draft.assets,
+    layers: draft.layers,
+    routes: draft.routes,
+    connections: draft.connections
+  };
+}
+
+/**
  * Apply `remove` then `upsert` to a list of existing objects, on raw values.
  *
  * Existing objects keep their position, which is what keeps their ids stable
