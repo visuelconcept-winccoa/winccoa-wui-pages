@@ -48,3 +48,31 @@ export function canEditFleet$(): Observable<boolean> {
     startWith(svc.canPublish === true)
   );
 }
+
+/**
+ * Current WinCC OA WRITE permission of the connected user (`dpSet`), as carried
+ * by the WebUI login token (`WuiUserService.canWrite`). `true` when the user
+ * service is unavailable (isolated dev), like {@link canEditFleet}.
+ *
+ * This is the right that gates writing a datapoint from the browser — e.g.
+ * acknowledging an alarm (`<dpe>:_alert_hdl.._ack`) or a command widget. A user
+ * without it gets "User is not permitted to use dpSet" from the runtime, so a UI
+ * should hide the affordance rather than let the write fail.
+ */
+export function canWriteDatapoints(): boolean {
+  const svc = userService();
+  return svc ? svc.canWrite === true : true;
+}
+
+/**
+ * Emits the write-permission flag, re-emitting when the user settings load so a
+ * view can settle once the token is known.
+ */
+export function canWriteDatapoints$(): Observable<boolean> {
+  const svc = userService();
+  if (!svc) return of(true);
+  return svc.user$.pipe(
+    map(() => svc.canWrite === true),
+    startWith(svc.canWrite === true)
+  );
+}

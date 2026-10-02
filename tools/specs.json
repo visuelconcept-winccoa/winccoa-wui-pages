@@ -255,18 +255,8 @@
     "page": "alarms",
     "name": "@visuelconcept/wui-alarms",
     "title": "Alarms",
-    "tier": 3,
-    "description": "Alarms page (/alarms) — the plant's alarm list, live (standing alarms via the runtime AlertService) or over an archived period (alert archive), with the unacknowledged counter, the P1-P4 severity bands as a filter, the EEMUA-191 flood histogram, the recurring bad actors, free-text search, click-to-sort headers, paging and acknowledge through POST /api/alarms/ack: the webserver writes <dpe>:_alert_hdl.._ack while IMPERSONATING the session user (setUserId), so the acknowledgement is recorded under the operator's name even in projects that do not grant WebUI users the dpSet right; the route is role-gated server-side and falls back to the browser dpSet when the backend module is absent. The whole view is the shared <wui-alarm-view> component of @visuelconcept/wui-alarms-core, embeddable in any page (the Machine Fleet machine dashboard shows a machine's alarms with it, scoped to its datapoints). The priority ranges (abbreviation, colour, threshold) are the project's own: edited in the page and stored as JSON in the Alarms_Config datapoint. No manager. Application Security roles 'view'/'acknowledge'/'configure' (open until groups are assigned).",
-    "backend": {
-      "mount": "/api/alarms",
-      "routeClass": "AlarmsRoute",
-      "routeFile": "alarmsRoute",
-      "srcFiles": [
-        "alarmsController.ts",
-        "alarmsRoute.ts",
-        "appSecurityGuard.ts"
-      ]
-    }
+    "tier": 1,
+    "description": "Alarms page (/alarms) — the plant's alarm list, live (standing alarms via the runtime AlertService) or over an archived period (alert archive), with the unacknowledged counter, the P1-P4 severity bands as a filter, the EEMUA-191 flood histogram, the recurring bad actors, free-text search, click-to-sort headers, paging and acknowledge through WinCC OA's own API (the browser's dpSet on <dpe>:_alert_hdl.._ack, as the logged-in user — recorded under the operator's name by WinCC OA itself); the acknowledge checkboxes and button are hidden when the user lacks the WinCC OA write permission. The whole view is the shared <wui-alarm-view> component of @visuelconcept/wui-alarms-core, embeddable in any page (the Machine Fleet machine dashboard shows a machine's alarms with it, scoped to its datapoints). The priority ranges (abbreviation, colour, threshold) are the project's own: edited in the page and stored as JSON in the Alarms_Config datapoint. No manager. Application Security roles 'view'/'acknowledge'/'configure' (open until groups are assigned)."
   },
   {
     "page": "agv-fleet",

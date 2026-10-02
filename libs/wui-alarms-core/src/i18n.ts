@@ -17,7 +17,10 @@
  */
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 
-export { localize, localizeDir } from '@wincc-oa/wui-i18n-shared/localize-multilang.js';
+export {
+  localize,
+  localizeDir
+} from '@wincc-oa/wui-i18n-shared/localize-multilang.js';
 import { localize } from '@wincc-oa/wui-i18n-shared/localize-multilang.js';
 
 /** Build a tri-lingual string (English / French / German). */
@@ -39,20 +42,31 @@ export const MSG = {
     live: ml('Live', 'Temps réel', 'Echtzeit'),
     updatedAt: ml('updated at', 'mis à jour à', 'aktualisiert um'),
     refresh: ml('Refresh', 'Rafraîchir', 'Aktualisieren'),
-    search: ml('Search a datapoint, a text, a class', 'Rechercher un datapoint, un texte, une classe', 'Datenpunkt, Text oder Klasse suchen'),
-    unackOnly: ml('Unacknowledged only', 'Non acquittées seulement', 'Nur unquittierte'),
+    search: ml(
+      'Search a datapoint, a text, a class',
+      'Rechercher un datapoint, un texte, une classe',
+      'Datenpunkt, Text oder Klasse suchen'
+    ),
+    unackOnly: ml(
+      'Unacknowledged only',
+      'Non acquittées seulement',
+      'Nur unquittierte'
+    ),
     ack: ml('Acknowledge', 'Acquitter', 'Quittieren'),
-    ackVisible: ml('Acknowledge the page', 'Acquitter la page', 'Seite quittieren'),
-    ackDenied: ml('Acknowledging is not granted to you.', 'L’acquittement ne vous est pas accordé.', 'Quittieren ist Ihnen nicht erlaubt.'),
+    ackVisible: ml(
+      'Acknowledge the page',
+      'Acquitter la page',
+      'Seite quittieren'
+    ),
+    ackDenied: ml(
+      'Acknowledging is not granted to you.',
+      'L’acquittement ne vous est pas accordé.',
+      'Quittieren ist Ihnen nicht erlaubt.'
+    ),
     ackFailed: ml(
       'Acknowledging failed — the write was refused',
       'L’acquittement a échoué — l’écriture a été refusée',
       'Quittieren fehlgeschlagen — der Schreibvorgang wurde abgelehnt'
-    ),
-    ackUnattributed: ml(
-      'Acknowledged, but recorded under the server identity — your user is unknown to the WinCC OA user directory.',
-      'Acquitté, mais enregistré sous l’identité du serveur — votre utilisateur est inconnu de l’annuaire WinCC OA.',
-      'Quittiert, aber unter der Server-Identität erfasst — Ihr Benutzer ist im WinCC-OA-Verzeichnis unbekannt.'
     ),
     ackNothing: ml(
       'Nothing to acknowledge in the selection.',
@@ -60,14 +74,26 @@ export const MSG = {
       'In der Auswahl gibt es nichts zu quittieren.'
     ),
     loading: ml('Loading…', 'Chargement…', 'Wird geladen…'),
-    loadFailed: ml('The alarms could not be read.', 'Les alarmes n’ont pas pu être lues.', 'Die Alarme konnten nicht gelesen werden.'),
-    noScope: ml('No datapoint is bound.', 'Aucun datapoint n’est associé.', 'Kein Datenpunkt zugeordnet.'),
+    loadFailed: ml(
+      'The alarms could not be read.',
+      'Les alarmes n’ont pas pu être lues.',
+      'Die Alarme konnten nicht gelesen werden.'
+    ),
+    noScope: ml(
+      'No datapoint is bound.',
+      'Aucun datapoint n’est associé.',
+      'Kein Datenpunkt zugeordnet.'
+    ),
     forbidden: ml(
       'This module is not granted to you.',
       'Ce module ne vous est pas accordé.',
       'Dieses Modul ist Ihnen nicht zugewiesen.'
     ),
-    truncated: ml('Archive truncated — narrow the period.', 'Archive tronquée — resserrez la période.', 'Archiv gekürzt — Zeitraum einschränken.')
+    truncated: ml(
+      'Archive truncated — narrow the period.',
+      'Archive tronquée — resserrez la période.',
+      'Archiv gekürzt — Zeitraum einschränken.'
+    )
   },
   counters: {
     unacknowledged: ml('Unacknowledged', 'Non acquittées', 'Unquittiert'),
@@ -86,7 +112,11 @@ export const MSG = {
   histogram: {
     window: ml('last 3 hours', '3 dernières heures', 'letzte 3 Stunden'),
     alarms: ml('alarms raised', 'alarmes apparues', 'aufgetretene Alarme'),
-    over: ml('above the operator-load ceiling', 'au-dessus du seuil de charge opérateur', 'über der Bedienerlastgrenze'),
+    over: ml(
+      'above the operator-load ceiling',
+      'au-dessus du seuil de charge opérateur',
+      'über der Bedienerlastgrenze'
+    ),
     eemua: ml(
       'EEMUA 191: beyond ten alarms in ten minutes, no operator keeps up.',
       'EEMUA 191 : au-delà de dix alarmes en dix minutes, aucun opérateur ne suit.',
@@ -136,7 +166,11 @@ export const MSG = {
   },
   ranges: {
     title: ml('Priority ranges', 'Plages de priorité', 'Prioritätsbereiche'),
-    open: ml('Configure the ranges', 'Configurer les plages', 'Bereiche konfigurieren'),
+    open: ml(
+      'Configure the ranges',
+      'Configurer les plages',
+      'Bereiche konfigurieren'
+    ),
     intro: ml(
       'A range groups the WinCC OA alert-class priorities of the project. Its abbreviation and its colour are what the list shows; alarms below the lowest range fall into it.',
       'Une plage regroupe les priorités des classes d’alarme WinCC OA du projet. Son abréviation et sa couleur sont ce qu’affiche la liste ; les alarmes sous la plage la plus basse y sont rattachées.',
@@ -150,15 +184,27 @@ export const MSG = {
     remove: ml('Remove', 'Supprimer', 'Entfernen'),
     save: ml('Save', 'Enregistrer', 'Speichern'),
     cancel: ml('Cancel', 'Annuler', 'Abbrechen'),
-    reset: ml('Restore the defaults', 'Rétablir les valeurs par défaut', 'Standardwerte wiederherstellen'),
+    reset: ml(
+      'Restore the defaults',
+      'Rétablir les valeurs par défaut',
+      'Standardwerte wiederherstellen'
+    ),
     saved: ml('Ranges saved.', 'Plages enregistrées.', 'Bereiche gespeichert.'),
-    saveFailed: ml('The ranges could not be saved.', 'Les plages n’ont pas pu être enregistrées.', 'Die Bereiche konnten nicht gespeichert werden.'),
+    saveFailed: ml(
+      'The ranges could not be saved.',
+      'Les plages n’ont pas pu être enregistrées.',
+      'Die Bereiche konnten nicht gespeichert werden.'
+    ),
     offline: ml(
       'Read-only configuration: the datapoint is unreachable, the defaults are in use.',
       'Configuration en lecture seule : le datapoint est inaccessible, les valeurs par défaut sont utilisées.',
       'Schreibgeschützte Konfiguration: Der Datenpunkt ist nicht erreichbar, es gelten die Standardwerte.'
     ),
-    empty: ml('No range — the defaults apply.', 'Aucune plage — les valeurs par défaut s’appliquent.', 'Kein Bereich — es gelten die Standardwerte.')
+    empty: ml(
+      'No range — the defaults apply.',
+      'Aucune plage — les valeurs par défaut s’appliquent.',
+      'Kein Bereich — es gelten die Standardwerte.'
+    )
   },
   period: {
     label: ml('Period', 'Période', 'Zeitraum'),
@@ -171,7 +217,11 @@ export const MSG = {
     custom: ml('Custom', 'Personnalisée', 'Benutzerdefiniert'),
     start: ml('Start', 'Début', 'Beginn'),
     end: ml('End', 'Fin', 'Ende'),
-    previous: ml('Previous period', 'Période précédente', 'Vorheriger Zeitraum'),
+    previous: ml(
+      'Previous period',
+      'Période précédente',
+      'Vorheriger Zeitraum'
+    ),
     next: ml('Next period', 'Période suivante', 'Nächster Zeitraum')
   }
 } as const;
@@ -185,39 +235,82 @@ export const MSG = {
  */
 export function perBucketMsg(bucketMs: number): string {
   const minutes = Math.round(bucketMs / 60_000);
-  if (minutes <= 0) return localize(ml('Alarms raised', 'Alarmes apparues', 'Aufgetretene Alarme'));
+  if (minutes <= 0)
+    return localize(
+      ml('Alarms raised', 'Alarmes apparues', 'Aufgetretene Alarme')
+    );
   if (minutes % (24 * 60) === 0) {
     const days = minutes / (24 * 60);
-    return localize(ml(`Alarms per ${days} d`, `Alarmes par ${days} j`, `Alarme pro ${days} T`));
+    return localize(
+      ml(
+        `Alarms per ${days} d`,
+        `Alarmes par ${days} j`,
+        `Alarme pro ${days} T`
+      )
+    );
   }
   if (minutes % 60 === 0) {
     const hours = minutes / 60;
-    return localize(ml(`Alarms per ${hours} h`, `Alarmes par ${hours} h`, `Alarme pro ${hours} Std.`));
+    return localize(
+      ml(
+        `Alarms per ${hours} h`,
+        `Alarmes par ${hours} h`,
+        `Alarme pro ${hours} Std.`
+      )
+    );
   }
-  return localize(ml(`Alarms per ${minutes} min`, `Alarmes par ${minutes} min`, `Alarme pro ${minutes} Min.`));
+  return localize(
+    ml(
+      `Alarms per ${minutes} min`,
+      `Alarmes par ${minutes} min`,
+      `Alarme pro ${minutes} Min.`
+    )
+  );
 }
 
 /** "last 6 hours" — the statistics window when it is not the default three. */
 export function lastHoursMsg(hours: number): string {
-  return localize(ml(`last ${hours} hours`, `${hours} dernières heures`, `letzte ${hours} Stunden`));
+  return localize(
+    ml(
+      `last ${hours} hours`,
+      `${hours} dernières heures`,
+      `letzte ${hours} Stunden`
+    )
+  );
 }
 
 /** "296 of 2,727" — what the filters kept out of the snapshot. */
 export function filteredOfTotalMsg(filtered: string, total: string): string {
-  return localize(ml(`${filtered} of ${total}`, `${filtered} sur ${total}`, `${filtered} von ${total}`));
+  return localize(
+    ml(
+      `${filtered} of ${total}`,
+      `${filtered} sur ${total}`,
+      `${filtered} von ${total}`
+    )
+  );
 }
 
 /** "1–25 of 296" — the pager's position. */
 export function pagerRangeMsg(range: string, total: string): string {
-  return localize(ml(`${range} of ${total}`, `${range} sur ${total}`, `${range} von ${total}`));
+  return localize(
+    ml(`${range} of ${total}`, `${range} sur ${total}`, `${range} von ${total}`)
+  );
 }
 
 /** "from <start> to <end>" — the resolved period, same wording as the fleet pages. */
 export function rangeLabelMsg(start: string, end: string): string {
-  return localize(ml(`from ${start} to ${end}`, `du ${start} au ${end}`, `von ${start} bis ${end}`));
+  return localize(
+    ml(
+      `from ${start} to ${end}`,
+      `du ${start} au ${end}`,
+      `von ${start} bis ${end}`
+    )
+  );
 }
 
 /** "12 selected" — how many rows an acknowledge would touch. */
 export function selectedMsg(count: number): string {
-  return localize(ml(`${count} selected`, `${count} sélectionnée(s)`, `${count} ausgewählt`));
+  return localize(
+    ml(`${count} selected`, `${count} sélectionnée(s)`, `${count} ausgewählt`)
+  );
 }
