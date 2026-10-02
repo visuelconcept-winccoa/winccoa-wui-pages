@@ -78,4 +78,51 @@ export function discoverPageLibs(libsDirectory = defaultLibsDirectory) {
   return pages;
 }
 
+/**
+ * Discover DASHBOARD WIDGETS shipped by page libs: `libs/wui-<page>/src/widgets/<widget>.ts`.
+ *
+ * A dashboard widget is a plain ES module the WinCC OA dashboard loads from a
+ * `/data/...` URL and that may only import shared-bundle specifiers — so a widget
+ * built on a repo kit (e.g. `@visuelconcept/wui-alarms-core`, absent from the
+ * import map) has to be BUNDLED. Each file found is emitted by the pages build as
+ * `<outDir>/widgets/<widget>.js`, which its `.widget.json` (kept under
+ * `oa-data/WebUI/widgets-v2/`) references as
+ * `"scripts": ["/data/dashboard-wc/widgets/<widget>"]`.
+ *
+ * @param {string} [libsDirectory] Absolute path to the workspace `libs/` directory.
+ * @returns {Record<string, string>} Map of `widgets/<widget>` → absolute source path.
+ */
+export function discoverWidgetLibs(libsDirectory = defaultLibsDirectory) {
+  /** @type {Record<string, string>} */
+  const widgets = {};
+
+  if (!fs.existsSync(libsDirectory)) {
+    return widgets;
+  }
+
+  for (const dirent of fs.readdirSync(libsDirectory, { withFileTypes: true })) {
+    if (!dirent.isDirectory() || !dirent.name.startsWith('wui-')) {
+      continue;
+    }
+    const widgetsDirectory = path.resolve(
+      libsDirectory,
+      dirent.name,
+      'src',
+      'widgets'
+    );
+    if (!fs.existsSync(widgetsDirectory)) {
+      continue;
+    }
+    for (const file of fs.readdirSync(widgetsDirectory)) {
+      if (!file.endsWith('.ts') || isTestOrMockFile(file)) {
+        continue;
+      }
+      const widget = path.basename(file, '.ts');
+      widgets[`widgets/${widget}`] = path.resolve(widgetsDirectory, file);
+    }
+  }
+
+  return widgets;
+}
+
 export const pageLibs = discoverPageLibs();

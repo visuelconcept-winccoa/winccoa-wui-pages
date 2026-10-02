@@ -20,13 +20,15 @@
 // What it does (all idempotent — safe to re-run after every re-scaffold):
 //   1. deploy tools/dev-wiring/{discover-page-libs,page-menu-merge-plugin,page-appsec-merge-plugin}.mjs
 //      -> <workspace>/apps/dashboard-wc/scripts/
-//   2. patch apps/dashboard-wc/vite.shared.ts       (merge discoverPageLibs() into standalonePages)
+//   2. patch apps/dashboard-wc/vite.shared.ts       (merge discoverPageLibs() + discoverWidgetLibs() into standalonePages,
+//                                                    serve /data/dashboard-wc/widgets/<w>.js from source in dev)
 //   3. patch apps/dashboard-wc/vite.config.ts       (add pageMenuMergePlugin + pageAppsecMergePlugin)
 //   4. patch apps/dashboard-wc/vite.config.pages.ts (add pageMenuMergePlugin + pageAppsecMergePlugin for the build:pages merges)
 //   5. patch tsconfig.base.json                     (paths @visuelconcept/wui-*/* -> libs/wui-*/src/*)
 //   6. patch libs/default-components/src/lib/webui-app-ix.ts (chromeless shell for Mosaïque tiles; embed flag read from the hash so the root redirect / SPA router can't strip it)
 //   7. patch libs/default-components/src/lib/route-generators/route-generator-utils.ts (loadModuleWithFallback: always try import(), only /error on real failure — fixes blank page on first nav)
-//   8. patch libs/default-components/src/lib/services/webui-ix-routes.service.ts (route action honors the loader's redirect instead of rendering a blank element)
+//   8. patch libs/default-components/src/lib/services/webui-ix-routes.service.ts (route action honors the loader's redirect, unless the component is already registered)
+//   9. patch apps/dashboard-wc/scripts/generate-shared-bundles-entries.mjs (keep standalone pages out of entry/wui.js: they are lazy route modules, a second define() sends the route to /error)
 //
 // Patches 6-8 are SHELL customizations re-integrated into the runtime scaffold
 // after each re-scaffold (same model as the menu fragments) — keep them here,
@@ -94,14 +96,31 @@ function patchFile(relativePath, isWired, edit) {
   changed += 1;
 }
 
-/** Replace `anchor` with `replacement`, erroring if the anchor is absent. */
+/** The same text with CRLF endings (scaffold files are not consistently LF). */
+const crlf = (text) => text.replaceAll(/\r?\n/g, '\r\n');
+
+/** True when `content` holds `anchor` under either line-ending convention. */
+function hasAnchor(content, anchor) {
+  return content.includes(anchor) || content.includes(crlf(anchor));
+}
+
+/**
+ * Replace `anchor` with `replacement`, erroring if the anchor is absent.
+ * Anchors are written LF here, but the scaffold is not consistently LF (a CRLF
+ * checkout, or an editor/prettier pass over an already-patched file, rewrites
+ * its endings), so match either form and insert the replacement with the
+ * endings that matched.
+ */
 function replaceAnchor(content, anchor, replacement, where) {
-  if (!content.includes(anchor)) {
-    throw new Error(
-      `anchor not found in ${where}:\n    ${anchor}\n  The runtime version likely changed it — wire it by hand (see DEVELOPMENT.md).`
-    );
+  if (content.includes(anchor)) {
+    return content.replace(anchor, replacement);
   }
-  return content.replace(anchor, replacement);
+  if (content.includes(crlf(anchor))) {
+    return content.replace(crlf(anchor), crlf(replacement));
+  }
+  throw new Error(
+    `anchor not found in ${where}:\n    ${anchor}\n  The runtime version likely changed it — wire it by hand (see DEVELOPMENT.md).`
+  );
 }
 
 // --- 1. deploy helper scripts -------------------------------------------------
@@ -157,6 +176,45 @@ function patchViteShared() {
         `export const standalonePages: Record<string, string> =\n  discoverStandalonePages();`,
         `export const standalonePages: Record<string, string> = {\n  ...discoverStandalonePages(),\n  ...discoverPageLibs()\n};`,
         'vite.shared.ts (standalonePages)'
+      );
+      return out;
+    }
+  );
+  patchViteSharedWidgets();
+}
+
+// --- 2b. vite.shared.ts — dashboard widgets built from page libs ---------------
+// `libs/wui-<page>/src/widgets/<widget>.ts` → `<outDir>/widgets/<widget>.js`
+// (discoverWidgetLibs in discover-page-libs.mjs). A separate, later patch so a
+// workspace wired before widgets existed is upgraded instead of skipped.
+function patchViteSharedWidgets() {
+  patchFile(
+    'apps/dashboard-wc/vite.shared.ts',
+    (c) => c.includes('discoverWidgetLibs()'),
+    (c) => {
+      let out = replaceAnchor(
+        c,
+        `import { discoverPageLibs } from './scripts/discover-page-libs.mjs';`,
+        `import { discoverPageLibs, discoverWidgetLibs } from './scripts/discover-page-libs.mjs';`,
+        'vite.shared.ts (widgets import)'
+      );
+      out = replaceAnchor(
+        out,
+        `  ...discoverPageLibs()\n};`,
+        `  ...discoverPageLibs(),\n` +
+          `  // Dashboard widgets built from page libs (\`libs/wui-<page>/src/widgets/*.ts\`),\n` +
+          `  // emitted as \`widgets/<widget>.js\` next to the pages — same externals, same\n` +
+          `  // import map, so a widget may reuse a repo kit the import map does not carry.\n` +
+          `  ...discoverWidgetLibs()\n};`,
+        'vite.shared.ts (widgets spread)'
+      );
+      // Dev server: serve /data/dashboard-wc/widgets/<w>.js from its TypeScript
+      // source too (the pages bypass, widened to both folders).
+      out = replaceAnchor(
+        out,
+        `        const match = /^\\/data\\/dashboard-wc\\/pages\\/([^/]+)\\.js\\?import/.exec(\n          url\n        );\n        if (!match) return;\n        const sourcePath = standalonePages[\`pages/\${match[1]}\`];`,
+        `        const match =\n          /^\\/data\\/dashboard-wc\\/(pages|widgets)\\/([^/]+)\\.js(?:\\?import)?/.exec(\n            url\n          );\n        if (!match) return;\n        const sourcePath = standalonePages[\`\${match[1]}/\${match[2]}\`];`,
+        'vite.shared.ts (widgets dev bypass)'
       );
       return out;
     }
@@ -485,17 +543,50 @@ function patchRouteModuleLoader() {
 // The page route action awaited loadModuleWithFallback but DISCARDED its return
 // value, then created the element regardless — so when the loader returned a
 // redirect (failed/skipped import) the action rendered an undefined element
-// (blank). Capture and return the redirect instead.
+// (blank). Capture and return the redirect instead — but NOT when the routed
+// component is already registered: a page module that ALSO ships inside the
+// eager shell bundle makes the lazy import() reject with a duplicate-define
+// NotSupportedError ("the name ... has already been used with this registry"),
+// and routing that to /error shows a bogus "503 Server Not Reachable" for a page
+// that renders perfectly. Step 9 removes that duplication at the source; this
+// guard keeps the shell resilient if it ever comes back.
 function patchRouteActionRedirect() {
+  const scaffoldCall = `        // Only import if module path is provided\n        if (modulePath) {\n          await loadModuleWithFallback(\n            commands,\n            modulePath,\n            () => import(/* @vite-ignore */ modulePath)\n          );\n        }`;
+  // Workspaces wired before the guard existed carry this intermediate form.
+  const unguardedCall = `        // Only import if module path is provided\n        if (modulePath) {\n          const redirect = await loadModuleWithFallback(\n            commands,\n            modulePath,\n            () => import(/* @vite-ignore */ modulePath)\n          );\n          // Honor the loader's redirect (don't fall through to a blank element).\n          if (redirect) return redirect;\n        }`;
+  const guardedCall = `        // Only import if module path is provided\n        if (modulePath) {\n          const redirect = await loadModuleWithFallback(\n            commands,\n            modulePath,\n            () => import(/* @vite-ignore */ modulePath)\n          );\n          // Honor the loader's redirect (don't fall through to a blank element),\n          // unless the component is already registered: a duplicate-define\n          // rejection means the element IS there, just defined by another\n          // bundle — rendering it beats redirecting to /error.\n          if (redirect && !customElements.get(componentTag)) return redirect;\n        }`;
+
   patchFile(
     'libs/default-components/src/lib/services/webui-ix-routes.service.ts',
-    (c) => c.includes('if (redirect) return redirect'),
+    (c) => c.includes('customElements.get(componentTag)'),
     (c) =>
       replaceAnchor(
         c,
-        `        // Only import if module path is provided\n        if (modulePath) {\n          await loadModuleWithFallback(\n            commands,\n            modulePath,\n            () => import(/* @vite-ignore */ modulePath)\n          );\n        }`,
-        `        // Only import if module path is provided\n        if (modulePath) {\n          const redirect = await loadModuleWithFallback(\n            commands,\n            modulePath,\n            () => import(/* @vite-ignore */ modulePath)\n          );\n          // Honor the loader's redirect (don't fall through to a blank element).\n          if (redirect) return redirect;\n        }`,
+        hasAnchor(c, unguardedCall) ? unguardedCall : scaffoldCall,
+        guardedCall,
         'webui-ix-routes.service.ts (honor loader redirect)'
+      )
+  );
+}
+
+// --- 9. generate-shared-bundles-entries.mjs (no page modules in entry/wui.js) --
+// autoDiscover on @wincc-oa/default-components walks its whole exports surface,
+// which includes src/lib/standalone-pages/ — so every scaffolded standalone page
+// got re-exported from export-wui-entry.ts and its custom element registered
+// EAGERLY in entry/wui.js. But standalone pages are LAZY route modules: the build
+// also emits each one as pages/<page>.js, which menuconfig imports on navigation.
+// The second define() then throws NotSupportedError and the route lands on /error
+// ("503 Server Not Reachable" — that was the diagnosis page). Filter them out.
+function patchSharedBundleStandalonePages() {
+  patchFile(
+    'apps/dashboard-wc/scripts/generate-shared-bundles-entries.mjs',
+    (c) => c.includes('standalone-pages'),
+    (c) =>
+      replaceAnchor(
+        c,
+        `        entries.push(entryPath);\n      }\n    }\n\n    return entries;`,
+        `        entries.push(entryPath);\n      }\n    }\n\n    // Standalone pages are LAZY route modules — the build emits each one as\n    // its own pages/<page>.js and menuconfig imports it on navigation.\n    // Re-exporting them here would ALSO register their custom element in the\n    // eager shell bundle, so the lazy import() rejects with a duplicate-define\n    // NotSupportedError and the route falls through to /error. Keep them out.\n    return entries.filter((entry) => !entry.includes('/standalone-pages/'));`,
+        'generate-shared-bundles-entries.mjs (exclude standalone pages)'
       )
   );
 }
@@ -516,6 +607,7 @@ try {
   patchWebuiAppEmbed();
   patchRouteModuleLoader();
   patchRouteActionRedirect();
+  patchSharedBundleStandalonePages();
 } catch (error) {
   console.error(`\n✗ ${error.message}`);
   process.exit(1);

@@ -170,9 +170,25 @@ function discoverModules() {
       /* no/invalid fragment — keep id */
     }
     const spec = specByPage.get(id);
-    const hasBackend = Boolean(spec?.backend?.srcFiles?.length);
+    // A page "has a backend" if ANY of the three kinds is declared. Python managers
+    // are the reason this is not just `srcFiles`: they deploy into <project>/python/
+    // with no webserver module and no entry in `managers`, so testing srcFiles alone
+    // silently dropped them from the backend step — the page shipped, its manager
+    // did not.
+    const pythonManagers = spec?.backend?.pythonManagers ?? [];
     const managers = spec?.managers ?? [];
-    out.push({ id, lib: dirent.name, title, route, hasBackend, mount: spec?.backend?.mount, managers, backend: spec?.backend });
+    const hasBackend = Boolean(spec?.backend?.srcFiles?.length) || pythonManagers.length > 0;
+    out.push({
+      id,
+      lib: dirent.name,
+      title,
+      route,
+      hasBackend,
+      mount: spec?.backend?.mount,
+      managers,
+      pythonManagers,
+      backend: spec?.backend
+    });
   }
   return out.sort((a, b) => a.id.localeCompare(b.id));
 }
@@ -299,7 +315,8 @@ async function promptModules(rl, catalog, project) {
     console.log(`\n${c('bold', 'Modules disponibles')} ${c('dim', '([x] = inclus)')}`);
     catalog.forEach((m, i) => {
       const mark = selected.has(m.id) ? c('green', '[x]') : '[ ]';
-      const be = m.hasBackend || m.managers.length ? c('dim', `  · backend/managers: ${m.mount || '-'} ${m.managers.join(',')}`) : '';
+      const beParts = [...m.managers, ...m.pythonManagers.map((s) => `${s} (python)`)];
+      const be = m.hasBackend || beParts.length ? c('dim', `  · backend/managers: ${m.mount || '-'} ${beParts.join(',')}`) : '';
       console.log(`  ${mark} ${String(i + 1).padStart(2)}. ${m.id.padEnd(28)} ${c('dim', m.title)}${be}`);
     });
     console.log(c('dim', "  fleet-core est une lib partagée (bundlée automatiquement, pas un module sélectionnable)."));
@@ -665,7 +682,7 @@ async function main() {
     const startPage = await promptStartPage(rl, chosen);
     const aiAssistant = await promptAiAssistant(rl);
     const dwcDir = path.join(project, 'data', 'dashboard-wc');
-    const backends = chosen.filter((m) => m.hasBackend || m.managers.length);
+    const backends = chosen.filter((m) => m.hasBackend || m.managers.length || m.pythonManagers.length);
 
     // summary
     console.log(`\n${c('bold', 'Récapitulatif')}`);
@@ -677,7 +694,7 @@ async function main() {
     console.log(`  Assistant IA: ${aiAssistant ? 'activé' : 'désactivé (défaut)'}`);
     console.log(`  Élagage     : ${opts.prune ? 'oui, défaut (bundles non sélectionnés supprimés)' : 'non, --no-prune (menu filtré seulement)'}`);
     console.log(`  Webserver   : ${opts.installWebserver ? `installation "${opts.wsName}"${opts.winccoa ? ` (WinCC OA: ${opts.winccoa})` : ''}` : 'supposé déjà installé'}`);
-    console.log(`  Backends    : ${opts.noBackend ? 'ignorés' : (backends.length ? backends.map((m) => `${m.id}[${[m.mount, ...m.managers].filter(Boolean).join(' ')}]`).join(', ') : 'aucun')}`);
+    console.log(`  Backends    : ${opts.noBackend ? 'ignorés' : (backends.length ? backends.map((m) => `${m.id}[${[m.mount, ...m.managers, ...m.pythonManagers].filter(Boolean).join(' ')}]`).join(', ') : 'aucun')}`);
 
     if (!fs.existsSync(path.join(dwcDir, 'index.html')) && !opts.full) {
       console.log(c('yellow', `\n  ! Le shell ne semble pas déployé (${path.join(dwcDir, 'index.html')} absent).`));
@@ -737,14 +754,24 @@ async function main() {
 
     // report
     const managers = [...new Set(backends.flatMap((m) => m.managers))];
+    const pythonManagers = [...new Set(backends.flatMap((m) => m.pythonManagers))];
     console.log(c('green', '\n✓ Déploiement terminé.'));
-    if (managers.length) {
+    if (managers.length || pythonManagers.length) {
       console.log(c('yellow', `\nÀ FAIRE dans la console WinCC OA / pmon (${project}) — OBLIGATOIRE, rien n'est redémarré automatiquement :`));
       console.log(`  • redémarrer le manager "${opts.wsName}" pour recharger les modules webserver,`);
+    }
+    if (managers.length) {
       console.log(`  • redémarrer (ou démarrer) CHAQUE manager déployé : ${managers.join(', ')}.`);
       console.log(c('yellow', "    Un manager laissé en place continue d'exécuter le code chargé à son démarrage :"));
       console.log(c('yellow', '    pmon l\'affiche "running" mais son service MSA vRPC reste sur l\'ancien contrat, et'));
       console.log(c('yellow', '    l\'API du webserver répond 502 "Service is not available" tant qu\'il n\'est pas relancé.'));
+    }
+    if (pythonManagers.length) {
+      console.log(`  • démarrer (ou redémarrer) le(s) manager(s) PYTHON : ${pythonManagers.join(', ')}.`);
+      console.log(c('yellow', "    Un manager Python exige CPython SUR LA MACHINE (le composant PythonEnv ne fournit que"));
+      console.log(c('yellow', "    les paquets WinCC OA) : vérifiez la version publiée pour cet OS, et placez l'interpréteur"));
+      console.log(c('yellow', "    dans <projet>/bin/ si celui trouvé en premier dans le PATH n'est pas le bon."));
+      console.log(c('yellow', '    Journal de démarrage : <projet>/log/PVSS_II.log puis <projet>/log/python<num>.log.'));
     }
     console.log(c('dim', '\nDans le navigateur : un simple F5 suffit — index.html a un Last-Modified plus récent, le service worker purge ses caches et recharge la nouvelle version.'));
   } finally {
