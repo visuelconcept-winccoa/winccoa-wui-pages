@@ -26,31 +26,31 @@ source header and their entry in [`tools/specs.json`](./tools/specs.json), the
 catalog the deploy script reads. A visual tour of the pages is in
 [docs/MANUAL.md](./docs/MANUAL.md).
 
-| Module | Route | What it does | Backend |
-| --- | --- | --- | --- |
-| `wui-agv-fleet` | `/agv-fleet` | Read-only supervision of an AGV fleet: KPI strip, status list, warehouse floor plan with live position and heading, detail card per vehicle (one `AGV_Vehicle` DP each) | `agvSim` mgr (demo fleet) |
-| `wui-alarms` | `/alarms` | The plant's alarm list, live or over an archived period: unacknowledged counter, project-configurable priority ranges as a filter, EEMUA-191 flood histogram, bad actors, search, paging, acknowledge | `/api/alarms` |
-| `wui-ampere` | `/ampere` | Single-line (mono-filaire) electrical distribution diagrams — switchboards, breakers, busbars, transformers, railway electrification — with in-place edit, IEC 60617 symbols and live wire energisation | `ampereSim` mgr (demo network) |
-| `wui-app-security` | `/app-security` | Map each module's declared roles to WinCC OA user groups (one `AppSecurity_<module>` DP per module). Open by default: a role with no group stays open to every connected user | `/api/app-security` |
-| `wui-audit-trail` | `/audit-trail` | Pivot table of a datapoint's NGA-archived value history (configurable period, columns, refresh) | — |
-| `wui-camera-streams` | `/camera-streams` | View RTSP IP cameras in-browser over a WebSocket relay (JSMpeg, no plugin) | `/api/rtsp` + `rtspProxy` mgr |
-| `wui-eng-studio` | `/eng-studio` | Engineering studio: model DP types, datapoints and their configs from communicating equipment (address books from an OPC UA browse / SimaticML / Control Expert export, roles → configs, live diff, transactional check-in) | `/api/eng` |
-| `wui-fleet-closures` | `/fleet-closures` | Manage fleet non-working days (year / atelier / machine filters, JSON import-export) | — |
-| `wui-fleet-kpi-analysis` | `/fleet-kpi` | Per-machine availability & TRS charts, computed live by a manager over opening time minus closures | `kpiCalc` mgr |
-| `wui-fleet-stop-analysis` | `/fleet-stops` | Downtime decomposition per stop cause (table + ECharts views) | — |
-| `wui-gis` | `/gis`, `/gis/:siteid` | Map-based monitoring on MapLibre GL over OpenStreetMap: geo-located assets bound to datapoints, live values and alarm colour on the marker, areas as polygons, decluttering when zoomed out, in-place edit, GeoJSON interop | — |
+| Module                    | Route                  | What it does                                                                                                                                                                                                                                                | Backend                                                                                                           |
+| ------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `wui-agv-fleet`           | `/agv-fleet`           | Read-only supervision of an AGV fleet: KPI strip, status list, warehouse floor plan with live position and heading, detail card per vehicle (one `AGV_Vehicle` DP each)                                                                                     | `agvSim` mgr (demo fleet)                                                                                         |
+| `wui-alarms`              | `/alarms`              | The plant's alarm list, live or over an archived period: unacknowledged counter, project-configurable priority ranges as a filter, EEMUA-191 flood histogram, bad actors, search, paging, acknowledge (WinCC OA's own API, hidden without write permission) | —                                                                                                                 |
+| `wui-ampere`              | `/ampere`              | Single-line (mono-filaire) electrical distribution diagrams — switchboards, breakers, busbars, transformers, railway electrification — with in-place edit, IEC 60617 symbols and live wire energisation                                                     | `ampereSim` mgr (demo network)                                                                                    |
+| `wui-app-security`        | `/app-security`        | Map each module's declared roles to WinCC OA user groups (one `AppSecurity_<module>` DP per module). Open by default: a role with no group stays open to every connected user                                                                               | `/api/app-security`                                                                                               |
+| `wui-audit-trail`         | `/audit-trail`         | Pivot table of a datapoint's NGA-archived value history (configurable period, columns, refresh)                                                                                                                                                             | —                                                                                                                 |
+| `wui-camera-streams`      | `/camera-streams`      | View RTSP IP cameras in-browser over a WebSocket relay (JSMpeg, no plugin)                                                                                                                                                                                  | `/api/rtsp` + `rtspProxy` mgr                                                                                     |
+| `wui-eng-studio`          | `/eng-studio`          | Engineering studio: model DP types, datapoints and their configs from communicating equipment (address books from an OPC UA browse / SimaticML / Control Expert export, roles → configs, live diff, transactional check-in)                                 | `/api/eng`                                                                                                        |
+| `wui-fleet-closures`      | `/fleet-closures`      | Manage fleet non-working days (year / atelier / machine filters, JSON import-export)                                                                                                                                                                        | —                                                                                                                 |
+| `wui-fleet-kpi-analysis`  | `/fleet-kpi`           | Per-machine availability & TRS charts, computed live by a manager over opening time minus closures                                                                                                                                                          | `kpiCalc` mgr                                                                                                     |
+| `wui-fleet-stop-analysis` | `/fleet-stops`         | Downtime decomposition per stop cause (table + ECharts views)                                                                                                                                                                                               | —                                                                                                                 |
+| `wui-gis`                 | `/gis`, `/gis/:siteid` | Map-based monitoring on MapLibre GL over OpenStreetMap: geo-located assets bound to datapoints, live values and alarm colour on the marker, areas as polygons, decluttering when zoomed out, in-place edit, GeoJSON interop                                 | —                                                                                                                 |
 | `wui-gis-plants`          | `/gis-plants`          | Operating parameters of the simulated power plants (`GisSim_*`), one card per plant ranked live by output (alarms not shown yet)                                                                                                                      | `gisSim` mgr of `wui-gis`                                                                                         |
-| `wui-machine-fleet-3d` | `/fleet-3d` | Three.js 3D fleet view with per-machine state/KPI bubbles, contextual Gantt/Pareto, and AI assistant (hub page) | `/api/ai` + `machineSim`, `kpiCalc`, `aiAssistant` mgrs (assistant MCP tools via an optional external MCP server) |
-| `wui-mosaic` | `/mosaic` | Display-wall page embedding other dashboard views as chromeless, same-origin iframes | — |
-| `wui-para` | `/para` | Datapoint-parametrization page | `/api/para` |
-| `wui-process-monitor` | `/process-monitor` | pmon manager console, one tab per connected server: status, start/stop/restart, pmon configuration entries, project ZIP upload and deploy across servers | `/api/process-monitor` + `processMonitor` mgr |
-| `wui-production-orders` | `/production-orders` | Production orders CRUD + status workflow + ECharts Gantt + server-side KPI | `productionOrdersKpi` mgr |
-| `wui-remote-vnc` | `/remote-vnc` | Manage VNC connections and open them in-browser via bundled noVNC over a WebSocket relay | `/api/vnc` + `vncProxy` mgr |
-| `wui-report-builder` | `/report-builder` | Build report instances from templates (data filling, archive aggregations, multi-level signing, print) | — |
-| `wui-report-templates` | `/report-templates` | Author report templates (parameterised sections, multi-level signature workflow) | — |
-| `wui-tag-importer` | `/tag-importer` | Import device tags into DP types + datapoints from an OPC UA NodeSet2 file or a live server browse (repeated instances of one ObjectType mutualised into a single DP type) | `/api/tag-importer` |
-| `wui-thermal-reports` | `/thermal-reports` | Per-charge heat-treatment reports (recipe stages, furnace curves vs. tolerance bands) | — |
-| `wui-diagnosis` | `/status` | Read-only system health: time, licences, OA version, API heartbeat, browser, service worker, memory and disk | — |
+| `wui-machine-fleet-3d`    | `/fleet-3d`            | Three.js 3D fleet view with per-machine state/KPI bubbles, contextual Gantt/Pareto, and AI assistant (hub page)                                                                                                                                             | `/api/ai` + `machineSim`, `kpiCalc`, `aiAssistant` mgrs (assistant MCP tools via an optional external MCP server) |
+| `wui-mosaic`              | `/mosaic`              | Display-wall page embedding other dashboard views as chromeless, same-origin iframes                                                                                                                                                                        | —                                                                                                                 |
+| `wui-para`                | `/para`                | Datapoint-parametrization page                                                                                                                                                                                                                              | `/api/para`                                                                                                       |
+| `wui-process-monitor`     | `/process-monitor`     | pmon manager console, one tab per connected server: status, start/stop/restart, pmon configuration entries, project ZIP upload and deploy across servers                                                                                                    | `/api/process-monitor` + `processMonitor` mgr                                                                     |
+| `wui-production-orders`   | `/production-orders`   | Production orders CRUD + status workflow + ECharts Gantt + server-side KPI                                                                                                                                                                                  | `productionOrdersKpi` mgr                                                                                         |
+| `wui-remote-vnc`          | `/remote-vnc`          | Manage VNC connections and open them in-browser via bundled noVNC over a WebSocket relay                                                                                                                                                                    | `/api/vnc` + `vncProxy` mgr                                                                                       |
+| `wui-report-builder`      | `/report-builder`      | Build report instances from templates (data filling, archive aggregations, multi-level signing, print)                                                                                                                                                      | —                                                                                                                 |
+| `wui-report-templates`    | `/report-templates`    | Author report templates (parameterised sections, multi-level signature workflow)                                                                                                                                                                            | —                                                                                                                 |
+| `wui-tag-importer`        | `/tag-importer`        | Import device tags into DP types + datapoints from an OPC UA NodeSet2 file or a live server browse (repeated instances of one ObjectType mutualised into a single DP type)                                                                                  | `/api/tag-importer`                                                                                               |
+| `wui-thermal-reports`     | `/thermal-reports`     | Per-charge heat-treatment reports (recipe stages, furnace curves vs. tolerance bands)                                                                                                                                                                       | —                                                                                                                 |
+| `wui-diagnosis`           | `/status`              | Read-only system health: time, licences, OA version, API heartbeat, browser, service worker, memory and disk                                                                                                                                                | —                                                                                                                 |
 
 The table is ordered alphabetically; `wui-diagnosis` sits last because its route
 (`/status`) is the shell's own diagnostics entry rather than a page of its own name.
@@ -69,13 +69,13 @@ The table is ordered alphabetically; `wui-diagnosis` sits last because its route
 own: `tools/vendor-page.mjs` walks each page's import graph and copies what it uses
 into that page's `_vendor/`, so a page stays one self-contained bundle.
 
-| Kit | What it holds | Used by |
-| --- | --- | --- |
-| `wui-kit` | Datapoint JSON stores (`DpJsonStore` / `DpSingleJsonStore`), the GxP audit-trail writer, the `hasRole$` role gate, shared dialog styles and the datapoint-name input | every page that persists JSON in a DP or gates on a role |
-| `wui-alarms-core` | The alarm domain (Alert→Alarm mapping, priority ranges, query, EEMUA statistics) **and** `<wui-alarm-view>`, the embeddable list | `wui-alarms`, and any page showing scoped alarms (`wui-machine-fleet-3d`) |
-| `wui-fleet-core` | The atelier / machine / stop-cause model, the `FleetStore`, the stop-cause analysis engine and the closures model | the four fleet pages |
-| `wui-eng-core` | Pure, WinCC-OA-free engineering domain: device and address-book model, check-in diff and plan applier, config write builders, protocol address builders, SimaticML / CSV / NodeSet2 readers | `wui-eng-studio` |
-| `wui-ai-kit` | The AI prompt bar and its config dialog, the `/api/ai/chat` client store, live progress and a dependency-free markdown renderer | pages embedding an assistant (`wui-machine-fleet-3d`, `wui-gis`, `wui-ampere`, `wui-para`) |
+| Kit               | What it holds                                                                                                                                                                               | Used by                                                                                    |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `wui-kit`         | Datapoint JSON stores (`DpJsonStore` / `DpSingleJsonStore`), the GxP audit-trail writer, the `hasRole$` role gate, shared dialog styles and the datapoint-name input                        | every page that persists JSON in a DP or gates on a role                                   |
+| `wui-alarms-core` | The alarm domain (Alert→Alarm mapping, priority ranges, query, EEMUA statistics) **and** `<wui-alarm-view>`, the embeddable list                                                            | `wui-alarms`, and any page showing scoped alarms (`wui-machine-fleet-3d`)                  |
+| `wui-fleet-core`  | The atelier / machine / stop-cause model, the `FleetStore`, the stop-cause analysis engine and the closures model                                                                           | the four fleet pages                                                                       |
+| `wui-eng-core`    | Pure, WinCC-OA-free engineering domain: device and address-book model, check-in diff and plan applier, config write builders, protocol address builders, SimaticML / CSV / NodeSet2 readers | `wui-eng-studio`                                                                           |
+| `wui-ai-kit`      | The AI prompt bar and its config dialog, the `/api/ai/chat` client store, live progress and a dependency-free markdown renderer                                                             | pages embedding an assistant (`wui-machine-fleet-3d`, `wui-gis`, `wui-ampere`, `wui-para`) |
 
 ## Getting Started — deploy to a WinCC OA project
 
@@ -117,6 +117,7 @@ Build + deploy the shell **into the project**:
 # Linux / macOS (bash)
 OUT_DIR=<project>/data/dashboard-wc npm run build
 ```
+
 ```powershell
 # Windows (PowerShell)
 $env:OUT_DIR="<project>\data\dashboard-wc"; npm run build
@@ -185,21 +186,21 @@ and deploys the **backend modules + managers** of the selected pages (via
 `deploy-backend.mjs`; webserver module descriptors are generated from
 `tools/specs.json`).
 
-| Option | Effect |
-|---|---|
-| `--modules a,b,c` | pages to include (otherwise interactive selection) |
-| `--full` | full rebuild (shell + shared bundles + app + pages) — **fresh** project |
-| `--install-webserver` [`--winccoa <path>`] | install the customer-webserver first (fresh project) |
-| `--start-page <route\|id>` | landing page (redirect of `/`); default `/dashboard` |
-| `--ai-assistant` | enable the AI assistant in the pages (default **OFF**) |
-| `--no-prune` | keep the non-selected bundles (menu-only filtering); by default they are removed |
-| `--yes` | no confirmation (non-interactive) |
+| Option                                     | Effect                                                                           |
+| ------------------------------------------ | -------------------------------------------------------------------------------- |
+| `--modules a,b,c`                          | pages to include (otherwise interactive selection)                               |
+| `--full`                                   | full rebuild (shell + shared bundles + app + pages) — **fresh** project          |
+| `--install-webserver` [`--winccoa <path>`] | install the customer-webserver first (fresh project)                             |
+| `--start-page <route\|id>`                 | landing page (redirect of `/`); default `/dashboard`                             |
+| `--ai-assistant`                           | enable the AI assistant in the pages (default **OFF**)                           |
+| `--no-prune`                               | keep the non-selected bundles (menu-only filtering); by default they are removed |
+| `--yes`                                    | no confirmation (non-interactive)                                                |
 
 Fresh project in one command:
 `node tools/scripts/deploy-release.mjs --project <p> --full --install-webserver`.
 The script **never restarts** the managers/webserver — it prints what to
 restart. Then do the **Clear site data + reload** in the browser
-(see *After install* below).
+(see _After install_ below).
 
 ### After install (mandatory)
 
@@ -263,4 +264,3 @@ contact **contact@visuelconcept.com**.
 > `@etm-professional-control/*`, …) likewise keep their respective licenses. Running
 > the pages requires a valid WinCC OA base package and UI license as described under
 > [Requirements](#0-wincc-oa-project-base).
-
