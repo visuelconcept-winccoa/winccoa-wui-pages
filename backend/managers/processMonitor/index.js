@@ -32,6 +32,9 @@
  * Register in config/progs:
  *   node | always | 30 | 3 | 5 |processMonitor/index.js
  *
+ * MSA service name: `ProcessMonitor_<hostname>` — one registered interface per
+ * computer, so the manager can run on every pmon node at the same time.
+ *
  * vRPC methods (each: Variant<string JSON> -> Variant<string JSON>):
  *   ListManagers()                          -> { ok, instances: [{system,hostname,updated,managers,dp}] }
  *   ControlManager({systemName,action,index}) -> { ok, action, index, system, error? }
@@ -54,7 +57,14 @@ const { PmonClient } = require('./pmon-client.js');
 
 const winccoa = new WinccoaManager();
 
-const SERVICE_NAME = 'ProcessMonitor';
+// MSA vRPC service name — PER HOST. This manager runs on EVERY pmon node, and a
+// vRPC service name is unique across the system: a fixed shared name makes the
+// second node's registration fail ("service ProcessMonitor already running"), so
+// only one computer would ever be reachable. Suffixing the sanitized hostname
+// gives one registered interface per computer. The webserver targets the service
+// of its OWN host (see processMonitorController), which is also the aggregator:
+// it reads every node DP and routes control/deploy to the other nodes' agents.
+const SERVICE_NAME = `ProcessMonitor_${dpHost(os.hostname())}`;
 const ELEM = { Struct: 1, String: 25 };
 /** Node DP type — ONE datapoint per pmon node (per computer), aggregated by dpNames. */
 const NODE_TYPE = 'ProcessMonitor_Node';

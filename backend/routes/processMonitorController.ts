@@ -5,16 +5,20 @@
 // ProcessMonitorController
 // -----------------------------------------------------------------------------
 // HTTP -> MSA (Manager Service API) vRPC bridge for the "Process Monitor" page.
-// Forwards to the "ProcessMonitor" service hosted by the processMonitor JS
-// manager: list/control pmon managers, add/remove pmon configuration entries,
-// restart-all, and deploy an uploaded project ZIP (chunked upload assembled to
-// a temp file, then handed to the manager which purges selected folders,
-// extracts via 7-Zip, runs config.env and optionally restarts all). DPL import
-// is intentionally NOT handled here.
+// Forwards to the per-host "ProcessMonitor_<hostname>" service hosted by the
+// processMonitor JS manager: list/control pmon managers, add/remove pmon
+// configuration entries, restart-all, and deploy an uploaded project ZIP (chunked
+// upload assembled to a temp file, then handed to the manager which purges
+// selected folders, extracts via 7-Zip, runs config.env and optionally restarts
+// all). DPL import is intentionally NOT handled here.
 //
 // winccoa-manager (the MSA `Vrpc` namespace) is supplied by the WinCC OA node
 // bootstrap at runtime; loaded via a guarded require so only /api/process-monitor
 // degrades (503) if it is ever unavailable.
+//
+// The manager runs on EVERY pmon node, so each one registers its own interface
+// (`ProcessMonitor_<hostname>`) and this bridge binds to the one on its OWN
+// computer — see SERVICE_NAMES for why that is the right target.
 //
 // The service lives in ANOTHER process, so its availability is a first-class
 // concern here: after a deploy that only restarts the webserver, the manager keeps
@@ -25,6 +29,7 @@
 // -----------------------------------------------------------------------------
 
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { Request, Response } from 'ultimate-express';
@@ -38,15 +43,57 @@ try {
   console.warn('ProcessMonitorController: winccoa-manager Vrpc unavailable:', (error as Error)?.message ?? error);
 }
 
-const SERVICE_NAME = 'ProcessMonitor';
+/** Sanitize a hostname the way the manager's `dpHost` does ([A-Za-z0-9_]). */
+function hostFragment(host: string | undefined): string {
+  return String(host || 'unknown').replaceAll(/[^A-Za-z0-9_]/g, '_');
+}
+
+/**
+ * Candidate service names, most specific first.
+ *
+ * A vRPC service name is unique across the system, and the processMonitor manager
+ * runs on EVERY pmon node — so it registers itself as `ProcessMonitor_<hostname>`
+ * (one interface per computer) instead of a shared name whose second registration
+ * would fail. This bridge targets the manager of its OWN computer: the deploy ZIP
+ * is assembled in THIS host's `<project>/temp` and handed over as a plain path, so
+ * only a co-located manager can read it — and that manager is also the aggregator
+ * (it reads every node DP and routes control/deploy to the other nodes' agents).
+ *
+ * The bare legacy name stays as a fallback so a webserver deployed ahead of the
+ * manager (or next to a manager pinned to the old build) still finds the service.
+ */
+const SERVICE_NAMES = [`ProcessMonitor_${hostFragment(os.hostname())}`, 'ProcessMonitor'];
 
 /** Cached vRPC stub to the ProcessMonitor service (recreated on error). */
 let stubPromise: Promise<any> | null = null;
+/** Name the cached stub bound to — reported by /health, so the operator sees it. */
+let serviceName = SERVICE_NAMES[0];
+
 function getStub(): Promise<any> {
   if (!stubPromise) {
-    stubPromise = Vrpc.Stub.createAndInitialize(SERVICE_NAME, new Vrpc.StubOptions());
+    stubPromise = resolveStub();
   }
   return stubPromise as Promise<any>;
+}
+
+/**
+ * Bind to the FIRST reachable candidate name. `createAndInitialize` rejects when
+ * no service answers under that name, so trying them in order costs one failed
+ * handshake at most and keeps the per-host name authoritative. All the attempts
+ * are reported when none answers — the name that is missing is the diagnosis.
+ */
+async function resolveStub(): Promise<any> {
+  const failures: string[] = [];
+  for (const name of SERVICE_NAMES) {
+    try {
+      const stub = await Vrpc.Stub.createAndInitialize(name, new Vrpc.StubOptions());
+      serviceName = name;
+      return stub;
+    } catch (error) {
+      failures.push(`"${name}": ${errorText(error)}`);
+    }
+  }
+  throw new Error(failures.join(' · '));
 }
 
 /**
@@ -127,7 +174,7 @@ export class ProcessMonitorController {
       ok: probe.available,
       service: 'process-monitor',
       vrpc: Vrpc != null,
-      serviceName: SERVICE_NAME,
+      serviceName,
       serviceAvailable: probe.available,
       serviceStatus: probe.status,
       ...(probe.error ? { error: probe.error } : {})
@@ -284,7 +331,7 @@ export class ProcessMonitorController {
       if (typeof status !== 'number' || typeof ready !== 'number') return { available: true, status: 'Ready' };
       const name = String(Vrpc.ServiceStatus[status] ?? status);
       if (status === ready) return { available: true, status: name };
-      return { available: false, status: name, error: `service "${SERVICE_NAME}" ${name}` };
+      return { available: false, status: name, error: `service "${serviceName}" ${name}` };
     } catch (error) {
       dropStub();
       return { available: false, status: 'Unavailable', error: errorText(error) };
