@@ -15,7 +15,7 @@ target's own import map** (bundle = correct version).
 
 ## Prerequisites
 1. A **wui-toolkit site** for the project (`<project>/web`) whose `prod` target was equipped once with `npx wui init target prod`.
-2. No backend or manager required, no npm dependency beyond the `@visuelconcept-winccoa/wui-*` kit.
+2. No backend or manager of its own. **Requires** the `para` and `app-security` backends (`wuiPage.requires` — deployed headless when those pages are not selected), see [module dependencies](../module-dependencies.md).
 
 ## Install
 In the project's site (`<project>/web`):

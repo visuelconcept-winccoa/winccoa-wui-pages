@@ -13,7 +13,7 @@ feeders, loads and measuring devices.
 
 Frontend-only (Tier 1): **one datapoint per network** (`Ampere_Network`), with a
 transparent in-memory demo fallback when no writable backend is available. No
-manager, no webserver rebuild.
+manager, no webserver rebuild. **Requires** the `para` and `app-security` backends (`wuiPage.requires` — deployed headless when those pages are not selected), see [module dependencies](../module-dependencies.md).
 
 ## Features
 

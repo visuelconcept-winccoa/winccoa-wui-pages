@@ -29,8 +29,8 @@ npx wui check prod
 
 ## Prerequisites
 - A **wui-toolkit site** for the target project (`npx wui init target prod` done once).
-- No backend module and no manager — this is a **frontend-only Tier 1** page.
-- No npm dependency beyond `@visuelconcept-winccoa/wui-kit`.
+- No backend module and no manager of its own — a **frontend-only Tier 1** page.
+- **Requires** the `para` and `app-security` backends (`wuiPage.requires` — deployed headless when those pages are not selected), see [module dependencies](../module-dependencies.md).
 
 ## Prerequisites (runtime)
 

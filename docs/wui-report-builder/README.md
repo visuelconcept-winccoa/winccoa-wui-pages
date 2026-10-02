@@ -25,6 +25,7 @@ npx wui check prod
 ## Prerequisites
 - A **wui-toolkit site** for the target project (`npx wui init target prod` done once).
 - No backend module and no manager ship with this page (pure frontend, Tier 1).
+- **Requires** the `para` and `app-security` backends (`wuiPage.requires` — deployed headless when those pages are not selected), see [module dependencies](../module-dependencies.md).
 - `echarts` is a peer dependency of the package, expected from the WebUI platform.
 
 ## Contents

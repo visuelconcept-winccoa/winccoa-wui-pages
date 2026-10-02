@@ -23,7 +23,7 @@ npx wui check prod
 
 ## Prerequisites
 - A **wui-toolkit site** for the target project (`npx wui init target prod` done once).
-- No webserver / backend prerequisite (frontend-only page).
+- No backend of its own (frontend-only page). **Requires** the `para` and `app-security` backends (`wuiPage.requires` — deployed headless when those pages are not selected), see [module dependencies](../module-dependencies.md).
 - npm deps (`three`, via `@visuelconcept-winccoa/wui-fleet-core`) are installed by npm with the package and bundled by `wui build`.
 
 ## Contents

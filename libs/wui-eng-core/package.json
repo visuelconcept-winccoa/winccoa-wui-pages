@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-eng-core",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Engineering Studio core — pure, WinCC-OA-free domain library: device/address-book/workspace model, check-in diff engine + plan applier (port-based), atomic config write builders (_address/_alert_hdl/_archive/_pv_range), protocol address builders (OPC UA verified, S7), SimaticML (TIA Openness export) parser with standard-block offset computation, and naming conventions. Unit-testable without any WinCC OA runtime.",
   "author": {
     "name": "Visuel Concept"

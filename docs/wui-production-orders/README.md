@@ -30,7 +30,7 @@ when missing.
 
 ## Prerequisites
 - A **wui-toolkit site** for the target project (`npx wui init target prod` done once).
-- No dashboard webserver needed — this page has **no backend module** (no `/api` route).
+- No backend module of its own (no `/api` route). **Requires** the `para` and `app-security` backends (`wuiPage.requires` — deployed headless when those pages are not selected), see [module dependencies](../module-dependencies.md).
 - npm deps: `three ^0.169.0` comes with `@visuelconcept-winccoa/wui-fleet-core`; `echarts` is a peer dependency, expected from the WebUI platform.
 
 ## Contents

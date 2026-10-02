@@ -73,6 +73,7 @@ Not handled by wui-toolkit: the role catalog merge into `app-security-manifest.j
   through that API; without it the page still runs, read-only, on the demo sites and
   says so.
 - No backend route and no manager of its own (**Tier 1**).
+- **Requires** the `para` and `app-security` backends (`wuiPage.requires` — deployed headless when those pages are not selected), see [module dependencies](../module-dependencies.md).
 - **For the AI assistant only** (optional): the `/api/ai` bridge and an assistant enabled
   at deploy time (`<project>/data/dashboard-wc/dashboard-features.json` =
   `{ "aiAssistant": true }`, written by hand — wui-toolkit does not). Without either, the page is unchanged and the

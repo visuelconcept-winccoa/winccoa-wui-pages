@@ -27,7 +27,7 @@ rebuild and no manager to start.
 
 ## Prerequisites
 - A **wui-toolkit site** for the target project (`npx wui init target prod` done once).
-- No backend prerequisite (this is a Tier 1 frontend-only page), no npm dependency beyond `@visuelconcept-winccoa/wui-kit`.
+- No backend of its own (Tier 1 frontend-only page). **Requires** the `para` and `app-security` backends (`wuiPage.requires` — deployed headless when those pages are not selected), see [module dependencies](../module-dependencies.md).
 - The shell's `?embed` (chromeless) flag is a WebUI shell patch that **wui-toolkit does not apply** (`wui init target` deploys the pristine shell): without it the tiles show the full shell chrome. See [NOTES.md](./NOTES.md).
 
 ## Contents

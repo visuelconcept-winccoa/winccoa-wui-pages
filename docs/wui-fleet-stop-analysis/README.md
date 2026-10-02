@@ -24,7 +24,8 @@ npx wui check prod
 
 ## Prerequisites
 - A **wui-toolkit site** for the target project (`npx wui init target prod` done once).
-- No backend module and no manager — this is a **frontend-only** page (it reads data via the dashboard's existing WinCC OA connection).
+- No backend module and no manager of its own — a **frontend-only** page (it reads data via the dashboard's existing WinCC OA connection).
+- **Requires** the `para` and `app-security` backends (`wuiPage.requires` — deployed headless when those pages are not selected), see [module dependencies](../module-dependencies.md).
 - npm deps: `three` comes with `@visuelconcept-winccoa/wui-fleet-core` (npm installs it with the package — you don't install it yourself); `echarts` is a peer dependency, expected from the WebUI platform.
 
 ## Contents

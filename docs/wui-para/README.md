@@ -5,6 +5,12 @@
 by **wui-toolkit** against the target's own import map, so the page bundle always
 matches the target runtime version (a page bundle is coupled to the shell's import map).
 
+`/api/para` is also the write path of most other pages (through `wui-kit`'s
+datapoint stores): they declare `"requires": ["para"]`, and a site that does not
+select the PARA page gets its backend **headless** — routes and `dplAscii`
+manager, no page, no menu entry. See
+[module dependencies](../module-dependencies.md).
+
 ## Features
 
 - **Modèle (Types)** (model — types) **tab** — an ergonomic, nested tree editor for datapoint

@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-remote-vnc",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Remote VNC — standalone WinCC OA WebUI page: manage VNC connections (one RemoteVnc_Connection datapoint each) and open a session in-browser via bundled noVNC over a same-origin /api/vnc/ws relay.",
   "author": {
     "name": "Visuel Concept"
@@ -16,7 +16,9 @@
   "license": "MIT",
   "dependencies": {
     "@visuelconcept-winccoa/wui-kit": "^0.1.0",
-    "@novnc/novnc": "1.4.0"
+    "@novnc/novnc": "1.4.0",
+    "@visuelconcept-winccoa/wui-para": "^0.1.0",
+    "@visuelconcept-winccoa/wui-app-security": "^0.1.0"
   },
   "peerDependencies": {
     "lit": "*",
@@ -34,6 +36,10 @@
     }
   },
   "wuiPage": {
+    "requires": [
+      "para",
+      "app-security"
+    ],
     "route": "/remote-vnc",
     "routes": [
       "/remote-vnc",

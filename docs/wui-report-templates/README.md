@@ -26,7 +26,8 @@ npx wui check prod
 
 ## Prerequisites
 - A **wui-toolkit site** for the target project (`npx wui init target prod` done once).
-- No backend module and no manager — this is a pure frontend (Tier 1) page that talks to WinCC OA through the runtime; the dashboard webserver is **not** required by this module.
+- No backend module and no manager of its own — a pure frontend (Tier 1) page that talks to WinCC OA through the runtime.
+- **Requires** the `para` and `app-security` backends (`wuiPage.requires` — deployed headless when those pages are not selected), see [module dependencies](../module-dependencies.md).
 - No npm dependency beyond the `@visuelconcept-winccoa/wui-*` libs it reuses.
 
 ## Contents

@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-dp-watch",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "DP Watch — standalone WinCC OA WebUI page and embeddable element: live values of every datapoint element matching a pattern (dpNames + dpConnect). Read-only; ships its own mock fixtures for `wui dev`.",
   "author": {
     "name": "Visuel Concept"

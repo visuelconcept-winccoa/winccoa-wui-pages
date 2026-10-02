@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-ai-kit",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AI assistant kit for WinCC OA WebUI pages: the chat prompt bar (mf-ai-prompt) + config dialog, the AI client store (POST /api/ai/chat bridge + AI_Assistant_Config) and a dependency-free markdown renderer.",
   "author": {
     "name": "Visuel Concept"

@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-fleet-closures",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Fleet Closures — standalone WinCC OA WebUI page: manage non-worked periods (jours non travaillés) per atelier/machine, used as the TRS opening-time denominator by the KPI page. One app-level JSON datapoint.",
   "author": {
     "name": "Visuel Concept"
@@ -16,7 +16,9 @@
   "license": "MIT",
   "dependencies": {
     "@visuelconcept-winccoa/wui-fleet-core": "^0.1.0",
-    "@visuelconcept-winccoa/wui-kit": "^0.1.0"
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0",
+    "@visuelconcept-winccoa/wui-para": "^0.1.0",
+    "@visuelconcept-winccoa/wui-app-security": "^0.1.0"
   },
   "peerDependencies": {
     "lit": "*",
@@ -34,6 +36,10 @@
     }
   },
   "wuiPage": {
+    "requires": [
+      "para",
+      "app-security"
+    ],
     "route": "/fleet-closures",
     "routeId": "fleet-closures",
     "component": "wui-fleet-closures",

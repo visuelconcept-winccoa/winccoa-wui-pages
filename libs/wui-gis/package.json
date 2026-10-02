@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-gis",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "GIS — standalone WinCC OA WebUI page: map-based monitoring on MapLibre GL / OpenStreetMap (no licence cost). One GIS_Site datapoint per site, holding geo-located assets bound to datapoints, areas (districts / sectors / catchments) grouping them, live value overlays, alarm highlighting from the OA alert state and a configurable drill-down from map to area to asset to its process or 3D view.",
   "author": {
     "name": "Visuel Concept"
@@ -20,7 +20,9 @@
   "dependencies": {
     "@visuelconcept-winccoa/wui-ai-kit": "^0.1.0",
     "@visuelconcept-winccoa/wui-kit": "^0.1.0",
-    "maplibre-gl": "^5.24.0"
+    "maplibre-gl": "^5.24.0",
+    "@visuelconcept-winccoa/wui-para": "^0.1.0",
+    "@visuelconcept-winccoa/wui-app-security": "^0.1.0"
   },
   "peerDependencies": {
     "lit": "*",
@@ -44,6 +46,10 @@
     }
   },
   "wuiPage": {
+    "requires": [
+      "para",
+      "app-security"
+    ],
     "route": "/gis",
     "routes": [
       "/gis",

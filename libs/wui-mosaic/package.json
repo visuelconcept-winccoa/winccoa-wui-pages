@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-mosaic",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Mosaic — standalone WinCC OA WebUI page: a configurable display wall of tiles, each embedding another dashboard view as a chromeless iframe. One Mosaic_Board datapoint per board; self-provisioning via PARA REST with offline fallback.",
   "author": {
     "name": "Visuel Concept"
@@ -15,7 +15,9 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@visuelconcept-winccoa/wui-kit": "^0.1.0"
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0",
+    "@visuelconcept-winccoa/wui-para": "^0.1.0",
+    "@visuelconcept-winccoa/wui-app-security": "^0.1.0"
   },
   "peerDependencies": {
     "lit": "*",
@@ -36,6 +38,10 @@
     }
   },
   "wuiPage": {
+    "requires": [
+      "para",
+      "app-security"
+    ],
     "route": "/mosaic",
     "routes": [
       "/mosaic",

@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-ampere",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Ampère — standalone WinCC OA WebUI page (/ampere + /ampere/:networkid): draw single-line (mono-filaire) electrical distribution networks (switchboards/TGBT, disconnectors, circuit breakers, busbars, transformers…) including railway electrification (catenary sections, track return, rectifier, sectioning switch, autotransformer, train) with an in-place edit mode, an IEC 60617 symbol toolbox, free DP binding per device, live wire energisation computed by graph traversal through closed switchgear, free/attached live measurement labels, and a proposal-only AI assistant that generates network models. Frontend-only, 1 DP per network (Ampere_Network).",
   "author": {
     "name": "Visuel Concept"
@@ -18,7 +18,9 @@
   "license": "MIT",
   "dependencies": {
     "@visuelconcept-winccoa/wui-ai-kit": "^0.1.0",
-    "@visuelconcept-winccoa/wui-kit": "^0.1.0"
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0",
+    "@visuelconcept-winccoa/wui-para": "^0.1.0",
+    "@visuelconcept-winccoa/wui-app-security": "^0.1.0"
   },
   "peerDependencies": {
     "lit": "*",
@@ -38,6 +40,10 @@
     }
   },
   "wuiPage": {
+    "requires": [
+      "para",
+      "app-security"
+    ],
     "route": "/ampere",
     "routes": [
       "/ampere",

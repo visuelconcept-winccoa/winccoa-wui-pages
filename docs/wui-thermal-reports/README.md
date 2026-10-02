@@ -22,7 +22,7 @@ npx wui check prod
 1. **Browser:** DevTools → Application → Storage → **`Clear site data`**, then reload (logged in).
    ⚠️ The service worker caches `menuconfig.json` — **`Ctrl+Shift+R` is NOT enough**; only `Clear site data` purges it.
 
-This module is **frontend-only**: there is no webserver backend to rebuild and no manager to start.
+This module is **frontend-only**: it has no webserver backend of its own and no manager to start. **Requires** the `para` and `app-security` backends (`wuiPage.requires` — deployed headless when those pages are not selected), see [module dependencies](../module-dependencies.md).
 
 ## Prerequisites
 - A **wui-toolkit site** for the target project (`npx wui init target prod` done once).

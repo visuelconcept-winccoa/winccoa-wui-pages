@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-eng-studio",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Engineering Studio — standalone WinCC OA WebUI page (/eng-studio): device-first, check-in/check-out studio to model DP types, datapoints and their configs (address/alarm/archive/range) from communicating equipment. Address-book-centric imports (OPC UA browse, SimaticML/TIA Openness export, CSV, AI proposal) with a live diff and transactional check-in. Pure domain in @visuelconcept-winccoa/wui-eng-core; all I/O behind an EngGateway (HTTP /api/eng in the shell, in-memory demo for docs/screenshots).",
   "author": {
     "name": "Visuel Concept"
