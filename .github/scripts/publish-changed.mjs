@@ -68,13 +68,16 @@ function isPublished({ manifest }) {
   }
 }
 
-/** Kits first: depth-first on the internal dependencies. */
+/**
+ * Kits first: depth-first on the internal dependencies. A cycle (para ⇄
+ * app-security: each requires the other's backend) is cut where it closes —
+ * `npm publish` installs nothing, so within a cycle any order is valid.
+ */
 function publishOrder(selection) {
   const ordered = [];
   const seen = new Set();
   const visit = (lib, path) => {
-    if (path.includes(lib)) throw new Error(`dependency cycle: ${[...path, lib].map((l) => l.manifest.name).join(' → ')}`);
-    if (seen.has(lib)) return;
+    if (path.includes(lib) || seen.has(lib)) return;
     for (const [name] of internalDependencies(lib)) visit(byName.get(name), [...path, lib]);
     seen.add(lib);
     if (selection.has(lib)) ordered.push(lib);
