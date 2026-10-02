@@ -1,10 +1,42 @@
 {
-  "extends": "../../tsconfig.base.json",
-  "files": [],
-  "include": [],
-  "references": [
-    {
-      "path": "./tsconfig.lib.json"
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "useDefineForClassFields": false,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "moduleDetection": "auto",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "paths": {
+      "@visuelconcept-winccoa/wui-ai-kit/*": [
+        "../wui-ai-kit/src/*"
+      ],
+      "@visuelconcept-winccoa/wui-kit/*": [
+        "../wui-kit/src/*"
+      ],
+      "@visuelconcept-winccoa/wui-para/*": [
+        "../wui-para/src/*"
+      ]
     }
+  },
+  "include": [
+    "src/**/*.ts"
   ]
 }

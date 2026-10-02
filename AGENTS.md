@@ -19,18 +19,19 @@
 - **UI Library**: Siemens iX (`@siemens/ix`, `@siemens/ix-echarts`, `@siemens/ix-icons`)
 - **Stack**: Lit 3 WebComponents, TypeScript, RxJS, Vaadin Router
 - **DI**: tsyringe (singleton services, `container.resolve()`)
-- **Build / dev / deploy**: [wui-toolkit](https://github.com/visuelconcept-winccoa/winccoa-wui-tools) (`wui` CLI, Vite) — this repo has no tooling of its own
+- **Build / dev / deploy**: [wui-toolkit](https://github.com/visuelconcept-winccoa/winccoa-wui-tools) (`wui` CLI, Vite) — this repo is a wui-toolkit site with no WinCC OA target, no tooling of its own
 - **Layout**: each `libs/wui-<id>/` is an independent npm package (`@visuelconcept-winccoa/wui-<id>`), published as is on GitHub Packages
 
 ## Commands
 
-```bash
-# Run / deploy — from a wui-toolkit site whose wui.project.jsonc "sources" point at this checkout (README "Develop")
-npx wui dev                      # selected pages with mock data, hot reload (port 4300)
-npx wui build <target>           # compile + deploy pages and backends into a WinCC OA project
+```powershell
+# From the repo root (PowerShell) — README "Develop"
+npm install                      # once: links the libs/* workspaces, wires the pre-commit hook
+npx wui dev                      # every page with mock data, hot reload (port 4300)
+npm test                         # wui test: the pages compile, every lib's unit tests pass — vitest (pre-commit hook too)
+npx wui modules                  # pages, and the modules they require (headless)
 
 # Per lib (cd libs/wui-<id>)
-npx vitest run                   # unit tests, when the lib has a "test" script
 npm run typecheck                # wui-eng-core, wui-alarms-core
 npm pack --dry-run               # check what would be published
 ```

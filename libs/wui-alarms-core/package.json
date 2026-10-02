@@ -16,8 +16,6 @@
   ],
   "license": "MIT",
   "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.standalone.json"
   },
   "peerDependencies": {

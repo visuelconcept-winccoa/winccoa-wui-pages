@@ -1,0 +1,13 @@
+#!/bin/sh
+# The site's tests (npm test → wui test) before every commit that touches it:
+# every target loads, the pages compile, the modules' *.test.mjs pass.
+# Bypass once, knowingly: git commit --no-verify
+site="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$site" || exit 1
+# Nothing of the site staged (a commit of panels, scripts…): nothing to test.
+[ -n "$(git diff --cached --name-only --relative)" ] || exit 0
+npm test --silent || {
+  echo ""
+  echo "pre-commit: npm test failed in $site — commit refused (git commit --no-verify to bypass)"
+  exit 1
+}

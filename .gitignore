@@ -1,10 +1,10 @@
 # =============================================================================
-# winccoa-wui-pages — libs/wui-<id>/ are independent npm packages; building,
-# developing and deploying them is wui-toolkit's job, nothing is built here.
+# winccoa-wui-pages — a wui-toolkit site whose libs/wui-<id>/ are published as
+# independent npm packages; `wui dev` / `wui test` run them, nothing is deployed here.
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# Dependencies (a lib's own install: libs/wui-eng-core, libs/wui-eng-studio/demo…)
+# Dependencies (the root workspaces install, a lib's own: libs/wui-eng-studio/demo…)
 # -----------------------------------------------------------------------------
 node_modules/
 
@@ -31,7 +31,9 @@ coverage/
 .env
 .env.*
 !.env.example
-.npmrc
+# The root .npmrc maps the scope to GitHub Packages and holds no token (committed);
+# tokens live in ~/.npmrc. A .npmrc anywhere else stays local.
+libs/**/.npmrc
 
 # -----------------------------------------------------------------------------
 # IDE & editors
@@ -77,10 +79,11 @@ tmp/
 /apps/
 /oa-data/
 /libs/default-components/
-# The runtime's `winccoa-*` assistant skills it used to copy in (third-party content).
-/.claude/skills/
-/.ai/skills/
-/.github/prompts/
+
+# WinCC OA runtime skills — third-party, copied by `wui skills` (postinstall)
+.claude/skills/winccoa-*/
+.ai/skills/winccoa-*/
+.github/prompts/winccoa-*.prompt.md
 
 # -----------------------------------------------------------------------------
 # Third-party IP — MUST NOT be published under this project's license.

@@ -17,8 +17,8 @@ One DP per module — type `AppSecurity_Module` (Struct, 3 Strings), instance
   written by the PROVIDING module (`registerModuleRoles`, best-effort at page
   load) and by the admin page's **Discover** seeding. Both read the SAME
   per-module `app-security.roles.json` fragment (aggregated into the
-  `app-security-manifest.json` asset — formerly by the repo's `page-appsec-merge`
-  Vite plugin; wui-toolkit does not build it) —
+  `app-security-manifest.json` asset — by wui-toolkit ≥ 0.5.0 at build, formerly by
+  the repo's `page-appsec-merge` Vite plugin) —
   there is no central manifest;
 - `.assignments` — `{roleId: [group names]}`, written **ONLY** by the admin page.
 
@@ -66,9 +66,9 @@ idea was rejected for that reason). Role/group direction is role → groups
   (fragment module id == page-bundle id, cf. INTEGRATION Step 2) so no
   `AppSecurity_<module>` DP is created for a module that is not deployed.
   When the menu is unreachable the restriction is skipped (fail open — dev
-  server, tests). The former repo release script also filtered the emitted
-  `app-security-manifest.json` to the selected modules; wui-toolkit emits no
-  manifest at all (seeding then relies on self-registration).
+  server, tests). wui-toolkit already limits the manifest to the selected and
+  headless modules; a headless module has no menu entry, so Discover leaves it
+  out (its roles stay open until it self-registers — it never does, having no page).
 - **Stale assignments** (role assigned but no longer declared) are badged, kept,
   and never auto-deleted.
 - **Audit**: every `.assignments` write logs one UPDATE row (old/new JSON) into

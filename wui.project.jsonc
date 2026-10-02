@@ -1,0 +1,16 @@
+// The generic WebUI page modules of Visuel Concept — read by `wui` (wui-toolkit).
+// Each libs/wui-<id>/ is published as is (@visuelconcept-winccoa/wui-<id>); a WinCC OA
+// site selects them with `npx wui use <id>`. This repo deploys nothing itself:
+// it has no "prod" target, only `wui dev` and `wui test`.
+{
+  // npm scope of the modules created by `wui add module`.
+  "scope": "@visuelconcept-winccoa",
+
+  // Modules: the ./libs/wui-* workspaces. No "modules" list: every page is
+  // selected, so `wui dev` shows them all and `wui test` compiles them all.
+
+  "targets": {
+    // `wui dev` — no WinCC OA: mock OaRxJsApi + mock REST.
+    "dev": { "mock": ["./mock"] }
+  }
+}

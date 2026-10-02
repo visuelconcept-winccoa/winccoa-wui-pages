@@ -14,8 +14,8 @@ independent npm package. Each lib is published **as is** — sources, backend,
 managers — on GitHub Packages, and a WinCC OA project consumes it with
 [wui-toolkit](https://github.com/visuelconcept-winccoa/winccoa-wui-tools) (see
 [Use the modules in a WinCC OA project](#use-the-modules-in-a-wincc-oa-project--wui-toolkit)).
-The repo holds no build or deploy tooling of its own: building, developing and
-deploying are wui-toolkit's job (see [Develop](#develop)).
+The repo is itself a wui-toolkit site with no WinCC OA target: `wui dev` and
+`wui test` run here, deploying is a WinCC OA site's job (see [Develop](#develop)).
 
 ## Modules
 
@@ -176,25 +176,35 @@ A page is a **leaf**: it plugs into the WebUI shell of a WinCC OA project.
 
 ## Develop
 
-A lib is developed from a wui-toolkit site, pointed at this checkout instead of
-the published packages — locally, never committed:
+This repo is a **wui-toolkit site** (the shape `npx wui init project --no-winccoa`
+creates): `package.json` with the `libs/*` workspaces, `wui.project.jsonc`
+(every page selected, a mock `dev` target, no WinCC OA target), `.npmrc`,
+`.githooks/pre-commit`, `mock/`. PowerShell, from the repo root:
 
-```jsonc
-// <site>/wui.project.jsonc
-"sources": [{ "id": "core", "path": "../../winccoa-wui-pages/libs" }, { "id": "site", "path": "./libs" }]
+```powershell
+npm install        # once, after a clone: links the libs, wires the pre-commit hook, copies the runtime's skills
+npx wui dev        # → http://127.0.0.1:4300, every page with mock data, hot reload
+npm test           # wui test: the pages compile like a build, every lib's unit tests pass (also the pre-commit hook)
+npx wui modules    # the pages, and the modules they require (headless)
 ```
 
-Then `npx wui dev` runs the selected pages with mock data and hot reload (a lib's
-`mock/fixtures.json` + `mock/api.mjs`), and `npx wui build <target>` deploys them
-onto a real WinCC OA project. See the
+`npx wui add module <id>` creates a new page in `libs/wui-<id>/`. Nothing is
+deployed from here: a WinCC OA site installs the published packages (or points a
+`"sources"` entry at this checkout's `libs/` to try unpublished changes). See the
 [wui-toolkit reference](https://github.com/visuelconcept-winccoa/winccoa-wui-tools/blob/main/docs/REFERENCE.md)
 for the module contract (`package.json`, `src/<id>.ts`, `menu.fragment.jsonc`,
 `mock/`, `backend/`, `managers/`).
 
-Libs with unit tests carry a `test` script (`npx vitest run` from the lib folder);
-`wui-eng-core` and `wui-alarms-core` also have `typecheck`. The Engineering Studio
-has its own offline demo with its i18n check and screenshot script
-(`libs/wui-eng-studio/demo/`, see `docs/wui-eng-studio/README.md`).
+Each lib has its own `tsconfig.json` (editor and `tsc --noEmit`; the build does
+not read it). Unit tests are `*.spec.ts` next to the sources (or `*.test.*`), written
+with vitest and run by `npm test` from the root — `wui test` ships vitest, a lib has
+no test config of its own (a test needing a DOM starts with `// @vitest-environment jsdom`).
+`wui-eng-core` and `wui-alarms-core` also have `typecheck`.
+The Engineering Studio has its own offline demo with its i18n check and screenshot
+script (`libs/wui-eng-studio/demo/`, see `docs/wui-eng-studio/README.md`).
+
+Features of the former tooling that wui-toolkit does not have yet are parked,
+unwired, in [toolkit-backlog/](./toolkit-backlog/README.md).
 
 ## Documentation
 

@@ -35,10 +35,6 @@
     "@wincc-oa/wui-oarxjs-context": "*",
     "@wincc-oa/wui-shared": "*"
   },
-  "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest"
-  },
   "exports": {
     "./*": {
       "types": "./types/*",

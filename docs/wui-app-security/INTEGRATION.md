@@ -64,16 +64,17 @@ registerModuleRoles(appSecurityRoles as AppModuleRoles);
 Self-registration is best-effort (no-op offline / without write rights); the
 admin's **"Discover modules"** seeds modules from the aggregated
 `app-security-manifest.json` asset (`/data/dashboard-wc/`) — an aggregate of every
-`app-security.roles.json` of the deployment. **wui-toolkit does not build or merge
-this asset** (the repo's former Vite plugin and installers did): without it,
-modules are seeded by self-registration only, i.e. once their page is visited. Discover only seeds the
+`app-security.roles.json` of the deployment, written by **wui-toolkit ≥ 0.5.0** at
+every `wui build` / `wui pack` install from the selected and headless modules (and
+served by `wui dev`). With an older toolkit there is no asset: modules are then
+seeded by self-registration only, i.e. once their page is visited. Discover only seeds the
 modules whose page bundle is referenced by the deployed `menuconfig.json`
 (this is why the fragment's `module` id MUST equal the page-bundle id): a
 manifest entry whose page is not installed gets **no** `AppSecurity_<module>`
 DP. **A module built in another
 repository never touches app-security**: it ships its fragment + calls
 `registerModuleRoles`, and appears at runtime (first visit) or in Discover once
-its fragment is merged into the asset.
+the site that deploys it is rebuilt (its fragment then lands in the asset).
 
 ## Step 4 — Gate the UI
 
@@ -127,9 +128,9 @@ errors** (a guard outage must not take the API down).
 
 ## Step 6 — Verify
 
-- `tsc -p libs/<lib>/tsconfig.lib.json` + `nx lint` = 0 errors; `npx wui build prod` OK.
-- In `/app-security` → the module and its roles appear (once the page has been
-  opened: without the aggregated manifest, Discover has nothing to seed from).
+- `npm test` (repo root) = 0 errors; `npx wui build prod` OK on a site.
+- In `/app-security` → **Discover modules** lists the module and its roles
+  (`/data/dashboard-wc/app-security-manifest.json` contains its fragment).
 - Assign a role to a group you are NOT in → the affordance locks, the API
   answers 403; unassign → everything opens again (no reload needed — live).
 

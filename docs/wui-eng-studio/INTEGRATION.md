@@ -318,13 +318,13 @@ package name inside a comment stays as written), and `*.spec.ts` files are exclu
 
 ## Typecheck the backend without WinCC OA
 
-`backend/tsconfig.typecheck.json` compiles the studio's route modules against the
+`libs/wui-eng-studio/typecheck/tsconfig.backend.json` compiles the studio's route modules against the
 **real** `@visuelconcept-winccoa/wui-eng-core` sources, with the webserver-only packages
 (`ultimate-express`, `@winccoa/backend`, `winccoa-manager`) stubbed in
-`backend/types/runtime-stubs.d.ts`:
+`libs/wui-eng-studio/typecheck/runtime-stubs.d.ts`:
 
 ```bash
-cd libs/wui-eng-core && ./node_modules/.bin/tsc -p ../../backend/tsconfig.typecheck.json
+npx tsc -p libs/wui-eng-studio/typecheck/tsconfig.backend.json   # from the repo root, after npm install
 ```
 
 That catches the mistakes that matter offline (a wrong core API, a missing

@@ -1,0 +1,36 @@
+{
+  // Offline typecheck of the Engineering Studio backend — no WinCC OA needed.
+  //   npx tsc -p libs/wui-eng-studio/typecheck/tsconfig.backend.json   (from the repo root, after npm install)
+  //
+  // The webserver packages come from ./runtime-stubs.d.ts, but
+  // @visuelconcept-winccoa/wui-eng-core resolves to its REAL sources — so this checks
+  // the controller against the actual engineering API, which is the part that matters.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "strict": true,
+    "noImplicitOverride": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "types": ["node"],
+    // At deploy time a module's own backend/ files and its `shared` ones
+    // (appSecurityGuard.ts, owned by wui-app-security) land in ONE folder, so
+    // `import './appSecurityGuard'` is relative. rootDirs reproduces that merge.
+    "rootDirs": ["../backend", "../../wui-app-security/backend"],
+    "paths": {
+      "@visuelconcept-winccoa/wui-eng-core": ["../../wui-eng-core/src/index.ts"],
+      "@visuelconcept-winccoa/wui-eng-core/*": ["../../wui-eng-core/src/*"]
+    }
+  },
+  "include": [
+    "runtime-stubs.d.ts",
+    "../backend/engRoute.ts",
+    "../backend/engController.ts",
+    "../backend/engOpcuaBrowse.ts",
+    "../backend/engStore.ts",
+    "../../wui-app-security/backend/appSecurityGuard.ts"
+  ]
+}

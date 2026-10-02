@@ -29,10 +29,6 @@
       "import": "./*"
     }
   },
-  "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest"
-  },
   "peerDependenciesMeta": {
     "lit": {
       "optional": true

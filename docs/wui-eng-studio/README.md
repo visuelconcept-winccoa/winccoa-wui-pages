@@ -657,9 +657,8 @@ plain BCP-47 tags. A picker in the top bar switches it live.
 ## Run the unit tests (no WinCC OA)
 
 ```bash
-cd libs/wui-eng-core
-npm install
-npm test          # 306 tests: SimaticML parse + S7 offsets, Schneider CSV/XVM, OPC UA
+npm install       # repo root, once
+npm test          # wui test — among them wui-eng-core's 341 tests: SimaticML parse + S7 offsets, Schneider CSV/XVM, OPC UA
                   # browse walk (+ progress & cancel) + NodeSet2 (root instances,
                   # duplicate paths), file-ingestion routing, connection-state mapping,
                   # roles, modelgen,
@@ -670,7 +669,7 @@ npm test          # 306 tests: SimaticML parse + S7 offsets, Schneider CSV/XVM, 
 npm run typecheck
 
 # and the backend routes, against the REAL core sources (webserver packages stubbed):
-./node_modules/.bin/tsc -p ../../backend/tsconfig.typecheck.json
+npx tsc -p ../wui-eng-studio/typecheck/tsconfig.backend.json
 ```
 
 The translation tables have their own verification (no test runner needed — it
@@ -719,7 +718,7 @@ libs/wui-eng-studio/backend/  thin runtime seam, fail-closed
   engController.ts        EngPort over WsjServerGlobal.winccoa, read-back, handlers
   engStore.ts             JSON file store (devices · books · roles · workspaces)
   engOpcuaBrowse.ts       one browse level over _<conn>.Browse.GetBranch (ported, queued)
-backend/tsconfig.typecheck.json   typecheck the routes offline (stubbed webserver pkgs)
+typecheck/tsconfig.backend.json  typecheck the routes offline (stubbed webserver pkgs)
 ```
 
 See [INTEGRATION.md](./INTEGRATION.md) for deployment/roles and the **inputs still

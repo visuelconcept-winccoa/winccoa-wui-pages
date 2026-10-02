@@ -11,9 +11,16 @@ Read and follow `docs/knowledge/project/critical-thinking-rules.md` in every ses
 
 ## Repository shape
 
-Each `libs/wui-<id>/` is an independent npm package; the repo has no build, dev or
-deploy tooling — that is [wui-toolkit](https://github.com/visuelconcept-winccoa/winccoa-wui-tools)'s job (README "Develop").
-Do not re-add root-level tooling (`tools/`, `package.json`, `tsconfig.base.json`, Nx).
+The repo is a [wui-toolkit](https://github.com/visuelconcept-winccoa/winccoa-wui-tools) site, in the shape
+`npx wui init project --no-winccoa` creates (`package.json` with the `libs/*` workspaces,
+`wui.project.jsonc`, `.npmrc`, `.githooks/`, `mock/`); each `libs/wui-<id>/` is an
+independent npm package with its own `tsconfig.json`. `npx wui dev` / `npm test` run
+here, nothing is deployed from here (README "Develop").
+
+- Tooling belongs in wui-toolkit, not here: do not add scripts, build config or a
+  shared root `tsconfig` (`tools/`, `tsconfig.base.json`, Nx).
+- `toolkit-backlog/` holds former features the toolkit lacks, parked unwired until
+  they move into it — never run or import them.
 
 ## Development Guidelines
 
