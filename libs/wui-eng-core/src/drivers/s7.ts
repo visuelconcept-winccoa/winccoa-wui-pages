@@ -274,5 +274,24 @@ export function s7Operand(dbNumber: number, dataType: string, byteOffset: number
   return `DB${dbNumber}.DBB${byteOffset}`;
 }
 
+/**
+ * `_address.._reference` of an **S7Plus symbolic** address.
+ *
+ * The reference is the symbolic path itself (`DB_Echange.Consigne.Valeur`) — the
+ * connection does NOT ride in it: para writes it beside, into
+ * `_address.._connection` (verified in `scripts/libs/para.ctl`, `case "s7plus"`).
+ *
+ * Two suffix rules, both taken from `paS7PlusUpdateDpcFromPanel`
+ * (`scripts/libs/s7PlusDrvPara.ctl`):
+ *  - a STRING carries its item length: `MyDB.Texte:80`;
+ *  - a symbol that itself contains a `:` gets a TRAILING `:` even with no length,
+ *    so the driver can tell the symbol's colon from the length separator.
+ */
+export function buildS7PlusReference(symbolicPath: string, itemLength?: number): string {
+  const path = symbolicPath.trim();
+  if (itemLength !== undefined && itemLength > 0) return `${path}:${itemLength}`;
+  return path.includes(':') ? `${path}:` : path;
+}
+
 /** `_address.._drv_ident` for the S7 driver family. */
 export const S7_DRV_IDENT = 'S7';

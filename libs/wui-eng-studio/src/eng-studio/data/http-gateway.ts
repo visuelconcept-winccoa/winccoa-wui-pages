@@ -15,9 +15,11 @@ import type {
   DeviceDraft,
   DeviceStateUpdate,
   EngPlan,
+  EngType,
   LiveSnapshot,
   ModelTemplate,
   OpcUaBrowseNode,
+  S7PlusBrowseNode,
   SignalRole,
   TagAccess,
   Workspace
@@ -26,16 +28,26 @@ import type {
   BookDeletion,
   BookRefresh,
   BrowseRequest,
+  ConnectionProvision,
+  ConnectionSecurity,
+  DeviceSaveResult,
   EngConnection,
+  EngConfigOptions,
   EngDriver,
   EngGateway,
   EngRole,
+  EngS7PlusConnection,
+  EngS7PlusProject,
+  EngS7PlusStation,
   IngestRequest,
   LiveScope,
+  S7InventoryResult,
+  S7PlusManagerHealth,
+  S7PlusWalkRequest,
   TestReadResult,
   WalkRequest
 } from './gateway.js';
-import { walkIntoBook as runWalk } from './walk.js';
+import { walkIntoBook as runWalk, walkS7PlusIntoBook as runS7PlusWalk } from './walk.js';
 
 const BASE = '/api/eng';
 
@@ -97,10 +109,18 @@ export class HttpEngGateway implements EngGateway {
    * derives the id of a creation, so concurrent creations of the same name cannot
    * overwrite each other.
    */
-  async saveDevice(id: string, draft: DeviceDraft): Promise<Device[]> {
+  async saveDevice(id: string, draft: DeviceDraft): Promise<DeviceSaveResult> {
     const path = id === '' ? '/devices' : `/devices/${encodeURIComponent(id)}`;
-    const { devices } = await postJson<{ devices: Device[] }>(path, { device: draft });
-    return devices;
+    const { devices, connectionProvision, connectionSecurity } = await postJson<{
+      devices: Device[];
+      connectionProvision?: ConnectionProvision;
+      connectionSecurity?: ConnectionSecurity;
+    }>(path, { device: draft });
+    return {
+      devices,
+      ...(connectionProvision === undefined ? {} : { connectionProvision }),
+      ...(connectionSecurity === undefined ? {} : { connectionSecurity })
+    };
   }
 
   async deleteDevice(id: string): Promise<Device[]> {
@@ -126,6 +146,28 @@ export class HttpEngGateway implements EngGateway {
 
   async ingestBook(request: IngestRequest): Promise<{ book: AddressBook; books: AddressBook[] }> {
     return postJson<{ book: AddressBook; books: AddressBook[] }>('/books/ingest', request);
+  }
+
+  async s7Inventory(
+    bookId: string,
+    target: { deviceId?: string; host?: string; rack?: number; slot?: number }
+  ): Promise<S7InventoryResult> {
+    return postJson<S7InventoryResult>(`/books/${encodeURIComponent(bookId)}/s7-inventory`, target);
+  }
+
+  /**
+   * Read off `/health`, which already reports both managers separately — one
+   * round-trip instead of a dedicated probe, and it cannot disagree with what the
+   * backend says about itself.
+   */
+  async listS7Connections(): Promise<EngConnection[]> {
+    const { connections } = await getJson<{ connections: EngConnection[] }>('/s7/connections');
+    return connections;
+  }
+
+  async s7BrowseHealth(): Promise<{ reachable: boolean }> {
+    const health = await getJson<{ s7Browse?: { reachable?: boolean } }>('/health');
+    return { reachable: health.s7Browse?.reachable === true };
   }
 
   async createBook(request: {
@@ -179,8 +221,85 @@ export class HttpEngGateway implements EngGateway {
     return drivers;
   }
 
+  async searchDps(pattern: string, type?: string): Promise<{ dps: string[]; truncated: boolean }> {
+    const query = new URLSearchParams({ pattern: pattern === '' ? '*' : pattern });
+    if (type !== undefined && type !== '') query.set('type', type);
+    const result = await getJson<{ dps?: string[]; truncated?: boolean }>(`/dps?${query.toString()}`);
+    return { dps: result.dps ?? [], truncated: result.truncated === true };
+  }
+
+  async listDpTypes(): Promise<string[]> {
+    const { types } = await getJson<{ types?: string[] }>('/dptypes');
+    return types ?? [];
+  }
+
+  async readDpType(typeName: string): Promise<EngType> {
+    const { type } = await getJson<{ type: EngType }>(`/dptypes/${encodeURIComponent(typeName)}`);
+    return type;
+  }
+
+  async listConfigOptions(): Promise<EngConfigOptions> {
+    const options = await getJson<EngConfigOptions>('/config-options');
+    return {
+      alarmClasses: options.alarmClasses ?? [],
+      archiveGroups: options.archiveGroups ?? [],
+      subscriptions: options.subscriptions ?? [],
+      pollGroups: options.pollGroups ?? []
+    };
+  }
+
   async browseBook(request: BrowseRequest): Promise<BookRefresh> {
     return postJson<BookRefresh>('/books/browse', request);
+  }
+
+  // --- S7Plus ---------------------------------------------------------------
+  // Every one of these lands in the dedicated `s7plusBrowse` manager through the
+  // backend (see backend/routes/engS7PlusBrowse.ts); the page never talks to the
+  // driver, and this stays a transport.
+
+  async s7plusHealth(): Promise<S7PlusManagerHealth> {
+    const { manager } = await getJson<{ manager: S7PlusManagerHealth }>('/s7plus/health');
+    return manager;
+  }
+
+  async listS7PlusConnections(): Promise<EngS7PlusConnection[]> {
+    const { connections } = await getJson<{ connections: EngS7PlusConnection[] }>('/s7plus/connections');
+    return connections;
+  }
+
+  async listS7PlusProjects(connection: string): Promise<EngS7PlusProject[]> {
+    const { projects } = await postJson<{ projects: EngS7PlusProject[] }>('/s7plus/projects', { connection });
+    return projects;
+  }
+
+  async listS7PlusStations(connection: string, project: string): Promise<EngS7PlusStation[]> {
+    const { stations } = await postJson<{ stations: EngS7PlusStation[] }>('/s7plus/stations', { connection, project });
+    return stations;
+  }
+
+  async browseS7PlusLevel(connection: string, item?: string, hmiVisibleOnly?: boolean): Promise<S7PlusBrowseNode[]> {
+    const { nodes } = await postJson<{ nodes: S7PlusBrowseNode[] }>('/s7plus/level', {
+      connection,
+      ...(item === undefined ? {} : { item }),
+      ...(hmiVisibleOnly === undefined ? {} : { hmiVisibleOnly })
+    });
+    return nodes;
+  }
+
+  /**
+   * Run the S7Plus walk HERE, level by level, then store the finished book — the
+   * same reasoning as {@link walkIntoBook}: only a client-driven walk can report
+   * progress and be cancelled, and a station of a real PLC takes minutes.
+   */
+  async walkS7PlusIntoBook(request: S7PlusWalkRequest): Promise<BookRefresh> {
+    const previous = await this.getBook(request.bookId);
+    const { book, delta } = await runS7PlusWalk(
+      { browseLevel: (connection, item, hmiVisibleOnly) => this.browseS7PlusLevel(connection, item, hmiVisibleOnly) },
+      previous,
+      request
+    );
+    const stored = await putJson<{ book: AddressBook }>(`/books/${encodeURIComponent(request.bookId)}`, { book });
+    return { book: stored.book, rebrowsed: true, ...(delta === undefined ? {} : { delta }) };
   }
 
   async saveBookRoles(bookId: string, roles: Record<string, SignalRole | ''>): Promise<void> {
@@ -224,8 +343,8 @@ export class HttpEngGateway implements EngGateway {
     return snapshot;
   }
 
-  async checkin(plan: EngPlan, dryRun: boolean): Promise<ApplyReport> {
-    return postJson<ApplyReport>('/checkin', { plan, dryRun });
+  async checkin(plan: EngPlan, dryRun: boolean, recreate = false): Promise<ApplyReport> {
+    return postJson<ApplyReport>('/checkin', { plan, dryRun, recreate });
   }
 
   async testRead(dpes: string[]): Promise<TestReadResult[]> {

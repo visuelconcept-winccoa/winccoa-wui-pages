@@ -21,7 +21,8 @@ import {
   structureNodeAt,
   templateCoverage,
   templateIdFrom,
-  coverageWarnings
+  coverageWarnings,
+  dpTypeStructureAsModel
 } from './structure.js';
 
 const STRUCTURE: DpTypeStructure = {
@@ -46,6 +47,46 @@ const entry = (path: string, leafType: BookEntry['leafType'] = 'Float'): BookEnt
   leafType,
   access: 'r',
   addresses: {}
+});
+
+describe('a DP type read from the project, as a model structure', () => {
+  it('keeps the type as the ROOT — its members are the first level', () => {
+    const read: DpTypeStructure = {
+      name: 'AGV_Vehicle_Model',
+      type: 'Struct',
+      children: [
+        { name: 'State', type: 'Struct', children: [{ name: 'Mode', type: 'Int' }] },
+        { name: 'Battery', type: 'Float' }
+      ]
+    };
+    const asModel = dpTypeStructureAsModel(read, 'AGV_Vehicle_Model');
+    expect(asModel.children?.map((child) => child.name)).toEqual(['State', 'Battery']);
+  });
+
+  it('UNWRAPS a duplicated root (the level named after the type)', () => {
+    // What produced the reported symptom: a first-level element carrying the type's name, with
+    // every real element under it.
+    const read: DpTypeStructure = {
+      name: 'AGV_Vehicle_Model',
+      type: 'Struct',
+      children: [
+        {
+          name: 'AGV_Vehicle_Model',
+          type: 'Struct',
+          children: [{ name: 'Battery', type: 'Float' }]
+        }
+      ]
+    };
+    const asModel = dpTypeStructureAsModel(read, 'AGV_Vehicle_Model');
+    expect(asModel.children).toEqual([{ name: 'Battery', type: 'Float' }]);
+  });
+
+  it('renames the root to the TARGET type, and keeps a single real member', () => {
+    const read: DpTypeStructure = { name: 'Old', type: 'Struct', children: [{ name: 'Battery', type: 'Float' }] };
+    const asModel = dpTypeStructureAsModel(read, 'AGV_Vehicle_Model');
+    expect(asModel.name).toBe('AGV_Vehicle_Model');
+    expect(asModel.children).toEqual([{ name: 'Battery', type: 'Float' }]);
+  });
 });
 
 describe('structureLeaves', () => {

@@ -76,6 +76,26 @@ export const engBookFormStyles = [
       max-width: 22rem;
       padding: 0.2rem;
     }
+    /* A bundle's file chips carry their own remove control. Sized off the chip's
+       own text so it stays aligned at any density, and coloured from the theme —
+       the page states no colour of its own. */
+    .chip .chip-remove {
+      appearance: none;
+      background: none;
+      border: 0;
+      margin-left: 0.35rem;
+      padding: 0 0.1rem;
+      font: inherit;
+      line-height: 1;
+      cursor: pointer;
+      color: var(--theme-color-std-text);
+      opacity: 0.6;
+    }
+    .chip .chip-remove:hover,
+    .chip .chip-remove:focus-visible {
+      opacity: 1;
+      color: var(--theme-color-alarm-text);
+    }
 
     /* --- server explorer -------------------------------------------------- */
     .explorer {

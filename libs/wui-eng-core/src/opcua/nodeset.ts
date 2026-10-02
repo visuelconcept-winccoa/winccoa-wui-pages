@@ -34,7 +34,13 @@
  * online, before check-in. This is the same caveat the tag importer documents.
  */
 
-import { buildOpcUaReference, isUnmappedOpcUaType, opcUaAccessFromLevel, opcUaLeafType } from '../drivers/opcua.js';
+import {
+  buildOpcUaReference,
+  isUnmappedOpcUaType,
+  opcUaAccessFromLevel,
+  opcUaHistorizedFromLevel,
+  opcUaLeafType
+} from '../drivers/opcua.js';
 import { childrenOf, localName, parseXml, type XmlNode } from '../simaticml/xml.js';
 import { dedupeEntries, duplicateWarning } from '../addressbook.js';
 import { WARNING_CODES, warn, type EngWarning } from '../warnings.js';
@@ -100,6 +106,8 @@ interface RawNode {
   dataType?: string;
   valueRank: number;
   accessLevel: number;
+  /** `Historizing` attribute of a `UAVariable` (the server keeps a history). */
+  historizing: boolean;
   refs: RawRef[];
 }
 
@@ -186,6 +194,10 @@ function parseDocument(xml: string): ParsedDocument {
       dataType: kind === 'UAVariable' ? resolveDataTypeName(element.attrs['DataType'], aliases) : undefined,
       valueRank: Number(element.attrs['ValueRank'] ?? '-1'),
       accessLevel: Number(element.attrs['AccessLevel'] ?? '1'),
+      // A NodeSet states history TWICE: the `Historizing` attribute of the
+      // variable and the HistoryRead bit of its AccessLevel. Either counts —
+      // exporters fill one or the other (SiOME writes the attribute).
+      historizing: (element.attrs['Historizing'] ?? '').toLowerCase() === 'true',
       refs: parseRefs(element, aliases)
     });
   }
@@ -320,6 +332,7 @@ function collectMembers(
         // A NodeSet DOES carry AccessLevel — unlike an online browse.
         access: opcUaAccessFromLevel(child.accessLevel),
         accessSource: 'declared',
+        historized: child.historizing || opcUaHistorizedFromLevel(child.accessLevel),
         // File-local NodeId ⇒ a TEMPLATE address, bound at generation time.
         addresses: { opcua: buildOpcUaReference(CONNECTION_PLACEHOLDER, child.nodeId) },
         ...(child.description === undefined ? {} : { comment: child.description }),

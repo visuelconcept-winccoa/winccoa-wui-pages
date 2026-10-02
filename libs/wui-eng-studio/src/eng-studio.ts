@@ -44,16 +44,32 @@ import {
   draftFromDevice,
   emptyDraft,
   formatStructureOutline,
+  bindingRef,
+  parseBindingRef,
   generateModelFromBook,
+  instanceTargets,
   liveScopeOf,
   mergeProposal,
+  modelInstances,
+  dpTypeStructureAsModel,
+  modelSources,
+  modelSyncState,
+  mirrorIntoStructure,
+  removeSourceFromModel,
+  sanitizeSegment,
+  modelStatus,
+  tallyInstances,
   parseStructureOutline,
   roleCounts,
   validateDevice,
   structureLeaves,
-  templateCoverage,
   templateIdFrom,
-  coverageWarnings,
+  isS7PlusOnline,
+  isReadingDirection,
+  connectionNameOf,
+  defaultLeafPolicy,
+  DpAddressDirection,
+  S7PLUS_ONLINE_STATION,
   type SignalRole,
   type AddressBook,
   type ApplyReport,
@@ -63,14 +79,19 @@ import {
   type DeviceParamSpec,
   type DpTypeStructure,
   type EngPlan,
-  type ForgetSelection,
   type PlanItem,
   type EngWarning,
+  type InstanceStatus,
+  type LeafPolicy,
+  type ModelInstance,
+  type ModelMapping,
+  type ModelPolicy,
+  type ProtocolKind,
   type StructureBindings,
   type ModelTemplate,
-  type TemplateCoverage,
   type BrowseProgress,
   type OpcUaBrowseNode,
+  type S7PlusBrowseNode,
   type TagAccess,
   type LiveSnapshot,
   type Workspace
@@ -83,20 +104,25 @@ import { DemoEngGateway } from './eng-studio/data/demo-gateway.js';
 import { HttpEngGateway } from './eng-studio/data/http-gateway.js';
 import type {
   BookDelta,
+  EngConfigOptions,
   EngConnection,
   EngDriver,
   EngGateway,
   EngRole,
-  IngestRequest
+  EngS7PlusConnection,
+  EngS7PlusStation,
+  IngestRequest,
+  LiveScope,
+  S7InventoryResult,
+  S7PlusManagerHealth
 } from './eng-studio/data/gateway.js';
 import './eng-studio/ui/eng-books.js';
 import './eng-studio/ui/eng-structure-tree.js';
-import type { BookBrowseDetail, BookIngestDetail } from './eng-studio/ui/eng-book-form.js';
-import { driverMismatchHint, renderDriverSelect } from './eng-studio/ui/eng-driver-select.js';
+import type { BookBrowseDetail, BookIngestDetail, BookS7PlusBrowseDetail } from './eng-studio/ui/eng-book-form.js';
+import { driverMismatchHint, offerableDrivers, renderDriverSelect } from './eng-studio/ui/eng-driver-select.js';
 import { renderConnectionSelect, unknownConnectionHint } from './eng-studio/ui/eng-connection-select.js';
-import type { StructureBindDetail, StructureChangeDetail } from './eng-studio/ui/eng-structure-tree.js';
+import type { DpPickRequest, PolicyChangeDetail, StructureBindDetail, StructureChangeDetail } from './eng-studio/ui/eng-structure-tree.js';
 import {
-  LANG_LABEL,
   MSG,
   PARAM_LABEL,
   PARAM_OPTION_LABEL,
@@ -109,10 +135,10 @@ import {
   type Ml
 } from './eng-studio/i18n.js';
 
-type Panel = 'devices' | 'books' | 'model' | 'control';
+type Panel = 'devices' | 'books' | 'model' | 'instances';
 
 /** Tab order of the top bar — the index `ix-tabs` reports and selects. */
-const PANEL_ORDER: Panel[] = ['devices', 'books', 'model', 'control'];
+const PANEL_ORDER: Panel[] = ['devices', 'books', 'model', 'instances'];
 
 /** The role gating every model edit — qualifying a signal included. */
 const EDIT_MODEL: EngRole = 'edit-model';
@@ -136,7 +162,8 @@ export class WuiEngStudio extends LitElement {
   /** Injected gateway. Defaults to HTTP in the shell; the demo entry sets a DemoEngGateway. */
   gateway: EngGateway = new HttpEngGateway();
 
-  @state() private panel: Panel = 'model';
+  /** Default panel: DEVICES — the studio is device-first, and an empty project starts by declaring one. */
+  @state() private panel: Panel = 'devices';
   @state() private devices: Device[] = [];
   @state() private selectedDeviceId: string | null = null;
   /** Every address book (registry); a book may be shared by several devices. */
@@ -159,8 +186,17 @@ export class WuiEngStudio extends LitElement {
    */
   @state() private editingRole: string | null = null;
   /** Model-generation form (Model panel). */
+  /**
+   * The DP TYPE the model targets — which is NOT the same thing as the model's name.
+   *
+   * They were one field while every model created its own type. A model built ON an existing
+   * type (a project engineered in PARA before the studio) must keep pointing AT that type:
+   * deriving the type from the model's name would have generated a second one beside it and
+   * left the datapoints of the first unconfigured.
+   */
   @state() private genTypeName = '';
-  @state() private genZone = 'Z01';
+  /** The model's own name — a label, free of the identifier rules the type obeys. */
+  @state() private genModelName = '';
   @state() private genEquipments = '';
   /**
    * Equipment the generation targets, '' → the one selected in the Devices panel.
@@ -171,33 +207,84 @@ export class WuiEngStudio extends LitElement {
   /** The project's reusable models, and the one currently loaded ('' = none). */
   @state() private models: ModelTemplate[] = [];
   @state() private genModelId = '';
+  /** The selected model's description — free text, stored with it. */
+  @state() private genDescription = '';
+  /**
+   * The model being CREATED (name + description), before it exists.
+   *
+   * A step of its own rather than a row in the list: a model is created empty and stored
+   * at once, so everything chosen afterwards (its catalogs, which of them it mirrors, its
+   * mapping) has a record to be saved into.
+   */
+  @state() private modelDraft: { name: string; description: string; fromType?: string } | null = null;
+  /**
+   * Which source catalogs SHAPE the model — the ones whose paths are mirrored into its
+   * structure. Per catalog, because a model may mirror one export and merely map onto
+   * another (see `rebuildMirroredStructure`).
+   */
+  /**
+   * Is the selected model OPEN FOR EDITING?
+   *
+   * A model is read-only until "Edit" is pressed, and every change then lands in page
+   * state until "Save" — so leaving the screen, or "Cancel", cannot half-modify a stored
+   * house standard. Creating one (`modelDraft`) is editing by definition.
+   */
+  @state() private modelEditing = false;
+  /** Memo of {@link sourceEntries} — see it for why (a render-time N× cost). */
+  private entryCacheKey = '';
+  private entryCache: BookEntry[] = [];
+  /** The datapoint search opened by a leaf's magnifier ({@link renderDpPicker}). */
+  @state() private dpPick:
+    | { leaf: string; field: 'alarmClass' | 'archiveGroup'; range?: number; pattern: string; results: string[]; truncated: boolean }
+    | null = null;
+  /** The project's DP type names — a new model may start from one of them. */
+  @state() private dpTypes: string[] = [];
+  /** The project's alarm classes and archive groups, offered per leaf. */
+  @state() private configOptions: EngConfigOptions = { alarmClasses: [], archiveGroups: [], subscriptions: [], pollGroups: [] };
+  /** Which model the Instances tab is showing (''= the first one). */
+  @state() private instanceModelType = '';
+  /**
+   * Re-create ARMED for this type name — a first click asks, a second one does it.
+   *
+   * Two clicks rather than a modal for the same reason the device delete does it: this is
+   * the one operation that DROPS datapoints (and their archived values) instead of amending
+   * them, so it must be impossible to trigger by reflex.
+   */
+  @state() private recreateArmed = '';
+  /** Which model row (by type name) has its instance form open, in the Instances tab. */
+  @state() private instanceFormType: string | null = null;
   /** Warnings of the last generation, shown under the form. */
   @state() private genWarnings: EngWarning[] = [];
-  /** Structure mode: mirror the book's paths, or author the type and map onto it. */
-  @state() private genMode: 'mirror' | 'custom' = 'mirror';
-  /**
-   * Which VIEW of the authored structure is shown — the tree (shape it) or the
-   * outline (the storage format, as text). Both edit the same `genOutline`.
-   */
-  @state() private genView: 'tree' | 'text' = 'tree';
   /** Authored structure, as an editable outline (see the core's structure.ts). */
   @state() private genOutline = '';
   /** Parse errors of the outline (shown next to it, never thrown). */
   @state() private genOutlineErrors: EngWarning[] = [];
   /** Target leaf path → book entry path. */
   @state() private genBindings: StructureBindings = {};
+  /**
+   * DEPLOYMENT POLICY being composed: per mapped leaf, whether to alarm (and in
+   * which class), whether to archive (and in which group), and an optional range.
+   *
+   * Held beside the bindings and SAVED WITH THE MODEL, because that is the whole
+   * "define it once" point: the structure says what the type is, the bindings
+   * where each leaf reads from, and this how each leaf is configured — then every
+   * instance (another connection, another equipment) replays the same decisions.
+   * An absent leaf key means "the default" (see the core's `defaultLeafPolicy`),
+   * never "off".
+   */
+  @state() private genPolicy: ModelPolicy = {};
+  /** Models expanded in the Instances tree (by type name). */
+  /**
+   * ADDITIONAL source catalogs of the model being composed (beside `selectedBookId`,
+   * the primary). A model may read several — see `renderCatalogSources`.
+   */
+  @state() private extraBookIds = new Set<string>();
   /** Leaves auto-binding could not decide (several equal candidates). */
   @state() private genAmbiguous: { leaf: string; candidates: string[] }[] = [];
   @state() private workspace: Workspace | null = null;
   @state() private live: LiveSnapshot | null = null;
   @state() private plan: EngPlan | null = null;
   @state() private report: ApplyReport | null = null;
-  /**
-   * Plan rows ticked for removal from the workspace, keyed `<kind>:<name>` (`planKey`).
-   * A plan is recomputed on every change, so a row must be identified by WHAT it is, not
-   * by its index — an index would move the tick to another object.
-   */
-  @state() private forgetChecked = new Set<string>();
   @state() private roles = new Set<EngRole>();
   @state() private busy = false;
   @state() private notice = '';
@@ -210,6 +297,13 @@ export class WuiEngStudio extends LitElement {
   @state() private uiLang: Lang = resolveLang(null);
   /** Live OPC UA connections available for an online browse. */
   @state() private connections: EngConnection[] = [];
+  /**
+   * The project's S7Plus connections and whether their browse manager answers.
+   * Loaded like the OPC UA connections — best-effort: a project without the S7Plus
+   * driver simply does not offer the generator, which is not an error.
+   */
+  @state() private s7plusConnections: EngS7PlusConnection[] = [];
+  @state() private s7plusManager: S7PlusManagerHealth | undefined;
   /** The project's drivers, offered as an equipment's `driverNumber`. */
   @state() private drivers: EngDriver[] = [];
   /** Catalogues panel: the creation form is open (the page owns its visibility). */
@@ -218,6 +312,20 @@ export class WuiEngStudio extends LitElement {
   @state() private bookFormError = '';
   /** Progress of the walk in flight (null when none) — see `onWalkBook`. */
   @state() private walking: BrowseProgress | null = null;
+  /**
+   * The classic-S7 online check: whether the reader is deployed, what it last
+   * said, and whether a read is in flight.
+   *
+   * The result is held HERE and not stored with the catalog on purpose: a catalog
+   * is a reading of the STEP 7 project and an inventory is a reading of a machine
+   * at one moment. Persisting the second beside the first would turn a transient
+   * disagreement into a property of the export.
+   */
+  /** The project's classic-S7 connections, offered by the device form. */
+  @state() private s7Connections: EngConnection[] = [];
+  @state() private s7BrowseAvailable = false;
+  @state() private s7Inventory: (S7InventoryResult & { bookId: string }) | null = null;
+  @state() private s7InventoryBusy = false;
   /**
    * Set by "Stop" and read by the walk's progress callback, which THROWS to unwind
    * the walker. A flag rather than an AbortSignal because the seam is the core's
@@ -356,19 +464,55 @@ export class WuiEngStudio extends LitElement {
   }
 
   /**
-   * Public: switch the generation to a CUSTOM structure (demo/screenshot harness).
-   * With no outline it bootstraps from the mirror; `outline` overrides it to show a
+   * Public: author a structure in the Model tab (demo/screenshot harness).
+   * With no outline it mirrors the selected catalog; `outline` overrides it to show a
    * house-standard structure mapped onto a differently-shaped book.
    */
   customStructureForDemo(typeName: string, outline?: string): void {
     const book = this.activeBook();
     if (!book) return;
+    // The detail column shows a MODEL: open one (and its editor) first, exactly as an
+    // operator would, so the authored structure has somewhere to be shown.
+    if (this.genModelId === '' && this.models[0] !== undefined) this.onLoadModel(this.models[0].id);
+    this.modelEditing = true;
     this.genTypeName = typeName;
-    this.genMode = 'custom';
-    this.genOutline = outline ?? formatStructureOutline(this.mirrorStructure(book));
+    if (outline === undefined) {
+      this.onMirrorSource(book);
+      return;
+    }
+    this.genOutline = outline;
     this.genOutlineErrors = parseStructureOutline(this.genOutline, typeName).errors;
     this.genBindings = {};
     this.onAutoBind(book);
+  }
+
+  /**
+   * Public: open the CREATION form of a model (demo/screenshot harness).
+   * Through `onNewModel`, so the form starts from the same blank state an operator gets
+   * (no catalog inherited from whatever was selected before), then the fields are filled.
+   */
+  /** Public: pin per-leaf deployment decisions (demo/screenshot harness). */
+  policyForDemo(policy: ModelPolicy): void {
+    this.genPolicy = { ...this.genPolicy, ...policy };
+  }
+
+  modelFormForDemo(name = '', description = '', sources: { bookId: string; mirror?: boolean }[] = [], fromType = ''): void {
+    this.panel = 'model';
+    this.onNewModel();
+    this.modelDraft = { name, description, ...(fromType === '' ? {} : { fromType }) };
+    for (const source of sources) {
+      this.toggleSourceBook(source.bookId);
+      const book = this.books.find((candidate) => candidate.id === source.bookId);
+      if (source.mirror === true && book !== undefined) this.onMirrorSource(book);
+    }
+  }
+
+  /** Public: open one model's INSTANCE form in the Instances tab (demo/screenshot). */
+  instanceFormForDemo(typeName: string, equipments = '', deviceId = ''): void {
+    this.panel = 'instances';
+    this.genEquipments = equipments;
+    if (deviceId !== '') this.genTargetId = deviceId;
+    this.openInstanceForm(typeName);
   }
 
   /**
@@ -393,14 +537,18 @@ export class WuiEngStudio extends LitElement {
     this.openBookForm();
   }
 
-  /** Public: run a generation with the given form values (demo/screenshot harness). */
-  generateForDemo(typeName: string, zone: string, equipments: string): void {
+  /**
+   * Public: generate straight from the selected catalog (demo/screenshot harness).
+   *
+   * Mirrors the catalog rather than instantiating a stored model — that is the
+   * "qualify → generate → diff" story the screenshots tell, in one call.
+   */
+  generateForDemo(typeName: string, equipments: string): void {
     const book = this.activeBook();
     if (!book) return;
     this.genTypeName = typeName;
-    this.genZone = zone;
     this.genEquipments = equipments;
-    void this.onGenerateModel(book);
+    void this.runGeneration({ book, typeName });
   }
 
   /** Monotonic load token — only the latest load() writes state (demo swap race). */
@@ -418,19 +566,54 @@ export class WuiEngStudio extends LitElement {
       // Browsable connections and the driver list are nice-to-haves: never fail the
       // whole load on them — the forms degrade to free entry instead.
       const connections = await gateway.listConnections().catch(() => [] as EngConnection[]);
+      const s7plusConnections = await gateway.listS7PlusConnections().catch(() => [] as EngS7PlusConnection[]);
+      // Only asked when there is something to browse: probing a service no
+      // connection needs would put a vRPC round-trip in every page load.
+      const s7plusManager =
+        s7plusConnections.length === 0 ? undefined : await gateway.s7plusHealth().catch(() => undefined);
+      // Same rule for the classic-S7 reader: only asked when the project actually
+      // declares an S7-300/400 equipment, so a project without one never pays a
+      // vRPC round-trip for a manager it has no use for.
+      const hasClassicS7 = devices.some((candidate) => candidate.protocol === 's7');
+      const s7Browse = hasClassicS7 ? await gateway.s7BrowseHealth().catch(() => ({ reachable: false })) : { reachable: false };
+      // Offered by the device form. Listed unconditionally — unlike the reader probe
+      // above, this is what an operator needs precisely when the project has NO S7
+      // equipment yet: it is how the first one is declared against a real connection.
+      const s7Connections = await gateway.listS7Connections().catch(() => [] as EngConnection[]);
       const drivers = await gateway.listDrivers().catch(() => [] as EngDriver[]);
+      // The project's alarm classes and archive groups — offered per leaf in the model
+      // editor. Never fatal: an empty pair means "could not tell", and the fields then
+      // accept free entry rather than blocking a deployment decision.
+      const configOptions = await gateway
+        .listConfigOptions()
+        .catch(() => ({ alarmClasses: [], archiveGroups: [], subscriptions: [], pollGroups: [] }) as EngConfigOptions);
+      // The project's OWN DP types: a model may be started from one that already exists,
+      // which is the normal case on a project engineered in PARA before the studio.
+      const dpTypes = await gateway.listDpTypes().catch(() => [] as string[]);
       const models = await gateway.listModels().catch(() => [] as ModelTemplate[]);
       const selectedDeviceId = this.selectedDeviceId ?? devices[0]?.id ?? null;
       const device = devices.find((d) => d.id === selectedDeviceId);
       const selectedBookId = this.selectedBookId ?? device?.bookIds[0] ?? null;
       const workspace = await gateway.getWorkspace();
-      const live = await gateway.liveSnapshot(liveScopeOf(workspace));
+      // The models are already read above, so the scope can include the types they target —
+      // which is what makes an existing type and its datapoints visible on first paint.
+      const scope = liveScopeOf(workspace);
+      const live = await gateway.liveSnapshot({
+        types: [...new Set([...scope.types, ...models.map((model) => model.typeName)])],
+        dpes: scope.dpes
+      });
       if (token !== this.loadToken) return; // superseded (e.g. by useDemo)
       this.roles = roles;
       this.devices = devices;
       this.books = books;
       this.connections = connections;
+      this.s7plusConnections = s7plusConnections;
+      this.s7plusManager = s7plusManager;
+      this.s7Connections = s7Connections;
+      this.s7BrowseAvailable = s7Browse.reachable;
       this.drivers = drivers;
+      this.configOptions = configOptions;
+      this.dpTypes = dpTypes;
       this.models = models;
       if (this.browseConnection === '') this.browseConnection = connections.find((c) => c.connected)?.name ?? '';
       this.selectedDeviceId = selectedDeviceId;
@@ -443,6 +626,22 @@ export class WuiEngStudio extends LitElement {
     } finally {
       if (token === this.loadToken) this.busy = false;
     }
+  }
+
+  /**
+   * What the live read must cover: the workspace's own scope PLUS the DP types the models
+   * target.
+   *
+   * A model that parameterises an existing type describes nothing in the workspace until it is
+   * instantiated, so `liveScopeOf` alone never asked for that type — and the page then read
+   * "no such type, no such datapoint": the model showed "not created" beside a type that
+   * exists, and its instances were invisible. The models are part of what this screen is
+   * about, so their types are part of what it has to read.
+   */
+  private liveScope(workspace: Workspace): LiveScope {
+    const scope = liveScopeOf(workspace);
+    const types = new Set([...scope.types, ...this.models.map((model) => model.typeName)]);
+    return { types: [...types], dpes: scope.dpes };
   }
 
   private recomputePlan(): void {
@@ -476,10 +675,6 @@ export class WuiEngStudio extends LitElement {
     return warnText(warning, this.uiLang);
   }
 
-  /** Public: set the UI language (shell, demo entry and screenshot harness). */
-  setLang(lang: string): void {
-    this.uiLang = resolveLang(lang);
-  }
 
   override render(): TemplateResult {
     return html`
@@ -494,7 +689,7 @@ export class WuiEngStudio extends LitElement {
           ${this.panel === 'devices' ? this.renderDevicesPanel() : nothing}
           ${this.panel === 'books' ? this.renderBooksPanel() : nothing}
           ${this.panel === 'model' ? this.renderModelPanel() : nothing}
-          ${this.panel === 'control' ? this.renderControlPanel() : nothing}
+          ${this.panel === 'instances' ? this.renderInstancesPanel() : nothing}
         </main>
       </div>
     `;
@@ -519,16 +714,6 @@ export class WuiEngStudio extends LitElement {
         ${conflicts > 0
           ? html`<ix-chip variant="alarm" title=${this.tr(MSG.conflictTitle)}>${this.tr(MSG.conflictChip)} ${conflicts}</ix-chip>`
           : nothing}
-        <ix-select
-          class="lang-picker"
-          hide-list-header
-          .value=${this.uiLang}
-          @valueChange=${(event: CustomEvent<string | string[]>) => this.setLang(firstOf(event.detail))}
-        >
-          ${(Object.keys(LANG_LABEL) as Lang[]).map(
-            (code) => html`<ix-select-item value=${code} label=${LANG_LABEL[code]}></ix-select-item>`
-          )}
-        </ix-select>
       </header>
       <ix-tabs
         .selected=${PANEL_ORDER.indexOf(this.panel)}
@@ -537,7 +722,7 @@ export class WuiEngStudio extends LitElement {
         <ix-tab-item>${this.tr(MSG.stepDevices)}</ix-tab-item>
         <ix-tab-item>${this.tr(MSG.stepBooks)}${countSuffix(this.books.length)}</ix-tab-item>
         <ix-tab-item>${this.tr(MSG.stepModel)}</ix-tab-item>
-        <ix-tab-item>${this.tr(MSG.stepControl)}${countSuffix(changes)}</ix-tab-item>
+        <ix-tab-item>${this.tr(MSG.stepInstances)}${countSuffix(changes)}</ix-tab-item>
       </ix-tabs>
       ${this.notice === ''
         ? nothing
@@ -687,7 +872,6 @@ export class WuiEngStudio extends LitElement {
       </div>`;
     }
     const books = this.booksOfDevice(device);
-    const book = this.activeBook();
     return html`
       <div class="panel-head">
         <h2>${device.name}</h2>
@@ -698,23 +882,100 @@ export class WuiEngStudio extends LitElement {
         ${this.can('manage-devices')
           ? html`<ix-button variant="secondary" icon="pen" @click=${() => this.onEditDevice(device)}>${this.tr(MSG.deviceEdit)}</ix-button>`
           : nothing}
-        ${this.can('manage-devices')
-          ? html`<ix-button variant="primary" icon="refresh" ?disabled=${this.busy || book == null} @click=${this.onRefreshBook}>
-              ${this.tr(MSG.refreshBook)}
-            </ix-button>`
-          : nothing}
       </div>
       <div class="panel-scroll">
+        ${this.renderDeviceModelDps(device)}
+        ${this.renderDeviceBooks(books)}
+      </div>
+    `;
+  }
+
+  /**
+   * The equipment's catalogs, as LINKS — nothing more.
+   *
+   * The device screen used to embed the whole book detail: interface cards, the
+   * online browse form, the signal table. All of it exists in the Catalogues panel
+   * — same table, same state, passed there through the `signals` slot — so keeping
+   * a second copy here cost width, duplicated a workflow, and let the two screens
+   * drift. Field request settled it: the device screen is about the EQUIPMENT
+   * (its state, its model datapoints, which catalogs it reads); the book work —
+   * qualification, browse, refresh — belongs to the Catalogues tab. One click on a
+   * link opens that tab on the book.
+   */
+  private renderDeviceBooks(books: AddressBook[]): TemplateResult {
+    return html`
+      <section class="card book-links">
+        <div class="card-title">${this.tr(MSG.books)}</div>
         ${books.length === 0
           ? html`<div class="empty small">${this.tr(MSG.noBookHint)}</div>`
+          : books.map((book) => this.renderBookLink(book))}
+      </section>
+    `;
+  }
+
+  /** One catalog link: identity + counts here, everything else in the Catalogues tab. */
+  private renderBookLink(book: AddressBook): TemplateResult {
+    const shared = this.otherDevicesSharing(book.id).length > 0;
+    return html`
+      <button class="book-link" title=${this.tr(MSG.bookLinkHint, { name: book.name })} @click=${() => this.openBookInPanel(book.id)}>
+        <span class="book-tab-name">${book.name}</span>
+        <span class="chip mode">${book.interface ? this.protocolOf(book.interface.protocol) : this.tr(MSG.catalogChip)}</span>
+        <span class="chip">${this.tr(MSG.entriesChip, { n: book.entries.length })}</span>
+        ${shared ? html`<span class="chip" title=${this.tr(MSG.sharedBook)}>⇆</span>` : nothing}
+        <span class="spacer"></span>
+        <span class="book-link-go" aria-hidden="true">→</span>
+      </button>
+    `;
+  }
+
+  /** The links' target: the Catalogues panel, opened on that book. */
+  private openBookInPanel(bookId: string): void {
+    this.selectBook(bookId);
+    this.panel = 'books';
+  }
+
+  /**
+   * The MODEL's datapoints bound to THIS equipment — and only those.
+   *
+   * The Model panel's grid shows the whole workspace; an operator standing on an
+   * equipment wants the opposite cut: which datapoints the model actually ties to
+   * this machine. The link is `AddressConfig.deviceId` — the studio-side provenance
+   * every generated address records (see the core's `AddressConfig`) — so the list
+   * is exact, not a name heuristic. A DP is shown WHOLE once any of its DPEs is
+   * bound here: the datapoint is the unit an operator reasons about, and its
+   * config-less leaves are information too.
+   */
+  private renderDeviceModelDps(device: Device): TemplateResult {
+    const ws = this.workspace;
+    if (!ws) return html``;
+    const rows = this.deviceGridRows(ws, device.id);
+    const dpCount = new Set(rows.map((row) => dpNameOf(row.dpe))).size;
+    return html`
+      <section class="card signals model-dps">
+        <div class="signals-head">
+          <div class="card-title">${this.tr(MSG.deviceModelDps)}</div>
+          <span class="chip">${this.tr(MSG.dpsCount, { n: dpCount })}</span>
+          <span class="soft signals-count">${this.tr(MSG.deviceModelDpsHint)}</span>
+        </div>
+        ${rows.length === 0
+          ? html`<div class="empty small">${this.tr(MSG.deviceModelDpsEmpty)}</div>`
           : html`
-              <div class="book-tabs">
-                <span class="book-tabs-label">${this.tr(MSG.books)}&nbsp;:</span>
-                ${books.map((b) => this.renderBookTab(b))}
+              <div class="grid-scroll">
+                <table class="grid">
+                  <thead>
+                    <tr>
+                      <th>${this.tr(MSG.colDpe)}</th><th>${this.tr(MSG.colType)}</th><th>${this.tr(MSG.colAddress)}</th>
+                      <th>${this.tr(MSG.colDir)}</th><th>${this.tr(MSG.colAlarm)}</th><th>${this.tr(MSG.colArchive)}</th>
+                      <th>${this.tr(MSG.colRange)}</th><th>${this.tr(MSG.colLiveValue)}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${rows.map((row) => this.renderGridRow(row))}
+                  </tbody>
+                </table>
               </div>
-              ${book ? this.renderBookDetail(device, book) : nothing}
             `}
-      </div>
+      </section>
     `;
   }
 
@@ -732,11 +993,15 @@ export class WuiEngStudio extends LitElement {
     const blocking = blockingProblems(this.deviceProblems);
     const advisory = this.deviceProblems.filter((problem) => !blocking.includes(problem));
     const allSpecs = PROTOCOL_PARAMS[draft.protocol] ?? [];
-    const specs = allSpecs.filter((spec) => spec.declarative !== true);
+    const specs = allSpecs.filter((spec) => spec.declarative !== true && spec.section === undefined);
     // Parameters that only RECORD how the driver is configured elsewhere get their
     // own card: shown among the connection fields they would read as settings the
     // studio applies, which they are not.
-    const declarative = allSpecs.filter((spec) => spec.declarative === true);
+    const declarative = allSpecs.filter((spec) => spec.declarative === true && spec.section === undefined);
+    // The OPC UA security block: written to the LIVE connection at save time, so it
+    // gets its own card — mixing it into the connection fields would hide that
+    // these have an immediate effect on the project.
+    const security = allSpecs.filter((spec) => spec.section === 'security');
     const device = editing ? this.devices.find((d) => d.id === this.deviceFormId) : undefined;
     return html`
       <div class="panel-head">
@@ -793,22 +1058,6 @@ export class WuiEngStudio extends LitElement {
                 )}
               </ix-select>
             </label>
-            <div class="form-row">
-              <span>${this.tr(MSG.deviceAccessModes)}</span>
-              <div class="box-list">
-                ${PROTOCOLS.map(
-                  (mode) => html`<label class="box">
-                    <input
-                      type="checkbox"
-                      .checked=${draft.accessModes.includes(mode)}
-                      @change=${() => this.toggleDraftMode(mode)}
-                    />
-                    <span class="box-name">${this.protocolOf(mode)}</span>
-                  </label>`
-                )}
-              </div>
-            </div>
-            <div class="form-hint">${this.tr(MSG.deviceAccessModesHint)}</div>
           </section>
 
           <section class="card">
@@ -820,12 +1069,12 @@ export class WuiEngStudio extends LitElement {
                 drivers: this.drivers,
                 value: draft.driverNumber,
                 lang: this.uiLang,
+                // Only the drivers that can serve this protocol, never the simulator.
+                protocol: draft.protocol,
                 onChange: (value) => this.patchDraft({ driverNumber: value })
               })}
             </label>
-            <div class="form-hint">
-              ${this.drivers.length === 0 ? this.tr(MSG.driverNoneListed) : this.tr(MSG.driverHint)}
-            </div>
+            <div class="form-hint">${this.driverHint(draft.protocol)}</div>
             ${this.renderDriverMismatch(draft)}
             <label class="form-row">
               <span>${this.tr(MSG.devicePollGroup)}</span>
@@ -837,6 +1086,8 @@ export class WuiEngStudio extends LitElement {
             </label>
             <div class="form-hint">${this.tr(MSG.devicePollGroupHint)}</div>
           </section>
+
+          ${security.length === 0 ? nothing : this.renderSecurityCard(draft, security)}
 
           ${declarative.length === 0
             ? nothing
@@ -882,19 +1133,6 @@ export class WuiEngStudio extends LitElement {
     `;
   }
 
-  private renderBookTab(book: AddressBook): TemplateResult {
-    const active = book.id === this.selectedBookId;
-    const shared = this.otherDevicesSharing(book.id).length > 0;
-    return html`
-      <button class="book-tab ${active ? 'active' : ''}" @click=${() => this.selectBook(book.id)} title=${book.name}>
-        <span class="book-tab-name">${book.name}</span>
-        <span class="chip mode">${book.interface ? this.protocolOf(book.interface.protocol) : 'catalogue'}</span>
-        <span class="chip">${book.entries.length}</span>
-        ${shared ? html`<span class="chip" title=${this.tr(MSG.sharedBook)}>⇆</span>` : nothing}
-      </button>
-    `;
-  }
-
   private protocolOf(protocol: string): string {
     const map: Record<string, string> = { opcua: 'OPC UA', s7: 'S7', s7plus: 'S7+', modbus: 'Modbus' };
     return map[protocol] ?? protocol;
@@ -908,6 +1146,64 @@ export class WuiEngStudio extends LitElement {
   private paramLabel(key: string): string {
     const label = PARAM_LABEL[key];
     return label === undefined ? key : this.tr(label);
+  }
+
+  /**
+   * The sentence under the driver picker, told from the FILTERED list — the three
+   * cases are genuinely different problems:
+   *  - the project reports no driver at all (no runtime, no permission);
+   *  - it has drivers but none can serve this protocol (the simulator is never
+   *    offered, and an OPC UA client cannot serve a Modbus station);
+   *  - there is a choice to make.
+   * Saying "no driver listed" in the second case would send an operator looking for
+   * a driver that is right there in the project.
+   */
+  private driverHint(protocol: ProtocolKind): string {
+    if (this.drivers.length === 0) return this.tr(MSG.driverNoneListed);
+    if (offerableDrivers(this.drivers, protocol).length === 0) {
+      return this.tr(MSG.driverNoneForProtocol, { protocol: this.protocolOf(protocol) });
+    }
+    return this.tr(MSG.driverHint);
+  }
+
+  /**
+   * The OPC UA SECURITY card: user / password / policy / mode / client
+   * certificate, then the certificate-relaxation checkboxes (`Config.Flags`
+   * bits — the standard panel's advanced settings). Apart from the connection
+   * card because these are WRITTEN to the live connection at save time.
+   */
+  private renderSecurityCard(draft: DeviceDraft, security: DeviceParamSpec[]): TemplateResult {
+    const fields = security.filter((spec) => spec.kind !== 'bit');
+    const bits = security.filter((spec) => spec.kind === 'bit');
+    return html`<section class="card">
+      <div class="card-title">${this.tr(MSG.deviceSecurity)}</div>
+      <div class="form-hint">${this.tr(MSG.deviceSecurityHint)}</div>
+      ${fields.map((spec) => this.renderParamRow(draft, spec))}
+      ${bits.length === 0
+        ? nothing
+        : html`
+            <div class="form-hint">${this.tr(MSG.deviceCertFlagsHint)}</div>
+            <div class="box-list bits">${bits.map((spec) => this.renderBitBox(draft, spec))}</div>
+          `}
+    </section>`;
+  }
+
+  /**
+   * One `Config.Flags` bit as a checkbox. Unlike the tri-state `flag`, a bit that
+   * was never touched stays ABSENT (the live bit is left alone); once toggled the
+   * draft carries an explicit true/false and the save forces that bit.
+   */
+  private renderBitBox(draft: DeviceDraft, spec: DeviceParamSpec): TemplateResult {
+    const value = draft.connection[spec.key];
+    const checked = value === true || value === 'true';
+    return html`<label class="box">
+      <input
+        type="checkbox"
+        .checked=${checked}
+        @change=${(event: Event) => this.patchDraftParam(spec.key, (event.target as HTMLInputElement).checked ? 'true' : 'false')}
+      />
+      <span class="box-name">${this.paramLabel(spec.key)}</span>
+    </label>`;
   }
 
   /**
@@ -925,13 +1221,20 @@ export class WuiEngStudio extends LitElement {
     // The OPC UA server name is not free text: it is the reference every address of the
     // equipment is bound through AND the connection its state is read on, so it is
     // picked from the project's own connections — see `eng-connection-select.ts`.
-    if (spec.key === 'server' && draft.protocol === 'opcua') {
-      const hint = unknownConnectionHint(this.connections, current, this.uiLang);
+    // Classic S7 gets the same treatment, for the same reason: naming the
+    // connection is what makes the equipment's state read EXACT (matched by name
+    // rather than by searching its IP inside `_S7_Conn.Address`). Optional here,
+    // so an equipment declared before its connection exists still saves.
+    const connectionParam =
+      (spec.key === 'server' && draft.protocol === 'opcua') || (spec.key === 'connection' && draft.protocol === 's7');
+    if (connectionParam) {
+      const offered = draft.protocol === 's7' ? this.s7Connections : this.connections;
+      const hint = unknownConnectionHint(offered, current, this.uiLang);
       return html`
         <label class="form-row">
           ${label}
           ${renderConnectionSelect({
-            connections: this.connections,
+            connections: offered,
             value: current,
             lang: this.uiLang,
             ...(spec.example === undefined ? {} : { placeholder: spec.example }),
@@ -940,6 +1243,24 @@ export class WuiEngStudio extends LitElement {
         </label>
         ${hint === null ? nothing : html`<div class="form-hint warn-inline">${hint}</div>`}
       `;
+    }
+    // A SECRET is write-only: it is sent with the save, pushed to the runtime
+    // (vendor-encrypted) and forgotten — so the field is always blank, and the
+    // hint says whether the LIVE connection currently carries a password.
+    if (spec.kind === 'secret') {
+      const editing = this.devices.find((device) => device.id === this.deviceFormId);
+      return html`<label class="form-row">
+          ${label}
+          <input
+            class="filter"
+            type="password"
+            autocomplete="new-password"
+            placeholder=${editing?.passwordSet === true ? '••••••••' : ''}
+            .value=${current}
+            @input=${(event: Event) => this.patchDraftParam(spec.key, (event.target as HTMLInputElement).value)}
+          />
+        </label>
+        <div class="form-hint">${this.tr(editing?.passwordSet === true ? MSG.devicePasswordSet : MSG.devicePasswordUnset)}</div>`;
     }
     if (spec.kind === 'choice' || spec.kind === 'flag') {
       const options = spec.kind === 'flag' ? ['true', 'false'] : (spec.options ?? []);
@@ -998,103 +1319,12 @@ export class WuiEngStudio extends LitElement {
     return label === undefined ? value : this.tr(label);
   }
 
-  private renderBookDetail(device: Device, book: AddressBook): TemplateResult {
-    const sharedWith = this.otherDevicesSharing(book.id);
-    return html`
-      <div class="device-grid">
-        <section class="card">
-          <div class="card-title">${this.tr(MSG.interfaceOf, { name: book.name })}</div>
-          ${book.interface
-            ? html`
-                <table class="kv">
-                  <tr><td>${this.tr(MSG.fieldProtocol)}</td><td>${this.protocolOf(book.interface.protocol)}</td></tr>
-                  ${book.interface.connection ? html`<tr><td>${this.tr(MSG.fieldConnection)}</td><td class="mono">${book.interface.connection}</td></tr>` : nothing}
-                  ${Object.entries(book.interface.params ?? {}).map(([k, v]) => html`<tr><td>${k}</td><td class="mono">${String(v)}</td></tr>`)}
-                  <tr><td>${this.tr(MSG.fieldDriver)}</td><td class="mono">${book.interface.driverNumber ?? device.driverNumber ?? '—'}</td></tr>
-                </table>
-              `
-            : html`<div class="empty small">${this.tr(MSG.fileCatalogHint)}</div>`}
-        </section>
-        <section class="card">
-          <div class="card-title">${this.tr(MSG.addressBook)}</div>
-          <table class="kv">
-            <tr><td>${this.tr(MSG.fieldSource)}</td><td>${book.provenance.kind}${book.provenance.file ? html` · <code>${book.provenance.file}</code>` : nothing}</td></tr>
-            <tr><td>${this.tr(MSG.fieldGenerated)}</td><td class="mono">${book.provenance.generatedAt.replace('T', ' ').slice(0, 16)}</td></tr>
-            <tr><td>${this.tr(MSG.fieldDetail)}</td><td>${book.provenance.detail ?? '—'}</td></tr>
-            <tr><td>${this.tr(MSG.fieldEntries)}</td><td>${this.tr(MSG.entriesValue, { n: book.entries.length, types: book.types.length })}</td></tr>
-            ${sharedWith.length > 0
-              ? html`<tr><td>${this.tr(MSG.fieldSharedWith)}</td><td>${sharedWith.map((n) => html`<span class="chip">${n}</span> `)}</td></tr>`
-              : nothing}
-            ${book.warnings.length > 0 ? html`<tr><td>${this.tr(MSG.fieldWarnings)}</td><td class="warn-text">${book.warnings.length}</td></tr>` : nothing}
-          </table>
-        </section>
-      </div>
-      ${this.renderBrowseCard(device, book)}
-      ${this.renderBookDelta()}
-      ${book.warnings.length > 0
-        ? html`<section class="card warnings"><div class="card-title">${this.tr(MSG.generatorWarnings)}</div><ul>${book.warnings.map((w) => html`<li>${this.warnText(w)}</li>`)}</ul></section>`
-        : nothing}
-      ${this.renderDeviceSignals(book)}
-    `;
-  }
-
   /**
-   * Online OPC UA browse: re-browse the current book's server, or walk another
-   * connection into a new catalog. Shown only where it applies — the project must
-   * expose an OPC UA connection AND the equipment must speak OPC UA (or already
-   * carry a browsed book); an OPC UA form on a Modbus-only equipment is noise.
+   * Delta of the last source re-read — removals first, they are the risky ones.
+   * Rendered in the CATALOGUES panel (above the signal table, through the `signals`
+   * slot): that is where refresh and browse live since the device screen was
+   * reduced to links.
    */
-  private renderBrowseCard(device: Device, book: AddressBook): TemplateResult {
-    const applies = device.accessModes.includes('opcua') || book.provenance.kind === 'opcua-browse';
-    if (this.connections.length === 0 || !applies) return html``;
-    const replayable = book.provenance.kind === 'opcua-browse' && book.provenance.browse !== undefined;
-    return html`
-      <section class="card">
-        <div class="card-title">${this.tr(MSG.browseTitle)}</div>
-        <div class="browse-row">
-          <ix-select
-            label=${this.tr(MSG.browseConnection)}
-            .value=${this.browseConnection}
-            @valueChange=${(event: CustomEvent<string | string[]>) => (this.browseConnection = firstOf(event.detail))}
-          >
-            ${this.connections.map(
-              (c) => html`<ix-select-item
-                value=${c.name}
-                label=${c.name + (c.connected ? '' : this.tr(MSG.disconnectedSuffix))}
-              ></ix-select-item>`
-            )}
-          </ix-select>
-          <ix-input
-            label=${this.tr(MSG.browseRoot)}
-            placeholder="ns=0;i=85 (Objects)"
-            .value=${this.browseRoot}
-            @valueChange=${(event: CustomEvent<string>) => (this.browseRoot = String(event.detail))}
-          ></ix-input>
-          <ix-input
-            label=${this.tr(MSG.browseBookId)}
-            placeholder=${this.tr(MSG.browseBookIdPlaceholder)}
-            .value=${this.browseBookId}
-            @valueChange=${(event: CustomEvent<string>) => (this.browseBookId = String(event.detail))}
-          ></ix-input>
-          <ix-button
-            variant="secondary"
-            icon="search"
-            ?disabled=${this.busy || !this.can('manage-devices') || this.browseConnection === ''}
-            @click=${() => void this.onBrowseConnection()}
-          >
-            ${this.tr(MSG.browseRun)}
-          </ix-button>
-        </div>
-        <div class="small">
-          ${replayable
-            ? this.tr(MSG.browseReplayable, { root: book.provenance.browse?.rootNodeId ?? 'Objects' })
-            : this.tr(MSG.browseNotReplayable)}
-        </div>
-      </section>
-    `;
-  }
-
-  /** Delta of the last source re-read — removals first, they are the risky ones. */
   private renderBookDelta(): TemplateResult {
     const delta = this.bookDelta;
     if (!delta) return html``;
@@ -1174,7 +1404,8 @@ export class WuiEngStudio extends LitElement {
                   />
                 </th>
                 <th>${this.tr(MSG.colPath)}</th><th>${this.tr(MSG.colRole)}</th><th>${this.tr(MSG.colType)}</th>
-                <th>${this.tr(MSG.colUnit)}</th><th>${this.tr(MSG.colAccess)}</th>
+                <th>${this.tr(MSG.colUnit)}</th><th>${this.tr(MSG.colAccess)}</th><th>${this.tr(MSG.colHistory)}</th>
+                <th>${this.tr(MSG.colAcq)}</th>
                 <th>${this.tr(MSG.colSourceType)}</th><th>${this.tr(MSG.colTemplate)}</th>
                 <th>${this.tr(MSG.colAddresses)}</th><th>${this.tr(MSG.colComment)}</th>
                 <th class="cb-col"></th>
@@ -1264,6 +1495,60 @@ export class WuiEngStudio extends LitElement {
     </span>`;
   }
 
+  /**
+   * Does the SOURCE keep a history of this signal — beside the access mode,
+   * because the two are read together: `rw` says how it can be bound, "H" says
+   * the machine already archives it, which is what decides whether WinCC OA
+   * should archive it too.
+   *
+   * Three states, like the access provenance: yes, no, and NOTHING SAID (a
+   * Modbus register map, a browse whose driver exposes no `AccessLevel`). A dash
+   * for "unknown" and a dash for "no" would be the same lie the access chip's
+   * `?` exists to avoid.
+   */
+  private renderHistoryChip(entry: BookEntry): TemplateResult {
+    if (entry.historized === undefined) {
+      return html`<span class="soft" title=${this.tr(MSG.historyUnknown)}>—</span>`;
+    }
+    return entry.historized
+      ? html`<span class="chip hist" title=${this.tr(MSG.historyYes)}>H</span>`
+      : html`<span class="chip hist-no" title=${this.tr(MSG.historyNo)}>—</span>`;
+  }
+
+  /**
+   * HOW this signal would be acquired — polling or subscription — read from its ROLE.
+   *
+   * The rule already exists and already decides (`defaultLeafPolicy`: a fault and a state are
+   * pushed, everything else is sampled), but until now it only became visible one screen later,
+   * in the model's structure tree, one leaf at a time. Qualifying a catalog is exactly the moment
+   * an engineer asks "how many of these will end up subscribed?", so the answer belongs in the
+   * column beside the role that produces it. It is READ-ONLY here: the role decides it, and the
+   * per-element override stays where an override belongs, on the model.
+   *
+   * Two honest exceptions, both mirroring what the generator really does:
+   *  - an UNQUALIFIED signal gets no config at all, so it has no acquisition — a dash, not a
+   *    default that would suggest something will be written;
+   *  - only OPC UA subscribes. On any other catalog a subscription falls back to polling at
+   *    generation (`SUBSCRIPTION_MISSING`), so showing "souscription" here would announce a mode
+   *    the driver cannot honour.
+   */
+  private renderAcquisitionChip(entry: BookEntry, role: SignalRole, book: AddressBook): TemplateResult {
+    if (role === 'unknown') {
+      return html`<span class="soft" title=${this.tr(MSG.acqUnqualified)}>—</span>`;
+    }
+    const protocol = book.interface?.protocol;
+    if (protocol !== undefined && protocol !== 'opcua') {
+      return html`<span class="chip acq-poll" title=${this.tr(MSG.acqNotOpcua, { protocol: this.protocolOf(protocol) })}
+        >${this.tr(MSG.acqPoll)}</span
+      >`;
+    }
+    const spont = defaultLeafPolicy(entry, role).acquisition?.mode === 'spont';
+    const label = this.roleLabel(role);
+    return spont
+      ? html`<span class="chip acq-spont" title=${this.tr(MSG.acqFromRoleSpont, { role: label })}>${this.tr(MSG.acqSpont)}</span>`
+      : html`<span class="chip acq-poll" title=${this.tr(MSG.acqFromRolePoll, { role: label })}>${this.tr(MSG.acqPoll)}</span>`;
+  }
+
   private renderSignalRow(entry: BookEntry, deviceModes: string[], book: AddressBook): TemplateResult {
     // Order the candidate addresses by the device's access modes first.
     const present = Object.keys(entry.addresses);
@@ -1279,6 +1564,8 @@ export class WuiEngStudio extends LitElement {
         <td>${entry.leafType}${entry.unmapped ? html` <span class="chip conflict" title="type non mappé">?</span>` : nothing}</td>
         <td class="unit">${entry.unit ?? html`<span class="soft">—</span>`}</td>
         <td>${this.renderAccessChip(entry)}</td>
+        <td>${this.renderHistoryChip(entry)}</td>
+        <td>${this.renderAcquisitionChip(entry, role, book)}</td>
         <td class="soft mono">${entry.sourceType}</td>
         <td class="soft">${entry.typeId ?? '—'}</td>
         <td class="addr-cell">
@@ -1411,18 +1698,29 @@ export class WuiEngStudio extends LitElement {
         .uiLang=${this.uiLang}
         .walking=${this.walking}
         .browseLevel=${this.browseLevelForExplorer}
+        .s7plusConnections=${this.s7plusConnections}
+        .s7plusManager=${this.s7plusManager}
+        .s7plusSources=${this.s7plusSourcesForForm}
+        .browseS7PlusLevel=${this.browseS7PlusLevelForExplorer}
+        .s7BrowseAvailable=${this.s7BrowseAvailable}
+        .s7Inventory=${this.s7Inventory}
+        .s7InventoryBusy=${this.s7InventoryBusy}
         @wui:bookselect=${(event: CustomEvent<{ bookId: string }>) => this.selectBook(event.detail.bookId)}
         @wui:booknew=${() => this.openBookForm()}
         @wui:bookcancel=${() => this.closeBookForm()}
         @wui:bookingest=${(event: CustomEvent<BookIngestDetail>) => void this.onIngestBook(event.detail)}
         @wui:bookbrowse=${(event: CustomEvent<BookBrowseDetail>) => void this.onDeclareAndWalk(event.detail)}
+        @wui:booksymbolicbrowse=${(event: CustomEvent<BookS7PlusBrowseDetail>) => void this.onDeclareAndWalkS7Plus(event.detail)}
         @wui:bookwalk=${(event: CustomEvent<{ bookId: string }>) => void this.onWalkBook(event.detail.bookId)}
         @wui:bookwalkstop=${() => (this.walkCancelled = true)}
         @wui:bookrefresh=${(event: CustomEvent<{ bookId: string }>) => void this.onRefreshBookById(event.detail.bookId)}
+        @wui:bookinventory=${(event: CustomEvent<{ bookId: string }>) => void this.onS7Inventory(event.detail.bookId)}
         @wui:bookdelete=${(event: CustomEvent<{ bookId: string }>) => void this.onDeleteBook(event.detail.bookId)}
         @wui:bookattach=${(event: CustomEvent<{ bookId: string; deviceIds: string[] }>) => void this.onAttachBook(event.detail)}
       >
-        ${this.bookFormOpen || book === null ? nothing : html`<div slot="signals">${this.renderDeviceSignals(book)}</div>`}
+        ${this.bookFormOpen || book === null
+          ? nothing
+          : html`<div slot="signals">${this.renderBookDelta()}${this.renderDeviceSignals(book)}</div>`}
       </wui-eng-books>
     `;
   }
@@ -1464,6 +1762,145 @@ export class WuiEngStudio extends LitElement {
   /** One browse round-trip, handed down so the form's explorer needs no gateway. */
   private readonly browseLevelForExplorer = (connection: string, nodeId?: string): Promise<OpcUaBrowseNode[]> =>
     this.gateway.browseLevel(connection, nodeId);
+
+  /** The same, for an S7Plus item (the form never touches the gateway itself). */
+  private readonly browseS7PlusLevelForExplorer = (
+    connection: string,
+    item?: string,
+    hmiVisibleOnly?: boolean
+  ): Promise<S7PlusBrowseNode[]> => this.gateway.browseS7PlusLevel(connection, item, hmiVisibleOnly);
+
+  /**
+   * The TIA sources of an S7Plus connection: the online marker first, then every
+   * station of every export the driver found.
+   *
+   * Assembled HERE rather than in the form because it is two round-trips per project
+   * (projects, then stations) — the form asks one question and gets one answer. The
+   * online source is prepended unconditionally: the driver reports it as a station of
+   * its own reserved project, and an engineer must not have to know that name to read
+   * the machine.
+   */
+  private readonly s7plusSourcesForForm = async (connection: string): Promise<EngS7PlusStation[]> => {
+    const projects = await this.gateway.listS7PlusProjects(connection);
+    const sources: EngS7PlusStation[] = [{ name: this.tr(MSG.s7plusOnline), station: S7PLUS_ONLINE_STATION }];
+    for (const project of projects) {
+      if (project.online) continue; // already offered, under a name that reads
+      // One export that cannot be listed must not lose the others: a TIA archive the
+      // driver cannot open is exactly the case an engineer needs to see the rest for.
+      const stations = await this.gateway.listS7PlusStations(connection, project.name).catch(() => [] as EngS7PlusStation[]);
+      for (const station of stations) sources.push({ name: station.station, station: station.station });
+    }
+    return sources;
+  };
+
+  /**
+   * The S7Plus counterpart of {@link onDeclareAndWalk}: declare the catalog, then
+   * walk the station into it.
+   *
+   * The interface it declares depends on the SOURCE, and that is the whole point of
+   * the distinction: reading the live PLC produces a catalog bound to that connection,
+   * while reading a TIA export produces a TEMPLATE (no interface) — it describes an
+   * engineered program, which each equipment binds to its own connection at
+   * generation. The core makes the same call when it builds the book; declaring it
+   * differently here would only make the first paint lie.
+   */
+  private async onDeclareAndWalkS7Plus(detail: BookS7PlusBrowseDetail): Promise<void> {
+    const { bookId, connection, name, station, root, hmiVisibleOnly, driverNumber } = detail.request;
+    const online = isS7PlusOnline(station);
+    this.busy = true;
+    this.bookFormError = '';
+    try {
+      if (!this.books.some((book) => book.id === bookId)) {
+        const { books } = await this.gateway.createBook({
+          bookId,
+          name,
+          ...(online
+            ? {
+                interface: {
+                  protocol: 's7plus' as const,
+                  connection,
+                  params: { station },
+                  ...(driverNumber === undefined ? {} : { driverNumber })
+                }
+              }
+            : {})
+        });
+        this.books = books;
+      }
+      this.selectedBookId = bookId;
+      await this.attachBookTo(bookId, detail.attachTo);
+      this.closeBookForm();
+      this.notice = this.tr(MSG.bookDeclared, { name: name || bookId });
+    } catch (error) {
+      this.bookFormError = this.tr(MSG.bookCreateFailed, { error: (error as Error).message });
+      return;
+    } finally {
+      this.busy = false;
+    }
+    await this.onWalkS7PlusBook(bookId, { connection, station, name, root, hmiVisibleOnly, driverNumber });
+  }
+
+  /**
+   * Walk an S7Plus station into a catalog, reporting progress and stoppable — the
+   * exact twin of {@link onWalkBook}, over the S7Plus walker.
+   *
+   * `source` carries what a first walk knows and the stored book does not yet: a
+   * template catalog has no interface to read the connection back from, so the
+   * parameters have to travel from the form. A LATER walk of the same book reads them
+   * from its recorded provenance instead.
+   */
+  private async onWalkS7PlusBook(
+    bookId: string,
+    source?: {
+      connection: string;
+      station: string;
+      name?: string;
+      root?: string;
+      hmiVisibleOnly?: boolean;
+      driverNumber?: number;
+    }
+  ): Promise<void> {
+    const book = this.bookById(bookId);
+    const recorded = book?.provenance.browse;
+    const connection = source?.connection ?? book?.interface?.connection ?? recorded?.connection;
+    const station = source?.station ?? recorded?.station ?? String(book?.interface?.params?.['station'] ?? '');
+    if (connection === undefined || connection === '' || station === '') return;
+    const root = source?.root ?? recorded?.root;
+    const hmiVisibleOnly = source?.hmiVisibleOnly ?? recorded?.hmiVisibleOnly;
+    const driverNumber = source?.driverNumber ?? book?.interface?.driverNumber;
+    this.walkCancelled = false;
+    this.walking = { requests: 0, entries: 0, path: '', depth: 0 };
+    this.bookDelta = null;
+    this.busy = true;
+    try {
+      const { book: walked, delta } = await this.gateway.walkS7PlusIntoBook({
+        bookId,
+        connection,
+        station,
+        ...(source?.name === undefined ? (book?.name === undefined ? {} : { name: book.name }) : { name: source.name }),
+        ...(root === undefined ? {} : { root }),
+        ...(hmiVisibleOnly === undefined ? {} : { hmiVisibleOnly }),
+        ...(driverNumber === undefined ? {} : { driverNumber }),
+        onProgress: (progress) => {
+          if (this.walkCancelled) throw new Error(this.tr(MSG.walkCancelled));
+          this.walking = progress;
+        }
+      });
+      this.books = this.books.map((candidate) => (candidate.id === walked.id ? walked : candidate));
+      this.bookDelta = delta ?? null;
+      this.notice = this.tr(MSG.walkDone, {
+        conn: connection,
+        n: walked.entries.length,
+        requests: this.walking?.requests ?? 0,
+        delta: this.describeDelta(delta)
+      });
+    } catch (error) {
+      this.notice = this.walkCancelled ? this.tr(MSG.walkCancelled) : this.tr(MSG.browseFailed, { error: (error as Error).message });
+    } finally {
+      this.walking = null;
+      this.busy = false;
+    }
+  }
 
   /**
    * The ONLINE path of the creation form: DECLARE the catalog, then walk into it.
@@ -1510,6 +1947,13 @@ export class WuiEngStudio extends LitElement {
    */
   private async onWalkBook(bookId: string, rootNodeId?: string): Promise<void> {
     const book = this.bookById(bookId);
+    // Which walker: the catalog's own provenance decides, never the caller. A book
+    // read from an S7Plus station has no node id to walk from, and a re-walk that
+    // asked the OPC UA port for one would fail on a connection that does not exist.
+    if (book?.provenance.kind === 's7plus-browse' || book?.interface?.protocol === 's7plus') {
+      await this.onWalkS7PlusBook(bookId);
+      return;
+    }
     const connection = book?.interface?.connection;
     if (connection === undefined) return;
     const root = rootNodeId ?? book?.provenance.browse?.rootNodeId;
@@ -1547,6 +1991,36 @@ export class WuiEngStudio extends LitElement {
   }
 
   /** Refresh one catalog by id (the panel's own button, any book). */
+  /**
+   * Read the CPU behind a classic-S7 catalog and show what it says about it.
+   *
+   * The equipment is chosen rather than typed: the catalog's users already declare
+   * ip/rack/slot, so the first one that does is dialled. A shared catalog served by
+   * several equipments is checked against ONE of them — which is honest, since a
+   * template catalog describes a machine TYPE and each instance may have drifted
+   * differently; the endpoint that answered is named in the result.
+   */
+  private async onS7Inventory(bookId: string): Promise<void> {
+    const device = this.devices.find((candidate) => candidate.protocol === 's7' && (candidate.bookIds ?? []).includes(bookId));
+    if (device === undefined) {
+      this.notice = this.tr(MSG.s7NoDeviceForBook);
+      return;
+    }
+    this.s7InventoryBusy = true;
+    this.notice = '';
+    try {
+      const result = await this.gateway.s7Inventory(bookId, { deviceId: device.id });
+      this.s7Inventory = { ...result, bookId };
+    } catch (error) {
+      // A PLC that does not answer is an ordinary field situation, not a page
+      // failure: the catalog stays exactly as it was and the reason is shown.
+      this.s7Inventory = null;
+      this.notice = error instanceof Error ? error.message : String(error);
+    } finally {
+      this.s7InventoryBusy = false;
+    }
+  }
+
   private async onRefreshBookById(bookId: string): Promise<void> {
     const previous = this.selectedBookId;
     this.selectedBookId = bookId;
@@ -1603,152 +2077,678 @@ export class WuiEngStudio extends LitElement {
       const should = wanted.has(device.id);
       if (has === should || (!should && !detach)) continue;
       const bookIds = should ? [...device.bookIds, bookId] : device.bookIds.filter((id) => id !== bookId);
-      this.devices = await this.gateway.saveDevice(device.id, { ...draftFromDevice(device), bookIds });
+      const saved = await this.gateway.saveDevice(device.id, { ...draftFromDevice(device), bookIds });
+      this.devices = saved.devices;
     }
   }
 
   // --- panel 3: model (book browser + signal grid) -----------------------------
 
   /**
-   * TWO columns: composing the model on the left, the model it produces on the right.
+   * MASTER–DETAIL: the models on the left, the selected model's CONTENT on the right.
    *
-   * There used to be a third — a browser of the source catalog's entries — and it was
-   * what made this screen unusable: the equipment rail, the browser and the grid split
-   * the width three ways, leaving the structure editor about 20 rem to draw a name, a
-   * type, a mapping and its actions in. The browser was also redundant: the Catalogues
-   * panel shows that same table in full (with the roles, the access provenance and the
-   * candidate address per mode), and every leaf of the structure tree carries its own
-   * signal picker. So the column went, and the composition got the space.
+   * The verbs sit where they act, which is the whole point of the split: add and
+   * delete belong to the LIST (they change which models exist), while the sources,
+   * the structure, the mapping, the deployment and "save" belong to the DETAIL (they
+   * change one model). The previous single column stacked all of it and made
+   * "which model" and "what is in it" compete for the same width.
+   *
+   * What is NOT here any more is the generator ("Generate the model from this book"):
+   * applying a model to equipment produces INSTANCES, so it moved to the Instances tab,
+   * on the model row it instantiates. This tab is now about defining models only — one
+   * screen, one subject — and the workspace grid moved with it, since it shows what the
+   * models produced rather than what they are.
    */
   private renderModelPanel(): TemplateResult {
     return html`
       <div class="split2 model">
-        ${this.renderComposer()}
-        ${this.renderSignalGrid()}
+        ${this.renderModelMaster()}
+        ${this.renderModelDetail()}
       </div>
+      ${this.dpPick === null ? nothing : this.renderDpPicker()}
     `;
   }
 
-  /** The composition column: which catalog, which target, and the type itself. */
-  private renderComposer(): TemplateResult {
-    const book = this.activeBook();
+  /**
+   * The DATAPOINT SEARCH behind a leaf's magnifier.
+   *
+   * The two lists the editor offers (alert classes, archive groups) are read from the
+   * project, but they cannot be exhaustive — a class may be created after the page loaded,
+   * or named outside the convention. So the magnifier searches the project's datapoints
+   * directly (`GET /api/eng/dps`, WinCC OA wildcards) and the field takes whatever is
+   * picked. The result count is capped by the backend, and a truncation is SAID: a list
+   * that silently stops is worse than one that admits it stops.
+   */
+  private renderDpPicker(): TemplateResult {
+    const pick = this.dpPick;
+    if (pick === null) return html``;
     return html`
-      <section class="browser composer">
+      <div class="dp-pick-backdrop" @click=${() => (this.dpPick = null)}></div>
+      <section class="dp-pick" @click=${(event: Event) => event.stopPropagation()}>
         <div class="browser-head">
-          <span>${this.tr(MSG.composerTitle)}</span>
+          <span>${this.tr(pick.field === 'alarmClass' ? MSG.policyAlarmClass : MSG.policyArchiveGroup)}</span>
+          <span class="chip mono">${pick.leaf}</span>
+          <span class="spacer"></span>
+          <ix-icon-button
+            size="16"
+            variant="tertiary"
+            icon="close"
+            a11y-label=${this.tr(MSG.cancel)}
+            @click=${() => (this.dpPick = null)}
+          ></ix-icon-button>
         </div>
-        <div class="composer-scroll">
-          ${this.renderCatalogPicker()}
-          ${book === null
-            ? html`<div class="empty small">${this.tr(MSG.composerNoCatalog)}</div>`
-            : html`${this.renderModelLibrary(book)}${this.renderGenerator(book)}`}
+        <div class="dp-pick-body">
+          <label class="gen-row"><span>${this.tr(MSG.dpSearch)}</span>
+            <ix-input
+              placeholder="_alert*"
+              .value=${pick.pattern}
+              @valueChange=${(event: CustomEvent<string>) => void this.searchDpPick(String(event.detail))}
+            ></ix-input></label>
+          <div class="form-hint">${this.tr(MSG.dpSearchHint)}</div>
+          ${pick.results.length === 0
+            ? html`<div class="empty small">${this.tr(MSG.dpSearchNone)}</div>`
+            : html`<div class="dp-pick-list">
+                ${pick.results.map(
+                  (name) => html`<button class="model-row" @click=${() => this.applyDpPick(name)}>
+                    <span class="mono model-row-name">${name}</span>
+                  </button>`
+                )}
+              </div>`}
+          ${pick.truncated ? html`<div class="form-hint warn-inline">${this.tr(MSG.dpSearchTruncated)}</div>` : nothing}
+        </div>
+      </section>
+    `;
+  }
+
+  /** Open the search for one leaf's field, pre-filtered by the type it expects. */
+  private async openDpPick(request: DpPickRequest): Promise<void> {
+    const pattern = request.field === 'alarmClass' ? '_alert*' : '_NGA_G*';
+    this.dpPick = { ...request, pattern, results: [], truncated: false };
+    await this.searchDpPick(pattern);
+  }
+
+  private async searchDpPick(pattern: string): Promise<void> {
+    const pick = this.dpPick;
+    if (pick === null) return;
+    this.dpPick = { ...pick, pattern };
+    try {
+      // The DP TYPE is not part of the query: the whole point of the magnifier is to reach
+      // a datapoint the typed lists do not carry, so restricting it to `_AlertClass` here
+      // would rebuild the very limit it exists to lift.
+      const found = await this.gateway.searchDps(pattern === '' ? '*' : pattern);
+      if (this.dpPick?.pattern === pattern) this.dpPick = { ...this.dpPick, results: found.dps, truncated: found.truncated };
+    } catch (error) {
+      this.notice = this.tr(MSG.dpSearchFailed, { error: (error as Error).message });
+    }
+  }
+
+  /** Write the picked datapoint into the leaf's field, and close. */
+  private applyDpPick(name: string): void {
+    const pick = this.dpPick;
+    if (pick === null) return;
+    const current = this.genPolicy[pick.leaf];
+    if (pick.field === 'alarmClass' && pick.range !== undefined) {
+      // ONE range's class: the others keep theirs (see the tree's emitRangeClass).
+      const thresholds = current?.alarm?.thresholds ?? [];
+      const classes = [...(current?.alarm?.alarmClasses ?? [])];
+      while (classes.length < thresholds.length) classes.push('');
+      classes[pick.range] = name;
+      this.patchPolicy(pick.leaf, { alarm: { active: true, ...current?.alarm, alarmClasses: classes } });
+    } else if (pick.field === 'alarmClass') {
+      this.patchPolicy(pick.leaf, { alarm: { active: true, ...current?.alarm, alarmClass: name } });
+    } else {
+      this.patchPolicy(pick.leaf, { archive: { active: true, ...current?.archive, group: name } });
+    }
+    this.dpPick = null;
+  }
+
+  /**
+   * LEFT: the models, and the two actions that change which models exist.
+   *
+   * Real buttons, not icon buttons: "new" and "delete" are the two verbs a first-time
+   * user needs to find on this screen, and a bare `+` in a header asked them to guess.
+   * Each row also shows the CATALOGS the model reads — that is what tells two models of
+   * the same machine apart, and it was invisible while only the type name was shown.
+   */
+  private renderModelMaster(): TemplateResult {
+    const ws = this.workspace;
+    return html`
+      <section class="browser model-master">
+        <div class="browser-head">
+          <span>${this.tr(MSG.modelLibrary)}</span>
+          <span class="chip">${this.models.length}</span>
+        </div>
+        <div class="model-master-scroll">
+          ${this.models.length === 0 ? html`<div class="empty small">${this.tr(MSG.modelNone)}</div>` : nothing}
+          ${this.models.map((model) => {
+            const active = model.id === this.genModelId;
+            const count = ws === null ? 0 : modelInstances(ws, model.typeName, null, this.live).length;
+            return html`
+              <button class="model-row ${active ? 'active' : ''}" title=${model.typeName} @click=${() => this.onLoadModel(model.id)}>
+                <span class="mono model-row-name">${model.name}</span>
+                <span class="chip mode">${model.typeName}</span>
+                ${count === 0 ? nothing : html`<span class="chip">${this.tr(MSG.instancesOfModel, { n: count })}</span>`}
+                ${this.renderModelSync(model)}
+                ${model.description === undefined || model.description.trim() === ''
+                  ? nothing
+                  : html`<span class="model-row-desc soft small">${model.description}</span>`}
+                ${this.renderModelRowSources(model)}
+              </button>
+            `;
+          })}
         </div>
       </section>
     `;
   }
 
   /**
-   * The MODEL LIBRARY: save what is composed here, and load it back later.
+   * Is the model still what the project's DP TYPE holds?
    *
-   * A house-standard type is authored once and applied to machine after machine, so
-   * it is a stored object rather than form state — the same "template, then
-   * instances" move the catalogs got. What a model deliberately does NOT carry is
-   * the target equipment, the zone or the equipment names: those are exactly what
-   * differs between two applications, and baking them in would make it single-use.
-   *
-   * Loading one against a DIFFERENT catalog is allowed and checked: its mappings are
-   * paths INTO a catalog, so the coverage is reported before generating rather than
-   * producing a type quietly full of config-less DPEs.
+   * A model is a house standard and the type it produced lives on in the project — where it
+   * can be edited in PARA, or left behind when the model moves on. So the row says which of
+   * the three it is, on the same fingerprint the check-in diff uses (`modelSyncState`), and
+   * it reads the LIVE snapshot rather than the workspace: the question is about the project,
+   * not about what is staged. "Not created yet" is not a warning — a model authored today
+   * has produced nothing.
    */
-  private renderModelLibrary(book: AddressBook): TemplateResult {
-    const selected = this.models.find((model) => model.id === this.genModelId);
-    const coverage = selected === undefined ? null : templateCoverage(selected, book);
-    return html`
-      <label class="gen-row">
-        <span>${this.tr(MSG.modelLibrary)}</span>
-        <ix-select
-          allow-clear
-          i18n-placeholder=${this.tr(MSG.modelNone)}
-          .value=${this.genModelId}
-          @valueChange=${(event: CustomEvent<string | string[]>) => this.onLoadModel(firstOf(event.detail))}
-        >
-          ${this.models.map(
-            (model) => html`<ix-select-item value=${model.id} label="${model.name} · ${model.typeName}"></ix-select-item>`
-          )}
-        </ix-select>
-      </label>
-      <div class="gen-row gen-model-actions">
-        <span></span>
-        <ix-button
-          variant="secondary"
-          icon="upload"
-          ?disabled=${this.busy || !this.can(EDIT_MODEL) || this.genTypeName.trim() === ''}
-          title=${this.tr(MSG.modelSaveHint)}
-          @click=${() => void this.onSaveModel(book)}
-        >
-          ${this.tr(MSG.modelSave)}
-        </ix-button>
-        ${selected === undefined
-          ? nothing
-          : html`<ix-button
-              variant="danger-secondary"
-              icon="trashcan"
-              ?disabled=${this.busy || !this.can(EDIT_MODEL)}
-              @click=${() => void this.onDeleteModel(selected.id)}
-            >
-              ${this.tr(MSG.modelDelete)}
-            </ix-button>`}
-      </div>
-      ${coverage === null ? nothing : this.renderCoverage(coverage)}
-    `;
+  private renderModelSync(model: ModelTemplate): TemplateResult {
+    if (this.live === null) return html``;
+    const state = modelSyncState(model, this.live.types);
+    if (state === 'absent') return html`<span class="chip" title=${this.tr(MSG.syncAbsentHint)}>${this.tr(MSG.syncAbsent)}</span>`;
+    if (state === 'synced') return html`<span class="chip new" title=${this.tr(MSG.syncedHint)}>✓ ${this.tr(MSG.synced)}</span>`;
+    return html`<span class="chip update" title=${this.tr(MSG.divergedHint)}>⚠ ${this.tr(MSG.diverged)}</span>`;
   }
 
-  /** What the target catalog can and cannot serve of the loaded model. */
-  private renderCoverage(coverage: TemplateCoverage): TemplateResult {
-    const warnings = coverageWarnings(coverage);
+  /**
+   * The catalogs one model reads, on its row — mirrored ones marked.
+   *
+   * A catalog that is no longer in the project is named by its id rather than dropped:
+   * "this model reads something that is gone" is the whole reason to look at this line.
+   */
+  private renderModelRowSources(model: ModelTemplate): TemplateResult {
+    const sources = modelSources(model);
+    if (sources.length === 0) return html`<span class="soft small">${this.tr(MSG.modelNoSource)}</span>`;
     return html`
-      <div class="gen-hint">
-        ${this.tr(MSG.modelCoverage, { bound: coverage.bound, missing: coverage.missing.length, unbound: coverage.unbound.length })}
-      </div>
-      ${warnings.length === 0
-        ? nothing
-        : html`<ul class="gen-warnings">${warnings.map((warning) => html`<li>${this.warnText(warning)}</li>`)}</ul>`}
+      <span class="model-row-books">
+        ${sources.map((source) => {
+          const book = this.books.find((candidate) => candidate.id === source.bookId);
+          return html`<span class="chip ${book === undefined ? 'conflict' : 'mode'}" title=${book?.name ?? source.bookId}>
+            ${book?.name ?? source.bookId}
+          </span>`;
+        })}
+      </span>
     `;
   }
 
   /**
-   * The TARGET equipment: whose connection, access mode and driver the generated
-   * addresses use, and which `deviceId` the configs record.
-   *
-   * Explicit, and separate from the catalog above, because that is the whole
-   * "author once, apply where you need it" move: the same model composed from a
-   * shared catalog is generated for THIS equipment now and for another one later.
-   * It used to be implicitly the equipment selected in the rail — invisible, and
-   * impossible to change without leaving the screen.
+   * RIGHT: everything about the SELECTED model — its identity, its sources, its
+   * structure and its mapping. Creating one comes FIRST (name and description), because
+   * the sources and the mirroring choices are decisions ABOUT a model: with no model
+   * they would have nowhere to be stored.
    */
-  private renderTargetPicker(): TemplateResult {
-    const target = this.targetDevice();
-    const mismatch = target !== undefined && !this.deviceServesBook(target, this.selectedBookId);
+  private renderModelDetail(): TemplateResult {
+    if (this.modelDraft !== null) return this.renderModelCreate();
+    const book = this.activeBook();
+    const selected = this.models.find((model) => model.id === this.genModelId);
     return html`
-      <label class="gen-row">
-        <span>${this.tr(MSG.genTarget)}</span>
-        <ix-select
-          .value=${target?.id ?? ''}
-          @valueChange=${(event: CustomEvent<string | string[]>) => (this.genTargetId = firstOf(event.detail))}
-        >
-          ${this.devices.map(
-            (device) => html`<ix-select-item
-              value=${device.id}
-              label="${device.name} · ${this.protocolLabel(device)}"
-            ></ix-select-item>`
-          )}
-        </ix-select>
-      </label>
-      ${target === undefined
-        ? html`<div class="gen-hint warn-inline">${this.tr(MSG.genTargetMissing)}</div>`
-        : mismatch
-          ? html`<div class="gen-hint warn-inline">${this.tr(MSG.genTargetNotServed, { name: target.name })}</div>`
-          : nothing}
+      <section class="browser model-detail">
+        <div class="browser-head">
+          <span>${selected === undefined ? this.tr(MSG.composerTitle) : selected.name}</span>
+          ${selected === undefined ? nothing : html`<span class="chip mode">${selected.typeName}</span>`}
+          ${selected === undefined ? nothing : this.renderModelSync(selected)}
+          <span class="spacer"></span>
+          ${this.renderEditActions(selected, book)}
+        </div>
+        <div class="composer-scroll">
+          ${selected === undefined
+            ? html`<div class="empty small">${this.tr(MSG.modelPickHint)}</div>`
+            : html`
+                ${this.renderModelIdentity()}
+                ${this.renderCatalogSources()}
+                ${book === null ? html`<div class="form-hint warn-inline">${this.tr(MSG.composerNoCatalog)}</div>` : nothing}
+                ${this.renderModelLibrary()}
+              `}
+        </div>
+      </section>
+    `;
+  }
+
+  /**
+   * EDIT / SAVE / CANCEL — a stored model is read-only until it is opened for editing.
+   *
+   * Why not always-editable: a model is a house standard applied to N machines, and saving
+   * it RE-APPLIES it to every instance it already produced (see `onSaveModel`). A stray
+   * keystroke in an always-live form would therefore reach the project's datapoints. So
+   * the fields are inert until "Edit", every change lives in page state, and "Cancel"
+   * restores the stored record by simply re-reading it.
+   */
+  private renderEditActions(selected: ModelTemplate | undefined, book: AddressBook | null): TemplateResult {
+    if (!this.can(EDIT_MODEL)) return html``;
+    // EVERY verb of the screen, in one place: which models exist (New / Delete) and what
+    // this one contains (Edit / Cancel / Save). They were split between the two columns,
+    // which made "the actions" something you had to look for in two places.
+    const editing = this.modelEditing && selected !== undefined;
+    return html`
+      <ix-button variant="secondary" icon="plus" ?disabled=${this.busy} title=${this.tr(MSG.modelNewHint)} @click=${() => this.onNewModel()}>
+        ${this.tr(MSG.modelNew)}
+      </ix-button>
+      <ix-button
+        variant="danger-secondary"
+        icon="trashcan"
+        ?disabled=${this.busy || selected === undefined}
+        title=${this.tr(MSG.modelDeleteHint)}
+        @click=${() => void this.onDeleteModel(this.genModelId)}
+      >
+        ${this.tr(MSG.modelDelete)}
+      </ix-button>
+      ${editing
+        ? html`
+            <ix-button variant="secondary" ?disabled=${this.busy} @click=${() => this.onCancelModelEdit(selected as ModelTemplate)}>
+              ${this.tr(MSG.cancel)}
+            </ix-button>
+            <ix-button
+              variant="primary"
+              ?disabled=${this.busy || this.genTypeName.trim() === ''}
+              title=${this.tr(MSG.modelSaveHint)}
+              @click=${() => void this.onSaveModel(book)}
+            >
+              ${this.tr(MSG.modelSave)}
+            </ix-button>
+          `
+        : html`<ix-button
+            variant="primary"
+            icon="pen"
+            ?disabled=${this.busy || selected === undefined}
+            @click=${() => (this.modelEditing = true)}
+          >
+            ${this.tr(MSG.modelEdit)}
+          </ix-button>`}
+    `;
+  }
+
+  /** Drop the edits by re-reading the stored model — no second copy to keep in step. */
+  private onCancelModelEdit(selected: ModelTemplate): void {
+    this.modelEditing = false;
+    this.onLoadModel(selected.id);
+    this.notice = this.tr(MSG.modelEditCancelled, { name: selected.name });
+  }
+
+  /** May the model's fields be changed right now? (Creating one counts as editing.) */
+  private editingModel(): boolean {
+    return this.can(EDIT_MODEL) && (this.modelEditing || this.modelDraft !== null);
+  }
+
+  /**
+   * The CREATION form: the name, the description, then the source catalogs and, per
+   * catalog, whether it mirrors — everything a model needs, ASKED AT ONCE.
+   *
+   * It was two steps for one release (create empty, then pick the sources in the detail
+   * column) and that split a single decision across two screens: the sources and their
+   * mirror flags are chosen when a model is conceived, not later. Nothing is stored until
+   * "Create", so an abandoned form leaves no half-model in the list.
+   */
+  private renderModelCreate(): TemplateResult {
+    const draft = this.modelDraft ?? { name: '', description: '' };
+    // The type the model will target: the picked one as-is, else one derived from the name.
+    const picked = (draft.fromType ?? '').trim();
+    const target = picked === '' ? sanitizeSegment(draft.name.trim()) : picked;
+    return html`
+      <section class="browser model-detail">
+        <div class="browser-head"><span>${this.tr(MSG.modelCreateTitle)}</span></div>
+        <div class="composer-scroll">
+          <label class="gen-row"><span>${this.tr(MSG.modelName)}</span>
+            <ix-input
+              placeholder="STD_Four"
+              .value=${draft.name}
+              @valueChange=${(event: CustomEvent<string>) => this.patchModelDraft({ name: String(event.detail) })}
+            ></ix-input></label>
+          <div class="gen-hint">
+            ${target === '' ? this.tr(MSG.modelNameRequired) : this.tr(MSG.modelTypeWillBe, { type: target })}
+          </div>
+          <label class="gen-row gen-row-tall"><span>${this.tr(MSG.modelDescription)}</span>
+            <textarea
+              class="model-desc"
+              rows="3"
+              placeholder=${this.tr(MSG.modelDescriptionPlaceholder)}
+              .value=${draft.description}
+              @input=${(event: Event) => this.patchModelDraft({ description: (event.target as HTMLTextAreaElement).value })}
+            ></textarea></label>
+          <label class="gen-row"><span>${this.tr(MSG.modelFromType)}</span>
+            <ix-select
+              .value=${draft.fromType ?? ''}
+              @valueChange=${(event: CustomEvent<string | string[]>) => this.patchModelDraft({ fromType: firstOf(event.detail) })}
+            >
+              <ix-select-item value="" label=${this.tr(MSG.modelFromTypeNone)}></ix-select-item>
+              ${this.dpTypes.map((typeName) => html`<ix-select-item value=${typeName} label=${typeName}></ix-select-item>`)}
+            </ix-select></label>
+          <div class="form-hint">${this.tr(MSG.modelFromTypeHint)}</div>
+          ${this.renderCatalogSources()}
+          <div class="gen-row gen-model-actions">
+            <span></span>
+            <ix-button variant="secondary" ?disabled=${this.busy} @click=${() => (this.modelDraft = null)}>
+              ${this.tr(MSG.cancel)}
+            </ix-button>
+            <ix-button variant="primary" icon="plus" ?disabled=${this.busy || target === ''} @click=${() => void this.onCreateModel()}>
+              ${this.tr(MSG.modelCreate)}
+            </ix-button>
+          </div>
+        </div>
+      </section>
+    `;
+  }
+
+  /** The selected model's IDENTITY: what it is called and what it is for. */
+  private renderModelIdentity(): TemplateResult {
+    return html`
+      <label class="gen-row"><span>${this.tr(MSG.modelName)}</span>
+        <ix-input
+          .value=${this.genModelName}
+          ?disabled=${!this.editingModel()}
+          @valueChange=${(event: CustomEvent<string>) => (this.genModelName = String(event.detail))}
+        ></ix-input></label>
+      <label class="gen-row"><span>${this.tr(MSG.modelTargetType)}</span>
+        <ix-input
+          .value=${this.genTypeName}
+          ?disabled=${!this.editingModel()}
+          @valueChange=${(event: CustomEvent<string>) => (this.genTypeName = String(event.detail))}
+        ></ix-input></label>
+      <div class="form-hint">
+        ${this.dpTypes.includes(this.genTypeName.trim())
+          ? this.tr(MSG.modelTargetExisting, { type: this.genTypeName.trim() })
+          : this.tr(MSG.modelTargetNew, { type: sanitizeSegment(this.genTypeName.trim()) })}
+      </div>
+      <label class="gen-row gen-row-tall"><span>${this.tr(MSG.modelDescription)}</span>
+        <textarea
+          class="model-desc"
+          rows="2"
+          placeholder=${this.tr(MSG.modelDescriptionPlaceholder)}
+          ?disabled=${!this.editingModel()}
+          .value=${this.genDescription}
+          @input=${(event: Event) => (this.genDescription = (event.target as HTMLTextAreaElement).value)}
+        ></textarea></label>
+    `;
+  }
+
+  private patchModelDraft(patch: { name?: string; description?: string; fromType?: string }): void {
+    this.modelDraft = { ...(this.modelDraft ?? { name: '', description: '' }), ...patch };
+  }
+
+  /**
+   * The model's SOURCE catalOGS — one or several.
+   *
+   * A model may read more than one: two TIA DBs of the same PLC, or a TIA export
+   * alongside the OPC UA browse of the same machine. The first checked one is the
+   * PRIMARY (it answers for mirroring and for the mode of an unqualified binding);
+   * the others contribute their signals to the mapping, each leaf keeping the
+   * interface of the catalog it came from — so every address is written through the
+   * driver of ITS OWN source (see the core's per-leaf resolution).
+   */
+  private renderCatalogSources(): TemplateResult {
+    return html`
+      <div class="gen-row"><span>${this.tr(MSG.composerCatalog)}</span><span></span></div>
+      <div class="box-list source-list">
+        ${this.books.map((candidate) => {
+          const checked = this.selectedBookId === candidate.id || this.extraBookIds.has(candidate.id);
+          const primary = this.selectedBookId === candidate.id;
+          return html`<div class="box source-box">
+            <label class="source-use" title=${candidate.name}>
+              <input
+                type="checkbox"
+                ?disabled=${!this.editingModel()}
+                .checked=${checked}
+                @change=${() => this.toggleSourceBook(candidate.id)}
+              />
+              <span class="box-name">${candidate.name}</span>
+            </label>
+            <span class="chip">${this.tr(MSG.entriesChip, { n: candidate.entries.length })}</span>
+            ${primary ? html`<span class="chip mode">${this.tr(MSG.sourcePrimary)}</span>` : nothing}
+            <span class="spacer"></span>
+            <ix-icon-button
+              size="16"
+              variant="secondary"
+              icon="import"
+              ?disabled=${!checked || this.busy || !this.editingModel()}
+              a11y-label=${this.tr(MSG.sourceMirrorAction)}
+              title=${this.tr(MSG.sourceMirrorHint)}
+              @click=${() => this.onMirrorSource(candidate)}
+            ></ix-icon-button>
+            <ix-icon-button
+              size="16"
+              variant="secondary"
+              icon="link-break"
+              ?disabled=${!checked || this.busy || !this.editingModel()}
+              a11y-label=${this.tr(MSG.sourceRemoveAction)}
+              title=${this.tr(MSG.sourceRemoveHint)}
+              @click=${() => this.onRemoveSource(candidate)}
+            ></ix-icon-button>
+          </div>`;
+        })}
+      </div>
+      <div class="form-hint">${this.tr(MSG.sourceHint)}</div>
+    `;
+  }
+
+  /**
+   * UPDATE THE MODEL BY MIRRORING one catalog — an action, not a stored flag.
+   *
+   * It was a per-catalog checkbox for one release, which made "the model mirrors this
+   * catalog" look like a permanent property: it is not, since the branches can then be
+   * renamed, re-mapped or deleted by hand. Pressing it MERGES the catalog's paths into the
+   * structure already there (`mirrorIntoStructure`) and brings every new leaf bound to the
+   * signal it came from — that is the automatic mapping, done by construction rather than
+   * by a name-matching pass afterwards.
+   *
+   * What is already in the model WINS: a branch an engineer renamed or re-mapped is left
+   * alone and counted in the notice, so re-mirroring after a catalog was re-browsed adds
+   * what is new without undoing anyone's work.
+   */
+  private onMirrorSource(book: AddressBook): void {
+    const typeName = this.genTypeName.trim() || 'Type';
+    const base = { structure: parseStructureOutline(this.genOutline, typeName).structure, bindings: this.genBindings };
+    const mirror = mirrorIntoStructure(base, { book, selection: this.visibleSignals(book).map((entry) => entry.path) }, { typeName });
+    const added = Object.keys(mirror.bindings).length - Object.keys(this.genBindings).length;
+    this.genOutline = formatStructureOutline(mirror.structure);
+    this.genOutlineErrors = parseStructureOutline(this.genOutline, typeName).errors;
+    this.genBindings = mirror.bindings;
+    this.genAmbiguous = [];
+    this.genWarnings = mirror.warnings;
+    this.notice = this.tr(MSG.mirrorDone, { name: book.name, branches: Math.max(added, 0) });
+  }
+
+  /**
+   * REMOVE a catalog from the model — the counterpart of the ⟱ button beside it.
+   *
+   * Un-ticking a source only stopped offering its signals: the branches it had contributed
+   * stayed, bound to a catalog the model no longer read. This drops them together (the core's
+   * `removeSourceFromModel` decides from the BINDINGS, so a branch re-mapped elsewhere
+   * stays), and un-ticks the source in the same gesture.
+   */
+  private onRemoveSource(book: AddressBook): void {
+    const typeName = this.genTypeName.trim() || 'Type';
+    const cleaned = removeSourceFromModel(
+      { structure: parseStructureOutline(this.genOutline, typeName).structure, bindings: this.genBindings, policy: this.genPolicy },
+      book.id
+    );
+    this.genOutline = formatStructureOutline(cleaned.structure);
+    this.genOutlineErrors = parseStructureOutline(this.genOutline, typeName).errors;
+    this.genBindings = cleaned.bindings;
+    this.genPolicy = cleaned.policy;
+    this.genAmbiguous = [];
+    // Drop it from the sources too: "remove the catalog from the model" is one decision, and
+    // leaving it checked would keep offering the signals of a catalog it no longer reads.
+    if (this.selectedBookId === book.id || this.extraBookIds.has(book.id)) this.toggleSourceBook(book.id);
+    this.notice = this.tr(MSG.sourceRemoveDone, { name: book.name, n: cleaned.removed.length });
+  }
+
+  /**
+   * Check / uncheck a source catalog.
+   *
+   * The FIRST one checked is the primary (`selectedBookId`) because everything that
+   * cannot be per-leaf needs one: what "mirror the catalog" mirrors, and the mode of a
+   * binding that names no catalog. Unchecking it promotes another rather than leaving
+   * the model without a primary.
+   */
+  private toggleSourceBook(bookId: string): void {
+    if (this.selectedBookId === bookId) {
+      const promoted = [...this.extraBookIds][0];
+      const rest = new Set(this.extraBookIds);
+      if (promoted !== undefined) rest.delete(promoted);
+      this.selectedBookId = promoted ?? null;
+      this.extraBookIds = rest;
+      return;
+    }
+    const extras = new Set(this.extraBookIds);
+    if (extras.has(bookId)) extras.delete(bookId);
+    else if (this.selectedBookId === null) this.selectedBookId = bookId;
+    else extras.add(bookId);
+    this.extraBookIds = extras;
+  }
+
+  /** The catalogs a model reads: the primary first, then the extras, in book order. */
+  private sourceBooks(): AddressBook[] {
+    const primary = this.activeBook();
+    const extras = this.books.filter((book) => this.extraBookIds.has(book.id) && book.id !== primary?.id);
+    return primary === null ? extras : [primary, ...extras];
+  }
+
+  /**
+   * The signals a mapping may bind to — EVERY one qualified `catalogue::chemin`.
+   *
+   * Always, the first catalog included. A mapping then says which catalog it reads
+   * without depending on which source happens to be first, so re-ordering the sources or
+   * promoting another one cannot change what a branch points at. (Models written before
+   * this convention hold bare paths; the core still resolves those against the model's own
+   * book — see `parseBindingRef` — so they keep working, they simply stop being produced.)
+   */
+  private sourceEntries(): BookEntry[] {
+    // MEMOISED: this is called on every render, and qualifying 331 entries × N renders was
+    // measurable on a real catalog. The key is what the result depends on — which books are
+    // checked, and the role filter that hides signals — so a change still invalidates it.
+    const key = `${this.sourceBooks().map((book) => book.id).join('|')}#${this.roleFilter}`;
+    if (this.entryCacheKey === key) return this.entryCache;
+    const entries = this.sourceBooks().flatMap((book) =>
+      this.visibleSignals(book).map((entry) => ({ ...entry, path: bindingRef(book.id, entry.path) }))
+    );
+    this.entryCacheKey = key;
+    this.entryCache = entries;
+    return entries;
+  }
+
+  /**
+   * Open the CREATION form. Nothing is stored until "Create".
+   *
+   * The source selection is RESET, so the form starts from no catalog instead of
+   * inheriting the ones the previously selected model happened to read — a new model
+   * silently pre-bound to another one's catalogs is the kind of default that gets saved
+   * without being noticed.
+   */
+  private onNewModel(): void {
+    this.modelDraft = { name: '', description: '' };
+    this.genModelId = '';
+    this.genModelName = '';
+    this.selectedBookId = null;
+    this.extraBookIds = new Set();
+    this.genOutline = '';
+    this.genOutlineErrors = [];
+    this.genBindings = {};
+    this.genPolicy = {};
+    this.genAmbiguous = [];
+    this.genWarnings = [];
+  }
+
+  /**
+   * Create the model from the whole form: its identity, its source catalogs, and the
+   * structure MIRRORED from the ones marked so.
+   *
+   * The id is derived from the name once (`templateIdFrom`), so re-creating the same name
+   * edits that model instead of quietly producing a second one with the same type.
+   */
+  private async onCreateModel(): Promise<void> {
+    const draft = this.modelDraft;
+    if (draft === null) return;
+    const name = draft.name.trim();
+    // Picking an existing DP type means PARAMETERISING it: the model targets that type, so its
+    // name is the type's, not one derived from the model's label — otherwise generating would
+    // create a second type beside the one the operator chose.
+    const chosen = (draft.fromType ?? '').trim();
+    const typeName = chosen === '' ? sanitizeSegment(name) : chosen;
+    if (typeName === '') return;
+    // Three ways a structure gets here, in order of precedence: an EXISTING DP type picked
+    // in the form (read from the project, mappings left empty — the branches exist, what they
+    // read is the next decision), whatever "Mirror this catalog" already built on screen, or
+    // an empty type.
+    let structure = parseStructureOutline(this.genOutline, typeName).structure;
+    let bindings = this.genBindings;
+    if (chosen !== '') {
+      try {
+        const existing = await this.gateway.readDpType(chosen);
+        // The type's own MEMBERS as the model's first level (`dpTypeStructureAsModel`): the type
+        // is the root, not an element — a reader that keeps it as a child produced a first-level
+        // element named after the DP type, with everything real buried under it.
+        structure = dpTypeStructureAsModel(existing.structure, typeName);
+        bindings = {};
+      } catch (error) {
+        this.notice = this.tr(MSG.modelFromTypeFailed, { type: chosen, error: (error as Error).message });
+        return;
+      }
+    }
+    const model: ModelTemplate = {
+      id: templateIdFrom(name === '' ? typeName : name),
+      name: name === '' ? typeName : name,
+      ...(draft.description.trim() === '' ? {} : { description: draft.description.trim() }),
+      typeName,
+      structure,
+      bindings,
+      ...(this.selectedBookId === null ? {} : { sourceBookId: this.selectedBookId }),
+      sources: this.sourceBooks().map((book) => ({ bookId: book.id }))
+    };
+    this.busy = true;
+    try {
+      const stored = await this.gateway.saveModel(model);
+      this.models = await this.gateway.listModels();
+      this.modelDraft = null;
+      this.onLoadModel(stored.id);
+      // Straight into edit mode: a model is created to be filled in, and asking for
+      // "Edit" one click after "Create" would be ceremony.
+      this.modelEditing = true;
+      this.notice = this.tr(MSG.modelCreated, { name: stored.name });
+    } catch (error) {
+      this.notice = this.tr(MSG.modelSaveFailed, { error: (error as Error).message });
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /**
+   * The selected model's CONTENT: its structure, with each branch's mapping and its
+   * deployment — then "update".
+   *
+   * Reduced on purpose. The column used to carry, above the tree, a tree/text view
+   * toggle, an "auto-map" button, a mapped counter and TWO explanatory paragraphs, then a
+   * coverage sentence under it: five pieces of chrome around the one thing being edited.
+   * What is left is a single status line (mapped count + the two actions that change it)
+   * and the tree. The outline text view went with them; it stays the storage format, and
+   * `formatStructureOutline` still round-trips it for the model store.
+   */
+  private renderModelLibrary(): TemplateResult {
+    const parsed = parseStructureOutline(this.genOutline, this.genTypeName.trim() || 'Type');
+    const leaves = structureLeaves(parsed.structure);
+    // Counted against THIS catalog, not merely "has a binding": a model carries paths into
+    // the catalog it was authored on, and calling those "mapped" while none resolve here
+    // would read as a contradiction.
+    const paths = new Set(this.sourceEntries().map((entry) => entry.path));
+    const bound = leaves.filter((leaf) => paths.has(this.genBindings[leaf.segments.join('.')] ?? '')).length;
+    return html`
+      <div class="gen-views">
+        <span class="soft small">${this.tr(MSG.mappedCount, { n: bound, total: leaves.length })}</span>
+      </div>
+      ${this.genOutlineErrors.length > 0
+        ? html`<ul class="gen-warnings warn-inline">${this.genOutlineErrors.map((error) => html`<li>${this.warnText(error)}</li>`)}</ul>`
+        : nothing}
+      ${this.renderStructureTree(parsed.structure)}
+      ${this.genWarnings.length > 0
+        ? html`<ul class="gen-warnings">${this.genWarnings.map((w) => html`<li>${this.warnText(w)}</li>`)}</ul>`
+        : nothing}
     `;
   }
 
@@ -1763,159 +2763,131 @@ export class WuiEngStudio extends LitElement {
   }
 
   /**
-   * The SOURCE catalog — any catalog of the project, not only the selected
-   * equipment's. That is what makes a model authorable independently of a device: a
-   * house-standard type is written against a catalog (PackML, a vendor register map),
-   * and which equipments it will serve is a later, separate question.
+   * A NEW INSTANCE, as a row of the tree — not a form.
+   *
+   * An instance is a datapoint on an equipment, so declaring one asks for exactly that:
+   * the name(s) and the equipment, on the line where the instances live, validated by the
+   * check on the right. The boxed "Generate the model from this book" panel this replaces
+   * asked for four more things the model already answers (its type, its structure mode,
+   * its catalog, its policy).
    */
-  private renderCatalogPicker(): TemplateResult {
+  private renderInstanceDraftRow(model: ModelTemplate): TemplateResult {
+    const target = this.targetDevice();
     return html`
-      <label class="gen-row">
-        <span>${this.tr(MSG.composerCatalog)}</span>
+      <div class="tree-row tree-instance tree-instance-draft">
+        <span class="tree-indent"></span>
+        <ix-input
+          class="instance-name"
+          placeholder="FOUR001, FOUR002"
+          .value=${this.genEquipments}
+          @valueChange=${(event: CustomEvent<string>) => (this.genEquipments = String(event.detail))}
+        ></ix-input>
         <ix-select
-          .value=${this.selectedBookId ?? ''}
-          @valueChange=${(event: CustomEvent<string | string[]>) => this.selectBook(firstOf(event.detail))}
+          class="instance-device"
+          .value=${target?.id ?? ''}
+          @valueChange=${(event: CustomEvent<string | string[]>) => (this.genTargetId = firstOf(event.detail))}
         >
-          ${this.books.map(
-            (candidate) => html`<ix-select-item
-              value=${candidate.id}
-              label="${candidate.name} · ${candidate.entries.length}"
-            ></ix-select-item>`
+          ${this.devices.map(
+            (device) => html`<ix-select-item value=${device.id} label="${device.name} · ${this.protocolLabel(device)}"></ix-select-item>`
           )}
         </ix-select>
-      </label>
-    `;
-  }
-
-  /**
-   * Generate the model from the active book: the roles decide the configs, the
-   * VC convention the datapoint names. The result lands in the workspace, so the
-   * Control panel's diff immediately shows what a check-in would write.
-   */
-  private renderGenerator(book: AddressBook): TemplateResult {
-    const unknown = this.roleTally(book).unknown;
-    return html`
-      <div class="generator">
-        <div class="gen-title">${this.tr(MSG.genTitle)}</div>
-        <label class="gen-row"><span>${this.tr(MSG.genType)}</span>
-          <ix-input
-            placeholder="Equip_Four"
-            .value=${this.genTypeName}
-            @valueChange=${(event: CustomEvent<string>) => (this.genTypeName = String(event.detail))}
-          ></ix-input></label>
-        <label class="gen-row"><span>${this.tr(MSG.genZone)}</span>
-          <ix-input
-            placeholder="Z01"
-            .value=${this.genZone}
-            @valueChange=${(event: CustomEvent<string>) => (this.genZone = String(event.detail))}
-          ></ix-input></label>
-        <label class="gen-row"><span>${this.tr(MSG.genEquipments)}</span>
-          <ix-input
-            placeholder="FOUR001, FOUR002"
-            .value=${this.genEquipments}
-            @valueChange=${(event: CustomEvent<string>) => (this.genEquipments = String(event.detail))}
-          ></ix-input></label>
-        ${this.renderTargetPicker()}
-        <label class="gen-row"><span>${this.tr(MSG.genStructure)}</span>
-          <ix-select
-            .value=${this.genMode}
-            @valueChange=${(event: CustomEvent<string | string[]>) =>
-              this.onGenMode(book, firstOf(event.detail) as 'mirror' | 'custom')}
-          >
-            <ix-select-item value="mirror" label=${this.tr(MSG.genMirror)}></ix-select-item>
-            <ix-select-item value="custom" label=${this.tr(MSG.genCustom)}></ix-select-item>
-          </ix-select></label>
-        ${this.genMode === 'custom' ? this.renderCustomStructure(book) : nothing}
-        <ix-button
-          class="gen-btn"
+        <ix-icon-button
+          size="16"
           variant="primary"
-          icon="cogwheel"
-          ?disabled=${this.busy || !this.can(EDIT_MODEL) || this.genTypeName.trim() === ''}
-          @click=${() => this.onGenerateModel(book)}
-        >${this.tr(MSG.genRun)}</ix-button>
-        ${unknown > 0
-          ? html`<div class="gen-hint warn-inline">${this.tr(MSG.genUnknownHint, { n: unknown })}</div>`
-          : nothing}
-        ${this.genWarnings.length > 0
-          ? html`<ul class="gen-warnings">${this.genWarnings.map((w) => html`<li>${this.warnText(w)}</li>`)}</ul>`
-          : nothing}
+          icon="check"
+          a11y-label=${this.tr(MSG.instanceCreate)}
+          title=${this.tr(MSG.instanceCreate)}
+          ?disabled=${this.busy || !this.can(EDIT_MODEL) || target === undefined || this.genEquipments.trim() === ''}
+          @click=${() => void this.onCreateInstance(model)}
+        ></ix-icon-button>
+        <ix-icon-button
+          size="16"
+          variant="tertiary"
+          icon="close"
+          a11y-label=${this.tr(MSG.cancel)}
+          title=${this.tr(MSG.cancel)}
+          ?disabled=${this.busy}
+          @click=${() => (this.instanceFormType = null)}
+        ></ix-icon-button>
       </div>
+      ${target === undefined || this.deviceServesBook(target, modelSources(model)[0]?.bookId ?? null)
+        ? nothing
+        : html`<div class="gen-hint warn-inline">${this.tr(MSG.genTargetNotServed, { name: target.name })}</div>`}
+      ${this.genWarnings.length > 0
+        ? html`<ul class="gen-warnings">${this.genWarnings.map((w) => html`<li>${this.warnText(w)}</li>`)}</ul>`
+        : nothing}
     `;
   }
 
   /**
-   * Custom-structure editor — the same structure through TWO views.
+   * Instantiate a STORED model on the chosen equipment.
    *
-   * The **tree** is where a type is shaped (PARA's grammar, and each leaf carries its
-   * mapping so nothing has to be held in one's head). The **outline** text is the
-   * storage format and stays editable: it is readable, diffable, pasteable between
-   * projects, and it is what a house standard looks like in a spec document.
-   *
-   * They cannot disagree because there is one value: `genOutline`. The tree parses it,
-   * emits a new structure, and the page writes the outline back from it. Switching to
-   * this mode pre-fills it with the MIRRORED structure, so authoring starts from
-   * something that already works.
+   * It reads the model, not the editor: the sources come from the record
+   * (`modelSources`), so instantiating never depends on what happens to be open in the
+   * Model tab — and a model whose primary catalog is gone fails with that as the reason
+   * instead of silently generating a type with no address.
    */
-  private renderCustomStructure(book: AddressBook): TemplateResult {
-    const parsed = parseStructureOutline(this.genOutline, this.genTypeName.trim() || 'Type');
-    const leaves = structureLeaves(parsed.structure);
-    // Counted against THIS catalog, not merely "has a binding": a model loaded from
-    // the library carries paths into the catalog it was authored on, and calling those
-    // "mapped" here while the coverage line says none resolve reads as a contradiction.
-    const paths = new Set(book.entries.map((entry) => entry.path));
-    const bound = leaves.filter((leaf) => paths.has(this.genBindings[leaf.segments.join('.')] ?? '')).length;
-    return html`
-      <div class="gen-structure">
-        <div class="gen-views">
-          ${this.renderGenView('tree', MSG.genViewTree)} ${this.renderGenView('text', MSG.genViewText)}
-          <span class="spacer"></span>
-          <span class="soft small">${this.tr(MSG.mappedCount, { n: bound, total: leaves.length })}</span>
-          <ix-button variant="secondary" ?disabled=${this.busy} @click=${() => this.onAutoBind(book)}>
-            ${this.tr(MSG.autoBind)}
-          </ix-button>
-        </div>
-        ${this.genView === 'tree' ? this.renderStructureTree(book, parsed.structure) : this.renderOutlineEditor()}
-        ${this.genOutlineErrors.length > 0
-          ? html`<ul class="gen-warnings warn-inline">${this.genOutlineErrors.map((error) => html`<li>${this.warnText(error)}</li>`)}</ul>`
-          : nothing}
-        <div class="gen-sub">${this.tr(MSG.genViewHint)}</div>
-      </div>
-    `;
+  private async onCreateInstance(model: ModelTemplate): Promise<void> {
+    const sources = modelSources(model)
+      .map((source) => this.books.find((book) => book.id === source.bookId))
+      .filter((book): book is AddressBook => book !== undefined);
+    const [primary, ...extras] = sources;
+    if (primary === undefined) {
+      this.genWarnings = [{ code: 'ui.model-no-catalog', message: this.tr(MSG.modelNoSource) }];
+      return;
+    }
+    await this.runGeneration({
+      book: primary,
+      extras,
+      typeName: model.typeName,
+      mapping: { structure: model.structure, bindings: model.bindings },
+      policy: model.policy ?? {}
+    });
+    this.instanceFormType = null;
   }
 
-  private renderGenView(view: 'tree' | 'text', label: Ml): TemplateResult {
-    return html`<button class="mini-tab ${this.genView === view ? 'active' : ''}" @click=${() => (this.genView = view)}>
-      ${this.tr(label)}
-    </button>`;
+  /**
+   * Merge one leaf's policy change — field by field, so pinning an archive group
+   * keeps the default alarm. `{ range: undefined }` is the tree's way of CLEARING a
+   * range (both bounds are needed for one to mean anything), so the key is dropped
+   * rather than stored as an explicit `undefined`.
+   */
+  private patchPolicy(path: string, patch: LeafPolicy): void {
+    const current = this.genPolicy[path];
+    const next: LeafPolicy = current === undefined ? { ...patch } : { ...current, ...patch };
+    if (patch.range === undefined && 'range' in patch) delete next.range;
+    this.genPolicy = { ...this.genPolicy, [path]: next };
   }
 
   /** The tree view: shape the type and map each leaf, in one place. */
-  private renderStructureTree(book: AddressBook, structure: DpTypeStructure): TemplateResult {
+  /**
+   * The ONE component of the Model tab: the models, and inside the selected one, its
+   * structure — every leaf carrying its element type, its mapping AND its deployment
+   * (alarm / archive / range).
+   *
+   * It replaced three stacked widgets (a model list, a structure tree, a policy
+   * table) that between them asked one question in three places, with the leaf's
+   * dotted path as the only link between them.
+   */
+  private renderStructureTree(structure: DpTypeStructure | null): TemplateResult {
     return html`
       <wui-eng-structure-tree
         .structure=${structure}
-        .entries=${this.visibleSignals(book)}
+        .entries=${this.sourceEntries()}
         .bindings=${this.genBindings}
         .ambiguous=${this.genAmbiguous}
-        .canEdit=${this.can(EDIT_MODEL)}
+        .policy=${this.genPolicy}
+        .alarmClasses=${this.configOptions.alarmClasses}
+        .archiveGroups=${this.configOptions.archiveGroups}
+        .subscriptions=${this.configOptions.subscriptions}
+        .pollGroups=${this.configOptions.pollGroups}
+        .canEdit=${this.editingModel()}
         .uiLang=${this.uiLang}
         @wui:treechange=${(event: CustomEvent<StructureChangeDetail>) => this.onStructureChange(event.detail)}
         @wui:treebind=${(event: CustomEvent<StructureBindDetail>) => this.onBind(event.detail.leaf, event.detail.entryPath)}
+        @wui:policychange=${(event: CustomEvent<PolicyChangeDetail>) => this.patchPolicy(event.detail.leaf, event.detail.patch)}
+        @wui:pickdp=${(event: CustomEvent<DpPickRequest>) => void this.openDpPick(event.detail)}
       ></wui-eng-structure-tree>
-    `;
-  }
-
-  /** The outline view: the storage format, editable as text. */
-  private renderOutlineEditor(): TemplateResult {
-    return html`
-      <div class="gen-sub">${this.tr(MSG.outlineHint)}</div>
-      <textarea
-        class="outline mono"
-        rows="10"
-        spellcheck="false"
-        .value=${this.genOutline}
-        @input=${(event: Event) => this.onOutlineInput((event.target as HTMLTextAreaElement).value)}
-      ></textarea>
     `;
   }
 
@@ -1936,51 +2908,89 @@ export class WuiEngStudio extends LitElement {
   }
 
   /**
-   * Load a saved model into the composer: its type name, its structure and its
-   * mappings. The zone, the equipment names and the target are NOT touched — they
-   * are what differs between two applications of the same model.
+   * Open a saved model in the detail column: its type name, its structure, its mappings
+   * and its policy. The equipment names and the target are NOT touched — they are what
+   * differs between two applications of the same model.
    */
   private onLoadModel(id: string): void {
     this.genModelId = id;
+    this.modelDraft = null;
     const model = this.models.find((candidate) => candidate.id === id);
     if (model === undefined) return;
     this.genTypeName = model.typeName;
-    this.genMode = 'custom';
+    this.genModelName = model.name;
+    this.genDescription = model.description ?? '';
     this.genOutline = formatStructureOutline(model.structure);
     this.genOutlineErrors = parseStructureOutline(this.genOutline, model.typeName).errors;
-    this.genBindings = { ...model.bindings };
+    // MIGRATION on open: a model saved before bindings were always qualified holds bare
+    // paths. They are re-qualified against its primary catalog, so its mapping shows as
+    // mapped (and is stored qualified the next time it is saved) instead of reading
+    // "not mapped" against a signal list where every option now names its catalog.
+    const primaryId = modelSources(model)[0]?.bookId;
+    this.genBindings = Object.fromEntries(
+      Object.entries(model.bindings).map(([leaf, binding]) => {
+        if (binding === '' || parseBindingRef(binding).bookId !== undefined || primaryId === undefined) return [leaf, binding];
+        return [leaf, bindingRef(primaryId, binding)];
+      })
+    );
+    // The deployment decisions travel WITH the model — that is what makes a
+    // second instance a replay instead of a re-decision.
+    this.genPolicy = model.policy === undefined ? {} : { ...model.policy };
     this.genAmbiguous = [];
+    this.genWarnings = [];
+    // The model's own catalogs become the checked sources — including which of them it
+    // MIRRORS, so re-opening a model shows the choices it was built with rather than the
+    // ones left over from the previously selected one.
+    const sources = modelSources(model);
+    this.selectedBookId = sources[0]?.bookId ?? this.selectedBookId;
+    this.extraBookIds = new Set(sources.slice(1).map((source) => source.bookId));
     this.notice = this.tr(MSG.modelLoaded, { name: model.name, type: model.typeName });
   }
 
-  /**
-   * Save the composed model under its type name.
-   *
-   * Saved in CUSTOM mode only — a mirrored structure is a reading of one catalog's
-   * paths, so storing it as a reusable model would promise something it cannot keep:
-   * applied to another catalog it would simply mirror that one instead.
-   */
-  private async onSaveModel(book: AddressBook): Promise<void> {
-    const typeName = this.genTypeName.trim();
+  /** Store the model being edited: its identity, its sources, its structure and mapping. */
+  private async onSaveModel(book: AddressBook | null): Promise<void> {
+    // The TYPE is sanitised (it is a WinCC OA identifier); the NAME is a label and is left
+    // exactly as typed. An existing type therefore stays the target, spelling included.
+    const typeName = sanitizeSegment(this.genTypeName.trim());
     if (typeName === '') return;
-    const structure =
-      this.genMode === 'custom'
-        ? parseStructureOutline(this.genOutline, typeName).structure
-        : this.mirrorStructure(book);
+    const modelName = this.genModelName.trim() === '' ? typeName : this.genModelName.trim();
+    const structure = parseStructureOutline(this.genOutline, typeName).structure;
+    const description = this.genDescription.trim();
     const model: ModelTemplate = {
-      id: this.genModelId || templateIdFrom(typeName),
-      name: typeName,
+      id: this.genModelId || templateIdFrom(modelName),
+      name: modelName,
+      ...(description === '' ? {} : { description }),
       typeName,
       structure,
-      bindings: this.genMode === 'custom' ? this.genBindings : {},
-      sourceBookId: book.id
+      bindings: this.genBindings,
+      ...(Object.keys(this.genPolicy).length === 0 ? {} : { policy: this.genPolicy }),
+      // A model with NO catalog is legitimate — a structure imported from a DP type, or one
+      // authored by hand, is worth storing before anything is mapped. The primary is written
+      // only when there is one, so a saved model never claims a source it does not read.
+      ...(book === null ? {} : { sourceBookId: book.id }),
+      // Every catalog it reads AND which of them shape it — the mirroring choice has to
+      // survive a reload, otherwise re-opening the model would offer to rebuild a
+      // structure it can no longer tell it already built.
+      sources: this.sourceBooks().map((candidate) => ({ bookId: candidate.id }))
     };
     this.busy = true;
     try {
       const stored = await this.gateway.saveModel(model);
       this.models = await this.gateway.listModels();
       this.genModelId = stored.id;
+      // Saved means DONE: back to read-only, so Save/Cancel give way to Edit. Leaving the
+      // editor open after a save invites a second, unintended round of changes on a model
+      // that has just been re-applied to every one of its instances.
+      this.modelEditing = false;
       this.notice = this.tr(MSG.modelSaved, { name: stored.name });
+      this.busy = false;
+      // A model change must REACH what the model already produced: saving it
+      // re-applies the new structure/mappings/policy to every existing instance, in
+      // the WORKSPACE (nothing is written to the project — the Instances tree then
+      // shows them as "to update", which is the truth until a check-in).
+      if (this.workspace !== null && instanceTargets(this.workspace, stored.typeName).length > 0) {
+        await this.onReapplyModel(stored);
+      }
     } catch (error) {
       this.notice = this.tr(MSG.modelSaveFailed, { error: (error as Error).message });
     } finally {
@@ -2003,52 +3013,49 @@ export class WuiEngStudio extends LitElement {
     }
   }
 
-  /** Switching to custom mode bootstraps the outline from the mirrored structure. */
-  private onGenMode(book: AddressBook, mode: 'mirror' | 'custom'): void {
-    this.genMode = mode;
-    if (mode !== 'custom' || this.genOutline.trim() !== '') return;
-    this.genOutline = formatStructureOutline(this.mirrorStructure(book));
-    this.genOutlineErrors = [];
-    this.onAutoBind(book);
-  }
-
-  /** The structure the MIRROR mode would build — the starting point for editing. */
-  private mirrorStructure(book: AddressBook): DpTypeStructure {
-    const typeName = this.genTypeName.trim() || 'Type';
-    return generateModelFromBook(book, {
-      typeName,
-      equipments: [],
-      deviceId: 'preview',
-      selection: this.visibleSignals(book).map((entry) => entry.path)
-    }).type.structure;
-  }
-
-  private onOutlineInput(text: string): void {
-    this.genOutline = text;
-    this.genOutlineErrors = parseStructureOutline(text, this.genTypeName.trim() || 'Type').errors;
-  }
-
   private onBind(leafPath: string, entryPath: string): void {
     this.genBindings = { ...this.genBindings, [leafPath]: entryPath };
     this.genAmbiguous = this.genAmbiguous.filter((item) => item.leaf !== leafPath);
   }
 
-  /** Name-match the authored leaves onto the book, and keep what it could not decide. */
+  /**
+   * Name-match the authored leaves onto the book, and keep what it could not decide.
+   *
+   * The matches are QUALIFIED with the book they came from, like every other binding the
+   * page produces: the core name-matches on paths, so the qualification is added after.
+   */
   private onAutoBind(book: AddressBook): void {
     const { structure } = parseStructureOutline(this.genOutline, this.genTypeName.trim() || 'Type');
     const result = autoBindStructure(structure, this.visibleSignals(book));
+    const qualified = Object.fromEntries(
+      Object.entries(result.bindings).map(([leaf, path]) => [leaf, path === '' ? '' : bindingRef(book.id, path)])
+    );
     // Keep the operator's own choices: auto-binding fills the gaps, it does not reset.
-    this.genBindings = { ...result.bindings, ...this.genBindings };
+    this.genBindings = { ...qualified, ...this.genBindings };
     this.genAmbiguous = result.ambiguous.filter((item) => (this.genBindings[item.leaf] ?? '') === '');
     const bound = Object.values(this.genBindings).filter((value) => value !== '').length;
     this.notice = this.tr(MSG.autoBindDone, { bound, unbound: result.unbound.length, ambiguous: result.ambiguous.length });
   }
 
-  /** Run the generator, merge into the workspace and refresh the plan. */
-  private async onGenerateModel(book: AddressBook): Promise<void> {
+
+  /**
+   * Run the generator, merge into the workspace and refresh the plan.
+   *
+   * One place for it, two callers: instantiating a stored model (the Instances tab) and
+   * the demo/screenshot harness, which generates straight from the editor's state. The
+   * arguments are what those two disagree about — everything else is the same run.
+   */
+  private async runGeneration(input: {
+    book: AddressBook;
+    extras?: AddressBook[];
+    typeName: string;
+    mapping?: ModelMapping;
+    policy?: ModelPolicy;
+  }): Promise<void> {
     const workspace = this.workspace;
     if (!workspace) return;
-    // The TARGET, explicitly — see renderTargetPicker. Applying a model is a choice,
+    const book = input.book;
+    // The TARGET, explicitly — see renderInstanceDraftRow. Applying a model is a choice,
     // not a side effect of whichever equipment happens to be selected elsewhere.
     const device = this.targetDevice();
     const equipments = this.genEquipments
@@ -2057,28 +3064,40 @@ export class WuiEngStudio extends LitElement {
       .filter((s) => s !== '');
     this.busy = true;
     try {
-      const typeName = this.genTypeName.trim();
-      const mapping =
-        this.genMode === 'custom'
-          ? { structure: parseStructureOutline(this.genOutline, typeName).structure, bindings: this.genBindings }
-          : undefined;
+      const extras = input.extras ?? [];
+      const policy = input.policy ?? {};
+      // No zone segment: the studio names the datapoints after the equipment alone
+      // (the core still accepts an optional `zone` for callers that want one).
       const proposal = generateModelFromBook(book, {
-        typeName,
-        zone: this.genZone.trim() === '' ? undefined : this.genZone.trim(),
+        typeName: input.typeName,
         equipments,
         deviceId: device?.id ?? book.id,
-        // A template catalog is bound to the selected equipment's own connection.
-        bindConnection: book.interface?.connection ?? device?.name,
-        mode: book.interface?.protocol ?? device?.accessModes[0],
-        // Mirror mode restricts to the visible (filtered) signals like before;
-        // mapping mode takes its selection from the bindings themselves.
-        ...(mapping === undefined ? {} : { mapping })
+        // The TARGET equipment's own connection first, the catalog's only as a fallback.
+        // A book names the server it was BROWSED on; that is the same thing right up to the
+        // moment the catalog is mutualised, and from then on the browse connection would
+        // address every instance to the machine the catalog came from.
+        bindConnection: connectionNameOf(device) ?? book.interface?.connection,
+        // The book's own interface first; else the device's protocol — the access
+        // mode follows the protocol since the checkboxes were removed.
+        mode: book.interface?.protocol ?? device?.protocol ?? device?.accessModes[0],
+        // With no mapping the core mirrors the book itself (what the demo harness uses);
+        // a model always brings its authored structure and its bindings.
+        ...(input.mapping === undefined ? {} : { mapping: input.mapping }),
+        // The OTHER source catalogs of a multi-catalog model: their signals are bound
+        // by a QUALIFIED reference, and each leaf keeps its own catalog's interface,
+        // so an address is written through the driver of the source it came from.
+        ...(extras.length === 0 ? {} : { books: extras }),
+        // The deployment decisions (alarm / archive / range) — what the model
+        // pinned once; the core fills every unpinned leaf with its default.
+        ...(Object.keys(policy).length === 0 ? {} : { policy }),
+        // …and the unpinned defaults name the PROJECT's group and class, not the core's tokens.
+        profileContext: this.projectProfileContext()
       });
       const merged = mergeProposal(workspace, proposal);
       await this.gateway.saveWorkspace(merged);
       this.workspace = merged;
       // Re-read live with the WIDER scope the generated model just introduced.
-      this.live = await this.gateway.liveSnapshot(liveScopeOf(merged));
+      this.live = await this.gateway.liveSnapshot(this.liveScope(merged));
       this.recomputePlan();
       this.genWarnings = proposal.warnings;
       const configCount = Object.keys(proposal.configs).length;
@@ -2093,65 +3112,564 @@ export class WuiEngStudio extends LitElement {
   }
 
 
-  private renderSignalGrid(): TemplateResult {
-    const ws = this.workspace;
-    if (!ws) return html`<section class="grid-wrap"><div class="empty">${this.tr(MSG.loading)}</div></section>`;
-    const rows = this.gridRows(ws);
-    return html`
-      <section class="grid-wrap">
-        <div class="grid-head-bar">
-          <span>${this.tr(MSG.modelOf, { name: ws.name })}</span>
-          <span class="chip">${this.tr(MSG.typesCount, { n: ws.types.length })}</span>
-          <span class="chip">${this.tr(MSG.dpsCount, { n: ws.dps.length })}</span>
-          <span class="chip">${this.tr(MSG.configsCount, { n: Object.keys(ws.configs).length })}</span>
-          <div class="spacer"></div>
-          <ix-button variant="secondary" icon="eye" @click=${this.onTestRead} ?disabled=${this.busy}>
-            ${this.tr(MSG.testRead)}
-          </ix-button>
-        </div>
-        <div class="grid-scroll">
-          <table class="grid">
-            <thead>
-              <tr>
-                <th>${this.tr(MSG.colDpe)}</th><th>${this.tr(MSG.colType)}</th><th>${this.tr(MSG.colAddress)}</th>
-                <th>${this.tr(MSG.colDir)}</th><th>${this.tr(MSG.colAlarm)}</th><th>${this.tr(MSG.colArchive)}</th>
-                <th>${this.tr(MSG.colRange)}</th><th>${this.tr(MSG.colLiveValue)}</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows.map((row) => this.renderGridRow(row))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    `;
-  }
-
   private renderGridRow(row: GridRow): TemplateResult {
     const cfg = row.configs;
     return html`
       <tr>
         <td class="mono dpe">${row.dpe}</td>
         <td>${row.leafType}</td>
-        <td class="mono addr">${cfg.address?.reference ?? html`<span class="soft">—</span>`}</td>
-        <td>${cfg.address ? dirLabel(cfg.address.direction) : ''}</td>
+        <td class="mono addr ${cfg.address?.active === false ? 'soft' : ''}">${cfg.address?.reference ?? html`<span class="soft">—</span>`}</td>
+        <td>
+          ${cfg.address ? dirLabel(cfg.address.direction) : ''}${cfg.address?.historical === true
+            ? html`<span class="chip hist" title=${this.tr(MSG.addressHistorical)}>H</span>`
+            : nothing}
+        </td>
         <td>${cfg.alarm ? html`<span class="chip update">${cfg.alarm.kind}</span>` : html`<span class="soft">—</span>`}</td>
         <td>${cfg.archive?.active ? html`<span class="chip new">${cfg.archive.group}</span>` : html`<span class="soft">—</span>`}</td>
         <td>${cfg.range ? html`<span class="mono">${cfg.range.min}‥${cfg.range.max}</span>` : html`<span class="soft">—</span>`}</td>
-        <td class="mono live">${row.live === undefined ? '' : String(row.live)}</td>
+        <td class="mono live" title=${row.exists ? '' : this.tr(MSG.liveNotYet)}>
+          ${row.live === undefined ? html`<span class="soft">--</span>` : String(row.live)}
+        </td>
       </tr>
     `;
   }
 
   // --- panel 4: control / check-in --------------------------------------------
 
-  private renderControlPanel(): TemplateResult {
+  /**
+   * The GLOBAL status: one sentence answering "is everything checked in?".
+   *
+   * Counted over the INSTANCES rather than over the plan's items, because that is the
+   * unit an operator thinks in — "312 configs pending" and "2 machines pending" are
+   * the same fact, and only the second one is actionable.
+   */
+  private renderGlobalStatus(ws: Workspace, plan: EngPlan | null): TemplateResult {
+    const instances = this.allInstances(ws, plan);
+    const tally = tallyInstances(instances);
+    const pending = tally.total - tally.synced;
+    if (tally.total === 0) return html``;
+    return html`
+      <span
+        class="chip ${pending === 0 ? 'new' : 'update'}"
+        title=${pending === 0 ? this.tr(MSG.statusAllSynced) : this.tr(MSG.statusPending, { n: pending, total: tally.total })}
+      >
+        ${pending === 0
+          ? html`✓ ${this.tr(MSG.statusSynced)} (${tally.total})`
+          : this.tr(MSG.statusPending, { n: pending, total: tally.total })}
+      </span>
+      ${tally.conflict > 0
+        ? html`<span class="chip conflict">${this.tr(MSG.statusConflict)} ${tally.conflict}</span>`
+        : nothing}
+    `;
+  }
+
+  /** Every instance of every model of the workspace — the global tally's input. */
+  private allInstances(ws: Workspace, plan: EngPlan | null): ModelInstance[] {
+    return this.instanceTypeNames(ws).flatMap((typeName) => modelInstances(ws, typeName, plan, this.live));
+  }
+
+  /**
+   * LEFT of the Instances tab: the models, exactly as the Model tab lists them — name, DP
+   * type, and whether the project's type still matches (`renderModelSync`).
+   *
+   * The same shape on both tabs on purpose: one is "what a model IS", the other "what it
+   * PRODUCED", and an engineer should not have to re-learn where to click between them. A
+   * generated type nobody saved as a model is listed too, so the tab cannot hide datapoints
+   * it is the only screen to show.
+   */
+  private renderInstanceMaster(ws: Workspace, plan: EngPlan | null): TemplateResult {
+    const typeNames = this.instanceTypeNames(ws);
+    return html`
+      <section class="browser model-master">
+        <div class="browser-head">
+          <span>${this.tr(MSG.modelLibrary)}</span>
+          <span class="chip">${typeNames.length}</span>
+        </div>
+        <div class="model-master-scroll">
+          ${typeNames.length === 0 ? html`<div class="empty small">${this.tr(MSG.instanceNoModel)}</div>` : nothing}
+          ${typeNames.map((typeName) => {
+            const saved = this.models.find((model) => model.typeName === typeName);
+            const tally = tallyInstances(modelInstances(ws, typeName, plan, this.live));
+            const active = this.instanceModelType === typeName || (this.instanceModelType === '' && typeName === typeNames[0]);
+            return html`
+              <button class="model-row ${active ? 'active' : ''}" @click=${() => (this.instanceModelType = typeName)}>
+                <span class="mono model-row-name">${saved?.name ?? typeName}</span>
+                <span class="chip mode">${typeName}</span>
+                <span class="chip">${this.tr(MSG.instancesOfModel, { n: tally.total })}</span>
+                <!-- ONE verdict about the type. The plan's chip and the sync chip answer the same
+                     question from two sources, so only one is shown: the plan when it has
+                     something pending on the type, the project comparison otherwise. -->
+                ${this.renderTypeVerdict(typeName, plan, saved)}
+              </button>
+            `;
+          })}
+        </div>
+      </section>
+    `;
+  }
+
+  /**
+   * RIGHT of the Instances tab: the selected model's instances, each with its status, and
+   * under each one the DPEs it carries.
+   *
+   * The DPE rows are what makes a status actionable: "diverged" on a datapoint says nothing
+   * about WHICH element differs, and the address / alarm / archive / range cells beside each
+   * DPE are exactly the answer. The per-model verbs live here too — new instance, re-apply
+   * this model, and (armed) re-create it.
+   */
+  private renderInstanceDetail(ws: Workspace, plan: EngPlan | null): TemplateResult {
+    const typeNames = this.instanceTypeNames(ws);
+    const typeName = this.instanceModelType === '' ? typeNames[0] : this.instanceModelType;
+    if (typeName === undefined) return html`<section class="browser model-detail"></section>`;
+    const saved = this.models.find((model) => model.typeName === typeName);
+    const instances = modelInstances(ws, typeName, plan, this.live);
+    return html`
+      <section class="browser model-detail">
+        <div class="browser-head">
+          <span class="mono">${typeName}</span>
+          ${this.renderTypeVerdict(typeName, plan, saved)}
+          <span class="spacer"></span>
+          ${saved === undefined || !this.can(EDIT_MODEL)
+            ? nothing
+            : html`
+                <ix-button variant="secondary" icon="plus" ?disabled=${this.busy} title=${this.tr(MSG.instanceNewHint)} @click=${() => this.openInstanceForm(typeName)}>
+                  ${this.tr(MSG.instanceNew)}
+                </ix-button>
+                <ix-button
+                  variant="secondary"
+                  icon="refresh"
+                  ?disabled=${this.busy || instances.length === 0}
+                  title=${this.tr(MSG.reapplyHint)}
+                  @click=${() => void this.onReapplyModel(saved)}
+                >
+                  ${this.tr(MSG.reapplyModel)}
+                </ix-button>
+                <ix-button
+                  variant="danger-secondary"
+                  icon="trashcan"
+                  ?disabled=${this.busy || instances.length === 0}
+                  title=${this.tr(this.recreateArmed === typeName ? MSG.recreateConfirm : MSG.recreateHint)}
+                  @click=${() => void this.onRecreate(typeName)}
+                >
+                  ${this.tr(this.recreateArmed === typeName ? MSG.recreateArmed : MSG.recreate)}
+                </ix-button>
+              `}
+          ${this.can('checkin')
+            ? html`<ix-button
+                variant="primary"
+                icon="upload"
+                ?disabled=${this.busy || this.planItemsForType(typeName).length === 0}
+                title=${this.tr(MSG.checkinScopeHint, { n: this.planItemsForType(typeName).length })}
+                @click=${() => void this.onCheckinScope(this.planItemsForType(typeName), typeName)}
+              >
+                ${this.tr(MSG.checkin)}
+              </ix-button>`
+            : nothing}
+        </div>
+        <div class="composer-scroll">
+          ${this.instanceFormType === typeName && saved !== undefined ? this.renderInstanceDraftRow(saved) : nothing}
+          ${instances.length === 0
+            ? html`<div class="empty small">${this.tr(MSG.instanceNone)}</div>`
+            : instances.map((instance) => this.renderInstanceBlock(instance, ws))}
+        </div>
+      </section>
+    `;
+  }
+
+  /**
+   * ONE verdict about a DP type — never two.
+   *
+   * The plan's chip ("to create" / "to update") and the sync chip ("in sync" / "diverged" /
+   * "not created") answer the same question from two sources, and showing both let them
+   * contradict each other: a type nobody has created announced "to update" beside "not
+   * created". The plan speaks when it has something pending on the type; the comparison with
+   * the project speaks otherwise.
+   */
+  private renderTypeVerdict(typeName: string, plan: EngPlan | null, saved: ModelTemplate | undefined): TemplateResult {
+    const status = modelStatus(typeName, plan);
+    if (status !== 'synced') return this.renderStatusChip(status);
+    if (saved === undefined) return html`<span class="soft small">${this.tr(MSG.instanceModelUnsaved)}</span>`;
+    return this.renderModelSync(saved);
+  }
+
+  /**
+   * The DP types this tab is about: the working copy's, the models' targets, and the
+   * PROJECT's types that carry datapoints of a model's type.
+   *
+   * The models' targets are the addition that matters: a model built on an existing type
+   * describes nothing in the working copy yet, and listing only the working copy's types made
+   * it — and its instances — invisible.
+   */
+  /**
+   * The project's own defaults for a deployment decision — used when a model pinned none.
+   *
+   * The core falls back to the tokens `EVENT` and `alert`, which are what an engineer says and NOT
+   * datapoints: written verbatim they fail (`_archive.1._class` must name an `_NGA_Group`) and,
+   * once the write resolves them, the working copy and the project disagree for ever — the
+   * instance that stayed "to update" after every check-in. So the page, which has read both lists,
+   * hands the real names down: the group whose name contains EVENT (else the first usable one) and
+   * the class containing "alert" (else the first).
+   */
+  private projectProfileContext(): { archiveGroup?: string; alarmClass?: string; pollGroup?: string; subscription?: string } {
+    const groups = this.configOptions.archiveGroups;
+    const classes = this.configOptions.alarmClasses;
+    const polls = this.configOptions.pollGroups;
+    const subs = this.configOptions.subscriptions;
+    const archiveGroup = groups.find((name) => name.toLowerCase().includes('event')) ?? groups[0];
+    const alarmClass = classes.find((name) => name.toLowerCase().includes('alert')) ?? classes[0];
+    // The NORMAL rhythm as the polled default, and the fastest subscription for what is pushed —
+    // the two defaults an operator would pick, offered so nothing has to be typed to start.
+    const pollGroup = polls.find((name) => name.toLowerCase().includes('normal')) ?? polls[0];
+    const subscription = subs.find((name) => name.toLowerCase().includes('fast')) ?? subs[0];
+    return {
+      ...(archiveGroup === undefined ? {} : { archiveGroup }),
+      ...(alarmClass === undefined ? {} : { alarmClass }),
+      ...(pollGroup === undefined ? {} : { pollGroup }),
+      ...(subscription === undefined ? {} : { subscription })
+    };
+  }
+
+  private instanceTypeNames(ws: Workspace): string[] {
+    const names = new Set<string>([
+      ...ws.types.map((type) => type.typeName),
+      ...ws.dps.map((dp) => dp.dpType),
+      ...this.models.map((model) => model.typeName)
+    ]);
+    return [...names].sort((first, second) => first.localeCompare(second));
+  }
+
+  /** One instance: its datapoint, the equipment it reads, its status — then its DPEs. */
+  private renderInstanceBlock(instance: ModelInstance, ws: Workspace): TemplateResult {
+    const device = instance.deviceId === undefined ? undefined : this.devices.find((candidate) => candidate.id === instance.deviceId);
+    const rows = this.gridRows(ws).filter((row) => row.dpe.startsWith(`${instance.dpName}.`));
+    return html`
+      <div class="instance-block">
+        <div class="tree-row">
+          <span class="mono tree-name">${instance.dpName}</span>
+          ${this.renderStatusChip(instance.status)}
+          ${instance.deviceId === undefined
+            ? html`<span class="soft small">${this.tr(MSG.instanceNoDevice)}</span>`
+            : html`<button
+                class="tree-device"
+                title=${this.tr(MSG.bookLinkHint, { name: device?.name ?? instance.deviceId })}
+                @click=${() => this.openDeviceFromInstance(instance.deviceId as string)}
+              >
+                ${this.tr(MSG.instanceOnDevice, { device: device?.name ?? instance.deviceId })}
+              </button>`}
+          <span class="spacer"></span>
+          ${instance.managed
+            ? html`<span class="chip">${this.tr(MSG.dpesCount, { n: rows.length })}</span>`
+            : html`<ix-button
+                variant="secondary"
+                icon="plus"
+                ?disabled=${this.busy || !this.can(EDIT_MODEL)}
+                title=${this.tr(MSG.adoptHint)}
+                @click=${() => this.onAdoptInstance(instance)}
+              >
+                ${this.tr(MSG.adopt)}
+              </ix-button>`}
+          ${this.can('checkin')
+            ? html`<ix-icon-button
+                size="16"
+                variant="primary"
+                icon="upload"
+                a11y-label=${this.tr(MSG.checkin)}
+                title=${this.tr(MSG.checkinScopeHint, { n: this.planItemsForDp(instance.dpName).length })}
+                ?disabled=${this.busy || this.planItemsForDp(instance.dpName).length === 0}
+                @click=${() => void this.onCheckinScope(this.planItemsForDp(instance.dpName), instance.dpName)}
+              ></ix-icon-button>`
+            : nothing}
+          ${this.can(EDIT_MODEL)
+            ? html`<ix-icon-button
+                size="16"
+                variant="tertiary"
+                icon="trashcan"
+                a11y-label=${this.tr(MSG.forgetSelectedAction)}
+                title=${this.tr(MSG.forgetHint)}
+                ?disabled=${this.busy}
+                @click=${() => void this.onForgetInstance(instance.dpName)}
+              ></ix-icon-button>`
+            : nothing}
+        </div>
+        ${instance.managed
+          ? html`<table class="grid">
+              <thead>
+                <tr>
+                  <th>${this.tr(MSG.colDpe)}</th><th>${this.tr(MSG.colType)}</th><th>${this.tr(MSG.colAddress)}</th>
+                  <th>${this.tr(MSG.colDir)}</th><th>${this.tr(MSG.colAlarm)}</th><th>${this.tr(MSG.colArchive)}</th>
+                  <th>${this.tr(MSG.colRange)}</th><th>${this.tr(MSG.colLiveValue)}</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.map((row) => this.renderGridRow(row))}
+              </tbody>
+            </table>`
+          : html`<div class="form-hint">${this.tr(MSG.statusUnmanagedHint)}</div>`}
+      </div>
+    `;
+  }
+
+  /** The status of a model or an instance, as its own chip. */
+  private renderStatusChip(status: InstanceStatus): TemplateResult {
+    const label = {
+      synced: MSG.statusSynced,
+      create: MSG.statusCreate,
+      update: MSG.statusUpdate,
+      delete: MSG.statusDelete,
+      conflict: MSG.statusConflict,
+      unmanaged: MSG.statusUnmanaged
+    }[status];
+    const kind = { synced: 'new', create: 'create', update: 'update', delete: 'delete', conflict: 'conflict', unmanaged: '' }[status];
+    const hint = status === 'unmanaged' ? MSG.statusUnmanagedHint : label;
+    return html`<span class="chip ${kind}" title=${this.tr(hint)}>${status === 'synced' ? '✓ ' : ''}${this.tr(label)}</span>`;
+  }
+
+  /**
+   * Re-apply EVERY model — the global counterpart of the per-model button.
+   *
+   * Sequential on purpose: each pass merges into the workspace the previous one produced, so
+   * running them in parallel would race on that single value. Models with no instance are
+   * skipped silently (there is nothing to update) and the outcome is counted once.
+   */
+  private async onReapplyAll(): Promise<void> {
+    const ws = this.workspace;
+    if (ws === null) return;
+    const targets = this.models.filter((model) => instanceTargets(ws, model.typeName).length > 0);
+    if (targets.length === 0) {
+      this.notice = this.tr(MSG.reapplyAllNothing);
+      return;
+    }
+    for (const model of targets) {
+      await this.onReapplyModel(model);
+    }
+    this.notice = this.tr(MSG.reapplyAllDone, { n: targets.length });
+  }
+
+  /**
+   * CHECK IN one scope only — one model, or one instance.
+   *
+   * The panel's own Check-in writes the whole plan, which is the wrong grain when a project
+   * holds twenty models and one of them is ready: an operator wants to apply THAT one. So the
+   * same plan is filtered and applied with the ordinary semantics — `recreate` is NOT passed,
+   * so an existing type is changed in place and an existing datapoint keeps its identity, its
+   * configs and its archived values (see the core's `applyPlan`). Nothing here can drop a
+   * datapoint; that is what the separate, armed "Re-create" is for.
+   */
+  private async onCheckinScope(items: PlanItem[], scope: string): Promise<void> {
     const plan = this.plan;
+    if (plan === null || items.length === 0) return;
+    this.busy = true;
+    this.report = null;
+    try {
+      const report = await this.gateway.checkin({ ...plan, items }, false);
+      this.report = report;
+      if (report.ok) await this.refreshAfterCheckin();
+      this.notice = this.tr(MSG.checkinScopeDone, { scope, n: items.length });
+    } catch (error) {
+      this.notice = this.tr(MSG.checkinFailed, { error: (error as Error).message });
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /** The plan items of one MODEL: its type, its datapoints, their configs. */
+  private planItemsForType(typeName: string): PlanItem[] {
+    return (this.plan?.items ?? []).filter((item) => this.planItemBelongsTo(item, typeName));
+  }
+
+  /**
+   * The plan items of ONE instance: the datapoint, its DPEs' configs — and the type when it has
+   * to be CREATED.
+   *
+   * A type UPDATE is excluded: it belongs to the model and applying it "for one instance" would
+   * change every other instance too. A type CREATION is not the same thing — a datapoint cannot
+   * exist without its type, and a type nobody has yet cannot affect anyone else. Leaving it out
+   * is what made a scoped check-in fail with `dpCreate('ESAB','FraDatalogger') … Invalid
+   * argument`: the datapoint was written before the type it needs.
+   */
+  private planItemsForDp(dpName: string): PlanItem[] {
+    const dpType = this.workspace?.dps.find((dp) => dp.dpName === dpName)?.dpType;
+    return (this.plan?.items ?? []).filter((item) => {
+      if (item.kind === 'type') return item.op === 'create' && item.name === dpType;
+      if (item.kind === 'dp') return item.name === dpName;
+      return item.name.startsWith(`${dpName}.`);
+    });
+  }
+
+  /**
+   * RE-CREATE the type and the datapoints of one model — the destructive escape hatch.
+   *
+   * Everything else in the studio AMENDS: an existing DP type is changed in place and an
+   * existing datapoint keeps its identity, its configs and its archived values (see the
+   * core's `applyPlan`). That is right for every ordinary change and cannot serve one case —
+   * a type the runtime refuses to change in place. So this exists, armed by a first click,
+   * and it says what it costs before the second one.
+   */
+  private async onRecreate(typeName: string): Promise<void> {
+    if (this.recreateArmed !== typeName) {
+      this.recreateArmed = typeName;
+      this.notice = this.tr(MSG.recreateArm, { type: typeName });
+      return;
+    }
+    this.recreateArmed = '';
+    const plan = this.plan;
+    if (plan === null) return;
+    // Scoped to THIS model: its type item, its datapoints and their configs — never the
+    // whole plan, which would re-create every model of the project.
+    const items = plan.items.filter((item) => this.planItemBelongsTo(item, typeName));
+    if (items.length === 0) {
+      this.notice = this.tr(MSG.recreateNothing, { type: typeName });
+      return;
+    }
+    this.busy = true;
+    try {
+      const report = await this.gateway.checkin({ ...plan, items }, false, true);
+      this.report = report;
+      await this.refreshAfterCheckin();
+      this.notice = this.tr(MSG.recreateDone, { type: typeName, n: items.length });
+    } catch (error) {
+      this.notice = this.tr(MSG.checkinFailed, { error: (error as Error).message });
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /** Does this plan item belong to that model? (its type, its DPs, their configs) */
+  private planItemBelongsTo(item: PlanItem, typeName: string): boolean {
+    if (item.kind === 'type') return item.name === typeName;
+    const ws = this.workspace;
+    if (ws === null) return false;
+    const dpNames = ws.dps.filter((dp) => dp.dpType === typeName).map((dp) => dp.dpName);
+    if (item.kind === 'dp') return dpNames.includes(item.name);
+    return dpNames.some((dpName) => item.name.startsWith(`${dpName}.`));
+  }
+
+  /**
+   * ADOPT an existing datapoint into the model: open the instance form pre-filled with its
+   * name, so a generation writes the model's configs ONTO it.
+   *
+   * Nothing is created — the applier finds the datapoint and only writes its configs (see
+   * `applyPlan`, which never re-creates). That is what "bring it under the model" means, and
+   * it is the answer to a project whose datapoints predate the studio.
+   */
+  private onAdoptInstance(instance: ModelInstance): void {
+    this.genEquipments = instance.dpName;
+    this.openInstanceForm(instance.typeName);
+  }
+
+  /** Open the instance form of one model, and show that model so the result is in view. */
+  private openInstanceForm(typeName: string): void {
+    this.instanceFormType = this.instanceFormType === typeName ? null : typeName;
+    this.genWarnings = [];
+    if (this.instanceFormType !== null) this.instanceModelType = typeName;
+  }
+
+  /** Jump from an instance to the equipment it reads (the Devices panel). */
+  private openDeviceFromInstance(deviceId: string): void {
+    this.selectDevice(deviceId);
+    this.panel = 'devices';
+  }
+
+  /**
+   * Re-apply a model to every instance it already produced.
+   *
+   * This is what makes a MODEL change reach the datapoints: editing an alarm class or
+   * an archive group in the Model tab changes the model, and without this the
+   * instances would keep the configs of the previous version — the model saying one
+   * thing while the project holds another, with nothing to tell which is current.
+   *
+   * Each instance is regenerated with the model's CURRENT structure, mappings and
+   * policy, for the device it already reads (`instanceTargets`), and merged into the
+   * workspace. Nothing reaches the project here: it is a workspace edit, so the
+   * Instances tree immediately shows the difference as "to update" — which is the
+   * honest state until someone checks it in.
+   */
+  private async onReapplyModel(model: ModelTemplate): Promise<void> {
+    const ws = this.workspace;
+    if (!ws) return;
+    const targets = instanceTargets(ws, model.typeName);
+    if (targets.length === 0) {
+      this.notice = this.tr(MSG.reapplyNothing, { name: model.name });
+      return;
+    }
+    const book = this.books.find((candidate) => candidate.id === model.sourceBookId) ?? this.activeBook();
+    if (book === null || book === undefined) {
+      this.notice = this.tr(MSG.reapplyNoBook, { name: model.name });
+      return;
+    }
+    this.busy = true;
+    try {
+      let merged = ws;
+      const warnings: EngWarning[] = [];
+      for (const target of targets) {
+        const device = target.deviceId === undefined ? undefined : this.devices.find((d) => d.id === target.deviceId);
+        const proposal = generateModelFromBook(book, {
+          typeName: model.typeName,
+          equipments: [target.equipment],
+          deviceId: target.deviceId ?? book.id,
+          // Per INSTANCE: each target names its own connection (see the generation above).
+          bindConnection: connectionNameOf(device) ?? book.interface?.connection,
+          mode: book.interface?.protocol ?? device?.protocol,
+          mapping: { structure: model.structure, bindings: model.bindings },
+          ...(model.policy === undefined ? {} : { policy: model.policy }),
+          profileContext: this.projectProfileContext()
+        });
+        warnings.push(...proposal.warnings);
+        merged = mergeProposal(merged, proposal);
+      }
+      await this.gateway.saveWorkspace(merged);
+      this.workspace = merged;
+      this.live = await this.gateway.liveSnapshot(this.liveScope(merged));
+      this.recomputePlan();
+      // The warnings of the LAST pass would hide the others; they repeat per
+      // instance, so one de-duplicated set is what an operator can act on.
+      this.genWarnings = dedupeWarnings(warnings);
+      this.notice = this.tr(MSG.reapplyDone, { name: model.name, n: targets.length });
+    } catch (error) {
+      this.notice = this.tr(MSG.genFailed, { error: (error as Error).message });
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /**
+   * The INSTANCES panel: a two-level tree — models, then the datapoints each has
+   * produced and the equipment they read — over the check-in it takes to make them
+   * real.
+   *
+   * It replaces the flat "Control" diff as the panel's FIRST view because the flat
+   * list answered the wrong question: it said "312 configs to write", where an
+   * operator asks "is my model applied everywhere, and is everything checked in?".
+   * The diff is still there, below, as the detail of what a check-in would write —
+   * summary first, evidence underneath.
+   *
+   * Instances are DERIVED from the workspace (the core's `modelInstances`), never
+   * stored: a second list would be one more thing to keep in step, and the workspace
+   * already knows which datapoints exist and which device each reads.
+   */
+  private renderInstancesPanel(): TemplateResult {
+    const plan = this.plan;
+    const ws = this.workspace;
     return html`
       <div class="panel-head">
         <h2>${this.tr(MSG.controlTitle)}</h2>
+        ${ws === null ? nothing : this.renderGlobalStatus(ws, plan)}
         <div class="spacer"></div>
         ${this.renderCheckinBlocker(plan)}
+        ${this.can(EDIT_MODEL)
+          ? html`<ix-button
+              variant="secondary"
+              icon="refresh"
+              ?disabled=${this.busy || this.models.length === 0}
+              title=${this.tr(MSG.reapplyAllHint)}
+              @click=${() => void this.onReapplyAll()}
+            >
+              ${this.tr(MSG.reapplyAll)}
+            </ix-button>`
+          : nothing}
+        <ix-button variant="secondary" icon="eye" ?disabled=${this.busy} @click=${this.onTestRead}>
+          ${this.tr(MSG.testRead)}
+        </ix-button>
         <ix-button variant="secondary" icon="eye" ?disabled=${this.busy || !plan?.items.length} @click=${() => this.doCheckin(true)}>
           ${this.tr(MSG.dryRun)}
         </ix-button>
@@ -2165,103 +3683,19 @@ export class WuiEngStudio extends LitElement {
           ${this.tr(MSG.checkin)}
         </ix-button>
       </div>
-      ${plan == null
-        ? html`<div class="empty">${this.tr(MSG.noWorkspace)}</div>`
-        : plan.items.length === 0
-          ? html`<div class="empty success">✓ ${this.tr(MSG.planEmpty)}</div>`
-          : html`
-              <div class="diff-summary">
-                ${this.summaryChip('create', plan)} ${this.summaryChip('update', plan)} ${this.summaryChip('delete', plan)}
-                ${plan.items.some((i) => i.conflict)
-                  ? html`<span class="chip conflict">${this.tr(MSG.conflictChip)} ${plan.items.filter((i) => i.conflict).length}</span>`
-                  : nothing}
-              </div>
-              ${plan.warnings.length > 0
-                ? html`<div class="warn-text plan-warnings">${plan.warnings.map((w) => html`<div>⚠ ${this.warnText(w)}</div>`)}</div>`
-                : nothing}
-              ${this.renderForgetBar(plan)}
-              <div class="diff-scroll">
-                <table class="grid">
-                  <thead><tr>
-                    <th class="pick">
-                      <input
-                        type="checkbox"
-                        title=${this.tr(MSG.forgetAll)}
-                        .checked=${this.forgetChecked.size > 0 && this.forgetChecked.size === plan.items.length}
-                        @change=${(event: Event) => this.onCheckAllPlan(plan, (event.target as HTMLInputElement).checked)}
-                      />
-                    </th>
-                    <th>${this.tr(MSG.colOp)}</th><th>${this.tr(MSG.colObject)}</th><th>${this.tr(MSG.colName)}</th>
-                    <th>${this.tr(MSG.fieldDetail)}</th><th></th>
-                  </tr></thead>
-                  <tbody>
-                    ${plan.items.map((item) => html`
-                      <tr class=${item.conflict ? 'conflict-row' : ''}>
-                        <td class="pick">
-                          <input
-                            type="checkbox"
-                            .checked=${this.forgetChecked.has(planKey(item))}
-                            @change=${() => this.onCheckPlanItem(item)}
-                          />
-                        </td>
-                        <td><span class="chip ${item.op}">${this.opLabel(item.op)}</span></td>
-                        <td>${item.kind}</td>
-                        <td class="mono">${item.name}</td>
-                        <td class="mono soft">${item.detail ?? ''}</td>
-                        <td>
-                          ${item.conflict
-                            ? html`<span class="chip conflict" title=${this.tr(MSG.conflictTitle)}>${this.tr(MSG.conflictChip)}</span>`
-                            : nothing}
-                        </td>
-                      </tr>`)}
-                  </tbody>
-                </table>
-              </div>
-            `}
+      ${ws === null
+        ? nothing
+        : html`<div class="split2 model">
+            ${this.renderInstanceMaster(ws, plan)}
+            ${this.renderInstanceDetail(ws, plan)}
+          </div>`}
+      <!-- The flat plan table that used to sit here ("What a check-in would write", its
+           summary chips, its housekeeping bar) is GONE: the detail pane above already shows,
+           per instance, the DPEs and the configs a check-in would write, so the table
+           repeated the same facts without the grouping that makes them readable. What a
+           check-in DID is still reported below. -->
       ${this.report ? this.renderReport(this.report) : nothing}
     `;
-  }
-
-  /**
-   * The HOUSEKEEPING bar of the plan: what is selected, and the one action that takes it
-   * back out of the workspace.
-   *
-   * The Control tab used to be read-only, which left no way out of a staged item: a model
-   * deleted from the library kept its generated datapoints queued for creation for ever,
-   * and there was nothing to click. "Forget" is the missing half of "generate" — see the
-   * core's `forgetInWorkspace` for what each operation means (it never touches the live
-   * project) and for the cascade.
-   */
-  private renderForgetBar(plan: EngPlan): TemplateResult {
-    if (!this.can(EDIT_MODEL)) return html``;
-    const picked = plan.items.filter((item) => this.forgetChecked.has(planKey(item)));
-    return html`
-      <div class="forget-bar">
-        <span class="soft small">${this.tr(MSG.forgetHint)}</span>
-        <div class="spacer"></div>
-        <span class="soft small">${this.tr(MSG.forgetSelected, { n: picked.length })}</span>
-        <ix-button
-          variant="danger-secondary"
-          icon="trashcan"
-          ?disabled=${this.busy || picked.length === 0}
-          @click=${() => void this.onForgetSelected(plan)}
-        >
-          ${this.tr(MSG.forgetSelectedAction)}
-        </ix-button>
-      </div>
-    `;
-  }
-
-  private onCheckPlanItem(item: PlanItem): void {
-    const key = planKey(item);
-    const next = new Set(this.forgetChecked);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    this.forgetChecked = next;
-  }
-
-  private onCheckAllPlan(plan: EngPlan, checked: boolean): void {
-    this.forgetChecked = checked ? new Set(plan.items.map((item) => planKey(item))) : new Set();
   }
 
   /**
@@ -2272,22 +3706,17 @@ export class WuiEngStudio extends LitElement {
    * type takes its datapoints and their configs with it, and an operator must see that
    * number rather than discover it in the next plan.
    */
-  private async onForgetSelected(plan: EngPlan): Promise<void> {
+  private async onForgetInstance(dpName: string): Promise<void> {
     const workspace = this.workspace;
     if (workspace === null) return;
-    const picked = plan.items.filter((item) => this.forgetChecked.has(planKey(item)));
-    if (picked.length === 0) return;
-    const selection: ForgetSelection = {
-      types: picked.filter((item) => item.kind === 'type').map((item) => item.name),
-      dps: picked.filter((item) => item.kind === 'dp').map((item) => item.name),
-      configs: picked.filter((item) => item.kind === 'config').map((item) => item.name)
-    };
     this.busy = true;
     try {
-      const { workspace: cleaned, removed } = forgetInWorkspace(workspace, selection);
+      // The DATAPOINT, and the core cascades its configs — which is the whole unit an
+      // operator thinks in here ("drop this instance"), and the reason this action moved
+      // onto the instance row when the flat plan table went.
+      const { workspace: cleaned, removed } = forgetInWorkspace(workspace, { dps: [dpName] });
       await this.gateway.saveWorkspace(cleaned);
       this.workspace = cleaned;
-      this.forgetChecked = new Set();
       this.recomputePlan();
       this.notice = this.tr(MSG.forgetDone, {
         types: removed.types.length,
@@ -2325,33 +3754,45 @@ export class WuiEngStudio extends LitElement {
     const applied = report.results.filter((r) => r.status === 'applied').length;
     const skipped = report.results.filter((r) => r.status === 'skipped').length;
     const failed = report.results.filter((r) => r.status === 'failed').length;
+    // FAILURES FIRST: a check-in of a thousand items is read for what went wrong, and having
+    // to scroll past nine hundred "applied" lines to find the one that did not is the report
+    // failing at its only job. The order is otherwise the plan's.
+    const ordered = [...report.results].sort((first, second) => rank(first.status) - rank(second.status));
     return html`
-      <section class="card report">
-        <div class="card-title">
-          ${report.dryRun ? this.tr(MSG.reportPreview) : this.tr(MSG.reportApplied)} —
+      <div class="dp-pick-backdrop" @click=${() => (this.report = null)}></div>
+      <section class="dp-pick report-dialog" @click=${(event: Event) => event.stopPropagation()}>
+        <div class="browser-head">
+          <span>${report.dryRun ? this.tr(MSG.reportPreview) : this.tr(MSG.reportApplied)}</span>
           <span class="chip new">${this.tr(MSG.reportCreated, { n: applied })}</span>
           ${skipped > 0 ? html`<span class="chip">${this.tr(MSG.reportSkipped, { n: skipped })}</span>` : nothing}
           ${failed > 0 ? html`<span class="chip conflict">${this.tr(MSG.reportFailed, { n: failed })}</span>` : nothing}
+          <span class="spacer"></span>
+          <ix-icon-button
+            size="16"
+            variant="tertiary"
+            icon="close"
+            a11y-label=${this.tr(MSG.cancel)}
+            title=${this.tr(MSG.cancel)}
+            @click=${() => (this.report = null)}
+          ></ix-icon-button>
         </div>
-        <table class="grid compact">
-          <tbody>
-            ${report.results.map((r) => html`
-              <tr>
-                <td><span class="chip ${r.status === 'applied' ? 'new' : r.status === 'failed' ? 'conflict' : ''}">${r.status}</span></td>
-                <td>${r.op} ${r.kind}</td>
-                <td class="mono">${r.name}</td>
-                <td class="mono soft">${r.error ?? ''}</td>
-              </tr>`)}
-          </tbody>
-        </table>
+        <!-- The RESULTS scroll, the counts above them do not: on a long report the summary is
+             what stays needed while the list is walked. -->
+        <div class="report-scroll">
+          <table class="grid compact">
+            <tbody>
+              ${ordered.map((r) => html`
+                <tr>
+                  <td><span class="chip ${r.status === 'applied' ? 'new' : r.status === 'failed' ? 'conflict' : ''}">${r.status}</span></td>
+                  <td>${r.op} ${r.kind}</td>
+                  <td class="mono">${r.name}</td>
+                  <td class="mono soft">${r.error ?? ''}</td>
+                </tr>`)}
+            </tbody>
+          </table>
+        </div>
       </section>
     `;
-  }
-
-  private summaryChip(op: 'create' | 'update' | 'delete', plan: EngPlan): TemplateResult {
-    const n = plan.items.filter((i) => i.op === op).length;
-    if (n === 0) return html``;
-    return html`<span class="chip ${op}">${n} ${this.opLabel(op)}</span>`;
   }
 
   // --- actions ----------------------------------------------------------------
@@ -2623,21 +4064,13 @@ export class WuiEngStudio extends LitElement {
   }
 
   /**
-   * Switching protocol also switches the ACCESS MODES to it — the common case is
-   * one protocol per equipment, and a stale mode from the previous protocol would
-   * make the generator look for an address that does not exist. Extra modes stay
-   * addable afterwards (an S7-1500 offers `s7` and `opcua`).
+   * The protocol IS the access mode (the core derives one from the other at
+   * normalisation): switching it swaps the connection fields, and the generator
+   * will pick the candidate addresses of that dialect — the book's own interface
+   * protocol still wins when the catalog carries one.
    */
   private patchDraftProtocol(protocol: string): void {
-    this.patchDraft({ protocol: protocol as Device['protocol'] & string, accessModes: [protocol as never] });
-  }
-
-  private toggleDraftMode(mode: string): void {
-    if (!this.deviceDraft) return;
-    const modes = new Set(this.deviceDraft.accessModes);
-    if (modes.has(mode as never)) modes.delete(mode as never);
-    else modes.add(mode as never);
-    this.patchDraft({ accessModes: [...modes] as never });
+    this.patchDraft({ protocol: protocol as Device['protocol'] & string });
   }
 
   private toggleDraftBook(bookId: string): void {
@@ -2653,12 +4086,36 @@ export class WuiEngStudio extends LitElement {
     if (!draft || blockingProblems(this.deviceProblems).length > 0) return;
     this.busy = true;
     try {
-      const devices = await this.gateway.saveDevice(this.deviceFormId, draft);
+      const { devices, connectionProvision, connectionSecurity } = await this.gateway.saveDevice(this.deviceFormId, draft);
       this.devices = devices;
       const saved = devices.find((device) => device.name === draft.name.trim());
       if (saved) this.selectDevice(saved.id);
       this.closeDeviceForm();
-      this.notice = this.tr(this.deviceFormId === '' ? MSG.deviceCreated : MSG.deviceUpdated, { name: draft.name.trim() });
+      let notice = this.tr(this.deviceFormId === '' ? MSG.deviceCreated : MSG.deviceUpdated, { name: draft.name.trim() });
+      // The save may have CREATED the declared connection in the project (a "new
+      // point" request — see the backend's provisionOpcUaConnection). Say so, and
+      // refresh the picker so the next form offers it.
+      if (connectionProvision !== undefined) {
+        if (connectionProvision.created) {
+          notice += ` ${this.tr(MSG.connCreated, { name: connectionProvision.name, dp: connectionProvision.dp ?? '' })}`;
+          this.connections = await this.gateway.listConnections().catch(() => this.connections);
+          this.s7plusConnections = await this.gateway.listS7PlusConnections().catch(() => this.s7plusConnections);
+        } else {
+          notice += ` ${this.tr(MSG.connCreateFailed, { name: connectionProvision.name, error: connectionProvision.warnings.join(' ') })}`;
+        }
+        if (connectionProvision.created && connectionProvision.warnings.length > 0) {
+          notice += ` ${connectionProvision.warnings.join(' ')}`;
+        }
+      }
+      // The security outcome: what landed on the live connection, and what did not
+      // (a refused password names its reason — e.g. no driver certificate yet).
+      if (connectionSecurity !== undefined) {
+        if (connectionSecurity.applied.length > 0) {
+          notice += ` ${this.tr(MSG.connSecurityApplied, { what: connectionSecurity.applied.join(', ') })}`;
+        }
+        if (connectionSecurity.warnings.length > 0) notice += ` ${connectionSecurity.warnings.join(' ')}`;
+      }
+      this.notice = notice;
     } catch (error) {
       this.notice = this.tr(MSG.deviceSaveFailed, { error: (error as Error).message });
     } finally {
@@ -2712,10 +4169,7 @@ export class WuiEngStudio extends LitElement {
     try {
       this.report = await this.gateway.checkin(this.plan, dryRun);
       if (!dryRun && this.report.ok) {
-        const workspace = await this.gateway.getWorkspace();
-        this.workspace = workspace;
-        this.live = await this.gateway.liveSnapshot(liveScopeOf(workspace));
-        this.recomputePlan();
+        await this.refreshAfterCheckin();
         this.notice = this.tr(MSG.checkinApplied);
       }
     } catch (error) {
@@ -2725,22 +4179,63 @@ export class WuiEngStudio extends LitElement {
     }
   }
 
+  /** Re-read the workspace and the project after a write, and re-diff the two. */
+  private async refreshAfterCheckin(): Promise<void> {
+    const workspace = await this.gateway.getWorkspace();
+    this.workspace = workspace;
+    this.live = await this.gateway.liveSnapshot(this.liveScope(workspace));
+    this.recomputePlan();
+  }
+
   // --- grid model -------------------------------------------------------------
 
   private testValues = new Map<string, unknown>();
 
   private gridRows(ws: Workspace): GridRow[] {
     const typeByName = new Map(ws.types.map((t) => [t.typeName, t]));
+    // Which DPEs the LIVE project actually has: a value can only be read from
+    // one that exists, and a model is mostly made of DPEs that do not exist yet.
+    const liveDpes = new Set(Object.keys(this.live?.configs ?? {}));
+    const liveDps = new Set((this.live?.dps ?? []).map((dp) => dp.dpName));
     const rows: GridRow[] = [];
     for (const dp of ws.dps) {
       const leaves = flattenLeaves(typeByName.get(dp.dpType)?.structure.children ?? [], '');
       for (const leaf of leaves) {
         const dpe = `${dp.dpName}.${leaf.path}`;
-        rows.push({ dpe, leafType: leaf.type, configs: ws.configs[dpe] ?? {}, live: this.testValues.get(dpe) });
+        rows.push({
+          dpe,
+          leafType: leaf.type,
+          configs: ws.configs[dpe] ?? {},
+          live: this.testValues.get(dpe),
+          // A DPE the project does not have yet cannot be read: the cell then
+          // shows `--` instead of an empty space that reads as "no value".
+          exists: liveDpes.has(dpe) || liveDps.has(dp.dpName)
+        });
       }
     }
     return rows;
   }
+
+  /**
+   * {@link gridRows} restricted to the datapoints the model binds to one equipment:
+   * a DP qualifies when ANY of its DPE address configs records this `deviceId`, and
+   * every row of a qualifying DP is kept (a leaf without a config still belongs to
+   * the machine's datapoint). Deliberately keyed on the config's `deviceId` — the
+   * provenance the generation writes — never on a name convention.
+   */
+  private deviceGridRows(ws: Workspace, deviceId: string): GridRow[] {
+    const all = this.gridRows(ws);
+    const linked = new Set<string>();
+    for (const row of all) {
+      if (row.configs.address?.deviceId === deviceId) linked.add(dpNameOf(row.dpe));
+    }
+    return all.filter((row) => linked.has(dpNameOf(row.dpe)));
+  }
+}
+
+/** `Z01_FOUR001` for `Z01_FOUR001.Mesures.Temperature` — the DP a DPE belongs to. */
+function dpNameOf(dpe: string): string {
+  return dpe.split('.')[0] ?? dpe;
 }
 
 interface GridRow {
@@ -2748,6 +4243,19 @@ interface GridRow {
   leafType: string;
   configs: NonNullable<Workspace['configs'][string]>;
   live: unknown;
+  /** The DPE exists in the LIVE project — otherwise there is no value to read. */
+  exists: boolean;
+}
+
+/**
+ * De-duplicate warnings by code + params: re-applying a model to N instances
+ * repeats the same diagnostics N times, and a list that says the same sentence
+ * eight times is a list nobody reads to the end.
+ */
+function dedupeWarnings(warnings: EngWarning[]): EngWarning[] {
+  const seen = new Map<string, EngWarning>();
+  for (const warning of warnings) seen.set(`${warning.code}|${JSON.stringify(warning.params ?? {})}`, warning);
+  return [...seen.values()];
 }
 
 function flattenLeaves(children: { name: string; type: string; children?: unknown[] }[], prefix: string): { path: string; type: string }[] {
@@ -2763,11 +4271,35 @@ function flattenLeaves(children: { name: string; type: string; children?: unknow
   return out;
 }
 
+/**
+ * `_address.._direction` as the three words an engineer reads in PARA.
+ *
+ * Every direction, not the three that used to be listed: a `rw` leaf SUBSCRIBED is `IO_SPONT`
+ * (6), not `IO_POLL` (7), and it showed as `IN` — the column then denied the write path the
+ * address actually carries. The catalog's access is what this column reports: `r` → IN,
+ * `rw` → I/O, `w` → OUT, whatever the acquisition.
+ */
 function dirLabel(direction: number): string {
-  return direction === 1 ? 'OUT' : direction === 7 ? 'I/O' : 'IN';
+  if (isReadingDirection(direction)) {
+    return direction === DpAddressDirection.IO_SPONT ||
+      direction === DpAddressDirection.IO_POLL ||
+      direction === DpAddressDirection.IO_SQUERY ||
+      direction === DpAddressDirection.IO_CYCLIC_ON_USE ||
+      direction === DpAddressDirection.IO_SPONT_ON_USE
+      ? 'I/O'
+      : 'IN';
+  }
+  return direction === DpAddressDirection.OUTPUT || direction === DpAddressDirection.OUTPUT_SINGLE ? 'OUT' : '—';
 }
 
 /** `ix-select` reports `string | string[]`; a single-mode select means the first. */
+/** Report ordering: failures, then skipped, then applied (see renderReport). */
+function rank(status: string): number {
+  if (status === 'failed') return 0;
+  if (status === 'skipped') return 1;
+  return 2;
+}
+
 function firstOf(value: string | string[]): string {
   return Array.isArray(value) ? (value[0] ?? '') : value;
 }
@@ -2788,11 +4320,3 @@ if (!customElements.get('wui-eng-studio')) {
   customElements.define('wui-eng-studio', WuiEngStudio);
 }
 
-/**
- * Identity of a plan row: its kind and its name. NOT its index — the plan is recomputed
- * after every change, and an index-keyed tick would silently follow whatever row took
- * that position.
- */
-function planKey(item: PlanItem): string {
-  return `${item.kind}:${item.name}`;
-}

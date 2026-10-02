@@ -58,12 +58,22 @@ function gate(role: 'view' | 'edit-model' | 'manage-devices' | 'checkin') {
  *   GET  /drivers                                       (view)           -> { drivers }
  *   POST /browse/level     { connection, nodeId? }      (view)           -> { nodes }
  *
+ *   GET  /s7plus/health                                 (view)           -> { manager }
+ *   GET  /s7plus/connections                            (view)           -> { connections }
+ *   POST /s7plus/projects  { connection }               (view)           -> { projects }
+ *   POST /s7plus/stations  { connection, project }      (view)           -> { stations }
+ *   POST /s7plus/level     { connection, item? }        (view)           -> { nodes }
+ *
  *   GET  /books                                         (view)           -> { books }
  *   GET  /books/:id                                     (view)           -> { book }
  *   POST /books            { bookId, name?, interface? } (manage-devices) -> 201 { book, books }
  *   PUT  /books/:id        { book }                      (manage-devices) -> { book, books }
  *   POST /books/ingest     { bookId, format, … }        (manage-devices) -> { book, books }
  *   POST /books/browse     { bookId, connection, … }    (manage-devices) -> { book, delta? }
+ *   POST /books/browse-s7plus { bookId, connection, … }  (manage-devices) -> { book, delta? }
+ *   GET  /s7/connections                                (view)           -> { connections }
+ *   POST /s7/probe         { deviceId } | { host, … }   (view)           -> { cpu, pduLength }
+ *   POST /books/:id/s7-inventory { deviceId } | { host } (view)          -> { inventory, crossCheck }
  *   POST /books/:id/refresh                             (manage-devices) -> { book, delta? }
  *   POST /books/:id/roles  { roles }                    (manage-devices) -> { book }
  *   POST /books/:id/access { access }                   (manage-devices) -> { book }
@@ -124,19 +134,49 @@ export class EngRoute {
     // --- drivers (the manager numbers the device form offers) ------------------
     router.get('/drivers', gate('view'), controller.drivers);
 
+    // --- what a deployment decision may refer to: alarm classes, archive groups -
+    router.get('/config-options', gate('view'), controller.configOptions);
+    // --- datapoint search (the model editor's magnifier) ------------------------
+    router.get('/dps', gate('view'), controller.searchDps);
+    // --- the project's DP types (a model may start from an existing one) --------
+    router.get('/dptypes', gate('view'), controller.listDpTypes);
+    router.get('/dptypes/:name', gate('view'), controller.readDpType);
+
     // --- one browse LEVEL ------------------------------------------------------
     // `view`, not `manage-devices`: it only READS an address space. It is what the
     // server explorer and the client-driven (progress-reporting) walk are built on.
     router.post('/browse/level', gate('view'), controller.browseLevel);
+
+    // --- S7Plus (S7-1200/1500 symbolic) browse ---------------------------------
+    // Reads only, so `view` — like the OPC UA level. They go through the dedicated
+    // `s7plusBrowse` JS manager (see backend/routes/engS7PlusBrowse.ts): the
+    // driver's browse slot is one element per connection, so a single long-lived
+    // owner has to serialise the requests of a walk.
+    router.get('/s7plus/health', gate('view'), controller.s7plusHealth);
+    router.get('/s7plus/connections', gate('view'), controller.s7plusConnections);
+    router.post('/s7plus/projects', gate('view'), controller.s7plusProjects);
+    router.post('/s7plus/stations', gate('view'), controller.s7plusStations);
+    router.post('/s7plus/level', gate('view'), controller.s7plusLevel);
 
     // --- address books ---------------------------------------------------------
     router.get('/books', gate('view'), controller.listBooks);
     router.post('/books', gate('manage-devices'), controller.createBook);
     router.post('/books/ingest', gate('manage-devices'), controller.ingestBook);
     router.post('/books/browse', gate('manage-devices'), controller.browseBook);
+    // Declared before `/books/:id` for the same reason as the two above: otherwise
+    // "browse-s7plus" would match the `:id` parameter.
+    router.post('/books/browse-s7plus', gate('manage-devices'), controller.browseS7PlusBook);
+    // Classic S7 online: `view`, not `manage-devices`, and the distinction is the
+    // point. These two READ a CPU's block directory and store nothing — no book is
+    // written, no device is touched — so they grant no more than the reads beside
+    // them. The manager's protocol client cannot write to a PLC at all, so there is
+    // no capability here that a stronger gate would be protecting.
+    router.get('/s7/connections', gate('view'), controller.s7Connections);
+    router.post('/s7/probe', gate('view'), controller.s7Probe);
     router.get('/books/:id', gate('view'), controller.getBook);
     router.put('/books/:id', gate('manage-devices'), controller.putBook);
     router.delete('/books/:id', gate('manage-devices'), controller.deleteBook);
+    router.post('/books/:id/s7-inventory', gate('view'), controller.s7Inventory);
     router.post('/books/:id/refresh', gate('manage-devices'), controller.refreshBook);
     router.post('/books/:id/roles', gate('manage-devices'), controller.saveBookRoles);
     router.post('/books/:id/access', gate('manage-devices'), controller.saveBookAccess);

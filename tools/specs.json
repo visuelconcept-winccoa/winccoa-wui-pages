@@ -224,7 +224,7 @@
     "name": "@visuelconcept/wui-eng-studio",
     "title": "Engineering Studio",
     "tier": 3,
-    "description": "Engineering Studio page (/eng-studio) — device-first, check-in/check-out studio to model DP types, datapoints and their configs (address/alarm/archive/range) from communicating equipment. Address-book-centric imports (OPC UA browse, SimaticML/TIA Openness export, CSV, AI proposal), a live diff vs the project and a transactional, atomic check-in. Pure engineering domain in @visuelconcept/wui-eng-core (unit-tested without a runtime); all I/O behind an EngGateway (HTTP /api/eng in the shell, in-memory demo for docs/screenshots). Backend applies plans through the shared core over WsjServerGlobal.winccoa; write routes are role-gated fail-closed.",
+    "description": "Engineering Studio page (/eng-studio) — device-first, check-in/check-out studio to model DP types, datapoints and their configs (address/alarm/archive/range) from communicating equipment. Address-book-centric imports (OPC UA browse, S7Plus symbolic browse of an S7-1200/1500 — live PLC or TIA export — through the dedicated s7plusBrowse JS manager, SimaticML/TIA Openness export, CSV, AI proposal), a live diff vs the project and a transactional, atomic check-in. Pure engineering domain in @visuelconcept/wui-eng-core (unit-tested without a runtime); all I/O behind an EngGateway (HTTP /api/eng in the shell, in-memory demo for docs/screenshots). Backend applies plans through the shared core over WsjServerGlobal.winccoa; write routes are role-gated fail-closed. Classic S7-300/400 catalogs are built from the STEP 7 exports (the protocol carries no symbols) and VERIFIED online by the s7Browse JavaScript manager, a read-only S7comm block-directory client (MSA vRPC service S7Browse) that reports the data blocks a catalog addresses but the CPU does not hold, and the blocks it reads past the end of.",
     "backend": {
       "mount": "/api/eng",
       "routeClass": "EngRoute",
@@ -234,12 +234,22 @@
         "engRoute.ts",
         "engStore.ts",
         "engOpcuaBrowse.ts",
+        "engS7PlusBrowse.ts",
+        "engS7Browse.ts",
+        "engVrpc.ts",
         "appSecurityGuard.ts"
+      ],
+      "ctrlManagers": [
+        "wui/engStudioService.ctl"
       ],
       "vendorPackages": [
         "@visuelconcept/wui-eng-core"
       ]
-    }
+    },
+    "managers": [
+      "s7plusBrowse",
+      "s7Browse"
+    ]
   },
   {
     "page": "alarms",

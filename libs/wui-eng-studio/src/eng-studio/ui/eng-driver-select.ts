@@ -28,6 +28,7 @@
  * properties and events for no gain.
  */
 import { html, nothing, type TemplateResult } from 'lit';
+import { SIMULATION_DRIVER_TYPE, driverFitsProtocol, type ProtocolKind } from '@visuelconcept/wui-eng-core';
 import type { EngDriver } from '../data/gateway.js';
 import { MSG, fmt, t, type Lang, type Ml } from '../i18n.js';
 
@@ -41,8 +42,34 @@ export interface DriverSelectOptions {
   value: number | string | undefined;
   lang: Lang;
   disabled?: boolean;
+  /**
+   * Protocol the connection speaks — the list is FILTERED to the drivers that can
+   * serve it (see the core's `driverFitsProtocol`). Omit only where the protocol is
+   * genuinely unknown; the simulation driver is dropped either way.
+   */
+  protocol?: ProtocolKind;
   /** Receives the raw text: '' clears, anything else is the manager number. */
   onChange: (value: string) => void;
+}
+
+/**
+ * The drivers worth offering for this connection.
+ *
+ * Two exclusions, both about not proposing a binding that cannot work:
+ *  - the **simulation driver is never listed** (`DT == 'SIM'`). The vendor's own
+ *    library treats it as matching every driver type, so it would otherwise pass
+ *    every filter — and an address bound to the simulator reads invented values
+ *    that look perfectly plausible, which is the worst kind of wrong;
+ *  - a driver **proven to belong to another protocol** is dropped (an OPC UA client
+ *    cannot serve a Modbus station). Only verified `DT` values are used for that, so
+ *    a driver whose type we cannot place stays in the list rather than disappearing.
+ */
+export function offerableDrivers(drivers: EngDriver[], protocol: ProtocolKind | undefined): EngDriver[] {
+  return drivers.filter((driver) =>
+    protocol === undefined
+      ? driver.type.trim().toUpperCase() !== SIMULATION_DRIVER_TYPE
+      : driverFitsProtocol(driver.type, protocol)
+  );
 }
 
 /**
@@ -64,7 +91,10 @@ function driverState(driver: EngDriver): Ml {
 
 /** The `ix-select` (or the fallback number field) plus its hint. */
 export function renderDriverSelect(options: DriverSelectOptions): TemplateResult {
-  const { drivers, lang, onChange } = options;
+  const { lang, onChange } = options;
+  // FILTERED, not raw: only the drivers that can serve this protocol, never the
+  // simulator (see `offerable`).
+  const drivers = offerableDrivers(options.drivers, options.protocol);
   const current = options.value === undefined || options.value === null ? UNSET : String(options.value);
   if (drivers.length === 0) {
     // A native field, not an `ix-number-input`: the latter renders an unset value as

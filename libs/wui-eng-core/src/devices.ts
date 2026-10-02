@@ -17,7 +17,6 @@
  *  - a name that is not a usable WinCC OA identifier fragment — datapoint names are
  *    built from it (`{Zone}_{Equipement}`), and an invalid name fails at check-in,
  *    far from here;
- *  - no access mode — the model generator needs one to pick a candidate address;
  *  - a missing REQUIRED connection parameter, per protocol;
  *  - a non-integer or negative `driverNumber` — it is a manager number, and a
  *    wrong one binds addresses to the wrong driver *silently* (see the backend's
@@ -31,8 +30,20 @@ import type { AccessMode, Device, DeviceState, DeviceStateSource, ProtocolKind }
 import { sanitizeSegment } from './naming.js';
 import { WARNING_CODES, warn, type EngWarning } from './warnings.js';
 
-/** How a connection parameter is entered (drives the input type, not the words). */
-export type DeviceParamKind = 'text' | 'number' | 'host' | 'port' | 'choice' | 'flag';
+/**
+ * How a connection parameter is entered (drives the input type, not the words).
+ *
+ * Two kinds beyond the obvious ones:
+ *  - `secret` — write-only: rendered as a password field, sent with the save and
+ *    then FORGOTTEN. {@link normalizeDevice} never persists it (the engineering
+ *    store is a diffable, backed-up file — no secret belongs in it, encrypted or
+ *    not), and the backend pushes it to the runtime through the vendor's own
+ *    encryption (see docs/wui-eng-studio/OPCUA-CONNECTION-SECURITY.md);
+ *  - `bit` — a plain checkbox mapped onto one bit of a driver flag word. Unlike
+ *    the tri-state `flag`, absence and `false` mean the same thing here (the bit
+ *    is not set), so a checkbox tells the whole truth.
+ */
+export type DeviceParamKind = 'text' | 'number' | 'host' | 'port' | 'choice' | 'flag' | 'secret' | 'bit';
 
 /** One connection parameter of a protocol. */
 export interface DeviceParamSpec {
@@ -50,6 +61,13 @@ export interface DeviceParamSpec {
    * in the form: an operator must not think filling them in changes the driver.
    */
   declarative?: boolean;
+  /**
+   * Groups the parameter into its own form card. `security` is the OPC UA
+   * user/password/policy/certificate block — kept apart from the connection
+   * fields because it is written to the LIVE connection datapoint at save time,
+   * not merely recorded.
+   */
+  section?: 'security';
 }
 
 /**
@@ -75,9 +93,42 @@ export interface DeviceParamSpec {
 export const PROTOCOL_PARAMS: Record<ProtocolKind, DeviceParamSpec[]> = {
   opcua: [
     { key: 'server', kind: 'text', required: true, example: 'Remplisseuse' },
-    { key: 'endpoint', kind: 'text', required: false, example: 'opc.tcp://192.168.10.42:4840', declarative: true }
+    { key: 'endpoint', kind: 'text', required: false, example: 'opc.tcp://192.168.10.42:4840', declarative: true },
+    // --- security block — written to the LIVE `_OPCUAServer` at save time. The
+    // vocabulary is the standard OPC UA connection panel's own (verified against
+    // the 3.21 plugin + help; see docs/wui-eng-studio/OPCUA-CONNECTION-SECURITY.md):
+    // Config.AccessInfo (empty = anonymous), Config.Password (blob, encrypted by
+    // the vendor library — hence `secret`), Config.Security.{Policy,MessageMode,
+    // Certificate}, and Config.Flags bits 8–15 for the certificate relaxations.
+    { key: 'user', kind: 'text', required: false, example: 'operator1', section: 'security' },
+    { key: 'password', kind: 'secret', required: false, section: 'security' },
+    {
+      key: 'securityPolicy',
+      kind: 'choice',
+      required: false,
+      options: ['None', 'Basic256Sha256', 'Aes128Sha256RsaOaep', 'Aes256Sha256RsaPss', 'Basic128Rsa15', 'Basic256'],
+      section: 'security'
+    },
+    { key: 'messageMode', kind: 'choice', required: false, options: ['None', 'Sign', 'SignAndEncrypt'], section: 'security' },
+    { key: 'clientCertificate', kind: 'text', required: false, example: 'WinCC_OA_UA_Client.der', section: 'security' },
+    { key: 'allowUnsecured', kind: 'bit', required: false, section: 'security' },
+    { key: 'ignoreInvalidCert', kind: 'bit', required: false, section: 'security' },
+    { key: 'ignoreRevocation', kind: 'bit', required: false, section: 'security' },
+    { key: 'ignoreIssuerRevocation', kind: 'bit', required: false, section: 'security' },
+    { key: 'ignoreExpiredCert', kind: 'bit', required: false, section: 'security' },
+    { key: 'ignoreInvalidHostname', kind: 'bit', required: false, section: 'security' },
+    { key: 'ignoreInvalidUri', kind: 'bit', required: false, section: 'security' },
+    { key: 'ignoreBasicConstraints', kind: 'bit', required: false, section: 'security' }
   ],
   s7: [
+    // The project's own `_S7_Conn`, picked rather than typed — OPTIONAL, because a
+    // classic-S7 equipment is legitimately declared before its connection exists
+    // (and because devices declared before this field must keep working). Naming it
+    // is what makes the state read EXACT: without it the studio can only match the
+    // equipment to a connection by searching its IP in `_S7_Conn.Address`, which
+    // says nothing when two stations sit behind one address, and nothing at all
+    // when the project spells the address differently.
+    { key: 'connection', kind: 'text', required: false, example: 'S7_Pompage' },
     { key: 'ip', kind: 'host', required: true, example: '192.168.10.21' },
     { key: 'rack', kind: 'number', required: false, example: '0' },
     { key: 'slot', kind: 'number', required: false, example: '1' }
@@ -100,13 +151,229 @@ export const PROTOCOL_PARAMS: Record<ProtocolKind, DeviceParamSpec[]> = {
 /** Every protocol, in the order the form offers them. */
 export const PROTOCOLS: ProtocolKind[] = ['opcua', 's7', 's7plus', 'modbus'];
 
+// ---------------------------------------------------------------------------
+// Which DRIVER may serve which protocol
+// ---------------------------------------------------------------------------
+
+/**
+ * `_Driver<n>.DT` value of the SIMULATION driver — never a candidate for a real
+ * equipment, whatever the protocol.
+ *
+ * Verified: `DRVS_DT_SIM = "SIM"` in the vendor's own `scripts/libs/driverSettings.ctl`,
+ * where it is treated as a wildcard that matches every driver type
+ * (`sDT == DRVS_DT_SIM` beside the real comparison). That is exactly why it must be
+ * hidden HERE: it would otherwise pass every filter and look like a valid choice for
+ * a machine, and an address bound to the simulator reads invented values that look
+ * perfectly plausible.
+ */
+/**
+ * The POLL GROUPS the studio offers and creates — three rhythms, not one.
+ *
+ * A project needs a fast group for what could not be subscribed, a normal one for the bulk of the
+ * process, and a slow one for values that barely move. The periods are starting points to measure
+ * against the real driver load, not laws; the names are what the studio creates on demand
+ * (`_PollGroup` datapoints, see the CTRL manager's EnsurePollGroup).
+ */
+export const POLL_GROUPS: { name: string; intervalMs: number }[] = [
+  { name: '_Poll_Fast', intervalMs: 500 },
+  { name: '_Poll_Normal', intervalMs: 1000 },
+  { name: '_Poll_Slow', intervalMs: 10_000 }
+];
+
+/** The period of a known poll group, or `undefined` for one the studio did not define. */
+export function pollGroupInterval(name: string): number | undefined {
+  return POLL_GROUPS.find((group) => group.name === name.trim())?.intervalMs;
+}
+
+/**
+ * The CONNECTION a device is addressed through — the name an `_address` reference carries.
+ *
+ * It is the declared connection parameter (`server` for OPC UA, i.e. the `_OPCUAServer`
+ * datapoint without its leading `_` — see `PROTOCOL_PARAMS`), and the device's display name
+ * only when none is declared. NOT the catalog's: a book names the server it was BROWSED on,
+ * which is the same thing only until the catalog is mutualised onto a second machine.
+ */
+export function connectionNameOf(device: { name?: string; connection?: Record<string, string | number | boolean> } | undefined): string | undefined {
+  if (device === undefined) return undefined;
+  const declared = String(device.connection?.['server'] ?? '').trim().replace(/^_/, '');
+  if (declared !== '') return declared;
+  const name = (device.name ?? '').trim();
+  return name === '' ? undefined : name;
+}
+
+export const SIMULATION_DRIVER_TYPE = 'SIM';
+
+/**
+ * `_Driver<n>.DT` values whose protocol mapping is VERIFIED — and only those.
+ *
+ * `OPCUAC` is the tag importer's long-verified value; `S7PLUS` is the vendor's own
+ * (`drvsCheckRunningDrvNums("S7PLUS", …)` in `scripts/libs/s7PlusDrvPara.ctl`).
+ * The classic S7 and Modbus drivers are deliberately ABSENT: no `DT` string for
+ * them could be found in the installation, and this project does not ship vendor
+ * constants from memory (same rule as the `_datatype` tables). The filter below is
+ * built to stay useful without them.
+ */
+export const DRIVER_TYPES_BY_PROTOCOL: Partial<Record<ProtocolKind, string[]>> = {
+  opcua: ['OPCUAC'],
+  s7plus: ['S7PLUS']
+};
+
+/** Every DT whose protocol is known — what makes "this driver belongs elsewhere" provable. */
+const KNOWN_DRIVER_TYPES = new Set(Object.values(DRIVER_TYPES_BY_PROTOCOL).flat());
+
+/**
+ * May a driver of type `driverType` serve `protocol`?
+ *
+ * Asymmetric on purpose, because our knowledge is:
+ *  - the SIMULATION driver is never offered (see {@link SIMULATION_DRIVER_TYPE});
+ *  - an UNREADABLE type (`''`) is offered: "I could not read the DT" is not
+ *    evidence against a driver, and hiding a legitimate one is worse than showing
+ *    one too many (the operator would have no way to declare their equipment);
+ *  - a protocol whose DT set is VERIFIED (OPC UA, S7Plus) shows only those drivers;
+ *  - a protocol whose DT is UNKNOWN (classic S7, Modbus) shows everything EXCEPT the
+ *    drivers proven to belong to another protocol. Excluding on proof rather than
+ *    including on a guess is the only honest filter available there.
+ */
+export function driverFitsProtocol(driverType: string, protocol: ProtocolKind): boolean {
+  const type = driverType.trim().toUpperCase();
+  if (type === SIMULATION_DRIVER_TYPE) return false;
+  if (type === '') return true;
+  const verified = DRIVER_TYPES_BY_PROTOCOL[protocol];
+  if (verified !== undefined) return verified.includes(type);
+  return !KNOWN_DRIVER_TYPES.has(type);
+}
+
+// ---------------------------------------------------------------------------
+// OPC UA connection security — the STANDARD panel's vocabulary, as data.
+// Codes and bits verified against the installed 3.21 (plugin + help page
+// `opc_ua_c_internaldp`); see docs/wui-eng-studio/OPCUA-CONNECTION-SECURITY.md.
+// ---------------------------------------------------------------------------
+
+/** `_OPCUAServer.Config.Security.Policy` codes (1 is unused by the vendor). */
+export const OPCUA_POLICY_CODE: Record<string, number> = {
+  None: 0,
+  Basic128Rsa15: 2,
+  Basic256: 3,
+  Basic256Sha256: 4,
+  Aes128Sha256RsaOaep: 5,
+  Aes256Sha256RsaPss: 6
+};
+
+/** `_OPCUAServer.Config.Security.MessageMode` codes. */
+export const OPCUA_MESSAGE_MODE_CODE: Record<string, number> = { None: 0, Sign: 1, SignAndEncrypt: 2 };
+
+/**
+ * `Config.Flags` bit per `bit` parameter — the standard panel's advanced
+ * settings. Bits 0–7 are communication tuning and stay out of the studio;
+ * 8–15 are the security/certificate relaxations the panel exposes.
+ */
+export const OPCUA_FLAG_BIT: Record<string, number> = {
+  allowUnsecured: 8,
+  ignoreInvalidCert: 9,
+  ignoreRevocation: 10,
+  ignoreIssuerRevocation: 11,
+  ignoreExpiredCert: 12,
+  ignoreInvalidHostname: 13,
+  ignoreInvalidUri: 14,
+  ignoreBasicConstraints: 15
+};
+
+/**
+ * What a device declaration asks to write on its `_OPCUAServer` connection —
+ * only what is DECLARED: an absent field must leave the live value untouched
+ * (the same tri-state honesty as the declarative parameters), so a connection
+ * also managed through the standard panel is never silently reset by a save
+ * that did not mention security at all.
+ */
+export interface OpcUaSecurityWrite {
+  /** `Config.AccessInfo` — the user name ('' would mean anonymous; only sent when declared). */
+  user?: string;
+  /** `Config.Security.Policy` code. */
+  policy?: number;
+  /** `Config.Security.MessageMode` code. */
+  messageMode?: number;
+  /** `Config.Security.Certificate` — client certificate file. */
+  clientCertificate?: string;
+  /** `Config.Flags` bits to force (bit → value). Bits absent here stay untouched. */
+  flagBits: Record<number, boolean>;
+}
+
+/** The security write a connection declaration implies, or `null` when it says nothing. */
+export function opcuaSecurityWrite(connection?: Record<string, string | number | boolean>): OpcUaSecurityWrite | null {
+  if (connection === undefined) return null;
+  const text = (key: string): string => {
+    const value = connection[key];
+    return value === undefined || value === null ? '' : String(value).trim();
+  };
+  const out: OpcUaSecurityWrite = { flagBits: {} };
+  let declared = false;
+  const user = text('user');
+  if (user !== '') {
+    out.user = user;
+    declared = true;
+  }
+  const policy = text('securityPolicy');
+  if (policy !== '' && policy in OPCUA_POLICY_CODE) {
+    out.policy = OPCUA_POLICY_CODE[policy] as number;
+    declared = true;
+  }
+  const mode = text('messageMode');
+  if (mode !== '' && mode in OPCUA_MESSAGE_MODE_CODE) {
+    out.messageMode = OPCUA_MESSAGE_MODE_CODE[mode] as number;
+    declared = true;
+  }
+  const certificate = text('clientCertificate');
+  if (certificate !== '') {
+    out.clientCertificate = certificate;
+    declared = true;
+  }
+  for (const [key, bit] of Object.entries(OPCUA_FLAG_BIT)) {
+    const value = connection[key];
+    if (value === true || value === 'true') {
+      out.flagBits[bit] = true;
+      declared = true;
+    } else if (value === false || value === 'false') {
+      out.flagBits[bit] = false;
+      declared = true;
+    }
+  }
+  return declared ? out : null;
+}
+
+/**
+ * Apply forced bits onto a CURRENT `Config.Flags` value — read-modify-write,
+ * so the tuning bits (0–7) and any future vendor bit survive a studio save.
+ *
+ * The WRITE itself is performed by the EngStudio CTRL manager (it owns every
+ * project mutation of the page), so this function is the **executable
+ * specification** of what that manager does: the semantics are pinned here by
+ * unit tests, and the CTRL implementation (`applyFlags` in
+ * `backend/project-scripts/wui/engStudioService.ctl`) is reviewed against them.
+ * Kept in the core rather than deleted for exactly that reason — a bit-masking
+ * rule nobody can test is a rule that drifts.
+ */
+export function applyFlagBits(current: number, bits: Record<number, boolean>): number {
+  let flags = current >>> 0;
+  for (const [bit, value] of Object.entries(bits)) {
+    const mask = 1 << Number(bit);
+    flags = value ? flags | mask : flags & ~mask;
+  }
+  return flags >>> 0;
+}
+
 /** What the form edits — a device before it is validated and normalised. */
 export interface DeviceDraft {
   /** Absent/empty on a creation: derived from the name (see {@link deviceIdFrom}). */
   id?: string;
   name: string;
   protocol: ProtocolKind;
-  accessModes: AccessMode[];
+  /**
+   * IGNORED since the access mode follows the protocol (`normalizeDevice`
+   * derives it): kept only so older clients and stored drafts still parse.
+   * The books keep their candidate addresses PER MODE — which candidate is
+   * written is decided by the book's interface protocol, else the device's.
+   */
+  accessModes?: AccessMode[];
   connection: Record<string, string | number | boolean>;
   driverNumber?: number | string;
   pollGroup?: string;
@@ -173,10 +440,6 @@ export function validateDevice(draft: DeviceDraft, others: Device[] = []): EngWa
     problems.push(warn(WARNING_CODES.device.NAME_TAKEN, 'Another device is already named "{name}".', { name }));
   }
 
-  if (draft.accessModes.length === 0) {
-    problems.push(warn(WARNING_CODES.device.NO_ACCESS_MODE, 'Select at least one access mode — the model generator needs one to pick an address.'));
-  }
-
   for (const spec of PROTOCOL_PARAMS[draft.protocol] ?? []) {
     const text = paramText(draft, spec.key);
     if (spec.required && text === '') {
@@ -197,6 +460,32 @@ export function validateDevice(draft: DeviceDraft, others: Device[] = []): EngWa
           options: (spec.options ?? []).join(', '),
           value: text
         })
+      );
+    }
+  }
+
+  if (draft.protocol === 'opcua') {
+    // The standard panel FORCES the pair: policy None → mode None; a real policy →
+    // Sign or Sign&Encrypt (verified in the 3.21 plugin's combos). Accepting a
+    // half-declared pair here would write a connection the driver refuses later.
+    const policy = paramText(draft, 'securityPolicy');
+    const mode = paramText(draft, 'messageMode');
+    const secured = policy !== '' && policy !== 'None';
+    const signed = mode !== '' && mode !== 'None';
+    if (secured !== signed) {
+      problems.push(
+        warn(
+          WARNING_CODES.device.SECURITY_MISMATCH,
+          'Security policy and message mode go together: either both None, or a policy with Sign / Sign&Encrypt (got policy "{policy}", mode "{mode}").',
+          { policy: policy === '' ? 'None' : policy, mode: mode === '' ? 'None' : mode }
+        )
+      );
+    }
+    // Advisory: a password logs in as SOMEBODY — with no user name the client
+    // connects anonymously and the password is never sent.
+    if (paramText(draft, 'password') !== '' && paramText(draft, 'user') === '') {
+      problems.push(
+        warn(WARNING_CODES.device.PASSWORD_WITHOUT_USER, 'A password without a user name does nothing: the client logs in anonymously when the user is empty.')
       );
     }
   }
@@ -227,7 +516,8 @@ export function validateDevice(draft: DeviceDraft, others: Device[] = []): EngWa
 
 /** Problems that must BLOCK a save (everything except the advisory ones). */
 export function blockingProblems(problems: EngWarning[]): EngWarning[] {
-  return problems.filter((problem) => problem.code !== WARNING_CODES.device.DRIVER_RECOMMENDED);
+  const advisory = new Set<string>([WARNING_CODES.device.DRIVER_RECOMMENDED, WARNING_CODES.device.PASSWORD_WITHOUT_USER]);
+  return problems.filter((problem) => !advisory.has(problem.code));
 }
 
 /**
@@ -240,10 +530,14 @@ export function normalizeDevice(draft: DeviceDraft, others: Device[] = []): Devi
   const specs = PROTOCOL_PARAMS[draft.protocol] ?? [];
   const connection: Record<string, string | number | boolean> = {};
   for (const spec of specs) {
-    if (spec.kind === 'flag') {
-      // THREE states, not two: `false` ("checked, it is not zero-based") and absent
-      // ("nobody said") are different claims, and a declarative parameter exists
-      // precisely to record which one it is. An empty value stays unset.
+    // A SECRET is write-through: the backend pushes it to the runtime and forgets
+    // it. Persisting it — encrypted or not — would put a credential in a diffable,
+    // backed-up engineering file.
+    if (spec.kind === 'secret') continue;
+    if (spec.kind === 'flag' || spec.kind === 'bit') {
+      // THREE states, not two: `false` ("checked, it is not zero-based" / "clear
+      // that flag bit") and absent ("nobody said" / "leave the bit alone") are
+      // different claims. An empty value stays unset.
       const value = draft.connection[spec.key];
       if (value === true || value === 'true') connection[spec.key] = true;
       else if (value === false || value === 'false') connection[spec.key] = false;
@@ -260,7 +554,11 @@ export function normalizeDevice(draft: DeviceDraft, others: Device[] = []): Devi
     id,
     name,
     protocol: draft.protocol,
-    accessModes: [...draft.accessModes],
+    // The access mode FOLLOWS the protocol — one declaration, one truth. The
+    // multi-mode checkboxes taught a distinction the workflow does not need:
+    // the book's interface protocol already decides which candidate address a
+    // generation writes, and a device is bound the way its connection speaks.
+    accessModes: [draft.protocol],
     ...(Object.keys(connection).length > 0 ? { connection } : {}),
     ...(driverText === '' ? {} : { driverNumber: Number(driverText) }),
     ...(pollGroup === '' ? {} : { pollGroup }),
@@ -285,7 +583,7 @@ export function draftFromDevice(device: Device): DeviceDraft {
 
 /** A blank draft for a creation (the protocol drives the visible parameters). */
 export function emptyDraft(protocol: ProtocolKind = 'opcua'): DeviceDraft {
-  return { name: '', protocol, accessModes: [protocol], connection: {}, bookIds: [] };
+  return { name: '', protocol, connection: {}, bookIds: [] };
 }
 
 // ---------------------------------------------------------------------------

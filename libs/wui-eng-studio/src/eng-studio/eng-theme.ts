@@ -121,9 +121,36 @@ export const engTokens = css`
   }
   .chip.proto,
   .chip.mode,
-  .chip.acc {
+  .chip.acc,
+  .chip.hist,
+  .chip.hist-no,
+  .chip.acq-poll,
+  .chip.acq-spont {
     font-size: 0.6875rem;
     padding: 0 0.375rem;
+  }
+  /* Acquisition read from the ROLE: a statement about what WILL be generated, not a
+     warning — so the subscribed one is marked and the polled one stays quiet, exactly
+     like the history pair above. */
+  .chip.acq-spont {
+    color: var(--eng-primary);
+    border-color: var(--eng-primary);
+    font-weight: 600;
+  }
+  .chip.acq-poll {
+    color: var(--eng-soft);
+    border-color: var(--eng-border);
+  }
+  /* The source ARCHIVES this signal — read beside the access mode, so it gets the
+     same weight as an access chip, not the loudness of a warning. */
+  .chip.hist {
+    color: var(--eng-success);
+    border-color: var(--eng-success);
+    font-weight: 600;
+  }
+  .chip.hist-no {
+    color: var(--eng-soft);
+    border-color: var(--eng-border);
   }
   /* Access provenance: an ASSUMED access is not evidence — make it visible. */
   .chip.acc-assumed {

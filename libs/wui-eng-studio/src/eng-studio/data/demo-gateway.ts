@@ -16,6 +16,7 @@ import {
   blockingProblems,
   formatWarning,
   normalizeDevice,
+  opcuaSecurityWrite,
   validateDevice,
   buildBookFromIngest,
   CONN_STATE,
@@ -24,6 +25,7 @@ import {
   deviceStateFromConnState,
   buildBookFromOpcUaBrowse,
   classifyEntries,
+  crossCheckBookAgainstInventory,
   diffBooks,
   diffWorkspace,
   excludedWarning,
@@ -34,6 +36,7 @@ import {
   withoutExcluded,
   templateIdFrom,
   OPCUA_OBJECTS_FOLDER,
+  POLL_GROUPS,
   type SignalRole,
   type AddressBook,
   type ApplyReport,
@@ -43,28 +46,43 @@ import {
   type DpeConfigs,
   type EngPlan,
   type EngPort,
+  type EngType,
   type LiveSnapshot,
   type ModelTemplate,
   type OpcUaBrowseNode,
+  type S7Inventory,
+  type S7PlusBrowseNode,
   type TagAccess,
   type Workspace
 } from '@visuelconcept/wui-eng-core';
+import { S7_INVENTORY } from '@visuelconcept/wui-eng-core/samples/s7-fixtures.js';
 import type {
   BookDeletion,
   BookRefresh,
   BrowseRequest,
+  ConnectionProvision,
+  ConnectionSecurity,
+  DeviceSaveResult,
+  EngConfigOptions,
   EngConnection,
   EngDriver,
   EngGateway,
   EngRole,
+  EngS7PlusConnection,
+  EngS7PlusProject,
+  EngS7PlusStation,
   IngestRequest,
+  S7InventoryResult,
   LiveScope,
+  S7PlusManagerHealth,
+  S7PlusWalkRequest,
   TestReadResult,
   WalkRequest
 } from './gateway.js';
-import { walkIntoBook as runWalk } from './walk.js';
+import { walkIntoBook as runWalk, walkS7PlusIntoBook as runS7PlusWalk } from './walk.js';
 import { DEMO_CONNECTIONS, DemoOpcUaBrowsePort } from './demo-opcua-server.js';
-import { DEMO_CONN_STATE, DEMO_DEVICES, DEMO_DRIVERS, DEMO_LIVE_VALUES, demoBooks, demoLiveSnapshot } from './demo-data.js';
+import { DEMO_S7PLUS_CONNECTIONS, DemoS7PlusBrowsePort } from './demo-s7plus-station.js';
+import { DEMO_ALARM_CLASSES, DEMO_ARCHIVE_GROUPS, DEMO_SUBSCRIPTIONS, DEMO_CONN_STATE, DEMO_DEVICES, DEMO_DRIVERS, DEMO_LIVE_VALUES, DEMO_MODELS, demoBooks, demoMultiSourceModel, demoLiveSnapshot } from './demo-data.js';
 
 /**
  * Qualify a book with the default rule set, honouring the operator's manual
@@ -84,6 +102,24 @@ function qualify(
   return { ...book, entries: withRoles(entries, assignments), warnings: asEngWarnings(book.warnings) };
 }
 
+/**
+ * WinCC OA's own name matching, for the demo: `*` is any run, `?` one character, and
+ * every other character is literal (a DP name may contain `.` and `_`).
+ */
+function matchesDpPattern(name: string, pattern: string): boolean {
+  if (pattern === '' || pattern === '*') return true;
+  const escaped = [...pattern]
+    .map((ch) => {
+      if (ch === '*') return '.*';
+      if (ch === '?') return '.';
+      // Anything else is literal in a DP name (`.`, `-`, `:`…), so it is escaped for the
+      // regular expression rather than being allowed to mean something there.
+      return /[a-z0-9_]/i.test(ch) ? ch : '\\' + ch;
+    })
+    .join('');
+  return new RegExp(`^${escaped}$`, 'i').test(name);
+}
+
 /** In-memory port so the demo check-in mutates a fake live project. */
 function demoPort(live: LiveSnapshot): EngPort {
   const types = new Map(live.types.map((t) => [t.typeName, t]));
@@ -98,6 +134,14 @@ function demoPort(live: LiveSnapshot): EngPort {
     dpDelete: async (name) => void dps.delete(name),
     dpSetWait: async () => undefined,
     resolveAddressContext: async () => ({ driverNumber: 3, pollGroupDp: '_EngStudio_Poll' }),
+    // The same resolution the backend does: a model's token (`EVENT`) becomes the project's
+    // datapoint (`_NGA_G_EVENT`), so the demo cannot pass what a runtime would refuse.
+    resolveArchiveGroup: async (group) => {
+      const token = group.trim().replace(/^_NGA_G_/i, '').toLowerCase();
+      return DEMO_ARCHIVE_GROUPS.find((candidate) => candidate === group.trim())
+        ?? DEMO_ARCHIVE_GROUPS.find((candidate) => candidate.toLowerCase().includes(token))
+        ?? DEMO_ARCHIVE_GROUPS[0];
+    },
     // expose the mutated collections back to the gateway
     ...({ _types: types, _dps: dps } as unknown as Record<string, never>)
   };
@@ -115,6 +159,13 @@ export class DemoEngGateway implements EngGateway {
   private manualExcluded = new Map<string, Set<string>>();
   /** The fake OPC UA server the demo browses (drifts between generations). */
   private readonly browsePort = new DemoOpcUaBrowsePort();
+  /** The fake S7-1500 station — the same port the `s7plusBrowse` manager implements. */
+  private readonly s7plusPort = new DemoS7PlusBrowsePort();
+  /** The demo's connection registry — a device save may ADD one (see saveDevice). */
+  private readonly connections: EngConnection[] = structuredClone(DEMO_CONNECTIONS);
+  private readonly s7plusConnections: EngS7PlusConnection[] = structuredClone(DEMO_S7PLUS_CONNECTIONS);
+  /** Connections a demo save "set a password" on — drives the passwordSet indicator. */
+  private readonly passwordSetOn = new Set<string>();
   /** One-shot seeding of the walker-produced online book. */
   private browseSeed: Promise<void> | null = null;
   private live: LiveSnapshot = demoLiveSnapshot();
@@ -178,17 +229,21 @@ export class DemoEngGateway implements EngGateway {
   private withLiveState(device: Device): Device {
     const reference = this.opcUaConnectionOf(device);
     const connection = reference ?? declaredAddressOf(device);
+    // Like the backend: the indicator reads the runtime's own record, never a store.
+    const passwordSet =
+      device.protocol === 'opcua' && reference !== null ? { passwordSet: this.passwordSetOn.has(reference.replace(/^_/, '')) } : {};
     if (connection === '') return { ...device, state: 'unknown', stateSource: 'unprobed' };
     const code = DEMO_CONN_STATE[device.id];
     if (code === undefined) {
-      return { ...device, state: 'unknown', stateSource: 'unknown-connection', stateConnection: connection };
+      return { ...device, state: 'unknown', stateSource: 'unknown-connection', stateConnection: connection, ...passwordSet };
     }
     return {
       ...device,
       state: deviceStateFromConnState(code),
       stateSource: code === CONN_STATE.UNDEFINED_BY_DRIVER ? 'probe-failed' : 'connstate',
       stateConnection: connection,
-      stateCode: code
+      stateCode: code,
+      ...passwordSet
     };
   }
 
@@ -210,7 +265,7 @@ export class DemoEngGateway implements EngGateway {
    * as the server does), a non-empty unknown one is an error rather than a silent
    * creation. A demo that is laxer than the real gateway teaches the wrong thing.
    */
-  async saveDevice(id: string, draft: DeviceDraft): Promise<Device[]> {
+  async saveDevice(id: string, draft: DeviceDraft): Promise<DeviceSaveResult> {
     const index = id === '' ? -1 : this.devices.findIndex((device) => device.id === id);
     if (id !== '' && index === -1) throw new Error(`unknown device '${id}'`);
     const others = this.devices.filter((device) => device.id !== id);
@@ -219,7 +274,69 @@ export class DemoEngGateway implements EngGateway {
     const device = normalizeDevice({ ...draft, id }, others);
     if (index === -1) this.devices = [...this.devices, device];
     else this.devices = this.devices.map((existing, at) => (at === index ? { ...existing, ...device } : existing));
-    return this.listDevices();
+    const provision = this.provisionConnection(device);
+    const security = this.applySecurity(device, draft);
+    const devices = await this.listDevices();
+    return {
+      devices,
+      ...(provision === null ? {} : { connectionProvision: provision }),
+      ...(security === null ? {} : { connectionSecurity: security })
+    };
+  }
+
+  /**
+   * Mirror of the backend's `applyOpcUaSecurity`: the demo records what a live
+   * deployment would write and toggles the password indicator — but it does NOT
+   * pretend to encrypt (there is no runtime, no driver certificate). A demo that
+   * simulated encryption would teach a guarantee it cannot give.
+   */
+  private applySecurity(device: Device, draft: DeviceDraft): ConnectionSecurity | null {
+    if (device.protocol !== 'opcua') return null;
+    const write = opcuaSecurityWrite(device.connection);
+    const rawPassword = String((draft.connection ?? {})['password'] ?? '');
+    if (write === null && rawPassword === '') return null;
+    const server = String(device.connection?.['server'] ?? '')
+      .trim()
+      .replace(/^_/, '');
+    const outcome: ConnectionSecurity = { applied: [], warnings: [] };
+    if (server === '' || !this.connections.some((connection) => connection.name === server)) {
+      outcome.warnings.push(`No _OPCUAServer connection matches "${server}" — the security settings were not applied.`);
+      return outcome;
+    }
+    if (write !== null) {
+      if (write.user !== undefined) outcome.applied.push('user');
+      if (write.policy !== undefined) outcome.applied.push('policy');
+      if (write.messageMode !== undefined) outcome.applied.push('mode');
+      if (write.clientCertificate !== undefined) outcome.applied.push('certificate');
+      if (Object.keys(write.flagBits).length > 0) outcome.applied.push('flags');
+    }
+    if (rawPassword !== '') {
+      this.passwordSetOn.add(server);
+      outcome.passwordSet = true;
+      outcome.applied.push('password');
+    }
+    return outcome;
+  }
+
+  /**
+   * Mirror of the backend's `provisionOpcUaConnection`: an OPC UA server name the
+   * project does not carry is a request for a NEW connection, so the save creates
+   * it — here by adding it to the demo's own connection list (disconnected, like a
+   * freshly created `_OPCUAServer` whose driver has not picked it up yet). The demo
+   * must teach the same behaviour as a live deployment, warnings included.
+   */
+  private provisionConnection(device: Device): ConnectionProvision | null {
+    if (device.protocol !== 'opcua') return null;
+    const server = String(device.connection?.['server'] ?? '').trim();
+    if (server === '' || this.connections.some((connection) => connection.name === server.replace(/^_/, ''))) return null;
+    const name = server.replace(/^_/, '');
+    this.connections.push({ name, connected: false });
+    const endpoint = String(device.connection?.['endpoint'] ?? '').trim();
+    const warnings =
+      endpoint === ''
+        ? ['No endpoint declared — the connection was created with an empty ConnInfo; fill in the equipment\'s endpoint (opc.tcp://…) so the driver knows where to connect.']
+        : [];
+    return { name, dp: `_${name}`, created: true, warnings };
   }
 
   async deleteDevice(id: string): Promise<Device[]> {
@@ -250,6 +367,48 @@ export class DemoEngGateway implements EngGateway {
   }
 
   /**
+   * The alarm classes and archive groups a WinCC OA project actually carries — the demo
+   * uses the DEFAULT names of a fresh project rather than invented ones, so a screenshot
+   * shows what an operator will really be offered.
+   */
+  /** The fake project's DP types — what a model may be started from. */
+  async listDpTypes(): Promise<string[]> {
+    return this.live.types.map((type) => type.typeName).sort((a, b) => a.localeCompare(b));
+  }
+
+  async readDpType(typeName: string): Promise<EngType> {
+    const found = this.live.types.find((type) => type.typeName === typeName);
+    if (found === undefined) throw new Error(`unknown DP type '${typeName}'`);
+    return structuredClone(found);
+  }
+
+  async listConfigOptions(): Promise<EngConfigOptions> {
+    return {
+      alarmClasses: [...DEMO_ALARM_CLASSES],
+      archiveGroups: [...DEMO_ARCHIVE_GROUPS],
+      subscriptions: [...DEMO_SUBSCRIPTIONS],
+      pollGroups: POLL_GROUPS.map((group) => group.name)
+    };
+  }
+
+  /** What a search may match, by requested DP type ('' = the whole fake project). */
+  private dpPoolFor(type?: string): string[] {
+    if (type === '_AlertClass') return [...DEMO_ALARM_CLASSES];
+    if (type === '_NGA_Group') return [...DEMO_ARCHIVE_GROUPS];
+    return [...DEMO_ALARM_CLASSES, ...DEMO_ARCHIVE_GROUPS, ...this.workspace.dps.map((dp) => dp.dpName)];
+  }
+
+  /**
+   * The demo's "project datapoints": its internal lists plus the workspace's own DPs, so
+   * the magnifier has something realistic to find. `*` and `?` are honoured, like WinCC OA.
+   */
+  async searchDps(pattern: string, type?: string): Promise<{ dps: string[]; truncated: boolean }> {
+    const pool = this.dpPoolFor(type);
+    const hits = [...new Set(pool)].filter((name) => matchesDpPattern(name, pattern)).sort((a, b) => a.localeCompare(b));
+    return { dps: hits.slice(0, 200), truncated: hits.length > 200 };
+  }
+
+  /**
    * Ingest a file into a catalog with the REAL core generators — the demo runs the
    * same code path as the backend, so a SimaticML export or a Control Expert CSV
    * dropped on the offline demo produces the book (and the warnings) a live
@@ -263,6 +422,36 @@ export class DemoEngGateway implements EngGateway {
     const stored = qualify(book, this.manualRoles.get(book.id) ?? {}, this.manualAccess.get(book.id) ?? {});
     this.books.set(stored.id, stored);
     return { book: this.presented(stored), books: this.allPresented() };
+  }
+
+  /**
+   * The demo's classic-S7 inventory — the FAKE CPU of `s7-fixtures.ts`.
+   *
+   * Same code path as a live one: the fixture stands in for what the `s7Browse`
+   * manager returns, and the verdicts come from the very same core function the
+   * backend calls. So the screenshots show real cross-check output, and the demo
+   * exercises the disagreements that matter (a data block the CPU does not hold,
+   * a block the catalog reads past the end of) rather than a happy path.
+   */
+  async s7Inventory(bookId: string, _target: { deviceId?: string; host?: string; rack?: number; slot?: number }): Promise<S7InventoryResult> {
+    await this.ensureBrowsedBook();
+    const book = this.books.get(bookId);
+    if (book === undefined) throw new Error(`catalog '${bookId}' not found`);
+    const inventory = { ...(S7_INVENTORY as S7Inventory), readAt: new Date().toISOString() };
+    return { inventory, crossCheck: crossCheckBookAgainstInventory(this.presented(book), inventory) };
+  }
+
+  /**
+   * The demo's classic-S7 connections — one CONNECTED, so the equipment's lamp is
+   * green offline and the screenshots show a state rather than a grey unknown.
+   */
+  async listS7Connections(): Promise<EngConnection[]> {
+    return [{ name: 'S7_Pompage', connected: true }];
+  }
+
+  /** The offline demo stands in for a deployed reader, so the action is shown. */
+  async s7BrowseHealth(): Promise<{ reachable: boolean }> {
+    return { reachable: true };
   }
 
   /** Create an EMPTY catalog — the "declare, then browse into it" first step. */
@@ -371,6 +560,15 @@ export class DemoEngGateway implements EngGateway {
       this.browsePort.advance(); // the machine's program moved on since last time
       return this.runBrowse({ ...source, bookId, name: previous.name });
     }
+    if (previous && previous.provenance.kind === 's7plus-browse' && source) {
+      this.s7plusPort.advance(); // ditto: a program download since the last walk
+      return this.walkS7PlusIntoBook({
+        ...source,
+        station: source.station ?? 'S7Plus$Online|Online',
+        bookId,
+        name: previous.name
+      });
+    }
     const fresh = demoBooks().find((b) => b.id === bookId);
     // A rules-only refresh KEEPS the operator's manual overrides.
     if (fresh) this.books.set(bookId, qualify(fresh, this.manualRoles.get(bookId) ?? {}, this.manualAccess.get(bookId) ?? {}));
@@ -382,12 +580,65 @@ export class DemoEngGateway implements EngGateway {
   }
 
   async listConnections(): Promise<EngConnection[]> {
-    return DEMO_CONNECTIONS;
+    return this.connections.map((connection) => ({ ...connection }));
   }
 
   async browseBook(request: BrowseRequest): Promise<BookRefresh> {
     await this.ensureBrowsedBook();
     return this.runBrowse(request);
+  }
+
+  // --- S7Plus (against the fake station) --------------------------------------
+
+  /**
+   * The demo answers `reachable: true`: the fake station stands in for the
+   * `s7plusBrowse` manager, so pretending it is missing would only hide the
+   * feature from the docs. `drivers` is stated too, because that is what a real
+   * answer carries and the UI reads it.
+   */
+  async s7plusHealth(): Promise<S7PlusManagerHealth> {
+    return { reachable: true, drivers: [3], connections: this.s7plusConnections.length };
+  }
+
+  async listS7PlusConnections(): Promise<EngS7PlusConnection[]> {
+    return this.s7plusConnections.map((connection) => ({ ...connection }));
+  }
+
+  async listS7PlusProjects(connection: string): Promise<EngS7PlusProject[]> {
+    const nodes = await this.s7plusPort.browseLevel(connection, '', true);
+    return nodes
+      .filter((node) => node.systemType === 'Project')
+      .map((node) => ({ name: node.nodePath, online: node.nodePath === 'S7Plus$Online' }));
+  }
+
+  async listS7PlusStations(connection: string, project: string): Promise<EngS7PlusStation[]> {
+    const nodes = await this.s7plusPort.browseLevel(connection, project, true);
+    return nodes
+      .filter((node) => node.systemType === 'Station')
+      .map((node) => {
+        const name = node.nodePath.split('|')[0];
+        return { name, station: `${project}|${name}` };
+      });
+  }
+
+  async browseS7PlusLevel(connection: string, item?: string, hmiVisibleOnly?: boolean): Promise<S7PlusBrowseNode[]> {
+    return this.s7plusPort.browseLevel(connection, item ?? '', hmiVisibleOnly !== false);
+  }
+
+  /**
+   * The client-driven S7Plus walk, against the fake station — same shared code path
+   * as the live gateway (`data/walk.ts`), so the progress and the delta the demo
+   * shows are the ones a deployment shows.
+   */
+  async walkS7PlusIntoBook(request: S7PlusWalkRequest): Promise<BookRefresh> {
+    await this.ensureBrowsedBook();
+    const previous = this.books.get(request.bookId) ?? null;
+    // A re-walk of an already-browsed book means the program moved on since.
+    if (previous !== null && previous.entries.length > 0) this.s7plusPort.advance();
+    const { book, delta } = await runS7PlusWalk(this.s7plusPort, previous, request);
+    const stored = qualify(book, this.manualRoles.get(book.id) ?? {}, this.manualAccess.get(book.id) ?? {});
+    this.books.set(stored.id, stored);
+    return { book: this.presented(stored), rebrowsed: true, ...(delta === undefined ? {} : { delta }) };
   }
 
   /** The shared browse path: walk, diff against the stored book, store, report. */
@@ -447,8 +698,19 @@ export class DemoEngGateway implements EngGateway {
     this.books.set(bookId, qualify(book, this.manualRoles.get(bookId) ?? {}, this.manualAccess.get(bookId) ?? {}));
   }
 
-  /** Saved models live for the session — enough to demo authoring then reusing one. */
-  private models = new Map<string, ModelTemplate>();
+  /**
+   * Saved models live for the session — enough to demo authoring then reusing one.
+   *
+   * THREE are SEEDED, because the Model tab is a list of models: an empty one would show
+   * the feature's empty state rather than the feature. Together they are the three shapes
+   * a house standard takes — an authored structure mapped onto a catalog with its
+   * deployment pinned (`STD_Four`), one mirrored from a mutualised catalog
+   * (`STD_PackML`), and one mirrored from TWO catalogs of the same station
+   * (`STD_Pompage`, built by the core so the demo cannot show an impossible shape).
+   */
+  private models = new Map<string, ModelTemplate>(
+    [...DEMO_MODELS, demoMultiSourceModel([...this.books.values()])].map((model) => [model.id, model])
+  );
 
   async listModels(): Promise<ModelTemplate[]> {
     return [...this.models.values()].sort((a, b) => a.name.localeCompare(b.name));
@@ -493,10 +755,10 @@ export class DemoEngGateway implements EngGateway {
     };
   }
 
-  async checkin(plan: EngPlan, dryRun: boolean): Promise<ApplyReport> {
+  async checkin(plan: EngPlan, dryRun: boolean, recreate = false): Promise<ApplyReport> {
     const port = demoPort(this.live);
     const previousConfigs = Object.fromEntries(Object.entries(this.live.configs));
-    const report = await applyPlan(plan, port, { dryRun, previousConfigs });
+    const report = await applyPlan(plan, port, { dryRun, previousConfigs, recreate });
     if (!dryRun && report.ok) {
       // Fold the workspace into the fake live project so a re-diff shrinks.
       this.live = {

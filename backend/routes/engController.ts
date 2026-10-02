@@ -27,11 +27,16 @@ import { WsjServerGlobal } from '@winccoa/backend';
 import { Request, Response } from 'ultimate-express';
 import { WinccoaDpTypeNode } from 'winccoa-manager';
 import {
+  CONN_STATE,
   DEFAULT_ROLE_RULES,
   applyPlan,
+  POLL_GROUPS,
+  pollGroupInterval,
   baselineOf,
   buildBookFromIngest,
   buildBookFromOpcUaBrowse,
+  crossCheckBookAgainstInventory,
+  buildBookFromS7PlusBrowse,
   classifyEntries,
   declaredAddressOf,
   connectionVerdict,
@@ -45,6 +50,7 @@ import {
   asEngWarnings,
   blockingProblems,
   normalizeDevice,
+  opcuaSecurityWrite,
   refreshWarnings,
   validateDevice,
   withAccess,
@@ -52,6 +58,7 @@ import {
   withoutExcluded,
   templateIdFrom,
   OPCUA_OBJECTS_FOLDER,
+  S7PLUS_ONLINE_STATION,
   type AddressBook,
   type AddressConfig,
   type BookDiff,
@@ -64,6 +71,9 @@ import {
   type DpeConfigs,
   type EngPlan,
   type EngPort,
+  type IngestFormat,
+  type S7CrossCheck,
+  type S7Inventory,
   type LiveSnapshot,
   type ModelTemplate,
   type SignalRole,
@@ -73,7 +83,16 @@ import {
 
 import { EngStore } from './engStore';
 import { WinccoaOpcUaBrowsePort, listOpcUaConnections } from './engOpcuaBrowse';
+import {
+  ManagerS7PlusBrowsePort,
+  listS7PlusConnections,
+  listS7PlusProjects,
+  listS7PlusStations,
+  s7plusManagerHealth
+} from './engS7PlusBrowse';
+import { inventoryS7, probeS7, s7EndpointOf, s7ManagerHealth } from './engS7Browse';
 import { identityOf, roleAssignments, roleGranted } from './appSecurityGuard';
+import { callEng, callEngOrThrow, engManagerAvailable, engManagerHealth, forgetEngManager } from './engVrpc';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function win(): any {
@@ -194,6 +213,56 @@ const CONNECTION_ADDRESS_DPE: Record<string, string> = {
 /** The driver-agnostic connection state, on every connection type. */
 const COMMON_CONN_STATE = 'Common.State.ConnState';
 
+/**
+ * The project's classic-S7 connections (`_S7_Conn`), for the device form's picker.
+ *
+ * Same shape and same purpose as `listOpcUaConnections`: an equipment must be able
+ * to NAME the connection it is bound to instead of hoping the studio finds it by
+ * searching its IP. The address rides along because two connections often differ
+ * only by rack/slot, and the name alone would not tell them apart in a list.
+ *
+ * Every failure degrades to "no connection listed" rather than an error: a form
+ * that cannot be opened because a dpGet failed is worse than one that falls back
+ * to free entry, which is exactly what the picker does with an empty list.
+ */
+interface S7ConnectionInfo {
+  /** Connection name, no leading `_` — what the equipment declares. */
+  name: string;
+  dp: string;
+  connected: boolean;
+  /** `_S7_Conn.Address`, shown beside the name (two connections often differ only by rack/slot). */
+  address?: string;
+}
+
+async function listS7Connections(): Promise<S7ConnectionInfo[]> {
+  let names: string[] = [];
+  try {
+    names = (win().dpNames('*', '_S7_Conn') ?? []).map((dpName: string) => dpName.replace(/\.$/, ''));
+  } catch (error) {
+    console.warn('engController: dpNames("*","_S7_Conn") failed:', describeError(error));
+    return [];
+  }
+  return Promise.all(
+    names.map(async (dp) => {
+      const afterSystem = dp.includes(':') ? dp.slice(dp.indexOf(':') + 1) : dp;
+      const state = await readConnState(dp, COMMON_CONN_STATE);
+      const address = await win()
+        .dpGet(`${dp}.Address`)
+        .then((raw: unknown) => flatText(raw))
+        .catch(() => '');
+      return {
+        name: afterSystem.replace(/^_/, ''),
+        dp,
+        // The same rule the LED follows (`deviceStateFromConnState`): connected is
+        // 256 and up, never "anything non-zero" — `1`, `3` and `5` are all states
+        // a connection can sit in without being usable.
+        connected: state !== null && state.written && state.code >= CONN_STATE.CONNECTED,
+        ...(address === '' ? {} : { address })
+      };
+    })
+  );
+}
+
 /** A device's connection datapoint, or why there is none to read. */
 type ConnectionMatch =
   | { dp: string; name: string }
@@ -213,6 +282,111 @@ function findConnectionByName(typeName: string, reference: string): string | nul
   } catch (error) {
     console.warn(`engController: dpNames('*','${typeName}') failed:`, describeError(error));
     return null;
+  }
+}
+
+/** Said by every endpoint that needs a connection to answer at all. */
+const CONNECTION_REQUIRED = 'connection is required';
+
+/** Does this DP TYPE exist in the project? (used to tell "absent" from "unreadable") */
+function typeExistsIn(w: ReturnType<typeof win>, typeName: string): boolean {
+  try {
+    return ((w.dpTypes(typeName) ?? []) as string[]).map(String).some((name) => bareDpName(name) === typeName);
+  } catch {
+    return false;
+  }
+}
+
+/** Bare datapoint name: no system prefix, no trailing dot. */
+function bareDpName(name: string): string {
+  const withoutDot = name.replace(/\.$/, '');
+  return withoutDot.includes(':') ? withoutDot.slice(withoutDot.indexOf(':') + 1) : withoutDot;
+}
+
+/**
+ * The project's ALARM CLASSES — the `_AlertClass` datapoints.
+ *
+ * An alert class IS a datapoint in WinCC OA: `_alert_hdl.._class` stores `<name>.` and
+ * that name must be an existing `_AlertClass` instance, so a class typed from memory
+ * produces a config the runtime rejects. The studio therefore offers the project's own
+ * list (same source as the PARA page's Alarming tab, `libs/wui-para/para-alarm.ts`).
+ *
+ * Never fatal: an empty list means "could not tell", and the form falls back to free
+ * entry — which is also how a class created after this read stays usable.
+ */
+async function listAlarmClasses(): Promise<string[]> {
+  try {
+    const names: string[] = win().dpNames('*', '_AlertClass') ?? [];
+    const bare = new Set<string>(names.map((name) => bareDpName(name)).filter((name) => name !== ''));
+    return [...bare].sort((a, b) => a.localeCompare(b));
+  } catch (error) {
+    console.warn('engController: dpNames("*","_AlertClass") failed:', describeError(error));
+    return [];
+  }
+}
+
+/**
+ * The project's ARCHIVE GROUPS — the usable `_NGA_Group` datapoints.
+ *
+ * Same reading as the machine-fleet page (`libs/wui-fleet-core/fleet-store.ts`), and the
+ * same two exclusions, both of which would otherwise offer a group that cannot archive a
+ * process value: a group that is not `active`, and one specialised for alerts
+ * (`isAlert` — `_NGA_G_ALERT` archives alarms). The `_2` twins are the second partition of
+ * a group, not a group to assign.
+ */
+async function listArchiveGroups(): Promise<string[]> {
+  let groups: string[] = [];
+  try {
+    // Typed explicitly: `dpNames` is untyped in the manager API, and the webserver's own
+    // tsc (stricter than the page's) infers `unknown[]` through the Set round-trip.
+    const names: string[] = win().dpNames('*', '_NGA_Group') ?? [];
+    const bare = new Set<string>(names.map((name) => bareDpName(name)).filter((name) => name !== '' && !name.endsWith('_2')));
+    groups = [...bare].sort((a, b) => a.localeCompare(b));
+  } catch (error) {
+    console.warn('engController: dpNames("*","_NGA_Group") failed:', describeError(error));
+    return [];
+  }
+  const usable: string[] = [];
+  for (const group of groups) {
+    try {
+      const active = isTrueText(flatText(await win().dpGet(`${group}.active`)));
+      const alerts = isTrueText(flatText(await win().dpGet(`${group}.isAlert`)));
+      if (active && !alerts) usable.push(group);
+    } catch {
+      // Unreadable flags: offered rather than hidden — the project may still archive
+      // into it, and a missing group is worse than an extra one in a picker.
+      usable.push(group);
+    }
+  }
+  return usable;
+}
+
+/** A WinCC OA boolean as read back: `TRUE`/`true`/`1` all mean set. */
+function isTrueText(text: string): boolean {
+  const value = text.trim().toLowerCase();
+  return value === 'true' || value === '1';
+}
+
+/**
+ * The project's OPC UA SUBSCRIPTIONS — `_OPCUASubscription` datapoints, named without their
+ * leading underscore (that is how a reference names them: `<Conn>$<Sub>$1$1$<NodeId>`).
+ *
+ * Verified against the vendor's own `opcuaDriver_plugin.ctl`, which creates them as
+ * `"_" + <name>` of that type and holds the publishing interval, the sampling interval and the
+ * deadband on the subscription — which is why a subscription is chosen per leaf exactly like a
+ * poll group, and why the studio offers the project's own list rather than a typed name.
+ */
+async function listOpcUaSubscriptions(): Promise<string[]> {
+  try {
+    if (!typeExistsIn(win(), '_OPCUASubscription')) return [];
+    const names: string[] = win().dpNames('*', '_OPCUASubscription') ?? [];
+    const bare = new Set<string>(
+      names.map((name) => bareDpName(name).replace(/^_/, '')).filter((name) => name !== '' && !name.endsWith('_2'))
+    );
+    return [...bare].sort((a, b) => a.localeCompare(b));
+  } catch (error) {
+    console.warn('engController: dpNames("*","_OPCUASubscription") failed:', describeError(error));
+    return [];
   }
 }
 
@@ -244,6 +418,66 @@ async function findConnectionsByAddress(typeName: string, ip: string): Promise<s
     })
   );
   return names.filter((_dp, index) => (addresses[index] ?? '').includes(ip));
+}
+
+/** Whether a datapoint instance exists (either spelling the API accepts). */
+function dpInstanceExists(name: string): boolean {
+  const w = win();
+  try {
+    return Boolean(w.dpExists(name)) || Boolean(w.dpExists(`${name}.`));
+  } catch {
+    return false;
+  }
+}
+
+/** Outcome of the connection provisioning a device save may trigger. */
+interface ConnectionProvision {
+  /** Connection name as the device declares it (the `_address` reference). */
+  name: string;
+  /** The `_OPCUAServer` datapoint, when it was created. */
+  dp?: string;
+  created: boolean;
+  warnings: string[];
+}
+
+/**
+ * The password a save carries, taken from the RAW draft before the core strips it.
+ *
+ * `undefined` means "the request said nothing about the password" — the live one
+ * is kept; `''` means "clear it" (log in anonymously). It is read here and passed
+ * straight to the manager: `normalizeDevice` deliberately never persists a
+ * secret, so this is the only moment it exists on this side.
+ */
+function transientPassword(draft: DeviceDraft): string | undefined {
+  const raw = (draft.connection ?? {})['password'];
+  return raw === undefined || raw === null ? undefined : String(raw);
+}
+
+/** What a save did about the connection's SECURITY settings. */
+interface SecurityOutcome {
+  /** Families actually written ('user' | 'policy' | 'mode' | 'certificate' | 'flags' | 'password'). */
+  applied: string[];
+  /** Present when a password was pushed: what the stored blob READS BACK. */
+  passwordSet?: boolean;
+  warnings: string[];
+}
+
+/**
+ * Non-empty test for whatever shape the API returns a blob in (Buffer, string,
+ * array) — used to decorate a device with `passwordSet`, which is a READ.
+ */
+function blobNonEmpty(raw: unknown): boolean {
+  const value = firstValue(raw);
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return value.length > 0;
+  if (value instanceof Uint8Array) return value.length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  return Boolean(value);
+}
+
+/** A JSON answer's array field as a string list (a service answer is untyped JSON). */
+function stringList(raw: unknown): string[] {
+  return Array.isArray(raw) ? raw.map(String) : [];
 }
 
 /** Any dpGet result → one searchable string (a `dyn_string` is joined, not indexed). */
@@ -365,17 +599,56 @@ async function listProjectDrivers(): Promise<EngDriverInfo[]> {
   return drivers;
 }
 
+/** One row of WinCC OA's own `dpTypeCreate` layout: a name at its nesting DEPTH. */
+interface TypeRow {
+  depth: number;
+  name: string;
+  type: number;
+}
+
 /**
- * The core's {@link EngPort} over WsjServerGlobal.winccoa — the only place the
- * engineering engine touches the runtime. The device context of an address
- * (driver number + poll group) is resolved from the STORED device first (explicit
- * beats guessing), then auto-detected for the protocols where detection is
- * verified.
+ * The core's nested {@link DpTypeStructure} → the row/depth layout `dpTypeCreate`
+ * expects (`names[row][depth]`, verified in the vendor's own `libs/ac.ctl`).
+ *
+ * Flattened HERE rather than in the CTRL manager on purpose: the element-type
+ * codes are engineering data owned by this repo (`ELEMENT_TYPE_MAP`), so the
+ * manager stays a dumb execution arm with no second copy of the mapping to drift.
+ */
+function typeRows(node: DpTypeStructure, depth = 1, rows: TypeRow[] = []): TypeRow[] {
+  const type = ELEMENT_TYPE_MAP[node.type];
+  if (type === undefined) throw new Error(`Invalid element type '${node.type}' for '${node.name}'`);
+  rows.push({ depth, name: node.name, type });
+  for (const child of node.children ?? []) typeRows(child, depth + 1, rows);
+  return rows;
+}
+
+/**
+ * The core's {@link EngPort} — the only place the engineering engine touches the
+ * runtime.
+ *
+ * WRITES go to the **EngStudio CTRL manager** over vRPC when it is available
+ * (`viaManager`): one auditable service owns every project mutation of this page,
+ * and it is the only side that can encrypt a connection password. When the
+ * manager is absent — an older deployment, MSA unavailable — the same calls fall
+ * back to `WsjServerGlobal.winccoa` directly, so a project that has not deployed
+ * the manager yet keeps working instead of losing its check-in. Which path is
+ * taken is logged once per controller (see the constructor).
+ *
+ * READS (type/dp existence, driver detection) stay local: they are cheap, they
+ * need no vendor library, and putting a round-trip in front of each of them
+ * would slow a check-out down for nothing.
+ *
+ * The device context of an address (driver number + poll group) is resolved from
+ * the STORED device first (explicit beats guessing), then auto-detected for the
+ * protocols where detection is verified.
  */
 class WinccoaEngPort implements EngPort {
   private readonly pollGroups = new Map<string, string>();
 
-  constructor(private readonly devices: Device[]) {}
+  constructor(
+    private readonly devices: Device[],
+    private readonly viaManager = false
+  ) {}
 
   async typeExists(typeName: string): Promise<boolean> {
     try {
@@ -386,14 +659,28 @@ class WinccoaEngPort implements EngPort {
     }
   }
   async dpTypeCreate(structure: DpTypeStructure): Promise<void> {
+    if (this.viaManager) {
+      await callEngOrThrow('DpTypeCreate', { name: structure.name, rows: typeRows(structure) });
+      return;
+    }
     const ok = await win().dpTypeCreate(buildTypeNode(structure));
     if (!ok) throw new Error(`dpTypeCreate('${structure.name}') returned false`);
   }
   async dpTypeChange(structure: DpTypeStructure): Promise<void> {
+    // One manager method for both: it creates or changes depending on what the
+    // project already has, which is the same decision `dpTypes()` answers there.
+    if (this.viaManager) {
+      await callEngOrThrow('DpTypeCreate', { name: structure.name, rows: typeRows(structure) });
+      return;
+    }
     const ok = await win().dpTypeChange(buildTypeNode(structure));
     if (!ok) throw new Error(`dpTypeChange('${structure.name}') returned false`);
   }
   async dpTypeDelete(typeName: string): Promise<void> {
+    if (this.viaManager) {
+      await callEngOrThrow('DpTypeDelete', { name: typeName });
+      return;
+    }
     const ok = await win().dpTypeDelete(typeName);
     if (!ok) throw new Error(`dpTypeDelete('${typeName}') returned false`);
   }
@@ -406,14 +693,32 @@ class WinccoaEngPort implements EngPort {
     }
   }
   async dpCreate(dpName: string, dpType: string): Promise<void> {
+    // Same precondition as the CTRL arm states (see engStudioService.ctl): a datapoint cannot
+    // exist without its type, and the runtime answers "Invalid argument in function" — which
+    // names neither the argument nor the reason.
+    if (!typeExistsIn(win(), dpType)) {
+      throw new Error(`dpCreate('${dpName}','${dpType}'): DP type '${dpType}' does not exist — check the type in before its datapoints`);
+    }
+    if (this.viaManager) {
+      await callEngOrThrow('DpCreate', { name: dpName, type: dpType });
+      return;
+    }
     const ok = await win().dpCreate(dpName, dpType);
     if (!ok) throw new Error(`dpCreate('${dpName}','${dpType}') returned false`);
   }
   async dpDelete(dpName: string): Promise<void> {
+    if (this.viaManager) {
+      await callEngOrThrow('DpDelete', { name: dpName });
+      return;
+    }
     const ok = await win().dpDelete(dpName);
     if (!ok) throw new Error(`dpDelete('${dpName}') returned false`);
   }
   async dpSetWait(dpes: string[], values: unknown[]): Promise<void> {
+    if (this.viaManager) {
+      await callEngOrThrow('DpSetWait', { dpes, values });
+      return;
+    }
     const ok = dpes.length === 1 ? await win().dpSetWait(dpes[0], values[0]) : await win().dpSetWait(dpes, values);
     if (!ok) throw new Error(`dpSetWait failed for ${dpes[0]}${dpes.length > 1 ? ` (+${dpes.length - 1} more)` : ''}`);
   }
@@ -428,7 +733,9 @@ class WinccoaEngPort implements EngPort {
    */
   async resolveAddressContext(config: AddressConfig): Promise<{ driverNumber: number; pollGroupDp: string }> {
     const device = this.devices.find((d) => d.id === config.deviceId);
-    const pollGroupDp = await this.ensurePollGroup(device?.pollGroup ?? DEFAULT_POLL_GROUP);
+    // The LEAF's group first (the model's own choice), then the equipment's, then the default —
+    // narrowest decision wins, like everywhere else here.
+    const pollGroupDp = await this.ensurePollGroup(config.pollGroup ?? device?.pollGroup ?? DEFAULT_POLL_GROUP);
     if (device?.driverNumber !== undefined) {
       return { driverNumber: device.driverNumber, pollGroupDp };
     }
@@ -441,30 +748,106 @@ class WinccoaEngPort implements EngPort {
     );
   }
 
-  /** First running driver whose `DT` matches the mode; null when unknown. */
+  /**
+   * First running driver whose `DT` matches the mode; null when unknown.
+   *
+   * MEMOISED PER PORT — that is, per check-in — because it was the cost of the button: this
+   * runs for every address of the plan, and each call re-read `_Connections.Driver.ManNums`
+   * plus one `_Driver<n>.DT` per running driver (and logged a line each time). A check-in of
+   * a thousand DPEs did thousands of round-trips to learn the same answer. A port lives for
+   * one request, so the cache cannot go stale within a run — a driver started mid-check-in
+   * would not have been picked up by the old code either, since the first address already
+   * fixed the answer for the whole write.
+   */
   private async detectDriver(mode: AddressConfig['mode']): Promise<number | null> {
     const wanted = mode === undefined ? undefined : DRIVER_TYPE_BY_MODE[mode];
     if (wanted === undefined) return null; // only verified mappings are auto-detected
+    const cached = this.driverByMode.get(wanted);
+    if (cached !== undefined) return cached;
     // Every running driver is a candidate, not just the first the read returned.
-    for (const num of (await runningDriverNums()) ?? []) {
+    for (const num of (await this.runningDrivers()) ?? []) {
       try {
-        if (firstValue(await win().dpGet(`_Driver${num}.DT`)) === wanted) return num;
+        if (firstValue(await win().dpGet(`_Driver${num}.DT`)) === wanted) {
+          this.driverByMode.set(wanted, num);
+          return num;
+        }
       } catch {
         continue;
       }
     }
+    this.driverByMode.set(wanted, null);
     return null;
   }
+
+  /** The running driver numbers, read ONCE per port (see `detectDriver`). */
+  private async runningDrivers(): Promise<number[] | null> {
+    this.runningDriverCache ??= runningDriverNums();
+    return this.runningDriverCache;
+  }
+
+  /**
+   * The `_NGA_Group` datapoint to write for the group a model names.
+   *
+   * A model carries a token an engineer typed (`EVENT`, the studio's own default) while a project
+   * holds `_NGA_G_EVENT`; `_archive.1._class` must name the DATAPOINT, so writing the token
+   * verbatim failed the whole config write (`dpSetWait … rc=-1 on …:_archive.._type`). Resolution,
+   * in order:
+   *
+   *  1. an exact match among the project's usable groups (already the normal case for a model
+   *     built with the picker);
+   *  2. the FIRST group whose name contains the token — `EVENT` → `_NGA_G_EVENT`, which is what an
+   *     engineer means by it;
+   *  3. the first usable group, with a warning: archiving into another group is a visible,
+   *     correctable outcome, whereas failing the write loses the whole DPE's configs;
+   *  4. no usable group at all → a clear error, because there is nothing honest to write.
+   */
+  async resolveArchiveGroup(group: string): Promise<string> {
+    const wanted = group.trim();
+    const cached = this.archiveGroupCache.get(wanted);
+    if (cached !== undefined) return cached;
+    this.archiveGroups ??= listArchiveGroups();
+    const groups = await this.archiveGroups;
+    if (groups.length === 0) {
+      throw new Error(`no usable archive group (_NGA_Group) in this project — cannot archive '${wanted}'`);
+    }
+    const exact = groups.find((candidate) => candidate === wanted);
+    const token = wanted.replace(/^_NGA_G_/i, '').toLowerCase();
+    const contains = groups.find((candidate) => candidate.toLowerCase().includes(token));
+    const resolved = exact ?? contains ?? groups[0];
+    if (exact === undefined) {
+      console.info(`engController: archive group '${wanted}' resolved to '${resolved}'${contains === undefined ? ' (no name matched — first usable group)' : ''}`);
+    }
+    this.archiveGroupCache.set(wanted, resolved);
+    return resolved;
+  }
+
+  /** Group name as written by a model → the project's datapoint, resolved once per port. */
+  private readonly archiveGroupCache = new Map<string, string>();
+  private archiveGroups: Promise<string[]> | null = null;
+
+  /** Mode → driver number resolved once for this port (`null` = none matched). */
+  private readonly driverByMode = new Map<string, number | null>();
+  /** The running-driver read, shared by every address of this port's run. */
+  private runningDriverCache: Promise<number[] | null> | null = null;
 
   /** Ensure the poll-group DP exists (type `_PollGroup`, active); cached. */
   private async ensurePollGroup(pollGroup: string): Promise<string> {
     const cached = this.pollGroups.get(pollGroup);
     if (cached !== undefined) return cached;
     const normalized = pollGroup.startsWith('_') ? pollGroup : `_${pollGroup}`;
+    if (this.viaManager) {
+      // Each of the studio's groups has its OWN period (POLL_GROUPS): creating `_Poll_Slow` with a
+      // one-second interval would make the three names a lie.
+      const interval = pollGroupInterval(normalized) ?? DEFAULT_POLL_INTERVAL_MS;
+      const answer = await callEngOrThrow('EnsurePollGroup', { name: normalized, interval });
+      const dp = typeof answer['dp'] === 'string' ? (answer['dp'] as string) : normalized;
+      this.pollGroups.set(pollGroup, dp);
+      return dp;
+    }
     if (!(await this.dpExists(normalized))) {
       const created = await win().dpCreate(normalized, '_PollGroup');
       if (!created) throw new Error(`failed to create poll group ${normalized}`);
-      await win().dpSetWait([`${normalized}.Active`, `${normalized}.PollInterval`], [1, DEFAULT_POLL_INTERVAL_MS]);
+      await win().dpSetWait([`${normalized}.Active`, `${normalized}.PollInterval`], [1, pollGroupInterval(normalized) ?? DEFAULT_POLL_INTERVAL_MS]);
     }
     this.pollGroups.set(pollGroup, normalized);
     return normalized;
@@ -476,9 +859,49 @@ export class EngController {
   private readonly store = new EngStore();
   /** Shared so browses of one connection serialise across HTTP requests. */
   private readonly browsePort = new WinccoaOpcUaBrowsePort();
+  /**
+   * S7Plus browse, over the dedicated `s7plusBrowse` JS manager. Stateless here:
+   * the per-connection serialisation lives in the manager, which is the only
+   * process that can enforce it across callers (see `engS7PlusBrowse.ts`).
+   */
+  private readonly s7plusPort = new ManagerS7PlusBrowsePort();
 
-  public health = (_req: Request, res: Response): void => {
-    res.status(200).json({ ok: true, service: 'eng', store: this.store.path() });
+  public constructor() {
+    // Say at BOOT which path the project writes go through — the EngStudio CTRL
+    // manager, or the direct API fallback. This one log line is the health-check
+    // an operator reads before blaming the page, and it also reports whether the
+    // project has the driver certificate every password write needs.
+    void engManagerHealth().then((health) => {
+      if (health === null || health.ok !== true) {
+        console.warn(
+          'engController: the EngStudio CTRL manager is NOT reachable — project writes use the direct API fallback, ' +
+            'and OPC UA passwords cannot be set (only the manager can encrypt them). Deploy it and register it in config/progs (deploy-backend.mjs).'
+        );
+        return;
+      }
+      const cert = health['driverCertificate'] === true;
+      console.info(
+        `engController: EngStudio CTRL manager reachable (system '${String(health['system'] ?? '?')}') — ` +
+          `project writes go through it; driver certificate ${cert ? 'present' : 'MISSING (passwords will be refused)'}.`
+      );
+    });
+  }
+
+  public health = async (_req: Request, res: Response): Promise<void> => {
+    const [manager, s7] = await Promise.all([engManagerHealth(), s7ManagerHealth()]);
+    res.status(200).json({
+      ok: true,
+      service: 'eng',
+      store: this.store.path(),
+      // The page shows this: "the studio cannot write to the project" and "the
+      // studio is not installed" are different problems with different fixes.
+      manager: manager === null ? { reachable: false } : { reachable: manager.ok === true, ...manager },
+      // Reported separately, and its absence is NOT a degradation of the studio:
+      // the S7 catalogs are built from the project's exports and work without it.
+      // Only the online CROSS-CHECK of those catalogs needs this manager, so the
+      // page hides that one action instead of announcing a broken page.
+      s7Browse: s7 === null ? { reachable: false } : { reachable: s7.ok === true, ...s7 }
+    });
   };
 
   // --- roles (Application Security) -----------------------------------------
@@ -533,7 +956,9 @@ export class EngController {
    * copy that is seconds old. `view` like the listing: it says nothing more.
    */
   public deviceStates = async (_req: Request, res: Response): Promise<void> => {
-    const devices = await this.withLiveState(this.store.listDevices<Device>());
+    // No password probe on the 5 s poll: `passwordSet` only changes through a save,
+    // and the poll's cost must stay proportional to what it can say.
+    const devices = await this.withLiveState(this.store.listDevices<Device>(), false);
     res.status(200).json({ ok: true, states: devices.map((device) => deviceStateOf(device)) });
   };
 
@@ -566,11 +991,21 @@ export class EngController {
   public createDevice = async (req: Request, res: Response): Promise<void> => {
     const draft = this.readDraft(req, res);
     if (!draft) return;
+    const secret = transientPassword(draft);
     const devices = this.store.listDevices<Device>();
     if (this.refuse(res, { ...draft, id: '' }, devices)) return;
     const device = normalizeDevice({ ...draft, id: '' }, devices);
     this.store.saveDevices([...devices, device]);
-    res.status(201).json({ ok: true, device, devices: await this.withLiveState([...devices, device]) });
+    const provision = await this.provisionConnection(device);
+    // AFTER provisioning: the declared security lands on the (possibly fresh) DP.
+    const security = await this.applySecurity(device, secret);
+    res.status(201).json({
+      ok: true,
+      device,
+      devices: await this.withLiveState([...devices, device]),
+      ...(provision === null ? {} : { connectionProvision: provision }),
+      ...(security === null ? {} : { connectionSecurity: security })
+    });
   };
 
   /**
@@ -585,6 +1020,7 @@ export class EngController {
     const id = String(req.params['id']);
     const draft = this.readDraft(req, res);
     if (!draft) return;
+    const secret = transientPassword(draft);
     const devices = this.store.listDevices<Device>();
     const index = devices.findIndex((device) => device.id === id);
     if (index === -1) {
@@ -594,11 +1030,124 @@ export class EngController {
     const others = devices.filter((device) => device.id !== id);
     if (this.refuse(res, { ...draft, id }, others)) return;
     const device = normalizeDevice({ ...draft, id }, others);
+    const merged: Device = { ...devices[index], ...device };
     const updated = [...devices];
-    updated[index] = { ...devices[index], ...device };
+    updated[index] = merged;
     this.store.saveDevices(updated);
-    res.status(200).json({ ok: true, device: updated[index], devices: await this.withLiveState(updated) });
+    const provision = await this.provisionConnection(merged);
+    const security = await this.applySecurity(merged, secret);
+    res.status(200).json({
+      ok: true,
+      device: merged,
+      devices: await this.withLiveState(updated),
+      ...(provision === null ? {} : { connectionProvision: provision }),
+      ...(security === null ? {} : { connectionSecurity: security })
+    });
   };
+
+  /**
+   * Provision the DECLARED OPC UA connection when the project does not have it —
+   * never failing the save: the device registry write already went through, and a
+   * connection that could not be created is reported (`created: false`) for the
+   * operator to act on, not thrown away with the whole request.
+   */
+  private async provisionConnection(device: Device): Promise<ConnectionProvision | null> {
+    if (device.protocol !== 'opcua') return null;
+    const server = String(device.connection?.['server'] ?? '').trim();
+    if (server === '') return null;
+    const name = server.replace(/^_/, '');
+    // Already there? Then this is not a provisioning — the security pass below
+    // handles an existing connection.
+    if (findConnectionByName('_OPCUAServer', server) !== null || dpInstanceExists(`_${name}`)) return null;
+    try {
+      const answer = await callEngOrThrow('CreateOpcuaConnection', this.connectionRequest(device));
+      return {
+        name,
+        ...(typeof answer['dp'] === 'string' ? { dp: answer['dp'] as string } : {}),
+        created: answer['created'] === true,
+        warnings: stringList(answer['warnings'])
+      };
+    } catch (error) {
+      console.warn(`engController: could not create the connection '${server}':`, describeError(error));
+      forgetEngManager();
+      return { name, created: false, warnings: [describeError(error)] };
+    }
+  }
+
+  /** Apply the declared security to the connection — never failing the save. */
+  private async applySecurity(device: Device, password: string | undefined): Promise<SecurityOutcome | null> {
+    try {
+      return await this.applyOpcUaSecurity(device, password);
+    } catch (error) {
+      console.warn('engController: security write failed:', describeError(error));
+      return { applied: [], warnings: [describeError(error)] };
+    }
+  }
+
+  /**
+   * Write the DECLARED security of an OPC UA equipment onto its live connection:
+   * user (`Config.AccessInfo`), policy/mode/client certificate
+   * (`Config.Security.*`) and the certificate-relaxation bits (`Config.Flags`,
+   * read-modify-write so the tuning bits 0–7 survive). Only what the declaration
+   * carries is touched — a connection also managed through the standard panel is
+   * never reset by a save that said nothing about security (the same tri-state
+   * honesty as the declarative parameters).
+   *
+   * The password goes through the VENDOR encryption (see the module header) and
+   * `passwordSet` reports what the blob READS BACK — not what we hope happened.
+   */
+  private async applyOpcUaSecurity(device: Device, password: string | undefined): Promise<SecurityOutcome | null> {
+    if (device.protocol !== 'opcua') return null;
+    const write = opcuaSecurityWrite(device.connection);
+    if (write === null && password === undefined) return null;
+    const server = String(device.connection?.['server'] ?? '').trim();
+    if (server === '') {
+      return { applied: [], warnings: ['No server declared on the equipment — the security settings were not applied.'] };
+    }
+    const answer = await callEng('ApplyOpcuaSecurity', this.connectionRequest(device, password));
+    if (!answer.ok) {
+      return { applied: [], warnings: [answer.error ?? 'the security settings were not applied'] };
+    }
+    return {
+      applied: stringList(answer['applied']),
+      ...(typeof answer['passwordSet'] === 'boolean' ? { passwordSet: answer['passwordSet'] } : {}),
+      warnings: stringList(answer['warnings'])
+    };
+  }
+
+  /**
+   * The manager's request body for a connection create / security apply.
+   *
+   * The CORE decides what it contains (`opcuaSecurityWrite`: only the declared
+   * fields, the vendor's numeric policy/mode codes, the flag bits to force), so
+   * the manager receives values rather than choices — and a field the operator
+   * left empty is simply absent, which is what leaves the live connection alone.
+   *
+   * The password is passed THROUGH, never stored: it came from the request body
+   * and dies with it (the service encrypts it with the project's driver
+   * certificate on the other side).
+   */
+  private connectionRequest(device: Device, password?: string): Record<string, unknown> {
+    const server = String(device.connection?.['server'] ?? '')
+      .trim()
+      .replace(/^_/, '');
+    const write = opcuaSecurityWrite(device.connection);
+    const endpoint = String(device.connection?.['endpoint'] ?? '').trim();
+    return {
+      name: server,
+      connection: server,
+      ...(endpoint === '' ? {} : { endpoint }),
+      ...(device.driverNumber === undefined ? {} : { driverNumber: device.driverNumber }),
+      ...(write?.user === undefined ? {} : { user: write.user }),
+      ...(write?.policy === undefined ? {} : { policy: write.policy }),
+      ...(write?.messageMode === undefined ? {} : { messageMode: write.messageMode }),
+      ...(write?.clientCertificate === undefined ? {} : { certificate: write.clientCertificate }),
+      // `{ "<bit>": bool }` — the manager applies them read-modify-write, so the
+      // bits nobody named (and every future vendor bit) survive the save.
+      ...(write === null || Object.keys(write.flagBits).length === 0 ? {} : { flags: write.flagBits }),
+      ...(password === undefined ? {} : { password })
+    };
+  }
 
   /** Body → draft, answering 400 itself when the body is not one. */
   private readDraft(req: Request, res: Response): DeviceDraft | null {
@@ -657,7 +1206,7 @@ export class EngController {
    * matched, several matched, or nothing to match on. Never `disconnected` — that is a
    * statement about the machine, and only a driver may make it.
    */
-  private async withLiveState(devices: Device[]): Promise<Device[]> {
+  private async withLiveState(devices: Device[], includePasswordSet = true): Promise<Device[]> {
     return Promise.all(
       devices.map(async (device) => {
         const connection = await this.connectionDpOf(device);
@@ -670,12 +1219,19 @@ export class EngController {
           };
         }
         const probed = await probeConnectionState(connection.dp);
+        // "A password is set" is the only honest indicator the page may show: the
+        // secret itself is write-through, so the runtime's blob is the sole record.
+        const passwordSet =
+          includePasswordSet && device.protocol === 'opcua'
+            ? blobNonEmpty(await win().dpGet(`${connection.dp}.Config.Password`).catch(() => null))
+            : undefined;
         return {
           ...device,
           state: probed.state,
           stateSource: probed.source,
           stateConnection: connection.name,
-          ...(probed.code === undefined ? {} : { stateCode: probed.code })
+          ...(probed.code === undefined ? {} : { stateCode: probed.code }),
+          ...(passwordSet === undefined ? {} : { passwordSet })
         };
       })
     );
@@ -710,8 +1266,18 @@ export class EngController {
       const dp = findConnectionByName('_OPCUAServer', reference);
       if (dp !== null) return { dp, name: reference };
     }
+    // Classic S7 may NAME its connection too. Tried before the address search for
+    // the same reason OPC UA is: a name is an exact match, while an address is a
+    // substring of an element that also holds the rack and the slot — so two
+    // stations on one PLC resolve to `ambiguous-connection` and light no lamp,
+    // when the operator knew perfectly well which connection they meant.
+    const declared = device.protocol === 's7' ? String(device.connection?.['connection'] ?? '').trim() : '';
+    if (declared !== '') {
+      const dp = findConnectionByName('_S7_Conn', declared);
+      if (dp !== null) return { dp, name: declared };
+    }
     const address = declaredAddressOf(device);
-    const named = reference ?? '';
+    const named = reference ?? (declared === '' ? '' : declared);
     if (typeName === '' || address === '') {
       return named === '' ? { dp: null, name: '', reason: 'unprobed' } : { dp: null, name: named, reason: 'unknown-connection' };
     }
@@ -896,7 +1462,7 @@ export class EngController {
   public browseLevel = async (req: Request, res: Response): Promise<void> => {
     const body = (req.body ?? {}) as { connection?: string; nodeId?: string };
     if (!body.connection) {
-      res.status(400).json({ ok: false, error: 'connection is required' });
+      res.status(400).json({ ok: false, error: CONNECTION_REQUIRED });
       return;
     }
     try {
@@ -956,27 +1522,39 @@ export class EngController {
       return;
     }
     const source = previous.provenance.browse;
-    if (previous.provenance.kind !== 'opcua-browse' || source === undefined) {
+    const replayable = previous.provenance.kind === 'opcua-browse' || previous.provenance.kind === 's7plus-browse';
+    if (!replayable || source === undefined) {
       const qualified = this.qualified(previous);
       this.store.saveBook(qualified);
       res.status(200).json({
         ok: true,
         book: this.presented(previous),
         rebrowsed: false,
-        note:
-          previous.provenance.kind === 'opcua-browse'
-            ? 'Carnet parcouru avant l’enregistrement des paramètres de parcours : relancer un parcours pour le rendre rafraîchissable.'
-            : 'Source hors ligne : seules les règles de qualification ont été rejouées. Ré-ingérer le fichier source pour régénérer le catalogue.'
+        note: replayable
+          ? 'Carnet parcouru avant l’enregistrement des paramètres de parcours : relancer un parcours pour le rendre rafraîchissable.'
+          : 'Source hors ligne : seules les règles de qualification ont été rejouées. Ré-ingérer le fichier source pour régénérer le catalogue.'
       });
       return;
     }
     try {
-      const fresh = await buildBookFromOpcUaBrowse(this.browsePort, {
-        ...source,
-        bookId: previous.id,
-        name: previous.name,
-        driverNumber: previous.interface?.driverNumber
-      });
+      // Each protocol replays with its OWN walker: the recorded parameters are the
+      // ones of the walk that produced the book, and an S7Plus source is a
+      // `project|station` where an OPC UA one is a node id.
+      const fresh =
+        previous.provenance.kind === 's7plus-browse'
+          ? await buildBookFromS7PlusBrowse(this.s7plusPort, {
+              ...source,
+              station: source.station ?? S7PLUS_ONLINE_STATION,
+              bookId: previous.id,
+              name: previous.name,
+              ...(previous.interface?.driverNumber === undefined ? {} : { driverNumber: previous.interface.driverNumber })
+            })
+          : await buildBookFromOpcUaBrowse(this.browsePort, {
+              ...source,
+              bookId: previous.id,
+              name: previous.name,
+              driverNumber: previous.interface?.driverNumber
+            });
       const delta = diffBooks(previous, fresh);
       const stored = this.withRefreshWarnings(fresh, delta);
       this.store.saveBook(this.qualified(stored));
@@ -1034,6 +1612,91 @@ export class EngController {
   };
 
   /**
+   * GET /api/eng/dptypes            -> { types: string[] }
+   * GET /api/eng/dptypes/:name      -> { type: { typeName, structure } }
+   *
+   * The project's DP TYPES, so a model can be started from one that already exists — the
+   * common case on a project that was engineered in PARA before the studio arrived. Internal
+   * types (`_`-prefixed) are left out of the list: they are the runtime's own and a model of
+   * one would be meaningless.
+   *
+   * The list is names only; the structure is read on demand, because reading every type of a
+   * real project to fill a picker would cost far more than the one the operator picks.
+   */
+  public listDpTypes = async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const names = ((win().dpTypes('*') ?? []) as string[])
+        .map(String)
+        .filter((name) => name.length > 0 && !name.startsWith('_'))
+        .sort((a, b) => a.localeCompare(b));
+      res.status(200).json({ ok: true, types: [...new Set(names)] });
+    } catch (error) {
+      res.status(200).json({ ok: true, types: [], warning: describeError(error) });
+    }
+  };
+
+  public readDpType = async (req: Request, res: Response): Promise<void> => {
+    const name = String(req.params['name'] ?? '').trim();
+    if (name === '') {
+      res.status(400).json({ ok: false, error: 'a DP type name is required' });
+      return;
+    }
+    try {
+      const structure = structureOf(win().dpTypeGet(name));
+      res.status(200).json({ ok: true, type: { typeName: name, structure } });
+    } catch (error) {
+      res.status(404).json({ ok: false, error: describeError(error) });
+    }
+  };
+
+  /**
+   * GET /api/eng/dps?pattern=&type=&limit= -> { dps: string[], truncated }
+   *
+   * Search the project's datapoints — what the model editor's magnifier offers when the
+   * value wanted is a datapoint the studio's own lists do not carry (an alert class added
+   * by a customer, a group named outside the convention). `dpNames` does the matching, so
+   * the wildcards are WinCC OA's own; the result is capped and the truncation reported,
+   * because a bare `*` on a real project answers with tens of thousands of names.
+   */
+  public searchDps = async (req: Request, res: Response): Promise<void> => {
+    const pattern = String(req.query['pattern'] ?? '*').trim() || '*';
+    const type = req.query['type'] === undefined ? '' : String(req.query['type']).trim();
+    const limit = Math.min(Math.max(Number(req.query['limit'] ?? 200), 1), 2000);
+    try {
+      const raw: string[] = (type === '' ? win().dpNames(pattern) : win().dpNames(pattern, type)) ?? [];
+      const names = [...new Set(raw.map((name) => bareDpName(name)).filter((name) => name !== ''))].sort((a, b) =>
+        a.localeCompare(b)
+      );
+      res.status(200).json({ ok: true, dps: names.slice(0, limit), truncated: names.length > limit });
+    } catch (error) {
+      res.status(200).json({ ok: true, dps: [], truncated: false, warning: describeError(error) });
+    }
+  };
+
+  /**
+   * GET /api/eng/config-options -> { alarmClasses: string[], archiveGroups: string[] }
+   *
+   * What a deployment decision may REFER TO in this project: the `_AlertClass` datapoints
+   * and the usable `_NGA_Group` ones. One endpoint because the model editor needs both at
+   * once, on the same screen, for every leaf.
+   *
+   * Never fatal — an empty list means "could not tell" and the editor falls back to free
+   * entry, which is also what keeps a class or group created after this read usable.
+   */
+  public configOptions = async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const [alarmClasses, archiveGroups, subscriptions] = await Promise.all([
+        listAlarmClasses(),
+        listArchiveGroups(),
+        listOpcUaSubscriptions()
+      ]);
+      res.status(200).json({ ok: true, alarmClasses, archiveGroups, subscriptions, pollGroups: POLL_GROUPS.map((group) => group.name) });
+    } catch (error) {
+      res.status(200).json({ ok: true, alarmClasses: [], archiveGroups: [], subscriptions: [], pollGroups: [], warning: describeError(error) });
+    }
+  };
+
+  /**
    * POST /api/eng/books/browse
    * body { bookId, connection, name?, rootNodeId?, maxDepth?, maxEntries?, maxRequests?, driverNumber? }
    *
@@ -1066,6 +1729,156 @@ export class EngController {
         ...(body.maxDepth === undefined ? {} : { maxDepth: body.maxDepth }),
         ...(body.maxEntries === undefined ? {} : { maxEntries: body.maxEntries }),
         ...(body.maxRequests === undefined ? {} : { maxRequests: body.maxRequests }),
+        ...(body.driverNumber === undefined ? {} : { driverNumber: body.driverNumber })
+      });
+      const delta = previous === null ? null : diffBooks(previous, fresh);
+      const stored = delta === null ? fresh : this.withRefreshWarnings(fresh, delta);
+      this.store.saveBook(this.qualified(stored));
+      res.status(200).json({
+        ok: true,
+        book: this.presented(stored),
+        rebrowsed: true,
+        ...(delta === null ? {} : { delta: this.summariseDelta(delta) })
+      });
+    } catch (error) {
+      res.status(502).json({ ok: false, error: describeError(error) });
+    }
+  };
+
+  // --- online S7Plus browse (through the s7plusBrowse JS manager) ------------
+  //
+  // Same four shapes as the OPC UA side — list what can be browsed, one level,
+  // one whole walk — with the two differences the protocol imposes: a source is a
+  // TIA `project|station` (or the reserved online marker) rather than a node id,
+  // and the dialogue goes through the dedicated manager rather than this process
+  // (`engS7PlusBrowse.ts` says why). Everything here reports the manager's absence
+  // as its own problem: "no S7Plus connection" and "the browse service is not
+  // installed" send an engineer to two different places.
+
+  /** GET /api/eng/s7plus/connections — the project's S7Plus connections. */
+  public s7plusConnections = async (_req: Request, res: Response): Promise<void> => {
+    const { connections, warning } = await listS7PlusConnections();
+    res.status(200).json({ ok: true, connections, ...(warning === undefined ? {} : { warning }) });
+  };
+
+  /**
+   * GET /api/eng/s7plus/health -> { ok, manager }
+   *
+   * Whether the browse service is reachable, and what it can see (S7Plus drivers
+   * running, connections declared). The page needs the distinction: with no
+   * manager there is nothing to fix on the PLC side.
+   */
+  public s7plusHealth = async (_req: Request, res: Response): Promise<void> => {
+    const health = await s7plusManagerHealth();
+    res.status(200).json({
+      ok: true,
+      manager:
+        health === null
+          ? { reachable: false, error: "le manager 's7plusBrowse' est injoignable (déployé et démarré dans pmon ?)" }
+          : { reachable: true, ...health }
+    });
+  };
+
+  /**
+   * POST /api/eng/s7plus/projects  body { connection } -> { projects }
+   *
+   * The browsable SOURCES of a connection: the TIA exports the driver found under
+   * `<proj>/data/TIA_Projects`, plus the reserved online project that reads the
+   * live PLC.
+   */
+  public s7plusProjects = async (req: Request, res: Response): Promise<void> => {
+    const body = (req.body ?? {}) as { connection?: string };
+    if (!body.connection) {
+      res.status(400).json({ ok: false, error: CONNECTION_REQUIRED });
+      return;
+    }
+    try {
+      const result = await listS7PlusProjects(body.connection);
+      res.status(result.ok ? 200 : 502).json(result);
+    } catch (error) {
+      res.status(502).json({ ok: false, error: describeError(error) });
+    }
+  };
+
+  /** POST /api/eng/s7plus/stations  body { connection, project } -> { stations } */
+  public s7plusStations = async (req: Request, res: Response): Promise<void> => {
+    const body = (req.body ?? {}) as { connection?: string; project?: string };
+    if (!body.connection || !body.project) {
+      res.status(400).json({ ok: false, error: 'connection and project are required' });
+      return;
+    }
+    try {
+      const result = await listS7PlusStations(body.connection, body.project);
+      res.status(result.ok ? 200 : 502).json(result);
+    } catch (error) {
+      res.status(502).json({ ok: false, error: describeError(error) });
+    }
+  };
+
+  /**
+   * POST /api/eng/s7plus/level  body { connection, item?, hmiVisibleOnly? } -> { nodes }
+   *
+   * ONE level, for the same two reasons as its OPC UA twin: exploring a station
+   * before committing to a catalog, and letting the PAGE drive the core's walker so
+   * it can show progress and be cancelled. `item` defaults to the projects list.
+   */
+  public s7plusLevel = async (req: Request, res: Response): Promise<void> => {
+    const body = (req.body ?? {}) as { connection?: string; item?: string; hmiVisibleOnly?: boolean };
+    if (!body.connection) {
+      res.status(400).json({ ok: false, error: CONNECTION_REQUIRED });
+      return;
+    }
+    try {
+      const nodes = await this.s7plusPort.browseLevel(body.connection, body.item ?? '', body.hmiVisibleOnly !== false);
+      res.status(200).json({ ok: true, nodes });
+    } catch (error) {
+      res.status(502).json({ ok: false, error: describeError(error) });
+    }
+  };
+
+  /**
+   * POST /api/eng/books/browse-s7plus
+   * body { bookId, connection, station?, name?, root?, hmiVisibleOnly?, maxDepth?,
+   *        maxEntries?, maxRequests?, maxArrayElements?, driverNumber? }
+   *
+   * Walk an S7-1200/1500 station into an address book and store it, server-side in
+   * one call. Replaces a book of the same id (that is what a re-browse is) and
+   * returns the delta when one existed — same contract as `/books/browse`.
+   *
+   * `station` defaults to the ONLINE marker: asking to browse an S7Plus connection
+   * without saying which TIA export to read means "read the machine".
+   */
+  public browseS7PlusBook = async (req: Request, res: Response): Promise<void> => {
+    const body = (req.body ?? {}) as {
+      bookId?: string;
+      connection?: string;
+      station?: string;
+      name?: string;
+      root?: string;
+      hmiVisibleOnly?: boolean;
+      maxDepth?: number;
+      maxEntries?: number;
+      maxRequests?: number;
+      maxArrayElements?: number;
+      driverNumber?: number;
+    };
+    if (!body.bookId || !body.connection) {
+      res.status(400).json({ ok: false, error: 'bookId and connection are required' });
+      return;
+    }
+    const previous = this.store.readBook<AddressBook>(body.bookId);
+    try {
+      const fresh = await buildBookFromS7PlusBrowse(this.s7plusPort, {
+        bookId: body.bookId,
+        connection: body.connection,
+        station: body.station ?? S7PLUS_ONLINE_STATION,
+        ...(body.name === undefined ? {} : { name: body.name }),
+        ...(body.root === undefined ? {} : { root: body.root }),
+        ...(body.hmiVisibleOnly === undefined ? {} : { hmiVisibleOnly: body.hmiVisibleOnly }),
+        ...(body.maxDepth === undefined ? {} : { maxDepth: body.maxDepth }),
+        ...(body.maxEntries === undefined ? {} : { maxEntries: body.maxEntries }),
+        ...(body.maxRequests === undefined ? {} : { maxRequests: body.maxRequests }),
+        ...(body.maxArrayElements === undefined ? {} : { maxArrayElements: body.maxArrayElements }),
         ...(body.driverNumber === undefined ? {} : { driverNumber: body.driverNumber })
       });
       const delta = previous === null ? null : diffBooks(previous, fresh);
@@ -1140,19 +1953,146 @@ export class EngController {
    *   csv       → text                         (Control Expert variables export)
    *   nodeset   → xml                          (OPC UA NodeSet2 / companion spec)
    */
+  // --- classic S7: the ONLINE side is a verifier, never a generator ----------
+
+  /**
+   * POST /api/eng/s7/probe  body { deviceId } | { host, rack?, slot? }
+   *   -> { ok, cpu, pduLength, endpoint }
+   *
+   * "Which machine answers at this address?" — one connect, no block walk. It is
+   * the question an operator asks before trusting anything else the CPU says, and
+   * it is cheap enough to ask from a form.
+   *
+   * A `deviceId` is preferred to a typed address for the same reason the OPC UA
+   * form picks a connection from the project rather than accepting an endpoint
+   * from memory: the equipment already declares its ip/rack/slot, and a second
+   * declaration is a second thing to keep in step.
+   */
+  /**
+   * GET /api/eng/s7/connections -> { connections }
+   *
+   * What the device form offers for a classic-S7 equipment, so a connection is
+   * PICKED from the project rather than typed from memory — the same rule the OPC
+   * UA form follows, and the thing that makes the connection state exact.
+   */
+  public s7Connections = async (_req: Request, res: Response): Promise<void> => {
+    try {
+      res.status(200).json({ ok: true, connections: await listS7Connections() });
+    } catch (error) {
+      // Never fail the form on a listing: it degrades to free entry.
+      console.warn('engController.s7Connections:', describeError(error));
+      res.status(200).json({ ok: true, connections: [], warning: describeError(error) });
+    }
+  };
+
+  public s7Probe = async (req: Request, res: Response): Promise<void> => {
+    const endpoint = this.s7EndpointFrom(req.body ?? {});
+    if ('error' in endpoint) {
+      res.status(400).json({ ok: false, error: endpoint.error });
+      return;
+    }
+    try {
+      res.status(200).json(await probeS7(endpoint));
+    } catch (error) {
+      res.status(502).json({ ok: false, error: describeError(error), manager: 's7Browse' });
+    }
+  };
+
+  /**
+   * POST /api/eng/books/:id/s7-inventory  body { deviceId } | { host, rack?, slot? }
+   *   -> { ok, inventory, crossCheck }
+   *
+   * Read the CPU's block directory and say how far this catalog — built from the
+   * project's STEP 7 exports — is still true of the machine that is running now.
+   *
+   * The book is NOT modified. A catalog is a reading of the project and an
+   * inventory is a reading of the machine; storing the reconciliation would
+   * destroy the only thing worth having, which is that the two disagree. The
+   * verdicts come back beside the book and the operator decides — re-export, or
+   * fix the PLC.
+   */
+  public s7Inventory = async (req: Request, res: Response): Promise<void> => {
+    const bookId = String(req.params['id'] ?? '');
+    const book = this.store.readBook<AddressBook>(bookId);
+    if (book === null) {
+      res.status(404).json({ ok: false, error: `catalog '${bookId}' not found` });
+      return;
+    }
+    const endpoint = this.s7EndpointFrom(req.body ?? {});
+    if ('error' in endpoint) {
+      res.status(400).json({ ok: false, error: endpoint.error });
+      return;
+    }
+    try {
+      const body = (req.body ?? {}) as { maxBlocks?: number; withBlockInfo?: boolean; connection?: string };
+      const result = await inventoryS7(
+        {
+          ...endpoint,
+          ...(body.maxBlocks === undefined ? {} : { maxBlocks: Number(body.maxBlocks) }),
+          ...(body.withBlockInfo === undefined ? {} : { withBlockInfo: body.withBlockInfo !== false })
+        },
+        body.connection ?? book.interface?.connection
+      );
+      if (result.inventory === undefined) {
+        res.status(200).json({ ok: false, error: result.error });
+        return;
+      }
+      // The verdicts are the PURE core's, exactly as the offline demo computes
+      // them: the manager speaks the protocol, the core decides what it means.
+      const crossCheck: S7CrossCheck = crossCheckBookAgainstInventory(this.presented(book), result.inventory);
+      const inventory: S7Inventory = result.inventory;
+      res.status(200).json({ ok: true, inventory, crossCheck });
+    } catch (error) {
+      res.status(502).json({ ok: false, error: describeError(error), manager: 's7Browse' });
+    }
+  };
+
+  /**
+   * Where to dial, from a device id or from an explicit address.
+   *
+   * Returns a REFUSAL naming what is missing rather than a default: an inventory
+   * sent to the wrong host would report a catalog's blocks as absent and send an
+   * engineer looking for a fault in a PLC that is perfectly fine.
+   */
+  private s7EndpointFrom(body: Record<string, unknown>): { host: string; rack: number; slot: number; timeoutMs?: number } | { error: string } {
+    const timeout = body['timeoutMs'] === undefined ? {} : { timeoutMs: Number(body['timeoutMs']) };
+    const deviceId = String(body['deviceId'] ?? '');
+    if (deviceId !== '') {
+      const device = this.store.listDevices<Device>().find((candidate) => candidate.id === deviceId);
+      if (device === undefined) return { error: `equipment '${deviceId}' not found` };
+      const endpoint = s7EndpointOf(device);
+      if (endpoint === null) {
+        return {
+          error:
+            device.protocol === 's7'
+              ? `equipment '${device.name}' declares no IP address — fill it in on the equipment before reading its CPU`
+              : `equipment '${device.name}' speaks ${device.protocol}, not classic S7 — there is no block directory to read`
+        };
+      }
+      return { ...endpoint, ...timeout };
+    }
+    const host = String(body['host'] ?? '').trim();
+    if (host === '') return { error: 'deviceId, or host (the PLC IP address), is required' };
+    return { host, rack: Number(body['rack'] ?? 0), slot: Number(body['slot'] ?? 2), ...timeout };
+  }
+
   public ingestBook = (req: Request, res: Response): void => {
     const body = (req.body ?? {}) as {
       bookId?: string;
       name?: string;
-      format?: 'simaticml' | 'xvm' | 'csv' | 'nodeset';
+      format?: IngestFormat;
       interface?: AddressBook['interface'];
       documents?: { fileName: string; xml: string }[];
       xml?: string;
       text?: string;
+      /** `s7awl`: the AWL/STL sources (plain text, not XML — see the core's ingest). */
+      sources?: { fileName: string; text: string }[];
+      /** `s7awl`: the symbol table, read for its BLOCK DIRECTORY only. */
+      symbolText?: string;
       file?: string;
     };
     if (!body.bookId || !body.format) {
-      res.status(400).json({ ok: false, error: 'bookId and format (simaticml | xvm | csv | nodeset) are required' });
+      res.status(400).json({ ok: false, error: 'bookId and format (simaticml | s7sym | s7awl | xvm | csv | nodeset) are required' });
       return;
     }
     try {
@@ -1168,7 +2108,9 @@ export class EngController {
         ...(body.interface === undefined ? {} : { interface: body.interface }),
         ...(body.documents === undefined ? {} : { documents: body.documents }),
         ...(body.xml === undefined ? {} : { xml: body.xml }),
-        ...(body.text === undefined ? {} : { text: body.text })
+        ...(body.text === undefined ? {} : { text: body.text }),
+        ...(body.sources === undefined ? {} : { sources: body.sources }),
+        ...(body.symbolText === undefined ? {} : { symbolText: body.symbolText })
       });
       this.store.saveBook(this.qualified(book));
       // The books list travels back too: an ingestion from the catalogue panel adds
@@ -1298,17 +2240,23 @@ export class EngController {
 
   /** POST /api/eng/checkin  body { plan, dryRun } */
   public checkin = async (req: Request, res: Response): Promise<void> => {
-    const { plan, dryRun } = (req.body ?? {}) as { plan?: EngPlan; dryRun?: boolean };
+    const { plan, dryRun, recreate } = (req.body ?? {}) as { plan?: EngPlan; dryRun?: boolean; recreate?: boolean };
     if (!plan || !Array.isArray(plan.items)) {
       res.status(400).json({ ok: false, error: 'a plan with items[] is required' });
       return;
     }
     try {
-      const port = new WinccoaEngPort(this.store.listDevices<Device>());
+      // Prefer the CTRL manager for every project write of the check-in; fall
+      // back to the direct API when it is not deployed, so a project that has
+      // not installed it yet can still check in (with a warning at boot).
+      const port = new WinccoaEngPort(this.store.listDevices<Device>(), await engManagerAvailable());
       // Config deletes need the live configs to know which families to retire.
       const deletes = plan.items.filter((item) => item.kind === 'config' && item.op === 'delete').map((item) => item.name);
       const previousConfigs = deletes.length > 0 ? (await this.readConfigs(deletes)) : {};
-      const report = await applyPlan(plan, port, { dryRun: dryRun === true, previousConfigs });
+      // `recreate` is DESTRUCTIVE and opt-in per request: without it an existing type is
+      // changed in place and an existing datapoint is left alone (only its configs are
+      // written), which is what keeps a running project's datapoints and their history.
+      const report = await applyPlan(plan, port, { dryRun: dryRun === true, previousConfigs, recreate: recreate === true });
       res.status(200).json(report);
     } catch (error) {
       res.status(500).json({ ok: false, error: describeError(error) });
@@ -1370,16 +2318,53 @@ export class EngController {
     const dps: LiveSnapshot['dps'] = [];
     for (const typeName of wanted) {
       try {
-        types.push({ typeName, structure: structureOf(w.dpTypeGet(typeName)) });
-      } catch {
-        continue; // unknown type (e.g. a workspace type not created yet)
-      }
-      for (const dp of (w.dpNames('*', typeName) ?? []) as string[]) {
-        dps.push({ dpName: String(dp).replace(/\.$/, ''), dpType: typeName });
+        this.readTypeInto(w, typeName, types, dps);
+      } catch (error) {
+        // ONE type must never blank the page. This read feeds the first paint (and the plan), so
+        // an unexpected failure on a single type used to surface as "could not load" with every
+        // panel empty — the symptom of the `dpNames` error 76 below. Skipped, logged, and the
+        // rest of the project is still read.
+        console.warn(`engController: live read of type '${typeName}' failed:`, describeError(error));
       }
     }
     const configs = dpes && dpes.length > 0 ? await this.readConfigs(dpes) : {};
     return { types, dps, configs };
+  }
+
+  /** One type of the live read: its structure, and the datapoints that carry it. */
+  private readTypeInto(
+    w: ReturnType<typeof win>,
+    typeName: string,
+    types: LiveSnapshot['types'],
+    dps: LiveSnapshot['dps']
+  ): void {
+    // Does the project HAVE this type? Asked first, because neither read below is legal
+    // otherwise: `dpNames('*', <unknown type>)` raises WinCC OA error 76 ("Invalid argument …
+    // no such type"), which is exactly what a model targeting a type nobody created yet
+    // produced once the datapoint listing stopped being skipped — and that error reached the
+    // page as a failed load.
+    if (!typeExistsIn(w, typeName)) return; // a workspace/model type not created yet
+    try {
+      types.push({ typeName, structure: structureOf(w.dpTypeGet(typeName)) });
+    } catch (error) {
+      // It exists and its structure could not be read: worth saying, and it must NOT skip the
+      // datapoint listing — doing so reported every existing datapoint of the type as
+      // "to create".
+      console.warn(`engController: dpTypeGet('${typeName}') failed although the type exists:`, describeError(error));
+    }
+    let liveDps: string[] = [];
+    try {
+      liveDps = ((w.dpNames('*', typeName) ?? []) as string[]).map(String);
+    } catch (error) {
+      console.warn(`engController: dpNames('*','${typeName}') failed:`, describeError(error));
+    }
+    for (const dp of liveDps) {
+      // BARE name: `dpNames` answers with the SYSTEM PREFIX (`System1:Z01_FOUR002.`) as soon as
+      // the project is named or distributed, while a workspace holds `Z01_FOUR002`. Left
+      // prefixed, every existing datapoint failed to match its workspace entry and the diff
+      // reported it as "to create" — a datapoint that exists, queued for creation.
+      dps.push({ dpName: bareDpName(dp), dpType: typeName });
+    }
   }
 
   /**

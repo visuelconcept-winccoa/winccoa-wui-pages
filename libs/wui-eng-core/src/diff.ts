@@ -196,6 +196,11 @@ export function liveScopeOf(workspace: Workspace): { types: string[]; dpes: stri
     if (key.startsWith('cfg:')) dpes.add(key.slice('cfg:'.length));
   }
   const types = new Set<string>(workspace.types.map((type) => type.typeName));
+  // The types of the workspace's DATAPOINTS too, even when the type itself is not part of the
+  // workspace — which is exactly the case of a model that PARAMETERISES an existing DP type.
+  // Without them the live read never lists those datapoints, and the diff reports datapoints
+  // that exist in the project as "to create".
+  for (const dp of workspace.dps) types.add(dp.dpType);
   for (const key of Object.keys(workspace.baseline)) {
     if (key.startsWith('type:')) types.add(key.slice('type:'.length));
   }

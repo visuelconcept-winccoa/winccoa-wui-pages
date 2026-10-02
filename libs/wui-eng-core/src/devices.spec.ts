@@ -8,7 +8,16 @@
 import { describe, expect, it } from 'vitest';
 import {
   CONN_STATE,
+  DRIVER_TYPES_BY_PROTOCOL,
+  OPCUA_FLAG_BIT,
+  SIMULATION_DRIVER_TYPE,
+  driverFitsProtocol,
+  OPCUA_MESSAGE_MODE_CODE,
+  OPCUA_POLICY_CODE,
+  PROTOCOLS,
   PROTOCOL_PARAMS,
+  applyFlagBits,
+  connectionNameOf,
   connectionVerdict,
   deviceStateOf,
   statesUnreadable,
@@ -20,6 +29,7 @@ import {
   draftFromDevice,
   emptyDraft,
   normalizeDevice,
+  opcuaSecurityWrite,
   uniqueDeviceId,
   validateDevice,
   type DeviceDraft
@@ -79,8 +89,14 @@ describe('validateDevice', () => {
     expect(validateDevice(draft({ id: 's7-four1', name: 'Autre' }), existing).map((p) => p.code)).toContain('device.id-taken');
   });
 
-  it('requires at least one access mode', () => {
-    expect(validateDevice(draft({ accessModes: [] })).map((p) => p.code)).toContain('device.no-access-mode');
+  it('DERIVES the access mode from the protocol — whatever the draft claims', () => {
+    // The checkboxes are gone: the protocol is the single declaration, and the
+    // book's interface protocol still decides the candidate at generation.
+    expect(normalizeDevice(draft({ protocol: 's7plus', accessModes: [] })).accessModes).toEqual(['s7plus']);
+    expect(normalizeDevice(draft({ protocol: 'modbus', accessModes: ['opcua', 's7'], connection: { ip: '10.0.0.5' } })).accessModes).toEqual([
+      'modbus'
+    ]);
+    expect(blockingProblems(validateDevice(draft({ accessModes: [] })))).toEqual([]);
   });
 
   it('requires the protocol\'s REQUIRED parameters, and names the missing one', () => {
@@ -178,6 +194,130 @@ describe('normalizeDevice', () => {
   });
 });
 
+describe('driverFitsProtocol — which driver may serve which protocol', () => {
+  it('NEVER offers the simulation driver, for any protocol', () => {
+    // The vendor's own library treats SIM as matching every driver type, so it would
+    // otherwise pass every filter — and a simulated address reads plausible lies.
+    for (const protocol of PROTOCOLS) {
+      expect(driverFitsProtocol('SIM', protocol), protocol).toBe(false);
+      expect(driverFitsProtocol('  sim ', protocol), protocol).toBe(false);
+    }
+  });
+
+  it('keeps only the VERIFIED type where the protocol has one', () => {
+    expect(driverFitsProtocol('OPCUAC', 'opcua')).toBe(true);
+    expect(driverFitsProtocol('S7PLUS', 'opcua')).toBe(false);
+    expect(driverFitsProtocol('S7PLUS', 's7plus')).toBe(true);
+    expect(driverFitsProtocol('OPCUAC', 's7plus')).toBe(false);
+    // Case and padding come from a dpGet, not from a form.
+    expect(driverFitsProtocol('opcuac', 'opcua')).toBe(true);
+  });
+
+  /**
+   * No `DT` string could be verified for the classic S7 and Modbus drivers, so those
+   * protocols EXCLUDE on proof instead of including on a guess: a driver known to
+   * belong elsewhere is dropped, everything else stays offerable.
+   */
+  it('excludes the proven-foreign drivers where the protocol DT is unknown', () => {
+    for (const protocol of ['s7', 'modbus'] as const) {
+      expect(driverFitsProtocol('OPCUAC', protocol), protocol).toBe(false);
+      expect(driverFitsProtocol('S7PLUS', protocol), protocol).toBe(false);
+      expect(driverFitsProtocol('SIM', protocol), protocol).toBe(false);
+      // An unrecognised type is a candidate — it may well BE the Modbus driver.
+      expect(driverFitsProtocol('MODBUS', protocol), protocol).toBe(true);
+      expect(driverFitsProtocol('S7', protocol), protocol).toBe(true);
+    }
+  });
+
+  it('offers a driver whose type could NOT be read — absence of evidence is not evidence', () => {
+    for (const protocol of PROTOCOLS) expect(driverFitsProtocol('', protocol), protocol).toBe(true);
+  });
+
+  it('states only the driver types it has actually verified', () => {
+    // A guard against a future "helpful" addition from memory: these two are the
+    // only mappings the installation could confirm (see the constant's comment).
+    expect(DRIVER_TYPES_BY_PROTOCOL).toEqual({ opcua: ['OPCUAC'], s7plus: ['S7PLUS'] });
+    expect(SIMULATION_DRIVER_TYPE).toBe('SIM');
+  });
+});
+
+describe('OPC UA connection security', () => {
+  const opcua = (connection: Record<string, string | number | boolean> = {}): DeviceDraft =>
+    draft({ protocol: 'opcua', accessModes: ['opcua'], connection: { server: 'Srv', ...connection } });
+
+  it('refuses a half-declared policy/mode pair — the standard panel forces them together', () => {
+    for (const connection of [
+      { securityPolicy: 'Basic256Sha256' },
+      { securityPolicy: 'Basic256Sha256', messageMode: 'None' },
+      { messageMode: 'Sign' },
+      { securityPolicy: 'None', messageMode: 'SignAndEncrypt' }
+    ]) {
+      const problems = validateDevice(opcua(connection));
+      expect(blockingProblems(problems).map((p) => p.code), JSON.stringify(connection)).toContain('device.security-mismatch');
+    }
+    for (const connection of [
+      {},
+      { securityPolicy: 'None' },
+      { securityPolicy: 'None', messageMode: 'None' },
+      { securityPolicy: 'Basic256Sha256', messageMode: 'Sign' },
+      { securityPolicy: 'Aes256Sha256RsaPss', messageMode: 'SignAndEncrypt' }
+    ]) {
+      expect(blockingProblems(validateDevice(opcua(connection))), JSON.stringify(connection)).toEqual([]);
+    }
+  });
+
+  it('ADVISES (does not block) a password without a user — anonymous login sends none', () => {
+    const problems = validateDevice(opcua({ password: 'secret' }));
+    expect(problems.map((p) => p.code)).toContain('device.password-without-user');
+    expect(blockingProblems(problems)).toEqual([]);
+    expect(validateDevice(opcua({ password: 'secret', user: 'op' })).map((p) => p.code)).not.toContain('device.password-without-user');
+  });
+
+  it('NEVER persists the secret — normalizeDevice strips the password, keeps the user', () => {
+    const device = normalizeDevice(opcua({ password: 'secret', user: 'op' }));
+    expect(device.connection).not.toHaveProperty('password');
+    expect(device.connection).toMatchObject({ user: 'op' });
+    expect(JSON.stringify(device)).not.toContain('secret');
+  });
+
+  it('keeps a certificate bit as stated, and keeps silence distinct from false', () => {
+    const set = normalizeDevice(opcua({ ignoreInvalidCert: true }));
+    const cleared = normalizeDevice(opcua({ ignoreInvalidCert: 'false' }));
+    const silent = normalizeDevice(opcua({}));
+    expect(set.connection).toMatchObject({ ignoreInvalidCert: true });
+    expect(cleared.connection).toMatchObject({ ignoreInvalidCert: false });
+    expect(silent.connection).not.toHaveProperty('ignoreInvalidCert');
+  });
+
+  it('opcuaSecurityWrite carries ONLY what is declared, with the vendor codes', () => {
+    expect(opcuaSecurityWrite()).toBeNull();
+    expect(opcuaSecurityWrite({ server: 'Srv', endpoint: 'opc.tcp://x' })).toBeNull();
+    expect(opcuaSecurityWrite({ user: 'op' })).toEqual({ user: 'op', flagBits: {} });
+    // The codes are the `_OPCUAServer` appendix's own (help `opc_ua_c_internaldp`).
+    expect(OPCUA_POLICY_CODE).toEqual({ None: 0, Basic128Rsa15: 2, Basic256: 3, Basic256Sha256: 4, Aes128Sha256RsaOaep: 5, Aes256Sha256RsaPss: 6 });
+    expect(OPCUA_MESSAGE_MODE_CODE).toEqual({ None: 0, Sign: 1, SignAndEncrypt: 2 });
+    expect(opcuaSecurityWrite({ securityPolicy: 'Basic256Sha256', messageMode: 'SignAndEncrypt' })).toEqual({
+      policy: 4,
+      messageMode: 2,
+      flagBits: {}
+    });
+    // Policy "None" is a DECLARATION (write 0), not an absence.
+    expect(opcuaSecurityWrite({ securityPolicy: 'None' })).toEqual({ policy: 0, flagBits: {} });
+    expect(opcuaSecurityWrite({ ignoreInvalidCert: true, allowUnsecured: false })).toEqual({ flagBits: { 9: true, 8: false } });
+  });
+
+  it('applyFlagBits is read-modify-write: undeclared bits survive', () => {
+    // 257 = bits 0 + 8 set by someone else (register nodes + allow unsecured).
+    expect(applyFlagBits(257, { 9: true })).toBe(257 | 512);
+    // 65535 = all 16 panel bits set; clearing bit 9 (512) leaves 65023.
+    expect(applyFlagBits(65_535, { 9: false })).toBe(65_023);
+    expect(applyFlagBits(23, {})).toBe(23);
+    // Every studio bit is in the panel's 8–15 range.
+    for (const bit of Object.values(OPCUA_FLAG_BIT)) expect(bit).toBeGreaterThanOrEqual(8);
+    for (const bit of Object.values(OPCUA_FLAG_BIT)) expect(bit).toBeLessThanOrEqual(15);
+  });
+});
+
 describe('PROTOCOL_PARAMS', () => {
   it('declares parameters for every protocol the form offers', () => {
     for (const [protocol, specs] of Object.entries(PROTOCOL_PARAMS)) {
@@ -187,8 +327,8 @@ describe('PROTOCOL_PARAMS', () => {
     }
   });
 
-  it('starts a blank draft on the chosen protocol, with it as the access mode', () => {
-    expect(emptyDraft('modbus')).toMatchObject({ protocol: 'modbus', accessModes: ['modbus'], name: '', bookIds: [] });
+  it('starts a blank draft on the chosen protocol (the access mode derives from it)', () => {
+    expect(emptyDraft('modbus')).toMatchObject({ protocol: 'modbus', name: '', bookIds: [] });
   });
 });
 
@@ -334,5 +474,23 @@ describe('withDeviceStates / statesUnreadable', () => {
   it('deviceStateOf carries the live fields and nothing else', () => {
     const device = { ...registry()[1], stateSource: 'connstate' as const, stateConnection: '_x' } as Device;
     expect(deviceStateOf(device)).toEqual({ id: 'b', state: 'connected', stateSource: 'connstate', stateConnection: '_x', stateCode: 257 });
+  });
+});
+
+/**
+ * The name an `_address` reference carries for this equipment. It is the DECLARED
+ * connection, because that is what the project holds; the display name only answers
+ * when nothing was declared, and neither of them is the catalog's browse connection.
+ */
+describe('connectionNameOf', () => {
+  it('takes the declared server, without its leading underscore', () => {
+    expect(connectionNameOf({ name: 'Four 3', connection: { server: '_Cellule4' } })).toBe('Cellule4');
+    expect(connectionNameOf({ name: 'Four 3', connection: { server: 'Cellule4' } })).toBe('Cellule4');
+  });
+
+  it('falls back to the display name, then to nothing at all', () => {
+    expect(connectionNameOf({ name: 'Four3', connection: { endpoint: 'opc.tcp://x:4840' } })).toBe('Four3');
+    expect(connectionNameOf({ name: '  ', connection: {} })).toBeUndefined();
+    expect(connectionNameOf(undefined)).toBeUndefined();
   });
 });

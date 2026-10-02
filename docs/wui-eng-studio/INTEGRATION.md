@@ -19,15 +19,23 @@
     "routeFile": "engRoute",
     "srcFiles": [
       "engController.ts", "engRoute.ts", "engStore.ts",
-      "engOpcuaBrowse.ts", "appSecurityGuard.ts"
+      "engOpcuaBrowse.ts", "engS7PlusBrowse.ts", "engVrpc.ts", "appSecurityGuard.ts"
     ],
+    "ctrlManagers": ["wui/engStudioService.ctl"],
     "vendorPackages": ["@visuelconcept/wui-eng-core"]
-  }
+  },
+  "managers": ["s7plusBrowse"]
 }
 ```
 
-- No dedicated manager — the backend runs against `WsjServerGlobal.winccoa`
-  (like para / tag-importer).
+- The backend itself runs against `WsjServerGlobal.winccoa` (like para /
+  tag-importer) — **except the S7Plus browse**, which goes through the dedicated
+  `s7plusBrowse` JavaScript manager (`backend/managers/s7plusBrowse/`, MSA vRPC
+  service `S7PlusBrowse`). The driver's browse slot is ONE element per connection,
+  so a walk's requests must be serialised by a single long-lived owner — which a
+  webserver, restarted on every deploy, cannot be. There is no direct-API fallback
+  on purpose; the routes report the manager's absence instead. See
+  [S7PLUS-BROWSE.md](./S7PLUS-BROWSE.md).
 - `vendorPackages` — the backend `engController` imports the **pure**
   `@visuelconcept/wui-eng-core` (the shared diff/apply/builders). It is vendored
   next to the `srcFiles` at deploy time, exactly as page **kits** are vendored
@@ -42,19 +50,27 @@
 | GET  | `/roles` | — | the **caller's own** studio grants (what the UI gates on) |
 | GET  | `/devices` | `view` | the device registry, each device decorated with its **live connection state** (read, never stored — see below) |
 | GET  | `/devices/state` | `view` | the LIVE fields only (`{states: DeviceStateUpdate[]}`) — what the page's 5 s refresh polls |
-| POST | `/devices` `{device}` | `manage-devices` | **create** one device — the **server** derives the id → `201 {device, devices}` |
-| POST | `/devices/:id` `{device}` | `manage-devices` | **update** that device (`404` if unknown; the body's `id` is ignored) |
+| POST | `/devices` `{device}` | `manage-devices` | **create** one device — the **server** derives the id → `201 {device, devices, connectionProvision?}` |
+| POST | `/devices/:id` `{device}` | `manage-devices` | **update** that device (`404` if unknown; the body's `id` is ignored) — same `connectionProvision?` |
 | DELETE | `/devices/:id` | `manage-devices` | forget one device; **its books are kept** (the relation is N:N) |
 | PUT  | `/devices` `{devices}` | `manage-devices` | replace the whole registry (bulk provisioning / migration) |
 | GET  | `/connections` | `view` | the project's OPC UA connections (`_OPCUAServer`), browsable |
 | GET  | `/drivers` | `view` | every `_Driver<n>` with its `DT` and whether it runs — what the forms OFFER as `driverNumber` |
 | POST | `/browse/level` `{connection,nodeId?}` | `view` | **one level** of an address space: the server explorer, and the client-driven walk |
+| GET  | `/s7plus/health` | `view` | whether the `s7plusBrowse` manager answers, and which S7Plus drivers it sees running |
+| GET  | `/s7plus/connections` | `view` | the project's `_S7PlusConnection`s: state, configured `Config.StationName`, driver number |
+| POST | `/s7plus/projects` `{connection}` | `view` | the browsable TIA sources: the exports under `data/TIA_Projects` + the reserved online project |
+| POST | `/s7plus/stations` `{connection,project}` | `view` | the stations of one TIA project |
+| POST | `/s7plus/level` `{connection,item?,hmiVisibleOnly?}` | `view` | **one level** of an S7Plus station — the station explorer, and the client-driven walk |
 | GET  | `/books` | `view` | every address book, re-qualified (roles) minus the signals hidden by hand |
 | GET  | `/books/:id` | `view` | one book |
 | POST | `/books` `{bookId,name?,interface?}` | `manage-devices` | create an **empty** catalog (declare first, walk into it after) → `201` |
 | PUT  | `/books/:id` `{book}` | `manage-devices` | store a book the CLIENT built — the landing point of the progress-reporting walk |
-| POST | `/books/ingest` `{bookId,format,…}` | `manage-devices` | build a book from a file source (`simaticml` \| `xvm` \| `csv` \| `nodeset`) |
+| POST | `/books/ingest` `{bookId,format,…}` | `manage-devices` | build a book from a file source (`simaticml` \| `s7sym` \| `s7awl` \| `xvm` \| `csv` \| `nodeset`) |
+| POST | `/s7/probe` `{deviceId}`\|`{host,rack?,slot?}` | `view` | who answers at this address: CPU identity + negotiated PDU size, no block walk |
+| POST | `/books/:id/s7-inventory` `{deviceId}`\|`{host,…}` | `view` | read the CPU's **block directory** and cross-check this catalog against it — **writes nothing**, to neither the catalog nor the PLC |
 | POST | `/books/browse` `{bookId,connection,…}` | `manage-devices` | walk a LIVE OPC UA server into a book, **server-side in one call** (no progress) |
+| POST | `/books/browse-s7plus` `{bookId,connection,station?,…}` | `manage-devices` | same, for an S7-1200/1500 station (`station` defaults to the ONLINE marker) |
 | POST | `/books/:id/refresh` | `manage-devices` | re-read the source (re-browse when replayable), else re-run the rules |
 | POST | `/books/:id/roles` `{roles}` | `manage-devices` | persist the operator's **manual** role overrides |
 | POST | `/books/:id/access` `{access}` | `manage-devices` | persist **manual access overrides** (drives the address direction) |
@@ -118,8 +134,8 @@ is a statement about the machine only a driver may make.
 ```jsonc
 { "device": {
   "name": "Z09_Four2",            // must be a valid WinCC OA identifier: DP names derive from it
-  "protocol": "s7plus",           // opcua | s7 | s7plus | modbus
-  "accessModes": ["s7plus"],      // one candidate address is generated per mode
+  "protocol": "s7plus",           // opcua | s7 | s7plus | modbus — also decides the ACCESS MODE
+                                  // (accessModes is accepted but IGNORED: derived as [protocol])
   "connection": { "ip": "192.168.10.21", "rack": 0, "slot": 1 },
   "driverNumber": 3,              // WinCC OA manager number; required in practice outside OPC UA
   "pollGroup": "_EngStudio_Poll",
@@ -145,6 +161,60 @@ A refusal is `400 { error, problems }` where `problems` are the core's
 `EngWarning`s (`device.name-invalid`, `device.param-required`, …) — the same
 objects the form renders, so an API client can localise them the same way.
 `device.driver-recommended` is **advisory** and never blocks.
+
+**Connection provisioning.** When an **OPC UA** device declares a `server` the
+project has no connection for, the save **creates it**: the `_OPCUAServer`
+datapoint (the tag importer's proven write set — `ConnInfo` from the device's
+`endpoint`, no security), registered with `_OPCUA<n>` (`n` = the device's
+`driverNumber`, else the first running `OPCUAC` driver). The response then carries
+
+```jsonc
+"connectionProvision": {
+  "name": "Remplisseuse",     // as the device declares it (the _address reference)
+  "dp": "_Remplisseuse",      // present when the DP was created
+  "created": true,
+  "warnings": []              // e.g. no endpoint declared, no driver to register with
+}
+```
+
+`created: false` + `warnings` when the creation failed — the device save itself
+**never** fails on it. Only OPC UA is provisioned: the S7/S7Plus/Modbus connection
+config write sets are not verified in this repo, so those connections are still
+created on the WinCC OA side.
+
+**Connection security.** An OPC UA declaration may carry `user`, `password`,
+`securityPolicy`, `messageMode`, `clientCertificate` and the certificate-relaxation
+bits (`allowUnsecured`, `ignoreInvalidCert`, …, `ignoreBasicConstraints`) — the
+standard panel's own settings (`Config.AccessInfo`, `Config.Security.*`,
+`Config.Flags` bits 8–15, read-modify-write). Only what is declared is written.
+The `password` is **write-through**: pushed to the runtime via the vendor's own
+`drvsSecSetPassword` (one-shot `WCCOActrl`, secret in the child environment,
+encrypted with the project's driver certificate) and NEVER stored — neither in
+`devices.json` nor anywhere else the studio owns. The response then carries
+
+```jsonc
+"connectionSecurity": {
+  "applied": ["user", "policy", "mode", "flags", "password"],
+  "passwordSet": true,        // what Config.Password READS BACK, not a hope
+  "warnings": []              // e.g. no driver certificate → password refused
+}
+```
+
+Prerequisites for the password path: the project's **driver certificate** must
+exist (`_DriverSecurity.PublicKey` non-empty — create it once in System
+Management → Driver certificate; without it the password is refused with that
+exact warning, like the standard panel), `WINCCOA_PROJ` must point at the
+project (it already does wherever the store works), and the webserver user must
+be allowed to start `WCCOActrl` (found via the project config's `pvss_path`).
+Every project write of the page (this connection creation and security, plus
+datapoints, DP types, configs and poll groups) is performed by the **EngStudio
+CTRL manager** over MSA vRPC — `scripts/wui/engStudioService.ctl`, deployed AND
+registered in `config/progs` by `deploy-backend.mjs` (spec
+`backend.ctrlManagers`), then started in pmon. See
+[CTRL-MANAGER.md](./CTRL-MANAGER.md) for the service surface and the
+direct-API fallback. `GET /devices` decorates each OPC UA device with
+`passwordSet` (blob non-empty on the live connection), and `GET /health` reports
+`manager: {reachable, driverCertificate, …}`.
 
 **`POST /books/ingest`** — one shape per generator:
 
@@ -202,8 +272,8 @@ books/<bookId>.json          AddressBook (entries carry their resolved roles;
 books/<bookId>.roles.json    { <entryPath>: SignalRole }  — MANUAL overrides only
 books/<bookId>.access.json   { <entryPath>: 'r'|'w'|'rw' } — MANUAL overrides only
 books/<bookId>.excluded.json { <entryPath>: true }        — signals HIDDEN by hand
-models/<id>.json             ModelTemplate (structure + bindings — NOT the target,
-                             the zone or the equipment names: those differ per use)
+models/<id>.json             ModelTemplate (structure + bindings — NOT the target
+                             or the equipment names: those differ per use)
 workspaces/<name>.json       Workspace (incl. its check-out baseline)
 ```
 
@@ -232,9 +302,20 @@ without saying so.
   a **hard error**. Only `OPCUAC` is a verified `DT` value, so S7/Modbus devices
   must carry an explicit `driverNumber` — writing an address to the wrong driver
   breaks the binding *silently*, which is worse than refusing.
-- **Poll group** — a polled address needs one; the controller ensures
-  `_EngStudio_Poll` (type `_PollGroup`, active, 1000 ms) once per process, or the
-  device's own `pollGroup` when it declares one.
+- **Poll group** — a polled address needs one, and only a polled one gets it
+  (`_poll_group` is written exactly when the direction is polled). The controller
+  ensures the group the leaf names — the three the studio offers, `_Poll_Fast`
+  500 ms, `_Poll_Normal` 1 s, `_Poll_Slow` 10 s — else the device's own `pollGroup`,
+  else `_EngStudio_Poll` (type `_PollGroup`, active, 1000 ms), created once per
+  process. An existing group is never re-timed.
+- **OPC UA subscriptions** — a leaf acquired *spontaneously* names one, and the
+  studio only **lists** them (`_OPCUASubscription` datapoints, read for
+  `/api/eng/config-options`, the leading `_` stripped for the address). It never
+  creates or tunes one: the publishing interval, the sampling interval and the
+  deadband are attributes of that datapoint (`Config.RequestedPublishingInterval`,
+  `Config.MonitoredItems.DataChangeFilter.*`) and are a project-wide decision that
+  belongs in PARA. A project with no subscription therefore still works — those
+  leaves fall back to polling, with a warning naming each one.
 - **Config read-back** — 16 attributes per DPE (`configReadPaths`), read in
   batches of 40 DPEs with a per-DPE fallback when a batch fails (one absent DPE
   fails the whole `dpGet`). The raw → `DpeConfigs` mapping is in the core
@@ -260,11 +341,15 @@ the write routes.
 
 ## Language
 
-The page renders in EN / FR / DE. Set the element's `lang` attribute from the shell
-(`<wui-eng-studio lang="de_AT.utf8">` — WinCC OA locale identifiers are accepted) or
-let it resolve `?lang=` → `<html lang>` → `navigator.language` → English. A picker in
-the top bar switches it live. Core-generated warnings are localised too (structured
-`EngWarning` codes — see NOTES "Localisation: structured warnings").
+The page renders in EN / FR / DE. In the WinCC OA context the language follows the
+**user connection**: the page reads `localStorage['lang']` — the key the WebUI
+shell's own translation loader boots lit-translate from — so it needs no
+configuration and no `@wincc-oa/*` import. An explicit `lang` attribute on the
+element (`<wui-eng-studio lang="de_AT.utf8">`, WinCC OA locale identifiers
+accepted) still overrides it; outside the shell the resolution continues with
+`?lang=` (demo, screenshots) → `<html lang>` → `navigator.language` → English.
+There is no language picker in the UI. Core-generated warnings are localised too
+(structured `EngWarning` codes — see NOTES "Localisation: structured warnings").
 
 ## Prerequisites
 
@@ -281,6 +366,13 @@ the top bar switches it live. Core-generated warnings are localised too (structu
   reads the echoed `Browse.*` arrays (the tag importer's proven protocol), so the
   webserver needs write access to that connection datapoint. Browses of one
   connection are queued server-side; a level times out after 60 s.
+- **Classic S7 catalogs (S7-300/400)**: nothing — they are built from the STEP 7
+  exports (symbol table and/or AWL sources) and need no runtime at all.
+- **Checking a classic-S7 catalog against its CPU** (optional): the **`s7Browse`
+  JavaScript manager**, started, plus TCP reachability from the WinCC OA host to
+  the PLC on **port 102** (ISO-on-TCP) and the equipment's `ip`/`rack`/`slot`
+  filled in on its device form. Without the manager the studio hides the action
+  and everything else about S7 keeps working — see below.
 
 ## Deployment
 
@@ -316,6 +408,40 @@ package name inside a comment stays as written), `*.spec.ts` files are excluded 
 import vitest, which would break the webserver build), and a specifier left
 unresolved after the rewrite is reported as a warning rather than discovered on the
 customer's build. Same rule `tools/vendor-page.mjs` applies to the frontend.
+
+### The `s7Browse` manager (optional, for the classic-S7 online check)
+
+`tools/specs.json` → `managers: ["s7Browse"]`, so `deploy-backend.mjs` copies
+`backend/managers/s7Browse/` to `<project>/javascript/s7Browse/` and appends the
+idempotent progs line:
+
+```
+node             | manual |      30 |        3 |        5 |s7Browse/index.js
+```
+
+`manual` on purpose: the manager only answers requests from the studio, so an
+operator decides when a project may reach out to its PLCs. Start it in pmon — the
+deployer never starts a manager, that is a live-system action — and restart the
+webserver so the new routes are loaded.
+
+**Its absence is not a degradation.** The S7 catalogs come from the project's
+exports and are complete without it; only the online cross-check needs it, and the
+page **hides** that action rather than showing it fail. `GET /api/eng/health`
+reports it separately from the CTRL manager:
+
+```jsonc
+{ "manager":  { "reachable": true,  … },   // EngStudio CTRL — project writes
+  "s7Browse": { "reachable": false } }     // classic-S7 reader — optional
+```
+
+**What it can do, and cannot.** Its protocol client implements the S7comm
+block-directory subset only: connect, negotiate, read the system-status lists,
+count and list blocks, describe a block. **No variable read, no write, no upload,
+no run/stop** — so it cannot disturb a production PLC however it is called. That
+is why its two routes (`POST /s7/probe`, `POST /books/:id/s7-inventory`) take
+`view` rather than `manage-devices`: they read a CPU and store nothing, so they
+grant no more than the reads beside them. Full reference and verification status:
+[S7-BROWSING.md](./S7-BROWSING.md).
 
 ## Typecheck the backend without WinCC OA
 

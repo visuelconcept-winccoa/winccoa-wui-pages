@@ -26,6 +26,13 @@
  * one-line change (add the alias). Feed a real export to
  * `docs/wui-eng-studio/INTEGRATION.md` "inputs needed" to close this out.
  *
+ * One case is NOT a schema mismatch and is reported separately: Control Expert
+ * exports a **`<crypted>`** payload — the whole variables list as one hex blob —
+ * when the project or its sections are password-protected. The key is the
+ * project's, so nothing can be read; the reader says so instead of suggesting an
+ * alias (see `docs/wui-eng-studio/NOTES.md`, "The XVM reader and its unverified
+ * schema").
+ *
  * The engineering resolution (addresses → Modbus, unlocated/topological
  * exclusion, overlap detection) is SHARED with the CSV generator through
  * {@link entriesFromSchneiderVariables} — only the file reading differs.
@@ -60,6 +67,14 @@ const FIELD_ALIASES: Record<'name' | 'type' | 'address' | 'comment' | 'unit', st
   comment: ['comment', 'commentaire', 'description', 'desc', 'descriptivecomment'],
   unit: ['unit', 'unite', 'unité', 'eu', 'engineeringunit']
 };
+
+/** Case-insensitive lookup in the element census (keys keep their original case). */
+function findElement(elements: Record<string, number>, wanted: string): number | undefined {
+  for (const [tag, count] of Object.entries(elements)) {
+    if (tag.toLowerCase() === wanted) return count;
+  }
+  return undefined;
+}
 
 /** Result of reading an XVM/XSY document. */
 export interface XvmParseResult {
@@ -179,6 +194,16 @@ export function parseXvmVariables(xml: string): XvmParseResult {
     for (const child of node.children) walk(child);
   };
   walk(root);
+
+  if (variables.length === 0 && findElement(elements, 'crypted') !== undefined) {
+    warnings.push(
+      warn(
+        WARNING_CODES.schneider.XVM_CRYPTED,
+        'The export is ENCRYPTED (<crypted> payload) — Control Expert writes it that way when the project or its sections are password-protected. No variable can be read. Re-export the variables from an unprotected project (or remove the protection first).'
+      )
+    );
+    return { variables, warnings, elements };
+  }
 
   if (variables.length === 0) {
     const seen = Object.entries(elements)
