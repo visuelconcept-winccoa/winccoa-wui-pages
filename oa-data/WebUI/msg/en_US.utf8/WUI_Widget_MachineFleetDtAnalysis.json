@@ -1,0 +1,36 @@
+{
+  "Label": "Machine downtime analysis",
+  "Description": "Downtime of one fleet machine over the dashboard time range, decomposed by stop cause: availability, MTBF and MTTR, Pareto chart and table (archived state and cause datapoints).",
+  "Settings": {
+    "StateDp": "Machine state (archived)",
+    "CauseDp": "Stop cause (archived)",
+    "Mapping": "State mapping and stop causes",
+    "StateMapping": "State mapping",
+    "StateMappingHint": "Bind the atelier configuration datapoint (MachineFleet3D_<atelier>.json) or paste a mapping JSON. Empty = fleet standard (0 = stop, 1 = production, 2 = fault, 3 = maintenance).",
+    "MachineId": "Machine id",
+    "MachineIdHint": "Id of the machine inside the atelier configuration: its own state mapping is used.",
+    "StateMappingId": "State mapping id",
+    "StateMappingIdHint": "Id of the mapping to use inside the atelier configuration when no machine id is given. Empty = first mapping.",
+    "StopCauses": "Stop-cause catalog",
+    "StopCausesHint": "Bind MachineFleet3D_StopCauses.json. The catalog gives each code its label AND its planned / unplanned classification; without it every stop counts as unplanned.",
+    "Analysis": "Analysis defaults",
+    "StopClass": "Stop class",
+    "Metric": "Metric",
+    "TopN": "Causes shown",
+    "ShowKpis": "KPI strip",
+    "ShowTable": "Table"
+  },
+  "Class": {
+    "Unplanned": "Unplanned stops",
+    "Planned": "Planned stops"
+  },
+  "Metric": {
+    "Downtime": "Cumulated downtime",
+    "Frequency": "Frequency (occurrences)"
+  },
+  "Top": {
+    "Five": "Top 5",
+    "Ten": "Top 10",
+    "All": "All"
+  }
+}

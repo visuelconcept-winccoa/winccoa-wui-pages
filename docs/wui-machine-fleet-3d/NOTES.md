@@ -48,7 +48,7 @@ DP and type provisioning/CRUD via the backend's **PARA REST API** (see Backend),
 | `MachineFleet3D_Closures` | 1 JSON DP | Non-working days / closures (consumed by kpiCalc). |
 | `MachineFleet3D_Kpi` | See kpiCalc | One DP per computed KPI (1 per machine×KPI). |
 | `MachineSim` (1 per machine) | See machineSim | Simulation DPs (state + cause + parameters). |
-| `AI_Assistant_Config` | Struct String (`provider`, `model`, `token`, `mcpServers` JSON, `webSearch` `'true'`/`'false'`, `effort` `low…max`, `maxTokens`) | AI assistant config (token stored here, never shipped). The last three are opt-out: an empty element means web search ON, effort `medium`, budget 32768. |
+| `AI_Assistant_Config` | Struct String (`provider`, `model`, `token`, `mcpServers` JSON, `webSearch` `'true'`/`'false'`, `effort` `low…max`, `maxTokens`, `maxToolRounds`) | AI assistant config (token stored here, never shipped). The last four are opt-out: an empty element means web search ON, effort `medium`, budget 32768, 12 tool rounds. |
 
 - **Workshop persistence**: **debounced** save (`wui:save`) from the 3D view. DP value
   writes via **REST `/api/para/dp/set`** (the WebSocket `dpSet` of `OaRxJsApi` is
@@ -131,13 +131,35 @@ pushed into the 3D bubble. `KpiType = 'TRS'|'MTBF'|'MTTR'` (TRS in `%`, MTBF/MTT
   over the machine's bound datapoints with `strict-scope` so a machine with no bound
   datapoint shows nothing rather than the whole plant. See
   [docs/wui-alarms/INTEGRATION.md](../wui-alarms/INTEGRATION.md).
-- **Real-time = `dpConnect`** (no polling); a change of the state DP reloads
-  (debounced) the archived history to keep the Gantt live.
+- **Opening = the data as it stands now** (`init`): the live values are seeded and the
+  DP list validated FIRST, then the history is queried ONCE. Never make the first paint
+  wait for a state transition — a machine can hold the same state for minutes — and
+  issuing the history query after the seed means it goes out on a channel that has just
+  answered.
+- **Real-time = `dpConnect`** on the machine's **state**, **stop cause** and bound
+  parameter DPs. A **change** of the state *or* of the cause reloads (debounced 1.5 s)
+  the archived history, so the Gantt AND the Pareto follow a transition and a cause
+  assignment (which re-classifies the whole stop, hence the Pareto). Only a real change
+  counts (`liveText` vs `lastState`/`lastCause`, both seeded at open): the opening
+  `dpConnect` answer repeats the current values and machineSim rewrites state+cause
+  every 30 s whether they moved or not — neither deserves a pair of archive queries.
+  The candidate DPs are `dpGet`-validated before the subscription (that call is also
+  the seed): `dpConnect` fails as a **block**, so one stale binding used to take the
+  state stream down with it and silently freeze the Gantt.
+  On top of the event-driven reload, a **30 s tick** re-queries silently (no spinner)
+  while the window ends at "now" — a transition cannot make the *running* segment grow
+  nor the ongoing downtime accumulate in the Pareto. The tick stands down on a shifted
+  or past-custom window (`isLiveWindow`) and on a hidden tab. Concurrent triggers are
+  serialised by a generation token, so a superseded query never overwrites a fresher
+  result.
+  ⚠️ The Pareto (and each segment's cause) can only follow the cause **if `.cause` is
+  NGA-archived** — see the archiving pitfall below.
 - Gantt: segments from the state DP's archived history (`resolveState` + `STATE_COLORS`),
   each segment carries its cause (via the cause DP's history + `causeAt` + `formatStopCause`)
-  and a bubble on hover. Its **CSV export timestamps to the second**
-  (`formatDateTimeSec`, `dd/mm/yyyy hh:mm:ss`) — at minute precision the segment
-  durations cannot be recomputed in Excel; the on-screen bubble stays at the minute.
+  and a bubble on hover. Both the **hover bubble and the CSV export timestamp to the
+  second** (`formatDateTimeSec`, `dd/mm/yyyy hh:mm:ss`): a state can flip inside one
+  minute, so at minute precision adjacent segments read as starting and ending at the
+  same instant and the durations cannot be recomputed in Excel.
 - Pareto: `analyseStopCauses` (single-machine) → unplanned → sort by downtime/frequency,
   Top 5/10/All, cumulative/frequency metric, planned/unplanned class, CSV export (`;`+BOM),
   print CSS. "Analyze" button → opens `/fleet-stops` (new tab) with the
@@ -247,9 +269,11 @@ All writes are best-effort (never throw into the edit), no-op when the store is 
   the runtime singleton is resolved; `canPublish` is **async** → subscribe to the Observable). In
   view-only: edit button → eye, all mutations (rename/delete/move/import/
   save-view/GLB) hidden.
-- **Archiving**: on this project the `MachineSim.state` DPE **is** NGA-archived but `.cause`
-  **is NOT** (the `dpTypeChange` Int→String probably lost its archive config) →
-  no cause history until `.cause` archiving is re-enabled.
+- **Archiving**: `MachineSim.state` **and** `.cause` are both NGA-archived on the demo
+  project (re-verified 2026-08-12 — `.cause` had lost its config after the
+  `dpTypeChange` Int→String and has since been re-enabled). Without `.cause` archiving
+  there is no cause history at all: no cause on the Gantt segments, and a Pareto with
+  nothing but the fallback bucket.
   `FleetStore.listArchiveGroups()` only returns the **active** `_NGA_Group` groups
   (`.active === true`).
 - **Legacy "0–5" causes**: old data from the Int era (codes 1–5 + ''→0) may
@@ -308,3 +332,11 @@ All OPEN until an admin assigns groups in `/app-security`
 
 Read-only data (3D scene, cards, machine popups, dashboards, exports) is never
 unrendered by `edit`/`ai` — only by `view`.
+
+## Dashboard widgets (added 2026-09)
+
+The Gantt and the stop-cause Pareto of `mf-machine-dashboard` also exist as two
+**WinCC OA dashboard widgets** (`machine-fleet-gantt`, `machine-fleet-dt-analysis`,
+source `oa-data/WebUI/widgets-v2/MachineFleet/`), fed by the dashboard's historic
+`data-point` contexts instead of `dpGetPeriod`. See
+[docs/machine-fleet-widgets/README.md](../machine-fleet-widgets/README.md) and its NOTES.

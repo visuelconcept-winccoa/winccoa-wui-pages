@@ -1,0 +1,8 @@
+{
+  "WidgetSelector": {
+    "Folders": {
+      "MachineFleet": "Maschinenpark",
+      "Alarms": "Alarme"
+    }
+  }
+}
