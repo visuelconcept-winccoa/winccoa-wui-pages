@@ -13,7 +13,7 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
-import { hasRole$ } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$ } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import { MSG, checkedAtMsg, localize, localizeDir } from '../i18n.js';
 import { endpoint, type VncConnection, type VncStatus } from '../types.js';
 

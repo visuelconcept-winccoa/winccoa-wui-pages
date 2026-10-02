@@ -2,7 +2,7 @@
 
 WinCC OA WebUI page module, **Tier 3** (one small backend route, no manager).
 Route `/alarms`, component `wui-alarms`. The whole view lives in the shared kit
-**`@visuelconcept/wui-alarms-core`**, which other pages embed.
+**`@visuelconcept-winccoa/wui-alarms-core`**, which other pages embed.
 
 Ported from the alarms screen of the `winccoa-ng-scada` reference product
 (`wui-scada/screens/sc-alarms.ts` + `wui-scada-core/alarms/*`): the reading of the

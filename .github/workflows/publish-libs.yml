@@ -1,0 +1,53 @@
+# Publish the libs whose version changed (= is not on GitHub Packages yet) as npm
+# packages @visuelconcept-winccoa/wui-* of the visuelconcept-winccoa organisation.
+#
+# - push to main touching a lib's package.json → publish, kits before pages;
+# - pull request → the same checks + `npm publish --dry-run` (shows what would ship);
+# - manual run (Actions → Publish libs → Run workflow), dry-run optional.
+#
+# Auth: the repo's own GITHUB_TOKEN (packages: write). The scope is the
+# organisation owning this repo, and each package's "repository" points here, so
+# GitHub links the packages to this repo. A package created by hand beforehand
+# must grant this repo write access (Package settings → Manage Actions access).
+name: Publish libs
+
+on:
+  push:
+    branches: [main]
+    paths: ['libs/*/package.json']
+  pull_request:
+    paths: ['libs/*/package.json']
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Check only, publish nothing
+        type: boolean
+        default: false
+
+concurrency:
+  group: publish-libs-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    # A fork's pull request gets a read-only token without package access.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://npm.pkg.github.com
+          scope: '@visuelconcept-winccoa'
+
+      - name: Publish changed libs
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ github.event_name == 'pull_request' || inputs.dry-run }}
+        run: node .github/scripts/publish-changed.mjs $([ "$DRY_RUN" = "true" ] && echo --dry-run)

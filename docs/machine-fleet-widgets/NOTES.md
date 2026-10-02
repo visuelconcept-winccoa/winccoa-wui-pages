@@ -1,6 +1,6 @@
 # machine-fleet-widgets — architecture notes & pitfalls
 
-Two WinCC OA **dashboard widgets** (`oa-data/WebUI/widgets-v2/MachineFleet/`) — a
+Two WinCC OA **dashboard widgets** (`libs/wui-machine-fleet-3d/oa-data/WebUI/widgets-v2/MachineFleet/`) — a
 port of the Gantt and Pareto bands of the fleet's `mf-machine-dashboard` into the
 dashboard's widget contract. Pure frontend, plain ES modules (no build step: the
 files are served as-is from `/data/WebUI/…`), shared-bundle imports only.
@@ -73,5 +73,7 @@ not exist in the widget contract.
   server deep-merges with the OA catalog.
 - **Service worker**: after a deploy, `Clear site data` (not Ctrl+Shift+R) or the
   palette keeps the cached widget list.
-- **oa-data is trackable**: `.gitignore` only excludes `oa-data/README.md`; the
-  widgets are versioned here and copied by `deploy:oa-data`.
+- **Where they live**: the root `/oa-data/` is git-ignored (a leftover of the former
+  runtime workspace), so the widgets are versioned inside the module that owns them,
+  `libs/wui-machine-fleet-3d/oa-data/WebUI/`, and published with its package. Copying
+  them into `<project>/data/WebUI/` is still a manual step — see README.

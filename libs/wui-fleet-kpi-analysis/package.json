@@ -1,14 +1,24 @@
 {
-  "name": "@visuelconcept/wui-fleet-kpi-analysis",
+  "name": "@visuelconcept-winccoa/wui-fleet-kpi-analysis",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Fleet KPI Analysis — standalone WinCC OA WebUI page: per-machine availability-TRS over a period from archived histories, with closures (opening-time) handling and table + bar views.",
-  "author": { "name": "Visuel Concept" },
-  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page"],
+  "author": {
+    "name": "Visuel Concept"
+  },
+  "keywords": [
+    "OpenArchitecture",
+    "WinCCOA",
+    "dashboard",
+    "webcomponents",
+    "standalone-page"
+  ],
   "license": "MIT",
   "dependencies": {
-    "@visuelconcept/wui-kit": "*",
-    "@visuelconcept/wui-fleet-core": "*"
+    "@visuelconcept-winccoa/wui-fleet-core": "^0.1.0",
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0",
+    "@visuelconcept-winccoa/wui-para": "^0.1.0",
+    "@visuelconcept-winccoa/wui-app-security": "^0.1.0"
   },
   "peerDependencies": {
     "lit": "*",
@@ -16,20 +26,84 @@
     "tsyringe": "*",
     "echarts": "*",
     "@etm-professional-control/oa-rx-js-api": "*",
-    "@wincc-oa/wui-shared": "*",
-    "@wincc-oa/wui-data-selector-data": "*",
-    "@wincc-oa/wui-models": "*",
+    "@wincc-oa/wui-i18n-shared": "*",
     "@wincc-oa/wui-ix-wrappers": "*",
-    "@wincc-oa/wui-oarxjs-context": "*"
+    "@wincc-oa/wui-models": "*",
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-shared": "*"
   },
-  "exports": { "./*": { "types": "./types/*", "import": "./*" } },
+  "exports": {
+    "./*": {
+      "types": "./types/*",
+      "import": "./*"
+    }
+  },
   "wuiPage": {
+    "requires": [
+      "para",
+      "app-security"
+    ],
     "route": "/fleet-kpi",
     "routeId": "fleet-kpi",
     "component": "wui-fleet-kpi-analysis",
     "module": "/data/dashboard-wc/pages/fleet-kpi-analysis.js",
     "hidden": true,
     "tier": 1,
-    "backend": { "managers": ["kpiCalc (optional, server-computed TRS)"] }
+    "backend": {
+      "managers": [
+        "kpiCalc"
+      ],
+      "notes": [
+        "kpiCalc (optional, server-computed TRS)"
+      ]
+    }
+  },
+  "peerDependenciesMeta": {
+    "lit": {
+      "optional": true
+    },
+    "rxjs": {
+      "optional": true
+    },
+    "tsyringe": {
+      "optional": true
+    },
+    "echarts": {
+      "optional": true
+    },
+    "@etm-professional-control/oa-rx-js-api": {
+      "optional": true
+    },
+    "@wincc-oa/wui-i18n-shared": {
+      "optional": true
+    },
+    "@wincc-oa/wui-ix-wrappers": {
+      "optional": true
+    },
+    "@wincc-oa/wui-models": {
+      "optional": true
+    },
+    "@wincc-oa/wui-oarxjs-context": {
+      "optional": true
+    },
+    "@wincc-oa/wui-shared": {
+      "optional": true
+    }
+  },
+  "files": [
+    "src",
+    "managers",
+    "menu.fragment.jsonc",
+    "!**/*.spec.ts",
+    "!**/*.test.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/visuelconcept-winccoa/winccoa-wui-pages.git",
+    "directory": "libs/wui-fleet-kpi-analysis"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
   }
 }

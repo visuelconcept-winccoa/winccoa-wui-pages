@@ -6,7 +6,7 @@
  * (name + description only — the diagram is drawn on the canvas). Emits
  * `wui:save` with the updated {@link Network} and `wui:cancel` on dismiss.
  */
-import { dialogCore } from '@visuelconcept/wui-kit/ui/dialog-styles.js';
+import { dialogCore } from '@visuelconcept-winccoa/wui-kit/ui/dialog-styles.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';

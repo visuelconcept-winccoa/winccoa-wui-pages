@@ -13,7 +13,7 @@ the live project — in bulk, previewed, transactional.
 > **Status: v0.2 — workflow-complete on demo data, backend implemented.** The whole
 > page runs end-to-end WITHOUT a WinCC OA runtime via an in-memory demo gateway (the
 > source of the screenshots below). The pure engineering domain
-> (`@visuelconcept/wui-eng-core`) is unit-tested (no runtime) and the
+> (`@visuelconcept-winccoa/wui-eng-core`) is unit-tested (no runtime) and the
 > backend (`/api/eng`: file store, config read-back, check-out/plan/check-in,
 > online OPC UA browse, **online S7+ symbolic browse** through its own
 > `s7plusBrowse` manager, fail-closed role gating) typechecks offline against those
@@ -1156,8 +1156,8 @@ workspace root, so `npm install` at the repo root is enough to run it.
 Regenerate the screenshots above (headless Chromium, no runtime):
 
 ```bash
-node tools/screenshot-eng-studio.mjs             # → docs/images/eng-studio/*.png (English)
-node tools/screenshot-eng-studio.mjs --lang fr   # the same set in another language
+node libs/wui-eng-studio/demo/screenshot.mjs             # → docs/images/eng-studio/*.png (English)
+node libs/wui-eng-studio/demo/screenshot.mjs --lang fr   # the same set in another language
 ```
 
 ## Languages (EN / FR / DE)
@@ -1196,9 +1196,8 @@ screenshot pipeline — the language is selected with `?lang=`.
 ## Run the unit tests (no WinCC OA)
 
 ```bash
-cd libs/wui-eng-core
-npm install
-npm test          # 306 tests: SimaticML parse + S7 offsets, Schneider CSV/XVM, OPC UA
+npm install       # repo root, once
+npm test          # wui test — among them wui-eng-core's 341 tests: SimaticML parse + S7 offsets, Schneider CSV/XVM, OPC UA
                   # browse walk (+ progress & cancel) + NodeSet2 (root instances,
                   # duplicate paths), file-ingestion routing, connection-state mapping,
                   # roles, modelgen,
@@ -1207,10 +1206,10 @@ npm test          # 306 tests: SimaticML parse + S7 offsets, Schneider CSV/XVM, 
                   # device declaration (id slug, per-protocol params, normalisation),
                   # S7 / S7Plus / Modbus _datatype transformations (code by code)
 npm run typecheck
-
-# and the backend routes, against the REAL core sources (webserver packages stubbed):
-./node_modules/.bin/tsc -p ../../backend/tsconfig.typecheck.json
 ```
+
+`npm test` also type-checks the backend routes against the REAL core sources (the
+webserver packages declared by wui-toolkit).
 
 The translation tables have their own verification (no test runner needed — it
 bundles the real modules with esbuild): every entry present in EN/FR/DE, the same
@@ -1219,7 +1218,7 @@ translation matching a code nobody emits), **every connection parameter of the
 device form labelled**, and the WinCC OA locale identifiers resolving:
 
 ```bash
-node tools/check-eng-i18n.mjs
+node libs/wui-eng-studio/demo/check-i18n.mjs
 ```
 
 ## Architecture
@@ -1253,12 +1252,11 @@ libs/wui-eng-studio/      the page (Siemens iX + lit; renders with no runtime)
                           + demo-opcua-server.ts: a FAKE OPC UA server (drifts, for the delta)
   demo/                   standalone demo harness (docs + screenshots)
                           + ix-bootstrap.ts: registers iX (elements, icons, theme)
-backend/routes/           thin runtime seam, fail-closed
+libs/wui-eng-studio/backend/  thin runtime seam, fail-closed
   engRoute.ts             the endpoint table + role gating
   engController.ts        EngPort over WsjServerGlobal.winccoa, read-back, handlers
   engStore.ts             JSON file store (devices · books · roles · workspaces)
   engOpcuaBrowse.ts       one browse level over _<conn>.Browse.GetBranch (ported, queued)
-backend/tsconfig.typecheck.json   typecheck the routes offline (stubbed webserver pkgs)
 ```
 
 See [INTEGRATION.md](./INTEGRATION.md) for deployment/roles and the **inputs still

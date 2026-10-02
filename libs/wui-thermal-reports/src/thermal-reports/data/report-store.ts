@@ -11,7 +11,7 @@
  * the user lacks write rights, the store transparently falls back to an in-memory
  * list seeded with demo reports and sets `offline = true`.
  */
-import { DpJsonStore } from '@visuelconcept/wui-kit/data/dp-json-store.js';
+import { DpJsonStore } from '@visuelconcept-winccoa/wui-kit/data/dp-json-store.js';
 import { buildDemoReports } from './demo-reports.js';
 import type { ThermalReport } from '../types.js';
 

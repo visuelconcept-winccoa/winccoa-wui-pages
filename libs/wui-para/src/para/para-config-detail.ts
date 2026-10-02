@@ -11,7 +11,7 @@
  * `<name>:<config>..<attr>`); reads stay on the WebSocket dpGet.
  */
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
-import { hasRole$ } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$ } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { property, state } from 'lit/decorators.js';

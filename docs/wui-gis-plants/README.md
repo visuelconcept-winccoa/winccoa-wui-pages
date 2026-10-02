@@ -1,4 +1,4 @@
-# @visuelconcept/wui-gis-plants — Power plants (Tier 1)
+# @visuelconcept-winccoa/wui-gis-plants — Power plants (Tier 1)
 
 The **`/gis-plants`** page lays out the operating parameters of every power plant the
 GIS network simulator drives. There is one card per plant, **ranked live by output**
@@ -65,7 +65,7 @@ has no write action, so there is nothing else to restrict.
 
 `wui-gis` must be deployed with a site whose power stations carry those readings, and
 `gisSim` must be running to drive them (e.g. the ready-to-import
-`backend/managers/gisSim/examples/gis-france-nucleaire.json`).
+`libs/wui-gis/managers/gisSim/examples/gis-france-nucleaire.json`).
 Without it the page shows its empty state.
 
 ## Contents

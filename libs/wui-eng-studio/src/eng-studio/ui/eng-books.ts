@@ -24,7 +24,7 @@
  * re-implemented: it is the same table as the Devices panel's, with the same
  * filter and role state, which the page owns because the model generator reads it.
  */
-import { dataBlocksAddressedBy, type AddressBook, type BrowseProgress, type Device, type OpcUaBrowseNode, type S7BlockVerdict, type S7InventoryBlock } from '@visuelconcept/wui-eng-core';
+import { dataBlocksAddressedBy, type AddressBook, type BrowseProgress, type Device, type OpcUaBrowseNode, type S7BlockVerdict, type S7InventoryBlock } from '@visuelconcept-winccoa/wui-eng-core';
 import { LitElement, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import type {
@@ -109,7 +109,7 @@ export class WuiEngBooks extends LitElement {
     connection: string,
     item?: string,
     hmiVisibleOnly?: boolean
-  ) => Promise<import('@visuelconcept/wui-eng-core').S7PlusBrowseNode[]>;
+  ) => Promise<import('@visuelconcept-winccoa/wui-eng-core').S7PlusBrowseNode[]>;
 
   /**
    * Whether the classic-S7 online check is offered at all.

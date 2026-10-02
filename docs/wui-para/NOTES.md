@@ -26,7 +26,7 @@ save:
   existing datapoints). For each node still carrying an `origName` we send
   `name = origName` and, if it changed, `newName = current name`; new nodes send
   `name` only; removed nodes are simply absent. This mirrors
-  `backend/routes/paraTypeNode.ts` → `WinccoaDpTypeNode(name, type, refName, children, newName)`.
+  `libs/wui-para/backend/paraTypeNode.ts` → `WinccoaDpTypeNode(name, type, refName, children, newName)`.
 
 The element-type catalog (`para-element-types.ts`) is the single source of
 truth; its names MUST match the backend `ELEMENT_TYPE_MAP` keys. v1 keeps the
@@ -35,7 +35,7 @@ reorder elements.
 
 ## AI assistant — proposal-only, read-only MCP
 
-`para-ai-assistant.ts` reuses `@visuelconcept/wui-ai-kit` (`askAi`,
+`para-ai-assistant.ts` reuses `@visuelconcept-winccoa/wui-ai-kit` (`askAi`,
 `renderMarkdown`, `mf-ai-config-dialog`) and sends every prompt with
 **`mcpMode: 'read-only'`**: it gets the project's *configured* MCP servers, minus
 every mutating tool. The user always applies/saves changes themselves via the
@@ -56,7 +56,7 @@ pass `mcpServers: []` for a genuinely tool-free prompt.
 
 Both `mcpServers` and `mcpMode` are per-call overrides carried by
 `wui-ai-kit/data/ai-store.ts` (`AskAiOptions`) and forwarded by
-`backend/routes/aiController.ts`. **They take effect only after the webserver is
+`libs/wui-ai-kit/backend/aiController.ts`. **They take effect only after the webserver is
 rebuilt/restarted**; until then the guarantee falls back to the system prompt alone.
 
 `webSearch`, `effort`, `maxTokens` and `maxToolRounds` ride the same three-layer path
@@ -126,7 +126,7 @@ guard-less delete). Failed targets stay listed for retry; the dialog reports
 type deletion stays in the model tab.
 
 Backend: `dplController.ts` bridges HTTP → the **`DplAscii`** MSA service
-(`backend/managers/dplAscii/index.js`), which shells out to **`WCCOAasciiSQLite`**
+(`libs/wui-para/managers/dplAscii/index.js`), which shells out to **`WCCOAasciiSQLite`**
 (`child_process.execFile`) in the project context.
 
 - **Import** mirrors the proven reference command
@@ -144,11 +144,11 @@ Backend: `dplController.ts` bridges HTTP → the **`DplAscii`** MSA service
   The command is centralized in `dplAscii/index.js` (`ASCII_MANAGER` + the
   `runAscii([...])` args).
 
-Deployment (dev): `npm run deploy:backend -- --project <root> --only para,machine-fleet-3d`
-(specs-driven; see `webserver/SETUP.md`). It copies the para srcFiles
-(incl. `dplController.ts`) + the machine-fleet-3d `aiController.ts` and rebuilds
+Deployment: `npx wui build prod` from the project's site (manifest-driven:
+`package.json#wuiPage.backend`). It copies the para backend files
+(incl. `dplController.ts`) + the machine-fleet-3d `aiController.ts` (when selected) and rebuilds
 the webserver. Then in pmon: **restart `customer-webserver`** so `/api/para/dpl/*`
-mounts, register/start the **`dplAscii`** manager. Skipping the restart leaves the
+mounts, start the **`dplAscii`** manager (registered by the build). Skipping the restart leaves the
 new routes 404 even after a successful build.
 
 ## Application Security (roles — added 2026-07)
@@ -165,7 +165,7 @@ All OPEN until an admin assigns groups in `/app-security`
   node actions (para-nav); `dpl-import` hides the DPL import button (para.ts —
   export stays open, it only reads).
 - **Server-side** (`requireRole` in paraRoute, guard shipped via
-  `appSecurityGuard.ts` in the para srcFiles): `dptype/change` +
+  `appSecurityGuard.ts` in the para `wuiPage.backend.shared`): `dptype/change` +
   `DELETE /dptype/:name` → `edit-types`; `dp/rename` → `edit-values`;
   `dpl/import` → `dpl-import`.
 - ⚠️ **Deliberately NOT gated at the API level**: `dptype/create`, `dp/create`,

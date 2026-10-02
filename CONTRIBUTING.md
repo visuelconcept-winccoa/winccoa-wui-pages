@@ -19,13 +19,11 @@ changes and the licensing terms that apply to contributions.
    Use Siemens iX components and theme tokens; do not hardcode colors/spacing.
 4. **Keep changes scoped.** One logical change per PR. Update the relevant
    `docs/wui-<page>/` docs when you change a module's behavior.
-5. **Run quality checks** on what you touched before pushing:
-
-   ```bash
-   npm run lint
-   npm run test
-   npx tsc --noEmit -p tsconfig.base.json
-   ```
+5. **Check what you touched** before pushing: run it in a wui-toolkit site pointed
+   at your checkout (`npx wui dev`, then `npx wui build` on a test project — see the
+   README's *Develop* section), run the lib's tests when it has a `test` script
+   (`npx vitest run` from the lib folder), and check the package contents with
+   `npm pack ./libs/wui-<id> --dry-run`.
 
 6. **Add the SPDX header** to every new source file you create:
 

@@ -1,4 +1,4 @@
-// Menu fragment for @visuelconcept/wui-tag-importer.
+// Menu fragment for @visuelconcept-winccoa/wui-tag-importer.
 [
   {
     "title": { "en_US": "Tag Importer", "fr": "Importateur de tags", "de_AT": "Tag-Import" },

@@ -17,7 +17,7 @@
  */
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { WuiDpeService } from '@wincc-oa/wui-data-selector-data/wui-dpe/wui-dpe.service.js';
-import { AuditTrailWriter, type AuditRecord } from '@visuelconcept/wui-kit/data/audit-trail.js';
+import { AuditTrailWriter, type AuditRecord } from '@visuelconcept-winccoa/wui-kit/data/audit-trail.js';
 import { firstValueFrom } from 'rxjs';
 import { container } from 'tsyringe';
 import {

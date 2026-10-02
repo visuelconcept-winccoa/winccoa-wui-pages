@@ -5,6 +5,16 @@
 > **before** any license/header was applied (steps 2 to 7).
 > Date: 2026-06-28. Scope: full working tree excluding `node_modules/`, `dist/`, `.git/`, `.nx/`.
 
+> **Update 2026-10-02 — the tree changed since this audit; the tables below describe it as of 2026-06-28.**
+> The former tooling was removed, replaced by wui-toolkit: `tools/`, `webserver/`,
+> `packages/`, `backend/` (its `tsconfig.typecheck.json` + `types/runtime-stubs.d.ts`
+> replaced by wui-toolkit's type check of every module's backend), `tsconfig.base.json`, `DEVELOPMENT.md`,
+> the `.vscode` tasks. The repo is now a wui-toolkit site: the **tracked** root
+> `package.json`, `wui.project.jsonc`, `.npmrc`, `.githooks/pre-commit`, `mock/` are
+> new **VC** files (from wui-toolkit's own project template) — not the untracked ETM
+> scaffold `package.json` listed below. Two **VC** files of the former `tools/`
+> (`screenshot-pages.mjs`, `page-appsec-merge-plugin.mjs`) were reintegrated into wui-toolkit.
+
 ---
 
 ## 1. Method
@@ -101,8 +111,8 @@ Once unpacked, it contains 25 files mixing **Siemens/SDK-derived material** and 
 | Area | Files | Verdict | Evidence |
 |---|---|---|---|
 | `libs/wui-*` (20 page libraries) | 285 tracked | **VC original** | `package.json` `author: "Visuel Concept"`; descriptive source headers without third-party copyright; Git history 100% `orelmi`/visuelconcept |
-| `backend/managers/*` **except** mcpServer (aiAssistant, aliMcp, dplAscii, kpiCalc, machineSim, processMonitor, productInfo, productionOrdersKpi, rtspProxy, vncProxy) | ~30 | **VC original** | VC headers; standard `winccoa-manager` usage; "Siemens PIH" referenced only as an **external HTTP API**, not embedded |
-| `backend/routes/*` | ~ | **VC original** | HTTP→vRPC controllers, bridge to the managers |
+| `libs/wui-*/managers/*` (formerly `backend/managers/*` **except** mcpServer) (aiAssistant, aliMcp, dplAscii, kpiCalc, machineSim, processMonitor, productInfo, productionOrdersKpi, rtspProxy, vncProxy) | ~30 | **VC original** | VC headers; standard `winccoa-manager` usage; "Siemens PIH" referenced only as an **external HTTP API**, not embedded |
+| `libs/wui-*/backend/*` (formerly `backend/routes/*`) | ~ | **VC original** | HTTP→vRPC controllers, bridge to the managers |
 | `webserver/` | 10 | **VC original** | `@visuelconcept/wui-webserver`, depends on `@winccoa/backend` (dependency, not embedded) |
 | `tools/` (`wire-workspace.mjs`, `dev-wiring/`, `scripts/`) | 12 | **VC original** | Own tooling, no third-party attribution |
 | `apps/dashboard-wc/src/` + Vite configs | untracked | **VC original** (minimal entry point) bootstrapping the scaffolded shell | `main.ts`, `polyfills.ts`, VC Vite plugins |

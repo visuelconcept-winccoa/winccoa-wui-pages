@@ -1,17 +1,19 @@
-# Integrate the Alarms page (`@visuelconcept/wui-alarms`) — source mode, Tier 1
+# Integrate the Alarms page (`@visuelconcept-winccoa/wui-alarms`) — source mode, Tier 1
 
 **Standalone WinCC OA WebUI page** on **`/alarms`**: the plant's alarms, live or over
 an archived period (counters, configurable priority ranges, EEMUA-191 flood histogram,
 bad actors, search, sort, paging, acknowledge). **Tier 1**: frontend only — no
 backend route, no manager; acknowledging uses WinCC OA's own API.
 
-**Self-contained source** distribution: the shared kits (`wui-kit`,
-`wui-alarms-core`) are **vendored** under `_vendor/`, and the page is **compiled
-against the target's runtime workspace** (bundle = correct version).
+Distributed as the npm package **`@visuelconcept-winccoa/wui-alarms`**, deployed with
+**wui-toolkit** (the `wui` CLI): the shared kits it imports (`wui-kit`,
+`wui-alarms-core`, `wui-app-security`) are its npm dependencies, and the page is
+**compiled against the target's own import map** (bundle = correct version).
 
 ## Prerequisites
 
-1. A **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) — the `--workspace`.
+1. A **wui-toolkit site** for the project (`<project>/web`) whose `prod` target was
+   equipped once with `npx wui init target prod` (WebUI shell + dashboard webserver).
 2. For **acknowledging**: the WebUI users who may acknowledge need the **WinCC OA
    write permission** (the `canWrite` flag of the WebUI login token) — the page
    writes `<dpe>:_alert_hdl.._ack` through WinCC OA's own API on the operator's
@@ -20,24 +22,24 @@ against the target's runtime workspace** (bundle = correct version).
 3. In the project: **alarms configured** (`_alert_hdl`) and, for the History tab, the
    **alert archive** available.
 
-## Install (one command)
-
-```bash
-node install.mjs --workspace <runtime-workspace> --project <project-root>
+## Install
+In the project's site (`<project>/web`):
+```powershell
+npx wui use alarms     # npm-installs @visuelconcept-winccoa/wui-alarms (+ its kits) and selects it
+npx wui build prod     # page + menu entry
+npx wui check prod
 ```
+`wui build`:
+1. compiles the page against the target's import map → `<project>/data/dashboard-wc/pages/`;
+2. upserts the **menu entry** (`menu.fragment.jsonc`) into `menuconfig.json` (idempotent by `routeId`).
 
-Example (WebDemo2):
+The module owns **no backend route**: acknowledging goes through WinCC OA's own API,
+so there is no webserver module to deploy and nothing to restart.
 
-```bash
-node install.mjs --workspace D:\WinCC_OA_Proj_321\WebDemo2\webui-workspace --project D:\WinCC_OA_Proj_321\WebDemo2
-```
-
-The installer:
-
-1. copies the **source** (kits vendored under `_vendor/`) → `<workspace>/…/standalone-pages/`;
-2. inserts the **menu entry** → the workspace's `menuconfig.jsonc` (idempotent by `routeId`);
-3. merges the module's **role catalog** into `app-security-manifest.json` (idempotent by module id);
-4. runs **`build:pages`** (OUT_DIR=`<project>/data/dashboard-wc`).
+Not handled by wui-toolkit: merging the module's **role catalog** into
+`app-security-manifest.json`. The roles still self-register at page load
+(`registerModuleRoles`), so the module shows up in `/app-security` once the page
+has been opened.
 
 ## After install
 
@@ -68,8 +70,8 @@ is already embedded in the **Machine Fleet** machine dashboard (`Suivi Alarmes`,
 bottom-left half of the dashboard); the same three lines drop it anywhere.
 
 ```ts
-import '@visuelconcept/wui-alarms-core/ui/wui-alarm-view.js';
-import { scopeFromDpes } from '@visuelconcept/wui-alarms-core/scope.js';
+import '@visuelconcept-winccoa/wui-alarms-core/ui/wui-alarm-view.js';
+import { scopeFromDpes } from '@visuelconcept-winccoa/wui-alarms-core/scope.js';
 ```
 
 | Property                    | Attribute                     | Default        | Meaning                                                                                                   |

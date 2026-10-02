@@ -21,7 +21,7 @@
  *  1. **every value inside a message is a `{placeholder}` fed by `params`** — a
  *     translator cannot re-order text that already has values baked into it;
  *  2. **codes are stable**. Renaming one silently drops its translation, so treat a
- *     code like an API name (`tools/check-eng-i18n.mjs` fails on an untranslated
+ *     code like an API name (`libs/wui-eng-studio/demo/check-i18n.mjs` fails on an untranslated
  *     code, which is what makes rule 2 enforceable rather than aspirational).
  */
 

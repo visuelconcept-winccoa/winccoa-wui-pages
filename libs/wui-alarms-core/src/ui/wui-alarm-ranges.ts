@@ -17,7 +17,7 @@
  *
  * Emits `wui:close` when dismissed and `wui:save` once the datapoint is written.
  */
-import { dialogCore } from '@visuelconcept/wui-kit/ui/dialog-styles.js';
+import { dialogCore } from '@visuelconcept-winccoa/wui-kit/ui/dialog-styles.js';
 import { LitElement, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { MSG, localize, localizeDir } from '../i18n.js';

@@ -4,9 +4,9 @@
 # The EngStudio CTRL manager (MSA vRPC) — every project write behind one service
 
 The studio's page and HTTP routes are TypeScript; **the writes into the WinCC OA
-project are performed by a CTRL manager**, `backend/project-scripts/wui/engStudioService.ctl`,
+project are performed by a CTRL manager**, `libs/wui-eng-studio/project-scripts/wui/engStudioService.ctl`,
 hosting the MSA **vRPC** service `EngStudio`. The webserver is its stub client
-(`backend/routes/engVrpc.ts`).
+(`libs/wui-eng-studio/backend/engVrpc.ts`).
 
 ## Why
 
@@ -34,7 +34,7 @@ hosting the MSA **vRPC** service `EngStudio`. The webserver is its stub client
 ## What stays out of it, deliberately
 
 The manager holds **no engineering logic**. The pure core
-(`@visuelconcept/wui-eng-core`, unit-tested with no runtime) decides *what* to
+(`@visuelconcept-winccoa/wui-eng-core`, unit-tested with no runtime) decides *what* to
 write — element-type codes, config attribute sets, address references, which
 security fields were declared — and the manager executes it:
 
@@ -94,9 +94,9 @@ problems with different fixes.
 
 ## Deployment
 
-`tools/specs.json` → `backend.ctrlManagers: ["wui/engStudioService.ctl"]`.
-`deploy-backend.mjs` copies it to `<project>/scripts/wui/` and appends the
-idempotent progs line:
+The script lives in the module (`libs/wui-eng-studio/project-scripts/wui/engStudioService.ctl`)
+and is published with it. wui-toolkit 0.6.0 deploys no CTRL script: copy it to
+`<project>/scripts/wui/` and add the progs line by hand:
 
 ```
 WCCOActrl        | always |      30 |        3 |        1 |wui/engStudioService.ctl
@@ -136,7 +136,7 @@ read that function's own "Return Value" section first.
 ## Verification status
 
 - The manager **compiles against the installed 3.21**:
-  `WCCOActrl -config <proj>/config/config -syntax backend/project-scripts/wui/engStudioService.ctl`
+  `WCCOActrl -config <proj>/config/config -syntax libs/wui-eng-studio/project-scripts/wui/engStudioService.ctl`
   exits 0. That check was itself validated (a broken script, an unknown function
   and an unknown method each exit 1), so exit 0 means every function, class,
   enum and `#uses` in the file really resolves — including `VrpcServiceBase`,

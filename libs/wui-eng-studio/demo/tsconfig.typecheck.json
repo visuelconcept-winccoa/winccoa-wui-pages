@@ -14,8 +14,8 @@
     "types": [],
     "baseUrl": ".",
     "paths": {
-      "@visuelconcept/wui-eng-core": ["../../wui-eng-core/src/index.ts"],
-      "@visuelconcept/wui-eng-core/*": ["../../wui-eng-core/src/*"],
+      "@visuelconcept-winccoa/wui-eng-core": ["../../wui-eng-core/src/index.ts"],
+      "@visuelconcept-winccoa/wui-eng-core/*": ["../../wui-eng-core/src/*"],
       "lit": ["node_modules/lit/index.d.ts"],
       "lit/decorators.js": ["node_modules/lit/decorators.d.ts"],
       "lit/directives/*": ["node_modules/lit/directives/*"]

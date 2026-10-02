@@ -27,16 +27,16 @@ import {
   queryHistory,
   resolveGroup,
   type AnalysisMachine
-} from '@visuelconcept/wui-fleet-core/engine.js';
-import type { StopCause } from '@visuelconcept/wui-fleet-core/types.js';
-import type { MsInterval } from './closures.js';
+} from '@visuelconcept-winccoa/wui-fleet-core/engine.js';
+import type { StopCause } from '@visuelconcept-winccoa/wui-fleet-core/types.js';
+import type { MsInterval } from '@visuelconcept-winccoa/wui-fleet-core/closures.js';
 
 export {
   collectMachines,
   formatDuration,
   toHours,
   type AnalysisMachine
-} from '@visuelconcept/wui-fleet-core/engine.js';
+} from '@visuelconcept-winccoa/wui-fleet-core/engine.js';
 
 /** One machine's availability KPIs over the period. */
 export interface KpiRow {

@@ -24,7 +24,7 @@ import {
   type AddressBook,
   type OpcUaBrowsePort,
   type S7PlusBrowsePort
-} from '@visuelconcept/wui-eng-core';
+} from '@visuelconcept-winccoa/wui-eng-core';
 import type { BookDelta, S7PlusWalkRequest, WalkRequest } from './gateway.js';
 
 /** A walked book plus what moved since the stored generation. */

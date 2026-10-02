@@ -1,4 +1,4 @@
-// Menu fragment for @visuelconcept/wui-mosaic.
+// Menu fragment for @visuelconcept-winccoa/wui-mosaic.
 // Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
 // The second (hidden) entry is the detail route: its :mosaicid becomes the `mosaicid` attribute.
 [

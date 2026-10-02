@@ -1,4 +1,4 @@
-// Menu fragment for @visuelconcept/wui-diagnosis.
+// Menu fragment for @visuelconcept-winccoa/wui-diagnosis.
 // Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
 [
   {

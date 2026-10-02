@@ -43,7 +43,7 @@ import {
   type TrsThresholds,
   type TrsWindow
 } from '../types.js';
-import '@visuelconcept/wui-kit/ui/wui-dp-input.js';
+import '@visuelconcept-winccoa/wui-kit/ui/wui-dp-input.js';
 import { SEMIFAB_ICONS } from '../data/semifab-icons.js';
 import type { AliAssetInfo } from '../data/ali-assets.js';
 import type { FleetStore } from '../data/fleet-store.js';

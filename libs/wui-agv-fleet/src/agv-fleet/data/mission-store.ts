@@ -25,7 +25,7 @@ const BOOK_DPE = 'AGV_MissionBook.json';
 /** Datapoint the page appends operator commands to. */
 const COMMAND_DPE = 'AGV_Command.json';
 
-/** Actions the manager accepts (see backend/managers/agvSim/book.js). */
+/** Actions the manager accepts (see libs/wui-agv-fleet/managers/agvSim/book.js). */
 export type MissionAction =
   'cancel' | 'charge' | 'park' | 'dispatch' | 'recover' | 'fault';
 

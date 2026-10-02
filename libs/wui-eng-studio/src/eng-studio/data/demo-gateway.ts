@@ -54,8 +54,8 @@ import {
   type S7PlusBrowseNode,
   type TagAccess,
   type Workspace
-} from '@visuelconcept/wui-eng-core';
-import { S7_INVENTORY } from '@visuelconcept/wui-eng-core/samples/s7-fixtures.js';
+} from '@visuelconcept-winccoa/wui-eng-core';
+import { S7_INVENTORY } from '@visuelconcept-winccoa/wui-eng-core/samples/s7-fixtures.js';
 import type {
   BookDeletion,
   BookRefresh,

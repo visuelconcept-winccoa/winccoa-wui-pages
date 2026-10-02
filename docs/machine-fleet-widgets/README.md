@@ -27,17 +27,23 @@ msg/{en_US,fr_FR,de_AT}.utf8/WUI_Widget_MachineFleetDtAnalysis.json
 msg/{en_US,fr_FR,de_AT}.utf8/WUI_General.json            folder name "Machine Fleet"
 ```
 
-Source of truth in this repo: [`oa-data/WebUI/`](../../oa-data/WebUI/). They are
-copied to the project by `npm run deploy:oa-data` (also part of `npm run build`).
+Source of truth in this repo:
+[`libs/wui-machine-fleet-3d/oa-data/WebUI/`](../../libs/wui-machine-fleet-3d/oa-data/WebUI/),
+published with the `@visuelconcept-winccoa/wui-machine-fleet-3d` package.
 
 ## Install / deploy
 
-```bash
-# From the runtime workspace, OUT_DIR pointing at the project's dashboard folder:
-OUT_DIR="D:\WinCC_OA_Proj_321\WebDemo2\data\dashboard-wc" npm run deploy:oa-data
+**wui-toolkit 0.6.0 deploys no dashboard widget** — the module contract has no slot
+for one. Copy the tree by hand, keeping its layout:
+
+```powershell
+# <project>/data/WebUI/ ← the module's oa-data/WebUI/
+Copy-Item -Recurse -Force node_modules\@visuelconcept-winccoa\wui-machine-fleet-3d\oa-data\WebUI\* <project>\data\WebUI\
 ```
 
-The files land in `<project>/data/WebUI/…` (parent of `OUT_DIR`). No webserver
+`WUI_General.json` carries only this module's palette-folder name, so it must be
+**deep-merged** with any `WUI_General.json` already in the project (the Alarms widget
+ships its own). No webserver
 build or manager restart is needed: widget definitions are served as static
 `/data/…` files. Then, in the browser, **DevTools → Application → Clear site
 data** and reload (the service worker caches the widget list), open a dashboard in

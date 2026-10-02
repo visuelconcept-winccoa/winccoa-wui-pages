@@ -95,7 +95,7 @@ import {
   type TagAccess,
   type LiveSnapshot,
   type Workspace
-} from '@visuelconcept/wui-eng-core';
+} from '@visuelconcept-winccoa/wui-eng-core';
 import '@wincc-oa/wui-ix-wrappers/wui-content-header/wui-content-header.js';
 import { LitElement, html, nothing, type TemplateResult } from 'lit';
 import { state } from 'lit/decorators.js';
@@ -652,11 +652,6 @@ export class WuiEngStudio extends LitElement {
 
   private can(role: EngRole): boolean {
     return this.roles.has(role);
-  }
-
-  /** Translated plan-operation label. */
-  private opLabel(op: string): string {
-    return this.tr(op === 'create' ? MSG.opCreate : op === 'update' ? MSG.opUpdate : MSG.opDelete);
   }
 
   /** Translated role label (the core's own labels stay French — see i18n.ts). */

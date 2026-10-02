@@ -105,7 +105,7 @@ export class AlarmStore {
    * flag of the login token); without it the runtime answers "User is not
    * permitted to use dpSet". The view therefore HIDES the acknowledge affordance
    * (checkboxes and button) when the permission is missing, see
-   * `@visuelconcept/wui-kit/data/permissions.js` (`canWriteDatapoints$`).
+   * `@visuelconcept-winccoa/wui-kit/data/permissions.js` (`canWriteDatapoints$`).
    *
    * One `dpSet` for the whole selection (the API takes a list), so the operator's
    * action is atomic instead of half-applied across N round-trips. A selection

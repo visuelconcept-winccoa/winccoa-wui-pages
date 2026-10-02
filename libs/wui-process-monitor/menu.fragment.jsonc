@@ -1,4 +1,4 @@
-// Menu fragment for @visuelconcept/wui-process-monitor.
+// Menu fragment for @visuelconcept-winccoa/wui-process-monitor.
 [
   {
     "title": { "en_US": "Process Monitor", "fr": "Moniteur de processus", "de_AT": "Prozessmonitor" },

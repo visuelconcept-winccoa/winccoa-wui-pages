@@ -18,7 +18,7 @@
  *
  * So the online side is **not** a generator. It is a VERIFIER, and this module is
  * the part of it that can be unit-tested without a PLC: the manager
- * (`backend/managers/s7Browse`) speaks the protocol and returns an
+ * (`libs/wui-eng-studio/managers/s7Browse`) speaks the protocol and returns an
  * {@link S7Inventory}; {@link crossCheckBookAgainstInventory} decides what that
  * inventory says about a book.
  *

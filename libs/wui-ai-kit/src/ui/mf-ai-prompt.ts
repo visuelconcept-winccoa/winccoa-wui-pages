@@ -23,7 +23,7 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { Subscription } from 'rxjs';
 import { askAi, type ToolCall } from '../data/ai-store.js';
 import { isAiAssistantEnabled } from '../data/ai-feature.js';
-import { canEditFleet, canEditFleet$ } from '@visuelconcept/wui-kit/data/permissions.js';
+import { canEditFleet, canEditFleet$ } from '@visuelconcept-winccoa/wui-kit/data/permissions.js';
 import { renderMarkdown } from '../data/markdown.js';
 import { AI_MSG, localize, localizeDir } from '../i18n.js';
 import './mf-ai-config-dialog.js';

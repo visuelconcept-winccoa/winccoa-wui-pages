@@ -25,7 +25,7 @@ import { LitElement, css, html, nothing, type PropertyValues, type TemplateResul
 import { property, query, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
-import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import appSecurityRoles from './app-security.roles.json';
 import { MSG, confirmDeleteReportMsg, localize, localizeDir } from './i18n.js';
 import { buildDemoReports, buildDemoTemplates } from './data/demo.js';
@@ -33,7 +33,7 @@ import { exportReportsCsv, exportReportsJson, parseReports } from './data/io.js'
 import { ReportStore } from './data/report-store.js';
 import { TemplateStore } from './data/template-store.js';
 import type { Report, ReportTemplate } from './types.js';
-import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
+import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
 import './ui/rb-kpi-bar.js';
 import './ui/rb-report-detail.js';
 import './ui/rb-report-dialog.js';

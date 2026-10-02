@@ -14,7 +14,7 @@ import {
   type ProductionOrder
 } from '../types.js';
 import { MSG, localize, priorityLabel, statusLabel } from '../i18n.js';
-import { CSV_BOM, JSON_INDENT, csvCell, download, timestampSlug } from '@visuelconcept/wui-kit/data/io.js';
+import { CSV_BOM, JSON_INDENT, csvCell, download, timestampSlug } from '@visuelconcept-winccoa/wui-kit/data/io.js';
 
 const CSV_COLUMNS: { key: keyof ProductionOrder | 'statusLabel' | 'priorityLabel'; label: () => string }[] = [
   { key: 'orderNo', label: () => localize(MSG.csv.orderNo) },

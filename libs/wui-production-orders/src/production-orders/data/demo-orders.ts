@@ -8,7 +8,7 @@
  * schedule is laid out relative to "now" (past / running / upcoming) so the
  * table, the status mix and the Gantt all show something meaningful.
  */
-import type { Atelier } from '@visuelconcept/wui-fleet-core/types.js';
+import type { Atelier } from '@visuelconcept-winccoa/wui-fleet-core/types.js';
 import type { OrderPriority, OrderStatus, ProductionOrder } from '../types.js';
 
 const HOUR_MS = 60 * 60 * 1000;

@@ -1,34 +1,108 @@
 {
-  "name": "@visuelconcept/wui-tag-importer",
+  "name": "@visuelconcept-winccoa/wui-tag-importer",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Tag Importer — standalone WinCC OA WebUI page: import device tags into datapoint types + datapoints from an OPC UA NodeSet2 XML file (mutualising repeated node instances into one DPType) or by browsing a live OPC UA server (a selected instance's subtree becomes the DPType). Protocol-agnostic core with pluggable source adapters (OPC UA today, extensible). Online import also writes the peripheral address configs. Engineering ops via the /api/tag-importer API.",
-  "author": { "name": "Visuel Concept" },
-  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page", "opcua", "nodeset"],
+  "author": {
+    "name": "Visuel Concept"
+  },
+  "keywords": [
+    "OpenArchitecture",
+    "WinCCOA",
+    "dashboard",
+    "webcomponents",
+    "standalone-page",
+    "opcua",
+    "nodeset"
+  ],
   "license": "MIT",
   "dependencies": {
-    "@visuelconcept/wui-kit": "*"
+    "@visuelconcept-winccoa/wui-app-security": "^0.1.0",
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0",
+    "@visuelconcept-winccoa/wui-para": "^0.1.0"
   },
   "peerDependencies": {
     "lit": "*",
     "rxjs": "*",
-    "@etm-professional-control/oa-rx-js-api": "*",
-    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-i18n-shared": "*",
     "@wincc-oa/wui-ix-wrappers": "*",
-    "@wincc-oa/wui-oarxjs-context": "*"
+    "@wincc-oa/wui-models": "*",
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-shared": "*"
   },
-  "exports": { "./*": { "types": "./types/*", "import": "./*" } },
+  "exports": {
+    "./*": {
+      "types": "./types/*",
+      "import": "./*"
+    }
+  },
   "wuiPage": {
+    "requires": [
+      "para",
+      "app-security"
+    ],
     "route": "/tag-importer",
     "routeId": "tag-importer",
     "component": "wui-tag-importer",
     "module": "/data/dashboard-wc/pages/tag-importer.js",
     "icon": "database",
-    "permission": ["connected"],
+    "permission": [
+      "connected"
+    ],
     "tier": 3,
     "backend": {
       "mount": "/api/tag-importer",
-      "routes": ["/api/tag-importer/*"]
+      "routeClass": "TagImporterRoute",
+      "routeFile": "tagImporterRoute",
+      "files": [
+        "tagImporterController.ts",
+        "tagImporterRoute.ts"
+      ],
+      "shared": [
+        "@visuelconcept-winccoa/wui-app-security/appSecurityGuard.ts"
+      ],
+      "notes": [
+        "/api/tag-importer/*"
+      ]
     }
+  },
+  "peerDependenciesMeta": {
+    "lit": {
+      "optional": true
+    },
+    "rxjs": {
+      "optional": true
+    },
+    "@wincc-oa/wui-i18n-shared": {
+      "optional": true
+    },
+    "@wincc-oa/wui-ix-wrappers": {
+      "optional": true
+    },
+    "@wincc-oa/wui-models": {
+      "optional": true
+    },
+    "@wincc-oa/wui-oarxjs-context": {
+      "optional": true
+    },
+    "@wincc-oa/wui-shared": {
+      "optional": true
+    }
+  },
+  "files": [
+    "src",
+    "backend",
+    "menu.fragment.jsonc",
+    "!**/*.spec.ts",
+    "!**/*.test.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/visuelconcept-winccoa/winccoa-wui-pages.git",
+    "directory": "libs/wui-tag-importer"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
   }
 }

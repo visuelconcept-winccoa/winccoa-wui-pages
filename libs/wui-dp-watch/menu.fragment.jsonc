@@ -1,0 +1,13 @@
+// Menu fragment for @visuelconcept-winccoa/wui-dp-watch.
+// Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
+[
+  {
+    "title": { "en_US": "DP Watch", "fr": "Surveillance DP", "de_AT": "DP-Beobachtung" },
+    "icon": "eye",
+    "path": "/dp-watch",
+    "module": "/data/dashboard-wc/pages/dp-watch.js",
+    "routeId": "dp-watch",
+    "component": "wui-dp-watch",
+    "permission": ["connected"]
+  }
+]

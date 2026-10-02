@@ -24,7 +24,7 @@ import {
   type MachineDef,
   type MachineState
 } from '../types.js';
-import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
+import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
 import {
   MSG,
   confirmDeleteMachineMsg,

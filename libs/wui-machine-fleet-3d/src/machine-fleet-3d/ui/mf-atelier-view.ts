@@ -61,7 +61,7 @@ import {
 import './mf-ai-prompt.js';
 import './mf-building-dialog.js';
 import './mf-config-panel.js';
-import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
+import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
 import './mf-graphics-catalog.js';
 import './mf-machine-dashboard.js';
 import './mf-machine-dialog.js';
@@ -810,7 +810,7 @@ export class MfAtelierView extends LitElement {
     if (!service || machine.dashboardId == null) return;
     try {
       const dashboard = await firstValueFrom(service.get(machine.dashboardId));
-      const kept = (dashboard.widgets ?? []).filter((w) => !isMachineWidget(w, machine.id));
+      const kept = (dashboard.widgets ?? []).filter((w: { id: string }) => !isMachineWidget(w, machine.id));
       dashboard.widgets = [
         ...kept,
         ...buildMachineWidgets(machine, this.atelier.id, this.atelierName || this.atelier.name)

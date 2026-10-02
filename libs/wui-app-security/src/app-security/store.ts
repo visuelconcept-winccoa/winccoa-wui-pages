@@ -16,7 +16,7 @@ import { WuiDpeService } from '@wincc-oa/wui-data-selector-data/wui-dpe/wui-dpe.
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { firstValueFrom } from 'rxjs';
 import { container } from 'tsyringe';
-import { AuditTrailWriter } from '@visuelconcept/wui-kit/data/audit-trail.js';
+import { AuditTrailWriter } from '@visuelconcept-winccoa/wui-kit/data/audit-trail.js';
 import {
   APP_SECURITY_TYPE,
   appSecurityDp,
@@ -25,7 +25,7 @@ import {
   type AppModuleRoles,
   type AppRoleAssignments,
   type AppRoleDeclaration
-} from '@visuelconcept/wui-kit/data/app-security.js';
+} from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 
 const DP_SET_URL = '/api/para/dp/set';
 const GROUPS_URL = '/api/app-security/groups';
@@ -49,6 +49,12 @@ const MANIFEST_URL = '/data/dashboard-wc/app-security-manifest.json';
 /** Deployed menu — the authoritative runtime list of INSTALLED page bundles. */
 const MENU_URL = '/data/dashboard-wc/menuconfig.json';
 
+/**
+ * wui-toolkit's deploy registry: every deployed module, HEADLESS ones included —
+ * a backend-only module has no menu entry, yet its routes enforce its roles.
+ */
+const DEPLOY_REGISTRY_URL = '/data/dashboard-wc/wui-deploy.json';
+
 async function fetchManifest(): Promise<AppModuleRoles[]> {
   try {
     const res = await fetch(MANIFEST_URL);
@@ -60,35 +66,58 @@ async function fetchManifest(): Promise<AppModuleRoles[]> {
   }
 }
 
-/**
- * Page-bundle ids (`pages/<id>.js`) referenced by the deployed menu, walking
- * nested entries/children. Role-fragment module ids equal their page-bundle
- * ids (docs/wui-app-security/INTEGRATION.md), so this set tells which catalog
- * modules are actually installed. Null when the menu is unreachable or lists
- * no page — callers must then NOT restrict (fail open, e.g. dev server).
- */
-async function fetchInstalledPageIds(): Promise<Set<string> | null> {
+/** Page-bundle ids (`pages/<id>.js`) referenced by the deployed menu, walking nested entries/children. */
+async function fetchMenuPageIds(): Promise<string[]> {
   try {
     const res = await fetch(MENU_URL);
-    if (!res.ok) return null;
+    if (!res.ok) return [];
     const menu = (await res.json()) as { entries?: unknown };
-    const ids = new Set<string>();
+    const ids: string[] = [];
     const walk = (entries: unknown): void => {
       if (!Array.isArray(entries)) return;
       for (const entry of entries) {
         if (!entry || typeof entry !== 'object') continue;
         const module = (entry as { module?: unknown }).module;
         const match = typeof module === 'string' ? /\/pages\/([^/]+)\.js$/.exec(module) : null;
-        if (match) ids.add(match[1]);
+        if (match) ids.push(match[1]);
         walk((entry as { entries?: unknown }).entries);
         walk((entry as { children?: unknown }).children);
       }
     };
     walk(menu.entries);
-    return ids.size > 0 ? ids : null;
+    return ids;
   } catch {
-    return null;
+    return [];
   }
+}
+
+/** Module ids of wui-toolkit's deploy registry — headless modules included; none without the registry. */
+async function fetchRegistryModuleIds(): Promise<string[]> {
+  try {
+    const res = await fetch(DEPLOY_REGISTRY_URL);
+    if (!res.ok) return [];
+    const registry = (await res.json()) as { modules?: unknown };
+    if (!Array.isArray(registry.modules)) return [];
+    return registry.modules
+      .map((module) => (module && typeof module === 'object' ? (module as { id?: unknown }).id : undefined))
+      .filter((id): id is string => typeof id === 'string');
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The installed modules: the page bundles of the deployed menu, plus every module
+ * of wui-toolkit's deploy registry (a HEADLESS module — backend only, required by
+ * another page — has no menu entry, yet its routes enforce its roles). Role-fragment
+ * module ids equal their page-bundle ids (docs/wui-app-security/INTEGRATION.md), so
+ * this set tells which catalog modules are deployed. Null when neither source
+ * lists any — callers must then NOT restrict (fail open, e.g. dev server).
+ */
+async function fetchInstalledPageIds(): Promise<Set<string> | null> {
+  const [menu, registry] = await Promise.all([fetchMenuPageIds(), fetchRegistryModuleIds()]);
+  const ids = new Set([...menu, ...registry]);
+  return ids.size > 0 ? ids : null;
 }
 
 /** One module row of the catalog (declaration + current assignments). */

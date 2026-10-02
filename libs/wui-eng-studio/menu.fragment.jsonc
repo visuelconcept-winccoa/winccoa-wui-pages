@@ -1,4 +1,4 @@
-// Menu fragment for @visuelconcept/wui-eng-studio.
+// Menu fragment for @visuelconcept-winccoa/wui-eng-studio.
 // Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
 // Tier 3: requires the /api/eng engineering route in the host webserver.
 [

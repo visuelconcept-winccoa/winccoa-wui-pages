@@ -187,8 +187,8 @@ manager).
 
 ## 4 · The `s7Browse` manager
 
-`backend/managers/s7Browse/` — a WinCC OA **JavaScript manager** hosting the MSA
-vRPC service `S7Browse`. The webserver stub is `backend/routes/engS7Browse.ts`.
+`libs/wui-eng-studio/managers/s7Browse/` — a WinCC OA **JavaScript manager** hosting the MSA
+vRPC service `S7Browse`. The webserver stub is `libs/wui-eng-studio/backend/engS7Browse.ts`.
 
 ### Why a manager
 
@@ -228,8 +228,8 @@ service, so the stub is the same shape.
 
 ### Deployment
 
-`tools/specs.json` → `managers: ["s7Browse"]`. `deploy-backend.mjs` copies it to
-`<project>/javascript/s7Browse/` and appends the idempotent progs line:
+`package.json#wuiPage.backend.managers` → `["s7Browse", …]`. `npx wui build` stages it
+into `<project>/javascript/s7Browse/`; register it in `config/progs`:
 
 ```
 node             | manual |      30 |        3 |        5 |s7Browse/index.js

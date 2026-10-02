@@ -1,25 +1,33 @@
 {
-  "name": "@visuelconcept/wui-remote-vnc",
+  "name": "@visuelconcept-winccoa/wui-remote-vnc",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Remote VNC — standalone WinCC OA WebUI page: manage VNC connections (one RemoteVnc_Connection datapoint each) and open a session in-browser via bundled noVNC over a same-origin /api/vnc/ws relay.",
-  "author": { "name": "Visuel Concept" },
-  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page"],
+  "author": {
+    "name": "Visuel Concept"
+  },
+  "keywords": [
+    "OpenArchitecture",
+    "WinCCOA",
+    "dashboard",
+    "webcomponents",
+    "standalone-page"
+  ],
   "license": "MIT",
   "dependencies": {
-    "@visuelconcept/wui-kit": "*"
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0",
+    "@novnc/novnc": "1.4.0",
+    "@visuelconcept-winccoa/wui-para": "^0.1.0",
+    "@visuelconcept-winccoa/wui-app-security": "^0.1.0"
   },
   "peerDependencies": {
     "lit": "*",
     "rxjs": "*",
-    "tsyringe": "*",
-    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-i18n-shared": "*",
     "@wincc-oa/wui-ix-wrappers": "*",
-    "@wincc-oa/wui-oarxjs-context": "*",
-    "@wincc-oa/wui-shared": "*",
     "@wincc-oa/wui-models": "*",
-    "@wincc-oa/wui-data-selector-data": "*",
-    "@novnc/novnc": "*"
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-shared": "*"
   },
   "exports": {
     "./*": {
@@ -28,17 +36,81 @@
     }
   },
   "wuiPage": {
+    "requires": [
+      "para",
+      "app-security"
+    ],
     "route": "/remote-vnc",
-    "routes": ["/remote-vnc", "/remote-vnc/:connectionid"],
+    "routes": [
+      "/remote-vnc",
+      "/remote-vnc/:connectionid"
+    ],
     "routeId": "remote-vnc",
     "component": "wui-remote-vnc",
     "module": "/data/dashboard-wc/pages/remote-vnc.js",
     "icon": "monitor",
-    "permission": ["connected"],
+    "permission": [
+      "connected"
+    ],
     "tier": 3,
     "backend": {
-      "managers": ["vncProxy (MSA vRPC: resolves connection id -> host:port from RemoteVnc_ DPs)"],
-      "routes": ["/api/vnc/* + the /api/vnc/ws raw ws<->TCP relay (websockify-style)"]
+      "mount": "/api/vnc",
+      "routeClass": "VncRoute",
+      "routeFile": "vncRoute",
+      "relayFn": "registerVncRelay",
+      "relayFile": "vncRelay",
+      "files": [
+        "vncController.ts",
+        "vncRoute.ts",
+        "vncRelay.ts"
+      ],
+      "managers": [
+        "vncProxy"
+      ],
+      "notes": [
+        "/api/vnc/* + the /api/vnc/ws raw ws<->TCP relay (websockify-style)",
+        "vncProxy (MSA vRPC: resolves connection id -> host:port from RemoteVnc_ DPs)"
+      ]
     }
+  },
+  "peerDependenciesMeta": {
+    "lit": {
+      "optional": true
+    },
+    "rxjs": {
+      "optional": true
+    },
+    "@wincc-oa/wui-i18n-shared": {
+      "optional": true
+    },
+    "@wincc-oa/wui-ix-wrappers": {
+      "optional": true
+    },
+    "@wincc-oa/wui-models": {
+      "optional": true
+    },
+    "@wincc-oa/wui-oarxjs-context": {
+      "optional": true
+    },
+    "@wincc-oa/wui-shared": {
+      "optional": true
+    }
+  },
+  "files": [
+    "src",
+    "backend",
+    "managers",
+    "menu.fragment.jsonc",
+    "!**/*.spec.ts",
+    "!**/*.test.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/visuelconcept-winccoa/winccoa-wui-pages.git",
+    "directory": "libs/wui-remote-vnc"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
   }
 }

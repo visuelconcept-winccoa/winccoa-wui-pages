@@ -37,7 +37,7 @@
  *                       + params); this page re-templates each code and substitutes
  *                       the same params. An unknown code falls back to the core's
  *                       English message, so a new warning is never invisible —
- *                       merely untranslated. `tools/check-eng-i18n.mjs` fails on any
+ *                       merely untranslated. `demo/check-i18n.mjs` fails on any
  *                       core code missing here, or on placeholders that drift.
  */
 
@@ -1459,9 +1459,6 @@ export const MSG = {
     'Rien à checker-in : le workspace est identique au projet.',
     'Nichts einzuchecken: der Workspace entspricht dem Projekt.'
   ),
-  opCreate: ml('create', 'créer', 'erstellen'),
-  opUpdate: ml('update', 'modifier', 'ändern'),
-  opDelete: ml('delete', 'supprimer', 'löschen'),
   colOp: ml('op', 'op', 'Op'),
   colObject: ml('object', 'objet', 'Objekt'),
   colName: ml('name', 'nom', 'Name'),
@@ -1616,7 +1613,7 @@ export function warnText(warning: { code: string; message: string; params?: Reco
  *
  * Rules:
  *  - the `{placeholders}` of a translation must match the core's template. That is
- *    checked mechanically (`tools/check-eng-i18n.mjs`), because a dropped `{n}`
+ *    checked mechanically (`demo/check-i18n.mjs`), because a dropped `{n}`
  *    renders a sentence with a missing number, silently, in one language only;
  *  - an UNKNOWN code falls back to the core's English message. A new core warning
  *    is therefore never invisible — merely untranslated;

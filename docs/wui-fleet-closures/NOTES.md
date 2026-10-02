@@ -40,9 +40,9 @@ Behavior on import:
 
 - The page reuses `pageStyles()` from `fleet-stop-analysis/styles.js`, supplemented by a local `extraStyles()`.
 - The overview emits the `wui:closures` event; the shell (`machine-fleet-3d.ts`) triggers `RouterEvent('/fleet-closures')`. This is the same scheme as `wui:analyze` → `/fleet-stops` and `wui:kpi` → `/fleet-kpi`.
-- Automatic discovery: standalone pages are auto-registered by directory scan (`discoverStandalonePages` in the build config). Dropping a `*.ts` into `standalone-pages/` is enough to create the page entry; no manual registration in the build.
+- Automatic discovery: the page entry is `src/fleet-closures.ts` (the module contract wui-toolkit reads: `src/<id>.ts` + `menu.fragment.jsonc`); no manual registration in the build.
 - Route declared as `hidden: true` in the menu config.
-- npm dependency declared in `module.json`: `three` (^0.169.0).
+- npm dependency: `three`, through `@visuelconcept-winccoa/wui-fleet-core` (its `package.json`).
 
 ## Pitfalls / things to know
 

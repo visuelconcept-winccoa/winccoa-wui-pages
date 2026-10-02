@@ -60,8 +60,8 @@ The page feeds the **visible** rows (`visibleRows()` — formatted `string[][]`,
 - The audit DP **must be NGA archived** (the page enforces this on create); without archived data, the table is empty.
 - **Live**: `dpConnect` on the fixed leaves triggers a debounced re-query (dashboard pattern), gated by the **Live 24 h** toggle. Turning live off seeds the range to the last 24 h.
 - `datetime-local` values are **local time**; `new Date('YYYY-MM-DDTHH:mm')` parses them as local (matches the codebase pattern in report-builder / production-orders).
-- The shared kit is a **dependency** (`@visuelconcept/wui-kit`): `dp-single-json-store` (config) and `io` (export) are used; `wui-confirm-dialog` for delete confirmation. The vendoring tool follows these imports, so they ship in the page's `_vendor/`.
-- Auto-discovered bundle (top-level `.ts` in standalone-pages) and **self-contained** (no shared chunk).
+- The shared kit is a **dependency** (`@visuelconcept-winccoa/wui-kit`): `dp-single-json-store` (config) and `io` (export) are used; `wui-confirm-dialog` for delete confirmation. npm installs it with the page, and the build bundles what is imported.
+- Page entry `src/audit-trail.ts` (the page bundle `wui build` compiles).
 
 ## Application Security (roles — added 2026-07)
 

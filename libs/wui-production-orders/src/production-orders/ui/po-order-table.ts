@@ -10,7 +10,7 @@
  * Emits: `wui:edit` / `wui:delete` (`{ id }`) and `wui:status`
  * (`{ id, target }`).
  */
-import { hasRole$ } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$ } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';

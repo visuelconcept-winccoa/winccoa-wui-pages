@@ -4,7 +4,7 @@
 /**
  * PARA AI assistant — a proposal-only chat embedded in the page header.
  *
- * It reuses the AI plumbing of `@visuelconcept/wui-ai-kit` (askAi bridge,
+ * It reuses the AI plumbing of `@visuelconcept-winccoa/wui-ai-kit` (askAi bridge,
  * markdown renderer, config dialog) but is scoped to PARA modeling and is
  * runs `mcpMode: 'read-only'`: it gets the project's configured MCP servers with
  * every mutating tool filtered out in the manager, so it can inspect the real model
@@ -13,10 +13,10 @@
  * editor" action that emits `wui:applytype`; the page then loads the proposal
  * in the model editor for the user to review and save. The user always validates.
  */
-import { askAi, type ToolCall } from '@visuelconcept/wui-ai-kit/data/ai-store.js';
-import { isAiAssistantEnabled } from '@visuelconcept/wui-ai-kit/data/ai-feature.js';
-import { renderMarkdown } from '@visuelconcept/wui-ai-kit/data/markdown.js';
-import '@visuelconcept/wui-ai-kit/ui/mf-ai-config-dialog.js';
+import { askAi, type ToolCall } from '@visuelconcept-winccoa/wui-ai-kit/data/ai-store.js';
+import { isAiAssistantEnabled } from '@visuelconcept-winccoa/wui-ai-kit/data/ai-feature.js';
+import { renderMarkdown } from '@visuelconcept-winccoa/wui-ai-kit/data/markdown.js';
+import '@visuelconcept-winccoa/wui-ai-kit/ui/mf-ai-config-dialog.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { property, query, state } from 'lit/decorators.js';

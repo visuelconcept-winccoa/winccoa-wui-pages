@@ -5,42 +5,44 @@
 
 ## Manifest
 
-`tools/specs.json` entry (page id `eng-studio`):
+`libs/wui-eng-studio/package.json` → `wuiPage.backend` (page id `eng-studio`; the
+route sources live in `libs/wui-eng-studio/backend/`; wui-toolkit reads this
+contract at `wui build`):
 
 ```json
-{
-  "page": "eng-studio",
-  "name": "@visuelconcept/wui-eng-studio",
-  "title": "Engineering Studio",
-  "tier": 3,
-  "backend": {
-    "mount": "/api/eng",
-    "routeClass": "EngRoute",
-    "routeFile": "engRoute",
-    "srcFiles": [
-      "engController.ts", "engRoute.ts", "engStore.ts",
-      "engOpcuaBrowse.ts", "engS7PlusBrowse.ts", "engVrpc.ts", "appSecurityGuard.ts"
-    ],
-    "ctrlManagers": ["wui/engStudioService.ctl"],
-    "vendorPackages": ["@visuelconcept/wui-eng-core"]
-  },
-  "managers": ["s7plusBrowse"]
+"backend": {
+  "mount": "/api/eng",
+  "routeClass": "EngRoute",
+  "routeFile": "engRoute",
+  "files": [
+    "engController.ts", "engRoute.ts", "engStore.ts",
+    "engOpcuaBrowse.ts", "engS7Browse.ts", "engS7PlusBrowse.ts", "engVrpc.ts"
+  ],
+  "shared": ["@visuelconcept-winccoa/wui-app-security/appSecurityGuard.ts"],
+  "vendorPackages": ["@visuelconcept-winccoa/wui-eng-core"],
+  "managers": ["s7Browse", "s7plusBrowse"],
+  "notes": ["/api/eng/*"]
 }
 ```
 
+- `shared` — the role guard, sourced from `libs/wui-app-security/backend/` and
+  copied into the module folder at deploy time.
 - The backend itself runs against `WsjServerGlobal.winccoa` (like para /
-  tag-importer) — **except the S7Plus browse**, which goes through the dedicated
-  `s7plusBrowse` JavaScript manager (`backend/managers/s7plusBrowse/`, MSA vRPC
-  service `S7PlusBrowse`). The driver's browse slot is ONE element per connection,
-  so a walk's requests must be serialised by a single long-lived owner — which a
-  webserver, restarted on every deploy, cannot be. There is no direct-API fallback
-  on purpose; the routes report the manager's absence instead. See
-  [S7PLUS-BROWSE.md](./S7PLUS-BROWSE.md).
+  tag-importer) — **except the S7 and S7Plus browse**, which go through the
+  dedicated `s7Browse` / `s7plusBrowse` JavaScript managers
+  (`managers/`, MSA vRPC services `S7Browse` / `S7PlusBrowse`). The driver's
+  browse slot is ONE element per connection, so a walk's requests must be
+  serialised by a single long-lived owner — which a webserver, restarted on every
+  deploy, cannot be. There is no direct-API fallback on purpose; the routes report
+  the manager's absence instead. See [S7PLUS-BROWSE.md](./S7PLUS-BROWSE.md).
+- `project-scripts/wui/engStudioService.ctl` is the CTRL side of the project
+  writes. **wui-toolkit 0.6.0 deploys no CTRL script**: copy it into
+  `<project>/scripts/wui/` and register it in `config/progs` by hand until the
+  toolkit grows a slot for it.
 - `vendorPackages` — the backend `engController` imports the **pure**
-  `@visuelconcept/wui-eng-core` (the shared diff/apply/builders). It is vendored
-  next to the `srcFiles` at deploy time, exactly as page **kits** are vendored
-  for the frontend (`_vendor/`). Keeping the logic in the core — not re-copied
-  into the backend — is the whole point of the decoupling.
+  `@visuelconcept-winccoa/wui-eng-core` (the shared diff/apply/builders). It is vendored
+  next to the backend files at deploy time (`_vendor/`). Keeping the logic in the
+  core — not re-copied into the backend — is the whole point of the decoupling.
 
 ## Backend API (`/api/eng`) — role-gated **fail-closed**
 
@@ -208,9 +210,10 @@ project (it already does wherever the store works), and the webserver user must
 be allowed to start `WCCOActrl` (found via the project config's `pvss_path`).
 Every project write of the page (this connection creation and security, plus
 datapoints, DP types, configs and poll groups) is performed by the **EngStudio
-CTRL manager** over MSA vRPC — `scripts/wui/engStudioService.ctl`, deployed AND
-registered in `config/progs` by `deploy-backend.mjs` (spec
-`backend.ctrlManagers`), then started in pmon. See
+CTRL manager** over MSA vRPC — `scripts/wui/engStudioService.ctl`, which ships with
+the module (`libs/wui-eng-studio/project-scripts/`) and is copied into the project and
+registered in `config/progs` by hand (wui-toolkit 0.6.0 deploys no CTRL script), then
+started in pmon. See
 [CTRL-MANAGER.md](./CTRL-MANAGER.md) for the service surface and the
 direct-API fallback. `GET /devices` decorates each OPC UA device with
 `passwordSet` (blob non-empty on the live connection), and `GET /health` reports
@@ -354,9 +357,9 @@ There is no language picker in the UI. Core-generated warnings are localised too
 ## Prerequisites
 
 - **Frontend**: none beyond the runtime (the page uses only `lit`).
-- **Backend**: `@visuelconcept/wui-webserver` (provides `/api/eng` via backend
-  module auto-discovery). `@visuelconcept/wui-eng-core` needs no installation — the
-  deployer vendors it into the module (see "Deployment").
+- **Backend**: the dashboard webserver installed by `npx wui init target prod`
+  (provides `/api/eng` via backend module auto-discovery). `@visuelconcept-winccoa/wui-eng-core`
+  needs no installation on the webserver — `wui build` vendors it into the module (see "Deployment").
 - **Write access to the store root** for the webserver's user (see above).
 - **Live address binding**: a running driver per device (OPC UA client / S7 /
   Modbus) and, for polled addresses, a poll group. Declare `driverNumber` on every
@@ -376,44 +379,47 @@ There is no language picker in the UI. Core-generated warnings are localised too
 
 ## Deployment
 
-The page is part of the default release selection of the interactive deployer and is
-discovered automatically (`libs/wui-eng-studio/src/eng-studio.ts` + its
-`menu.fragment.jsonc` + its `tools/specs.json` entry):
+Deployed with **wui-toolkit** from the WinCC OA project's site (`<project>/web`); the
+module is the npm package `@visuelconcept-winccoa/wui-eng-studio` (`src/eng-studio.ts` + its
+`menu.fragment.jsonc` + its `package.json#wuiPage.backend`):
 
-```bash
-node tools/scripts/deploy-release.mjs --project <winccoa-project>
-#   add --full --install-webserver on a fresh project
+```powershell
+npx wui init target prod      # once, on a fresh project (WebUI shell + dashboard webserver)
+npx wui use eng-studio
+npx wui build prod
+npx wui check prod
 ```
 
-It copies the page bundle, merges the menu entry, generates the backend module
-descriptor (`modules/eng-studio/index.ts`, mount `/api/eng`) and then calls
-`deploy-backend.mjs`, which copies the route files listed in the spec's `srcFiles`.
+`wui build` compiles the page, upserts the menu entry, writes the backend module
+descriptor (`src/modules/eng-studio/index.ts` of the dashboard webserver, mount
+`/api/eng` — written once, a hand-tightened acl survives redeploys), copies the route
+files listed in the manifest's `files` (from `libs/wui-eng-studio/backend/`) and
+`shared` (the app-security guard), and rebuilds the webserver. Restart the webserver
+manager from the WinCC OA console.
 
 **The core library is vendored into the module.** `engController.ts` imports
-`@visuelconcept/wui-eng-core` — the engineering domain it shares with the page — and
+`@visuelconcept-winccoa/wui-eng-core` — the engineering domain it shares with the page — and
 that specifier does not exist on a customer webserver. Installing it as a package
 would not fix it either: the library ships TypeScript sources, and `tsc` does not
 *emit* files it reads from `node_modules`, so the import would compile and fail at
-runtime. So the spec declares
+runtime. So the manifest declares
 
 ```jsonc
-"backend": { "vendorPackages": ["@visuelconcept/wui-eng-core"] }
+"backend": { "vendorPackages": ["@visuelconcept-winccoa/wui-eng-core"] }
 ```
 
-and `deploy-backend.mjs` copies the library's sources to
+and `wui build` copies the library's sources to
 `modules/eng-studio/_vendor/wui-eng-core/` — where the webserver's own `tsc` compiles
 and emits them — then rewrites the bare specifier in the copied route files to
 `./_vendor/wui-eng-core/index.js`. Only import/export specifiers are rewritten (a
-package name inside a comment stays as written), `*.spec.ts` files are excluded (they
-import vitest, which would break the webserver build), and a specifier left
-unresolved after the rewrite is reported as a warning rather than discovered on the
-customer's build. Same rule `tools/vendor-page.mjs` applies to the frontend.
+package name inside a comment stays as written), and `*.spec.ts` files are excluded
+(they import vitest, which would break the webserver build).
 
 ### The `s7Browse` manager (optional, for the classic-S7 online check)
 
-`tools/specs.json` → `managers: ["s7Browse"]`, so `deploy-backend.mjs` copies
-`backend/managers/s7Browse/` to `<project>/javascript/s7Browse/` and appends the
-idempotent progs line:
+`package.json#wuiPage.backend.managers` lists `s7Browse`, so `npx wui build` stages
+`libs/wui-eng-studio/managers/s7Browse/` into `<project>/javascript/s7Browse/`; register it
+in `config/progs`:
 
 ```
 node             | manual |      30 |        3 |        5 |s7Browse/index.js
@@ -445,19 +451,15 @@ grant no more than the reads beside them. Full reference and verification status
 
 ## Typecheck the backend without WinCC OA
 
-`backend/tsconfig.typecheck.json` compiles the studio's route modules against the
-**real** `@visuelconcept/wui-eng-core` sources, with the webserver-only packages
-(`ultimate-express`, `@winccoa/backend`, `winccoa-manager`) stubbed in
-`backend/types/runtime-stubs.d.ts`:
-
-```bash
-cd libs/wui-eng-core && ./node_modules/.bin/tsc -p ../../backend/tsconfig.typecheck.json
-```
+`npm test` (wui-toolkit's `wui test`, from the repo root) type-checks the studio's route
+modules as the webserver compiles them: against the **real**
+`@visuelconcept-winccoa/wui-eng-core` sources (its `vendorPackages`), with the
+webserver-only packages (`ultimate-express`, `@winccoa/backend`, `winccoa-manager`)
+declared by the toolkit — like every module's backend.
 
 That catches the mistakes that matter offline (a wrong core API, a missing
-`await`, a bad narrowing). The stubs are dev-only — they are not in any spec's
-`srcFiles`, so on a real webserver the genuine packages are used and the core is
-vendored (see "Deployment" above).
+`await`, a bad narrowing). The declarations are dev-only: on a real webserver the
+genuine packages are used and the core is vendored (see "Deployment" above).
 
 ## ⚠️ Inputs still needed from you (to finish, not to demo)
 

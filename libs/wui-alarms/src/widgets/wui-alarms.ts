@@ -6,7 +6,7 @@
  *
  * The "Suivi Alarmes" band of the Machine Fleet machine dashboard, lifted into a
  * widget of the built-in dashboard editor: the shared `<wui-alarm-view>` of
- * `@visuelconcept/wui-alarms-core` in its panel form, scoped to a machine's
+ * `@visuelconcept-winccoa/wui-alarms-core` in its panel form, scoped to a machine's
  * datapoints and driven by the dashboard time range — exactly the three lines the
  * fleet dashboard uses (`layout="panel" hide-period strict-scope .from .to .scope`).
  *
@@ -38,25 +38,25 @@
  * This file is BUILT by the pages build (`libs/wui-<page>/src/widgets/<widget>.ts` →
  * `/data/dashboard-wc/widgets/wui-alarms.js`), because the alarms kit is not part
  * of the dashboard import map. Its definition lives in
- * `oa-data/WebUI/widgets-v2/Alarms/wui-alarms/wui-alarms.widget.json`.
+ * `libs/wui-alarms/oa-data/WebUI/widgets-v2/Alarms/wui-alarms/wui-alarms.widget.json`.
  */
 import {
   hasRole$,
   registerModuleRoles,
   type AppModuleRoles
-} from '@visuelconcept/wui-kit/data/app-security.js';
+} from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import {
   MSG,
   localize,
   localizeDir
-} from '@visuelconcept/wui-alarms-core/i18n.js';
-import type { AlarmSource } from '@visuelconcept/wui-alarms-core/query.js';
+} from '@visuelconcept-winccoa/wui-alarms-core/i18n.js';
+import type { AlarmSource } from '@visuelconcept-winccoa/wui-alarms-core/query.js';
 import {
   parseScopeAttribute,
   scopeFromDpes
-} from '@visuelconcept/wui-alarms-core/scope.js';
-import type { AlarmViewLayout } from '@visuelconcept/wui-alarms-core/ui/wui-alarm-view.js';
-import '@visuelconcept/wui-alarms-core/ui/wui-alarm-view.js';
+} from '@visuelconcept-winccoa/wui-alarms-core/scope.js';
+import type { AlarmViewLayout } from '@visuelconcept-winccoa/wui-alarms-core/ui/wui-alarm-view.js';
+import '@visuelconcept-winccoa/wui-alarms-core/ui/wui-alarm-view.js';
 import '@wincc-oa/wui-ui-elements/wui-datetime-range-button/wui-datetime-range-button.js';
 import { parseTimeRange } from '@wincc-oa/wui-shared/parseTimeRange.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';

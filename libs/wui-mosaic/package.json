@@ -1,24 +1,35 @@
 {
-  "name": "@visuelconcept/wui-mosaic",
+  "name": "@visuelconcept-winccoa/wui-mosaic",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Mosaic — standalone WinCC OA WebUI page: a configurable display wall of tiles, each embedding another dashboard view as a chromeless iframe. One Mosaic_Board datapoint per board; self-provisioning via PARA REST with offline fallback.",
-  "author": { "name": "Visuel Concept" },
-  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page"],
+  "author": {
+    "name": "Visuel Concept"
+  },
+  "keywords": [
+    "OpenArchitecture",
+    "WinCCOA",
+    "dashboard",
+    "webcomponents",
+    "standalone-page"
+  ],
   "license": "MIT",
   "dependencies": {
-    "@visuelconcept/wui-kit": "*"
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0",
+    "@visuelconcept-winccoa/wui-para": "^0.1.0",
+    "@visuelconcept-winccoa/wui-app-security": "^0.1.0"
   },
   "peerDependencies": {
     "lit": "*",
     "rxjs": "*",
     "tsyringe": "*",
     "@etm-professional-control/oa-rx-js-api": "*",
-    "@wincc-oa/wui-ix-wrappers": "*",
-    "@wincc-oa/wui-oarxjs-context": "*",
-    "@wincc-oa/wui-shared": "*",
     "@wincc-oa/wui-data-selector-data": "*",
-    "@wincc-oa/wui-models": "*"
+    "@wincc-oa/wui-i18n-shared": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-models": "*",
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-shared": "*"
   },
   "exports": {
     "./*": {
@@ -27,13 +38,69 @@
     }
   },
   "wuiPage": {
+    "requires": [
+      "para",
+      "app-security"
+    ],
     "route": "/mosaic",
-    "routes": ["/mosaic", "/mosaic/:mosaicid"],
+    "routes": [
+      "/mosaic",
+      "/mosaic/:mosaicid"
+    ],
     "routeId": "mosaic",
     "component": "wui-mosaic",
     "module": "/data/dashboard-wc/pages/mosaic.js",
     "icon": "tiles",
-    "permission": ["connected"],
+    "permission": [
+      "connected"
+    ],
     "tier": 1
+  },
+  "peerDependenciesMeta": {
+    "lit": {
+      "optional": true
+    },
+    "rxjs": {
+      "optional": true
+    },
+    "tsyringe": {
+      "optional": true
+    },
+    "@etm-professional-control/oa-rx-js-api": {
+      "optional": true
+    },
+    "@wincc-oa/wui-data-selector-data": {
+      "optional": true
+    },
+    "@wincc-oa/wui-i18n-shared": {
+      "optional": true
+    },
+    "@wincc-oa/wui-ix-wrappers": {
+      "optional": true
+    },
+    "@wincc-oa/wui-models": {
+      "optional": true
+    },
+    "@wincc-oa/wui-oarxjs-context": {
+      "optional": true
+    },
+    "@wincc-oa/wui-shared": {
+      "optional": true
+    }
+  },
+  "files": [
+    "src",
+    "menu.fragment.jsonc",
+    "!**/*.spec.ts",
+    "!**/*.test.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/visuelconcept-winccoa/winccoa-wui-pages.git",
+    "directory": "libs/wui-mosaic"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
   }
 }

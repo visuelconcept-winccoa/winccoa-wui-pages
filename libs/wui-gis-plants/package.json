@@ -1,5 +1,5 @@
 {
-  "name": "@visuelconcept/wui-gis-plants",
+  "name": "@visuelconcept-winccoa/wui-gis-plants",
   "type": "module",
   "version": "0.1.0",
   "description": "Power plants — standalone WinCC OA WebUI page: the operating parameters of every plant driven by the GIS network simulator (GisSim_<assetId>_<element>: output, capacity, load factor, voltage, frequency, state), one card per plant, ranked live by output and re-ranked on every change. Read-only; alarms are not shown in this first version.",
@@ -16,11 +16,10 @@
     "power-plant"
   ],
   "license": "MIT",
-  "scripts": {
-    "test": "vitest run"
-  },
   "dependencies": {
-    "@visuelconcept/wui-kit": "*"
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0",
+    "@visuelconcept-winccoa/wui-para": "^0.1.0",
+    "@visuelconcept-winccoa/wui-app-security": "^0.1.0"
   },
   "peerDependencies": {
     "lit": "*",
@@ -41,6 +40,10 @@
     }
   },
   "wuiPage": {
+    "requires": [
+      "para",
+      "app-security"
+    ],
     "route": "/gis-plants",
     "routeId": "gis-plants",
     "component": "wui-gis-plants",
@@ -53,7 +56,54 @@
     "datapoints": {
       "type": "GisSimFloat / GisSimInt",
       "prefix": "GisSim_",
-      "note": "Reads only. The datapoints are created and driven by the optional gisSim manager of @visuelconcept/wui-gis; without it the page shows an empty state."
+      "note": "Reads only. The datapoints are created and driven by the optional gisSim manager of @visuelconcept-winccoa/wui-gis; without it the page shows an empty state."
     }
+  },
+  "peerDependenciesMeta": {
+    "lit": {
+      "optional": true
+    },
+    "rxjs": {
+      "optional": true
+    },
+    "tsyringe": {
+      "optional": true
+    },
+    "@etm-professional-control/oa-rx-js-api": {
+      "optional": true
+    },
+    "@wincc-oa/wui-shared": {
+      "optional": true
+    },
+    "@wincc-oa/wui-ix-wrappers": {
+      "optional": true
+    },
+    "@wincc-oa/wui-oarxjs-context": {
+      "optional": true
+    },
+    "@wincc-oa/wui-i18n-shared": {
+      "optional": true
+    },
+    "@wincc-oa/wui-models": {
+      "optional": true
+    },
+    "@wincc-oa/wui-data-selector-data": {
+      "optional": true
+    }
+  },
+  "files": [
+    "src",
+    "menu.fragment.jsonc",
+    "!**/*.spec.ts",
+    "!**/*.test.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/visuelconcept-winccoa/winccoa-wui-pages.git",
+    "directory": "libs/wui-gis-plants"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
   }
 }

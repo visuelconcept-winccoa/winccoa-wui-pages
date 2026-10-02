@@ -19,29 +19,22 @@
 - **UI Library**: Siemens iX (`@siemens/ix`, `@siemens/ix-echarts`, `@siemens/ix-icons`)
 - **Stack**: Lit 3 WebComponents, TypeScript, RxJS, Vaadin Router
 - **DI**: tsyringe (singleton services, `container.resolve()`)
-- **Build**: Vite
+- **Build / dev / deploy**: [wui-toolkit](https://github.com/visuelconcept-winccoa/winccoa-wui-tools) (`wui` CLI, Vite) — this repo is a wui-toolkit site with no WinCC OA target, no tooling of its own
+- **Layout**: each `libs/wui-<id>/` is an independent npm package (`@visuelconcept-winccoa/wui-<id>`), published as is on GitHub Packages
 
 ## Commands
 
-```bash
-# Development
-npm run start                    # Start dev server (port 4300)
+```powershell
+# From the repo root (PowerShell) — README "Develop"
+npm install                      # once: links the libs/* workspaces, wires the pre-commit hook
+npx wui dev                      # every page with mock data, hot reload (port 4300)
+npm test                         # wui test (pre-commit hook too): requires declared, pages compile, types (libs + backends), unit tests (vitest)
+npx wui modules                  # pages, and the modules they require (headless)
+npx wui test --watch --lib <id>  # one lib's unit tests, rerun on change
+npx wui tsconfig                 # after changing a lib's internal dependencies
 
-# Build
-npm run build                    # Full build (shared bundles + app)
-npm run build:shared-bundles     # Build shared bundles only
-npm run build:pages              # Build standalone pages only
-
-# Deploy a curated set of pages + backends to a WinCC OA project (interactive)
-node tools/scripts/deploy-release.mjs --project <project>   # see README "Quick deploy"
-#   add --full --install-webserver on a fresh project; --ai-assistant to enable the AI assistant (off by default)
-
-# Quality
-npm run lint                     # Lint all projects
-npm run test                     # Run all tests
-npx eslint path/to/file.ts      # Lint single file
-npx tsc --noEmit -p tsconfig.base.json  # Type check
-npx prettier --write path/to/file.ts    # Format
+# Per lib (cd libs/wui-<id>)
+npm pack --dry-run               # check what would be published
 ```
 
 ## Coding Standards
@@ -63,9 +56,10 @@ Standards are documented in `docs/knowledge/` - reference these files for full d
 ### Always Do
 
 - **Before modifying any module/page/library, re-read its own documentation first** — its `docs/<module>/README.md` + `NOTES.md` + `INTEGRATION.md` (when present), the module's source-header comment block, and any matching `docs/knowledge/*.md`. Do this every time, even for a change that looks like a one-liner: the docs record install/runtime coupling, backend contracts and caveats that the code alone does not surface. (E.g. for `libs/wui-para` read `docs/wui-para/README.md` and `docs/wui-para/INTEGRATION.md` before touching it.)
-- **Application Security roles are part of every feature.** When you create a page module, when the user asks to "secure" / "add roles to" a module, and — without being asked — whenever a change **adds or removes a capability worth restricting** (edit mode, deploy/control action, signing, destructive operation…), apply [docs/wui-app-security/INTEGRATION.md](./docs/wui-app-security/INTEGRATION.md) in the same change: declare/update the module's roles in its own `libs/wui-<page>/src/app-security.roles.json` fragment (imported by the page for `registerModuleRoles` — single source of truth, no central manifest), gate the UI (`hasRole$`) and wrap sensitive backend routes (`requireRole` + `appSecurityGuard.ts` in the module's `srcFiles`). Roles are open until an admin assigns groups, so declaring them never breaks a deployment. Never write `.assignments` from a module; never rename a role id silently.
+- **Application Security roles are part of every feature.** When you create a page module, when the user asks to "secure" / "add roles to" a module, and — without being asked — whenever a change **adds or removes a capability worth restricting** (edit mode, deploy/control action, signing, destructive operation…), apply [docs/wui-app-security/INTEGRATION.md](./docs/wui-app-security/INTEGRATION.md) in the same change: declare/update the module's roles in its own `libs/wui-<page>/src/app-security.roles.json` fragment (imported by the page for `registerModuleRoles` — single source of truth, no central manifest), gate the UI (`hasRole$`) and wrap sensitive backend routes (`requireRole` + `"@visuelconcept-winccoa/wui-app-security/appSecurityGuard.ts"` in the module's `package.json#wuiPage.backend.shared`). Roles are open until an admin assigns groups, so declaring them never breaks a deployment. Never write `.assignments` from a module; never rename a role id silently.
 - Use iX components and CSS custom properties
 - Use Shadow DOM for WebComponents
+- **Declare runtime dependencies on other modules.** A page that calls another module's backend — directly (`fetch('/api/<module>/…')`) or through a kit (`DpJsonStore`, `DpSingleJsonStore`, `registerModuleRoles` / `hasRole$` of `wui-kit`, the stores of `wui-ai-kit` / `wui-fleet-core` → `/api/para` + `/api/app-security`) — lists that module in its `package.json#wuiPage.requires` and its package in `dependencies`, in the same change — or in `wuiPage.optional` when the feature does without it. wui-toolkit then deploys a required module headless (backend only) when the site does not select its page, and `npm test` refuses an undeclared call. See [module-dependencies.md](./docs/module-dependencies.md).
 - Run lint on changed files
 - Find and understand root causes before proposing solutions
 - For questions about a `@wincc-oa/*` library's API or behavior, **read the library's installed README first** at `node_modules/@wincc-oa/<lib-name>/README.md` (e.g. `wui-oarxjs-data`, `wui-oarxjs-context`, `wui-alert-data`). Exception: `oa-rx-js-api` is still published as `@etm-professional-control/oa-rx-js-api`. These are the authoritative reference for that library; `docs/knowledge/` documents how libraries combine in app-level patterns.
@@ -125,6 +119,7 @@ Technical guides are available in `docs/knowledge/`:
 
 ### Backend Integration
 
+- [module-dependencies.md](./docs/module-dependencies.md) - Which pages require which module's backend (`wuiPage.requires`), headless deployment
 - [webserver-api-reference.md](./docs/knowledge/project/webserver-api-reference.md) - HTTP endpoints and WebSocket protocol
 - [webserver-authentication.md](./docs/knowledge/project/webserver-authentication.md) - Auth strategies and login flow
 - [webserver-frontend-integration.md](./docs/knowledge/project/webserver-frontend-integration.md) - SharedWorker and ServiceWorker coordination

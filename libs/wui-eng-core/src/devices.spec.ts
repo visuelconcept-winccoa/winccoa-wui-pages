@@ -246,22 +246,24 @@ describe('OPC UA connection security', () => {
     draft({ protocol: 'opcua', accessModes: ['opcua'], connection: { server: 'Srv', ...connection } });
 
   it('refuses a half-declared policy/mode pair — the standard panel forces them together', () => {
-    for (const connection of [
+    const halfDeclared: Record<string, string | number | boolean>[] = [
       { securityPolicy: 'Basic256Sha256' },
       { securityPolicy: 'Basic256Sha256', messageMode: 'None' },
       { messageMode: 'Sign' },
       { securityPolicy: 'None', messageMode: 'SignAndEncrypt' }
-    ]) {
+    ];
+    for (const connection of halfDeclared) {
       const problems = validateDevice(opcua(connection));
       expect(blockingProblems(problems).map((p) => p.code), JSON.stringify(connection)).toContain('device.security-mismatch');
     }
-    for (const connection of [
+    const consistent: Record<string, string | number | boolean>[] = [
       {},
       { securityPolicy: 'None' },
       { securityPolicy: 'None', messageMode: 'None' },
       { securityPolicy: 'Basic256Sha256', messageMode: 'Sign' },
       { securityPolicy: 'Aes256Sha256RsaPss', messageMode: 'SignAndEncrypt' }
-    ]) {
+    ];
+    for (const connection of consistent) {
       expect(blockingProblems(validateDevice(opcua(connection))), JSON.stringify(connection)).toEqual([]);
     }
   });

@@ -16,7 +16,7 @@
  * write. A save also announces itself on `window` so every open view re-ranks its
  * alarms immediately, without the page having to wire anything.
  */
-import { DpSingleJsonStore } from '@visuelconcept/wui-kit/data/dp-single-json-store.js';
+import { DpSingleJsonStore } from '@visuelconcept-winccoa/wui-kit/data/dp-single-json-store.js';
 import { DEFAULT_RANGES, normaliseRanges, type AlarmRange } from '../types.js';
 
 /** DP type and instance holding the module's configuration. */

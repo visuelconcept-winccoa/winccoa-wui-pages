@@ -1,16 +1,14 @@
 # WinCC OA WebUI Dashboard — Page Manual
 
 A visual tour of the standalone pages shipped by this repository (the
-`@visuelconcept/wui-*` modules), each running inside the WinCC OA WebUI dashboard
-shell. For what each module is and how to deploy it, see the [README](../README.md);
-for development, see [DEVELOPMENT.md](../DEVELOPMENT.md).
+`@visuelconcept-winccoa/wui-*` modules), each running inside the WinCC OA WebUI dashboard
+shell. For what each module is, how to deploy it and how to develop it, see the
+[README](../README.md).
 
-> **Screenshots** were captured live (logged in, against a running WinCC OA) with
-> [`tools/screenshot-pages.mjs`](../tools/screenshot-pages.mjs) with `--demo`, which
-> populates each page with its built-in **demonstration data** and drills into the
-> detail/sub-pages. Re-generate them any time with that tool. The backend is
-> configured with a **French** UI locale, so on-screen labels appear in French while
-> this manual is written in English.
+> **Screenshots** were captured live (logged in, against a running WinCC OA), each
+> page populated with its built-in **demonstration data** and drilled into its
+> detail/sub-pages. The backend is configured with a **French** UI locale, so
+> on-screen labels appear in French while this manual is written in English.
 
 ---
 
@@ -354,17 +352,3 @@ server-side (`control`, `edit-managers`, `deploy`).
 ![System Status](images/manual/status.png)
 
 A diagnostics page (`wui-diagnosis`) showing system / connection status information.
-
----
-
-## Regenerating this manual
-
-```bash
-WUI_USER=<user> WUI_PASS=<pass> BASE_URL=https://<oa-host>:<httpsPort> \
-  node tools/screenshot-pages.mjs --demo
-```
-
-The tool discovers pages from each `libs/wui-*/menu.fragment.jsonc`, logs in through
-the Vite dev server, populates each page with demo data (`--demo`), and writes one PNG
-per page (plus `<id>-detail.png` for sub-pages) into `docs/images/manual/`. Add a new
-page and it appears here automatically on the next run.

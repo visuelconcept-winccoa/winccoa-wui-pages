@@ -11,7 +11,7 @@
  * is reused by the AI assistant to sanitise a model it proposes before it is
  * loaded into the editor.
  */
-import { JSON_INDENT, download, timestampSlug } from '@visuelconcept/wui-kit/data/io.js';
+import { JSON_INDENT, download, timestampSlug } from '@visuelconcept-winccoa/wui-kit/data/io.js';
 import { SYMBOLS, type SymbolId } from '../symbols/catalog.js';
 import {
   ROTATIONS,

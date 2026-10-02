@@ -1,14 +1,24 @@
 {
-  "name": "@visuelconcept/wui-production-orders",
+  "name": "@visuelconcept-winccoa/wui-production-orders",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Production Orders — standalone WinCC OA WebUI page: manage production orders (OF) as a single JSON-list datapoint, with status workflow, KPI strip, echarts Gantt and a fleet link pushing the active OF onto the assigned machine.",
-  "author": { "name": "Visuel Concept" },
-  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page"],
+  "author": {
+    "name": "Visuel Concept"
+  },
+  "keywords": [
+    "OpenArchitecture",
+    "WinCCOA",
+    "dashboard",
+    "webcomponents",
+    "standalone-page"
+  ],
   "license": "MIT",
   "dependencies": {
-    "@visuelconcept/wui-kit": "*",
-    "@visuelconcept/wui-fleet-core": "*"
+    "@visuelconcept-winccoa/wui-fleet-core": "^0.1.0",
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0",
+    "@visuelconcept-winccoa/wui-para": "^0.1.0",
+    "@visuelconcept-winccoa/wui-app-security": "^0.1.0"
   },
   "peerDependencies": {
     "lit": "*",
@@ -16,20 +26,87 @@
     "tsyringe": "*",
     "echarts": "*",
     "@etm-professional-control/oa-rx-js-api": "*",
-    "@wincc-oa/wui-shared": "*",
-    "@wincc-oa/wui-data-selector-data": "*",
+    "@wincc-oa/wui-i18n-shared": "*",
     "@wincc-oa/wui-ix-wrappers": "*",
-    "@wincc-oa/wui-oarxjs-context": "*"
+    "@wincc-oa/wui-models": "*",
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-shared": "*"
   },
-  "exports": { "./*": { "types": "./types/*", "import": "./*" } },
+  "exports": {
+    "./*": {
+      "types": "./types/*",
+      "import": "./*"
+    }
+  },
   "wuiPage": {
+    "requires": [
+      "para",
+      "app-security"
+    ],
     "route": "/production-orders",
     "routeId": "production-orders",
     "component": "wui-production-orders",
     "module": "/data/dashboard-wc/pages/production-orders.js",
     "icon": "capacity",
-    "permission": ["connected"],
+    "permission": [
+      "connected"
+    ],
     "tier": 1,
-    "backend": { "managers": ["productionOrdersKpi (optional, server-computed KPI strip)"] }
+    "backend": {
+      "managers": [
+        "productionOrdersKpi"
+      ],
+      "notes": [
+        "productionOrdersKpi (optional, server-computed KPI strip)"
+      ]
+    }
+  },
+  "peerDependenciesMeta": {
+    "lit": {
+      "optional": true
+    },
+    "rxjs": {
+      "optional": true
+    },
+    "tsyringe": {
+      "optional": true
+    },
+    "echarts": {
+      "optional": true
+    },
+    "@etm-professional-control/oa-rx-js-api": {
+      "optional": true
+    },
+    "@wincc-oa/wui-i18n-shared": {
+      "optional": true
+    },
+    "@wincc-oa/wui-ix-wrappers": {
+      "optional": true
+    },
+    "@wincc-oa/wui-models": {
+      "optional": true
+    },
+    "@wincc-oa/wui-oarxjs-context": {
+      "optional": true
+    },
+    "@wincc-oa/wui-shared": {
+      "optional": true
+    }
+  },
+  "files": [
+    "src",
+    "managers",
+    "menu.fragment.jsonc",
+    "!**/*.spec.ts",
+    "!**/*.test.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/visuelconcept-winccoa/winccoa-wui-pages.git",
+    "directory": "libs/wui-production-orders"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
   }
 }

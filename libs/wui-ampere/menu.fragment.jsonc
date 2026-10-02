@@ -1,4 +1,4 @@
-// Menu fragment for @visuelconcept/wui-ampere.
+// Menu fragment for @visuelconcept-winccoa/wui-ampere.
 // Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
 [
   {

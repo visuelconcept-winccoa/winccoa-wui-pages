@@ -1,4 +1,4 @@
-// Menu fragment for @visuelconcept/wui-remote-vnc.
+// Menu fragment for @visuelconcept-winccoa/wui-remote-vnc.
 // Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
 // Tier 3: requires the vncProxy manager + /api/vnc/* route (incl. the /api/vnc/ws relay) — see installer spec.
 [

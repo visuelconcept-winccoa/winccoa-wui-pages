@@ -28,7 +28,7 @@
  * properties and events for no gain.
  */
 import { html, nothing, type TemplateResult } from 'lit';
-import { SIMULATION_DRIVER_TYPE, driverFitsProtocol, type ProtocolKind } from '@visuelconcept/wui-eng-core';
+import { SIMULATION_DRIVER_TYPE, driverFitsProtocol, type ProtocolKind } from '@visuelconcept-winccoa/wui-eng-core';
 import type { EngDriver } from '../data/gateway.js';
 import { MSG, fmt, t, type Lang, type Ml } from '../i18n.js';
 

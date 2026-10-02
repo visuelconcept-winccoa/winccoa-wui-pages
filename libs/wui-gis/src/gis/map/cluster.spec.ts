@@ -14,6 +14,7 @@ describe('cluster grid + label rule', () => {
       lat,
       lon,
       areaIds: [],
+      layerIds: [],
       dp: '',
       readings: [],
       link: '',

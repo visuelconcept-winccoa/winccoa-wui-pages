@@ -1,4 +1,4 @@
 // SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
 // SPDX-License-Identifier: AGPL-3.0-only
 
-export * from "@visuelconcept/wui-kit/data/dp-json-store.js";
+export * from "@visuelconcept-winccoa/wui-kit/data/dp-json-store.js";

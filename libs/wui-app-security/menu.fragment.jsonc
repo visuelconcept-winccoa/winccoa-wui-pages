@@ -1,4 +1,4 @@
-// Menu fragment for @visuelconcept/wui-app-security.
+// Menu fragment for @visuelconcept-winccoa/wui-app-security.
 // Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
 [
   {

@@ -17,7 +17,7 @@
  * Emits `wui:patch` `{ connection }`, `wui:delete`, `wui:open` `{ route }`, `wui:close`, and
  * `wui:straighten` (drop the shaping points).
  */
-import '@visuelconcept/wui-kit/ui/wui-dp-input.js';
+import '@visuelconcept-winccoa/wui-kit/ui/wui-dp-input.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { customElement, property } from 'lit/decorators.js';

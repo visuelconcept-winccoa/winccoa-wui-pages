@@ -7,6 +7,9 @@
  * way that filter could fail — a stale payload, a concurrent prompt, a half-written
  * value — and each has to yield `null` rather than someone else's narration.
  */
+// @vitest-environment jsdom — the kit's data modules import the OaRxJsApi browser bundle, which touches `self` at load.
+// reflect-metadata first, as in the app shell: tsyringe (the kit's DI) refuses to load without it.
+import 'reflect-metadata';
 import { describe, expect, it } from 'vitest';
 import {
   addUsage,

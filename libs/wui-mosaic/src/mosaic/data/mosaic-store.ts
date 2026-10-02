@@ -9,7 +9,7 @@
  * and keeps the page-specific method names. The `afterRead` hook backfills the
  * `tiles` array on legacy records that pre-date it.
  */
-import { DpJsonStore } from '@visuelconcept/wui-kit/data/dp-json-store.js';
+import { DpJsonStore } from '@visuelconcept-winccoa/wui-kit/data/dp-json-store.js';
 import { DEMO_MOSAICS } from './demo-mosaics.js';
 import type { Mosaic } from '../types.js';
 

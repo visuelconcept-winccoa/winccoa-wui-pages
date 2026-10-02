@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/** @visuelconcept/wui-eng-core — pure engineering domain (no WinCC OA dep). */
+/** @visuelconcept-winccoa/wui-eng-core — pure engineering domain (no WinCC OA dep). */
 
 export * from './warnings.js';
 export * from './model.js';

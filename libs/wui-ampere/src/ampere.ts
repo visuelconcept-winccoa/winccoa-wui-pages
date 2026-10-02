@@ -26,7 +26,7 @@ import { LitElement, css, html, nothing, type PropertyValues, type TemplateResul
 import { property, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
-import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import appSecurityRoles from './app-security.roles.json';
 import { AmpereStore } from './ampere/data/ampere-store.js';
 import { demoNetworks } from './ampere/data/demo.js';
@@ -51,7 +51,7 @@ import {
 } from './ampere/types.js';
 import { MSG, confirmDeleteMsg, localize, localizeDir, networkCountMsg } from './ampere/i18n.js';
 import type { Selection, Tool } from './ampere/ui/am-canvas.js';
-import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
+import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
 import './ampere/ui/am-canvas.js';
 import './ampere/ui/am-toolbox.js';
 import './ampere/ui/am-inspector.js';

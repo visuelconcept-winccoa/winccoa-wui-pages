@@ -1,44 +1,22 @@
 # =============================================================================
-# WebUI Runtime Workspace .gitignore
-#
-# This workspace can be deployed standalone (without the monorepo root),
-# so this file must be self-contained and not rely on a parent .gitignore.
+# winccoa-wui-pages — a wui-toolkit site whose libs/wui-<id>/ are published as
+# independent npm packages; `wui dev` / `wui test` run them, nothing is deployed here.
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# Dependencies
+# Dependencies (the root workspaces install, a lib's own: libs/wui-eng-studio/demo…)
 # -----------------------------------------------------------------------------
 node_modules/
 
 # -----------------------------------------------------------------------------
-# Build output
+# Build / pack output
 # -----------------------------------------------------------------------------
 dist/
-dev-dist/
-out-tsc/
 *.tgz
-*.tgz.bak
 *.tar.gz
-.license-cache.json
-.deploy-release-cache.json
-
-# -----------------------------------------------------------------------------
-# Vite / Vitest
-# -----------------------------------------------------------------------------
+**/.tsbuildinfo
 vite.config.*.timestamp*
 vitest.config.*.timestamp*
-
-# -----------------------------------------------------------------------------
-# TypeScript
-# -----------------------------------------------------------------------------
-**/.tsbuildinfo
-
-# -----------------------------------------------------------------------------
-# Nx
-# -----------------------------------------------------------------------------
-**/.nx/cache
-**/.nx/workspace-data
-**/.nx/artifacts
 
 # -----------------------------------------------------------------------------
 # Test artifacts
@@ -47,33 +25,15 @@ coverage/
 **/test-results/
 **/*test-report.xml
 
-# E2E (Playwright)
-apps/*-e2e/*videos
-apps/*-e2e/*screenshots
-!apps/*-e2e/*screenshots/baseline
-apps/*-e2e/playwright/.auth/
-apps/*-e2e/test-results/
-apps/*-e2e/src/downloads/
-apps/*-e2e/coverage/
-
-# NFR tests
-apps/*-nfr/playwright/.auth/
-apps/*-nfr/test-results/
-apps/*-nfr/nfr-results/
-
-# -----------------------------------------------------------------------------
-# Build cache / generated intermediates
-# -----------------------------------------------------------------------------
-apps/dashboard-wc/scripts/.license-cache.json
-
 # -----------------------------------------------------------------------------
 # Environment & secrets
 # -----------------------------------------------------------------------------
 .env
 .env.*
 !.env.example
-.npmrc
-!standalone.npmrc
+# The root .npmrc maps the scope to GitHub Packages and holds no token (committed);
+# tokens live in ~/.npmrc. A .npmrc anywhere else stays local.
+libs/**/.npmrc
 
 # -----------------------------------------------------------------------------
 # IDE & editors
@@ -82,8 +42,6 @@ apps/dashboard-wc/scripts/.license-cache.json
 .vs/
 .vscode/*
 !.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
 !.vscode/extensions.json
 *.sublime-workspace
 *.launch
@@ -91,10 +49,6 @@ apps/dashboard-wc/scripts/.license-cache.json
 .classpath
 .c9/
 .settings/
-
-# AI assistant generated rules (auto-synced, not committed)
-.cursor/rules/nx-rules.mdc
-.github/instructions/nx.instructions.md
 
 # -----------------------------------------------------------------------------
 # OS files
@@ -117,58 +71,24 @@ pnpm-debug.log*
 tmp/
 
 # -----------------------------------------------------------------------------
+# Leftovers of the former runtime workspace (.runtime/ + Nx) — delete them locally;
+# ignored so they cannot be committed by mistake.
+# -----------------------------------------------------------------------------
+/.runtime/
+.nx/
+/apps/
+/oa-data/
+/libs/default-components/
+
+# WinCC OA runtime skills — third-party, copied by `wui skills` (postinstall)
+.claude/skills/winccoa-*/
+.ai/skills/winccoa-*/
+.github/prompts/winccoa-*.prompt.md
+
+# -----------------------------------------------------------------------------
 # Third-party IP — MUST NOT be published under this project's license.
 # (See IP_AUDIT.md. Kept out of the open-source repo; not authored by Visuel Concept.)
 # -----------------------------------------------------------------------------
 # WinCC OA project archive: contains Siemens/WinCC-OA-SDK-derived .ctl scripts,
 # GEDI panels and a WinCC OA logo. Referenced only in comments (legacy model).
 /winccoa_projectmanager.zip
-# Industrial symbol set of third-party origin (replace with original/licensed art).
-/apps/dashboard-wc/public/semifab-icons/
-# ETM WinCC OA MCP server (ISC) — consume via npm @etm-professional-control/winccoa-mcp-server,
-# do not re-vendor it into the repo.
-/backend/managers/mcpServer/
-
-# =============================================================================
-# Scaffolded WebUI-runtime workspace — PARTIAL ignore
-#
-# `webui-runtime-init` scaffolds the runtime workspace and `wire-workspace.mjs`
-# re-patches it. We can ONLY ignore scaffold files that NX DOES NOT READ:
-# nx EXCLUDES .gitignored paths from its project graph, so apps/, libs/*,
-# nx.json, package.json, project.json, tsconfig.base.json (and the eslint/
-# prettier/vitest configs) MUST stay visible — ignoring them breaks `nx build`
-# ("Cannot find project 'dashboard-wc'"). Those scaffold files therefore remain
-# untracked; commit them if you want a fully clean `git status`.
-#
-# Only docs / skills / editor / build-artifact scaffold (not read by nx) below.
-# Already-tracked files are unaffected — .gitignore never un-tracks them.
-# =============================================================================
-
-# Build artifact (regenerated by tsc)
-/tsconfig.base.tsbuildinfo
-
-# Scaffolded docs (knowledge base + diagrams)
-/docs/knowledge/
-/docs/diagrams/
-
-# Scaffolded doc images (the per-page manual images, docs/images/manual/*, stay tracked)
-/docs/images/oa-widget-external-model-viewer.png
-/docs/images/oa-widget-step-by-step-example.png
-/docs/images/temp-widget.svg
-
-# Editor / AI-assistant skills & prompts (scaffolded)
-/.github/prompts/
-/.claude/skills/
-/.ai/skills/
-/.vscode/settings.json
-
-# Runtime helper scripts (scaffolded; not read by nx)
-/tools/scripts/init-oa-data.mjs
-/tools/scripts/init-oa-data.spec.ts
-/tools/scripts/deploy-oa-data.mjs
-/tools/scripts/deploy-oa-data.spec.ts
-/tools/scripts/postinstall-webui-runtime.mjs
-/tools/scripts/postinstall-webui-runtime.spec.ts
-
-# oa-data: only the scaffolded README (branding under oa-data/WebUI/ stays trackable)
-/oa-data/README.md

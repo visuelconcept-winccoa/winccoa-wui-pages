@@ -6,7 +6,7 @@
 **Status: IMPLEMENTED — now through a resident CTRL manager.** §1–2 are the
 verified analysis; §3 is what ships. The password (and every other project write
 of the page) goes through the **EngStudio CTRL manager**
-(`backend/project-scripts/wui/engStudioService.ctl`), an MSA **vRPC service** the
+(`libs/wui-eng-studio/project-scripts/wui/engStudioService.ctl`), an MSA **vRPC service** the
 webserver calls — see [CTRL-MANAGER.md](./CTRL-MANAGER.md) for that architecture.
 
 Two earlier iterations are recorded here because their reasons still hold:
@@ -223,9 +223,9 @@ was provided. `connectionProvision.warnings` reports: missing public key
 Roles: `manage-devices`, as today.
 
 **Deployment — deployed and registered, never written at runtime.** The manager
-lives in the repo (`backend/project-scripts/wui/engStudioService.ctl`);
-`deploy-backend.mjs` copies every `backend.ctrlManagers` entry into
-`<project>/scripts/` **and registers it in `config/progs`**
+lives in the repo (`libs/wui-eng-studio/project-scripts/wui/engStudioService.ctl`);
+wui-toolkit 0.6.0 has no slot for a CTRL script, so copy it into
+`<project>/scripts/wui/` and register it in `config/progs` by hand
 (`WCCOActrl | always | … |wui/engStudioService.ctl`). The webserver user needs no
 write access to the project scripts, and the backend only *probes* the service:
 one log line at boot says whether project writes go through the manager or the

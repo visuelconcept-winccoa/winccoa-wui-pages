@@ -1,34 +1,31 @@
-# Integrate the Report Builder page (`@visuelconcept/wui-report-builder`) — source mode, Tier 1
+# Integrate the Report Builder page (`@visuelconcept-winccoa/wui-report-builder`) — source mode, Tier 1
 
 **Standalone WinCC OA WebUI page** for building **reports from templates**:
 pages `/report-builder` (list) + `/report-builder/:reportid` (detail).
 You fill in the data, **recompute dataset aggregations from the archives**,
 sign according to a **multi-level workflow gated by a checklist**, then lock +
 print. Each report is stored in a `ReportBuilder_Report` DP. This is a **Tier 1**:
-**frontend only** (no backend module, no manager). **Self-contained source**
-distribution: the shared kit is **vendored** under `report-builder/_vendor/` (no
-`@visuelconcept/wui-kit` prerequisite), and the page is **compiled against the
-target's runtime workspace** (bundle = correct version).
+**frontend only** (no backend module, no manager). Distributed as the npm
+package `@visuelconcept-winccoa/wui-report-builder`, deployed with **wui-toolkit** (`wui` CLI):
+the shared kit is an npm dependency, and the page is **compiled against the
+target's own import map** (bundle = correct version).
 
 ## Prerequisites
-1. A **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) — the `--workspace`.
-2. No backend or manager required. The npm dependency `@siemens/ix-echarts` (`~3.0.0`)
-   declared in `module.json` is **installed automatically into the workspace**
-   by the installer (so that `build:pages` bundles it).
+1. A **wui-toolkit site** for the project (`<project>/web`) whose `prod` target was
+   equipped once with `npx wui init target prod`.
+2. No backend or manager required. `echarts` is a peer dependency of the package,
+   expected from the WebUI platform.
 
-## Install (one command)
-```bash
-node install.mjs --workspace <workspace-runtime> --project <project-root>
+## Install
+In the project's site (`<project>/web`):
+```powershell
+npx wui use report-builder   # npm-installs @visuelconcept-winccoa/wui-report-builder (+ its kit) and selects it
+npx wui build prod           # compiles the page, upserts its menu entries
+npx wui check prod
 ```
-Example (WebDemo2):
-```bash
-node install.mjs --workspace D:\WinCC_OA_Proj_321\WebDemo2\webui-workspace --project D:\WinCC_OA_Proj_321\WebDemo2
-```
-The installer:
-1. copies the **source** (vendored kit) → `<workspace>/…/standalone-pages/`;
-2. inserts the **2 menu entries** → the workspace's `menuconfig.jsonc` (idempotent by `routeId`);
-3. installs **`@siemens/ix-echarts`** into the workspace (so that `build:pages` bundles it);
-4. runs **`build:pages`** (OUT_DIR=`<project>/data/dashboard-wc`).
+`wui build`:
+1. compiles the page → `<project>/data/dashboard-wc/pages/`;
+2. upserts the **2 menu entries** (`menu.fragment.jsonc`) into `menuconfig.json` (idempotent by `routeId`).
 
 ## After install (mandatory)
 1. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).

@@ -1,7 +1,7 @@
 {
-  "name": "@visuelconcept/wui-ai-kit",
+  "name": "@visuelconcept-winccoa/wui-ai-kit",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AI assistant kit for WinCC OA WebUI pages: the chat prompt bar (mf-ai-prompt) + config dialog, the AI client store (POST /api/ai/chat bridge + AI_Assistant_Config) and a dependency-free markdown renderer.",
   "author": {
     "name": "Visuel Concept"
@@ -14,7 +14,7 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@visuelconcept/wui-kit": "*"
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0"
   },
   "peerDependencies": {
     "lit": "*",
@@ -29,8 +29,37 @@
       "import": "./*"
     }
   },
-  "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest"
+  "peerDependenciesMeta": {
+    "lit": {
+      "optional": true
+    },
+    "rxjs": {
+      "optional": true
+    },
+    "tsyringe": {
+      "optional": true
+    },
+    "@etm-professional-control/oa-rx-js-api": {
+      "optional": true
+    },
+    "@wincc-oa/wui-shared": {
+      "optional": true
+    }
+  },
+  "files": [
+    "src",
+    "backend",
+    "managers",
+    "!**/*.spec.ts",
+    "!**/*.test.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/visuelconcept-winccoa/winccoa-wui-pages.git",
+    "directory": "libs/wui-ai-kit"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
   }
 }

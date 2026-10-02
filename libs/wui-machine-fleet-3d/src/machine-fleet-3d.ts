@@ -29,21 +29,21 @@ import { templateSeed } from './machine-fleet-3d/data/atelier-templates.js';
 import { normDp, toNumber } from './machine-fleet-3d/data/dp-utils.js';
 import { MSG, localizeDir } from './machine-fleet-3d/i18n.js';
 import appSecurityRoles from './app-security.roles.json';
-import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
-import { canEditFleet, canEditFleet$ } from '@visuelconcept/wui-kit/data/permissions.js';
-import { FleetStore } from '@visuelconcept/wui-fleet-core/data/fleet-store.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
+import { canEditFleet, canEditFleet$ } from '@visuelconcept-winccoa/wui-kit/data/permissions.js';
+import { FleetStore } from '@visuelconcept-winccoa/wui-fleet-core/data/fleet-store.js';
 import {
   DEFAULT_STATE_MAPPINGS,
   resolveState,
   type Atelier,
   type MachineDef
-} from '@visuelconcept/wui-fleet-core/types.js';
+} from '@visuelconcept-winccoa/wui-fleet-core/types.js';
 import {
   AuditTrailWriter,
   auditDiff,
   auditSnapshot,
   type AuditRecord
-} from '@visuelconcept/wui-kit/data/audit-trail.js';
+} from '@visuelconcept-winccoa/wui-kit/data/audit-trail.js';
 import './machine-fleet-3d/ui/mf-atelier-overview.js';
 import './machine-fleet-3d/ui/mf-atelier-view.js';
 

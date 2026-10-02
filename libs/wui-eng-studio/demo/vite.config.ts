@@ -31,9 +31,9 @@ export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),
   resolve: {
     alias: [
-      { find: /^@visuelconcept\/wui-eng-core\/(.*)$/, replacement: `${engCore}/$1` },
-      { find: '@visuelconcept/wui-eng-core', replacement: `${engCore}/index.ts` },
-      { find: '@visuelconcept/wui-eng-studio', replacement: engStudio },
+      { find: /^@visuelconcept-winccoa\/wui-eng-core\/(.*)$/, replacement: `${engCore}/$1` },
+      { find: '@visuelconcept-winccoa/wui-eng-core', replacement: `${engCore}/index.ts` },
+      { find: '@visuelconcept-winccoa/wui-eng-studio', replacement: engStudio },
       { find: 'lit/decorators.js', replacement: `${litDir}/decorators.js` },
       { find: 'lit/directives/', replacement: `${litDir}/directives/` },
       { find: 'lit', replacement: `${litDir}/index.js` }

@@ -10,7 +10,7 @@
  * backfills the fields a record saved by an earlier version may lack, so an old site never
  * reaches the map with an undefined list.
  */
-import { DpJsonStore } from '@visuelconcept/wui-kit/data/dp-json-store.js';
+import { DpJsonStore } from '@visuelconcept-winccoa/wui-kit/data/dp-json-store.js';
 import { demoSites } from './demo.js';
 import { hydrateSite } from './hydrate.js';
 import type { Site } from '../types.js';

@@ -1,4 +1,4 @@
-# Integrate the GIS pages (`@visuelconcept/wui-gis`) — source mode, Tier 1
+# Integrate the GIS pages (`@visuelconcept-winccoa/wui-gis`) — source mode, Tier 1
 
 **Standalone WinCC OA WebUI pages** on **`/gis`** (all sites) and **`/gis/:siteid`** (one
 site's map): geo-located assets bound to datapoints, live values on the markers, alarm
@@ -6,18 +6,18 @@ highlighting from the datapoints' own alert state, areas grouping the assets, an
 configurable drill-down to each asset's process or 3D view.
 
 **Tier 1**: frontend only — no backend route of its own, and no manager the page needs. One
-npm dependency (`maplibre-gl`) is installed into the workspace and bundled into the page. An
+npm dependency (`maplibre-gl`) is installed with the package and bundled into the page. An
 **optional** simulator manager ships alongside for demos and commissioning; the page is
-unchanged without it — see
-[The network simulator](#the-network-simulator-optional).
+unchanged without it — see [The network simulator](#the-network-simulator-optional).
 
-**Self-contained source** distribution: the shared kit (`wui-kit`) is **vendored** under
-`_vendor/`, and the page is **compiled against the target's runtime workspace** (bundle =
-correct version).
+Distributed as the npm package `@visuelconcept-winccoa/wui-gis`, deployed with **wui-toolkit**
+(`wui` CLI): the shared kits (`wui-kit`, `wui-ai-kit`) are npm dependencies, and the
+page is **compiled against the target's own import map** (bundle = correct version).
 
 ## Prerequisites
 
-1. A **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) — the `--workspace`.
+1. A **wui-toolkit site** for the project (`<project>/web`) whose `prod` target was
+   equipped once with `npx wui init target prod`.
 2. **WebGL** in the client browser. MapLibre renders on the GPU; without a usable
    context the page reports it rather than showing an empty frame.
 3. For an **off-origin basemap** (the public OpenStreetMap tiles included):
@@ -25,34 +25,38 @@ correct version).
    shell injects `default-src 'self' …` and the browser refuses the tile requests. A
    **same-origin** tile server needs no such setting. See
    [NOTES.md](./NOTES.md#content-security-policy).
-4. To **persist** sites: **`@visuelconcept/wui-para`** installed in the project, because
+4. To **persist** sites: **`@visuelconcept-winccoa/wui-para`** installed in the project, because
    the page creates the `GIS_Site` DP type and its datapoints through `/api/para`
    (`OaRxJsApi` can read and write values but not create types or datapoints). Without
    it the page runs on in-memory demo sites and shows a non-blocking notice saying so.
 5. In the project: the **process datapoints** the assets will bind to, and `_alert_hdl`
    on those you want to see highlight in alarm.
 
-## Install (one command)
+## Install
 
-```bash
-node install.mjs --workspace <runtime-workspace> --project <project-root>
+In the project's site (`<project>/web`):
+
+```powershell
+npx wui use gis        # npm-installs @visuelconcept-winccoa/wui-gis (+ its kits, maplibre-gl), selects it
+npx wui use para       # to persist sites (see Prerequisites)
+npx wui build prod     # compiles the pages, upserts the menu entries
+npx wui check prod
 ```
 
-Example (WebDemo2):
+`wui build`:
 
-```bash
-node install.mjs --workspace D:\WinCC_OA_Proj_321\WebDemo2\webui-workspace --project D:\WinCC_OA_Proj_321\WebDemo2
-```
+1. compiles the page (`maplibre-gl` bundled) → `<project>/data/dashboard-wc/pages/`;
+2. upserts the **two menu entries** (`menu.fragment.jsonc`) into `menuconfig.json` (idempotent by `routeId`).
 
-The installer:
+Not handled by wui-toolkit: merging the module's **role catalog** into
+`app-security-manifest.json` (the roles still self-register when the page is opened),
+and the AI-assistant flag — to enable the assistant, write
+`<project>/data/dashboard-wc/dashboard-features.json` = `{ "aiAssistant": true }` by hand
+(it also needs the `/api/ai` bridge, mounted by `machine-fleet-3d`).
 
-1. copies the **source** (kit vendored under `_vendor/`) → `<workspace>/…/standalone-pages/`;
-2. inserts the **two menu entries** → the workspace's `menuconfig.jsonc` (idempotent by `routeId`);
-3. `npm install`s **`maplibre-gl@^5.24.0`** in the workspace (so `build:pages` can bundle it);
-4. merges the module's **role catalog** into `app-security-manifest.json` (idempotent by module id);
-5. copies the **optional** `gisSim` manager → `<project>/javascript/gisSim/` (with
-   `--register-pmon`, adds its line to `config/progs`) — it stays stopped until you start it;
-6. runs **`build:pages`** (`OUT_DIR=<project>/data/dashboard-wc`).
+The **optional** `gisSim` manager (`libs/wui-gis/managers/gisSim/`) is deployed by
+`wui build` with the page and stays stopped until you start it in the WinCC OA
+console — see [The network simulator](#the-network-simulator-optional).
 
 ## After install
 
@@ -217,23 +221,18 @@ the flow reroutes or the consumer goes visibly short.
 
 ### Install
 
-The installer deploys it with the page:
-
-```bash
-node install.mjs --workspace <runtime-workspace> --project <project-root> --register-pmon
-```
-
-`--register-pmon` appends its line to `<project>/config/progs` as `always` (it comes back up
-with the project). Without the flag, register it yourself in the WinCC OA console — and use
-`manual` if you would rather start the simulator by hand:
+`npx wui build prod` deploys it with the page: the module declares it
+(`package.json#wuiPage.backend.managers: ["gisSim"]`), so the toolkit stages
+`libs/wui-gis/managers/gisSim/` into `<project>/javascript/gisSim/` and prints the
+progs line to register in the WinCC OA console:
 
 ```
 node | manual | 30 | 2 | 2 |gisSim/index.js
 ```
 
+Use `always` instead of `manual` if the simulator should come back up with the project.
 Either way, **start `gisSim`** in the console after the deployment: a manager that is already
-running keeps the code it loaded at startup. From this repository the same deployment is
-`node tools/scripts/deploy-backend.mjs --project <project> --only gis`.
+running keeps the code it loaded at startup.
 
 > Start it on a **demo or engineering project**. It creates datapoints and alarm
 > configurations; that is its job, and not something to run on a production system by

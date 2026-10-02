@@ -1,7 +1,7 @@
 <!-- SPDX-FileCopyrightText: 2026 VISUEL CONCEPT -->
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
-# @visuelconcept/wui-ampere — Ampère (electrical single-line diagrams)
+# @visuelconcept-winccoa/wui-ampere — Ampère (electrical single-line diagrams)
 
 **Ampère** is a standalone WinCC OA WebUI page to **draw, wire and animate
 single-line (mono-filaire) electrical distribution networks** — substations
@@ -13,7 +13,7 @@ feeders, loads and measuring devices.
 
 Frontend-only (Tier 1): **one datapoint per network** (`Ampere_Network`), with a
 transparent in-memory demo fallback when no writable backend is available. No
-manager, no webserver rebuild.
+manager, no webserver rebuild. **Requires** the `para` and `app-security` backends (`wuiPage.requires` — deployed headless when those pages are not selected), see [module dependencies](../module-dependencies.md).
 
 ## Features
 
@@ -31,7 +31,7 @@ manager, no webserver rebuild.
   binding needed.
 - **Live measurements**: value labels bound to any datapoint, placed **anchored
   to a symbol** or **free anywhere** in the circuit.
-- **AI assistant** (reuses `@visuelconcept/wui-ai-kit`): a proposal-only,
+- **AI assistant** (reuses `@visuelconcept-winccoa/wui-ai-kit`): a proposal-only,
   read-only-tools chat that generates a network model from a prompt; the user reviews
   and applies it to the editor. Hidden unless enabled at deploy time
   (`dashboard-features.json` → `aiAssistant: true`).
@@ -68,7 +68,7 @@ the downstream catenary section live.
 
 All demo networks bind their switchgear, sources and measurements to elements of
 **one shared datapoint** `AmpereSim_Demo` (type `AmpereSim`). The WinCC OA
-JavaScript manager [`backend/managers/ampereSim`](../../backend/managers/ampereSim/index.js)
+JavaScript manager [`libs/wui-ampere/managers/ampereSim`](../../libs/wui-ampere/managers/ampereSim/index.js)
 **creates** that type + datapoint and **drives** it live:
 
 - switchgear positions (`feeder1`, `mainBreaker`, `sectioning`, `busCoupler`, …)
@@ -83,8 +83,9 @@ The element names are the contract between the demos (`data/demo.ts`, via the
 keep the two in sync. No system prefix is stored, so the binding resolves on the
 local system and the page's `normDp` matches it against the emitted DP.
 
-Register it in the project's `config/progs` (deploy-release wires it from
-`tools/specs.json` `managers`):
+Register it in the project's `config/progs` (`npx wui build` deploys it from
+`libs/wui-ampere/package.json` → `wuiPage.backend.managers` and appends the line
+when missing):
 
 ```
 node | manual | 30 | 2 | 2 |ampereSim/index.js
@@ -163,5 +164,6 @@ GxP audit trail (`AuditTrail_Ampere`) and an offline in-memory demo fallback.
   persisted.
 - Switchgear with no bound datapoint (or before the first live value) is treated
   as **closed**, so a freshly drawn diagram lights up during design.
-- The AI assistant is OFF by default; deploy with
-  `tools/scripts/deploy-release.mjs … --ai-assistant` to enable it.
+- The AI assistant is OFF by default; it is enabled by
+  `<project>/data/dashboard-wc/dashboard-features.json` = `{ "aiAssistant": true }`.
+  wui-toolkit does not write that file: create it by hand.

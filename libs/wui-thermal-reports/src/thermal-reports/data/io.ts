@@ -19,7 +19,7 @@ import {
   blankReport,
   type ThermalReport
 } from '../types.js';
-import { CSV_BOM, JSON_INDENT, csvCell, download, timestampSlug } from '@visuelconcept/wui-kit/data/io.js';
+import { CSV_BOM, JSON_INDENT, csvCell, download, timestampSlug } from '@visuelconcept-winccoa/wui-kit/data/io.js';
 
 const CSV_COLUMNS: { key: string; label: MultiLangString }[] = [
   { key: 'reportNo', label: MSG.csv.reportNo },

@@ -13,7 +13,7 @@
  * Writes go through the PARA REST endpoint (`/api/para/dp/set`), since the
  * WebSocket `dpSet` is read-only in this deployment.
  */
-import type { Atelier } from '@visuelconcept/wui-fleet-core/types.js';
+import type { Atelier } from '@visuelconcept-winccoa/wui-fleet-core/types.js';
 import type { ProductionOrder } from '../types.js';
 
 const DP_SET_URL = '/api/para/dp/set';

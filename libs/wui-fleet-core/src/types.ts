@@ -417,6 +417,10 @@ export interface MachineDef {
   workOrderDp?: string;
   /** Datapoint giving the current operation. */
   operationDp?: string;
+  /** Live server-computed KPI values (kpiCalc manager), keyed by `MachineKpi.id`. */
+  kpiCalcValues?: Record<string, number>;
+  /** Resolved threshold-band colour per KPI (TRS only), keyed by `MachineKpi.id`. */
+  kpiCalcColors?: Record<string, string>;
   /** Live values pushed at runtime from the bound production DPs. */
   stopCause?: string | number;
   /** Stop cause resolved against the catalog: "code — description". */
@@ -563,10 +567,6 @@ export interface Machine extends MachineDef {
   bbox: { x1: number; x2: number; z1: number; z2: number };
   focus: FocusPose;
   suppressLabel: boolean;
-  /** Live server-computed KPI values (kpiCalc manager), keyed by `MachineKpi.id`. */
-  kpiCalcValues?: Record<string, number>;
-  /** Resolved threshold-band colour per KPI (TRS only), keyed by `MachineKpi.id`. */
-  kpiCalcColors?: Record<string, string>;
   accentConfig?: AccentConfig;
   /** Borrowed PointLight from the pool (assigned per frame by proximity). */
   _light?: PointLight;

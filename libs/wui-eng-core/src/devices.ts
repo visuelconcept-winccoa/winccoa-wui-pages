@@ -348,7 +348,7 @@ export function opcuaSecurityWrite(connection?: Record<string, string | number |
  * project mutation of the page), so this function is the **executable
  * specification** of what that manager does: the semantics are pinned here by
  * unit tests, and the CTRL implementation (`applyFlags` in
- * `backend/project-scripts/wui/engStudioService.ctl`) is reviewed against them.
+ * `libs/wui-eng-studio/project-scripts/wui/engStudioService.ctl`) is reviewed against them.
  * Kept in the core rather than deleted for exactly that reason — a bit-masking
  * rule nobody can test is a rule that drifts.
  */

@@ -1,4 +1,4 @@
-# @visuelconcept/wui-gis — source module (Tier 1)
+# @visuelconcept-winccoa/wui-gis — source module (Tier 1)
 
 **GIS** pages for a WinCC OA WebUI dashboard: **`/gis`** (every site — also the
 multi-site view) and **`/gis/:siteid`** (one site's map).
@@ -38,24 +38,24 @@ cost (MapLibre GL JS is BSD-3-Clause, OSM data is ODbL). Each site carries:
   bulk (a line of valves, a grid of lamps). Everything is reviewed on the map before
   anything is saved (off unless the deploy enables it).
 
-Self-contained **source** distribution: the shared kit is **vendored** under
-`gis/_vendor/wui-kit/` (no `@visuelconcept/*` prerequisite), and the page is built on
-the target's runtime workspace, so the bundle always matches its version.
+npm package, deployed with **wui-toolkit** (the `wui` CLI): the shared kits come as its
+npm dependencies, and the page is built against the target's own import map, so the
+bundle always matches its runtime.
 
-## Install (one command)
+## Install
 
-```bash
-node install.mjs --workspace <runtime-workspace> --project <winccoa-project-root>
+In the WinCC OA project's site (`<project>/web`), once the target is equipped
+(`npx wui init target prod`):
+
+```powershell
+npx wui use gis        # npm-installs @visuelconcept-winccoa/wui-gis with its kits and maplibre-gl, selects it
+npx wui build prod     # compiles the pages into <project>/data/dashboard-wc/, upserts the two menu entries
+npx wui check prod
 ```
 
-- `--workspace` = the `@wincc-oa/webui-runtime` workspace that builds this project's dashboard (e.g. `…/WebDemo2/webui-workspace`).
-- `--project` = the WinCC OA project root (its `data/dashboard-wc/` is the deploy target).
-
-It (1) copies the page source (kit vendored) into the workspace, (2) adds the two menu
-entries, (3) `npm install`s **`maplibre-gl@^5.24.0`** into the workspace so
-`build:pages` can bundle it, (4) merges the role catalog into
-`app-security-manifest.json`, then (5) runs `build:pages` into
-`<project>/data/dashboard-wc/`.
+Not handled by wui-toolkit: the role catalog merge into `app-security-manifest.json`
+(the roles self-register when the page is opened) and the AI-assistant flag
+(`dashboard-features.json`, to write by hand).
 
 ## After install
 
@@ -64,19 +64,21 @@ entries, (3) `npm install`s **`maplibre-gl@^5.24.0`** into the workspace so
 
 ## Prerequisites
 
-- A **WebUI Runtime workspace** for the target project (the `--workspace`).
+- A **wui-toolkit site** for the target project (`npx wui init target prod` done once).
 - **WebGL** in the client browser — MapLibre draws the map on the GPU. A panel PC with
   a bare VM graphics driver has none; the page then says so instead of showing a blank
   frame.
-- **`@visuelconcept/wui-para`** (the `/api/para` route) if the sites are to be
+- **`@visuelconcept-winccoa/wui-para`** (the `/api/para` route) if the sites are to be
   **persisted**. The page auto-creates the `GIS_Site` DP type and its datapoints
   through that API; without it the page still runs, read-only, on the demo sites and
   says so.
 - No backend route and no manager the page needs (**Tier 1**). One **optional** manager
   ships beside it for demos and commissioning — see
   [The network simulator](#the-network-simulator-gissim).
+- **Requires** the `para` and `app-security` backends (`wuiPage.requires` — deployed headless when those pages are not selected), see [module dependencies](../module-dependencies.md).
 - **For the AI assistant only** (optional): the `/api/ai` bridge and an assistant enabled
-  at deploy time (`dashboard-features.json`). Without either, the page is unchanged and the
+  at deploy time (`<project>/data/dashboard-wc/dashboard-features.json` =
+  `{ "aiAssistant": true }`, written by hand — wui-toolkit does not). Without either, the page is unchanged and the
   assistant simply does not appear.
 
 ## Prerequisites (runtime)
@@ -144,11 +146,11 @@ the contract, and the companion CLI writes those names into an exported site.
 
 ```bash
 # 1) bind an exported site to the simulator (writes dp + readings, touches nothing else)
-node backend/managers/gisSim/bind-site.js my-site.json --out my-site-bound.json
+node libs/wui-gis/managers/gisSim/bind-site.js my-site.json --out my-site-bound.json
 # 2) import the result on /gis, then deploy + start the manager (see INTEGRATION.md)
 ```
 
-Two ready-to-import sites ship already bound, in `backend/managers/gisSim/examples/`:
+Two ready-to-import sites ship already bound, in `libs/wui-gis/managers/gisSim/examples/`:
 **gis-france-nucleaire.json** (19 EDF plants, 8 consumption poles, 19 lines — the flow
 allocation) and **gis-dubai-metro.json** (13 underground stations, 13 track sections, 2 lines
 — the route service).
@@ -166,10 +168,10 @@ design decisions in [NOTES.md](./NOTES.md#the-network-simulator-gissim).
 ## Contents
 
 ```
-module.json / install.mjs
-frontend/standalone-pages/gis.ts + gis/     (page SOURCE; kit vendored in gis/_vendor/)
-frontend/menu.fragment.jsonc                (2 entries: /gis list + /gis/:siteid detail)
-manager/gisSim/                             (OPTIONAL network simulator + bind-site.js + examples/)
+package.json                                npm package; wuiPage (routes, tier 1)
+src/gis.ts + src/gis/                       (page source)
+menu.fragment.jsonc                         (2 entries: /gis list + /gis/:siteid detail)
+managers/gisSim/                            (OPTIONAL network simulator + bind-site.js + examples/)
 ```
 
 ## Documentation

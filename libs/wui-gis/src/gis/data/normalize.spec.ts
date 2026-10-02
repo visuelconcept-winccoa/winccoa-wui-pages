@@ -252,6 +252,7 @@ describe('site sanitiser', () => {
   check('truncation reported', big.report.truncated, true);
 
   // Garbage in, empty site out — never a throw.
+  let failures = 0;
   for (const junk of [
     null,
     undefined,
@@ -269,7 +270,7 @@ describe('site sanitiser', () => {
       console.log('FAIL  normalizeSite threw on', JSON.stringify(junk));
     }
   }
-  check('junk input yields an empty site without throwing', true, true);
+  check('junk input yields an empty site without throwing', failures, 0);
 
   // NOTE: extracting proposals from an answer moved to the patch contract; it is
   // covered by site-patch.spec.ts, which owns that vocabulary.

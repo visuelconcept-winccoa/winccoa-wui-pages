@@ -85,8 +85,8 @@ libs/wui-tag-importer/
         └── ui/                         # ti-source, ti-browse-tree, ti-review, ti-result
 ```
 
-Backend (shared trees): `backend/routes/tagImporterController.ts` +
-`tagImporterRoute.ts` (+ a copy of `appSecurityGuard.ts`). No dedicated manager —
+Backend (`libs/wui-tag-importer/backend/`): `tagImporterController.ts` +
+`tagImporterRoute.ts` (+ a copy of `appSecurityGuard.ts`, shared from wui-app-security at deploy). No dedicated manager —
 the controller uses the webserver's shared `WsjServerGlobal.winccoa`.
 
 See [`INTEGRATION.md`](./INTEGRATION.md) for deployment and [`NOTES.md`](./NOTES.md)

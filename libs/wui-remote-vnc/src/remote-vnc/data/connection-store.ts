@@ -11,7 +11,7 @@
  * manager reads these same DPs server-side to resolve a connection id →
  * host:port.
  */
-import { DpJsonStore } from '@visuelconcept/wui-kit/data/dp-json-store.js';
+import { DpJsonStore } from '@visuelconcept-winccoa/wui-kit/data/dp-json-store.js';
 import { DEMO_CONNECTIONS } from './demo-connections.js';
 import type { VncConnection } from '../types.js';
 

@@ -1,4 +1,4 @@
-// Menu fragment for @visuelconcept/wui-machine-fleet-3d. Merge into the host `entries` (idempotent by routeId).
+// Menu fragment for @visuelconcept-winccoa/wui-machine-fleet-3d. Merge into the host `entries` (idempotent by routeId).
 [
   { "title": { "en_US": "Machine Fleet", "fr": "Parc machine", "de_AT": "Maschinenpark" }, "icon": "capacity", "path": "/fleet-3d", "module": "/data/dashboard-wc/pages/machine-fleet-3d.js", "routeId": "fleet-3d", "component": "wui-machine-fleet-3d" },
   { "path": "/fleet-3d/:atelier", "module": "/data/dashboard-wc/pages/machine-fleet-3d.js", "routeId": "fleet-3d-detail", "component": "wui-machine-fleet-3d", "hidden": true }

@@ -1,20 +1,29 @@
 {
-  "name": "@visuelconcept/wui-para",
+  "name": "@visuelconcept-winccoa/wui-para",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "PARA — standalone WinCC OA WebUI page: two tabs — a nested DP-type model editor (create/change-in-place/delete types) and an instances/values browser (live values + config attributes, create/rename/delete DPs). Embeds a proposal-only AI assistant (via /api/ai) and DPL ASCII import/export (multi-select DP/DPT) via the dplAscii MSA manager. Requires the PARA REST route to mutate.",
-  "author": { "name": "Visuel Concept" },
-  "keywords": ["OpenArchitecture", "WinCCOA", "dashboard", "webcomponents", "standalone-page"],
+  "author": {
+    "name": "Visuel Concept"
+  },
+  "keywords": [
+    "OpenArchitecture",
+    "WinCCOA",
+    "dashboard",
+    "webcomponents",
+    "standalone-page"
+  ],
   "license": "MIT",
   "dependencies": {
-    "@visuelconcept/wui-kit": "*"
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0",
+    "@visuelconcept-winccoa/wui-ai-kit": "^0.1.0",
+    "@visuelconcept-winccoa/wui-app-security": "^0.1.0"
   },
   "peerDependencies": {
     "lit": "*",
     "rxjs": "*",
     "tsyringe": "*",
     "@etm-professional-control/oa-rx-js-api": "*",
-    "@visuelconcept/wui-ai-kit": "*",
     "@wincc-oa/wui-ix-wrappers": "*",
     "@wincc-oa/wui-oarxjs-context": "*",
     "@wincc-oa/wui-shared": "*",
@@ -27,20 +36,88 @@
     }
   },
   "wuiPage": {
+    "requires": [
+      "app-security"
+    ],
+    "optional": [
+      "machine-fleet-3d"
+    ],
     "route": "/para",
     "routeId": "para",
     "component": "wui-para",
     "module": "/data/dashboard-wc/pages/para.js",
     "icon": "hierarchy",
-    "permission": ["connected"],
+    "permission": [
+      "connected"
+    ],
     "tier": 3,
     "backend": {
-      "routes": [
-        "/api/para/* (datapoint/type engineering — ParaRoute; required for any mutation, no offline fallback)",
-        "/api/para/dpl/* (DPL ASCII import/export — bridges to the dplAscii MSA manager / WCCOAasciiSQLite)"
+      "mount": "/api/para",
+      "routeClass": "ParaRoute",
+      "routeFile": "paraRoute",
+      "files": [
+        "paraController.ts",
+        "paraRoute.ts",
+        "paraTypeNode.ts",
+        "dplController.ts"
       ],
-      "managers": ["dplAscii (MSA service DplAscii — DPL export/import via WCCOAasciiSQLite)"],
-      "dependsOn": ["/api/ai bridge + aiAssistant manager (proposal-only AI assistant)"]
+      "shared": [
+        "@visuelconcept-winccoa/wui-app-security/appSecurityGuard.ts"
+      ],
+      "managers": [
+        "dplAscii"
+      ],
+      "notes": [
+        "/api/para/* (datapoint/type engineering — ParaRoute; required for any mutation, no offline fallback)",
+        "/api/para/dpl/* (DPL ASCII import/export — bridges to the dplAscii MSA manager / WCCOAasciiSQLite)",
+        "dplAscii (MSA service DplAscii — DPL export/import via WCCOAasciiSQLite)"
+      ],
+      "dependsOn": [
+        "/api/ai bridge + aiAssistant manager (proposal-only AI assistant)"
+      ]
     }
+  },
+  "peerDependenciesMeta": {
+    "lit": {
+      "optional": true
+    },
+    "rxjs": {
+      "optional": true
+    },
+    "tsyringe": {
+      "optional": true
+    },
+    "@etm-professional-control/oa-rx-js-api": {
+      "optional": true
+    },
+    "@wincc-oa/wui-ix-wrappers": {
+      "optional": true
+    },
+    "@wincc-oa/wui-oarxjs-context": {
+      "optional": true
+    },
+    "@wincc-oa/wui-shared": {
+      "optional": true
+    },
+    "@wincc-oa/wui-data-selector-data": {
+      "optional": true
+    }
+  },
+  "files": [
+    "src",
+    "backend",
+    "managers",
+    "menu.fragment.jsonc",
+    "!**/*.spec.ts",
+    "!**/*.test.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/visuelconcept-winccoa/winccoa-wui-pages.git",
+    "directory": "libs/wui-para"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
   }
 }

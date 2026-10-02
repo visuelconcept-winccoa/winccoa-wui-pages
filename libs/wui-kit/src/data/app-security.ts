@@ -25,7 +25,7 @@
  *     (an assigned role means the admin opted into security — fail closed).
  *
  * Frontend gating is UX; the same rules are enforced server-side on sensitive
- * API routes (see `backend/routes/appSecurityGuard.ts`).
+ * API routes (see `libs/wui-app-security/backend/appSecurityGuard.ts`).
  */
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { WuiUserService } from '@wincc-oa/wui-iam-data/user-service.js';

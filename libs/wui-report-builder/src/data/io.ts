@@ -9,7 +9,7 @@
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { MSG, localize } from '../i18n.js';
 import { defaultWorkflow, type Report, type ReportTemplate } from '../types.js';
-import { CSV_BOM, JSON_INDENT, csvCell, download, timestampSlug } from '@visuelconcept/wui-kit/data/io.js';
+import { CSV_BOM, JSON_INDENT, csvCell, download, timestampSlug } from '@visuelconcept-winccoa/wui-kit/data/io.js';
 
 export function exportTemplatesJson(templates: ReportTemplate[]): void {
   const payload = { kind: 'report-builder-templates', version: 1, templates };

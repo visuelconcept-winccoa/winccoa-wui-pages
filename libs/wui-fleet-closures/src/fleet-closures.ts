@@ -26,7 +26,7 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
-import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import appSecurityRoles from './app-security.roles.json';
 import {
   MSG,
@@ -39,9 +39,9 @@ import {
   daysSpanMsg,
   hoursSpanMsg
 } from './i18n.js';
-import { pageStyles } from '@visuelconcept/wui-fleet-core/styles.js';
-import { FleetStore } from '@visuelconcept/wui-fleet-core/data/fleet-store.js';
-import type { Atelier } from '@visuelconcept/wui-fleet-core/types.js';
+import { pageStyles } from '@visuelconcept-winccoa/wui-fleet-core/styles.js';
+import { FleetStore } from '@visuelconcept-winccoa/wui-fleet-core/data/fleet-store.js';
+import type { Atelier } from '@visuelconcept-winccoa/wui-fleet-core/types.js';
 import {
   emptyClosureConfig,
   hasOverlap,
@@ -50,7 +50,7 @@ import {
   strictlyContains,
   type ClosureConfig,
   type ClosureRange
-} from '@visuelconcept/wui-fleet-core/closures.js';
+} from '@visuelconcept-winccoa/wui-fleet-core/closures.js';
 
 /** Application-Security module id of this page. */
 const MODULE_ID = 'fleet-closures';

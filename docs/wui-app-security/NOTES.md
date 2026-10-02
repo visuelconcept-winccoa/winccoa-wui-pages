@@ -17,7 +17,8 @@ One DP per module — type `AppSecurity_Module` (Struct, 3 Strings), instance
   written by the PROVIDING module (`registerModuleRoles`, best-effort at page
   load) and by the admin page's **Discover** seeding. Both read the SAME
   per-module `app-security.roles.json` fragment (aggregated into the
-  `app-security-manifest.json` asset by the `page-appsec-merge` Vite plugin) —
+  `app-security-manifest.json` asset — by wui-toolkit ≥ 0.5.0 at build, formerly by
+  the repo's `page-appsec-merge` Vite plugin) —
   there is no central manifest;
 - `.assignments` — `{roleId: [group names]}`, written **ONLY** by the admin page.
 
@@ -59,15 +60,16 @@ idea was rejected for that reason). Role/group direction is role → groups
   as `DpJsonStore`), re-attempts the backend on every call; a successful
   list/discover clears the offline flag.
 - **Discover seeds INSTALLED modules only.** The static manifest aggregates
-  every fragment of the build tree, but a curated release (deploy-release)
-  ships only a subset of pages. `discover()` therefore restricts the catalog
-  to the page-bundle ids referenced by the deployed `menuconfig.json`
-  (fragment module id == page-bundle id, cf. INTEGRATION Step 2) so no
-  `AppSecurity_<module>` DP is created for a module that is not deployed.
-  When the menu is unreachable the restriction is skipped (fail open — dev
-  server, tests). `deploy-release.mjs` additionally filters the emitted
-  `app-security-manifest.json` to the selected modules (external entries,
-  unknown to the repo catalog, are kept).
+  every fragment of the build tree, but a deployment usually ships only a subset
+  of pages. `discover()` therefore restricts the catalog to the deployed
+  modules: the page-bundle ids referenced by the deployed `menuconfig.json`
+  (fragment module id == page-bundle id, cf. INTEGRATION Step 2), plus every
+  module of wui-toolkit's deploy registry `wui-deploy.json` — the only list of a
+  HEADLESS module (backend only, no menu entry, its routes still enforce its
+  roles, and it never self-registers: it has no page). No `AppSecurity_<module>`
+  DP is created for a module that is not deployed. When neither the menu nor the
+  registry lists a module the restriction is skipped (fail open — tests, an
+  older deployment).
 - **Stale assignments** (role assigned but no longer declared) are badged, kept,
   and never auto-deleted.
 - **Audit**: every `.assignments` write logs one UPDATE row (old/new JSON) into

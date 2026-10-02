@@ -91,9 +91,7 @@ describe('a connection bound to a quiet datapoint', () => {
 
   it('is drawn, in its route colour', () => {
     const quiet = new Map<string, string>([['gislink_a_b', '']]);
-    const collection = linkCollection(site, '', new Set(), (connection) =>
-      alarmColorOr(quiet.get('gislink_a_b'), routeColor)
-    );
+    const collection = linkCollection(site, '', new Set(), () => alarmColorOr(quiet.get('gislink_a_b'), routeColor));
     expect(collection.features).toHaveLength(1);
     // An empty colour is what removed the line from the map: it must never be emitted.
     expect(collection.features[0]?.properties.color).toBe(routeColor);

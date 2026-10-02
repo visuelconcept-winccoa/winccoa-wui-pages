@@ -1,9 +1,15 @@
-# @visuelconcept/wui-para — source module
+# @visuelconcept-winccoa/wui-para — source module
 
 **PARA** datapoint-parametrization page for a WinCC OA WebUI dashboard
-(page source + `/api/para` backend module). Distributed as **source** and built
-on the target's runtime workspace, so the page bundle always matches the target
-runtime version (a page bundle is coupled to the shell's import map).
+(page source + `/api/para` backend module). Distributed as an npm package and built
+by **wui-toolkit** against the target's own import map, so the page bundle always
+matches the target runtime version (a page bundle is coupled to the shell's import map).
+
+`/api/para` is also the write path of most other pages (through `wui-kit`'s
+datapoint stores): they declare `"requires": ["para"]`, and a site that does not
+select the PARA page gets its backend **headless** — routes and `dplAscii`
+manager, no page, no menu entry. See
+[module dependencies](../module-dependencies.md).
 
 ## Features
 
@@ -19,47 +25,50 @@ runtime version (a page bundle is coupled to the shell's import map).
   **read-only MCP tools** (`mcpMode: 'read-only'` — the manager filters out every
   mutating tool, so it can inspect the model but never writes), and can load a
   proposed type model straight into the editor for the user to review and save.
-  Reuses `@visuelconcept/wui-ai-kit` and the `/api/ai` bridge.
+  Reuses `@visuelconcept-winccoa/wui-ai-kit` and the `/api/ai` bridge.
 - **DPL (ASCII) import/export** — tick several DPs and/or DP-types in the
   instances tree and export a WinCC OA `.dpl`, or import one. Runs server-side
   via the **`dplAscii` MSA manager** driving `WCCOAasciiSQLite`.
 
-## Install (one command)
-```bash
-node install.mjs --workspace <runtime-workspace> --project <winccoa-project-root>
+## Install
+In the WinCC OA project's site (`<project>/web`), once the target is equipped
+(`npx wui init target prod`):
+```powershell
+npx wui use para       # npm-installs @visuelconcept-winccoa/wui-para with its kits, selects it
+npx wui build prod     # page + menu entry, /api/para backend, dplAscii manager
+npx wui check prod
 ```
-- `--workspace` = the `@wincc-oa/webui-runtime` workspace that builds this project's dashboard (e.g. `…/WebDemo2/webui-workspace`).
-- `--project` = the WinCC OA project root (its `data/dashboard-wc/` is the deploy target; its `javascript/customer-webserver/` hosts the backend).
-
-It copies the page source into the workspace, adds the menu entry to the
-workspace's `menuconfig.jsonc`, drops the backend module into the webserver, and
-runs `build:pages` (deploying into `<project>/data/dashboard-wc/`).
+`wui build` compiles the page into `<project>/data/dashboard-wc/`, upserts the menu
+entry into `menuconfig.json`, deploys the backend module into
+`<project>/javascript/customer-webserver/` (and rebuilds it), and deploys the
+`dplAscii` manager (appending its `config/progs` line when missing). `wui use` lists the
+`dependsOn` (`/api/ai` for the AI assistant): selecting `machine-fleet-3d`, which
+mounts it, is up to you.
 
 ## After install (required)
-1. **Backend:** `cd <project>/javascript/customer-webserver && npm run build`, then restart the webserver manager.
+1. **Backend:** restart the webserver manager (`wui build` already rebuilt it).
 2. **Browser:** DevTools → Application → Storage → **`Clear site data`**, then reload (logged in).
    ⚠️ The service worker caches `menuconfig.json` — **`Ctrl+Shift+R` is NOT enough**; only `Clear site data` purges it.
 
 ## Prerequisites
-- A **WebUI Runtime workspace** for the target project (the `--workspace`).
-- **`@visuelconcept/wui-webserver`** installed in the project (provides `/api/para` via backend-module auto-discovery). See `dist-packages/README.md` for the full ordered prerequisite chain.
-- For **DPL import/export**: the **`dplAscii`** JS manager registered in `config/progs` (e.g. `node | always | 30 | 2 | 2 |dplAscii/index.js`) and restarted. It drives `WCCOAasciiSQLite` via `child_process`, so that binary must be on the project PATH (standard WinCC OA install).
+- A **wui-toolkit site** for the target project (`npx wui init target prod` done once).
+- The **dashboard webserver** installed by `npx wui init target prod` (provides `/api/para` via backend-module auto-discovery).
+- For **DPL import/export**: the **`dplAscii`** JS manager registered in `config/progs` (by `wui build`) (e.g. `node | always | 30 | 2 | 2 |dplAscii/index.js`) and restarted. It drives `WCCOAasciiSQLite` via `child_process`, so that binary must be on the project PATH (standard WinCC OA install).
 - For the **AI assistant**: the `/api/ai` bridge + the **`aiAssistant`** manager must be deployed (same as the Machine-Fleet pages). Without them the panel still opens but prompts return 5xx. The assistant uses the project's configured MCP servers in **read-only** mode (mutating tools filtered out in the manager), so it can inspect the model without being able to change it.
 
 ## Contents
 ```
-module.json                         manifest (mode: source)
-install.mjs                         installer
-frontend/standalone-pages/para.ts   page entry SOURCE (two tabs + AI assistant)
-frontend/standalone-pages/para/     sub-components SOURCE
+package.json                        npm package; wuiPage.backend (mount /api/para, files, manager dplAscii)
+src/para.ts                         page entry (two tabs + AI assistant)
+src/para/                           sub-components
   para-type-editor.ts                 model (DP-type) nested tree editor
   para-element-types.ts               element-type catalog + ParaStructureNode
   para-ai-assistant.ts / para-ai-context.ts   proposal-only AI assistant
   para-dpl.ts                         DPL import/export client helpers
   para-nav.ts / para-detail.ts / para-config-detail.ts / para-value.ts / para-configs.ts / para-dp-dialog.ts
-frontend/menu.fragment.jsonc        menu entry (permission: connected)
-backend/modules/para/               /api/para module
+menu.fragment.jsonc                 menu entry (permission: connected)
+backend/                            /api/para module
   paraController/Route/TypeNode       type/DP engineering (in-process winccoa)
   dplController.ts                    /api/para/dpl/* bridge -> DplAscii MSA service
-backend/managers/dplAscii/index.js  MSA manager: DPL export/import via WCCOAasciiSQLite
+managers/dplAscii/index.js          MSA manager: DPL export/import via WCCOAasciiSQLite
 ```

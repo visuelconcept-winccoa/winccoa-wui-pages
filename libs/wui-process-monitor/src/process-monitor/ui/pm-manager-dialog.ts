@@ -11,7 +11,7 @@
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type CSSResult, type TemplateResult } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
-import { dialogCore } from '@visuelconcept/wui-kit/ui/dialog-styles.js';
+import { dialogCore } from '@visuelconcept-winccoa/wui-kit/ui/dialog-styles.js';
 import { MSG, localize, localizeDir } from '../i18n.js';
 import type { ManagerSpec, ManagerStartMode } from '../types.js';
 

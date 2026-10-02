@@ -12,7 +12,7 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
-import { hasRole$ } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$ } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import { tileKindLabel, type Mosaic } from '../types.js';
 import { MSG, localize, localizeDir } from '../i18n.js';
 

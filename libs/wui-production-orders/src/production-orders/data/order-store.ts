@@ -9,7 +9,7 @@
  * serialized {@link ProductionOrder}[]. Thin adapter over the shared
  * {@link DpSingleJsonStore} (array mode); keeps the page-specific `saveAll` name.
  */
-import { DpSingleJsonStore } from '@visuelconcept/wui-kit/data/dp-single-json-store.js';
+import { DpSingleJsonStore } from '@visuelconcept-winccoa/wui-kit/data/dp-single-json-store.js';
 import type { ProductionOrder } from '../types.js';
 
 export class OrderStore extends DpSingleJsonStore<ProductionOrder[]> {

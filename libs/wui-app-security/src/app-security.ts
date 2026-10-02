@@ -29,7 +29,7 @@ import {
   type AppModuleRoles,
   type AppRoleAssignments,
   type AppSecurityIdentity
-} from '@visuelconcept/wui-kit/data/app-security.js';
+} from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import appSecurityRoles from './app-security.roles.json';
 import { AppSecurityStore, type ModuleEntry, type OaGroup } from './app-security/store.js';
 import { MSG, catalogCountMsg, discoveredMsg, localize, localizeDir } from './app-security/i18n.js';

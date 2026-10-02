@@ -5,7 +5,7 @@
  * HttpEngGateway — the live {@link EngGateway} over the `/api/eng/*` backend
  * (engController). Same-origin fetch; the backend runs against the shared
  * WinCC OA API. This is a thin transport; all engineering logic lives in
- * `@visuelconcept/wui-eng-core` (shared by the backend applier).
+ * `@visuelconcept-winccoa/wui-eng-core` (shared by the backend applier).
  */
 
 import type {
@@ -23,7 +23,7 @@ import type {
   SignalRole,
   TagAccess,
   Workspace
-} from '@visuelconcept/wui-eng-core';
+} from '@visuelconcept-winccoa/wui-eng-core';
 import type {
   BookDeletion,
   BookRefresh,
@@ -254,7 +254,7 @@ export class HttpEngGateway implements EngGateway {
 
   // --- S7Plus ---------------------------------------------------------------
   // Every one of these lands in the dedicated `s7plusBrowse` manager through the
-  // backend (see backend/routes/engS7PlusBrowse.ts); the page never talks to the
+  // backend (see libs/wui-eng-studio/backend/engS7PlusBrowse.ts); the page never talks to the
   // driver, and this stays a transport.
 
   async s7plusHealth(): Promise<S7PlusManagerHealth> {

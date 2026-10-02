@@ -32,7 +32,7 @@
  * plus an HMI tag table.
  */
 
-import type { S7PlusBrowseNode, S7PlusBrowsePort } from '@visuelconcept/wui-eng-core';
+import type { S7PlusBrowseNode, S7PlusBrowsePort } from '@visuelconcept-winccoa/wui-eng-core';
 
 /** The TIA project + station of the demo's OFFLINE source (a `.zap` export). */
 export const DEMO_S7PLUS_PROJECT = 'Four_Plasma_V17';

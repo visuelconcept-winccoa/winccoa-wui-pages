@@ -1,4 +1,4 @@
-// Menu fragment for @visuelconcept/wui-camera-streams.
+// Menu fragment for @visuelconcept-winccoa/wui-camera-streams.
 // Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
 // Tier 3: requires the rtspProxy manager + /api/rtsp/* route (incl. the /api/rtsp/ws relay) — see installer spec.
 [

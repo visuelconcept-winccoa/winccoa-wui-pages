@@ -34,7 +34,7 @@
  * error-prone; so as soon as the operator has a selection, incoming updates are
  * HELD (the status dot turns amber) and applied when the selection is released.
  */
-import { canWriteDatapoints$ } from '@visuelconcept/wui-kit/data/permissions.js';
+import { canWriteDatapoints$ } from '@visuelconcept-winccoa/wui-kit/data/permissions.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { localizeDate } from '@wincc-oa/wui-i18n-shared/localize-date.js';
 import { DatetimeFormat } from '@wincc-oa/wui-models/enums/wui-i18n/datetime-format.js';

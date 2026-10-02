@@ -18,7 +18,7 @@
     "types": [],
     "baseUrl": "../..",
     "paths": {
-      "@visuelconcept/wui-kit/*": [
+      "@visuelconcept-winccoa/wui-kit/*": [
         "libs/wui-kit/src/*"
       ]
     }

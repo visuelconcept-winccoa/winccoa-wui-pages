@@ -29,7 +29,7 @@ import { LitElement, css, html, type PropertyValues, type TemplateResult } from 
 import { customElement, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
-import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import appSecurityRoles from './app-security.roles.json';
 import './audit-trail/at-manage-dialog.js';
 import { AuditConfigStore } from './audit-trail/config-store.js';

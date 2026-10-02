@@ -9,7 +9,7 @@ Read this (with `README.md` + `INTEGRATION.md`) **before editing** the studio.
 
 Three seams keep the runtime out of everything that must be validated offline:
 
-1. **Pure domain** — `@visuelconcept/wui-eng-core` imports **nothing** from
+1. **Pure domain** — `@visuelconcept-winccoa/wui-eng-core` imports **nothing** from
    `@wincc-oa/*` / `winccoa-manager`. All engineering logic (diff, plan, config
    builders, SimaticML parse, offsets, naming) is plain TypeScript, unit-tested
    with vitest in `node` (no DOM, no OA). The only runtime touch-point is the
@@ -23,7 +23,7 @@ Three seams keep the runtime out of everything that must be validated offline:
    and the offline demo. The screenshot tool drives the demo build via
    `vite preview` + preinstalled Chromium — no login, no WebSocket, no backend.
 
-Consequence: `npm test` (core) and `node tools/screenshot-eng-studio.mjs`
+Consequence: `npm test` (core) and `node libs/wui-eng-studio/demo/screenshot.mjs`
 (page) both run in CI with **no WinCC OA**.
 
 ## Check-in / check-out semantics
@@ -75,7 +75,7 @@ file per book (deleting a device therefore never deletes a book).
 protocol, which connection parameters exist, which are required, how each is
 entered and an example value; the page renders rows from it and only translates
 the labels (`PARAM_LABEL`). Adding a protocol is then a core change plus a few
-words — never a change to the template. `tools/check-eng-i18n.mjs` fails if a
+words — never a change to the template. `libs/wui-eng-studio/demo/check-i18n.mjs` fails if a
 declared parameter has no label, so a new one cannot ship as a raw key.
 
 **Validation lives once, in the core, and runs twice.** `validateDevice` returns
@@ -1670,7 +1670,7 @@ a value never has to be re-extracted from prose. An unknown code falls back to
 `message`: a warning added to the core is never invisible, merely untranslated.
 
 Two rules make that contract hold, and both are enforced mechanically by
-`tools/check-eng-i18n.mjs` (which bundles the real modules with esbuild):
+`libs/wui-eng-studio/demo/check-i18n.mjs` (which bundles the real modules with esbuild):
 
 1. **every value sits behind a `{placeholder}`** — a translator cannot re-order text
    that already has values baked in. `warnings.spec.ts` asserts that no
@@ -1786,10 +1786,9 @@ open), so every route is gated. `POST /plan` and `POST /test-read` only read →
 open with a warning. This is the same finding as the para audit and it remains the
 single most important prerequisite for real enforcement.
 
-**Offline typecheck.** `backend/tsconfig.typecheck.json` +
-`backend/types/runtime-stubs.d.ts` compile the routes against the **real** core
-sources with the webserver packages stubbed — so the decoupling mandate covers the
-backend too, not just the core and the page.
+**Offline typecheck.** `wui test` compiles the routes against the **real** core
+sources (`vendorPackages`) with the webserver packages declared by wui-toolkit — so
+the decoupling mandate covers the backend too, not just the core and the page.
 
 ## The S7Plus symbolic browse (what it cost, and the two traps)
 
@@ -1942,7 +1941,7 @@ now written out as a table in the parser rather than inferred at each site.
 
 The reference implementation is Snap7, which is native — a compiled addon inside
 the WinCC OA node runtime, rebuilt per host ABI. The subset an inventory needs is
-small and entirely request/response, so `backend/managers/s7Browse/s7-protocol.js`
+small and entirely request/response, so `libs/wui-eng-studio/managers/s7Browse/s7-protocol.js`
 implements it over `node:net` with **no dependency**, like every other JS manager
 here. Every frame is transcribed from the Snap7 sources and cross-checked against
 the Wireshark dissector, and recorded byte by byte in

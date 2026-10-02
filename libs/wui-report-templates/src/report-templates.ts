@@ -22,15 +22,15 @@ import { LitElement, css, html, nothing, type PropertyValues, type TemplateResul
 import { query, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
-import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept/wui-kit/data/app-security.js';
+import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import appSecurityRoles from './app-security.roles.json';
-import { buildDemoTemplates } from '@visuelconcept/wui-report-builder/data/demo.js';
-import { exportTemplatesJson, parseTemplates } from '@visuelconcept/wui-report-builder/data/io.js';
-import { TemplateStore } from '@visuelconcept/wui-report-builder/data/template-store.js';
-import { blankTemplate, nowLocal, type ReportTemplate } from '@visuelconcept/wui-report-builder/types.js';
-import '@visuelconcept/wui-kit/ui/wui-confirm-dialog.js';
-import '@visuelconcept/wui-report-builder/ui/rb-template-editor.js';
-import '@visuelconcept/wui-report-builder/ui/rb-template-table.js';
+import { buildDemoTemplates } from '@visuelconcept-winccoa/wui-report-builder/data/demo.js';
+import { exportTemplatesJson, parseTemplates } from '@visuelconcept-winccoa/wui-report-builder/data/io.js';
+import { TemplateStore } from '@visuelconcept-winccoa/wui-report-builder/data/template-store.js';
+import { blankTemplate, nowLocal, type ReportTemplate } from '@visuelconcept-winccoa/wui-report-builder/types.js';
+import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
+import '@visuelconcept-winccoa/wui-report-builder/ui/rb-template-editor.js';
+import '@visuelconcept-winccoa/wui-report-builder/ui/rb-template-table.js';
 import { MSG, confirmDeleteMsg, localize, localizeDir } from './i18n.js';
 
 const REPORTS_ROUTE = '/report-builder';

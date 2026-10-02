@@ -12,8 +12,8 @@
  *
  * Both are ensured on page init and written together by {@link traceOperation}.
  */
-import { AuditTrailWriter, type AuditRecord, currentAuditUser } from '@visuelconcept/wui-kit/data/audit-trail.js';
-import { DpSingleJsonStore } from '@visuelconcept/wui-kit/data/dp-single-json-store.js';
+import { AuditTrailWriter, type AuditRecord, currentAuditUser } from '@visuelconcept-winccoa/wui-kit/data/audit-trail.js';
+import { DpSingleJsonStore } from '@visuelconcept-winccoa/wui-kit/data/dp-single-json-store.js';
 import type { HistoryEntry } from '../types.js';
 
 const HISTORY_CAP = 200;

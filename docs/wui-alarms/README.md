@@ -1,4 +1,4 @@
-# @visuelconcept/wui-alarms — source module (Tier 1)
+# @visuelconcept-winccoa/wui-alarms — source module (Tier 1)
 
 **Alarms** page for a WinCC OA WebUI dashboard, on **`/alarms`**: the plant's alarm
 list either **live** (the standing alarms) or over an **archived period**, with the
@@ -7,25 +7,23 @@ list either **live** (the standing alarms) or over an **archived period**, with 
 click-to-sort headers, paging and **acknowledge**.
 
 The whole view is the shared component **`<wui-alarm-view>`** of
-`@visuelconcept/wui-alarms-core`, so the same view **embeds in other pages** — the
+`@visuelconcept-winccoa/wui-alarms-core`, so the same view **embeds in other pages** — the
 Machine Fleet machine dashboard shows a machine's alarms with it.
 
-Self-contained **source** distribution: the shared kits are **vendored** under
-`alarms/_vendor/` (no `@visuelconcept/wui-*` prerequisite), and the page is built on
-the target's runtime workspace (so the bundle matches its version).
+npm package, deployed with **wui-toolkit** (the `wui` CLI): the shared kits come as
+its npm dependencies, and the page is built against the target's own import map (so
+the bundle matches its runtime).
 
-## Install (one command)
-
-```bash
-node install.mjs --workspace <runtime-workspace> --project <winccoa-project-root>
+## Install
+In the WinCC OA project's site (`<project>/web`), once the target is equipped
+(`npx wui init target prod`):
+```powershell
+npx wui use alarms     # npm-installs @visuelconcept-winccoa/wui-alarms with its kits, selects it
+npx wui build prod     # compiles the page and upserts its menu entry
+npx wui check prod
 ```
-
-- `--workspace` = the `@wincc-oa/webui-runtime` workspace that builds this project's dashboard (e.g. `…/WebDemo2/webui-workspace`).
-- `--project` = the WinCC OA project root (its `data/dashboard-wc/` is the deploy target).
-
-It copies the page source (kits vendored) into the workspace, adds the menu entry to
-the workspace's `menuconfig.jsonc`, and runs `build:pages` (deploying into
-`<project>/data/dashboard-wc/`).
+The page lands in `<project>/data/dashboard-wc/`, its menu entry in `menuconfig.json`.
+Nothing to restart: the page owns no backend.
 
 ## After install
 
@@ -34,9 +32,10 @@ the workspace's `menuconfig.jsonc`, and runs `build:pages` (deploying into
 
 ## Prerequisites
 
-- A **WebUI Runtime workspace** for the target project (the `--workspace`).
-- **No backend module and no manager** — the page reads and acknowledges through the dashboard's own WinCC OA connection.
-- `module.json.frontend.npmDeps` is empty: no extra npm dependency is added to the workspace.
+- A **wui-toolkit site** for the target project (`npx wui init target prod` done once).
+- **No backend route and no manager** — the page reads and acknowledges through the
+  dashboard's own WinCC OA connection.
+- No npm dependency beyond the `@visuelconcept-winccoa/wui-*` kits.
 
 ## Prerequisites (runtime)
 
@@ -82,12 +81,12 @@ the list even to someone who may not change them.
 ## Contents
 
 ```
-module.json                                   manifest (mode: source, tier 1)
-install.mjs                                   installer
-frontend/standalone-pages/alarms.ts           page entry SOURCE
-frontend/standalone-pages/alarms/             page SOURCE (kits vendored in alarms/_vendor/)
-  └─ app-security.roles.json                  the module's role catalog
-frontend/standalone-pages/alarms/_vendor/@visuelconcept/wui-alarms-core/
+package.json                                  npm package; wuiPage (route, tier 1)
+menu.fragment.jsonc                           menu entry
+src/alarms.ts                                 page entry
+src/app-security.roles.json                   the module's role catalog
+src/widgets/wui-alarms.ts                     the Alarms dashboard widget
+@visuelconcept-winccoa/wui-alarms-core (npm dependency, libs/wui-alarms-core/src/)
   ├─ types.ts / mapping.ts / scope.ts / query.ts / severity.ts / statistics.ts
   ├─ period.ts / occurrences.ts               period vocabulary, occurrence-window merge
   ├─ data/alarm-store.ts                      live subscription, archive query, acknowledge
@@ -99,8 +98,8 @@ README.md / INTEGRATION.md / NOTES.md         this documentation
 ## Embedding the view in another page
 
 ```ts
-import '@visuelconcept/wui-alarms-core/ui/wui-alarm-view.js';
-import { scopeFromDpes } from '@visuelconcept/wui-alarms-core/scope.js';
+import '@visuelconcept-winccoa/wui-alarms-core/ui/wui-alarm-view.js';
+import { scopeFromDpes } from '@visuelconcept-winccoa/wui-alarms-core/scope.js';
 ```
 
 ```html
@@ -126,12 +125,15 @@ The same view also exists as a **WinCC OA dashboard widget** (palette folder
 **Alarms**, widget _Alarms_, tag `wui-alarms-widget`): the "Suivi Alarmes" band of
 the Machine Fleet machine dashboard, freely placeable on any `/dashboard`.
 
-- **Source**: `libs/wui-alarms/src/widgets/wui-alarms.ts`, **built** by
-  `npm run build:pages` into `<project>/data/dashboard-wc/widgets/wui-alarms.js`
-  (the alarms kit is not in the dashboard import map, so the widget is bundled like
-  a page). Definition, icon and catalogs: `oa-data/WebUI/widgets-v2/Alarms/wui-alarms/`,
-  `oa-data/WebUI/svg/wui-alarms.svg`, `oa-data/WebUI/msg/*/WUI_Widget_WuiAlarms.json`
-  (deployed by `npm run deploy:oa-data`).
+- **Source**: `libs/wui-alarms/src/widgets/wui-alarms.ts`. Definition, icon and
+  catalogs: `libs/wui-alarms/oa-data/WebUI/widgets-v2/Alarms/wui-alarms/`,
+  `libs/wui-alarms/oa-data/WebUI/svg/wui-alarms.svg`,
+  `libs/wui-alarms/oa-data/WebUI/msg/*/WUI_Widget_WuiAlarms.json`.
+  **wui-toolkit 0.6.0 neither bundles a widget nor deploys `oa-data/`**: bundle the
+  widget source to `<project>/data/dashboard-wc/widgets/wui-alarms.js` (the alarms kit
+  is not in the dashboard import map, so it must be bundled like a page) and copy the
+  `oa-data/WebUI/` tree into `<project>/data/WebUI/`, deep-merging `WUI_General.json`
+  with what is already there. Both steps are manual until the toolkit grows a slot.
 - **Scope** (settings → _Alarm scope_): pick the **atelier** with the datapoint
   selector (restricted to the `MachineFleet3D_Config` type, element `.json`). The
   widget then shows a **machine list** (every machine of the atelier + _Whole
@@ -152,6 +154,6 @@ the Machine Fleet machine dashboard, freely placeable on any `/dashboard`.
   API (browser `dpSet`), so the checkboxes and the button are also hidden when the
   user lacks the WinCC OA write permission.
 
-Deploy: `OUT_DIR=<project>/data/dashboard-wc npm run build:pages` (the widget
-bundle) + `npm run deploy:oa-data` (definition, icon, catalogs), then _Clear site
-data_ in the browser.
+Deploy: bundle the widget into `<project>/data/dashboard-wc/widgets/` and copy
+`oa-data/WebUI/` into `<project>/data/WebUI/` (definition, icon, catalogs) — both by
+hand, see above — then _Clear site data_ in the browser.

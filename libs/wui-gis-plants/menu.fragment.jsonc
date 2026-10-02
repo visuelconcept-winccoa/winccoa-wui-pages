@@ -1,7 +1,7 @@
-// Menu fragment for @visuelconcept/wui-gis-plants.
+// Menu fragment for @visuelconcept-winccoa/wui-gis-plants.
 // Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
 // Tier 1: frontend only — reads the GisSim_* datapoints the optional gisSim manager
-// (shipped with @visuelconcept/wui-gis) creates, and the GIS_Site datapoints for the names.
+// (shipped with @visuelconcept-winccoa/wui-gis) creates, and the GIS_Site datapoints for the names.
 [
   {
     "title": { "en_US": "Power plants", "fr": "Centrales", "de_AT": "Kraftwerke" },

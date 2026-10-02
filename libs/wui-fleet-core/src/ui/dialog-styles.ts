@@ -3,7 +3,7 @@
 
 /** Fleet-core dialog styles: shared kit core + panel width (used by mf-stop-causes). */
 import { css, type CSSResult } from 'lit';
-import { dialogCore } from '@visuelconcept/wui-kit/ui/dialog-styles.js';
+import { dialogCore } from '@visuelconcept-winccoa/wui-kit/ui/dialog-styles.js';
 
 export function dialogStyles(): CSSResult {
   return css`

@@ -9,26 +9,16 @@ Read and follow `docs/knowledge/project/critical-thinking-rules.md` in every ses
 - **Before creating files:** Check existing patterns in the codebase first
 - **Before implementing UI:** Search for existing iX components that match the need
 
-## Screenshots of the pages
+## Repository shape
 
-To capture screenshots of every standalone page (logged in, with live data), use
-[`tools/screenshot-pages.mjs`](tools/screenshot-pages.mjs). It drives the Vite dev
-server with Playwright, auto-discovers pages from each `libs/wui-*/menu.fragment.jsonc`,
-and writes one PNG per page to `docs/images/manual/`.
+The repo is a [wui-toolkit](https://github.com/visuelconcept-winccoa/winccoa-wui-tools) site, in the shape
+`npx wui init project --no-winccoa` creates (`package.json` with the `libs/*` workspaces,
+`wui.project.jsonc`, `.npmrc`, `.githooks/`, `mock/`); each `libs/wui-<id>/` is an
+independent npm package with its own `tsconfig.json`. `npx wui dev` / `npm test` run
+here, nothing is deployed from here (README "Develop").
 
-```bash
-# 1) point the dev server at a running WinCC OA (or let the tool start it):
-#    BASE_URL=https://<oa-host>:<httpsPort> npm start      # in another shell (optional)
-# 2) capture (credentials via env — never hardcode):
-WUI_USER=<user> WUI_PASS=<pass> BASE_URL=https://<oa-host>:<httpsPort> node tools/screenshot-pages.mjs
-#    options: --out <dir>  --only <id,id>  --headless  --dev-url <url>  --width/--height
-```
-
-Why it works this way (the page WebSocket and the HTTP-Basic `/WebUI_Token` login do
-not survive a browser pointed straight at the deployed https host): the tool runs the
-pages on the dev server (which proxies data/login to `BASE_URL`), injects the Basic
-auth header on `/WebUI_Token`, ignores self-signed-cert errors, and strips the
-`wui-message`/`ix-toast` system overlays before each shot. Details are in the script header.
+- Tooling belongs in wui-toolkit, not here: do not add scripts, build config or a
+  shared root `tsconfig` (`tools/`, `tsconfig.base.json`, Nx).
 
 ## Development Guidelines
 

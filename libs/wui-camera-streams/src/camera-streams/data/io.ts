@@ -14,7 +14,7 @@
  * the datapoint storage — see the dialog warning).
  */
 import { DEFAULT_RECONNECT_DELAY_SEC, blankStream, type CameraStream } from '../types.js';
-import { JSON_INDENT, download, timestampSlug } from '@visuelconcept/wui-kit/data/io.js';
+import { JSON_INDENT, download, timestampSlug } from '@visuelconcept-winccoa/wui-kit/data/io.js';
 
 const KIND = 'rtsp-camera-streams';
 const SLUG_MAX = 40;

@@ -1,29 +1,30 @@
-# Integrate the Mosaic page (`@visuelconcept/wui-mosaic`) — source mode, Tier 1
+# Integrate the Mosaic page (`@visuelconcept-winccoa/wui-mosaic`) — source mode, Tier 1
 
 **Standalone WinCC OA WebUI page**: a free-form **display wall** (drag/resize)
 that embeds other dashboard views as **same-origin chromeless iframes**.
 This is a **Tier 1 frontend-only** page (no backend module, no manager).
 Each wall is stored in a DP (`Mosaic_Board`) + a preview list.
-**Self-contained source** distribution: the shared kit is **vendored** under
-`_vendor/` (no `@visuelconcept/wui-kit` prerequisite), and the page is
-**compiled against the target's runtime workspace** (bundle = correct version).
+Distributed as the npm package `@visuelconcept-winccoa/wui-mosaic`, deployed with
+**wui-toolkit** (`wui` CLI): the shared kit is an npm dependency, and the page is
+**compiled against the target's own import map** (bundle = correct version).
 
 ## Prerequisites
-1. A **WebUI Runtime workspace** (`@wincc-oa/webui-runtime`) — the `--workspace`.
-2. No backend prerequisite (frontend-only page). `module.json.frontend.npmDeps` is empty → the installer adds no npm package to the workspace.
+1. A **wui-toolkit site** for the project (`<project>/web`) whose `prod` target was equipped once with `npx wui init target prod`.
+2. No backend prerequisite (frontend-only page), no npm dependency beyond `@visuelconcept-winccoa/wui-kit`.
+3. The shell's **`?embed` (chromeless) flag** — see [NOTES.md](./NOTES.md). It is a patch of the
+   WebUI shell, **not applied by wui-toolkit** (`wui init target` deploys the pristine shell):
+   without it the tiles show the embedded views with the full shell chrome (header + menu).
 
-## Install (one command)
-```bash
-node install.mjs --workspace <workspace-runtime> --project <project-root>
+## Install
+In the project's site (`<project>/web`):
+```powershell
+npx wui use mosaic     # npm-installs @visuelconcept-winccoa/wui-mosaic (+ its kit) and selects it
+npx wui build prod     # compiles the page, upserts its menu entries
+npx wui check prod
 ```
-Example (WebDemo2):
-```bash
-node install.mjs --workspace D:\WinCC_OA_Proj_321\WebDemo2\webui-workspace --project D:\WinCC_OA_Proj_321\WebDemo2
-```
-The installer:
-1. copies the **source** (kit vendored under `_vendor/`) → `<workspace>/…/standalone-pages/`;
-2. inserts the **menu entries** → the workspace's `menuconfig.jsonc` (idempotent);
-3. runs **`build:pages`** (OUT_DIR=`<project>/data/dashboard-wc`).
+`wui build`:
+1. compiles the page against the target's import map → `<project>/data/dashboard-wc/pages/`;
+2. upserts the **menu entries** (`menu.fragment.jsonc`) into `menuconfig.json` (idempotent).
 
 ## After install (mandatory)
 1. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).

@@ -218,10 +218,10 @@ page ──HTTP /api/eng/s7plus/*──▶ webserver ──MSA vRPC "S7PlusBrows
 - **the pure core** — `libs/wui-eng-core/src/s7plus/browse.ts`: the walk (grammar,
   paths, caps, datatypes, warnings, book) behind an injected `S7PlusBrowsePort`.
   Unit-tested with a fake port: no WinCC OA, no driver, no PLC;
-- **the manager** — `backend/managers/s7plusBrowse/index.js`: the vRPC service that
+- **the manager** — `libs/wui-eng-studio/managers/s7plusBrowse/index.js`: the vRPC service that
   owns the driver dialogue (`Health`, `Connections`, `Projects`, `Stations`,
   `Level`);
-- **the webserver** — `backend/routes/engS7PlusBrowse.ts`: the stub + the port
+- **the webserver** — `libs/wui-eng-studio/backend/engS7PlusBrowse.ts`: the stub + the port
   implementation, and `engController`/`engRoute` expose the `/api/eng/s7plus/*`
   routes plus `POST /books/browse-s7plus`;
 - **the page** — runs the core's walker over one HTTP round-trip per level, so a
@@ -248,9 +248,10 @@ say so instead of doing it anyway.
 
 ### Deployment
 
-`tools/specs.json` → the `eng-studio` page declares `managers: ["s7plusBrowse"]`.
-`deploy-backend.mjs` copies `backend/managers/s7plusBrowse/` to
-`<project>/javascript/s7plusBrowse/` and appends the idempotent progs line:
+`package.json#wuiPage.backend.managers` → the `eng-studio` module declares
+`["s7Browse", "s7plusBrowse"]`. `npx wui build` stages
+`libs/wui-eng-studio/managers/s7plusBrowse/` into `<project>/javascript/s7plusBrowse/`;
+register it in `config/progs`:
 
 ```
 node             | always |      30 |        2 |        2 |s7plusBrowse/index.js
@@ -273,9 +274,8 @@ webserver so the new routes are loaded. After editing the manager, restart it.
   `s7plus` — `s7PlusDrvPara.ctl` + `para.ctl`;
 - the walker itself: 30 unit tests over a fake port (`s7plus/browse.spec.ts`), and
   the whole core suite stays green;
-- the backend typechecks offline against the real core sources
-  (`backend/tsconfig.typecheck.json`), and the page typechecks against them too
-  (`libs/wui-eng-studio/tsconfig.engcheck.json`).
+- the backend and the page typecheck offline against the real core sources
+  (`npm test` → `wui test`, which typechecks each lib and each module's backend).
 
 **⚠️ Not verified against a live S7Plus driver or PLC.** The dev project this was
 written on has **no `_S7PlusConnection` datapoint and no WCCOAs7plus manager**, so

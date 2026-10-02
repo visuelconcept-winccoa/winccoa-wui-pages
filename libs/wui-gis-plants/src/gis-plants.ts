@@ -23,7 +23,7 @@ import {
   hasRole$,
   registerModuleRoles,
   type AppModuleRoles
-} from '@visuelconcept/wui-kit/data/app-security.js';
+} from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import { RouterEvent } from '@wincc-oa/wui-models/events/router-event.js';
 import '@wincc-oa/wui-ix-wrappers/wui-content-header/wui-content-header.js';
 import '@wincc-oa/wui-oarxjs-context/components/wui-context-generator/wui-context-generator.js';
