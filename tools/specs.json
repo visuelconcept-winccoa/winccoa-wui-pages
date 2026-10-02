@@ -277,5 +277,12 @@
     "managers": [
       "gisSim"
     ]
+  },
+  {
+    "page": "gis-plants",
+    "name": "@visuelconcept/wui-gis-plants",
+    "title": "Power plants",
+    "tier": 1,
+    "description": "Power plants page (/gis-plants) — the operating parameters of every plant the GIS sites declare (an asset with both a puissance and a capacite reading, i.e. the gisSim production-electrique family: output, available capacity, load factor, voltage, frequency, state), one card per plant ranked live by output, re-ranked on every change with a slide so the eye can follow a card, ties at the displayed megawatt keeping their order. The plants come from the GIS_Site datapoints (WuiDpeService.listDatapoints + dpGet of .json, re-read every minute) and each reading is followed through the datapoint the site binds, one isolated dpConnect per element with the trailing dot a bare datapoint needs; guessing the GisSim_* names (dpQueryConnect, then dpNames) left the page empty on the WebUI connection. A plant drawn on two sites is shown once. A card opens its site on /gis/:siteid. Read-only; alarms are not shown in this first version."
   }
 ]

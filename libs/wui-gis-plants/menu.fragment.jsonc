@@ -1,0 +1,15 @@
+// Menu fragment for @visuelconcept/wui-gis-plants.
+// Merge into the host dashboard's `entries` array. Idempotent by `routeId`.
+// Tier 1: frontend only — reads the GisSim_* datapoints the optional gisSim manager
+// (shipped with @visuelconcept/wui-gis) creates, and the GIS_Site datapoints for the names.
+[
+  {
+    "title": { "en_US": "Power plants", "fr": "Centrales", "de_AT": "Kraftwerke" },
+    "icon": "electrical-energy",
+    "path": "/gis-plants",
+    "module": "/data/dashboard-wc/pages/gis-plants.js",
+    "routeId": "gis-plants",
+    "component": "wui-gis-plants",
+    "permission": ["connected"]
+  }
+]

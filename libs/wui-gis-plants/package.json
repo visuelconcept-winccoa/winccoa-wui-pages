@@ -1,0 +1,59 @@
+{
+  "name": "@visuelconcept/wui-gis-plants",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Power plants — standalone WinCC OA WebUI page: the operating parameters of every plant driven by the GIS network simulator (GisSim_<assetId>_<element>: output, capacity, load factor, voltage, frequency, state), one card per plant, ranked live by output and re-ranked on every change. Read-only; alarms are not shown in this first version.",
+  "author": {
+    "name": "Visuel Concept"
+  },
+  "keywords": [
+    "OpenArchitecture",
+    "WinCCOA",
+    "dashboard",
+    "webcomponents",
+    "standalone-page",
+    "gis",
+    "power-plant"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@visuelconcept/wui-kit": "*"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "tsyringe": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-i18n-shared": "*",
+    "@wincc-oa/wui-models": "*",
+    "@wincc-oa/wui-data-selector-data": "*"
+  },
+  "exports": {
+    "./*": {
+      "types": "./types/*",
+      "import": "./*"
+    }
+  },
+  "wuiPage": {
+    "route": "/gis-plants",
+    "routeId": "gis-plants",
+    "component": "wui-gis-plants",
+    "module": "/data/dashboard-wc/pages/gis-plants.js",
+    "icon": "electrical-energy",
+    "permission": [
+      "connected"
+    ],
+    "tier": 1,
+    "datapoints": {
+      "type": "GisSimFloat / GisSimInt",
+      "prefix": "GisSim_",
+      "note": "Reads only. The datapoints are created and driven by the optional gisSim manager of @visuelconcept/wui-gis; without it the page shows an empty state."
+    }
+  }
+}

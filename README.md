@@ -39,6 +39,7 @@ catalog the deploy script reads. A visual tour of the pages is in
 | `wui-fleet-kpi-analysis` | `/fleet-kpi` | Per-machine availability & TRS charts, computed live by a manager over opening time minus closures | `kpiCalc` mgr |
 | `wui-fleet-stop-analysis` | `/fleet-stops` | Downtime decomposition per stop cause (table + ECharts views) | — |
 | `wui-gis` | `/gis`, `/gis/:siteid` | Map-based monitoring on MapLibre GL over OpenStreetMap: geo-located assets bound to datapoints, live values and alarm colour on the marker, areas as polygons, decluttering when zoomed out, in-place edit, GeoJSON interop | — |
+| `wui-gis-plants`          | `/gis-plants`          | Operating parameters of the simulated power plants (`GisSim_*`), one card per plant ranked live by output (alarms not shown yet)                                                                                                                      | `gisSim` mgr of `wui-gis`                                                                                         |
 | `wui-machine-fleet-3d` | `/fleet-3d` | Three.js 3D fleet view with per-machine state/KPI bubbles, contextual Gantt/Pareto, and AI assistant (hub page) | `/api/ai` + `machineSim`, `kpiCalc`, `aiAssistant` mgrs (assistant MCP tools via an optional external MCP server) |
 | `wui-mosaic` | `/mosaic` | Display-wall page embedding other dashboard views as chromeless, same-origin iframes | — |
 | `wui-para` | `/para` | Datapoint-parametrization page | `/api/para` |
