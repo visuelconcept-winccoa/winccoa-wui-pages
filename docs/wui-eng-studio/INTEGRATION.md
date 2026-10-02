@@ -318,19 +318,15 @@ package name inside a comment stays as written), and `*.spec.ts` files are exclu
 
 ## Typecheck the backend without WinCC OA
 
-`libs/wui-eng-studio/typecheck/tsconfig.backend.json` compiles the studio's route modules against the
-**real** `@visuelconcept-winccoa/wui-eng-core` sources, with the webserver-only packages
-(`ultimate-express`, `@winccoa/backend`, `winccoa-manager`) stubbed in
-`libs/wui-eng-studio/typecheck/runtime-stubs.d.ts`:
-
-```bash
-npx tsc -p libs/wui-eng-studio/typecheck/tsconfig.backend.json   # from the repo root, after npm install
-```
+`npm test` (wui-toolkit's `wui test`, from the repo root) type-checks the studio's route
+modules as the webserver compiles them: against the **real**
+`@visuelconcept-winccoa/wui-eng-core` sources (its `vendorPackages`), with the
+webserver-only packages (`ultimate-express`, `@winccoa/backend`, `winccoa-manager`)
+declared by the toolkit — like every module's backend.
 
 That catches the mistakes that matter offline (a wrong core API, a missing
-`await`, a bad narrowing). The stubs are dev-only — they are not in any module's
-backend `files`, so on a real webserver the genuine packages are used and the core is
-vendored (see "Deployment" above).
+`await`, a bad narrowing). The declarations are dev-only: on a real webserver the
+genuine packages are used and the core is vendored (see "Deployment" above).
 
 ## ⚠️ Inputs still needed from you (to finish, not to demo)
 

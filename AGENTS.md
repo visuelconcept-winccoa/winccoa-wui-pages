@@ -28,11 +28,12 @@
 # From the repo root (PowerShell) — README "Develop"
 npm install                      # once: links the libs/* workspaces, wires the pre-commit hook
 npx wui dev                      # every page with mock data, hot reload (port 4300)
-npm test                         # wui test: the pages compile, every lib's unit tests pass — vitest (pre-commit hook too)
+npm test                         # wui test (pre-commit hook too): requires declared, pages compile, types (libs + backends), unit tests (vitest)
 npx wui modules                  # pages, and the modules they require (headless)
+npx wui test --watch --lib <id>  # one lib's unit tests, rerun on change
+npx wui tsconfig                 # after changing a lib's internal dependencies
 
 # Per lib (cd libs/wui-<id>)
-npm run typecheck                # wui-eng-core, wui-alarms-core
 npm pack --dry-run               # check what would be published
 ```
 
@@ -58,7 +59,7 @@ Standards are documented in `docs/knowledge/` - reference these files for full d
 - **Application Security roles are part of every feature.** When you create a page module, when the user asks to "secure" / "add roles to" a module, and — without being asked — whenever a change **adds or removes a capability worth restricting** (edit mode, deploy/control action, signing, destructive operation…), apply [docs/wui-app-security/INTEGRATION.md](./docs/wui-app-security/INTEGRATION.md) in the same change: declare/update the module's roles in its own `libs/wui-<page>/src/app-security.roles.json` fragment (imported by the page for `registerModuleRoles` — single source of truth, no central manifest), gate the UI (`hasRole$`) and wrap sensitive backend routes (`requireRole` + `"@visuelconcept-winccoa/wui-app-security/appSecurityGuard.ts"` in the module's `package.json#wuiPage.backend.shared`). Roles are open until an admin assigns groups, so declaring them never breaks a deployment. Never write `.assignments` from a module; never rename a role id silently.
 - Use iX components and CSS custom properties
 - Use Shadow DOM for WebComponents
-- **Declare runtime dependencies on other modules.** A page that calls another module's backend — directly (`fetch('/api/<module>/…')`) or through a kit (`DpJsonStore`, `DpSingleJsonStore`, `registerModuleRoles` / `hasRole$` of `wui-kit`, the stores of `wui-ai-kit` / `wui-fleet-core` → `/api/para` + `/api/app-security`) — lists that module in its `package.json#wuiPage.requires` and its package in `dependencies`, in the same change. wui-toolkit then deploys it headless (backend only) when the site does not select its page. See [module-dependencies.md](./docs/module-dependencies.md).
+- **Declare runtime dependencies on other modules.** A page that calls another module's backend — directly (`fetch('/api/<module>/…')`) or through a kit (`DpJsonStore`, `DpSingleJsonStore`, `registerModuleRoles` / `hasRole$` of `wui-kit`, the stores of `wui-ai-kit` / `wui-fleet-core` → `/api/para` + `/api/app-security`) — lists that module in its `package.json#wuiPage.requires` and its package in `dependencies`, in the same change — or in `wuiPage.optional` when the feature does without it. wui-toolkit then deploys a required module headless (backend only) when the site does not select its page, and `npm test` refuses an undeclared call. See [module-dependencies.md](./docs/module-dependencies.md).
 - Run lint on changed files
 - Find and understand root causes before proposing solutions
 - For questions about a `@wincc-oa/*` library's API or behavior, **read the library's installed README first** at `node_modules/@wincc-oa/<lib-name>/README.md` (e.g. `wui-oarxjs-data`, `wui-oarxjs-context`, `wui-alert-data`). Exception: `oa-rx-js-api` is still published as `@etm-professional-control/oa-rx-js-api`. These are the authoritative reference for that library; `docs/knowledge/` documents how libraries combine in app-level patterns.

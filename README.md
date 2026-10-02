@@ -184,8 +184,22 @@ creates): `package.json` with the `libs/*` workspaces, `wui.project.jsonc`
 ```powershell
 npm install        # once, after a clone: links the libs, wires the pre-commit hook, copies the runtime's skills
 npx wui dev        # → http://127.0.0.1:4300, every page with mock data, hot reload
-npm test           # wui test: the pages compile like a build, every lib's unit tests pass (also the pre-commit hook)
+npm test           # wui test (also the pre-commit hook): pages declare the backends they call,
+                   # they compile like a build, the types check (libs + backends), the unit tests pass
 npx wui modules    # the pages, and the modules they require (headless)
+
+npx wui test --watch --lib gis   # one lib's unit tests, rerun on every change
+npx wui tsconfig                 # after changing a lib's internal dependencies (npm test asks for it)
+```
+
+On a real WinCC OA instead of the mocks — a target with a `"backend"` in
+`wui.project.jsonc` (local, not committed), the credentials in the environment:
+
+```powershell
+# wui.project.jsonc → "targets": { "live": { "backend": "https://<host>:8443", "write": true } }
+$env:WUI_USER = '<user>'; $env:WUI_PASS = '<password>'
+npx wui dev live                 # the pages on live data
+npx wui screenshots live         # docs/images/manual/<id>.png (needs: npm i -D playwright; npx playwright install chromium)
 ```
 
 `npx wui add module <id>` creates a new page in `libs/wui-<id>/`. Nothing is
@@ -195,16 +209,13 @@ deployed from here: a WinCC OA site installs the published packages (or points a
 for the module contract (`package.json`, `src/<id>.ts`, `menu.fragment.jsonc`,
 `mock/`, `backend/`, `managers/`).
 
-Each lib has its own `tsconfig.json` (editor and `tsc --noEmit`; the build does
-not read it). Unit tests are `*.spec.ts` next to the sources (or `*.test.*`), written
-with vitest and run by `npm test` from the root — `wui test` ships vitest, a lib has
-no test config of its own (a test needing a DOM starts with `// @vitest-environment jsdom`).
-`wui-eng-core` and `wui-alarms-core` also have `typecheck`.
+Each lib has its own `tsconfig.json`, written by `npx wui tsconfig` (editor and the
+type check of `npm test`; the build does not read it). Unit tests are `*.spec.ts`
+next to the sources (or `*.test.*`), written with vitest and run by `npm test` from
+the root — `wui test` ships vitest, a lib has no test config of its own (a test
+needing a DOM starts with `// @vitest-environment jsdom`).
 The Engineering Studio has its own offline demo with its i18n check and screenshot
 script (`libs/wui-eng-studio/demo/`, see `docs/wui-eng-studio/README.md`).
-
-Features of the former tooling that wui-toolkit does not have yet are parked,
-unwired, in [toolkit-backlog/](./toolkit-backlog/README.md).
 
 ## Documentation
 

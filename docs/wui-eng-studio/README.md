@@ -667,10 +667,10 @@ npm test          # wui test — among them wui-eng-core's 341 tests: SimaticML 
                   # device declaration (id slug, per-protocol params, normalisation),
                   # S7 / S7Plus / Modbus _datatype transformations (code by code)
 npm run typecheck
-
-# and the backend routes, against the REAL core sources (webserver packages stubbed):
-npx tsc -p ../wui-eng-studio/typecheck/tsconfig.backend.json
 ```
+
+`npm test` also type-checks the backend routes against the REAL core sources (the
+webserver packages declared by wui-toolkit).
 
 The translation tables have their own verification (no test runner needed — it
 bundles the real modules with esbuild): every entry present in EN/FR/DE, the same
@@ -718,7 +718,6 @@ libs/wui-eng-studio/backend/  thin runtime seam, fail-closed
   engController.ts        EngPort over WsjServerGlobal.winccoa, read-back, handlers
   engStore.ts             JSON file store (devices · books · roles · workspaces)
   engOpcuaBrowse.ts       one browse level over _<conn>.Browse.GetBranch (ported, queued)
-typecheck/tsconfig.backend.json  typecheck the routes offline (stubbed webserver pkgs)
 ```
 
 See [INTEGRATION.md](./INTEGRATION.md) for deployment/roles and the **inputs still

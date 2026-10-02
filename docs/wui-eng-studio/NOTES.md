@@ -941,10 +941,9 @@ open), so every route is gated. `POST /plan` and `POST /test-read` only read →
 open with a warning. This is the same finding as the para audit and it remains the
 single most important prerequisite for real enforcement.
 
-**Offline typecheck.** `typecheck/tsconfig.backend.json` +
-`typecheck/runtime-stubs.d.ts` compile the routes against the **real** core
-sources with the webserver packages stubbed — so the decoupling mandate covers the
-backend too, not just the core and the page.
+**Offline typecheck.** `wui test` compiles the routes against the **real** core
+sources (`vendorPackages`) with the webserver packages declared by wui-toolkit — so
+the decoupling mandate covers the backend too, not just the core and the page.
 
 ## Staged for later (explicit)
 

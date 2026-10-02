@@ -19,8 +19,6 @@ here, nothing is deployed from here (README "Develop").
 
 - Tooling belongs in wui-toolkit, not here: do not add scripts, build config or a
   shared root `tsconfig` (`tools/`, `tsconfig.base.json`, Nx).
-- `toolkit-backlog/` holds former features the toolkit lacks, parked unwired until
-  they move into it — never run or import them.
 
 ## Development Guidelines
 

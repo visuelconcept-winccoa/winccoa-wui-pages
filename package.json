@@ -11,7 +11,7 @@
     "dev": "wui dev"
   },
   "devDependencies": {
-    "@visuelconcept-winccoa/wui-toolkit": "^0.5.0",
+    "@visuelconcept-winccoa/wui-toolkit": "^0.6.0",
     "@wincc-oa/webui-runtime": "2.0.1"
   }
 }

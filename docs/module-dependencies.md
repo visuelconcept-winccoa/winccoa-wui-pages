@@ -5,7 +5,7 @@ Two kinds of dependency link the `libs/wui-<id>/` modules:
 | Kind | Declared in | Checked by |
 | --- | --- | --- |
 | **Code** — a page imports a kit (`wui-kit`, `wui-ai-kit`, `wui-fleet-core`…) | `package.json#dependencies` | npm / Vite |
-| **Runtime** — a page calls **another module's backend** over HTTP | `package.json#wuiPage.requires` (page ids) + that module's package in `dependencies` | wui-toolkit (`wui modules`, `wui build`) |
+| **Runtime** — a page calls **another module's backend** over HTTP | `package.json#wuiPage.requires` (page ids) + that module's package in `dependencies`, or `wuiPage.optional` | wui-toolkit (`wui test`, `wui modules`, `wui build`) |
 
 `wuiPage.backend.dependsOn` stays free text: a hint `wui use` prints, not enforced.
 
@@ -41,21 +41,26 @@ a role that an admin assigned is denied (fail closed).
 
 No requirement: agv-fleet, diagnosis, dp-watch, eng-studio.
 
+**Optional** (`wuiPage.optional` — used when deployed, not deployed for the page):
+
+| Route | Called from | Pages | Without it |
+| --- | --- | --- | --- |
+| `/api/ai` (`machine-fleet-3d`) | `wui-ai-kit/src/data/ai-store.ts` | ampere, gis, para | the AI assistant hides itself |
+| `/api/alarms` (`alarms`) | `wui-alarms-core/src/data/alarm-store.ts` | machine-fleet-3d | acknowledging falls back to the browser's own write |
+
 "Frontend-only" / "no backend module" in a module's README means it **owns** no
 backend — not that it runs without the `para` and `app-security` ones.
 
 ## Keeping it right
 
-`requires` is maintained by hand, per page. Update it in the same change when a
-page starts (or stops) using, directly or through a kit:
+`requires` / `optional` are written by hand, per page — and **`npm test` checks
+them**: it follows each page's imports, kits included, and refuses a call to
+another module's backend (`'/api/<mount>…'`) that the page declares neither way,
+naming the file the call sits in. Typical sources of such a call:
 
 - `DpJsonStore`, `DpSingleJsonStore` (`wui-kit/data/dp-*-store.js`), the kit's
   audit-trail helpers, `registerModuleRoles` / `hasRole$` (`wui-kit/data/app-security.js`);
-- the stores of `wui-ai-kit` or `wui-fleet-core`;
+- the stores of `wui-ai-kit`, `wui-alarms-core` or `wui-fleet-core`;
 - any `fetch('/api/<other module>/…')`.
 
 A kit cannot declare `requires` (it has no page): the pages using it do.
-
-Not covered by `requires`: para's AI assistant calls `/api/ai`, mounted by
-machine-fleet-3d (`wuiPage.backend.dependsOn` of para) — a hint only: select
-machine-fleet-3d where the assistant must work.

@@ -9,21 +9,21 @@
       "DOM.Iterable"
     ],
     "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
     "useDefineForClassFields": false,
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
-    "moduleDetection": "auto",
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noImplicitOverride": true,
-    "noPropertyAccessFromIndexSignature": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "noEmit": true,
+    "typeRoots": [
+      "../../node_modules/@types"
+    ],
     "paths": {
       "@visuelconcept-winccoa/wui-ai-kit/*": [
         "../wui-ai-kit/src/*"

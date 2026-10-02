@@ -8,12 +8,12 @@
 > **Update 2026-10-02 — the tree changed since this audit; the tables below describe it as of 2026-06-28.**
 > The former tooling was removed, replaced by wui-toolkit: `tools/`, `webserver/`,
 > `packages/`, `backend/` (its `tsconfig.typecheck.json` + `types/runtime-stubs.d.ts`
-> moved to `libs/wui-eng-studio/typecheck/`), `tsconfig.base.json`, `DEVELOPMENT.md`,
+> replaced by wui-toolkit's type check of every module's backend), `tsconfig.base.json`, `DEVELOPMENT.md`,
 > the `.vscode` tasks. The repo is now a wui-toolkit site: the **tracked** root
 > `package.json`, `wui.project.jsonc`, `.npmrc`, `.githooks/pre-commit`, `mock/` are
 > new **VC** files (from wui-toolkit's own project template) — not the untracked ETM
-> scaffold `package.json` listed below. `toolkit-backlog/` holds two **VC** files from
-> the former `tools/` (`screenshot-pages.mjs`, `page-appsec-merge-plugin.mjs`).
+> scaffold `package.json` listed below. Two **VC** files of the former `tools/`
+> (`screenshot-pages.mjs`, `page-appsec-merge-plugin.mjs`) were reintegrated into wui-toolkit.
 
 ---
 
