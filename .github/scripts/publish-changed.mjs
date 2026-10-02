@@ -24,7 +24,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 const DRY_RUN = process.argv.includes('--dry-run');
 const LIBS_DIR = 'libs';
@@ -113,6 +113,7 @@ if (!ordered.length) {
 console.log(`\n${DRY_RUN ? 'Would publish' : 'Publishing'}, in this order: ${ordered.map((l) => l.manifest.name).join(', ')}`);
 for (const lib of ordered) {
   console.log(`\n::group::${lib.manifest.name}@${lib.manifest.version}`);
-  npm(['publish', lib.dir, ...(DRY_RUN ? ['--dry-run'] : [])], { stdio: 'inherit' });
+  // An absolute path: npm reads a bare `libs/wui-x` as a GitHub `user/repo` and tries to clone it.
+  npm(['publish', resolve(lib.dir), ...(DRY_RUN ? ['--dry-run'] : [])], { stdio: 'inherit' });
   console.log('::endgroup::');
 }
