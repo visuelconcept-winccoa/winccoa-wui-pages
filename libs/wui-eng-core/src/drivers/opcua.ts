@@ -136,13 +136,32 @@ export function opcUaDatatypeCode(dataType: string | undefined): number {
 }
 
 /**
- * OPC UA `AccessLevel` bit masks (Part 3 §5.6.2). Only the two CURRENT bits are
- * meaningful for a peripheral address; the history bits do not affect a binding.
+ * OPC UA `AccessLevel` bit masks (Part 3 §5.6.2). The two CURRENT bits decide a
+ * peripheral address; the HISTORY_READ bit decides nothing about the binding but
+ * says the server ARCHIVES the signal — which is exactly what an engineer needs
+ * to know before deciding whether WinCC OA should archive it too, so the book
+ * carries it (see `BookEntry.historized`).
  */
 export const OpcUaAccessLevel = {
   CURRENT_READ: 1,
-  CURRENT_WRITE: 2
+  CURRENT_WRITE: 2,
+  HISTORY_READ: 4,
+  HISTORY_WRITE: 8
 } as const;
+
+/**
+ * Whether an `AccessLevel` says the server keeps HISTORY for the signal
+ * (`HistoryRead`, or `HistoryWrite` for the rarer writable-history case).
+ *
+ * Deliberately separate from {@link opcUaAccessFromLevel}: the access mode drives
+ * the address direction, history drives an archiving DECISION, and folding the
+ * two into one value is how a read-only signal ends up looking archivable.
+ */
+export function opcUaHistorizedFromLevel(level: number): boolean {
+  /* eslint-disable no-bitwise */
+  return (level & (OpcUaAccessLevel.HISTORY_READ | OpcUaAccessLevel.HISTORY_WRITE)) !== 0;
+  /* eslint-enable no-bitwise */
+}
 
 /**
  * Decode an OPC UA `AccessLevel` bitmask into the book's access mode.
@@ -160,27 +179,122 @@ export function opcUaAccessFromLevel(level: number): TagAccess {
 }
 
 /** Peripheral-address direction from a tag's access mode. */
-export function directionFor(access: TagAccess): number {
+/** How a signal is acquired: sampled on a rhythm, or pushed by the server on change. */
+export type AcquisitionMode = 'poll' | 'spont';
+
+/**
+ * `_address.._direction` for an access mode and an ACQUISITION mode.
+ *
+ * A write is a write whatever the acquisition (`OUTPUT`); a read is polled (4) or subscribed
+ * (2); a read/write is the same choice one level up (7 / 6). The acquisition used to be implied
+ * by the access — every address was polled — which is precisely why the choice could not be
+ * expressed.
+ */
+export function directionFor(access: TagAccess, mode: AcquisitionMode = 'poll'): number {
   switch (access) {
     case 'w': {
       return DpAddressDirection.OUTPUT;
     }
     case 'rw': {
-      return DpAddressDirection.IO_POLL;
+      return mode === 'spont' ? DpAddressDirection.IO_SPONT : DpAddressDirection.IO_POLL;
     }
     default: {
-      return DpAddressDirection.INPUT_POLL;
+      return mode === 'spont' ? DpAddressDirection.INPUT_SPONT : DpAddressDirection.INPUT_POLL;
     }
   }
 }
 
 /**
- * Peripheral-address `_reference` for an OPC UA item in polling mode:
- * `<Conn>$$1$1$<NodeId>`. `conn` is the OPC UA server (connection) name
- * WITHOUT the leading underscore of its `_<conn>` `_OPCUAServer` datapoint.
+ * Does this direction READ? — the question the "Historical" checkbox answers to.
+ *
+ * The catalog's access is what decides it: `R` becomes an input (IN, 2/4) and `rw` an
+ * input/output (IN/OUT, 6/7) — both acquire a value, so both can be part of a historical
+ * query. A pure `OUTPUT` acquires nothing: asking the server for the history of an address
+ * that only writes configures a read that will never happen.
  */
-export function buildOpcUaReference(conn: string, nodeId: string): string {
-  return `${conn}$$1$1$${nodeId}`;
+export function isReadingDirection(direction: number): boolean {
+  return (
+    direction === DpAddressDirection.INPUT_SPONT ||
+    direction === DpAddressDirection.INPUT_SQUERY ||
+    direction === DpAddressDirection.INPUT_POLL ||
+    direction === DpAddressDirection.IO_SPONT ||
+    direction === DpAddressDirection.IO_POLL ||
+    direction === DpAddressDirection.IO_SQUERY ||
+    direction === DpAddressDirection.INPUT_CYCLIC_ON_USE ||
+    direction === DpAddressDirection.IO_CYCLIC_ON_USE ||
+    direction === DpAddressDirection.INPUT_SPONT_ON_USE ||
+    direction === DpAddressDirection.IO_SPONT_ON_USE
+  );
+}
+
+/**
+ * Is this direction POLLED? — the question `_address.._poll_group` answers to.
+ *
+ * A poll group on a subscribed or written address configures nothing; writing one there is a
+ * value nobody asked for on an attribute that has no meaning in that mode.
+ */
+export function isPolledDirection(direction: number): boolean {
+  return (
+    direction === DpAddressDirection.INPUT_POLL ||
+    direction === DpAddressDirection.IO_POLL ||
+    direction === DpAddressDirection.INPUT_SQUERY ||
+    direction === DpAddressDirection.IO_SQUERY ||
+    direction === DpAddressDirection.INPUT_CYCLIC_ON_USE ||
+    direction === DpAddressDirection.IO_CYCLIC_ON_USE
+  );
+}
+
+/**
+ * Peripheral-address `_reference` for an OPC UA item: `<Conn>$<Sub>$1$1$<NodeId>`.
+ *
+ * Field 1 is the OPC UA server (connection) and field 2 the SUBSCRIPTION, both named without
+ * the leading underscore of their datapoint (`_<conn>` of type `_OPCUAServer`, `_<sub>` of type
+ * `_OPCUASubscription` — verified in the vendor's own `opcuaDriver_plugin.ctl`).
+ *
+ * ⚠️ An EMPTY subscription field is what makes an address polled. So a subscribed address whose
+ * subscription name is missing does not fail — it silently becomes a polled one, which is the
+ * reason the generator refuses to write it and says so instead.
+ */
+export function buildOpcUaReference(conn: string, nodeId: string, subscription = ''): string {
+  return `${conn}$${subscription}$1$1$${nodeId}`;
+}
+
+/**
+ * The same reference, with its SUBSCRIPTION field set (or cleared).
+ *
+ * Catalogs store the whole reference as the browse produced it — polled, i.e. field 2 empty — so
+ * switching one signal to a subscription rewrites that field rather than rebuilding the address
+ * from parts the catalog no longer has.
+ */
+export function withOpcUaSubscription(reference: string, subscription: string): string {
+  const fields = reference.split('$');
+  // `<Conn>$<Sub>$1$1$<NodeId>`: fewer fields than that is not a reference this can touch, and
+  // guessing at its shape would corrupt an address that works.
+  if (fields.length < 5) return reference;
+  fields[1] = subscription;
+  return fields.join('$');
+}
+
+/**
+ * The same reference, re-pointed at another SERVER (field 1).
+ *
+ * A catalog stores the reference the browse produced, which names the connection the browse
+ * ran on. That connection is a property of the IMPORT, not of the instance: a mutualised
+ * catalog — one machine browsed once, then deployed on the five identical ones beside it — must
+ * address each instance through ITS OWN server. Left as browsed, every instance would poll the
+ * machine the catalog came from, which is a plant reading one PLC five times and reporting the
+ * other four as healthy.
+ *
+ * Field 1 alone is rewritten: the subscription, the kind, the variant and the NodeId are the
+ * catalog's, and rebuilding the address from parts the catalog no longer has is how a working
+ * reference gets corrupted.
+ */
+export function withOpcUaConnection(reference: string, connection: string): string {
+  const fields = reference.split('$');
+  // `<Conn>$<Sub>$1$1$<NodeId>`: fewer fields than that is not a reference this can touch.
+  if (fields.length < 5 || connection.trim() === '') return reference;
+  fields[0] = connection.trim();
+  return fields.join('$');
 }
 
 /** `_address.._drv_ident` for the OPC UA client driver. */

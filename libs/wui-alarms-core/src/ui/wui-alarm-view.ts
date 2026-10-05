@@ -34,22 +34,61 @@
  * error-prone; so as soon as the operator has a selection, incoming updates are
  * HELD (the status dot turns amber) and applied when the selection is released.
  */
+import { canWriteDatapoints$ } from '@visuelconcept-winccoa/wui-kit/data/permissions.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { localizeDate } from '@wincc-oa/wui-i18n-shared/localize-date.js';
 import { DatetimeFormat } from '@wincc-oa/wui-models/enums/wui-i18n/datetime-format.js';
-import { LitElement, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
+import {
+  LitElement,
+  html,
+  nothing,
+  type PropertyValues,
+  type TemplateResult
+} from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
-import { MSG, filteredOfTotalMsg, lastHoursMsg, localize, localizeDir, rangeLabelMsg, selectedMsg } from '../i18n.js';
+import {
+  MSG,
+  filteredOfTotalMsg,
+  lastHoursMsg,
+  localize,
+  localizeDir,
+  rangeLabelMsg,
+  selectedMsg
+} from '../i18n.js';
 import { resolvePeriod, type AlarmPeriod, type Range } from '../period.js';
-import { applyQuery, inSource, selectAll, DEFAULT_PAGE_SIZE, type AlarmPage, type AlarmQuery, type AlarmSource } from '../query.js';
+import {
+  applyQuery,
+  inSource,
+  selectAll,
+  DEFAULT_PAGE_SIZE,
+  type AlarmPage,
+  type AlarmQuery,
+  type AlarmSource
+} from '../query.js';
 import { mergeOccurrences } from '../occurrences.js';
 import { inScope, parseScopeAttribute } from '../scope.js';
 import type { SortDir, SortField } from '../severity.js';
-import { DEFAULT_WINDOW_MS, alarmHistogram, bucketFor, countAlarms, topActors } from '../statistics.js';
-import { DEFAULT_RANGES, canAcknowledge, type ActorGrouping, type Alarm, type AlarmRange } from '../types.js';
+import {
+  DEFAULT_WINDOW_MS,
+  alarmHistogram,
+  bucketFor,
+  countAlarms,
+  topActors
+} from '../statistics.js';
+import {
+  DEFAULT_RANGES,
+  canAcknowledge,
+  type ActorGrouping,
+  type Alarm,
+  type AlarmRange
+} from '../types.js';
 import { AlarmStore, DEFAULT_MAX_RESULTS } from '../data/alarm-store.js';
-import { ALARM_CONFIG_EVENT, loadAlarmConfig, type AlarmConfig } from '../data/alarm-config-store.js';
+import {
+  ALARM_CONFIG_EVENT,
+  loadAlarmConfig,
+  type AlarmConfig
+} from '../data/alarm-config-store.js';
 import { severityTokens } from './alarm-tokens.js';
 import { renderPeriodBar } from './period-bar.js';
 import { alarmViewStyles } from './wui-alarm-view.styles.js';
@@ -62,7 +101,17 @@ const HOUR_MS = 3_600_000;
 export type AlarmViewLayout = 'page' | 'panel';
 
 /** Inputs that invalidate the snapshot and force a reload. */
-const RELOAD_KEYS = ['source', 'period', 'shift', 'customStart', 'customEnd', 'from', 'to', 'maxResults', 'ranges'] as const;
+const RELOAD_KEYS = [
+  'source',
+  'period',
+  'shift',
+  'customStart',
+  'customEnd',
+  'from',
+  'to',
+  'maxResults',
+  'ranges'
+] as const;
 
 /** The toolbar-driven inputs {@link WuiAlarmView.patch} may change at once. */
 interface ViewPatch {
@@ -82,7 +131,11 @@ function stampLabel(ms: number): string {
 }
 
 export class WuiAlarmView extends LitElement {
-  static override readonly styles = [IXCoreStyles, severityTokens(), alarmViewStyles()];
+  static override readonly styles = [
+    IXCoreStyles,
+    severityTokens(),
+    alarmViewStyles()
+  ];
 
   /** `active` = the standing alarms (live); `history` = the archive of a period. */
   @property({ reflect: true }) source: AlarmSource = 'active';
@@ -112,10 +165,16 @@ export class WuiAlarmView extends LitElement {
   @property({ type: Boolean, attribute: 'hide-toolbar' }) hideToolbar = false;
   /** Hide the period controls (the host page drives `from` / `to`). */
   @property({ type: Boolean, attribute: 'hide-period' }) hidePeriod = false;
-  /** Read-only view: no selection, no acknowledge. */
+  /**
+   * Read-only view: no selection, no acknowledge. Acknowledging is ALSO withheld
+   * on its own when the user lacks the WinCC OA write permission (see
+   * {@link ackDisabled}) — the write would only be refused by the runtime.
+   */
   @property({ type: Boolean, attribute: 'no-ack' }) noAck = false;
-  @property({ type: Number, attribute: 'page-size' }) pageSize = DEFAULT_PAGE_SIZE;
-  @property({ type: Number, attribute: 'max-results' }) maxResults = DEFAULT_MAX_RESULTS;
+  @property({ type: Number, attribute: 'page-size' }) pageSize =
+    DEFAULT_PAGE_SIZE;
+  @property({ type: Number, attribute: 'max-results' }) maxResults =
+    DEFAULT_MAX_RESULTS;
   /**
    * The priority ranges to use. Left unset, the view reads the project's own from
    * the module's configuration datapoint (shared across every view on the page)
@@ -124,7 +183,8 @@ export class WuiAlarmView extends LitElement {
    */
   @property({ attribute: false }) ranges: readonly AlarmRange[] | null = null;
   /** How far back the occurrence statistics look on the active tab. */
-  @property({ type: Number, attribute: 'stats-window' }) statsWindowMs = DEFAULT_WINDOW_MS;
+  @property({ type: Number, attribute: 'stats-window' }) statsWindowMs =
+    DEFAULT_WINDOW_MS;
 
   @state() private snapshot: readonly Alarm[] = [];
   /** Live updates held back while the operator has a selection. */
@@ -155,16 +215,32 @@ export class WuiAlarmView extends LitElement {
   @state() private truncated = false;
   @state() private updatedAt = 0;
 
+  /** WinCC OA write permission of the connected user (`dpSet`) — acknowledging needs it. */
+  @state() private canWrite = true;
+
   private store: AlarmStore | null = null;
   private sub = new Subscription();
+  private permissionSub = new Subscription();
   /** Swallows the `updated()` of the very first render — `firstUpdated` loaded. */
   private firstSettled = false;
   /** Content key of the last seen scope (see {@link updated}). */
   private scopeKey = '';
 
+  /**
+   * Acknowledging is unavailable when the host says so (`no-ack`) OR when the
+   * user has no WinCC OA write permission: the checkboxes and the button are then
+   * not rendered at all, instead of offering a write the runtime would refuse.
+   */
+  private get ackDisabled(): boolean {
+    return this.noAck || !this.canWrite;
+  }
+
   override connectedCallback(): void {
     super.connectedCallback();
     globalThis.addEventListener(ALARM_CONFIG_EVENT, this.onConfigChanged);
+    this.permissionSub = canWriteDatapoints$().subscribe(
+      (granted) => (this.canWrite = granted)
+    );
     void this.readConfig();
     // Re-attachment (a router swap, a host moving the node) must re-subscribe.
     if (this.hasUpdated) void this.reload();
@@ -174,24 +250,30 @@ export class WuiAlarmView extends LitElement {
     super.disconnectedCallback();
     globalThis.removeEventListener(ALARM_CONFIG_EVENT, this.onConfigChanged);
     this.sub.unsubscribe();
+    this.permissionSub.unsubscribe();
   }
 
   override render(): TemplateResult {
     if (this.scopeMissing()) {
       return html`<div class="center">${localizeDir(MSG.view.noScope)}</div>`;
     }
-    const scoped = this.snapshot.filter((alarm) => inScope(alarm, this.effectiveScope()));
+    const scoped = this.snapshot.filter((alarm) =>
+      inScope(alarm, this.effectiveScope())
+    );
     const page = applyQuery(scoped, this.query(), this.reference());
     // The statistics describe the rows of the TAB, not of the whole snapshot: the
     // band chips double as the band filter, so a chip reading 0 while clicking it
     // reveals rows would be a lie the operator acts on.
     const visible = scoped.filter((alarm) => inSource(alarm, this.source));
     return html`
-      ${this.hideToolbar ? nothing : this.renderToolbar(page)} ${this.renderNotice()}
+      ${this.hideToolbar ? nothing : this.renderToolbar(page)}
+      ${this.renderNotice()}
       ${this.hideStats ? nothing : this.renderStats(visible, this.statsRows(scoped))}
-      ${this.loading && this.snapshot.length === 0
-        ? html`<div class="center"><ix-spinner></ix-spinner></div>`
-        : this.renderTable(page)}
+      ${
+        this.loading && this.snapshot.length === 0
+          ? html`<div class="center"><ix-spinner></ix-spinner></div>`
+          : this.renderTable(page)
+      }
     `;
   }
 
@@ -218,7 +300,9 @@ export class WuiAlarmView extends LitElement {
 
   /** Acknowledge every alarm the current filters select, page or not. */
   async acknowledgeAll(): Promise<void> {
-    const scoped = this.snapshot.filter((alarm) => inScope(alarm, this.effectiveScope()));
+    const scoped = this.snapshot.filter((alarm) =>
+      inScope(alarm, this.effectiveScope())
+    );
     await this.acknowledge(selectAll(scoped, this.query()));
   }
 
@@ -233,7 +317,8 @@ export class WuiAlarmView extends LitElement {
 
   /** The resolved period of the view — explicit bounds win over the preset. */
   private range(): Range {
-    if (this.from > 0 && this.to > this.from) return { start: this.from, end: this.to };
+    if (this.from > 0 && this.to > this.from)
+      return { start: this.from, end: this.to };
     return resolvePeriod(this.period, Date.now(), {
       shift: this.shift,
       customStart: this.customStart,
@@ -310,7 +395,9 @@ export class WuiAlarmView extends LitElement {
           />
           ${localizeDir(MSG.view.unackOnly)}
         </label>
-        <span class="muted mono">${filteredOfTotalMsg(`${page.filtered}`, `${page.total}`)}</span>
+        <span class="muted mono"
+          >${filteredOfTotalMsg(`${page.filtered}`, `${page.total}`)}</span
+        >
         <span class="grow"></span>
         ${this.renderActions()} ${this.renderStatus()}
       </div>
@@ -341,7 +428,7 @@ export class WuiAlarmView extends LitElement {
   }
 
   private renderActions(): TemplateResult | typeof nothing {
-    if (this.noAck) return nothing;
+    if (this.ackDisabled) return nothing;
     const count = this.selection.size;
     return html`
       <button
@@ -359,20 +446,36 @@ export class WuiAlarmView extends LitElement {
     const clock =
       this.updatedAt === 0
         ? '--'
-        : localizeDate(new Date(this.updatedAt), undefined, DatetimeFormat.TimeWithSeconds);
+        : localizeDate(
+            new Date(this.updatedAt),
+            undefined,
+            DatetimeFormat.TimeWithSeconds
+          );
     return html`
       <span class="status">
         <span class=${this.held === null ? 'dot' : 'dot held'}></span>
-        ${this.source === 'active' ? localizeDir(MSG.view.live) : nothing} ${localizeDir(MSG.view.updatedAt)} ${clock}
+        ${this.source === 'active' ? localizeDir(MSG.view.live) : nothing}
+        ${localizeDir(MSG.view.updatedAt)} ${clock}
       </span>
-      <button class="act" ?disabled=${this.loading} @click=${() => void this.reload()}>${localizeDir(MSG.view.refresh)}</button>
+      <button
+        class="act"
+        ?disabled=${this.loading}
+        @click=${() => void this.reload()}
+      >
+        ${localizeDir(MSG.view.refresh)}
+      </button>
     `;
   }
 
   private renderNotice(): TemplateResult | typeof nothing {
-    const messages = [this.notice, this.truncated ? localize(MSG.view.truncated) : ''].filter((text) => text !== '');
+    const messages = [
+      this.notice,
+      this.truncated ? localize(MSG.view.truncated) : ''
+    ].filter((text) => text !== '');
     if (messages.length === 0) return nothing;
-    return html`<div class="notice"><ix-icon name="warning" size="16"></ix-icon>${messages.join(' ')}</div>`;
+    return html`<div class="notice">
+      <ix-icon name="warning" size="16"></ix-icon>${messages.join(' ')}
+    </div>`;
   }
 
   /**
@@ -380,7 +483,10 @@ export class WuiAlarmView extends LitElement {
    * (the state right now), the histogram and the bad actors describe the
    * OCCURRENCES of the window (what happened over it).
    */
-  private renderStats(visible: readonly Alarm[], occurrences: readonly Alarm[]): TemplateResult {
+  private renderStats(
+    visible: readonly Alarm[],
+    occurrences: readonly Alarm[]
+  ): TemplateResult {
     const compact = this.layout === 'panel';
     return html`
       <wui-alarm-stats
@@ -406,7 +512,7 @@ export class WuiAlarmView extends LitElement {
         .sortDir=${this.sortDir}
         .selection=${this.selection}
         .compact=${this.layout === 'panel'}
-        .selectable=${!this.noAck}
+        .selectable=${!this.ackDisabled}
         .showCleared=${this.source === 'history'}
         .ranges=${this.effectiveRanges()}
         @wui:sort=${(event: CustomEvent<SortField>) => this.onSort(event.detail)}
@@ -436,7 +542,8 @@ export class WuiAlarmView extends LitElement {
    * — a 10-minute bucket over seven days would be unreadable.
    */
   private histogram(rows: readonly Alarm[]): ReturnType<typeof alarmHistogram> {
-    if (this.source === 'active') return alarmHistogram(rows, Date.now(), this.statsWindowMs);
+    if (this.source === 'active')
+      return alarmHistogram(rows, Date.now(), this.statsWindowMs);
     const { start, end } = this.range();
     const span = Math.max(1, end - start);
     return alarmHistogram(rows, end, span, bucketFor(span));
@@ -446,7 +553,9 @@ export class WuiAlarmView extends LitElement {
   private windowLabel(): string {
     if (this.source !== 'active') return this.rangeLabel();
     const hours = Math.round(this.statsWindowMs / HOUR_MS);
-    return this.statsWindowMs === DEFAULT_WINDOW_MS ? localize(MSG.histogram.window) : lastHoursMsg(hours);
+    return this.statsWindowMs === DEFAULT_WINDOW_MS
+      ? localize(MSG.histogram.window)
+      : lastHoursMsg(hours);
   }
 
   /** Seed the occurrence window from the archive — the past is not in the live set. */
@@ -454,7 +563,10 @@ export class WuiAlarmView extends LitElement {
     if (this.source !== 'active' || this.hideStats) return;
     const end = Date.now();
     try {
-      const { alarms } = await store.history({ start: end - this.statsWindowMs, end }, this.maxResults);
+      const { alarms } = await store.history(
+        { start: end - this.statsWindowMs, end },
+        this.maxResults
+      );
       this.windowRows = alarms;
     } catch {
       // No alarm archive: the statistics fall back to what the live set shows —
@@ -476,7 +588,8 @@ export class WuiAlarmView extends LitElement {
   }
 
   private onSort(field: SortField): void {
-    this.sortDir = this.sort === field && this.sortDir === 'desc' ? 'asc' : 'desc';
+    this.sortDir =
+      this.sort === field && this.sortDir === 'desc' ? 'asc' : 'desc';
     this.sort = field;
     this.pageNo = 1;
   }
@@ -519,7 +632,12 @@ export class WuiAlarmView extends LitElement {
     if (this.source === 'active') {
       this.truncated = false;
       this.loading = this.snapshot.length === 0;
-      this.sub.add(store.live$().subscribe({ next: (alarms) => this.onLive(alarms), error: () => this.onFailure() }));
+      this.sub.add(
+        store.live$().subscribe({
+          next: (alarms) => this.onLive(alarms),
+          error: () => this.onFailure()
+        })
+      );
       void this.loadStatsWindow(store);
       return;
     }
@@ -529,7 +647,10 @@ export class WuiAlarmView extends LitElement {
   private async loadHistory(store: AlarmStore): Promise<void> {
     this.loading = true;
     try {
-      const { alarms, truncated } = await store.history(this.range(), this.maxResults);
+      const { alarms, truncated } = await store.history(
+        this.range(),
+        this.maxResults
+      );
       this.snapshot = alarms;
       this.held = null;
       this.truncated = truncated;
@@ -559,7 +680,11 @@ export class WuiAlarmView extends LitElement {
   /** Fold the live rows into the occurrence window, dropping whatever aged out. */
   private mergeWindow(live: readonly Alarm[]): void {
     if (this.source !== 'active' || this.hideStats) return;
-    this.windowRows = mergeOccurrences(this.windowRows, live, Date.now() - this.statsWindowMs);
+    this.windowRows = mergeOccurrences(
+      this.windowRows,
+      live,
+      Date.now() - this.statsWindowMs
+    );
   }
 
   private onFailure(): void {
@@ -569,7 +694,8 @@ export class WuiAlarmView extends LitElement {
 
   private emitCounters(alarms: readonly Alarm[]): void {
     const scoped = alarms.filter(
-      (alarm) => inScope(alarm, this.effectiveScope()) && inSource(alarm, this.source)
+      (alarm) =>
+        inScope(alarm, this.effectiveScope()) && inSource(alarm, this.source)
     );
     this.dispatchEvent(
       new CustomEvent('wui:counters', {
@@ -582,12 +708,14 @@ export class WuiAlarmView extends LitElement {
 
   private async acknowledgeSelection(): Promise<void> {
     const byId = new Map(this.snapshot.map((alarm) => [alarm.id, alarm]));
-    const alarms = [...this.selection].map((id) => byId.get(id)).filter((alarm): alarm is Alarm => alarm !== undefined);
+    const alarms = [...this.selection]
+      .map((id) => byId.get(id))
+      .filter((alarm): alarm is Alarm => alarm !== undefined);
     await this.acknowledge(alarms);
   }
 
   private async acknowledge(alarms: readonly Alarm[]): Promise<void> {
-    if (this.noAck || alarms.length === 0) return;
+    if (this.ackDisabled || alarms.length === 0) return;
     const store = this.resolveStore();
     if (store === null) return;
     // Told apart on purpose: a selection with nothing acknowledgeable in it is not
@@ -601,10 +729,7 @@ export class WuiAlarmView extends LitElement {
     this.busy = true;
     try {
       const result = await store.acknowledge(alarms);
-      // An acknowledgement recorded under the SERVER's identity is not a failure,
-      // but it is not what the operator will read back either — say it.
-      if (result.ok) this.notice = result.attributed ? '' : localize(MSG.view.ackUnattributed);
-      else this.notice = localize(MSG.view.ackFailed);
+      this.notice = result.ok ? '' : localize(MSG.view.ackFailed);
     } catch (error) {
       const reason = error instanceof Error ? ` (${error.message})` : '';
       this.notice = `${localize(MSG.view.ackFailed)}${reason}`;

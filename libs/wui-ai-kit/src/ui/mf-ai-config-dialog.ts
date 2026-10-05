@@ -15,12 +15,16 @@ import {
   AI_MAX_TOKENS_MAX,
   AI_MAX_TOKENS_MIN,
   AI_PROVIDERS,
+  AI_TOOL_ROUNDS_MAX,
+  AI_TOOL_ROUNDS_MIN,
   DEFAULT_AI_EFFORT,
   DEFAULT_AI_MAX_TOKENS,
+  DEFAULT_AI_TOOL_ROUNDS,
   DEFAULT_MCP_SERVER,
   loadAiConfig,
   saveAiConfig,
   toMaxTokens,
+  toToolRounds,
   type AiConfig,
   type AiEffort,
   type McpServer
@@ -46,7 +50,8 @@ export class MfAiConfigDialog extends LitElement {
     mcpServers: [],
     webSearch: true,
     effort: DEFAULT_AI_EFFORT,
-    maxTokens: DEFAULT_AI_MAX_TOKENS
+    maxTokens: DEFAULT_AI_MAX_TOKENS,
+    maxToolRounds: DEFAULT_AI_TOOL_ROUNDS
   };
   @state() private saving = false;
   @state() private error = '';
@@ -156,21 +161,42 @@ export class MfAiConfigDialog extends LitElement {
           </ix-select>
         </label>
         <div class="hint">${localizeDir(AI_MSG.effortHint)}</div>
-        <label class="field">
-          <span class="lbl">${localizeDir(AI_MSG.maxTokens)}</span>
-          <input
-            class="in"
-            type="number"
-            min=${AI_MAX_TOKENS_MIN}
-            max=${AI_MAX_TOKENS_MAX}
-            step="1024"
-            .value=${String(this.cfg.maxTokens)}
-            @change=${(e: Event) =>
-              (this.cfg = { ...this.cfg, maxTokens: toMaxTokens((e.target as HTMLInputElement).value) })}
-          />
-        </label>
-        <div class="hint">${localizeDir(AI_MSG.maxTokensHint)}</div>
+        ${this.renderBudgets()}
       </div>
+    `;
+  }
+
+  /** The two ceilings: how long ONE answer may be, and how far the loop may explore. */
+  private renderBudgets(): TemplateResult {
+    return html`
+      <label class="field">
+        <span class="lbl">${localizeDir(AI_MSG.maxTokens)}</span>
+        <input
+          class="in"
+          type="number"
+          min=${AI_MAX_TOKENS_MIN}
+          max=${AI_MAX_TOKENS_MAX}
+          step="1024"
+          .value=${String(this.cfg.maxTokens)}
+          @change=${(e: Event) =>
+            (this.cfg = { ...this.cfg, maxTokens: toMaxTokens((e.target as HTMLInputElement).value) })}
+        />
+      </label>
+      <div class="hint">${localizeDir(AI_MSG.maxTokensHint)}</div>
+      <label class="field">
+        <span class="lbl">${localizeDir(AI_MSG.maxToolRounds)}</span>
+        <input
+          class="in"
+          type="number"
+          min=${AI_TOOL_ROUNDS_MIN}
+          max=${AI_TOOL_ROUNDS_MAX}
+          step="1"
+          .value=${String(this.cfg.maxToolRounds)}
+          @change=${(e: Event) =>
+            (this.cfg = { ...this.cfg, maxToolRounds: toToolRounds((e.target as HTMLInputElement).value) })}
+        />
+      </label>
+      <div class="hint">${localizeDir(AI_MSG.maxToolRoundsHint)}</div>
     `;
   }
 

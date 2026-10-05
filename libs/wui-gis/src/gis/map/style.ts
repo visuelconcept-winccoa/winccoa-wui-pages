@@ -379,6 +379,35 @@ export function linkLayers(): LayerSpecification[] {
   ];
 }
 
+/**
+ * Is this datapoint in alarm, given the colour a live snapshot holds for it?
+ *
+ * The snapshot holds **`''` for a datapoint that RESOLVED and has no active alert** (that is
+ * what `oaColorToCss` returns for an empty `_act_state_color`), and no entry at all for one
+ * that could not be followed. Both mean "not in alarm", so the test has to be truthiness:
+ * `!== undefined` reads every quiet datapoint as an alarm, which turned every zone badge into
+ * a red count of all its assets as soon as the bindings pointed at datapoints that exist.
+ */
+export function inAlarm(alarmColor: string | undefined): boolean {
+  return Boolean(alarmColor);
+}
+
+/**
+ * The colour to paint: the active alert colour when there IS one, else the fallback.
+ *
+ * `??` is wrong here for the same reason, and worse: `''` survives it, reaches MapLibre as the
+ * value of `line-color`, is not a colour — and the line is then **not drawn at all**. The trap
+ * only springs once a binding points at a datapoint that exists, so a site drawn without
+ * bindings looks perfect and the very same site bound to real datapoints loses its whole
+ * network. Hence one named function, used by every caller, rather than an operator per site.
+ */
+export function alarmColorOr(
+  alarmColor: string | undefined,
+  fallback: string
+): string {
+  return alarmColor || fallback;
+}
+
 /** One `LineString` per connection whose two ends still resolve to assets. */
 export function linkCollection(
   site: Site | null,

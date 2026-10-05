@@ -1,0 +1,45 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "typeRoots": [
+      "../../node_modules/@types"
+    ],
+    "paths": {
+      "@visuelconcept-winccoa/wui-ai-kit/*": [
+        "../wui-ai-kit/src/*"
+      ],
+      "@visuelconcept-winccoa/wui-app-security/*": [
+        "../wui-app-security/src/*"
+      ],
+      "@visuelconcept-winccoa/wui-kit/*": [
+        "../wui-kit/src/*"
+      ],
+      "@visuelconcept-winccoa/wui-para/*": [
+        "../wui-para/src/*"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*.ts"
+  ]
+}

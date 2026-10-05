@@ -1,0 +1,231 @@
+{
+  "types": ["bool", "int", "uint", "long", "ulong", "float", "string"],
+  "widgetType": "machine-fleet-gantt",
+  "label": "WUI_Widget_MachineFleetGantt.Label",
+  "description": "WUI_Widget_MachineFleetGantt.Description",
+  "svgFile": "/data/WebUI/svg/machine-fleet-gantt.svg",
+  "size": {
+    "minRows": 3,
+    "minCols": 8
+  },
+  "defaultSettings": {
+    "showLegend": true,
+    "showRangePicker": true,
+    "showTooltip": true,
+    "showTimeAxis": true,
+    "stateMappingId": "",
+    "machineId": ""
+  },
+  "variables": {
+    "context": "group",
+    "config": {
+      "sTimeRange": "now/d"
+    }
+  },
+  "componentSettings": {
+    "styles": [],
+    "scripts": [
+      "/data/WebUI/widgets-v2/MachineFleet/machine-fleet-gantt/machine-fleet-gantt"
+    ],
+    "tagname": "mf-widget-gantt",
+    "jsonSchema": {
+      "type": "object",
+      "properties": {
+        "variables": { "type": "object" },
+        "state": {
+          "type": "object",
+          "properties": {
+            "value": { "type": "object" },
+            "name": { "type": "string" }
+          }
+        },
+        "cause": {
+          "type": "object",
+          "properties": {
+            "value": { "type": "object" },
+            "name": { "type": "string" }
+          }
+        },
+        "stateMapping": { "type": "string" },
+        "machineId": { "type": "string" },
+        "stateMappingId": { "type": "string" },
+        "stopCauses": { "type": "string" },
+        "showLegend": { "type": "boolean" },
+        "showRangePicker": { "type": "boolean" },
+        "showTooltip": { "type": "boolean" },
+        "showTimeAxis": { "type": "boolean" }
+      }
+    },
+    "uiSchema": {
+      "type": "object",
+      "elements": [
+        {
+          "type": "Tab",
+          "scope": "#/properties/variables",
+          "elements": [
+            {
+              "type": "WuiLayout",
+              "label": "WUI_Settings.Area.TimeRange",
+              "options": {
+                "collapsible": "open",
+                "showFirstElementAsHeader": false,
+                "noborder": true
+              },
+              "elements": [
+                {
+                  "type": "TimeRangeControl",
+                  "scope": "#/properties/sTimeRange"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "WuiLayout",
+          "label": "WUI_Settings.Area.Content",
+          "options": {
+            "collapsible": "open",
+            "showFirstElementAsHeader": false,
+            "noborder": true
+          },
+          "elements": [
+            {
+              "type": "VerticalGroup",
+              "scope": "#/properties/state",
+              "label": "WUI_Widget_MachineFleetGantt.Settings.StateDp",
+              "options": { "noborder": true },
+              "elements": [
+                {
+                  "type": "DataPointControl",
+                  "scope": "#/properties/datapoint",
+                  "label": "WUI_Settings.Area.Datapoint",
+                  "options": {
+                    "fetchMethod": "historic",
+                    "variables": {
+                      "historic": { "sTimeRange": "${sTimeRange}" }
+                    },
+                    "historic": {
+                      "compress": false,
+                      "fields": ["values", "timestamps"]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "VerticalGroup",
+              "scope": "#/properties/cause",
+              "label": "WUI_Widget_MachineFleetGantt.Settings.CauseDp",
+              "options": { "noborder": true },
+              "elements": [
+                {
+                  "type": "DataPointControl",
+                  "scope": "#/properties/datapoint",
+                  "label": "WUI_Settings.Area.Datapoint",
+                  "options": {
+                    "fetchMethod": "historic",
+                    "variables": {
+                      "historic": { "sTimeRange": "${sTimeRange}" }
+                    },
+                    "historic": {
+                      "compress": false,
+                      "fields": ["values", "timestamps"]
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "WuiLayout",
+          "label": "WUI_Widget_MachineFleetGantt.Settings.Mapping",
+          "options": {
+            "collapsible": true,
+            "showFirstElementAsHeader": false,
+            "noborder": true
+          },
+          "elements": [
+            {
+              "type": "ContextControl",
+              "scope": "#/properties/stateMapping",
+              "label": "WUI_Widget_MachineFleetGantt.Settings.StateMapping",
+              "options": {
+                "contextInputType": "data",
+                "tooltip": "WUI_Widget_MachineFleetGantt.Settings.StateMappingHint"
+              }
+            },
+            {
+              "type": "Control",
+              "scope": "#/properties/machineId",
+              "label": "WUI_Widget_MachineFleetGantt.Settings.MachineId",
+              "options": {
+                "tooltip": "WUI_Widget_MachineFleetGantt.Settings.MachineIdHint"
+              }
+            },
+            {
+              "type": "Control",
+              "scope": "#/properties/stateMappingId",
+              "label": "WUI_Widget_MachineFleetGantt.Settings.StateMappingId",
+              "options": {
+                "tooltip": "WUI_Widget_MachineFleetGantt.Settings.StateMappingIdHint"
+              }
+            },
+            {
+              "type": "ContextControl",
+              "scope": "#/properties/stopCauses",
+              "label": "WUI_Widget_MachineFleetGantt.Settings.StopCauses",
+              "options": {
+                "contextInputType": "data",
+                "tooltip": "WUI_Widget_MachineFleetGantt.Settings.StopCausesHint"
+              }
+            }
+          ]
+        },
+        {
+          "type": "WuiLayout",
+          "label": "WUI_Settings.Area.Formatting",
+          "options": {
+            "collapsible": true,
+            "showFirstElementAsHeader": false,
+            "noborder": true
+          },
+          "elements": [
+            {
+              "type": "WuiLayout",
+              "options": { "orient": "horizontal", "noborder": true },
+              "elements": [
+                {
+                  "type": "CheckboxControl",
+                  "label": "WUI_Widget_MachineFleetGantt.Settings.ShowLegend",
+                  "scope": "#/properties/showLegend"
+                },
+                {
+                  "type": "CheckboxControl",
+                  "label": "WUI_Widget_MachineFleetGantt.Settings.ShowTimeAxis",
+                  "scope": "#/properties/showTimeAxis"
+                }
+              ]
+            },
+            {
+              "type": "WuiLayout",
+              "options": { "orient": "horizontal", "noborder": true },
+              "elements": [
+                {
+                  "type": "CheckboxControl",
+                  "label": "WUI_Settings.RangeSelector.ChangeAble",
+                  "scope": "#/properties/showRangePicker"
+                },
+                {
+                  "type": "CheckboxControl",
+                  "label": "WUI_Settings.ShowTooltip",
+                  "scope": "#/properties/showTooltip"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

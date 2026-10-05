@@ -16,7 +16,7 @@
  */
 
 import type { AddressConfig, AlarmConfig, ArchiveConfig, RangeConfig } from '../model.js';
-import { OPCUA_DRV_IDENT } from '../drivers/opcua.js';
+import { isPolledDirection, OPCUA_DRV_IDENT } from '../drivers/opcua.js';
 import { S7_DRV_IDENT } from '../drivers/s7.js';
 import { MODBUS_DRV_IDENT } from '../drivers/modbus.js';
 
@@ -66,6 +66,21 @@ function drvIdentFor(mode: AddressConfig['mode']): string {
  * ensured poll-group DP come from the device (resolved server-side).
  */
 export function buildAddressWrite(dpe: string, config: AddressConfig, driverNumber: number, pollGroupDp: string): ConfigWrite {
+  // `_address.._connection` is appended only when the config carries one: the
+  // S7Plus driver resolves a symbol THROUGH its connection (para writes the pair
+  // together — `para.ctl`, `case "s7plus"`), while an OPC UA reference already
+  // names its server. Writing an empty connection on a driver that does not use
+  // one is a change nobody asked for, so absence stays absence.
+  const connection = config.connection?.trim() ?? '';
+  // `_poll_group` only for a POLLED direction: on a subscribed (or written) address the attribute
+  // configures nothing, and writing one there states a rhythm that does not exist.
+  const polled = isPolledDirection(config.direction);
+  // `_address.._offset` is the "Historical" checkbox of the OPC UA address tab — the driver
+  // includes the address in its historical queries (`opcuaDrvPara.ctl` puts `cbHistory` into
+  // `dpc[10]`, `para.ctl` writes that to `_offset` under `case "opcua"`). The attribute is
+  // DRIVER SPECIFIC: on Modbus the same one carries a bit count, so the flag is honoured for
+  // the OPC UA driver alone — anywhere else it stays the 0 every address had.
+  const historical = config.mode === 'opcua' && config.historical === true ? 1 : 0;
   return {
     dpes: [
       `${dpe}:_distrib.._type`,
@@ -79,8 +94,9 @@ export function buildAddressWrite(dpe: string, config: AddressConfig, driverNumb
       `${dpe}:_address.._internal`,
       `${dpe}:_address.._lowlevel`,
       `${dpe}:_address.._offset`,
-      `${dpe}:_address.._poll_group`,
-      `${dpe}:_address.._active`
+      ...(polled ? [`${dpe}:_address.._poll_group`] : []),
+      `${dpe}:_address.._active`,
+      ...(connection === '' ? [] : [`${dpe}:_address.._connection`])
     ],
     values: [
       DPCONFIG_DISTRIBUTION_INFO,
@@ -93,9 +109,10 @@ export function buildAddressWrite(dpe: string, config: AddressConfig, driverNumb
       0,
       false,
       true,
-      0,
-      pollGroupDp,
-      config.active
+      historical,
+      ...(polled ? [pollGroupDp] : []),
+      config.active,
+      ...(connection === '' ? [] : [connection])
     ]
   };
 }
@@ -105,8 +122,12 @@ export function buildAddressDeactivate(dpe: string): ConfigWrite {
   return { dpes: [`${dpe}:_address.._active`], values: [false] };
 }
 
-/** Binary alert: ok_range TRUE when alarming on FALSE (DESC). */
+/**
+ * Binary alert. `_ok_range` is the HEALTHY value: the model states it (`goodRange`), and
+ * only when it does not is it derived from the direction as before (`DESC` = FALSE is fine).
+ */
 function buildBinaryAlarm(dpe: string, config: AlarmConfig): ConfigWrite {
+  const okRange = config.goodRange ?? config.direction === 'DESC';
   return {
     dpes: [
       `${dpe}:_alert_hdl.._type`,
@@ -114,7 +135,7 @@ function buildBinaryAlarm(dpe: string, config: AlarmConfig): ConfigWrite {
       `${dpe}:_alert_hdl.._ok_range`,
       `${dpe}:_alert_hdl.._active`
     ],
-    values: [DPCONFIG_ALERT_BINARYSIGNAL, `${config.alarmClass}.`, config.direction === 'DESC', config.active]
+    values: [DPCONFIG_ALERT_BINARYSIGNAL, `${config.alarmClass}.`, okRange, config.active]
   };
 }
 
@@ -125,7 +146,12 @@ function buildAnalogAlarm(dpe: string, config: AlarmConfig): ConfigWrite[] {
     throw new Error(`analog alarm on ${dpe}: at least one threshold is required`);
   }
   const [minValue, maxValue] = config.bounds ?? [-3.4e38, 3.4e38];
-  const cls = `${config.alarmClass}.`;
+  /**
+   * The class of the k-th ALARMING range (k counted in threshold order, from the first
+   * threshold crossed), falling back to the config's single class. That is how an alarm
+   * escalates in WinCC OA: same limits, a stronger class on the further range.
+   */
+  const classAt = (index: number): string => `${config.alarmClasses?.[index] ?? config.alarmClass}.`;
   const head: ConfigWrite = {
     dpes: [`${dpe}:_alert_hdl.._type`, `${dpe}:_alert_hdl.._orig_hdl`],
     values: [DPCONFIG_ALERT_NONBINARYSIGNAL, false]
@@ -143,16 +169,20 @@ function buildAnalogAlarm(dpe: string, config: AlarmConfig): ConfigWrite[] {
     if (asc) {
       dpes.push(`${dpe}:_alert_hdl.${i}._l_incl`, `${dpe}:_alert_hdl.${i}._u_incl`);
       values.push(true, i > thresholds.length);
+      // Ascending: ranges 2..N+1 alarm — range i sits ABOVE threshold i-1, so it takes the
+      // (i-2)-th class in threshold order.
       if (i > 1) {
         dpes.push(`${dpe}:_alert_hdl.${i}._class`);
-        values.push(cls);
+        values.push(classAt(i - 2));
       }
     } else {
       dpes.push(`${dpe}:_alert_hdl.${i}._l_incl`, `${dpe}:_alert_hdl.${i}._u_incl`);
       values.push(i === 1, true);
+      // Descending: ranges 1..N alarm — range i sits BELOW threshold i, and the classes are
+      // still read in threshold order, so the LOWEST range takes the last one.
       if (i <= thresholds.length) {
         dpes.push(`${dpe}:_alert_hdl.${i}._class`);
-        values.push(cls);
+        values.push(classAt(thresholds.length - i));
       }
     }
   }

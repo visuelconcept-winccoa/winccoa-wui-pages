@@ -48,9 +48,6 @@
       "para",
       "app-security"
     ],
-    "optional": [
-      "alarms"
-    ],
     "route": "/fleet-3d",
     "routes": [
       "/fleet-3d",
@@ -122,6 +119,7 @@
   "files": [
     "src",
     "managers",
+    "oa-data",
     "menu.fragment.jsonc",
     "!**/*.spec.ts",
     "!**/*.test.ts"

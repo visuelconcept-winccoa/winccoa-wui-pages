@@ -32,11 +32,11 @@ on `atime` (the occurrence stamp) into a single row with `raised` + `cleared`.
 Three encodings drive the mapping, and each one silently inverts the list if read
 the wrong way round (all three are unit-tested in `alarms.spec.ts`):
 
-| Fact | Reading |
-| --- | --- |
-| `Alert.direction` | `true` = **CAME** (standing), `false` = **WENT** (cleared). The opposite of the intuition. |
-| `Alert.ackState` | `AckState.DpAttrActTypeNot` (`0`) = **NOT** acknowledged; any other value = acknowledged. Same reading as the runtime's own alert table. |
-| `Alert.atime` | Identifies the OCCURRENCE (came-time + count), so CAME and WENT share it. |
+| Fact              | Reading                                                                                                                                  |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `Alert.direction` | `true` = **CAME** (standing), `false` = **WENT** (cleared). The opposite of the intuition.                                               |
+| `Alert.ackState`  | `AckState.DpAttrActTypeNot` (`0`) = **NOT** acknowledged; any other value = acknowledged. Same reading as the runtime's own alert table. |
+| `Alert.atime`     | Identifies the OCCURRENCE (came-time + count), so CAME and WENT share it.                                                                |
 
 ### Priority ranges (configurable)
 
@@ -78,55 +78,42 @@ Design rules that matter:
 An alarm leaves the **Active** list when it is cleared **AND** acknowledged —
 never on the clearing alone:
 
-| Came | Acknowledged | In "Active" | State chip |
-| --- | --- | --- | --- |
-| yes | no | ✔ | `ACTIVE` |
-| yes | yes | ✔ | `ACTIVE - ACK` |
-| **no (went)** | **no** | **✔** | `CLEARED - UNACK` |
-| no | yes | ✘ (history) | `CLEARED - ACK` |
+| Came          | Acknowledged | In "Active" | State chip        |
+| ------------- | ------------ | ----------- | ----------------- |
+| yes           | no           | ✔           | `ACTIVE`          |
+| yes           | yes          | ✔           | `ACTIVE - ACK`    |
+| **no (went)** | **no**       | **✔**       | `CLEARED - UNACK` |
+| no            | yes          | ✘ (history) | `CLEARED - ACK`   |
 
 A condition that came and went while nobody took it over is precisely the one an
 operator must still answer for. It also stays in `unacknowledged` (the "target 0"
 card) and keeps the alert colour in the list instead of the grey of a closed row —
 greying it out is how a pending acknowledgement gets overlooked.
 
-## Acknowledging — under the OPERATOR's name
+## Acknowledging — WinCC OA's own API, under the OPERATOR's name
 
-`<dpe>:_alert_hdl.._ack = 2`, one write for the whole selection. WHO WinCC OA
-records for it is the whole difficulty, because there are only two ways to write
-and each fails at something:
+`<dpe>:_alert_hdl.._ack = 2`, one `dpSet` for the whole selection, issued by the
+**browser on the operator's own WinCC OA session** (`OaRxJsApi.dpSet`). WinCC OA
+records the operator's name itself and enforces the user's **write permission**
+itself — the WebUI login token carries that permission as `canWrite`, and a user
+without it gets _"User is not permitted to use dpSet"_.
 
-| Write from | Recorded user | Fails when |
-| --- | --- | --- |
-| the **browser** (`dpSet`, the operator's own session) | the operator ✔ | the project does not grant WebUI users write permission → *"User is not permitted to use dpSet"* |
-| the **webserver**, plainly (e.g. `/api/para/dp/set`) | the **webserver** ✘ | never — but the alarm list then shows a name that did not take the alarm over |
+The rule that follows (decided 2026-09-15): **no write permission → no acknowledge
+affordance at all.** The view reads `canWriteDatapoints$()` (`wui-kit`,
+`WuiUserService.canWrite` re-emitted on `user$`) and, when it is false, renders
+neither the checkbox column nor the button (`ackDisabled = noAck || !canWrite`),
+instead of offering a write the runtime would refuse. The Application-Security
+role `acknowledge` folds into the same flag through the host's `no-ack`.
 
-So the module has its own route, **`POST /api/alarms/ack`**, which does the
-server-side write while IMPERSONATING the session user:
-`winccoa.setUserId(<operator's OA user id>)` (the JS-manager counterpart of the
-CTRL function), then `dpSetWait`, then the previous context is restored. The user
-id is resolved server-side from the `_Users` directory through `identityOf(req)` —
-**never** taken from the request body.
-
-Three consequences worth knowing:
-
-- **`setUserId` mutates the SHARED manager**, so the writes are serialised through
-  a one-at-a-time queue: user A's acknowledgement must not land while the context
-  is set to user B. The critical section is a single `dpSetWait`.
-- **Only the datapoint elements travel.** The `:_alert_hdl.._ack` suffix is
-  composed server-side and any name already carrying a config path (`:_`) is
-  rejected — the endpoint writes with the webserver's rights, so it must be able
-  to write one thing and nothing else. It is also role-gated there
-  (`requireRole('alarms', 'acknowledge')`), unlike the shared PARA endpoint which
-  is ungated by design.
-- **A failed impersonation does not cancel the acknowledgement.** If the operator
-  is unknown to `_Users`, or the webserver does not run as `root`, the write still
-  happens (an alarm left standing over a directory mismatch is the worse risk) but
-  the answer carries `attributed: false` and the page says so in clear rather than
-  implying the operator's name is on it.
-
-The fallback, when the module's backend is not deployed, is the BROWSER's write —
-it also records the operator, it simply needs the WinCC OA right.
+History: an earlier version routed the write through a backend endpoint
+(`POST /api/alarms/ack`) that impersonated the session user with `setUserId`, so a
+project withholding the WebUI write permission could still acknowledge under the
+operator's name. It was removed in favour of the native API: it doubled the
+attack surface (a server-side write with the webserver's rights), depended on the
+webserver running as `root` and on the WebUI users existing in `_Users`, and
+projects that had not redeployed it refused acknowledgements with a stale
+validation rule. Deployments that still carry `src/modules/alarms/` in their
+webserver can delete it; nothing calls it any more.
 
 Whether a row can be acknowledged at all is `Alert.ackable`, the backend's own
 verdict — it already folds in the alert class' acknowledgement type, so a class
@@ -156,6 +143,29 @@ A scope entry is a plain name (matches the element **and its subtree**, so
 `strict-scope` refuses the "empty scope = whole system" fallback: an embedded panel
 must set it, otherwise a machine with no bound datapoint would present every alarm
 of the project as its own.
+
+### The `?dp=` scope is pushed in, not pulled
+
+A drill-down opens `#/alarms?dp=System1%3APress01`, and the page takes that scope from Vaadin
+Router's **`onBeforeEnter`** hook into reactive state — never by asking the router facade
+while rendering.
+
+Pulling it was wrong twice over, and both failures wear the same disguise, _"it only works
+after a reload"_:
+
+- the facade reads the router's own `location`, which the router assigns **late in its
+  navigation cycle** (it fires `location-changed` and only then attaches the element), and the
+  pull sat inside a `try`/`catch` that degrades silently to "no scope" — so whether the first
+  paint is filtered depended on what else happened to be loaded first;
+- and when only the **query string** changes — a second asset's drill-down, `?dp=A` → `?dp=B`
+  — the router **reuses the same element** rather than building a new one (its `__skipAttach`
+  path, which calls `onBeforeEnter` again and nothing else). A value pulled once during render
+  is then never pulled again, and the list keeps the first scope for good.
+
+The facade pull survives as the fallback for a host that renders the page **outside** the
+router, where the hook never fires. Decoding lives in `scopeFromSearch` (`wui-alarms-core`),
+tested there: a drill-down percent-encodes the `:` of the system prefix, and a scope entry
+still carrying `%3A` matches no datapoint at all.
 
 ## Statistics: state vs. occurrences
 
@@ -189,13 +199,14 @@ as there is a selection, incoming updates are **held** (the status dot turns amb
 and applied when the selection is released. Same idea as the runtime's own alert
 table pause, without a button to forget to press.
 
-## Acknowledging
+## Acknowledging (mechanics)
 
 `dpSet('<dpe>:_alert_hdl.._ack', 2)` — the documented WinCC OA mechanism. One write
 for the whole selection (the API accepts a DPE list), so the operator's action is
 atomic server-side instead of half-applied across N round-trips. It needs WinCC OA
-**write permission**; the Application-Security role `acknowledge` gates the UI, it
-does not replace that permission.
+**write permission**, which also hides the affordance when missing; the
+Application-Security role `acknowledge` gates the UI too, it does not replace that
+permission.
 
 ## Architecture / integration
 
@@ -216,8 +227,8 @@ libs/wui-alarms-core/src/          the KIT (shared, vendored into each host bund
   ui/wui-alarm-stats.ts counters + histogram + bad actors
   ui/wui-alarm-ranges.ts the range editor (role `configure`)
   ui/period-bar.ts       the archived tab's period controls
-libs/wui-alarms/backend/alarms*.ts  POST /api/alarms/ack — the impersonated acknowledgement
 libs/wui-alarms/src/alarms.ts      the page: header, role gate, `?dp=` scope
+libs/wui-alarms/src/widgets/wui-alarms.ts   the dashboard widget (see below)
 ```
 
 The kit's components use **guarded `customElements.define`** (not `@customElement`)
@@ -238,3 +249,48 @@ SPA session.
   layer this module is about (bands, EEMUA histogram, bad actors, criticality
   ordering). The DATA layer is shared with it (`AlertService`), the presentation is
   not.
+
+## Dashboard widget (`libs/wui-alarms/src/widgets/wui-alarms.ts`)
+
+`<wui-alarms-widget>` wraps `<wui-alarm-view>` for the WinCC OA dashboard editor.
+What is specific to the widget contract (the rest is the view's own):
+
+- **It is BUILT, not served from source.** A dashboard widget is an ES module loaded
+  from a `/data/…` URL that may only import shared-bundle specifiers; the alarms kit
+  is not in the import map. The pages build discovers
+  `libs/wui-<page>/src/widgets/<widget>.ts` (`discoverWidgetLibs`, same externals as
+  the pages) and emits `<outDir>/widgets/<widget>.js`. The bundle imports the kit
+  through `../pages/chunks/*.js` shared with `pages/alarms.js` — a **pages-only
+  deploy that prunes bundles must keep the alarms page** or those chunks go with it.
+- **Inputs arrive as attributes** (`setAttribute`, lower-cased) or properties:
+  strings → attributes, booleans → presence, objects → properties. The `variables`
+  block (`sTimeRange`) is spread onto the widget by `wui-widget-wrapper`, hence the
+  plain `sTimeRange` property. The atelier configuration arrives as a JSON STRING
+  (ContextControl `data` → dpconnect), parsed on every render.
+- **Scope**: the atelier arrives through a `DataPointControl` restricted with
+  `allowedDpt: ["MachineFleet3D_Config"]` (the settings picker lists ateliers only)
+  inside a `VerticalGroup`, so the widget gets `atelier = { value: <json>, datapoint }`.
+  The **machine list is a runtime `ix-select`** in the widget (the settings form
+  cannot offer dynamic options): entries = the atelier's machines + _Whole atelier_,
+  preselected by the `machineId` setting, hidden by `lockMachine`; the choice is
+  session-only. Scope = `scopeFromDpes` over the selected machine's (or every
+  machine's) `stateDp / commDp / stopCauseDp / workOrderDp / operationDp / kpis[].dp`
+  (typed structurally — no dependency on the fleet kit) plus the `dpFilter` series
+  (`SeriesGroup` of `DatapointSelectorControl`, `selectionMode: "dp"`, each item a
+  `{ dp }` group). Empty + strict → `[]` (nothing); empty + not strict → `null`
+  (whole system, like the page).
+- **Period — History tab only.** The view already reads the active tab from the
+  live subscription (no time bound) and the archive over `range()`; but `from`/`to`
+  are in its `RELOAD_KEYS`, so a host that keeps updating them restarts the live
+  subscription on the active tab for nothing, and a range button shown above the
+  active tab reads as if the period applied. The widget therefore follows the
+  view's **reflected `source` attribute** with a `MutationObserver` (no event is
+  emitted on a tab switch) and, only while it is `history`: passes
+  `parseTimeRange(sTimeRange)` as `from`/`to` (`hide-period`), shows the range
+  button, and ticks every 60 s while the range is live so `to` follows the clock.
+  On the active tab it passes zeros. Without the range button, zeros hand the
+  period back to the view's own period bar.
+- **Roles**: `registerModuleRoles` is called again (idempotent), so a project that
+  ships the widget without the page still lists the module in `/app-security`.
+- The element is defined with a **guarded `customElements.define`** (the widget
+  bundle and the page bundle share one registry).

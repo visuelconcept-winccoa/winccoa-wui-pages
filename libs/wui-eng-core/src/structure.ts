@@ -23,7 +23,7 @@
  *    decide instead of picking for you.
  */
 
-import type { AddressBook, BookEntry, DpTypeStructure, OaLeafType } from './model.js';
+import { fingerprint, type AddressBook, type BookEntry, type DpTypeStructure, type EngType, type OaLeafType } from './model.js';
 import { sanitizeSegment } from './naming.js';
 import { WARNING_CODES, warn, type EngWarning } from './warnings.js';
 
@@ -44,6 +44,22 @@ export const OUTLINE_LEAF_TYPES: OaLeafType[] = [
 ];
 
 const LEAF_TYPE_BY_LOWER = new Map(OUTLINE_LEAF_TYPES.map((type) => [type.toLowerCase(), type]));
+
+/**
+ * Element types an ALERT can be configured on.
+ *
+ * `_alert_hdl` compares a value against a good state (binary) or against ranges (analog), so it
+ * needs a value that can be compared: a boolean or a number. A **String**, a **LangString**, a
+ * **Blob** or a **Time** has no such comparison — and a **group** is not a value at all. Offering
+ * an alarm there produces a config the runtime rejects, so the studio does not offer it, and
+ * ignores one that arrives from a catalog's role instead of writing it.
+ */
+const ALARMABLE_LEAF_TYPES = new Set<OaLeafType>(['Bool', 'Char', 'UInt', 'Int', 'Long', 'ULong', 'Float', 'Bit32']);
+
+/** Can this element type carry an alert? (see {@link ALARMABLE_LEAF_TYPES}) */
+export function isAlarmableLeafType(leafType: string | undefined): boolean {
+  return leafType !== undefined && ALARMABLE_LEAF_TYPES.has(leafType as OaLeafType);
+}
 
 /** One leaf of an authored structure: its path inside the type, and its type. */
 export interface StructureLeaf {
@@ -501,18 +517,182 @@ export function removeStructureNode(
 // make the template single-use.
 
 /** A named, reusable model: the type's shape and how its leaves reach a catalog. */
+/**
+ * What a DEPLOYMENT MODEL decides for ONE mapped leaf, beyond what its role says.
+ *
+ * This is the "define it once" half of the model: the structure says what the type
+ * looks like, the bindings say where each leaf reads from, and this says how each
+ * leaf is CONFIGURED — alarm, archiving, range. Stored with the model, so applying
+ * it to a second connection re-uses the same decisions instead of re-taking them.
+ *
+ * Every field is optional and every ABSENT field means "keep the default"
+ * ({@link defaultLeafPolicy}) rather than "off": a model that says nothing about
+ * alarms must not silently disarm the alarm role.
+ */
+export interface LeafPolicy {
+  /**
+   * Alarm on/off, its alert class, and HOW it alarms.
+   *
+   *  - `goodRange` (BOOL leaves): which value is the healthy one, so the alert is raised
+   *    on the other. It is `_alert_hdl.._ok_range` and it has to be a choice: half the
+   *    fault bits of a plant are active-low, and guessing would arm every alarm inverted.
+   *  - `thresholds` (numeric leaves): the limits between ranges, ascending. N thresholds
+   *    make N+1 ranges, which is what WinCC OA's analog alert handling actually models —
+   *    one threshold is the simple "above 95 is a fault" case, three describe a band.
+   *  - `direction`: on a numeric leaf, whether the ALARMING side is above (`ASC`) or
+   *    below (`DESC`) the thresholds.
+   */
+  alarm?: {
+    active: boolean;
+    alarmClass?: string;
+    goodRange?: boolean;
+    thresholds?: number[];
+    direction?: 'ASC' | 'DESC';
+    /**
+     * One class PER ALARMING RANGE, in threshold order — `['_warning', '_alert_high']` for
+     * thresholds `[80, 95]` means "crossing 80 warns, crossing 95 alarms".
+     *
+     * A plant does not escalate by changing the limit alone: the second threshold is a
+     * different severity, which in WinCC OA is a different alert class on that range
+     * (`_alert_hdl.<i>._class`). A missing entry falls back to `alarmClass`, so pinning only
+     * the top one stays possible.
+     */
+    alarmClasses?: string[];
+  };
+  /** Archiving on/off and its archive group. */
+  archive?: { active: boolean; group?: string };
+  /**
+   * HOW the value is acquired — the choice the driver used to make for us.
+   *
+   *  - `poll`: sampled at the rhythm of `pollGroup` (a `_PollGroup` datapoint). Predictable load,
+   *    and blind to anything that changes and comes back between two ticks.
+   *  - `spont`: pushed by the server on change, through `subscription` (an `_OPCUASubscription`
+   *    datapoint, which is also where the publishing interval and the deadband live). Named
+   *    WITHOUT its leading underscore, like a connection.
+   *
+   * A `spont` leaf with no subscription is refused rather than written: an empty subscription
+   * field in the reference IS polling, so writing it would silently produce the other mode.
+   */
+  acquisition?: { mode: 'poll' | 'spont'; pollGroup?: string; subscription?: string };
+  /**
+   * Value range. Absent → NONE is generated: a range is engineering knowledge
+   * (see NOTES, "neutral profiles"), and one derived from a datatype's bounds
+   * would be a check that never fires.
+   */
+  range?: { min: number; max: number };
+}
+
+/** Per-leaf policy of a deployment model, keyed like {@link StructureBindings}. */
+export type ModelPolicy = Record<string, LeafPolicy>;
+
+/**
+ * One catalog a model reads, and whether its paths SHAPE the model.
+ *
+ * `mirror` is an authoring decision worth storing rather than a one-off click: a
+ * mirrored branch has to be rebuilt when that catalog is re-browsed, and only the model
+ * itself knows which of its sources it mirrors and which it merely maps onto.
+ */
+export interface ModelSource {
+  bookId: string;
+  mirror?: boolean;
+}
+
 export interface ModelTemplate {
   /** Slug, derived once from the name (see {@link templateIdFrom}). */
   id: string;
   name: string;
+  /** What this model is for, in the author's words. Free text, never parsed. */
+  description?: string;
   /** DP type the template creates. */
   typeName: string;
   structure: DpTypeStructure;
   bindings: StructureBindings;
+  /**
+   * Per-leaf configuration decisions (alarm / archive / range) — the DEPLOYMENT
+   * part of the model, set once at mapping level and replayed for every instance.
+   */
+  policy?: ModelPolicy;
   /** Catalog it was authored against — what its bindings are paths INTO. */
   sourceBookId?: string;
+  /**
+   * Every catalog it reads, the first being the primary. Absent on models saved before
+   * multi-catalog support — {@link modelSources} is what callers should use.
+   */
+  sources?: ModelSource[];
   /** ISO timestamp; injected so a store round-trip is deterministic in tests. */
   savedAt?: string;
+}
+
+/**
+ * The model's source catalogs, whatever generation of the record it is.
+ *
+ * A model saved before multi-catalog support carries only `sourceBookId`; reading that
+ * as "one source, not mirrored" is what keeps such a record loadable instead of showing
+ * a model with no catalog at all. `sourceBookId` also stays authoritative for the
+ * PRIMARY, so the two fields can never disagree about which catalog answers first.
+ */
+export function modelSources(template: ModelTemplate): ModelSource[] {
+  const declared = template.sources ?? [];
+  const primaryId = template.sourceBookId;
+  if (primaryId === undefined || primaryId === '') return declared;
+  const rest = declared.filter((source) => source.bookId !== primaryId);
+  const primary = declared.find((source) => source.bookId === primaryId) ?? { bookId: primaryId };
+  return [primary, ...rest];
+}
+
+/**
+ * A DP type read from the project, as a MODEL's structure.
+ *
+ * Two things to get right, and both were wrong once:
+ *
+ *  - the root is the TYPE, not a member. `dpTypeGet` answers with the type as the root node, and
+ *    a reader that keeps it as a child produces a model whose first level is a single element
+ *    named after the type — a level nobody asked for, carrying every real element under it.
+ *    Any such duplicated root is unwrapped here, whatever produced it;
+ *  - the root's NAME is the target type's, so a model may be re-pointed without its structure
+ *    disagreeing with it.
+ */
+export function dpTypeStructureAsModel(structure: DpTypeStructure, typeName: string): DpTypeStructure {
+  let node = structure;
+  // Descend through a root that only wraps another root of the same name (`T` → `T` → members).
+  // Bounded: a wrapper chain deeper than the type's own nesting cannot exist, and a bound keeps a
+  // malformed structure from spinning here.
+  for (let depth = 0; depth < 8; depth += 1) {
+    const children = node.children ?? [];
+    const only = children.length === 1 ? children[0] : undefined;
+    if (only === undefined) break;
+    const sameName = normalizeName(only.name) === normalizeName(node.name) || normalizeName(only.name) === normalizeName(typeName);
+    if (!sameName || (only.children ?? []).length === 0) break;
+    node = only;
+  }
+  return { name: typeName, type: 'Struct', children: [...(node.children ?? [])] };
+}
+
+/** How a stored model compares with the DP type of the same name in the project. */
+export type ModelSyncState = 'absent' | 'synced' | 'diverged';
+
+/**
+ * Is the model still what the project's DP TYPE holds?
+ *
+ * A model is a house standard, and the type it produced lives on in the project — where it
+ * can be edited in PARA, or left behind when the model moves on. Comparing the two answers
+ * the question an engineer actually has in front of the list ("is this model applied as it
+ * stands?") and it is a STRUCTURAL comparison, on the same fingerprint the check-in diff
+ * uses, so the two can never disagree about what "changed" means.
+ *
+ * `absent` is not a problem to flag: a model authored today has produced nothing yet.
+ */
+export function modelSyncState(template: ModelTemplate, liveTypes: EngType[]): ModelSyncState {
+  const live = liveTypes.find((type) => type.typeName === template.typeName);
+  if (live === undefined) return 'absent';
+  return fingerprint(withRootName(live.structure, template.typeName)) === fingerprint(withRootName(template.structure, template.typeName))
+    ? 'synced'
+    : 'diverged';
+}
+
+/** Same structure under a fixed root name — the root is the type's name, not content. */
+function withRootName(structure: DpTypeStructure, name: string): DpTypeStructure {
+  return { ...structure, name };
 }
 
 /** Slug used as a template id (same shape as a catalog's, own fallback). */

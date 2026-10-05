@@ -1,0 +1,7 @@
+{
+  "name": "s7-browse",
+  "version": "1.0.0",
+  "private": true,
+  "description": "S7 Browse (WinCC OA JavaScript Manager) — read-only S7comm block directory over ISO-on-TCP, hosting the MSA vRPC service S7Browse for the Engineering Studio's classic S7-300/400 catalogs. No dependency: the protocol subset is implemented over node:net.",
+  "main": "index.js"
+}

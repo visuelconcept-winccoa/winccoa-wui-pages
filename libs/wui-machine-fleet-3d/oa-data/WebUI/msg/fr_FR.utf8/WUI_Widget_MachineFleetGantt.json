@@ -1,0 +1,19 @@
+{
+  "Label": "Gantt état machine",
+  "Description": "Chronologie des états d’une machine du parc sur la période du tableau de bord, chaque segment d’arrêt portant sa cause (datapoints d’état et de cause archivés).",
+  "Settings": {
+    "StateDp": "État machine (archivé)",
+    "CauseDp": "Cause d’arrêt (archivée, optionnelle)",
+    "Mapping": "Mapping d’état et causes d’arrêt",
+    "StateMapping": "Mapping d’état",
+    "StateMappingHint": "Liez le datapoint de configuration de l’atelier (MachineFleet3D_<atelier>.json) ou collez un mapping JSON. Vide = standard du parc (0 = arrêt, 1 = production, 2 = défaut, 3 = maintenance).",
+    "MachineId": "Id machine",
+    "MachineIdHint": "Id de la machine dans la configuration de l’atelier : son propre mapping d’état est utilisé.",
+    "StateMappingId": "Id du mapping d’état",
+    "StateMappingIdHint": "Id du mapping à utiliser dans la configuration de l’atelier lorsqu’aucun id machine n’est donné. Vide = premier mapping.",
+    "StopCauses": "Catalogue des causes d’arrêt",
+    "StopCausesHint": "Liez MachineFleet3D_StopCauses.json (code, description, classification). Les codes s’affichent « code — description » ; un code inconnu retombe sur l’entrée par défaut du catalogue.",
+    "ShowLegend": "Légende",
+    "ShowTimeAxis": "Axe temporel"
+  }
+}

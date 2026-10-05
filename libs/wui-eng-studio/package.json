@@ -50,7 +50,10 @@
         "engController.ts",
         "engRoute.ts",
         "engStore.ts",
-        "engOpcuaBrowse.ts"
+        "engOpcuaBrowse.ts",
+        "engS7Browse.ts",
+        "engS7PlusBrowse.ts",
+        "engVrpc.ts"
       ],
       "shared": [
         "@visuelconcept-winccoa/wui-app-security/appSecurityGuard.ts"
@@ -60,6 +63,10 @@
       ],
       "notes": [
         "/api/eng/*"
+      ],
+      "managers": [
+        "s7Browse",
+        "s7plusBrowse"
       ]
     }
   },
@@ -77,6 +84,8 @@
   "files": [
     "src",
     "backend",
+    "managers",
+    "project-scripts",
     "menu.fragment.jsonc",
     "!**/*.spec.ts",
     "!**/*.test.ts"

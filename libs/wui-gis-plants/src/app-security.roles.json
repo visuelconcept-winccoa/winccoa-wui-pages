@@ -1,0 +1,18 @@
+{
+  "module": "gis-plants",
+  "title": {
+    "en_US.utf8": "Power plants",
+    "fr.utf8": "Centrales",
+    "de.utf8": "Kraftwerke"
+  },
+  "roles": [
+    {
+      "id": "view",
+      "label": {
+        "en_US.utf8": "View",
+        "fr.utf8": "Consulter",
+        "de.utf8": "Ansehen"
+      }
+    }
+  ]
+}

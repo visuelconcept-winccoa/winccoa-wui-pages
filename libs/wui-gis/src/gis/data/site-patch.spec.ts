@@ -17,6 +17,7 @@ import {
   isEmptyDiff,
   isEmptyPatch,
   parseSitePatch,
+  patchedContent,
   replacePatchOf,
   type SitePatch
 } from './site-patch.js';
@@ -663,5 +664,53 @@ describe('the network in a patch — what the assistant can now propose', () => 
     expect(diff.routes.added).toHaveLength(1);
     expect(diff.layers.added).toHaveLength(1);
     expect(isEmptyDiff(diff)).toBe(false);
+  });
+});
+
+/**
+ * The merge produced the right site and the page then applied PART of it: the network was
+ * simply absent from the fields handed over, so a connections-only proposal did nothing at
+ * all — no line, no error, the apply button behaving as if it had worked.
+ *
+ * So the split between "content the proposal brings" and "identity the operator owns" is
+ * asserted against `Site` itself: adding a field to the type fails this test until it is
+ * classified one way or the other.
+ */
+describe('patchedContent', () => {
+  /** Fields an applied proposal must NEVER carry over — the site's own identity. */
+  const KEPT = ['id', 'dp', 'basemap', 'groupZoom', 'updatedAt'];
+
+  it('carries every content field of a site, and none of its identity', () => {
+    const content = Object.keys(patchedContent(site())).sort();
+    const expected = Object.keys(blankSite())
+      .filter((key) => !KEPT.includes(key))
+      .sort();
+    // `category` is optional, so it is absent from a blank site — assert it explicitly.
+    expect(content).toEqual([...expected, 'category'].sort());
+    for (const key of KEPT) expect(content).not.toContain(key);
+  });
+
+  it('hands over the network, not just the zones and the assets', () => {
+    const joinable = site({
+      assets: [
+        asset({ id: 'gare', name: 'Gare', areaIds: [] }),
+        asset({ id: 'centre', name: 'Centre', areaIds: [], lat: 45.92 })
+      ]
+    });
+    const { site: draft } = applySitePatch(
+      joinable,
+      patch({
+        routes: { upsert: [{ id: 'l1', name: 'Ligne 1' }], remove: [] },
+        connections: {
+          upsert: [],
+          remove: [],
+          chain: [{ stops: ['gare', 'centre'], routeId: 'l1' }]
+        }
+      }),
+      PALETTE
+    );
+    const content = patchedContent(draft);
+    expect(content.connections).toHaveLength(1);
+    expect(content.routes).toHaveLength(1);
   });
 });

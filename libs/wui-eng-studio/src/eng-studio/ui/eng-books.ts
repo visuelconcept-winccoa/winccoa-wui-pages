@@ -13,7 +13,7 @@
  * many-to-many relation.
  *
  * It owns no I/O: every mutation is an event the page performs through the
- * `EngGateway` (`wui:bookingest`, `wui:bookbrowse`, `wui:bookrefresh`,
+ * `EngGateway` (`wui:bookingest`, `wui:bookbrowse`, `wui:booksymbolicbrowse`, `wui:bookrefresh`,
  * `wui:bookdelete`, `wui:bookattach`), and the page owns the selection and the
  * form's visibility — so a refusal keeps the form open with its fields, exactly
  * like the tag importer's connection step. The creation form itself is
@@ -24,10 +24,17 @@
  * re-implemented: it is the same table as the Devices panel's, with the same
  * filter and role state, which the page owns because the model generator reads it.
  */
-import type { AddressBook, BrowseProgress, Device, OpcUaBrowseNode } from '@visuelconcept-winccoa/wui-eng-core';
+import { dataBlocksAddressedBy, type AddressBook, type BrowseProgress, type Device, type OpcUaBrowseNode, type S7BlockVerdict, type S7InventoryBlock } from '@visuelconcept-winccoa/wui-eng-core';
 import { LitElement, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
-import type { EngConnection, EngDriver } from '../data/gateway.js';
+import type {
+  EngConnection,
+  EngDriver,
+  EngS7PlusConnection,
+  EngS7PlusStation,
+  S7InventoryResult,
+  S7PlusManagerHealth
+} from '../data/gateway.js';
 import { engTheme } from '../eng-theme.js';
 import { MSG, fmt, t, warnText, type Lang, type Ml } from '../i18n.js';
 import './eng-book-form.js';
@@ -35,6 +42,42 @@ import { engBooksStyles } from './eng-books.styles.js';
 
 /** `2026-08-03T09:15:00.000Z` → `2026-08-03 09:15` (minutes are enough here). */
 const STAMP_LENGTH = 16;
+
+/** `2026-08-03T09:15:00.000Z` → `2026-08-03` (a block's compilation DAY). */
+const DAY_LENGTH = 10;
+
+/**
+ * One row of the CPU reading: a data block seen from both sides at once.
+ *
+ * The catalog half (`verdict`) and the machine half (`block`) are each optional,
+ * and that is the whole point of the table — a row with no `block` is a data block
+ * the catalog addresses and the PLC does not hold, a row with no `verdict` is a
+ * block the PLC holds and the export left behind. Rendering them in one list is
+ * what makes the two readings comparable line by line.
+ */
+interface S7Row {
+  dbNumber: number;
+  /** Project name of the block, when the catalog carries one (`Echange`). */
+  label?: string;
+  verdict?: S7BlockVerdict;
+  block?: S7InventoryBlock;
+  status: S7BlockVerdict['status'] | 'uncatalogued';
+}
+
+/**
+ * Pill class per verdict — the colour carries the ACTION, not the severity.
+ *
+ * `absent` and `overrun` share the alarm colour because they share a consequence
+ * (signals that will not bind, or will bind to nothing); `unknown` is a warning
+ * because it asks for a second look rather than a fix; and `uncatalogued` gets no
+ * colour at all — it is information, not a problem.
+ */
+function s7StatusClass(status: S7Row['status']): string {
+  if (status === 'ok') return 'success';
+  if (status === 'absent' || status === 'overrun') return 'conflict';
+  if (status === 'unknown') return 'warning';
+  return '';
+}
 
 export class WuiEngBooks extends LitElement {
   static override readonly styles = [engTheme, engBooksStyles];
@@ -58,6 +101,29 @@ export class WuiEngBooks extends LitElement {
   @property({ attribute: false }) walking: BrowseProgress | null = null;
   /** One browse round-trip, handed to the form so it can explore before creating. */
   @property({ attribute: false }) browseLevel?: (connection: string, nodeId?: string) => Promise<OpcUaBrowseNode[]>;
+  /** The S7Plus half of the same three: connections, sources, one level. */
+  @property({ attribute: false }) s7plusConnections: EngS7PlusConnection[] = [];
+  @property({ attribute: false }) s7plusManager?: S7PlusManagerHealth;
+  @property({ attribute: false }) s7plusSources?: (connection: string) => Promise<EngS7PlusStation[]>;
+  @property({ attribute: false }) browseS7PlusLevel?: (
+    connection: string,
+    item?: string,
+    hmiVisibleOnly?: boolean
+  ) => Promise<import('@visuelconcept-winccoa/wui-eng-core').S7PlusBrowseNode[]>;
+
+  /**
+   * Whether the classic-S7 online check is offered at all.
+   *
+   * False when the `s7Browse` manager is not deployed — and the action is then
+   * HIDDEN rather than shown failing: the S7 catalogs are built from the STEP 7
+   * exports and are complete without it, so an absent manager is a missing extra,
+   * not a broken page.
+   */
+  @property({ type: Boolean }) s7BrowseAvailable = false;
+  /** The last inventory read, for the catalog it was read on. */
+  @property({ attribute: false }) s7Inventory: (S7InventoryResult & { bookId: string }) | null = null;
+  /** True while an inventory is in flight (it holds a TCP session to a PLC). */
+  @property({ type: Boolean }) s7InventoryBusy = false;
 
   @state() private listFilter = '';
   /** Deletion armed by a first click — a catalog is not recoverable from here. */
@@ -85,6 +151,10 @@ export class WuiEngBooks extends LitElement {
           .error=${this.error}
           .uiLang=${this.uiLang}
           .browseLevel=${this.browseLevel}
+          .s7plusConnections=${this.s7plusConnections}
+          .s7plusManager=${this.s7plusManager}
+          .s7plusSources=${this.s7plusSources}
+          .browseS7PlusLevel=${this.browseS7PlusLevel}
         ></wui-eng-book-form>
       `;
     }
@@ -179,6 +249,7 @@ export class WuiEngBooks extends LitElement {
         ${this.renderDetailHead(book)}
         <div class="panel-scroll">
           ${this.renderWalkProgress()}
+          ${this.renderS7Inventory(book)}
           ${this.deleteArmed ? this.renderDeleteWarning(users.length) : nothing}
           ${book.entries.length === 0 && this.walking === null
             ? html`<div class="empty small">${this.tr(MSG.bookEmptyYet)}</div>`
@@ -224,6 +295,17 @@ export class WuiEngBooks extends LitElement {
               @click=${() => this.askWalk(book.id)}
             >
               ${this.tr(MSG.walkRun)}
+            </ix-button>`
+          : nothing}
+        ${this.s7Verifiable(book)
+          ? html`<ix-button
+              variant="secondary"
+              icon="hardware-cabinet"
+              title=${this.tr(MSG.s7InventoryHint)}
+              ?disabled=${this.busy || this.s7InventoryBusy}
+              @click=${() => this.askS7Inventory(book.id)}
+            >
+              ${this.tr(this.s7InventoryBusy ? MSG.s7InventoryRunning : MSG.s7InventoryRun)}
             </ix-button>`
           : nothing}
         ${this.canManage
@@ -385,6 +467,140 @@ export class WuiEngBooks extends LitElement {
     this.dispatchEvent(new CustomEvent('wui:bookrefresh', { detail: { bookId }, bubbles: true, composed: true }));
   }
 
+  /**
+   * Can this catalog be checked against a running CPU?
+   *
+   * Only a catalog that actually addresses classic S7 operands, and only when the
+   * manager is there. A template catalog with no interface still qualifies — it is
+   * bound to an equipment at generation, and the page asks which one.
+   */
+  private s7Verifiable(book: AddressBook): boolean {
+    if (!this.s7BrowseAvailable) return false;
+    if (book.interface !== undefined && book.interface.protocol !== 's7') return false;
+    return book.entries.some((entry) => entry.addresses.s7 !== undefined);
+  }
+
+  private askS7Inventory(bookId: string): void {
+    this.dispatchEvent(new CustomEvent('wui:bookinventory', { detail: { bookId }, bubbles: true, composed: true }));
+  }
+
+  /**
+   * What the CPU said, beside the catalog that was checked against it.
+   *
+   * Deliberately NOT merged into the book's own warnings: those describe the
+   * source file and travel with the stored catalog, while these describe a moment
+   * in the life of a machine and are true only until the next download. Showing
+   * them in one list would make a transient disagreement look like a defect of the
+   * export.
+   */
+  /**
+   * Merge the two readings into one list, ordered by block number.
+   *
+   * The union is deliberate: showing only the catalog's blocks would hide what the
+   * export left behind, and showing only the CPU's would hide the blocks that are
+   * missing from it — and those are the two findings worth the round-trip.
+   */
+  private s7Rows(book: AddressBook, result: S7InventoryResult): S7Row[] {
+    const addressed = dataBlocksAddressedBy(book);
+    const verdicts = new Map(result.crossCheck.verdicts.map((verdict) => [verdict.dbNumber, verdict]));
+    const blocks = new Map(result.inventory.blocks.filter((block) => block.kind === 'DB').map((block) => [block.number, block]));
+    const numbers = [...new Set([...verdicts.keys(), ...blocks.keys()])].sort((a, b) => a - b);
+    return numbers.map((dbNumber) => {
+      const verdict = verdicts.get(dbNumber);
+      // The project name the catalog paths its members under (`Echange.Consigne`),
+      // shown beside the number: it is how an engineer knows which block this is.
+      const first = addressed.get(dbNumber)?.paths[0]?.split('.')[0];
+      const label = first === undefined || first === `DB${dbNumber}` ? undefined : first;
+      return {
+        dbNumber,
+        ...(label === undefined ? {} : { label }),
+        ...(verdict === undefined ? {} : { verdict }),
+        ...(blocks.get(dbNumber) === undefined ? {} : { block: blocks.get(dbNumber) as S7InventoryBlock }),
+        status: verdict?.status ?? 'uncatalogued'
+      } satisfies S7Row;
+    });
+  }
+
+  /**
+   * What the CPU said, and how far the catalog still matches it.
+   *
+   * Rendered as a CARD with a table rather than a message bar: the four verdicts
+   * call for four different actions, and a paragraph of prose makes an operator
+   * re-read every sentence to find the two blocks that matter. One row per data
+   * block, both readings side by side, and the per-row tooltip says what the
+   * verdict means — the warnings below then only have to say how many.
+   */
+  private renderS7Inventory(book: AddressBook): TemplateResult {
+    const result = this.s7Inventory;
+    if (result === null || result.bookId !== book.id) return html``;
+    const { cpu, counts } = result.inventory;
+    const identity = cpu.moduleTypeName ?? cpu.moduleName ?? cpu.orderCode ?? this.tr(MSG.s7CpuUnknown);
+    const rows = this.s7Rows(book, result);
+    const bad = rows.some((row) => row.status === 'absent' || row.status === 'overrun');
+    const tally = Object.entries(counts)
+      .filter(([, n]) => typeof n === 'number' && n > 0)
+      .map(([kind, n]) => `${kind} ${n}`)
+      .join(' · ');
+    return html`
+      <section class="card ${bad ? 'warnings' : ''}">
+        <div class="card-title">${this.tr(MSG.s7InventoryTitle)} — ${identity}</div>
+        <div class="box-list">
+          ${cpu.orderCode === undefined ? nothing : html`<span class="chip mono">${cpu.orderCode}</span>`}
+          ${cpu.serialNumber === undefined ? nothing : html`<span class="chip mono soft">${cpu.serialNumber}</span>`}
+          ${result.inventory.endpoint === undefined ? nothing : html`<span class="chip mono">${result.inventory.endpoint}</span>`}
+          ${result.inventory.pduLength === undefined
+            ? nothing
+            : html`<span class="chip" title=${this.tr(MSG.s7PduHint)}>${this.tr(MSG.s7Pdu, { n: result.inventory.pduLength })}</span>`}
+          <span class="chip soft mono">${result.inventory.readAt.replace('T', ' ').slice(0, STAMP_LENGTH)}</span>
+        </div>
+        ${tally === '' ? nothing : html`<div class="small soft">${this.tr(MSG.s7Counts)} ${tally}</div>`}
+        ${rows.length === 0
+          ? html`<div class="empty small">${this.tr(MSG.s7NoDataBlock)}</div>`
+          : html`
+              <table class="grid compact">
+                <thead>
+                  <tr>
+                    <th>${this.tr(MSG.s7ColBlock)}</th>
+                    <th>${this.tr(MSG.s7ColStatus)}</th>
+                    <th>${this.tr(MSG.s7ColSignals)}</th>
+                    <th>${this.tr(MSG.s7ColRead)}</th>
+                    <th>${this.tr(MSG.s7ColCpuSize)}</th>
+                    <th>${this.tr(MSG.s7ColCompiled)}</th>
+                    <th>${this.tr(MSG.s7ColAuthor)}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rows.map((row) => this.renderS7Row(row))}
+                </tbody>
+              </table>
+            `}
+        ${result.crossCheck.warnings.map((warning) => html`<div class="warn-text">${warnText(warning, this.uiLang)}</div>`)}
+      </section>
+    `;
+  }
+
+  /** One data block, catalog side and CPU side on the same line. */
+  private renderS7Row(row: S7Row): TemplateResult {
+    const bytes = (n: number | undefined) => (n === undefined ? '—' : this.tr(MSG.s7Bytes, { n }));
+    return html`
+      <tr>
+        <td class="mono">
+          DB${row.dbNumber}${row.label === undefined ? nothing : html` <span class="soft">${row.label}</span>`}
+        </td>
+        <td>
+          <span class="chip ${s7StatusClass(row.status)}" title=${this.tr(MSG.s7StatusHint[row.status])}>
+            ${this.tr(MSG.s7Status[row.status])}
+          </span>
+        </td>
+        <td class="mono">${row.verdict === undefined ? '—' : row.verdict.signals}</td>
+        <td class="mono">${row.verdict === undefined ? '—' : bytes(row.verdict.highestByte)}</td>
+        <td class="mono">${bytes(row.block?.mc7Size)}</td>
+        <td class="mono soft">${row.block?.codeDate === undefined ? '—' : row.block.codeDate.slice(0, DAY_LENGTH)}</td>
+        <td class="soft">${row.block?.error ?? row.block?.author ?? '—'}</td>
+      </tr>
+    `;
+  }
+
   /** Tick/untick one equipment in the "served by" draft (applied by its button). */
   private toggleAttach(book: AddressBook, current: string[], deviceId: string): void {
     this.attachSeededFor = book.id;
@@ -414,8 +630,15 @@ export class WuiEngBooks extends LitElement {
     return this.devices.filter((device) => device.bookIds.includes(bookId));
   }
 
+  /**
+   * The source kind, in the operator's language — falling back to the raw kind when
+   * the label map does not carry it. Indexed through a widened record on purpose: the
+   * provenance union grows every time a generator is added, and a book whose label is
+   * missing must show its kind rather than break the panel that lists it.
+   */
   private sourceLabel(book: AddressBook): string {
-    const label = MSG.sourceKind[book.provenance.kind];
+    const labels: Partial<Record<string, Ml>> = MSG.sourceKind;
+    const label = labels[book.provenance.kind];
     return label === undefined ? book.provenance.kind : t(label, this.uiLang);
   }
 

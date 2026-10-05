@@ -15,7 +15,8 @@
  */
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { property } from 'lit/decorators.js';
-import type { AiProgressEvent } from '../data/ai-progress.js';
+import { progressUsage, type AiProgressEvent } from '../data/ai-progress.js';
+import { usageDetail, usageLabel } from '../data/ai-usage.js';
 import { AI_MSG, localize, localizeDir } from '../i18n.js';
 
 export class MfAiProgress extends LitElement {
@@ -28,10 +29,16 @@ export class MfAiProgress extends LitElement {
     // The reasoning of the round in progress is the one worth reading; the earlier
     // ones are already summarised by what the assistant went on to do.
     const thinking = [...this.events].reverse().find((event) => event.type === 'thinking');
+    // The token total is a counter, not a step: it belongs on its own line, updated
+    // in place, rather than as one more bullet appearing per round.
+    const usage = progressUsage(this.events);
     return html`
       <ol class="steps">
         ${this.events.map((event) => this.renderStep(event))}
       </ol>
+      ${usage
+        ? html`<div class="usage" title=${usageDetail(usage)}>${usageLabel(usage)}</div>`
+        : nothing}
       ${thinking?.text
         ? html`<div class="thinking">
             <span class="thinking-label">${localizeDir(AI_MSG.reasoning)}</span>
@@ -76,7 +83,8 @@ export class MfAiProgress extends LitElement {
       case 'error': {
         return html`<li class="err"><ix-icon name="error" size="12"></ix-icon>${event.message}</li>`;
       }
-      // `start` and `done` bracket the run; the panel's own busy state says as much.
+      // `start` and `done` bracket the run (the panel's own busy state says as much),
+      // and `usage` has its own line above — none of them is a step in the list.
       default: {
         return nothing;
       }
@@ -127,6 +135,15 @@ function progressStyles(): ReturnType<typeof css> {
       li.running ix-icon {
         animation: none;
       }
+    }
+    /*
+     * Tabular figures: the counter is rewritten on every round, and proportional
+     * digits make the whole line jitter as it grows.
+     */
+    .usage {
+      margin-top: 0.25rem;
+      color: var(--theme-color-soft-text);
+      font-variant-numeric: tabular-nums;
     }
     .thinking {
       margin-top: 0.3rem;

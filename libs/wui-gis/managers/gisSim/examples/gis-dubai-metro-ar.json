@@ -1,0 +1,1512 @@
+{
+  "kind": "gis-sites",
+  "version": 1,
+  "sites": [
+    {
+      "id": "dubai-metro-ar",
+      "name": "مترو دبي — المقاطع النفقية",
+      "description": "المقاطع النفقية لمترو دبي (الخط الأحمر والخط الأخضر) — محطات ومقاطع خاضعة للإشراف. إحداثيات المحطات من OpenStreetMap، والمسارات تخطيطية. أرقام الإقبال والحركة إرشادية ومحمولة في توجيهات sim: داخل الملاحظات — المحاكاة بواسطة المدير gisSim.",
+      "category": "نقل حضري بالسكك الحديدية",
+      "center": {
+        "lat": 25.2535,
+        "lon": 55.3075
+      },
+      "zoom": 13,
+      "basemap": {
+        "kind": "osm",
+        "url": "",
+        "styleUrl": "",
+        "attribution": "© OpenStreetMap contributors",
+        "maxZoom": 19
+      },
+      "groupZoom": 0,
+      "areas": [
+        {
+          "id": "tunnel-deira",
+          "name": "نفق ديرة",
+          "ring": [
+            [
+              55.29,
+              25.266
+            ],
+            [
+              55.293,
+              25.28
+            ],
+            [
+              55.31,
+              25.281
+            ],
+            [
+              55.34,
+              25.276
+            ],
+            [
+              55.338,
+              25.259
+            ],
+            [
+              55.306,
+              25.258
+            ]
+          ],
+          "color": "#2e7d32",
+          "link": "",
+          "groupZoom": 0
+        },
+        {
+          "id": "tunnel-bur-dubai",
+          "name": "نفق بر دبي",
+          "ring": [
+            [
+              55.283,
+              25.23
+            ],
+            [
+              55.283,
+              25.268
+            ],
+            [
+              55.306,
+              25.268
+            ],
+            [
+              55.328,
+              25.245
+            ],
+            [
+              55.328,
+              25.228
+            ],
+            [
+              55.3,
+              25.228
+            ]
+          ],
+          "color": "#c62828",
+          "link": "",
+          "groupZoom": 0
+        }
+      ],
+      "assets": [
+        {
+          "id": "abu-baker",
+          "name": "أبو بكر الصديق",
+          "kind": "station",
+          "lat": 25.2708929,
+          "lon": 55.3327545,
+          "areaIds": [
+            "tunnel-deira"
+          ],
+          "layerIds": [],
+          "dp": "System1:GisSim_abu_baker_defaut",
+          "readings": [
+            {
+              "id": "affluence",
+              "dp": "System1:GisSim_abu_baker_affluence",
+              "label": "الإقبال",
+              "unit": "راكب/س",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "temperature",
+              "dp": "System1:GisSim_abu_baker_temperature",
+              "label": "حرارة الرصيف",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "co2",
+              "dp": "System1:GisSim_abu_baker_co2",
+              "label": "ثاني أكسيد الكربون",
+              "unit": "ppm",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisSim_abu_baker_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "إقبال الذروة الإرشادي 1500 راكب/س. sim:affluence=1500"
+        },
+        {
+          "id": "salah-al-din",
+          "name": "صلاح الدين",
+          "kind": "station",
+          "lat": 25.2703152,
+          "lon": 55.3208284,
+          "areaIds": [
+            "tunnel-deira"
+          ],
+          "layerIds": [],
+          "dp": "System1:GisSim_salah_al_din_defaut",
+          "readings": [
+            {
+              "id": "affluence",
+              "dp": "System1:GisSim_salah_al_din_affluence",
+              "label": "الإقبال",
+              "unit": "راكب/س",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "temperature",
+              "dp": "System1:GisSim_salah_al_din_temperature",
+              "label": "حرارة الرصيف",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "co2",
+              "dp": "System1:GisSim_salah_al_din_co2",
+              "label": "ثاني أكسيد الكربون",
+              "unit": "ppm",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisSim_salah_al_din_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "إقبال الذروة الإرشادي 1200 راكب/س. sim:affluence=1200"
+        },
+        {
+          "id": "al-rigga",
+          "name": "الرقة",
+          "kind": "station",
+          "lat": 25.2633466,
+          "lon": 55.3238862,
+          "areaIds": [
+            "tunnel-deira"
+          ],
+          "layerIds": [],
+          "dp": "System1:GisSim_al_rigga_defaut",
+          "readings": [
+            {
+              "id": "affluence",
+              "dp": "System1:GisSim_al_rigga_affluence",
+              "label": "الإقبال",
+              "unit": "راكب/س",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "temperature",
+              "dp": "System1:GisSim_al_rigga_temperature",
+              "label": "حرارة الرصيف",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "co2",
+              "dp": "System1:GisSim_al_rigga_co2",
+              "label": "ثاني أكسيد الكربون",
+              "unit": "ppm",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisSim_al_rigga_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "إقبال الذروة الإرشادي 1700 راكب/س. sim:affluence=1700"
+        },
+        {
+          "id": "union",
+          "name": "الاتحاد (تبادل)",
+          "kind": "station",
+          "lat": 25.2661816,
+          "lon": 55.3137508,
+          "areaIds": [
+            "tunnel-deira"
+          ],
+          "layerIds": [],
+          "dp": "System1:GisSim_union_defaut",
+          "readings": [
+            {
+              "id": "affluence",
+              "dp": "System1:GisSim_union_affluence",
+              "label": "الإقبال",
+              "unit": "راكب/س",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "temperature",
+              "dp": "System1:GisSim_union_temperature",
+              "label": "حرارة الرصيف",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "co2",
+              "dp": "System1:GisSim_union_co2",
+              "label": "ثاني أكسيد الكربون",
+              "unit": "ppm",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisSim_union_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "إقبال الذروة الإرشادي 2600 راكب/س. sim:affluence=2600"
+        },
+        {
+          "id": "baniyas-square",
+          "name": "ساحة بني ياس",
+          "kind": "station",
+          "lat": 25.2691743,
+          "lon": 55.3076094,
+          "areaIds": [
+            "tunnel-deira"
+          ],
+          "layerIds": [],
+          "dp": "System1:GisSim_baniyas_square_defaut",
+          "readings": [
+            {
+              "id": "affluence",
+              "dp": "System1:GisSim_baniyas_square_affluence",
+              "label": "الإقبال",
+              "unit": "راكب/س",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "temperature",
+              "dp": "System1:GisSim_baniyas_square_temperature",
+              "label": "حرارة الرصيف",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "co2",
+              "dp": "System1:GisSim_baniyas_square_co2",
+              "label": "ثاني أكسيد الكربون",
+              "unit": "ppm",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisSim_baniyas_square_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "إقبال الذروة الإرشادي 1200 راكب/س. sim:affluence=1200"
+        },
+        {
+          "id": "gold-souq",
+          "name": "سوق الذهب",
+          "kind": "station",
+          "lat": 25.2761408,
+          "lon": 55.3016752,
+          "areaIds": [
+            "tunnel-deira"
+          ],
+          "layerIds": [],
+          "dp": "System1:GisSim_gold_souq_defaut",
+          "readings": [
+            {
+              "id": "affluence",
+              "dp": "System1:GisSim_gold_souq_affluence",
+              "label": "الإقبال",
+              "unit": "راكب/س",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "temperature",
+              "dp": "System1:GisSim_gold_souq_temperature",
+              "label": "حرارة الرصيف",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "co2",
+              "dp": "System1:GisSim_gold_souq_co2",
+              "label": "ثاني أكسيد الكربون",
+              "unit": "ppm",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisSim_gold_souq_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "إقبال الذروة الإرشادي 1300 راكب/س. sim:affluence=1300"
+        },
+        {
+          "id": "al-ras",
+          "name": "الراس",
+          "kind": "station",
+          "lat": 25.2687742,
+          "lon": 55.2936231,
+          "areaIds": [
+            "tunnel-deira"
+          ],
+          "layerIds": [],
+          "dp": "System1:GisSim_al_ras_defaut",
+          "readings": [
+            {
+              "id": "affluence",
+              "dp": "System1:GisSim_al_ras_affluence",
+              "label": "الإقبال",
+              "unit": "راكب/س",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "temperature",
+              "dp": "System1:GisSim_al_ras_temperature",
+              "label": "حرارة الرصيف",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "co2",
+              "dp": "System1:GisSim_al_ras_co2",
+              "label": "ثاني أكسيد الكربون",
+              "unit": "ppm",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisSim_al_ras_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "إقبال الذروة الإرشادي 1100 راكب/س. sim:affluence=1100"
+        },
+        {
+          "id": "al-ghubaiba",
+          "name": "الغبيبة",
+          "kind": "station",
+          "lat": 25.2650351,
+          "lon": 55.2889404,
+          "areaIds": [
+            "tunnel-bur-dubai"
+          ],
+          "layerIds": [],
+          "dp": "System1:GisSim_al_ghubaiba_defaut",
+          "readings": [
+            {
+              "id": "affluence",
+              "dp": "System1:GisSim_al_ghubaiba_affluence",
+              "label": "الإقبال",
+              "unit": "راكب/س",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "temperature",
+              "dp": "System1:GisSim_al_ghubaiba_temperature",
+              "label": "حرارة الرصيف",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "co2",
+              "dp": "System1:GisSim_al_ghubaiba_co2",
+              "label": "ثاني أكسيد الكربون",
+              "unit": "ppm",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisSim_al_ghubaiba_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "إقبال الذروة الإرشادي 1500 راكب/س. sim:affluence=1500"
+        },
+        {
+          "id": "sharaf-dg",
+          "name": "شرف دي جي",
+          "kind": "station",
+          "lat": 25.2582139,
+          "lon": 55.2974781,
+          "areaIds": [
+            "tunnel-bur-dubai"
+          ],
+          "layerIds": [],
+          "dp": "System1:GisSim_sharaf_dg_defaut",
+          "readings": [
+            {
+              "id": "affluence",
+              "dp": "System1:GisSim_sharaf_dg_affluence",
+              "label": "الإقبال",
+              "unit": "راكب/س",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "temperature",
+              "dp": "System1:GisSim_sharaf_dg_temperature",
+              "label": "حرارة الرصيف",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "co2",
+              "dp": "System1:GisSim_sharaf_dg_co2",
+              "label": "ثاني أكسيد الكربون",
+              "unit": "ppm",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisSim_sharaf_dg_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "إقبال الذروة الإرشادي 1400 راكب/س. sim:affluence=1400"
+        },
+        {
+          "id": "burjuman",
+          "name": "برجمان (تبادل)",
+          "kind": "station",
+          "lat": 25.25499,
+          "lon": 55.303941,
+          "areaIds": [
+            "tunnel-bur-dubai"
+          ],
+          "layerIds": [],
+          "dp": "System1:GisSim_burjuman_defaut",
+          "readings": [
+            {
+              "id": "affluence",
+              "dp": "System1:GisSim_burjuman_affluence",
+              "label": "الإقبال",
+              "unit": "راكب/س",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "temperature",
+              "dp": "System1:GisSim_burjuman_temperature",
+              "label": "حرارة الرصيف",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "co2",
+              "dp": "System1:GisSim_burjuman_co2",
+              "label": "ثاني أكسيد الكربون",
+              "unit": "ppm",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisSim_burjuman_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "إقبال الذروة الإرشادي 2400 راكب/س. sim:affluence=2400"
+        },
+        {
+          "id": "adcb",
+          "name": "بنك أبوظبي التجاري",
+          "kind": "station",
+          "lat": 25.2445099,
+          "lon": 55.2981834,
+          "areaIds": [
+            "tunnel-bur-dubai"
+          ],
+          "layerIds": [],
+          "dp": "System1:GisSim_adcb_defaut",
+          "readings": [
+            {
+              "id": "affluence",
+              "dp": "System1:GisSim_adcb_affluence",
+              "label": "الإقبال",
+              "unit": "راكب/س",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "temperature",
+              "dp": "System1:GisSim_adcb_temperature",
+              "label": "حرارة الرصيف",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "co2",
+              "dp": "System1:GisSim_adcb_co2",
+              "label": "ثاني أكسيد الكربون",
+              "unit": "ppm",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisSim_adcb_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "إقبال الذروة الإرشادي 900 راكب/س. sim:affluence=900"
+        },
+        {
+          "id": "oud-metha",
+          "name": "عود ميثاء",
+          "kind": "station",
+          "lat": 25.2439301,
+          "lon": 55.3158939,
+          "areaIds": [
+            "tunnel-bur-dubai"
+          ],
+          "layerIds": [],
+          "dp": "System1:GisSim_oud_metha_defaut",
+          "readings": [
+            {
+              "id": "affluence",
+              "dp": "System1:GisSim_oud_metha_affluence",
+              "label": "الإقبال",
+              "unit": "راكب/س",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "temperature",
+              "dp": "System1:GisSim_oud_metha_temperature",
+              "label": "حرارة الرصيف",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "co2",
+              "dp": "System1:GisSim_oud_metha_co2",
+              "label": "ثاني أكسيد الكربون",
+              "unit": "ppm",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisSim_oud_metha_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "إقبال الذروة الإرشادي 800 راكب/س. sim:affluence=800"
+        },
+        {
+          "id": "dubai-healthcare-city",
+          "name": "مدينة دبي الطبية",
+          "kind": "station",
+          "lat": 25.2309528,
+          "lon": 55.322619,
+          "areaIds": [
+            "tunnel-bur-dubai"
+          ],
+          "layerIds": [],
+          "dp": "System1:GisSim_dubai_healthcare_city_defaut",
+          "readings": [
+            {
+              "id": "affluence",
+              "dp": "System1:GisSim_dubai_healthcare_city_affluence",
+              "label": "الإقبال",
+              "unit": "راكب/س",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "temperature",
+              "dp": "System1:GisSim_dubai_healthcare_city_temperature",
+              "label": "حرارة الرصيف",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "co2",
+              "dp": "System1:GisSim_dubai_healthcare_city_co2",
+              "label": "ثاني أكسيد الكربون",
+              "unit": "ppm",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisSim_dubai_healthcare_city_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "إقبال الذروة الإرشادي 700 راكب/س. sim:affluence=700"
+        }
+      ],
+      "layers": [
+        {
+          "id": "souterrain",
+          "name": "تحت الأرض",
+          "color": "#5b6bbf"
+        },
+        {
+          "id": "correspondance",
+          "name": "تبادل",
+          "color": "#e0a020"
+        },
+        {
+          "id": "priorite-1",
+          "name": "الأولوية 1",
+          "color": "#c0392b"
+        }
+      ],
+      "routes": [
+        {
+          "id": "red-line",
+          "name": "الخط الأحمر — المقطع النفقي",
+          "color": "#d32f2f",
+          "kind": "metro",
+          "link": ""
+        },
+        {
+          "id": "green-line",
+          "name": "الخط الأخضر — المقطع النفقي",
+          "color": "#2e7d32",
+          "kind": "metro",
+          "link": ""
+        }
+      ],
+      "connections": [
+        {
+          "id": "al-rigga-union",
+          "name": "الرقة – الاتحاد",
+          "kind": "metro",
+          "from": "al-rigga",
+          "to": "union",
+          "via": [],
+          "routeId": "red-line",
+          "areaIds": [],
+          "layerIds": [
+            "souterrain",
+            "priorite-1"
+          ],
+          "dp": "System1:GisLink_al_rigga_union_defaut",
+          "readings": [
+            {
+              "id": "temperature",
+              "dp": "System1:GisLink_al_rigga_union_temperature",
+              "label": "حرارة النفق",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": true
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisLink_al_rigga_union_tension",
+              "label": "جهد السكة الثالثة",
+              "unit": "V",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "trafic",
+              "dp": "System1:GisLink_al_rigga_union_trafic",
+              "label": "الحركة",
+              "unit": "قطار/س",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "occupation",
+              "dp": "System1:GisLink_al_rigga_union_occupation",
+              "label": "نسبة الإشغال",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisLink_al_rigga_union_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "خدمة إرشادية 18 قطار/س في الذروة، السعة 24 قطار/س. sim:trafic=18 sim:capacite=24"
+        },
+        {
+          "id": "union-burjuman",
+          "name": "الاتحاد – برجمان",
+          "kind": "metro",
+          "from": "union",
+          "to": "burjuman",
+          "via": [],
+          "routeId": "red-line",
+          "areaIds": [],
+          "layerIds": [
+            "souterrain",
+            "priorite-1"
+          ],
+          "dp": "System1:GisLink_union_burjuman_defaut",
+          "readings": [
+            {
+              "id": "temperature",
+              "dp": "System1:GisLink_union_burjuman_temperature",
+              "label": "حرارة النفق",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": true
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisLink_union_burjuman_tension",
+              "label": "جهد السكة الثالثة",
+              "unit": "V",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "trafic",
+              "dp": "System1:GisLink_union_burjuman_trafic",
+              "label": "الحركة",
+              "unit": "قطار/س",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "occupation",
+              "dp": "System1:GisLink_union_burjuman_occupation",
+              "label": "نسبة الإشغال",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisLink_union_burjuman_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "خدمة إرشادية 18 قطار/س في الذروة، السعة 24 قطار/س. sim:trafic=18 sim:capacite=24"
+        },
+        {
+          "id": "burjuman-adcb",
+          "name": "برجمان – بنك أبوظبي التجاري",
+          "kind": "metro",
+          "from": "burjuman",
+          "to": "adcb",
+          "via": [],
+          "routeId": "red-line",
+          "areaIds": [],
+          "layerIds": [
+            "souterrain",
+            "priorite-1"
+          ],
+          "dp": "System1:GisLink_burjuman_adcb_defaut",
+          "readings": [
+            {
+              "id": "temperature",
+              "dp": "System1:GisLink_burjuman_adcb_temperature",
+              "label": "حرارة النفق",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": true
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisLink_burjuman_adcb_tension",
+              "label": "جهد السكة الثالثة",
+              "unit": "V",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "trafic",
+              "dp": "System1:GisLink_burjuman_adcb_trafic",
+              "label": "الحركة",
+              "unit": "قطار/س",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "occupation",
+              "dp": "System1:GisLink_burjuman_adcb_occupation",
+              "label": "نسبة الإشغال",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisLink_burjuman_adcb_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "خدمة إرشادية 18 قطار/س في الذروة، السعة 24 قطار/س. sim:trafic=18 sim:capacite=24"
+        },
+        {
+          "id": "abu-baker-salah-al-din",
+          "name": "أبو بكر الصديق – صلاح الدين",
+          "kind": "metro",
+          "from": "abu-baker",
+          "to": "salah-al-din",
+          "via": [],
+          "routeId": "green-line",
+          "areaIds": [],
+          "layerIds": [
+            "souterrain"
+          ],
+          "dp": "System1:GisLink_abu_baker_salah_al_din_defaut",
+          "readings": [
+            {
+              "id": "temperature",
+              "dp": "System1:GisLink_abu_baker_salah_al_din_temperature",
+              "label": "حرارة النفق",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": true
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisLink_abu_baker_salah_al_din_tension",
+              "label": "جهد السكة الثالثة",
+              "unit": "V",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "trafic",
+              "dp": "System1:GisLink_abu_baker_salah_al_din_trafic",
+              "label": "الحركة",
+              "unit": "قطار/س",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "occupation",
+              "dp": "System1:GisLink_abu_baker_salah_al_din_occupation",
+              "label": "نسبة الإشغال",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisLink_abu_baker_salah_al_din_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "خدمة إرشادية 14 قطار/س في الذروة، السعة 24 قطار/س. sim:trafic=14 sim:capacite=24"
+        },
+        {
+          "id": "salah-al-din-union",
+          "name": "صلاح الدين – الاتحاد",
+          "kind": "metro",
+          "from": "salah-al-din",
+          "to": "union",
+          "via": [],
+          "routeId": "green-line",
+          "areaIds": [],
+          "layerIds": [
+            "souterrain"
+          ],
+          "dp": "System1:GisLink_salah_al_din_union_defaut",
+          "readings": [
+            {
+              "id": "temperature",
+              "dp": "System1:GisLink_salah_al_din_union_temperature",
+              "label": "حرارة النفق",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": true
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisLink_salah_al_din_union_tension",
+              "label": "جهد السكة الثالثة",
+              "unit": "V",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "trafic",
+              "dp": "System1:GisLink_salah_al_din_union_trafic",
+              "label": "الحركة",
+              "unit": "قطار/س",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "occupation",
+              "dp": "System1:GisLink_salah_al_din_union_occupation",
+              "label": "نسبة الإشغال",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisLink_salah_al_din_union_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "خدمة إرشادية 14 قطار/س في الذروة، السعة 24 قطار/س. sim:trafic=14 sim:capacite=24"
+        },
+        {
+          "id": "union-baniyas-square",
+          "name": "الاتحاد – ساحة بني ياس",
+          "kind": "metro",
+          "from": "union",
+          "to": "baniyas-square",
+          "via": [],
+          "routeId": "green-line",
+          "areaIds": [],
+          "layerIds": [
+            "souterrain"
+          ],
+          "dp": "System1:GisLink_union_baniyas_square_defaut",
+          "readings": [
+            {
+              "id": "temperature",
+              "dp": "System1:GisLink_union_baniyas_square_temperature",
+              "label": "حرارة النفق",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": true
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisLink_union_baniyas_square_tension",
+              "label": "جهد السكة الثالثة",
+              "unit": "V",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "trafic",
+              "dp": "System1:GisLink_union_baniyas_square_trafic",
+              "label": "الحركة",
+              "unit": "قطار/س",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "occupation",
+              "dp": "System1:GisLink_union_baniyas_square_occupation",
+              "label": "نسبة الإشغال",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisLink_union_baniyas_square_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "خدمة إرشادية 14 قطار/س في الذروة، السعة 24 قطار/س. sim:trafic=14 sim:capacite=24"
+        },
+        {
+          "id": "baniyas-square-gold-souq",
+          "name": "ساحة بني ياس – سوق الذهب",
+          "kind": "metro",
+          "from": "baniyas-square",
+          "to": "gold-souq",
+          "via": [],
+          "routeId": "green-line",
+          "areaIds": [],
+          "layerIds": [
+            "souterrain"
+          ],
+          "dp": "System1:GisLink_baniyas_square_gold_souq_defaut",
+          "readings": [
+            {
+              "id": "temperature",
+              "dp": "System1:GisLink_baniyas_square_gold_souq_temperature",
+              "label": "حرارة النفق",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": true
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisLink_baniyas_square_gold_souq_tension",
+              "label": "جهد السكة الثالثة",
+              "unit": "V",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "trafic",
+              "dp": "System1:GisLink_baniyas_square_gold_souq_trafic",
+              "label": "الحركة",
+              "unit": "قطار/س",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "occupation",
+              "dp": "System1:GisLink_baniyas_square_gold_souq_occupation",
+              "label": "نسبة الإشغال",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisLink_baniyas_square_gold_souq_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "خدمة إرشادية 14 قطار/س في الذروة، السعة 24 قطار/س. sim:trafic=14 sim:capacite=24"
+        },
+        {
+          "id": "gold-souq-al-ras",
+          "name": "سوق الذهب – الراس",
+          "kind": "metro",
+          "from": "gold-souq",
+          "to": "al-ras",
+          "via": [],
+          "routeId": "green-line",
+          "areaIds": [],
+          "layerIds": [
+            "souterrain"
+          ],
+          "dp": "System1:GisLink_gold_souq_al_ras_defaut",
+          "readings": [
+            {
+              "id": "temperature",
+              "dp": "System1:GisLink_gold_souq_al_ras_temperature",
+              "label": "حرارة النفق",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": true
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisLink_gold_souq_al_ras_tension",
+              "label": "جهد السكة الثالثة",
+              "unit": "V",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "trafic",
+              "dp": "System1:GisLink_gold_souq_al_ras_trafic",
+              "label": "الحركة",
+              "unit": "قطار/س",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "occupation",
+              "dp": "System1:GisLink_gold_souq_al_ras_occupation",
+              "label": "نسبة الإشغال",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisLink_gold_souq_al_ras_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "خدمة إرشادية 14 قطار/س في الذروة، السعة 24 قطار/س. sim:trafic=14 sim:capacite=24"
+        },
+        {
+          "id": "al-ras-al-ghubaiba",
+          "name": "الراس – الغبيبة",
+          "kind": "metro",
+          "from": "al-ras",
+          "to": "al-ghubaiba",
+          "via": [],
+          "routeId": "green-line",
+          "areaIds": [],
+          "layerIds": [
+            "souterrain"
+          ],
+          "dp": "System1:GisLink_al_ras_al_ghubaiba_defaut",
+          "readings": [
+            {
+              "id": "temperature",
+              "dp": "System1:GisLink_al_ras_al_ghubaiba_temperature",
+              "label": "حرارة النفق",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": true
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisLink_al_ras_al_ghubaiba_tension",
+              "label": "جهد السكة الثالثة",
+              "unit": "V",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "trafic",
+              "dp": "System1:GisLink_al_ras_al_ghubaiba_trafic",
+              "label": "الحركة",
+              "unit": "قطار/س",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "occupation",
+              "dp": "System1:GisLink_al_ras_al_ghubaiba_occupation",
+              "label": "نسبة الإشغال",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisLink_al_ras_al_ghubaiba_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "خدمة إرشادية 14 قطار/س في الذروة، السعة 24 قطار/س. sim:trafic=14 sim:capacite=24"
+        },
+        {
+          "id": "al-ghubaiba-sharaf-dg",
+          "name": "الغبيبة – شرف دي جي",
+          "kind": "metro",
+          "from": "al-ghubaiba",
+          "to": "sharaf-dg",
+          "via": [],
+          "routeId": "green-line",
+          "areaIds": [],
+          "layerIds": [
+            "souterrain"
+          ],
+          "dp": "System1:GisLink_al_ghubaiba_sharaf_dg_defaut",
+          "readings": [
+            {
+              "id": "temperature",
+              "dp": "System1:GisLink_al_ghubaiba_sharaf_dg_temperature",
+              "label": "حرارة النفق",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": true
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisLink_al_ghubaiba_sharaf_dg_tension",
+              "label": "جهد السكة الثالثة",
+              "unit": "V",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "trafic",
+              "dp": "System1:GisLink_al_ghubaiba_sharaf_dg_trafic",
+              "label": "الحركة",
+              "unit": "قطار/س",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "occupation",
+              "dp": "System1:GisLink_al_ghubaiba_sharaf_dg_occupation",
+              "label": "نسبة الإشغال",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisLink_al_ghubaiba_sharaf_dg_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "خدمة إرشادية 14 قطار/س في الذروة، السعة 24 قطار/س. sim:trafic=14 sim:capacite=24"
+        },
+        {
+          "id": "sharaf-dg-burjuman",
+          "name": "شرف دي جي – برجمان",
+          "kind": "metro",
+          "from": "sharaf-dg",
+          "to": "burjuman",
+          "via": [],
+          "routeId": "green-line",
+          "areaIds": [],
+          "layerIds": [
+            "souterrain"
+          ],
+          "dp": "System1:GisLink_sharaf_dg_burjuman_defaut",
+          "readings": [
+            {
+              "id": "temperature",
+              "dp": "System1:GisLink_sharaf_dg_burjuman_temperature",
+              "label": "حرارة النفق",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": true
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisLink_sharaf_dg_burjuman_tension",
+              "label": "جهد السكة الثالثة",
+              "unit": "V",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "trafic",
+              "dp": "System1:GisLink_sharaf_dg_burjuman_trafic",
+              "label": "الحركة",
+              "unit": "قطار/س",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "occupation",
+              "dp": "System1:GisLink_sharaf_dg_burjuman_occupation",
+              "label": "نسبة الإشغال",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisLink_sharaf_dg_burjuman_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "خدمة إرشادية 14 قطار/س في الذروة، السعة 24 قطار/س. sim:trafic=14 sim:capacite=24"
+        },
+        {
+          "id": "burjuman-oud-metha",
+          "name": "برجمان – عود ميثاء",
+          "kind": "metro",
+          "from": "burjuman",
+          "to": "oud-metha",
+          "via": [],
+          "routeId": "green-line",
+          "areaIds": [],
+          "layerIds": [
+            "souterrain"
+          ],
+          "dp": "System1:GisLink_burjuman_oud_metha_defaut",
+          "readings": [
+            {
+              "id": "temperature",
+              "dp": "System1:GisLink_burjuman_oud_metha_temperature",
+              "label": "حرارة النفق",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": true
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisLink_burjuman_oud_metha_tension",
+              "label": "جهد السكة الثالثة",
+              "unit": "V",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "trafic",
+              "dp": "System1:GisLink_burjuman_oud_metha_trafic",
+              "label": "الحركة",
+              "unit": "قطار/س",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "occupation",
+              "dp": "System1:GisLink_burjuman_oud_metha_occupation",
+              "label": "نسبة الإشغال",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisLink_burjuman_oud_metha_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "خدمة إرشادية 14 قطار/س في الذروة، السعة 24 قطار/س. sim:trafic=14 sim:capacite=24"
+        },
+        {
+          "id": "oud-metha-dubai-healthcare-city",
+          "name": "عود ميثاء – مدينة دبي الطبية",
+          "kind": "metro",
+          "from": "oud-metha",
+          "to": "dubai-healthcare-city",
+          "via": [],
+          "routeId": "green-line",
+          "areaIds": [],
+          "layerIds": [
+            "souterrain"
+          ],
+          "dp": "System1:GisLink_oud_metha_dubai_healthcare_city_defaut",
+          "readings": [
+            {
+              "id": "temperature",
+              "dp": "System1:GisLink_oud_metha_dubai_healthcare_city_temperature",
+              "label": "حرارة النفق",
+              "unit": "°C",
+              "decimals": 1,
+              "onMap": true
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisLink_oud_metha_dubai_healthcare_city_tension",
+              "label": "جهد السكة الثالثة",
+              "unit": "V",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "trafic",
+              "dp": "System1:GisLink_oud_metha_dubai_healthcare_city_trafic",
+              "label": "الحركة",
+              "unit": "قطار/س",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "occupation",
+              "dp": "System1:GisLink_oud_metha_dubai_healthcare_city_occupation",
+              "label": "نسبة الإشغال",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "retard",
+              "dp": "System1:GisLink_oud_metha_dubai_healthcare_city_retard",
+              "label": "متوسط التأخير",
+              "unit": "دقيقة",
+              "decimals": 1,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "خدمة إرشادية 14 قطار/س في الذروة، السعة 24 قطار/س. sim:trafic=14 sim:capacite=24"
+        }
+      ],
+      "updatedAt": ""
+    }
+  ]
+}

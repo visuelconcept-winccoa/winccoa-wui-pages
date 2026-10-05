@@ -1,0 +1,7 @@
+{
+  "name": "gis-network-sim",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Network simulator (WinCC OA JavaScript Manager) for the GIS pages: one datapoint per simulated value, flows solved over the site's own connections.",
+  "main": "index.js"
+}

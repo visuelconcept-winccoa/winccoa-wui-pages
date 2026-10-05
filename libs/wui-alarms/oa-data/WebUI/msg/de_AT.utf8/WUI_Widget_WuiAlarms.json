@@ -1,0 +1,33 @@
+{
+  "Label": "Alarme",
+  "Description": "Das Alarmmodul als Widget: anstehende oder archivierte Alarme einer Maschine (oder des ganzen Ateliers, oder eines Datenpunktfilters) über den Zeitraum des Dashboards, mit Zählern, Prioritätsbereichen, Suche, Sortierung, Seiten und Quittierung.",
+  "Settings": {
+    "Scope": "Alarmbereich",
+    "Atelier": "Atelier",
+    "AtelierDp": "Atelier-Konfiguration",
+    "AtelierHint": "Wählen Sie das Atelier (ein Datenpunkt MachineFleet3D_Config, Element .json). Das Widget listet dann seine Maschinen; die gebundenen Datenpunkte jeder Maschine bilden den Alarmbereich, wie im Maschinen-Dashboard des Parks.",
+    "MachineId": "Vorausgewählte Maschine (Id)",
+    "MachineIdHint": "Id der beim Öffnen angezeigten Maschine. Leer = das ganze Atelier. Die Ids sind die der Atelier-Konfiguration (z. B. four-600).",
+    "LockMachine": "Maschine sperren",
+    "LockMachineHint": "Maschinenliste im Widget ausblenden: die vorausgewählte Maschine ist endgültig.",
+    "DpFilter": "Datenpunktfilter",
+    "DpFilterItem": "Datenpunkt {{i}}",
+    "DpFilterHint": "Zusätzliche Datenpunkte, deren Alarme angezeigt werden (ein Datenpunkt umfasst alle seine Elemente). Mit dem Atelier kombinieren oder allein verwenden.",
+    "StrictScope": "Strikter Bereich",
+    "StrictScopeHint": "Ohne Bereich nichts anzeigen statt aller Alarme der Anlage.",
+    "Source": "Standard-Reiter",
+    "Layout": "Dichte",
+    "PageSize": "Zeilen pro Seite",
+    "LockSource": "Reiter sperren",
+    "HideStats": "Statistiken ausblenden",
+    "NoAck": "Nur lesen (keine Quittierung)"
+  },
+  "Source": {
+    "Active": "Aktive Alarme",
+    "History": "Historie"
+  },
+  "Layout": {
+    "Panel": "Panel (kompakt)",
+    "Page": "Seite (alle Spalten)"
+  }
+}
