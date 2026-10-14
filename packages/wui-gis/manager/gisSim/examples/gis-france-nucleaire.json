@@ -1,0 +1,2324 @@
+{
+  "kind": "gis-sites",
+  "version": 1,
+  "sites": [
+    {
+      "id": "france-nucleaire",
+      "name": "France — Centrales nucléaires & pôles de consommation",
+      "description": "Vue nationale schématique : 18 centrales nucléaires EDF en activité + Fessenheim (arrêtée), reliées aux principales métropoles. Puissances installées réelles ; appels de puissance mis à l’échelle du réseau tracé. Simulé par le manager gisSim (directives sim: dans les notes).",
+      "category": "energie",
+      "center": {
+        "lat": 46.6,
+        "lon": 2.5
+      },
+      "zoom": 6,
+      "basemap": {
+        "kind": "osm",
+        "url": "",
+        "styleUrl": "",
+        "attribution": "© OpenStreetMap contributors",
+        "maxZoom": 19
+      },
+      "groupZoom": 0,
+      "areas": [],
+      "assets": [
+        {
+          "id": "belleville",
+          "name": "Centrale de Belleville",
+          "kind": "station",
+          "lat": 47.5073,
+          "lon": 2.8507,
+          "areaIds": [],
+          "layerIds": [
+            "production-nucleaire"
+          ],
+          "dp": "System1:GisSim_belleville_defaut",
+          "readings": [
+            {
+              "id": "puissance",
+              "dp": "System1:GisSim_belleville_puissance",
+              "label": "Puissance",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "capacite",
+              "dp": "System1:GisSim_belleville_capacite",
+              "label": "Capacité dispo.",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_belleville_charge",
+              "label": "Facteur de charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_belleville_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_belleville_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Puissance installée nette indicative 2620 MW (2 × 1 310). sim:capacite=2620"
+        },
+        {
+          "id": "blayais",
+          "name": "Centrale du Blayais",
+          "kind": "station",
+          "lat": 45.2478,
+          "lon": -0.6259,
+          "areaIds": [],
+          "layerIds": [
+            "production-nucleaire"
+          ],
+          "dp": "System1:GisSim_blayais_defaut",
+          "readings": [
+            {
+              "id": "puissance",
+              "dp": "System1:GisSim_blayais_puissance",
+              "label": "Puissance",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "capacite",
+              "dp": "System1:GisSim_blayais_capacite",
+              "label": "Capacité dispo.",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_blayais_charge",
+              "label": "Facteur de charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_blayais_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_blayais_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Puissance installée nette indicative 3640 MW (4 × 910). sim:capacite=3640"
+        },
+        {
+          "id": "bugey",
+          "name": "Centrale du Bugey",
+          "kind": "station",
+          "lat": 45.8306,
+          "lon": 5.2896,
+          "areaIds": [],
+          "layerIds": [
+            "production-nucleaire"
+          ],
+          "dp": "System1:GisSim_bugey_defaut",
+          "readings": [
+            {
+              "id": "puissance",
+              "dp": "System1:GisSim_bugey_puissance",
+              "label": "Puissance",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "capacite",
+              "dp": "System1:GisSim_bugey_capacite",
+              "label": "Capacité dispo.",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_bugey_charge",
+              "label": "Facteur de charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_bugey_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_bugey_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Puissance installée nette indicative 3580 MW (4 × 895). sim:capacite=3580"
+        },
+        {
+          "id": "cattenom",
+          "name": "Centrale de Cattenom",
+          "kind": "station",
+          "lat": 49.4074,
+          "lon": 6.2447,
+          "areaIds": [],
+          "layerIds": [
+            "production-nucleaire"
+          ],
+          "dp": "System1:GisSim_cattenom_defaut",
+          "readings": [
+            {
+              "id": "puissance",
+              "dp": "System1:GisSim_cattenom_puissance",
+              "label": "Puissance",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "capacite",
+              "dp": "System1:GisSim_cattenom_capacite",
+              "label": "Capacité dispo.",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_cattenom_charge",
+              "label": "Facteur de charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_cattenom_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_cattenom_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Puissance installée nette indicative 5200 MW (4 × 1 300). sim:capacite=5200"
+        },
+        {
+          "id": "chinon",
+          "name": "Centrale de Chinon",
+          "kind": "station",
+          "lat": 47.2056,
+          "lon": 0.1821,
+          "areaIds": [],
+          "layerIds": [
+            "production-nucleaire"
+          ],
+          "dp": "System1:GisSim_chinon_defaut",
+          "readings": [
+            {
+              "id": "puissance",
+              "dp": "System1:GisSim_chinon_puissance",
+              "label": "Puissance",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "capacite",
+              "dp": "System1:GisSim_chinon_capacite",
+              "label": "Capacité dispo.",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_chinon_charge",
+              "label": "Facteur de charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_chinon_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_chinon_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Puissance installée nette indicative 3620 MW (4 × 905). sim:capacite=3620"
+        },
+        {
+          "id": "chooz",
+          "name": "Centrale de Chooz",
+          "kind": "station",
+          "lat": 50.102,
+          "lon": 4.807,
+          "areaIds": [],
+          "layerIds": [
+            "production-nucleaire"
+          ],
+          "dp": "System1:GisSim_chooz_defaut",
+          "readings": [
+            {
+              "id": "puissance",
+              "dp": "System1:GisSim_chooz_puissance",
+              "label": "Puissance",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "capacite",
+              "dp": "System1:GisSim_chooz_capacite",
+              "label": "Capacité dispo.",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_chooz_charge",
+              "label": "Facteur de charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_chooz_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_chooz_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Puissance installée nette indicative 3000 MW (2 × 1 500). sim:capacite=3000"
+        },
+        {
+          "id": "civaux",
+          "name": "Centrale de Civaux",
+          "kind": "station",
+          "lat": 46.4448,
+          "lon": 0.6646,
+          "areaIds": [],
+          "layerIds": [
+            "production-nucleaire"
+          ],
+          "dp": "System1:GisSim_civaux_defaut",
+          "readings": [
+            {
+              "id": "puissance",
+              "dp": "System1:GisSim_civaux_puissance",
+              "label": "Puissance",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "capacite",
+              "dp": "System1:GisSim_civaux_capacite",
+              "label": "Capacité dispo.",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_civaux_charge",
+              "label": "Facteur de charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_civaux_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_civaux_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Puissance installée nette indicative 2990 MW (2 × 1 495). sim:capacite=2990"
+        },
+        {
+          "id": "cruas",
+          "name": "Centrale de Cruas-Meysse",
+          "kind": "station",
+          "lat": 44.6571,
+          "lon": 4.7626,
+          "areaIds": [],
+          "layerIds": [
+            "production-nucleaire"
+          ],
+          "dp": "System1:GisSim_cruas_defaut",
+          "readings": [
+            {
+              "id": "puissance",
+              "dp": "System1:GisSim_cruas_puissance",
+              "label": "Puissance",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "capacite",
+              "dp": "System1:GisSim_cruas_capacite",
+              "label": "Capacité dispo.",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_cruas_charge",
+              "label": "Facteur de charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_cruas_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_cruas_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Puissance installée nette indicative 3660 MW (4 × 915). sim:capacite=3660"
+        },
+        {
+          "id": "dampierre",
+          "name": "Centrale de Dampierre-en-Burly",
+          "kind": "station",
+          "lat": 47.7617,
+          "lon": 2.5269,
+          "areaIds": [],
+          "layerIds": [
+            "production-nucleaire"
+          ],
+          "dp": "System1:GisSim_dampierre_defaut",
+          "readings": [
+            {
+              "id": "puissance",
+              "dp": "System1:GisSim_dampierre_puissance",
+              "label": "Puissance",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "capacite",
+              "dp": "System1:GisSim_dampierre_capacite",
+              "label": "Capacité dispo.",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_dampierre_charge",
+              "label": "Facteur de charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_dampierre_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_dampierre_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Puissance installée nette indicative 3560 MW (4 × 890). sim:capacite=3560"
+        },
+        {
+          "id": "flamanville",
+          "name": "Centrale de Flamanville",
+          "kind": "station",
+          "lat": 49.538,
+          "lon": -1.8809,
+          "areaIds": [],
+          "layerIds": [
+            "production-nucleaire"
+          ],
+          "dp": "System1:GisSim_flamanville_defaut",
+          "readings": [
+            {
+              "id": "puissance",
+              "dp": "System1:GisSim_flamanville_puissance",
+              "label": "Puissance",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "capacite",
+              "dp": "System1:GisSim_flamanville_capacite",
+              "label": "Capacité dispo.",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_flamanville_charge",
+              "label": "Facteur de charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_flamanville_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_flamanville_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Puissance installée nette indicative 2660 MW (2 × 1 330). sim:capacite=2660"
+        },
+        {
+          "id": "golfech",
+          "name": "Centrale de Golfech",
+          "kind": "station",
+          "lat": 44.1147,
+          "lon": 0.8519,
+          "areaIds": [],
+          "layerIds": [
+            "production-nucleaire"
+          ],
+          "dp": "System1:GisSim_golfech_defaut",
+          "readings": [
+            {
+              "id": "puissance",
+              "dp": "System1:GisSim_golfech_puissance",
+              "label": "Puissance",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "capacite",
+              "dp": "System1:GisSim_golfech_capacite",
+              "label": "Capacité dispo.",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_golfech_charge",
+              "label": "Facteur de charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_golfech_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_golfech_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Puissance installée nette indicative 2620 MW (2 × 1 310). sim:capacite=2620"
+        },
+        {
+          "id": "gravelines",
+          "name": "Centrale de Gravelines",
+          "kind": "station",
+          "lat": 50.9871,
+          "lon": 2.1273,
+          "areaIds": [],
+          "layerIds": [
+            "production-nucleaire"
+          ],
+          "dp": "System1:GisSim_gravelines_defaut",
+          "readings": [
+            {
+              "id": "puissance",
+              "dp": "System1:GisSim_gravelines_puissance",
+              "label": "Puissance",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "capacite",
+              "dp": "System1:GisSim_gravelines_capacite",
+              "label": "Capacité dispo.",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_gravelines_charge",
+              "label": "Facteur de charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_gravelines_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_gravelines_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Puissance installée nette indicative 5460 MW (6 × 910). sim:capacite=5460"
+        },
+        {
+          "id": "nogent",
+          "name": "Centrale de Nogent-sur-Seine",
+          "kind": "station",
+          "lat": 48.5176,
+          "lon": 3.5174,
+          "areaIds": [],
+          "layerIds": [
+            "production-nucleaire"
+          ],
+          "dp": "System1:GisSim_nogent_defaut",
+          "readings": [
+            {
+              "id": "puissance",
+              "dp": "System1:GisSim_nogent_puissance",
+              "label": "Puissance",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "capacite",
+              "dp": "System1:GisSim_nogent_capacite",
+              "label": "Capacité dispo.",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_nogent_charge",
+              "label": "Facteur de charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_nogent_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_nogent_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Puissance installée nette indicative 2620 MW (2 × 1 310). sim:capacite=2620"
+        },
+        {
+          "id": "paluel",
+          "name": "Centrale de Paluel",
+          "kind": "station",
+          "lat": 49.8325,
+          "lon": 0.6294,
+          "areaIds": [],
+          "layerIds": [
+            "production-nucleaire"
+          ],
+          "dp": "System1:GisSim_paluel_defaut",
+          "readings": [
+            {
+              "id": "puissance",
+              "dp": "System1:GisSim_paluel_puissance",
+              "label": "Puissance",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "capacite",
+              "dp": "System1:GisSim_paluel_capacite",
+              "label": "Capacité dispo.",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_paluel_charge",
+              "label": "Facteur de charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_paluel_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_paluel_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Puissance installée nette indicative 5200 MW (4 × 1 300). sim:capacite=5200"
+        },
+        {
+          "id": "penly",
+          "name": "Centrale de Penly",
+          "kind": "station",
+          "lat": 49.9788,
+          "lon": 1.2317,
+          "areaIds": [],
+          "layerIds": [
+            "production-nucleaire"
+          ],
+          "dp": "System1:GisSim_penly_defaut",
+          "readings": [
+            {
+              "id": "puissance",
+              "dp": "System1:GisSim_penly_puissance",
+              "label": "Puissance",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "capacite",
+              "dp": "System1:GisSim_penly_capacite",
+              "label": "Capacité dispo.",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_penly_charge",
+              "label": "Facteur de charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_penly_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_penly_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Puissance installée nette indicative 2660 MW (2 × 1 330). sim:capacite=2660"
+        },
+        {
+          "id": "saint-alban",
+          "name": "Centrale de Saint-Alban",
+          "kind": "station",
+          "lat": 45.4243,
+          "lon": 4.76,
+          "areaIds": [],
+          "layerIds": [
+            "production-nucleaire"
+          ],
+          "dp": "System1:GisSim_saint_alban_defaut",
+          "readings": [
+            {
+              "id": "puissance",
+              "dp": "System1:GisSim_saint_alban_puissance",
+              "label": "Puissance",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "capacite",
+              "dp": "System1:GisSim_saint_alban_capacite",
+              "label": "Capacité dispo.",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_saint_alban_charge",
+              "label": "Facteur de charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_saint_alban_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_saint_alban_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Puissance installée nette indicative 2670 MW (2 × 1 335). sim:capacite=2670"
+        },
+        {
+          "id": "saint-laurent",
+          "name": "Centrale de Saint-Laurent-des-Eaux",
+          "kind": "station",
+          "lat": 47.7195,
+          "lon": 1.5776,
+          "areaIds": [],
+          "layerIds": [
+            "production-nucleaire"
+          ],
+          "dp": "System1:GisSim_saint_laurent_defaut",
+          "readings": [
+            {
+              "id": "puissance",
+              "dp": "System1:GisSim_saint_laurent_puissance",
+              "label": "Puissance",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "capacite",
+              "dp": "System1:GisSim_saint_laurent_capacite",
+              "label": "Capacité dispo.",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_saint_laurent_charge",
+              "label": "Facteur de charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_saint_laurent_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_saint_laurent_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Puissance installée nette indicative 1830 MW (2 × 915). sim:capacite=1830"
+        },
+        {
+          "id": "tricastin",
+          "name": "Centrale du Tricastin",
+          "kind": "station",
+          "lat": 44.3476,
+          "lon": 4.7707,
+          "areaIds": [],
+          "layerIds": [
+            "production-nucleaire"
+          ],
+          "dp": "System1:GisSim_tricastin_defaut",
+          "readings": [
+            {
+              "id": "puissance",
+              "dp": "System1:GisSim_tricastin_puissance",
+              "label": "Puissance",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "capacite",
+              "dp": "System1:GisSim_tricastin_capacite",
+              "label": "Capacité dispo.",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_tricastin_charge",
+              "label": "Facteur de charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_tricastin_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_tricastin_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Puissance installée nette indicative 3660 MW (4 × 915). sim:capacite=3660"
+        },
+        {
+          "id": "fessenheim",
+          "name": "Centrale de Fessenheim (arrêtée 2020)",
+          "kind": "station",
+          "lat": 47.9068,
+          "lon": 7.5625,
+          "areaIds": [],
+          "layerIds": [
+            "production-nucleaire"
+          ],
+          "dp": "System1:GisSim_fessenheim_defaut",
+          "readings": [
+            {
+              "id": "puissance",
+              "dp": "System1:GisSim_fessenheim_puissance",
+              "label": "Puissance",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "capacite",
+              "dp": "System1:GisSim_fessenheim_capacite",
+              "label": "Capacité dispo.",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_fessenheim_charge",
+              "label": "Facteur de charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_fessenheim_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_fessenheim_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Arrêtée définitivement en 2020 (2 × 880, 1760 MW). sim:capacite=1760 sim:etat=0"
+        },
+        {
+          "id": "paris",
+          "name": "Pôle de consommation – Paris / IDF",
+          "kind": "building",
+          "lat": 48.8535,
+          "lon": 2.3484,
+          "areaIds": [],
+          "layerIds": [
+            "consommation"
+          ],
+          "dp": "System1:GisSim_paris_defaut",
+          "readings": [
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_paris_charge",
+              "label": "Charge",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "demande",
+              "dp": "System1:GisSim_paris_demande",
+              "label": "Demande",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "couverture",
+              "dp": "System1:GisSim_paris_couverture",
+              "label": "Couverture",
+              "unit": "%",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_paris_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_paris_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Appel de puissance de pointe 12900 MW, soit ~70 % des 18490 MW raccordés à ce nœud sur ce schéma — et non la consommation réelle de la métropole. sim:demande=12900"
+        },
+        {
+          "id": "lyon",
+          "name": "Pôle de consommation – Lyon",
+          "kind": "building",
+          "lat": 45.7578,
+          "lon": 4.832,
+          "areaIds": [],
+          "layerIds": [
+            "consommation"
+          ],
+          "dp": "System1:GisSim_lyon_defaut",
+          "readings": [
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_lyon_charge",
+              "label": "Charge",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "demande",
+              "dp": "System1:GisSim_lyon_demande",
+              "label": "Demande",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "couverture",
+              "dp": "System1:GisSim_lyon_couverture",
+              "label": "Couverture",
+              "unit": "%",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_lyon_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_lyon_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Appel de puissance de pointe 6900 MW, soit ~70 % des 9910 MW raccordés à ce nœud sur ce schéma — et non la consommation réelle de la métropole. sim:demande=6900"
+        },
+        {
+          "id": "nantes",
+          "name": "Pôle de consommation – Nantes",
+          "kind": "building",
+          "lat": 47.2186,
+          "lon": -1.5541,
+          "areaIds": [],
+          "layerIds": [
+            "consommation"
+          ],
+          "dp": "System1:GisSim_nantes_defaut",
+          "readings": [
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_nantes_charge",
+              "label": "Charge",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "demande",
+              "dp": "System1:GisSim_nantes_demande",
+              "label": "Demande",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "couverture",
+              "dp": "System1:GisSim_nantes_couverture",
+              "label": "Couverture",
+              "unit": "%",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_nantes_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_nantes_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Appel de puissance de pointe 6400 MW, soit ~70 % des 9270 MW raccordés à ce nœud sur ce schéma — et non la consommation réelle de la métropole. sim:demande=6400"
+        },
+        {
+          "id": "lille",
+          "name": "Pôle de consommation – Lille",
+          "kind": "building",
+          "lat": 50.6366,
+          "lon": 3.0635,
+          "areaIds": [],
+          "layerIds": [
+            "consommation"
+          ],
+          "dp": "System1:GisSim_lille_defaut",
+          "readings": [
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_lille_charge",
+              "label": "Charge",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "demande",
+              "dp": "System1:GisSim_lille_demande",
+              "label": "Demande",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "couverture",
+              "dp": "System1:GisSim_lille_couverture",
+              "label": "Couverture",
+              "unit": "%",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_lille_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_lille_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Appel de puissance de pointe 5900 MW, soit ~70 % des 8460 MW raccordés à ce nœud sur ce schéma — et non la consommation réelle de la métropole. sim:demande=5900"
+        },
+        {
+          "id": "strasbourg",
+          "name": "Pôle de consommation – Strasbourg",
+          "kind": "building",
+          "lat": 48.5846,
+          "lon": 7.7507,
+          "areaIds": [],
+          "layerIds": [
+            "consommation"
+          ],
+          "dp": "System1:GisSim_strasbourg_defaut",
+          "readings": [
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_strasbourg_charge",
+              "label": "Charge",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "demande",
+              "dp": "System1:GisSim_strasbourg_demande",
+              "label": "Demande",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "couverture",
+              "dp": "System1:GisSim_strasbourg_couverture",
+              "label": "Couverture",
+              "unit": "%",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_strasbourg_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_strasbourg_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Appel de puissance de pointe 3600 MW, soit ~70 % des 5200 MW raccordés à ce nœud sur ce schéma — et non la consommation réelle de la métropole. sim:demande=3600"
+        },
+        {
+          "id": "marseille",
+          "name": "Pôle de consommation – Marseille",
+          "kind": "building",
+          "lat": 43.2964,
+          "lon": 5.3778,
+          "areaIds": [],
+          "layerIds": [
+            "consommation"
+          ],
+          "dp": "System1:GisSim_marseille_defaut",
+          "readings": [
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_marseille_charge",
+              "label": "Charge",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "demande",
+              "dp": "System1:GisSim_marseille_demande",
+              "label": "Demande",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "couverture",
+              "dp": "System1:GisSim_marseille_couverture",
+              "label": "Couverture",
+              "unit": "%",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_marseille_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_marseille_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Appel de puissance de pointe 2550 MW, soit ~70 % des 3660 MW raccordés à ce nœud sur ce schéma — et non la consommation réelle de la métropole. sim:demande=2550"
+        },
+        {
+          "id": "bordeaux",
+          "name": "Pôle de consommation – Bordeaux",
+          "kind": "building",
+          "lat": 44.8412,
+          "lon": -0.58,
+          "areaIds": [],
+          "layerIds": [
+            "consommation"
+          ],
+          "dp": "System1:GisSim_bordeaux_defaut",
+          "readings": [
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_bordeaux_charge",
+              "label": "Charge",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "demande",
+              "dp": "System1:GisSim_bordeaux_demande",
+              "label": "Demande",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "couverture",
+              "dp": "System1:GisSim_bordeaux_couverture",
+              "label": "Couverture",
+              "unit": "%",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_bordeaux_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_bordeaux_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Appel de puissance de pointe 2500 MW, soit ~70 % des 3640 MW raccordés à ce nœud sur ce schéma — et non la consommation réelle de la métropole. sim:demande=2500"
+        },
+        {
+          "id": "toulouse",
+          "name": "Pôle de consommation – Toulouse",
+          "kind": "building",
+          "lat": 43.6045,
+          "lon": 1.4442,
+          "areaIds": [],
+          "layerIds": [
+            "consommation"
+          ],
+          "dp": "System1:GisSim_toulouse_defaut",
+          "readings": [
+            {
+              "id": "charge",
+              "dp": "System1:GisSim_toulouse_charge",
+              "label": "Charge",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "demande",
+              "dp": "System1:GisSim_toulouse_demande",
+              "label": "Demande",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "couverture",
+              "dp": "System1:GisSim_toulouse_couverture",
+              "label": "Couverture",
+              "unit": "%",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "tension",
+              "dp": "System1:GisSim_toulouse_tension",
+              "label": "Tension",
+              "unit": "kV",
+              "decimals": 1,
+              "onMap": false
+            },
+            {
+              "id": "frequence",
+              "dp": "System1:GisSim_toulouse_frequence",
+              "label": "Fréquence",
+              "unit": "Hz",
+              "decimals": 2,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Appel de puissance de pointe 1800 MW, soit ~70 % des 2620 MW raccordés à ce nœud sur ce schéma — et non la consommation réelle de la métropole. sim:demande=1800"
+        }
+      ],
+      "layers": [
+        {
+          "id": "production-nucleaire",
+          "name": "Production nucléaire",
+          "color": "#f97316"
+        },
+        {
+          "id": "consommation",
+          "name": "Pôles de consommation",
+          "color": "#3b82f6"
+        }
+      ],
+      "routes": [
+        {
+          "id": "reseau-thb",
+          "name": "Réseau de transport (schématique)",
+          "color": "#dc2626",
+          "kind": "power",
+          "link": ""
+        }
+      ],
+      "connections": [
+        {
+          "id": "belleville-paris",
+          "name": "Belleville – Paris / IDF",
+          "kind": "power",
+          "from": "belleville",
+          "to": "paris",
+          "via": [],
+          "routeId": "reseau-thb",
+          "areaIds": [],
+          "layerIds": [],
+          "dp": "System1:GisLink_belleville_paris_defaut",
+          "readings": [
+            {
+              "id": "flux",
+              "dp": "System1:GisLink_belleville_paris_flux",
+              "label": "Flux",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisLink_belleville_paris_charge",
+              "label": "Charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "courant",
+              "dp": "System1:GisLink_belleville_paris_courant",
+              "label": "Courant",
+              "unit": "A",
+              "decimals": 0,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": ""
+        },
+        {
+          "id": "blayais-bordeaux",
+          "name": "Blayais – Bordeaux",
+          "kind": "power",
+          "from": "blayais",
+          "to": "bordeaux",
+          "via": [],
+          "routeId": "reseau-thb",
+          "areaIds": [],
+          "layerIds": [],
+          "dp": "System1:GisLink_blayais_bordeaux_defaut",
+          "readings": [
+            {
+              "id": "flux",
+              "dp": "System1:GisLink_blayais_bordeaux_flux",
+              "label": "Flux",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisLink_blayais_bordeaux_charge",
+              "label": "Charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "courant",
+              "dp": "System1:GisLink_blayais_bordeaux_courant",
+              "label": "Courant",
+              "unit": "A",
+              "decimals": 0,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": ""
+        },
+        {
+          "id": "bugey-lyon",
+          "name": "Bugey – Lyon",
+          "kind": "power",
+          "from": "bugey",
+          "to": "lyon",
+          "via": [],
+          "routeId": "reseau-thb",
+          "areaIds": [],
+          "layerIds": [],
+          "dp": "System1:GisLink_bugey_lyon_defaut",
+          "readings": [
+            {
+              "id": "flux",
+              "dp": "System1:GisLink_bugey_lyon_flux",
+              "label": "Flux",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisLink_bugey_lyon_charge",
+              "label": "Charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "courant",
+              "dp": "System1:GisLink_bugey_lyon_courant",
+              "label": "Courant",
+              "unit": "A",
+              "decimals": 0,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": ""
+        },
+        {
+          "id": "cattenom-strasbourg",
+          "name": "Cattenom – Strasbourg",
+          "kind": "power",
+          "from": "cattenom",
+          "to": "strasbourg",
+          "via": [],
+          "routeId": "reseau-thb",
+          "areaIds": [],
+          "layerIds": [],
+          "dp": "System1:GisLink_cattenom_strasbourg_defaut",
+          "readings": [
+            {
+              "id": "flux",
+              "dp": "System1:GisLink_cattenom_strasbourg_flux",
+              "label": "Flux",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisLink_cattenom_strasbourg_charge",
+              "label": "Charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "courant",
+              "dp": "System1:GisLink_cattenom_strasbourg_courant",
+              "label": "Courant",
+              "unit": "A",
+              "decimals": 0,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": ""
+        },
+        {
+          "id": "chinon-nantes",
+          "name": "Chinon – Nantes",
+          "kind": "power",
+          "from": "chinon",
+          "to": "nantes",
+          "via": [],
+          "routeId": "reseau-thb",
+          "areaIds": [],
+          "layerIds": [],
+          "dp": "System1:GisLink_chinon_nantes_defaut",
+          "readings": [
+            {
+              "id": "flux",
+              "dp": "System1:GisLink_chinon_nantes_flux",
+              "label": "Flux",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisLink_chinon_nantes_charge",
+              "label": "Charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "courant",
+              "dp": "System1:GisLink_chinon_nantes_courant",
+              "label": "Courant",
+              "unit": "A",
+              "decimals": 0,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": ""
+        },
+        {
+          "id": "chooz-lille",
+          "name": "Chooz – Lille",
+          "kind": "power",
+          "from": "chooz",
+          "to": "lille",
+          "via": [],
+          "routeId": "reseau-thb",
+          "areaIds": [],
+          "layerIds": [],
+          "dp": "System1:GisLink_chooz_lille_defaut",
+          "readings": [
+            {
+              "id": "flux",
+              "dp": "System1:GisLink_chooz_lille_flux",
+              "label": "Flux",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisLink_chooz_lille_charge",
+              "label": "Charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "courant",
+              "dp": "System1:GisLink_chooz_lille_courant",
+              "label": "Courant",
+              "unit": "A",
+              "decimals": 0,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": ""
+        },
+        {
+          "id": "civaux-nantes",
+          "name": "Civaux – Nantes",
+          "kind": "power",
+          "from": "civaux",
+          "to": "nantes",
+          "via": [],
+          "routeId": "reseau-thb",
+          "areaIds": [],
+          "layerIds": [],
+          "dp": "System1:GisLink_civaux_nantes_defaut",
+          "readings": [
+            {
+              "id": "flux",
+              "dp": "System1:GisLink_civaux_nantes_flux",
+              "label": "Flux",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisLink_civaux_nantes_charge",
+              "label": "Charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "courant",
+              "dp": "System1:GisLink_civaux_nantes_courant",
+              "label": "Courant",
+              "unit": "A",
+              "decimals": 0,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": ""
+        },
+        {
+          "id": "cruas-lyon",
+          "name": "Cruas-Meysse – Lyon",
+          "kind": "power",
+          "from": "cruas",
+          "to": "lyon",
+          "via": [],
+          "routeId": "reseau-thb",
+          "areaIds": [],
+          "layerIds": [],
+          "dp": "System1:GisLink_cruas_lyon_defaut",
+          "readings": [
+            {
+              "id": "flux",
+              "dp": "System1:GisLink_cruas_lyon_flux",
+              "label": "Flux",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisLink_cruas_lyon_charge",
+              "label": "Charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "courant",
+              "dp": "System1:GisLink_cruas_lyon_courant",
+              "label": "Courant",
+              "unit": "A",
+              "decimals": 0,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": ""
+        },
+        {
+          "id": "dampierre-paris",
+          "name": "Dampierre-en-Burly – Paris / IDF",
+          "kind": "power",
+          "from": "dampierre",
+          "to": "paris",
+          "via": [],
+          "routeId": "reseau-thb",
+          "areaIds": [],
+          "layerIds": [],
+          "dp": "System1:GisLink_dampierre_paris_defaut",
+          "readings": [
+            {
+              "id": "flux",
+              "dp": "System1:GisLink_dampierre_paris_flux",
+              "label": "Flux",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisLink_dampierre_paris_charge",
+              "label": "Charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "courant",
+              "dp": "System1:GisLink_dampierre_paris_courant",
+              "label": "Courant",
+              "unit": "A",
+              "decimals": 0,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": ""
+        },
+        {
+          "id": "flamanville-nantes",
+          "name": "Flamanville – Nantes",
+          "kind": "power",
+          "from": "flamanville",
+          "to": "nantes",
+          "via": [],
+          "routeId": "reseau-thb",
+          "areaIds": [],
+          "layerIds": [],
+          "dp": "System1:GisLink_flamanville_nantes_defaut",
+          "readings": [
+            {
+              "id": "flux",
+              "dp": "System1:GisLink_flamanville_nantes_flux",
+              "label": "Flux",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisLink_flamanville_nantes_charge",
+              "label": "Charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "courant",
+              "dp": "System1:GisLink_flamanville_nantes_courant",
+              "label": "Courant",
+              "unit": "A",
+              "decimals": 0,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": ""
+        },
+        {
+          "id": "golfech-toulouse",
+          "name": "Golfech – Toulouse",
+          "kind": "power",
+          "from": "golfech",
+          "to": "toulouse",
+          "via": [],
+          "routeId": "reseau-thb",
+          "areaIds": [],
+          "layerIds": [],
+          "dp": "System1:GisLink_golfech_toulouse_defaut",
+          "readings": [
+            {
+              "id": "flux",
+              "dp": "System1:GisLink_golfech_toulouse_flux",
+              "label": "Flux",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisLink_golfech_toulouse_charge",
+              "label": "Charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "courant",
+              "dp": "System1:GisLink_golfech_toulouse_courant",
+              "label": "Courant",
+              "unit": "A",
+              "decimals": 0,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": ""
+        },
+        {
+          "id": "gravelines-lille",
+          "name": "Gravelines – Lille",
+          "kind": "power",
+          "from": "gravelines",
+          "to": "lille",
+          "via": [],
+          "routeId": "reseau-thb",
+          "areaIds": [],
+          "layerIds": [],
+          "dp": "System1:GisLink_gravelines_lille_defaut",
+          "readings": [
+            {
+              "id": "flux",
+              "dp": "System1:GisLink_gravelines_lille_flux",
+              "label": "Flux",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisLink_gravelines_lille_charge",
+              "label": "Charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "courant",
+              "dp": "System1:GisLink_gravelines_lille_courant",
+              "label": "Courant",
+              "unit": "A",
+              "decimals": 0,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": ""
+        },
+        {
+          "id": "nogent-paris",
+          "name": "Nogent-sur-Seine – Paris / IDF",
+          "kind": "power",
+          "from": "nogent",
+          "to": "paris",
+          "via": [],
+          "routeId": "reseau-thb",
+          "areaIds": [],
+          "layerIds": [],
+          "dp": "System1:GisLink_nogent_paris_defaut",
+          "readings": [
+            {
+              "id": "flux",
+              "dp": "System1:GisLink_nogent_paris_flux",
+              "label": "Flux",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisLink_nogent_paris_charge",
+              "label": "Charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "courant",
+              "dp": "System1:GisLink_nogent_paris_courant",
+              "label": "Courant",
+              "unit": "A",
+              "decimals": 0,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": ""
+        },
+        {
+          "id": "paluel-paris",
+          "name": "Paluel – Paris / IDF",
+          "kind": "power",
+          "from": "paluel",
+          "to": "paris",
+          "via": [],
+          "routeId": "reseau-thb",
+          "areaIds": [],
+          "layerIds": [],
+          "dp": "System1:GisLink_paluel_paris_defaut",
+          "readings": [
+            {
+              "id": "flux",
+              "dp": "System1:GisLink_paluel_paris_flux",
+              "label": "Flux",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisLink_paluel_paris_charge",
+              "label": "Charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "courant",
+              "dp": "System1:GisLink_paluel_paris_courant",
+              "label": "Courant",
+              "unit": "A",
+              "decimals": 0,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": ""
+        },
+        {
+          "id": "penly-paris",
+          "name": "Penly – Paris / IDF",
+          "kind": "power",
+          "from": "penly",
+          "to": "paris",
+          "via": [],
+          "routeId": "reseau-thb",
+          "areaIds": [],
+          "layerIds": [],
+          "dp": "System1:GisLink_penly_paris_defaut",
+          "readings": [
+            {
+              "id": "flux",
+              "dp": "System1:GisLink_penly_paris_flux",
+              "label": "Flux",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisLink_penly_paris_charge",
+              "label": "Charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "courant",
+              "dp": "System1:GisLink_penly_paris_courant",
+              "label": "Courant",
+              "unit": "A",
+              "decimals": 0,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": ""
+        },
+        {
+          "id": "saint-alban-lyon",
+          "name": "Saint-Alban – Lyon",
+          "kind": "power",
+          "from": "saint-alban",
+          "to": "lyon",
+          "via": [],
+          "routeId": "reseau-thb",
+          "areaIds": [],
+          "layerIds": [],
+          "dp": "System1:GisLink_saint_alban_lyon_defaut",
+          "readings": [
+            {
+              "id": "flux",
+              "dp": "System1:GisLink_saint_alban_lyon_flux",
+              "label": "Flux",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisLink_saint_alban_lyon_charge",
+              "label": "Charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "courant",
+              "dp": "System1:GisLink_saint_alban_lyon_courant",
+              "label": "Courant",
+              "unit": "A",
+              "decimals": 0,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": ""
+        },
+        {
+          "id": "saint-laurent-paris",
+          "name": "Saint-Laurent-des-Eaux – Paris / IDF",
+          "kind": "power",
+          "from": "saint-laurent",
+          "to": "paris",
+          "via": [],
+          "routeId": "reseau-thb",
+          "areaIds": [],
+          "layerIds": [],
+          "dp": "System1:GisLink_saint_laurent_paris_defaut",
+          "readings": [
+            {
+              "id": "flux",
+              "dp": "System1:GisLink_saint_laurent_paris_flux",
+              "label": "Flux",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisLink_saint_laurent_paris_charge",
+              "label": "Charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "courant",
+              "dp": "System1:GisLink_saint_laurent_paris_courant",
+              "label": "Courant",
+              "unit": "A",
+              "decimals": 0,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": ""
+        },
+        {
+          "id": "tricastin-marseille",
+          "name": "Tricastin – Marseille",
+          "kind": "power",
+          "from": "tricastin",
+          "to": "marseille",
+          "via": [],
+          "routeId": "reseau-thb",
+          "areaIds": [],
+          "layerIds": [],
+          "dp": "System1:GisLink_tricastin_marseille_defaut",
+          "readings": [
+            {
+              "id": "flux",
+              "dp": "System1:GisLink_tricastin_marseille_flux",
+              "label": "Flux",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisLink_tricastin_marseille_charge",
+              "label": "Charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "courant",
+              "dp": "System1:GisLink_tricastin_marseille_courant",
+              "label": "Courant",
+              "unit": "A",
+              "decimals": 0,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": ""
+        },
+        {
+          "id": "fessenheim-strasbourg",
+          "name": "Fessenheim – Strasbourg",
+          "kind": "power",
+          "from": "fessenheim",
+          "to": "strasbourg",
+          "via": [],
+          "routeId": "reseau-thb",
+          "areaIds": [],
+          "layerIds": [],
+          "dp": "System1:GisLink_fessenheim_strasbourg_defaut",
+          "readings": [
+            {
+              "id": "flux",
+              "dp": "System1:GisLink_fessenheim_strasbourg_flux",
+              "label": "Flux",
+              "unit": "MW",
+              "decimals": 0,
+              "onMap": true
+            },
+            {
+              "id": "charge",
+              "dp": "System1:GisLink_fessenheim_strasbourg_charge",
+              "label": "Charge",
+              "unit": "%",
+              "decimals": 0,
+              "onMap": false
+            },
+            {
+              "id": "courant",
+              "dp": "System1:GisLink_fessenheim_strasbourg_courant",
+              "label": "Courant",
+              "unit": "A",
+              "decimals": 0,
+              "onMap": false
+            }
+          ],
+          "link": "",
+          "notes": "Liaison conservée pour mémoire — la centrale est à l’arrêt. sim:etat=0"
+        }
+      ],
+      "updatedAt": ""
+    }
+  ]
+}
