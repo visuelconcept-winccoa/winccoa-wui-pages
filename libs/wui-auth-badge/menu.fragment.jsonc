@@ -1,0 +1,19 @@
+// The badge login's menu entries, upserted by routeId into the target's menuconfig.json.
+[
+  {
+    // "Mon badge": associate one's badge with one's account.
+    "title": { "en_US.utf8": "My badge", "de_AT.utf8": "Mein Ausweis", "fr_FR.utf8": "Mon badge" },
+    "icon": "id",
+    "path": "/auth-badge",
+    "module": "/data/dashboard-wc/pages/auth-badge.js",
+    "routeId": "auth-badge",
+    "component": "wui-auth-badge",
+    "permission": ["connected"]
+  },
+  {
+    // "Switch user": the shell's login extension closes the session and opens the badge page.
+    "routeId": "auth-badge-switch-user",
+    "generator": "wui-switch-user-menu-item",
+    "permission": ["connected"]
+  }
+]
