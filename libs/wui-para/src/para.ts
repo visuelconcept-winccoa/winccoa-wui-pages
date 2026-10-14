@@ -51,11 +51,11 @@ import {
   ml
 } from './para/i18n.js';
 
-/** Tab indices (match the ix-tab-item order). */
-const TAB_MODEL = 0;
-const TAB_INSTANCES = 1;
-const TAB_ARCHIVE = 2;
-const TAB_ALARM = 3;
+/** Tab keys (the ix-tab-item `tab-key`s — iX 5 selects tabs by key, not index). */
+const TAB_MODEL = 'model';
+const TAB_INSTANCES = 'instances';
+const TAB_ARCHIVE = 'archive';
+const TAB_ALARM = 'alarm';
 
 export class WuiPara extends LitElement {
   static override readonly styles = [
@@ -132,7 +132,7 @@ export class WuiPara extends LitElement {
     `
   ];
 
-  @state() private activeTab = TAB_MODEL;
+  @state() private activeTab: string = TAB_MODEL;
   @state() private selectedDp: string | null = null;
   @state() private selectedType: string | null = null;
   /** Owning DP-type of the selected DP/element (drives the detail value enumeration). */
@@ -174,11 +174,11 @@ export class WuiPara extends LitElement {
   override render(): TemplateResult {
     return html`
       ${this.renderTopbar()}
-      <ix-tabs .selected=${this.activeTab} @selectedChange=${(e: CustomEvent<number>) => (this.activeTab = e.detail)}>
-        <ix-tab-item>${localizeDir(MSG.page.tabModel)}</ix-tab-item>
-        <ix-tab-item>${localizeDir(MSG.page.tabInstances)}</ix-tab-item>
-        <ix-tab-item>${localizeDir(MSG.page.tabArchive)}</ix-tab-item>
-        <ix-tab-item>${localizeDir(MSG.page.tabAlarm)}</ix-tab-item>
+      <ix-tabs .activeTabKey=${this.activeTab} @tabChange=${this.onTabChange}>
+        <ix-tab-item tab-key=${TAB_MODEL}>${localizeDir(MSG.page.tabModel)}</ix-tab-item>
+        <ix-tab-item tab-key=${TAB_INSTANCES}>${localizeDir(MSG.page.tabInstances)}</ix-tab-item>
+        <ix-tab-item tab-key=${TAB_ARCHIVE}>${localizeDir(MSG.page.tabArchive)}</ix-tab-item>
+        <ix-tab-item tab-key=${TAB_ALARM}>${localizeDir(MSG.page.tabAlarm)}</ix-tab-item>
       </ix-tabs>
       ${this.renderTabBody()}
       ${this.dpDialog
@@ -322,7 +322,11 @@ export class WuiPara extends LitElement {
     return parts.join(' ');
   }
 
-  private onSelect(event: CustomEvent<{ kind: 'type' | 'dp' | 'element'; path: string; type?: string }>): void {
+  private onTabChange(event: CustomEvent<string | undefined>): void {
+    if (event.detail) this.activeTab = event.detail;
+  }
+
+  private onSelect(event:CustomEvent<{ kind: 'type' | 'dp' | 'element'; path: string; type?: string }>): void {
     const { kind, path, type } = event.detail;
     if (kind === 'type') {
       this.selectedType = path;

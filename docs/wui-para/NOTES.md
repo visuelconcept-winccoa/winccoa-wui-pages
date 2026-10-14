@@ -10,6 +10,11 @@ or its backend. It records the non-obvious contracts and assumptions.
 - Tab 1 **Instances & valeurs** (instances & values) → `wui-para-nav` (Type→DP→element tree) +
   `wui-para-detail` (live values + `wui-para-config-detail`).
 
+The tabs are selected **by key** (iX 5, runtime 2.0.1): each `ix-tab-item` carries
+a `tab-key`, `ix-tabs` is driven by `activeTabKey` and reports `tabChange` (detail =
+the key). The iX 4 `selected` index / `selectedChange` no longer exist — a template
+still using them type-checks but leaves the tabs dead.
+
 Both tab bodies stay mounted; the inactive one is hidden with a `.hidden`
 class (so editor drafts and tree state survive tab switches). The header hosts
 `wui-para-ai-assistant`; the page passes it a `contextSummary` and handles its
