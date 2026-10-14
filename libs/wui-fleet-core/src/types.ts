@@ -284,10 +284,30 @@ export interface Kpi {
   showInCard?: boolean;
   /** Order within the detail card (ascending). */
   cardOrder?: number;
+  /** Decimals shown for a numeric value (0..{@link MAX_PARAM_DECIMALS}). When unset,
+   * integers print as-is and other numbers with {@link DEFAULT_PARAM_DECIMALS}. */
+  decimals?: number;
 }
 
 /** Maximum number of KPI parameters bound per machine. */
 export const MAX_PARAMS = 10;
+
+/** Decimals of a non-integer parameter value when the parameter sets none. */
+export const DEFAULT_PARAM_DECIMALS = 2;
+/** Upper bound of the per-parameter decimals choice. */
+export const MAX_PARAM_DECIMALS = 6;
+
+/**
+ * Format a parameter's numeric value with its configured decimals — the single
+ * rule shared by the 3D bubble, the machine popup and the machine dashboard.
+ * Without a configured count, integers stay as-is and the rest gets
+ * {@link DEFAULT_PARAM_DECIMALS}. Non-numeric values are printed verbatim.
+ */
+export function formatParamValue(value: number | string, decimals?: number): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return String(value);
+  if (decimals != null) return value.toFixed(decimals);
+  return Number.isInteger(value) ? String(value) : value.toFixed(DEFAULT_PARAM_DECIMALS);
+}
 
 /** One value→state rule of a state mapping (range bounds optional). */
 export interface StateRule {

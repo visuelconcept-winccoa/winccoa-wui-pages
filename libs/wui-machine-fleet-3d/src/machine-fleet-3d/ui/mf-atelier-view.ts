@@ -35,6 +35,7 @@ import {
   DISCONNECTED_LABEL,
   KPI_TYPE_INFO,
   STATE_LABELS,
+  formatParamValue,
   formatStopCause,
   MAX_DASHBOARD_LINKS,
   isDisconnected,
@@ -580,7 +581,7 @@ export class MfAtelierView extends LitElement {
     if (slot.kind === 'param') {
       const p = slot.param;
       if (!p) return null;
-      const value = `${p.value ?? '—'}${p.value != null && p.unit ? ` ${p.unit}` : ''}`;
+      const value = p.value == null ? '—' : `${formatParamValue(p.value, p.decimals)}${p.unit ? ` ${p.unit}` : ''}`;
       return { label: p.label || slot.label, value };
     }
     if (slot.kind === 'obsolescence') {
@@ -597,7 +598,7 @@ export class MfAtelierView extends LitElement {
     if (!k) return null;
     const v = (m.kpiCalcValues ?? {})[k.id];
     const info = KPI_TYPE_INFO[k.type];
-    const value = v == null ? '—' : `${Number.isInteger(v) ? v : v.toFixed(2)} ${info.unit}`;
+    const value = v == null ? '—' : `${formatParamValue(v)} ${info.unit}`;
     const color = (m.kpiCalcColors ?? {})[k.id];
     return { label: slot.label, value, style: color ? `color:${color};font-weight:700` : '' };
   }

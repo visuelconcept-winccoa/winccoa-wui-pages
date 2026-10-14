@@ -64,6 +64,13 @@ DP and type provisioning/CRUD via the backend's **PARA REST API** (see Backend),
   operation | param:<key> | kpi:<id>`. `resolveDisplaySlots(m)` builds the ordered
   catalog; items missing from `display` are auto-added (new params/KPIs
   appear on their own). The old scattered visibility toggles have been removed.
+- **Parameter decimals**: `Kpi.decimals?` (0..`MAX_PARAM_DECIMALS` = 6, "Déc. auto"
+  select in the Paramètres tab). ONE formatter, `formatParamValue(value, decimals)`
+  (`wui-fleet-core/types.ts`), is used by the 3D bubble, the machine popup and the
+  dashboard gauge value, so the three never disagree. Unset = integers as-is,
+  other numbers with 2 decimals (`DEFAULT_PARAM_DECIMALS`); strings verbatim. The
+  gauge **bounds** keep their own compact rounding (`formatBound`), and the
+  `kpiCalc` KPIs (TRS/MTBF/MTTR) use the default rule (no per-KPI setting).
 
 ## Key algorithms / formulas
 

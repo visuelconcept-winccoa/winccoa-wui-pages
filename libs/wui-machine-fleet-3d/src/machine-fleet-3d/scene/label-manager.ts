@@ -18,6 +18,7 @@ import {
   DISCONNECTED_LABEL,
   KPI_TYPE_INFO,
   STATE_LABELS,
+  formatParamValue,
   isDisconnected,
   resolveDisplaySlots,
   type DisplaySlot,
@@ -83,8 +84,6 @@ interface BubbleLine {
   color?: string;
 }
 
-const DECIMALS = 2;
-
 /** Ordered, visible bubble lines for a machine (order = the Affichage tab). */
 function buildBubbleLines(m: Machine): BubbleLine[] {
   const lines: BubbleLine[] = [];
@@ -127,7 +126,7 @@ function bubbleLineFor(slot: DisplaySlot, m: Machine): BubbleLine | null {
   const kpi = slot.kpi;
   const v = kpi ? (m.kpiCalcValues ?? {})[kpi.id] : undefined;
   if (!kpi || v == null) return null;
-  const num = Number.isInteger(v) ? String(v) : v.toFixed(DECIMALS);
+  const num = formatParamValue(v);
   return {
     text: `${slot.label} ${num} ${KPI_TYPE_INFO[kpi.type].unit}`,
     cls: LINE_KPI_CLS,
@@ -137,10 +136,7 @@ function bubbleLineFor(slot: DisplaySlot, m: Machine): BubbleLine | null {
 
 function formatKpi(kpi: Kpi | undefined): string {
   if (!kpi || kpi.value == null) return '';
-  const v = kpi.value;
-  let num: string;
-  if (typeof v === 'number') num = Number.isInteger(v) ? String(v) : v.toFixed(DECIMALS);
-  else num = String(v);
+  const num = formatParamValue(kpi.value, kpi.decimals);
   return kpi.unit ? `${num} ${kpi.unit}` : num;
 }
 

@@ -21,6 +21,7 @@ import {
   MACHINE_PROCESS_LABEL,
   MAX_DASHBOARD_LINKS,
   MAX_PARAMS,
+  MAX_PARAM_DECIMALS,
   PORTIQUE_SPANS,
   TRS_WINDOW_LABELS,
   resolveDashboardMode,
@@ -56,6 +57,16 @@ interface IxValueEvent {
 }
 interface IxCheckedEvent {
   detail: boolean;
+}
+
+/** Select value of a parameter with no configured decimals (the shared default rule). */
+const DECIMALS_AUTO = 'auto';
+/** Decimal counts offered per parameter: 0..MAX_PARAM_DECIMALS. */
+const DECIMAL_CHOICES = Array.from({ length: MAX_PARAM_DECIMALS + 1 }, (_, n) => n);
+
+/** Decimals select value → `Kpi.decimals` (`undefined` = auto). */
+function parseDecimals(value: string): number | undefined {
+  return value === DECIMALS_AUTO ? undefined : Number(value);
 }
 
 /** The gantry-with-rotary-table machine type (referenced in several places). */
@@ -1229,6 +1240,20 @@ export class MfMachineDialog extends LitElement {
           .value=${p.unit ?? ''}
           @valueChange=${(e: IxValueEvent) => this.patchParam(i, { unit: String(e.detail) })}
         ></ix-input>
+        <ix-select
+          class="p-decimals"
+          title=${localize(MSG.machineDialog.paramDecimals)}
+          .value=${p.decimals == null ? DECIMALS_AUTO : String(p.decimals)}
+          @valueChange=${(e: IxValueEvent) => this.patchParam(i, { decimals: parseDecimals(String(e.detail)) })}
+        >
+          <ix-select-item label=${localize(MSG.machineDialog.paramDecimalsAuto)} value=${DECIMALS_AUTO}></ix-select-item>
+          ${DECIMAL_CHOICES.map(
+            (n) => html`<ix-select-item
+              label=${`${n} ${localize(MSG.machineDialog.paramDecimalsShort)}`}
+              value=${String(n)}
+            ></ix-select-item>`
+          )}
+        </ix-select>
         <ix-icon-button
           ghost
           icon="trashcan"
@@ -1390,6 +1415,10 @@ function extraStyles(): ReturnType<typeof css> {
     }
     .param-row .p-unit {
       flex: 1;
+    }
+    .param-row .p-decimals {
+      flex: 1;
+      min-width: 6.5rem;
     }
     .grid3 {
       display: grid;

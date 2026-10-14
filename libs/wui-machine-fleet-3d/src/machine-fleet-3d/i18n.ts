@@ -503,6 +503,9 @@ export const MSG = {
     addParam: ml('Add a parameter', 'Ajouter un paramètre', 'Parameter hinzufügen'),
     paramLabel: ml('Label', 'Libellé', 'Bezeichnung'),
     paramUnit: ml('Unit', 'Unité', 'Einheit'),
+    paramDecimals: ml('Decimals shown', 'Décimales affichées', 'Angezeigte Dezimalstellen'),
+    paramDecimalsAuto: ml('Auto dec.', 'Déc. auto', 'Dez. auto'),
+    paramDecimalsShort: ml('dec.', 'déc.', 'Dez.'),
     defaultParamName: ml('Parameter', 'Paramètre', 'Parameter'),
     delete: ml('Delete', 'Supprimer', 'Löschen'),
     editTitlePrefix: ml('Edit', 'Édition', 'Bearbeiten')

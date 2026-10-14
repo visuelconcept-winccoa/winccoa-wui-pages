@@ -32,6 +32,7 @@ import {
   KPI_TYPE_INFO,
   STATE_LABELS,
   TRS_WINDOW_LABELS,
+  formatParamValue,
   formatStopCause,
   resolveState,
   stateColor,
@@ -131,7 +132,7 @@ const GAUGE_SOLO_HEADROOM = 1.25;
 const GAUGE_BAND_PADDING = 0.1;
 /** "Nice" scale ceilings (× 10^k) used to round a gauge bound outwards. */
 const NICE_STEPS = [1, 1.5, 2, 2.5, 3, 4, 5, 7.5, 10];
-/** Above this magnitude a displayed value drops its decimals. */
+/** Above this magnitude a gauge bound drops its decimals. */
 const COMPACT_VALUE_THRESHOLD = 1000;
 const VALUE_DECIMALS = 2;
 
@@ -141,6 +142,8 @@ interface ParamCard {
   label: string;
   value: number | string | undefined;
   unit: string;
+  /** Configured decimals of a process parameter (unset = the shared default rule). */
+  decimals?: number;
   /** Gauge colour override (TRS threshold band); default = the theme primary. */
   color?: string;
   /** Small muted footer (e.g. the KPI's sliding window). */
@@ -500,7 +503,7 @@ export class MfMachineDashboard extends LitElement {
     const cards: ParamCard[] = (m.kpis ?? []).map((k) => {
       // Prefer the live dpConnect value; fall back to the last known value.
       const live = k.dp ? extractScalar(this.liveValues[normDp(k.dp)]) : undefined;
-      return { key: `param:${k.key}`, label: k.label || k.key, value: live ?? k.value, unit: k.unit ?? '' };
+      return { key: `param:${k.key}`, label: k.label || k.key, value: live ?? k.value, unit: k.unit ?? '', decimals: k.decimals };
     });
     for (const kpi of m.kpiCalcs ?? []) {
       const info = KPI_TYPE_INFO[kpi.type];
@@ -550,7 +553,7 @@ export class MfMachineDashboard extends LitElement {
     const pct = Math.min(Math.max(ratio, 0), 1) * PERCENT_MAX;
     const color = card.color ?? 'var(--theme-color-primary)';
     return html`
-      <svg class="gauge-svg" viewBox="0 0 100 64" role="img" aria-label=${`${card.label} ${formatValue(value)} ${card.unit}`}>
+      <svg class="gauge-svg" viewBox="0 0 100 64" role="img" aria-label=${`${card.label} ${formatParamValue(value, card.decimals)} ${card.unit}`}>
         <path class="gauge-track" d=${GAUGE_ARC} pathLength=${GAUGE_PATH_LENGTH}></path>
         <path
           class="gauge-fill"
@@ -559,10 +562,10 @@ export class MfMachineDashboard extends LitElement {
           stroke=${color}
           stroke-dasharray=${`${pct.toFixed(1)} ${GAUGE_PATH_LENGTH}`}
         ></path>
-        <text class="gauge-value" x="50" y="46" text-anchor="middle">${formatValue(value)}</text>
+        <text class="gauge-value" x="50" y="46" text-anchor="middle">${formatParamValue(value, card.decimals)}</text>
         ${card.unit ? svg`<text class="gauge-unit" x="50" y="58" text-anchor="middle">${card.unit}</text>` : ''}
-        <text class="gauge-bound" x="8" y="62">${formatValue(min)}</text>
-        <text class="gauge-bound" x="92" y="62" text-anchor="end">${formatValue(max)}</text>
+        <text class="gauge-bound" x="8" y="62">${formatBound(min)}</text>
+        <text class="gauge-bound" x="92" y="62" text-anchor="end">${formatBound(max)}</text>
       </svg>
     `;
   }
@@ -1021,8 +1024,8 @@ export class MfMachineDashboard extends LitElement {
   };
 }
 
-/** Format a gauge/card value: two decimals, dropped for large magnitudes. */
-function formatValue(v: number): string {
+/** Format a gauge bound: two decimals, dropped for large magnitudes. */
+function formatBound(v: number): string {
   if (Number.isInteger(v) || Math.abs(v) >= COMPACT_VALUE_THRESHOLD) return String(Math.round(v));
   return v.toFixed(VALUE_DECIMALS);
 }
