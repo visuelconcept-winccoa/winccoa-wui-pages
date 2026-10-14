@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-fleet-stop-analysis",
   "type": "module",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Fleet Stop-Cause Analysis — standalone WinCC OA WebUI page: decomposes machine downtime by stop cause over a period from archived state + cause histories, with table / stacked-bar / raw views.",
   "author": {
     "name": "Visuel Concept"

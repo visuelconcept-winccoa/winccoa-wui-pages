@@ -52,8 +52,8 @@ import {
 } from '@visuelconcept-winccoa/wui-fleet-core/closures.js';
 import { MSG, localize, localizeDir } from './fleet-kpi-analysis/i18n.js';
 
-const TAB_TABLE = 0;
-const TAB_CHART = 1;
+const TAB_TABLE = 'table';
+const TAB_CHART = 'chart';
 const DEBOUNCE_MS = 300;
 
 /** Sortable columns of the KPI table. */
@@ -82,7 +82,7 @@ export class WuiFleetKpiAnalysis extends LitElement {
   @state() private machineSearch = '';
   @state() private kpiSortCol: KpiSortCol = 'trs';
   @state() private kpiSortDir: SortDir = 'asc';
-  @state() private tab = TAB_TABLE;
+  @state() private tab: string = TAB_TABLE;
   @state() private result: KpiResult | null = null;
   @state() private loading = false;
   @state() private offline = false;
@@ -224,9 +224,9 @@ export class WuiFleetKpiAnalysis extends LitElement {
 
   private renderTabs(): TemplateResult {
     return html`
-      <ix-tabs .selected=${this.tab} @selectedChange=${(e: CustomEvent<number>) => (this.tab = e.detail)}>
-        <ix-tab-item>${localizeDir(MSG.tabs.table)}</ix-tab-item>
-        <ix-tab-item>${localizeDir(MSG.tabs.chart)}</ix-tab-item>
+      <ix-tabs .activeTabKey=${this.tab} @tabChange=${(e: CustomEvent<string | undefined>) => (this.tab = e.detail ?? this.tab)}>
+        <ix-tab-item tab-key=${TAB_TABLE}>${localizeDir(MSG.tabs.table)}</ix-tab-item>
+        <ix-tab-item tab-key=${TAB_CHART}>${localizeDir(MSG.tabs.chart)}</ix-tab-item>
       </ix-tabs>
     `;
   }
