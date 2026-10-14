@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-auth-badge",
   "type": "module",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Badge login for the WebUI shell — a login provider's login extension: an RFID reader in keyboard emulation, badge → user through the RFID_UID user setting, the login page locked after three unknown badges, an audit line per event; \"Mon badge\" (/auth-badge) lets a user associate their badge; \"Switch user\" in the menu.",
   "author": {
     "name": "Visuel Concept"
@@ -28,7 +28,10 @@
         "fr_FR.utf8": "Se connecter avec un badge"
       },
       "aliases": {
-        "badge": { "1": "auth-badge", "0": "password" },
+        "badge": {
+          "0": "password",
+          "1": "auth-badge"
+        },
         "badgetest": "login-test"
       }
     },
