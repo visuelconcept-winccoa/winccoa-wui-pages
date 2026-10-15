@@ -1,0 +1,24 @@
+{
+  "module": "auth-badge",
+  "title": { "en_US.utf8": "Badge login", "fr.utf8": "Connexion par badge", "de.utf8": "Ausweis-Anmeldung" },
+  "roles": [
+    {
+      "id": "configure",
+      "label": { "en_US.utf8": "Configure", "fr.utf8": "Configurer", "de.utf8": "Konfigurieren" },
+      "description": {
+        "en_US.utf8": "Open the Badges page and change its settings: badge login enabled, self-service enrolment on My badge.",
+        "fr.utf8": "Ouvrir la page Badges et en modifier les options : connexion par badge activée, enrôlement libre dans Mon badge.",
+        "de.utf8": "Die Seite Ausweise öffnen und ihre Einstellungen ändern: Ausweis-Anmeldung aktiv, Selbstregistrierung unter Mein Ausweis."
+      }
+    },
+    {
+      "id": "enrol",
+      "label": { "en_US.utf8": "Enrol badges", "fr.utf8": "Enrôler les badges", "de.utf8": "Ausweise zuordnen" },
+      "description": {
+        "en_US.utf8": "Associate a badge with any WinCC OA user, or remove it — also one's own when self-service enrolment is off.",
+        "fr.utf8": "Associer un badge à n'importe quel utilisateur WinCC OA, ou le retirer — y compris le sien quand l'enrôlement libre est désactivé.",
+        "de.utf8": "Einem beliebigen WinCC OA-Benutzer einen Ausweis zuordnen oder ihn entfernen — auch den eigenen, wenn die Selbstregistrierung aus ist."
+      }
+    }
+  ]
+}

@@ -18,11 +18,20 @@
 //     /WebUI_Token signs it after a password (oaAuth.ts).
 //
 // And for the logged-in user (their token, never a name sent by the page):
-// their badge, associated or removed.
+// their badge, associated or removed — when the settings let every user do it
+// (`selfEnrolment`), else with the `enrol` role only.
+//
+// The "Badges" page: the settings (badgeSettings.ts; the `configure` role) and
+// any user's badge (the `enrol` role). The roles are Application Security's,
+// module `auth-badge` (src/app-security.roles.json), checked here against the
+// user of the request's WebUI token: a badge session has no webserver session,
+// so the guard's own `requireRole` could not tell who calls.
 // -----------------------------------------------------------------------------
 
 import { Request, Response } from 'ultimate-express';
 
+import { identityOfUsername, roleAssignments, roleGranted } from './appSecurityGuard';
+import { BadgeSettings, readSettings, writeSettings } from './badgeSettings';
 import {
   audit,
   clientAddress,
@@ -30,6 +39,8 @@ import {
   sessionUser,
   signWebUiToken,
   userById,
+  users,
+  verifyWebUiToken,
   writeUserSetting
 } from './oaAuth';
 
@@ -47,6 +58,18 @@ const BADGE_FRAME = {
 const SETTING = 'RFID_UID';
 const SETTING_NAME = 'Numéro de badge RFID';
 
+/** The Application Security module of the roles (src/app-security.roles.json). */
+const MODULE = 'auth-badge';
+type Role = 'configure' | 'enrol';
+
+type EnrolStatus = 'ok' | 'taken' | 'invalid';
+
+/** Who calls a role-guarded route: the user of their WebUI token. */
+interface Actor {
+  username: string;
+  userId: number;
+}
+
 interface ClientLock {
   failures: number;
   lockedUntil: number;
@@ -55,14 +78,15 @@ interface ClientLock {
 export class BadgeAuth {
   private readonly locks = new Map<string, ClientLock>();
 
-  /** GET /config — the reader's frame. */
-  getConfig = (_req: Request, res: Response): void => {
-    res.json(BADGE_FRAME);
+  /** GET /config — the reader's frame, and whether the badge login is enabled. */
+  getConfig = async (_req: Request, res: Response): Promise<void> => {
+    res.json({ ...BADGE_FRAME, enabled: (await readSettings()).badgeLoginEnabled });
   };
 
   /**
    * POST /login  { uid, dbrw?, item? }
    *   → { status: 'ok', username, fullName, token } | { status: 'unknown' } | { status: 'locked', lockedUntil }
+   *     | { status: 'disabled' } (the settings' badgeLoginEnabled off)
    * A recognised user without the WebUI login permission gets `unknown`.
    * 400 without a number, 503 when the badges cannot be read.
    */
@@ -76,6 +100,11 @@ export class BadgeAuth {
       return;
     }
     const host = clientAddress(req);
+    if (!(await readSettings()).badgeLoginEnabled) {
+      void audit({ action: 'BADGE_REFUSE_DESACTIVE', item, host, reason: 'Connexion par badge désactivée' });
+      res.json({ status: 'disabled' });
+      return;
+    }
     const now = Date.now();
     const lock = this.lockOf(host, now);
 
@@ -129,52 +158,189 @@ export class BadgeAuth {
     res.json({ status: 'ok', username: user.username, fullName: user.fullName, token });
   };
 
-  /** GET /me — the logged-in user's badge: { username, badge: last digits | null }. */
+  /**
+   * GET /me — the logged-in user's badge:
+   * { username, badge: last digits | null, selfEnrolment, canChange }
+   * (`canChange`: the settings' selfEnrolment, or the `enrol` role).
+   */
   me = async (req: Request, res: Response): Promise<void> => {
     const user = await sessionUser(req).catch(() => null);
     if (!user) {
       res.status(401).json({ status: 'error', error: 'not logged in' });
       return;
     }
+    const { selfEnrolment } = await readSettings();
     const uid = (await readUserSettings(SETTING, SETTING_NAME)).get(user.userId)?.[0];
-    res.json({ username: user.username, badge: uid ? uid.slice(-4) : null });
+    res.json({
+      username: user.username,
+      badge: uid ? lastDigits(uid) : null,
+      selfEnrolment,
+      canChange: await this.canChangeOwn(user.username)
+    });
   };
 
-  /** PUT /me  { uid } — associates a badge with the logged-in user: { status: 'ok' | 'taken' | 'invalid' }. */
+  /** PUT /me  { uid } — associates a badge with the logged-in user: { status: 'ok' | 'taken' | 'invalid' }; 403 when not allowed. */
   enrol = async (req: Request, res: Response): Promise<void> => {
     const user = await sessionUser(req).catch(() => null);
     if (!user) {
       res.status(401).json({ status: 'error', error: 'not logged in' });
       return;
     }
+    if (!(await this.canChangeOwn(user.username))) {
+      void audit({ action: 'BADGE_REFUSE_ENROLEMENT', username: user.username, userId: user.userId, host: clientAddress(req), reason: "Association par l'utilisateur non autorisée" });
+      res.status(403).json({ status: 'forbidden' });
+      return;
+    }
     const body = (req.body ?? {}) as { uid?: unknown };
-    const uid = typeof body.uid === 'string' ? body.uid.trim() : '';
-    if (uid.length < MIN_UID_LENGTH) {
-      res.json({ status: 'invalid' });
-      return;
-    }
-    const owner = await this.userIdOf(uid);
-    if (owner !== undefined && owner !== user.userId) {
+    const status = await this.associate(user.userId, body.uid);
+    if (status === 'taken') {
       void audit({ action: 'BADGE_DEJA_ASSOCIE', username: user.username, userId: user.userId, host: clientAddress(req), reason: 'Badge associé à un autre compte' });
-      res.json({ status: 'taken' });
-      return;
+    } else if (status === 'ok') {
+      void audit({ action: 'BADGE_ASSOCIE', username: user.username, userId: user.userId, host: clientAddress(req), reason: 'Badge associé au compte' });
     }
-    await writeUserSetting(user.userId, SETTING, SETTING_NAME, [uid]);
-    void audit({ action: 'BADGE_ASSOCIE', username: user.username, userId: user.userId, host: clientAddress(req), reason: 'Badge associé au compte' });
-    res.json({ status: 'ok' });
+    res.json({ status });
   };
 
-  /** DELETE /me — removes the logged-in user's badge. */
+  /** DELETE /me — removes the logged-in user's badge; 403 when not allowed. */
   forget = async (req: Request, res: Response): Promise<void> => {
     const user = await sessionUser(req).catch(() => null);
     if (!user) {
       res.status(401).json({ status: 'error', error: 'not logged in' });
       return;
     }
+    if (!(await this.canChangeOwn(user.username))) {
+      res.status(403).json({ status: 'forbidden' });
+      return;
+    }
     await writeUserSetting(user.userId, SETTING, SETTING_NAME, []);
     void audit({ action: 'BADGE_RETIRE', username: user.username, userId: user.userId, host: clientAddress(req), reason: 'Badge retiré du compte' });
     res.json({ status: 'ok' });
   };
+
+  // --- the "Badges" page --------------------------------------------------------
+
+  /** GET /settings — the settings, for any logged-in user (the page shows them read-only without `configure`). */
+  getSettings = async (req: Request, res: Response): Promise<void> => {
+    if (!(await this.actorOf(req))) {
+      res.status(401).json({ status: 'error', error: 'not logged in' });
+      return;
+    }
+    res.json(await readSettings());
+  };
+
+  /** PUT /settings  { badgeLoginEnabled?, selfEnrolment? } — the `configure` role: the stored settings. */
+  putSettings = async (req: Request, res: Response): Promise<void> => {
+    const actor = await this.authorize(req, res, 'configure');
+    if (!actor) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const patch: Partial<BadgeSettings> = {};
+    if (typeof body['badgeLoginEnabled'] === 'boolean') patch.badgeLoginEnabled = body['badgeLoginEnabled'];
+    if (typeof body['selfEnrolment'] === 'boolean') patch.selfEnrolment = body['selfEnrolment'];
+    const before = await readSettings();
+    const after = await writeSettings(patch);
+    const changes = (Object.keys(patch) as (keyof BadgeSettings)[])
+      .filter((key) => before[key] !== after[key])
+      .map((key) => `${key}=${String(after[key])}`);
+    if (changes.length > 0) {
+      void audit({ action: 'CONFIG_BADGE_MODIFIEE', username: actor.username, userId: actor.userId, host: clientAddress(req), reason: changes.join(', ') });
+    }
+    res.json(after);
+  };
+
+  /** GET /users — the `enrol` role: every user a badge can open (root excepted), with their badge's last digits. */
+  listUsers = async (req: Request, res: Response): Promise<void> => {
+    if (!(await this.authorize(req, res, 'enrol'))) return;
+    const badges = await readUserSettings(SETTING, SETTING_NAME);
+    const list = (await users())
+      .filter((user) => user.userId > 0 && user.username)
+      .sort((a, b) => a.username.localeCompare(b.username))
+      .map((user) => {
+        const uid = badges.get(user.userId)?.[0];
+        return { ...user, badge: uid ? lastDigits(uid) : null };
+      });
+    res.json(list);
+  };
+
+  /** PUT /users/:userId  { uid } — the `enrol` role: associates a badge with that user: { status: 'ok' | 'taken' | 'invalid' }. */
+  enrolUser = async (req: Request, res: Response): Promise<void> => {
+    const actor = await this.authorize(req, res, 'enrol');
+    if (!actor) return;
+    const target = await userById(Number(req.params['userId']));
+    if (!target) {
+      res.status(404).json({ status: 'error', error: 'unknown user' });
+      return;
+    }
+    const body = (req.body ?? {}) as { uid?: unknown };
+    const status = await this.associate(target.userId, body.uid);
+    if (status === 'taken') {
+      void audit({ action: 'BADGE_DEJA_ASSOCIE', username: actor.username, userId: actor.userId, host: clientAddress(req), reason: `Badge associé à un autre compte (enrôlement de ${target.username})` });
+    } else if (status === 'ok') {
+      void audit({ action: 'BADGE_ASSOCIE', username: actor.username, userId: actor.userId, host: clientAddress(req), reason: `Badge associé au compte ${target.username} par ${actor.username}` });
+    }
+    res.json({ status });
+  };
+
+  /** DELETE /users/:userId — the `enrol` role: removes that user's badge. */
+  forgetUser = async (req: Request, res: Response): Promise<void> => {
+    const actor = await this.authorize(req, res, 'enrol');
+    if (!actor) return;
+    const target = await userById(Number(req.params['userId']));
+    if (!target) {
+      res.status(404).json({ status: 'error', error: 'unknown user' });
+      return;
+    }
+    await writeUserSetting(target.userId, SETTING, SETTING_NAME, []);
+    void audit({ action: 'BADGE_RETIRE', username: actor.username, userId: actor.userId, host: clientAddress(req), reason: `Badge retiré du compte ${target.username} par ${actor.username}` });
+    res.json({ status: 'ok' });
+  };
+
+  // --- helpers ------------------------------------------------------------------
+
+  /** Associates `uid` with a user, refused when it is another user's. */
+  private async associate(userId: number, rawUid: unknown): Promise<EnrolStatus> {
+    const uid = typeof rawUid === 'string' ? rawUid.trim() : '';
+    if (uid.length < MIN_UID_LENGTH) return 'invalid';
+    const owner = await this.userIdOf(uid);
+    if (owner !== undefined && owner !== userId) return 'taken';
+    await writeUserSetting(userId, SETTING, SETTING_NAME, [uid]);
+    return 'ok';
+  }
+
+  /** A user changes their own badge: every user with selfEnrolment, else the `enrol` role. */
+  private async canChangeOwn(username: string): Promise<boolean> {
+    return (await readSettings()).selfEnrolment || (await this.hasRole(username, 'enrol'));
+  }
+
+  private async hasRole(username: string, role: Role): Promise<boolean> {
+    const [assignments, who] = await Promise.all([roleAssignments(MODULE), identityOfUsername(username)]);
+    return roleGranted(assignments, role, who);
+  }
+
+  /** The user of the request's WebUI token — root included, unlike `sessionUser` — or null. */
+  private async actorOf(req: Request): Promise<Actor | null> {
+    const header = req.headers['authorization'];
+    const value = Array.isArray(header) ? header[0] : header;
+    const jwt = /^Bearer\s+(\S+)$/i.exec(value ?? '')?.[1];
+    if (!jwt) return null;
+    const username = await verifyWebUiToken(jwt).catch(() => '');
+    if (!username) return null;
+    const user = (await users()).find((candidate) => candidate.username === username);
+    return user?.enabled ? { username: user.username, userId: user.userId } : null;
+  }
+
+  /** The caller when they have `role`; else answers 401 / 403 and gives null. */
+  private async authorize(req: Request, res: Response, role: Role): Promise<Actor | null> {
+    const actor = await this.actorOf(req);
+    if (!actor) {
+      res.status(401).json({ status: 'error', error: 'not logged in' });
+      return null;
+    }
+    if (!(await this.hasRole(actor.username, role))) {
+      res.status(403).json({ status: 'forbidden', error: `role '${role}' of '${MODULE}' required` });
+      return null;
+    }
+    return actor;
+  }
 
   /** The user a badge number is associated with. */
   private async userIdOf(uid: string): Promise<number | undefined> {
@@ -196,4 +362,9 @@ export class BadgeAuth {
     }
     return lock;
   }
+}
+
+/** What the browser may see of a badge number: its last digits. */
+function lastDigits(uid: string): string {
+  return uid.slice(-4);
 }

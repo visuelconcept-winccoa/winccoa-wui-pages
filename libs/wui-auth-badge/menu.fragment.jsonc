@@ -11,6 +11,18 @@
     "permission": ["connected"]
   },
   {
+    // "Badges": the badge login's settings and every user's badge — by role
+    // (Application Security, module auth-badge: configure, enrol); the page says
+    // so to a user who has neither.
+    "title": { "en_US.utf8": "Badges", "de_AT.utf8": "Ausweise", "fr_FR.utf8": "Badges" },
+    "icon": "cogwheel",
+    "path": "/auth-badge/admin",
+    "module": "/data/dashboard-wc/pages/auth-badge.js",
+    "routeId": "auth-badge-admin",
+    "component": "wui-auth-badge-admin",
+    "permission": ["connected"]
+  },
+  {
     // "Switch user": the shell's login extension closes the session and opens the badge page.
     "routeId": "auth-badge-switch-user",
     "generator": "wui-switch-user-menu-item",

@@ -4,11 +4,16 @@
 // -----------------------------------------------------------------------------
 // BadgeRoute — mounted at /api/auth-badge (badgeAuth.ts):
 //
-//   GET    /config   the reader's frame (prefix, timing)
-//   POST   /login    { uid, dbrw? }  the badge login — no session needed
-//   GET    /me       the logged-in user's badge      (Authorization: Bearer <WebUI token>)
-//   PUT    /me       { uid }  associate a badge       (idem)
-//   DELETE /me       remove it                        (idem)
+//   GET    /config          the reader's frame (prefix, timing), the login enabled
+//   POST   /login           { uid, dbrw? }  the badge login — no session needed
+//   GET    /me              the logged-in user's badge   (Authorization: Bearer <WebUI token>)
+//   PUT    /me              { uid }  associate a badge    (idem; selfEnrolment or `enrol`)
+//   DELETE /me              remove it                     (idem)
+//   GET    /settings        the settings                  (idem)
+//   PUT    /settings        change them                   (idem; `configure`)
+//   GET    /users           the users and their badge     (idem; `enrol`)
+//   PUT    /users/:userId   { uid }  associate a badge    (idem; `enrol`)
+//   DELETE /users/:userId   remove it                     (idem; `enrol`)
 // -----------------------------------------------------------------------------
 
 import { Request, Response, Router, json } from 'ultimate-express';
@@ -35,6 +40,11 @@ export class BadgeRoute {
     router.get('/me', safe(badge.me));
     router.put('/me', safe(badge.enrol));
     router.delete('/me', safe(badge.forget));
+    router.get('/settings', safe(badge.getSettings));
+    router.put('/settings', safe(badge.putSettings));
+    router.get('/users', safe(badge.listUsers));
+    router.put('/users/:userId', safe(badge.enrolUser));
+    router.delete('/users/:userId', safe(badge.forgetUser));
     return router;
   }
 }

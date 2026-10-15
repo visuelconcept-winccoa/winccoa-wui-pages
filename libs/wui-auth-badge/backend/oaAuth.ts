@@ -12,7 +12,8 @@
 //   sessionUser(req)             the user of the WebUI token the request
 //                                carries (Authorization: Bearer <jwt>) — for
 //                                what a logged-in user does to their own account
-//   userById / userByName        the WinCC OA user directory (_Users)
+//   users / userById / userByName
+//                                the WinCC OA user directory (_Users)
 //   readUserSetting / writeUserSetting
 //                                a user's setting (WinCC OA 3.21 user settings:
 //                                one `_UserDefinedSettings` DP per setting and
@@ -119,7 +120,8 @@ function asText(raw: unknown): string {
   return raw === undefined || raw === null ? '' : String(raw);
 }
 
-async function users(): Promise<OaUser[]> {
+/** Every WinCC OA user of `_Users`, root included (UserId 0). */
+export async function users(): Promise<OaUser[]> {
   const winccoa = WsjServerGlobal.winccoa;
   const [names, fullNames, ids, enabled] = (
     await Promise.all(

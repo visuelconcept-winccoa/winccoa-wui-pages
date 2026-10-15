@@ -13,6 +13,9 @@
  * unknown badges and the audit are the server's (/api/auth-badge/login): the
  * badge numbers never reach the browser.
  *
+ * The badge login turned off on the "Badges" page (`/config`'s `enabled`, or a
+ * login answered `disabled`): the page says so; the password form stays.
+ *
  * Test mode, `login-test=1` (`/?login=auth-badge&login-test=1`): a button sends
  * the frame of a test badge, to try the whole login without a reader.
  */
@@ -32,9 +35,10 @@ const TEST_BADGE = '12345678';
 type LoginResult =
   | { status: 'ok'; username: string; fullName?: string; token: string }
   | { status: 'unknown' }
-  | { status: 'locked'; lockedUntil: number };
+  | { status: 'locked'; lockedUntil: number }
+  | { status: 'disabled' };
 
-type Phase = 'idle' | 'resolving' | 'welcome' | 'error' | 'locked';
+type Phase = 'idle' | 'resolving' | 'welcome' | 'error' | 'locked' | 'disabled';
 
 @customElement('wui-auth-badge-login')
 export class WuiAuthBadgeLogin extends LoginProviderElement {
@@ -69,11 +73,12 @@ export class WuiAuthBadgeLogin extends LoginProviderElement {
     super.connectedCallback();
     document.addEventListener('click', this.restoreFocus);
     void fetch(`${API}/config`, { cache: 'no-store' })
-      .then((res) => (res.ok ? (res.json() as Promise<Partial<BadgeFrameOptions>>) : {}))
+      .then((res) => (res.ok ? (res.json() as Promise<Partial<BadgeFrameOptions> & { enabled?: boolean }>) : {}))
       .catch(() => ({}))
-      .then((options) => {
+      .then(({ enabled, ...options }: Partial<BadgeFrameOptions> & { enabled?: boolean }) => {
         this.frameOptions = { ...DEFAULT_BADGE_FRAME_OPTIONS, ...options };
         this.detector = new BadgeFrameDetector(this.frameOptions);
+        if (enabled === false) this.phase = 'disabled';
       });
   }
 
@@ -126,6 +131,9 @@ export class WuiAuthBadgeLogin extends LoginProviderElement {
       case 'error':
         return html`<ix-typography format="h3">Présentez votre badge</ix-typography>
           <ix-typography class="message error">${this.message}</ix-typography>`;
+      case 'disabled':
+        return html`<ix-typography format="h3">Connexion par badge désactivée</ix-typography>
+          <ix-typography class="message error">Connectez-vous par identifiant et mot de passe.</ix-typography>`;
       case 'locked':
         return html`<ix-typography format="h3">Connexion par badge verrouillée</ix-typography>
           <ix-typography class="message error">
@@ -146,7 +154,7 @@ export class WuiAuthBadgeLogin extends LoginProviderElement {
   private handleKeydown(event: KeyboardEvent): void {
     // Nothing typed is ever written in the field.
     event.preventDefault();
-    if (this.phase === 'resolving' || this.phase === 'welcome') return;
+    if (this.phase === 'resolving' || this.phase === 'welcome' || this.phase === 'disabled') return;
     const uid = this.detector.push(event.key, event.timeStamp);
     if (uid) void this.handleBadge(uid);
   }
@@ -171,6 +179,10 @@ export class WuiAuthBadgeLogin extends LoginProviderElement {
       result = await postJson<LoginResult>(`${API}/login`, { uid, dbrw: this.dbrw, item: this.context['item'] });
     } catch {
       this.showError('Service de connexion par badge indisponible.');
+      return;
+    }
+    if (result.status === 'disabled') {
+      this.phase = 'disabled';
       return;
     }
     if (result.status === 'locked') {

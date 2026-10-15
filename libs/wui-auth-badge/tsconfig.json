@@ -23,7 +23,21 @@
     "noEmit": true,
     "typeRoots": [
       "../../node_modules/@types"
-    ]
+    ],
+    "paths": {
+      "@visuelconcept-winccoa/wui-ai-kit/*": [
+        "../wui-ai-kit/src/*"
+      ],
+      "@visuelconcept-winccoa/wui-app-security/*": [
+        "../wui-app-security/src/*"
+      ],
+      "@visuelconcept-winccoa/wui-kit/*": [
+        "../wui-kit/src/*"
+      ],
+      "@visuelconcept-winccoa/wui-para/*": [
+        "../wui-para/src/*"
+      ]
+    }
   },
   "include": [
     "src/**/*.ts"

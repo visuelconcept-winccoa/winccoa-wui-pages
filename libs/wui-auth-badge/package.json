@@ -1,8 +1,8 @@
 {
   "name": "@visuelconcept-winccoa/wui-auth-badge",
   "type": "module",
-  "version": "0.2.2",
-  "description": "Badge login for the WebUI shell — a login provider's login extension: an RFID reader in keyboard emulation, badge → user through the RFID_UID user setting, the login page locked after three unknown badges, an audit line per event; \"Mon badge\" (/auth-badge) lets a user associate their badge; \"Switch user\" in the menu.",
+  "version": "0.3.0",
+  "description": "Badge login for the WebUI shell — a login provider's login extension: an RFID reader in keyboard emulation, badge → user through the RFID_UID user setting, the login page locked after three unknown badges, an audit line per event; \"Mon badge\" (/auth-badge) lets a user associate their badge when self-service is on; \"Badges\" (/auth-badge/admin), by Application Security role, turns the badge login on or off, opens or closes self-service and enrols any user's badge; \"Switch user\" in the menu.",
   "author": {
     "name": "Visuel Concept"
   },
@@ -12,13 +12,22 @@
     "url": "git+https://github.com/visuelconcept-winccoa/winccoa-wui-pages.git",
     "directory": "libs/wui-auth-badge"
   },
+  "dependencies": {
+    "@visuelconcept-winccoa/wui-app-security": "^0.1.3",
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0"
+  },
   "peerDependencies": {
     "lit": "*",
+    "rxjs": "*",
     "tsyringe": "*",
     "@wincc-oa/wui-iam-data": "*",
     "@wincc-oa/wui-iam-feature": "*"
   },
   "wuiPage": {
+    "requires": [
+      "para",
+      "app-security"
+    ],
     "login": {
       "entry": "src/login/badge-login.ts",
       "tag": "wui-auth-badge-login",
@@ -42,11 +51,16 @@
       "files": [
         "badgeRoute.ts",
         "badgeAuth.ts",
+        "badgeSettings.ts",
         "oaAuth.ts"
+      ],
+      "shared": [
+        "@visuelconcept-winccoa/wui-app-security/appSecurityGuard.ts"
       ],
       "notes": [
         "reader frame prefix: WUI_BADGE_PREFIX in the webserver's environment",
-        "audit lines go to an _AuditTrail DP, when it exists: auditDp in the [wui-auth] section of config/config (auditDp = \"AuditTrail_MSP\"), else WUI_AUTH_AUDIT_DP, else AuditTrail_Auth"
+        "audit lines go to an _AuditTrail DP, when it exists: auditDp in the [wui-auth] section of config/config (auditDp = \"AuditTrail_MSP\"), else WUI_AUTH_AUDIT_DP, else AuditTrail_Auth",
+        "settings (badge login enabled, self-service enrolment) in the DP WuiAuthBadge_Config.settings, its type and DP created at the first change"
       ]
     }
   },

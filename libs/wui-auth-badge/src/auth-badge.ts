@@ -7,10 +7,18 @@
  * reader types the badge's number into the field like a keyboard, Enter
  * included; it may also be typed. The server takes the user from the session's
  * token, and refuses a number another user already has.
+ *
+ * When the "Badges" page's self-service is off (`selfEnrolment`), the page only
+ * shows the user's badge: a user with the `enrol` role associates it.
+ *
+ * The page module also defines "Badges" (/auth-badge/admin, admin/badge-admin.ts).
  */
+import './admin/badge-admin.js';
 import { fetchAsUser } from './session.js';
+import { registerModuleRoles, type AppModuleRoles } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import { css, html, LitElement, nothing } from 'lit';
 import { customElement, query, state } from 'lit/decorators.js';
+import appSecurityRoles from './app-security.roles.json';
 
 const API = '/api/auth-badge';
 
@@ -18,6 +26,8 @@ interface MyBadge {
   username: string;
   /** The last digits of the associated number, or null when there is none. */
   badge: string | null;
+  /** The user may associate or remove their badge here (self-service, or the `enrol` role). */
+  canChange: boolean;
 }
 
 @customElement('wui-auth-badge')
@@ -60,6 +70,7 @@ export class WuiAuthBadge extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
+    registerModuleRoles(appSecurityRoles as AppModuleRoles);
     void this.load();
   }
 
@@ -76,7 +87,12 @@ export class WuiAuthBadge extends LitElement {
               <b>${this.me.badge}</b>).`
           : html`Aucun badge n'est associé au compte <b>${this.me.username}</b>.`}
       </p>
-      ${this.enrolling
+      ${!this.me.canChange
+        ? html`<p>
+            Pour associer ${this.me.badge ? 'un autre badge' : 'un badge'} à votre compte ou le retirer, demandez
+            l'enrôlement à une personne habilitée.
+          </p>`
+        : this.enrolling
         ? html`<div class="row">
             <input
               type="password"

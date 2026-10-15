@@ -9,10 +9,13 @@ see the toolkit's `docs/REFERENCE.md`, "A module's login page"). A site selects
   the `RFID_UID` user setting, the page locked 15 min after 3 unknown badges, an
   audit line per event.
 - **Mon badge** (`/auth-badge`): the logged-in user associates their badge with
-  their account.
+  their account — when self-service is on; else the page shows the badge and
+  sends the user to someone with the `enrol` role.
+- **Badges** (`/auth-badge/admin`): the settings and every user's badge, by
+  role (below).
 - **Switch user** in the menu (the extension's `wui-switch-user-menu-item`).
 - Backend `/api/auth-badge` (`backend/badgeRoute.ts`, `badgeAuth.ts`,
-  `oaAuth.ts`).
+  `badgeSettings.ts`, `oaAuth.ts`).
 
 Taken from fra-stma, then developed in `winccoa-wui-auth` beside
 `wui-auth-hello` (Windows Hello). The two share three files — keep them equal:
@@ -46,13 +49,51 @@ element and the routes; restart the webserver manager after.
   (`auditDp = "AuditTrail_MSP"`), else `WUI_AUTH_AUDIT_DP` in the webserver's
   environment, else `AuditTrail_Auth`. Read at the webserver's start.
 
+## Badges page and roles
+
+Application Security roles of the module `auth-badge`
+(`src/app-security.roles.json`), open to every user until an admin assigns
+groups to them in `/app-security`:
+
+| Role | Gives |
+| --- | --- |
+| `configure` | the page's settings (shown read-only without it) |
+| `enrol` | the users list: associate a badge with any WinCC OA user (reader or typed, a number another user has refused) or remove it — also one's own on Mon badge when self-service is off |
+
+A user with neither role sees only that the page is reserved. The settings:
+
+- **Connexion par badge activée** (`badgeLoginEnabled`, default on): off, the
+  login page says so and `/login` answers `disabled` (audit
+  `BADGE_REFUSE_DESACTIVE`); the password form is untouched.
+- **Page « Mon badge » ouverte à tous** (`selfEnrolment`, default on — the
+  behaviour of before 0.3): off, `PUT`/`DELETE /me` answer 403 to a user
+  without `enrol` (audit `BADGE_REFUSE_ENROLEMENT`).
+
+Stored as JSON in the DP `WuiAuthBadge_Config.settings`; the backend creates
+its type and the DP at the first change — without them, the defaults. Audit
+lines: `CONFIG_BADGE_MODIFIEE`, and `BADGE_ASSOCIE` / `BADGE_RETIRE` with the
+target account and who did it.
+
+The roles are checked by the backend against the user of the request's WebUI
+token (`identityOfUsername` of the shared `appSecurityGuard.ts`): a badge
+session has no webserver session, so `requireRole`, which reads the latter,
+would let every call through. The module therefore requires `para` and
+`app-security` (role registration, `hasRole$`) and the shared guard
+(`wui-app-security` 0.1.3 or later).
+
+`oaAuth.ts` now exports `users()` (the whole `_Users` directory): give
+`wui-auth-hello`'s copy the same export when it is next synced.
+
 ## Here
 
 `npx wui dev` runs the **Mon badge** page with its mock (`mock/api.mjs`), not
-the login element: the harness has no login page. `npm test` checks its types
+the login element: the harness has no login page. The mock's Mon badge acts
+as a user without `enrol` (turn self-service off with
+`PUT /api/auth-badge/settings`); **Badges** is in the same bundle
+(`wui-auth-badge-admin`) but not in the harness menu, which shows one entry
+per page. `npm test` checks its types
 (page and backend) and runs `src/badge-frame-detector.spec.ts`.
 
 ## Not done
 
-- A badge association by an administrator (only the user's own, here).
 - The extension for runtimes other than 2.0.1.

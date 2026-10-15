@@ -36,7 +36,7 @@ a role that an admin assigned is denied (fail closed).
 
 | Route | Called from | Pages that require the module |
 | --- | --- | --- |
-| `/api/para` (`para`) | `wui-kit/src/data/{dp-json-store,dp-single-json-store,app-security,audit-trail}.ts`, `wui-ai-kit/src/data/ai-store.ts`, `wui-fleet-core/src/data/fleet-store.ts`, `wui-audit-trail/src/audit-trail/dp-admin.ts`, `wui-production-orders/src/production-orders/data/fleet-link.ts` | alarms, ampere, app-security, audit-trail, camera-streams, fleet-closures, fleet-kpi-analysis, fleet-stop-analysis, gis, machine-fleet-3d, mosaic, process-monitor, production-orders, remote-vnc, report-builder, report-templates, tag-importer, thermal-reports |
+| `/api/para` (`para`) | `wui-kit/src/data/{dp-json-store,dp-single-json-store,app-security,audit-trail}.ts`, `wui-ai-kit/src/data/ai-store.ts`, `wui-fleet-core/src/data/fleet-store.ts`, `wui-audit-trail/src/audit-trail/dp-admin.ts`, `wui-production-orders/src/production-orders/data/fleet-link.ts` | alarms, ampere, app-security, audit-trail, auth-badge, camera-streams, fleet-closures, fleet-kpi-analysis, fleet-stop-analysis, gis, machine-fleet-3d, mosaic, process-monitor, production-orders, remote-vnc, report-builder, report-templates, tag-importer, thermal-reports |
 | `/api/app-security` (`app-security`) | `wui-kit/src/data/app-security.ts` | the same pages, app-security excepted, plus para |
 
 No requirement: agv-fleet, diagnosis, dp-watch, eng-studio.
