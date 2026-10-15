@@ -1,0 +1,23 @@
+// Menu fragment for @visuelconcept-winccoa/wui-dashboard — the shell's own
+// dashboard entries, re-provided by routeId so a site selects them like a page
+// (wui-toolkit ≥ 0.17: wuiPage.menuOnly). Titles are the shell's catalog keys:
+// translated by the shell, in every language it ships.
+[
+  {
+    // The user's favorite dashboards, rendered by the shell's menu generator.
+    "routeId": "dashboard-favorites",
+    "generator": "wui-dashboard-favorites-menu",
+    "path": "",
+    "permission": ["connected"]
+  },
+  {
+    // The dashboard overview; the "dashboard" route generator creates every
+    // /dashboard/* route: overview, add, edit, a dashboard by id.
+    "routeId": "dashboard",
+    "title": "WUI_General.Paths./dashboard/overview",
+    "icon": "card-layout",
+    "path": "/dashboard/overview",
+    "routeGenerator": "dashboard",
+    "permission": ["connected"]
+  }
+]

@@ -1,0 +1,36 @@
+{
+  "name": "@visuelconcept-winccoa/wui-dashboard",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Dashboards — the WebUI shell's dashboard overview, editor and favorite dashboards as a module a site selects (`wui use dashboard`), without the shell's other demo pages. Menu entries only: the shell's own components and generators, no page bundle.",
+  "author": {
+    "name": "Visuel Concept"
+  },
+  "keywords": [
+    "OpenArchitecture",
+    "WinCCOA",
+    "dashboard",
+    "webcomponents"
+  ],
+  "license": "MIT",
+  "wuiPage": {
+    "menuOnly": true,
+    "route": "/dashboard/overview",
+    "routeId": "dashboard",
+    "icon": "card-layout",
+    "tier": 1
+  },
+  "files": [
+    "menu.fragment.jsonc",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/visuelconcept-winccoa/winccoa-wui-pages.git",
+    "directory": "libs/wui-dashboard"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  }
+}

@@ -52,9 +52,11 @@ source header and their `wuiPage` manifest in `libs/wui-<page>/package.json`
 | `wui-tag-importer` | `/tag-importer` | Import device tags into DP types + datapoints from an OPC UA NodeSet2 file or a live server browse (repeated instances of one ObjectType mutualised into a single DP type) | `/api/tag-importer` |
 | `wui-thermal-reports` | `/thermal-reports` | Per-charge heat-treatment reports (recipe stages, furnace curves vs. tolerance bands) | — |
 | `wui-diagnosis` | `/status` | Read-only system health: time, licences, OA version, API heartbeat, browser, service worker, memory and disk | — |
+| `wui-dashboard` | `/dashboard/*` | The shell's dashboards — overview, editor, favorites — selected like a page, without the shell's other demo pages. Menu entries only (`wuiPage.menuOnly`, wui-toolkit ≥ 0.17): no bundle, not shown by `wui dev` | — |
 
-The table is ordered alphabetically; `wui-diagnosis` sits last because its route
-(`/status`) is the shell's own diagnostics entry rather than a page of its own name.
+The table is ordered alphabetically; `wui-diagnosis` and `wui-dashboard` sit last
+because they re-provide the shell's own entries (`/status`, the dashboards)
+rather than pages of their own name.
 
 - **Frontend-only** pages (`Backend = —`) deploy with just a page build onto the
   shell — no extra webserver module, no manager.
