@@ -5,12 +5,12 @@ const users = [
   { userId: 3, username: 'former', fullName: 'Ancien compte', enabled: false }
 ];
 const badges = new Map([[1, '12345678']]);
-const settings = { badgeLoginEnabled: true, selfEnrolment: true };
+const settings = { badgeLoginEnabled: true, selfEnrolment: true, prefix: '', maxFrameMs: 150, minUidLength: 4, endKey: 'Enter' };
 
 const ownerOf = (uid) => [...badges].find(([, badge]) => badge === uid)?.[0];
 const associate = (userId, uid) => {
   uid = String(uid ?? '').trim();
-  if (uid.length < 4) return { status: 'invalid' };
+  if (uid.length < settings.minUidLength) return { status: 'invalid' };
   const owner = ownerOf(uid);
   if (owner !== undefined && owner !== userId) return { status: 'taken' };
   badges.set(userId, uid);
@@ -19,7 +19,10 @@ const associate = (userId, uid) => {
 const last = (userId) => badges.get(userId)?.slice(-4) ?? null;
 
 export default {
-  'GET /api/auth-badge/config': () => ({ prefix: '', maxFrameMs: 150, minUidLength: 4, enabled: settings.badgeLoginEnabled }),
+  'GET /api/auth-badge/config': () => {
+    const { prefix, maxFrameMs, minUidLength, endKey, badgeLoginEnabled } = settings;
+    return { prefix, maxFrameMs, minUidLength, endKey, enabled: badgeLoginEnabled };
+  },
   'POST /api/auth-badge/login': ({ body }) => {
     if (!settings.badgeLoginEnabled) return { status: 'disabled' };
     const userId = ownerOf(body?.uid);
@@ -29,7 +32,7 @@ export default {
     username: 'dev',
     badge: last(1),
     selfEnrolment: settings.selfEnrolment,
-    // As a user without the `enrol` role: turning self-service off on "Badges" shows the locked page.
+    // Self-service off on "Badges" locks the page, whatever the user's roles.
     canChange: settings.selfEnrolment
   }),
   'PUT /api/auth-badge/me': ({ body }) => associate(1, body?.uid),
@@ -39,7 +42,8 @@ export default {
   },
   'GET /api/auth-badge/settings': () => settings,
   'PUT /api/auth-badge/settings': ({ body }) => {
-    for (const key of Object.keys(settings)) if (typeof body?.[key] === 'boolean') settings[key] = body[key];
+    // The types only: the bounds are the backend's (badgeSettings.ts).
+    for (const key of Object.keys(settings)) if (typeof body?.[key] === typeof settings[key]) settings[key] = body[key];
     return settings;
   },
   'GET /api/auth-badge/users': () => users.map((user) => ({ ...user, badge: last(user.userId) })),

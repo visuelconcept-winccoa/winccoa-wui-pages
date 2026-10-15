@@ -58,9 +58,9 @@
         "@visuelconcept-winccoa/wui-app-security/appSecurityGuard.ts"
       ],
       "notes": [
-        "reader frame prefix: WUI_BADGE_PREFIX in the webserver's environment",
+        "reader frame prefix: WUI_BADGE_PREFIX in the webserver's environment, until one is saved on Badges",
         "audit lines go to an _AuditTrail DP, when it exists: auditDp in the [wui-auth] section of config/config (auditDp = \"AuditTrail_MSP\"), else WUI_AUTH_AUDIT_DP, else AuditTrail_Auth",
-        "settings (badge login enabled, self-service enrolment) in the DP WuiAuthBadge_Config.settings, its type and DP created at the first change"
+        "settings (badge login enabled, self-service enrolment, the reader's frame: prefix, burst, minimum length, end key) in the DP WuiAuthBadge_Config.settings, its type and DP created at the first change"
       ]
     }
   },

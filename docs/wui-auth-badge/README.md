@@ -10,7 +10,8 @@ see the toolkit's `docs/REFERENCE.md`, "A module's login page"). A site selects
   audit line per event.
 - **Mon badge** (`/auth-badge`): the logged-in user associates their badge with
   their account — when self-service is on; else the page shows the badge and
-  sends the user to someone with the `enrol` role.
+  sends the user to someone with the `enrol` role (self-service off, the
+  page lets no one change a badge, whatever their roles).
 - **Badges** (`/auth-badge/admin`): the settings and every user's badge, by
   role (below).
 - **Switch user** in the menu (the extension's `wui-switch-user-menu-item`).
@@ -42,8 +43,8 @@ element and the routes; restart the webserver manager after.
   the site sets them through the shell (`wuiPage.shell`: `setLoginHome`,
   `setLoginContext({ item })`). auth-badge writes the `item` it gets in its
   audit lines; it knows nothing of the module that sets it.
-- Webserver environment: `WUI_BADGE_PREFIX` (the reader's frame prefix;
-  `MSP_BADGE_PREFIX` still read).
+- Webserver environment: `WUI_BADGE_PREFIX` (the reader's frame prefix until
+  one is saved on Badges; `MSP_BADGE_PREFIX` still read).
 - The audit lines' `_AuditTrail` DP (written only when it exists): `auditDp` in
   the project's `config/config`, section `[wui-auth]`
   (`auditDp = "AuditTrail_MSP"`), else `WUI_AUTH_AUDIT_DP` in the webserver's
@@ -58,16 +59,33 @@ groups to them in `/app-security`:
 | Role | Gives |
 | --- | --- |
 | `configure` | the page's settings (shown read-only without it) |
-| `enrol` | the users list: associate a badge with any WinCC OA user (reader or typed, a number another user has refused) or remove it — also one's own on Mon badge when self-service is off |
+| `enrol` | the users list: associate a badge with any WinCC OA user (presented to the reader, a number another user has refused) or remove it — one's own included, here and not on Mon badge |
 
-A user with neither role sees only that the page is reserved. The settings:
+The page has two tabs: **Utilisateurs** (shown with `enrol` only) and
+**Configuration** (the settings below; read-only without `configure`). A user
+with neither role sees only that the page is reserved. The settings:
 
 - **Connexion par badge activée** (`badgeLoginEnabled`, default on): off, the
   login page says so and `/login` answers `disabled` (audit
   `BADGE_REFUSE_DESACTIVE`); the password form is untouched.
 - **Page « Mon badge » ouverte à tous** (`selfEnrolment`, default on — the
-  behaviour of before 0.3): off, `PUT`/`DELETE /me` answer 403 to a user
-  without `enrol` (audit `BADGE_REFUSE_ENROLEMENT`).
+  behaviour of before 0.3): off, Mon badge only shows the badge and
+  `PUT`/`DELETE /me` answer 403 to every user, `enrol` included (audit
+  `BADGE_REFUSE_ENROLEMENT`): the badges are then enrolled on Badges only.
+- **Lecteur de badge** — the reader's frame, saved together (Enregistrer):
+  the **prefix** typed before the number (16 characters at most, default
+  `WUI_BADGE_PREFIX`), the **longest burst** from the first character to the
+  end key (20–2000 ms, default 150), the **shortest number**, prefix excluded
+  (1–64, default 4; the server checks it again when a badge is associated),
+  the **end key** (Entrée or Tabulation, default Entrée). `GET /config` hands
+  them to the pages; `PUT /settings` answers 400 on a value out of bounds.
+
+The login page, Mon badge and the users list read the badge with one
+component, `wui-auth-badge-reader` (`src/badge-reader.ts`): the prompt (heading
+and message) and an invisible field that keeps the focus while a badge is
+awaited, only a reader's frame kept — a number typed on the keyboard is
+ignored. The field is a text field: a password field makes the browser fill the
+text field before it (the users filter) with a saved login.
 
 Stored as JSON in the DP `WuiAuthBadge_Config.settings`; the backend creates
 its type and the DP at the first change — without them, the defaults. Audit

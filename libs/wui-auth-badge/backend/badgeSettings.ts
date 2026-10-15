@@ -7,7 +7,18 @@
 //   badgeLoginEnabled   the badge opens a session (false: /login answers
 //                       `disabled`, the login page sends to the password form)
 //   selfEnrolment       every user associates their own badge on "Mon badge"
-//                       (false: only a user with the `enrol` role does it)
+//                       (false: a user with the `enrol` role does it on "Badges")
+//
+// and the reader's frame (badge-frame-detector.ts, the browser's side; GET
+// /config hands it out):
+//
+//   prefix              what the reader types before the number (default:
+//                       WUI_BADGE_PREFIX, MSP_BADGE_PREFIX, else none)
+//   maxFrameMs          the longest time from the first character to the end
+//                       key: a person typing is slower
+//   minUidLength        the shortest number, prefix excluded — also the
+//                       server's check when a badge is associated
+//   endKey              the key the reader ends the number with
 //
 // Kept as JSON in the DP `WuiAuthBadge_Config.settings` (its type of the same
 // name created at first need, by this backend). An absent or unreadable DP:
@@ -17,12 +28,56 @@
 import { WsjServerGlobal } from '@winccoa/backend';
 import { WinccoaDpTypeNode, WinccoaElementType } from 'winccoa-manager';
 
+export type EndKey = 'Enter' | 'Tab';
+
 export interface BadgeSettings {
   badgeLoginEnabled: boolean;
   selfEnrolment: boolean;
+  prefix: string;
+  maxFrameMs: number;
+  minUidLength: number;
+  endKey: EndKey;
 }
 
-export const DEFAULT_SETTINGS: BadgeSettings = { badgeLoginEnabled: true, selfEnrolment: true };
+export const DEFAULT_SETTINGS: BadgeSettings = {
+  badgeLoginEnabled: true,
+  selfEnrolment: true,
+  prefix: process.env['WUI_BADGE_PREFIX'] ?? process.env['MSP_BADGE_PREFIX'] ?? '',
+  maxFrameMs: 150,
+  minUidLength: 4,
+  endKey: 'Enter'
+};
+
+/** The bounds of the reader's settings, the page's too. */
+export const LIMITS = { prefixLength: 16, maxFrameMs: [20, 2000], minUidLength: [1, 64] } as const;
+const END_KEYS: readonly EndKey[] = ['Enter', 'Tab'];
+
+/** A setting's value if `raw` is a valid one, else undefined. */
+export function validSetting<K extends keyof BadgeSettings>(key: K, raw: unknown): BadgeSettings[K] | undefined {
+  const value = ((): unknown => {
+    switch (key) {
+      case 'badgeLoginEnabled':
+      case 'selfEnrolment':
+        return typeof raw === 'boolean' ? raw : undefined;
+      case 'prefix':
+        // Printable characters only: the reader types them.
+        return typeof raw === 'string' && raw.length <= LIMITS.prefixLength && !/[\x00-\x1f\x7f]/.test(raw) ? raw : undefined;
+      case 'maxFrameMs':
+        return inRange(raw, LIMITS.maxFrameMs);
+      case 'minUidLength':
+        return inRange(raw, LIMITS.minUidLength);
+      case 'endKey':
+        return END_KEYS.includes(raw as EndKey) ? raw : undefined;
+      default:
+        return undefined;
+    }
+  })();
+  return value as BadgeSettings[K] | undefined;
+}
+
+function inRange(raw: unknown, [min, max]: readonly [number, number]): number | undefined {
+  return typeof raw === 'number' && Number.isInteger(raw) && raw >= min && raw <= max ? raw : undefined;
+}
 
 const CONFIG_DPT = 'WuiAuthBadge_Config';
 const CONFIG_DP = 'WuiAuthBadge_Config';
@@ -75,12 +130,15 @@ function ensureConfigDp(): Promise<void> {
   return ready;
 }
 
+/** The stored settings over the defaults, an invalid value replaced by its default. */
 function parse(raw: unknown): BadgeSettings {
   const text = raw && typeof raw === 'object' && 'value' in raw ? (raw as { value: unknown }).value : raw;
   if (typeof text !== 'string' || text.trim() === '') return DEFAULT_SETTINGS;
   const stored = JSON.parse(text) as Partial<Record<keyof BadgeSettings, unknown>>;
-  return {
-    badgeLoginEnabled: typeof stored.badgeLoginEnabled === 'boolean' ? stored.badgeLoginEnabled : DEFAULT_SETTINGS.badgeLoginEnabled,
-    selfEnrolment: typeof stored.selfEnrolment === 'boolean' ? stored.selfEnrolment : DEFAULT_SETTINGS.selfEnrolment
-  };
+  const settings: Record<string, unknown> = { ...DEFAULT_SETTINGS };
+  for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof BadgeSettings)[]) {
+    const value = validSetting(key, stored[key]);
+    if (value !== undefined) settings[key] = value;
+  }
+  return settings as unknown as BadgeSettings;
 }

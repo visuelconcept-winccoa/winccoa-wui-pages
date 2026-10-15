@@ -4,20 +4,23 @@
 /**
  * "Mon badge" — the logged-in user associates their badge with their account
  * (the user setting RFID_UID the badge login resolves), or removes it. The
- * reader types the badge's number into the field like a keyboard, Enter
- * included; it may also be typed. The server takes the user from the session's
- * token, and refuses a number another user already has.
+ * badge is read as on the login page (badge-reader.ts): presented to the
+ * reader, never typed. The server takes the user from the session's token, and
+ * refuses a number another user already has.
  *
  * When the "Badges" page's self-service is off (`selfEnrolment`), the page only
- * shows the user's badge: a user with the `enrol` role associates it.
+ * shows the user's badge, whatever their roles: a user with the `enrol` role
+ * associates it on "Badges".
  *
  * The page module also defines "Badges" (/auth-badge/admin, admin/badge-admin.ts).
  */
 import './admin/badge-admin.js';
 import { fetchAsUser } from './session.js';
+import { DEFAULT_BADGE_FRAME_OPTIONS, type BadgeFrameOptions } from './badge-frame-detector.js';
+import { fetchBadgeConfig } from './badge-reader.js';
 import { registerModuleRoles, type AppModuleRoles } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import { css, html, LitElement, nothing } from 'lit';
-import { customElement, query, state } from 'lit/decorators.js';
+import { customElement, state } from 'lit/decorators.js';
 import appSecurityRoles from './app-security.roles.json';
 
 const API = '/api/auth-badge';
@@ -26,7 +29,7 @@ interface MyBadge {
   username: string;
   /** The last digits of the associated number, or null when there is none. */
   badge: string | null;
-  /** The user may associate or remove their badge here (self-service, or the `enrol` role). */
+  /** The user may associate or remove their badge here: self-service on, roles aside. */
   canChange: boolean;
 }
 
@@ -48,11 +51,6 @@ export class WuiAuthBadge extends LitElement {
       gap: 0.5rem;
       align-items: center;
     }
-    input {
-      font: inherit;
-      padding: 0.5rem;
-      min-width: 16rem;
-    }
     .error {
       color: var(--theme-color-alarm);
     }
@@ -65,13 +63,17 @@ export class WuiAuthBadge extends LitElement {
   @state() private message = '';
   @state() private failed = false;
   @state() private enrolling = false;
-
-  @query('input') private readonly field?: HTMLInputElement;
+  /** A badge presented is being associated. */
+  @state() private associating = false;
+  /** The last badge presented was refused: why, under the reader. */
+  @state() private readerError = '';
+  @state() private frameOptions: BadgeFrameOptions = DEFAULT_BADGE_FRAME_OPTIONS;
 
   override connectedCallback(): void {
     super.connectedCallback();
     registerModuleRoles(appSecurityRoles as AppModuleRoles);
     void this.load();
+    void fetchBadgeConfig().then((config) => (this.frameOptions = config));
   }
 
   protected override render(): unknown {
@@ -93,16 +95,17 @@ export class WuiAuthBadge extends LitElement {
             l'enrôlement à une personne habilitée.
           </p>`
         : this.enrolling
-        ? html`<div class="row">
-            <input
-              type="password"
-              autocomplete="off"
-              placeholder="Présentez le badge au lecteur"
-              aria-label="Numéro du badge"
-              @keydown=${this.handleKey}
-            />
-            <ix-button variant="secondary" @click=${() => (this.enrolling = false)}>Annuler</ix-button>
-          </div>`
+        ? html`<wui-auth-badge-reader
+              heading=${this.associating ? 'Lecture du badge…' : 'Présentez votre badge'}
+              .message=${this.readerError}
+              tone=${this.readerError ? 'error' : ''}
+              .options=${this.frameOptions}
+              ?paused=${this.associating}
+              @badge-read=${(e: CustomEvent<string>) => void this.associate(e.detail)}
+            ></wui-auth-badge-reader>
+            <div class="row">
+              <ix-button variant="secondary" @click=${() => (this.enrolling = false)}>Annuler</ix-button>
+            </div>`
         : html`<div class="row">
             <ix-button data-testid="enrol-badge" @click=${this.startEnrolment}>
               ${this.me.badge ? 'Associer un autre badge' : 'Associer un badge'}
@@ -124,35 +127,31 @@ export class WuiAuthBadge extends LitElement {
     }
   }
 
-  private async startEnrolment(): Promise<void> {
+  private startEnrolment(): void {
     this.enrolling = true;
+    this.readerError = '';
     this.message = '';
-    await this.updateComplete;
-    this.field?.focus();
   }
 
-  private async handleKey(event: KeyboardEvent): Promise<void> {
-    if (event.key !== 'Enter') return;
-    const uid = (event.target as HTMLInputElement).value.trim();
-    (event.target as HTMLInputElement).value = '';
-    if (!uid) return;
+  private async associate(uid: string): Promise<void> {
+    this.associating = true;
     try {
-      const result = await fetchAsUser<{ status: 'ok' | 'taken' | 'invalid' }>(`${API}/me`, {
+      const { status } = await fetchAsUser<{ status: 'ok' | 'taken' | 'invalid' }>(`${API}/me`, {
         method: 'PUT',
         body: JSON.stringify({ uid })
       });
-      this.failed = result.status !== 'ok';
-      this.message =
-        result.status === 'ok'
-          ? 'Badge associé : il ouvre désormais votre session.'
-          : result.status === 'taken'
-            ? 'Ce badge est déjà associé à un autre compte.'
-            : 'Numéro de badge trop court.';
-      if (result.status === 'ok') this.enrolling = false;
-      await this.load();
+      if (status === 'ok') {
+        this.enrolling = false;
+        this.failed = false;
+        this.message = 'Badge associé : il ouvre désormais votre session.';
+        await this.load();
+      } else {
+        this.readerError = status === 'taken' ? 'Ce badge est déjà associé à un autre compte.' : 'Numéro de badge trop court.';
+      }
     } catch (error) {
-      this.failed = true;
-      this.message = `Association impossible (${String(error)}).`;
+      this.readerError = `Association impossible (${String(error)}).`;
+    } finally {
+      this.associating = false;
     }
   }
 

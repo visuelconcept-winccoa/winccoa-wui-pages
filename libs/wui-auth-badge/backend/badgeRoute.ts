@@ -7,8 +7,8 @@
 //   GET    /config          the reader's frame (prefix, timing), the login enabled
 //   POST   /login           { uid, dbrw? }  the badge login — no session needed
 //   GET    /me              the logged-in user's badge   (Authorization: Bearer <WebUI token>)
-//   PUT    /me              { uid }  associate a badge    (idem; selfEnrolment or `enrol`)
-//   DELETE /me              remove it                     (idem)
+//   PUT    /me              { uid }  associate a badge    (idem; selfEnrolment only)
+//   DELETE /me              remove it                     (idem; selfEnrolment only)
 //   GET    /settings        the settings                  (idem)
 //   PUT    /settings        change them                   (idem; `configure`)
 //   GET    /users           the users and their badge     (idem; `enrol`)

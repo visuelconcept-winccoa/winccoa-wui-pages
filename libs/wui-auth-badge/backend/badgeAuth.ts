@@ -18,8 +18,8 @@
 //     /WebUI_Token signs it after a password (oaAuth.ts).
 //
 // And for the logged-in user (their token, never a name sent by the page):
-// their badge, associated or removed — when the settings let every user do it
-// (`selfEnrolment`), else with the `enrol` role only.
+// their badge, associated or removed — only when the settings let every user
+// do it (`selfEnrolment`); else on the "Badges" page, by the `enrol` role.
 //
 // The "Badges" page: the settings (badgeSettings.ts; the `configure` role) and
 // any user's badge (the `enrol` role). The roles are Application Security's,
@@ -31,7 +31,7 @@
 import { Request, Response } from 'ultimate-express';
 
 import { identityOfUsername, roleAssignments, roleGranted } from './appSecurityGuard';
-import { BadgeSettings, readSettings, writeSettings } from './badgeSettings';
+import { BadgeSettings, DEFAULT_SETTINGS, readSettings, validSetting, writeSettings } from './badgeSettings';
 import {
   audit,
   clientAddress,
@@ -46,14 +46,7 @@ import {
 
 const MAX_CONSECUTIVE_FAILURES = 3;
 const LOCK_DURATION_MS = 15 * 60 * 1000;
-const MIN_UID_LENGTH = 4;
 const MAX_ITEM_LENGTH = 64;
-
-const BADGE_FRAME = {
-  prefix: process.env['WUI_BADGE_PREFIX'] ?? process.env['MSP_BADGE_PREFIX'] ?? '',
-  maxFrameMs: 150,
-  minUidLength: MIN_UID_LENGTH
-};
 
 const SETTING = 'RFID_UID';
 const SETTING_NAME = 'Numéro de badge RFID';
@@ -80,7 +73,8 @@ export class BadgeAuth {
 
   /** GET /config — the reader's frame, and whether the badge login is enabled. */
   getConfig = async (_req: Request, res: Response): Promise<void> => {
-    res.json({ ...BADGE_FRAME, enabled: (await readSettings()).badgeLoginEnabled });
+    const { prefix, maxFrameMs, minUidLength, endKey, badgeLoginEnabled } = await readSettings();
+    res.json({ prefix, maxFrameMs, minUidLength, endKey, enabled: badgeLoginEnabled });
   };
 
   /**
@@ -161,7 +155,7 @@ export class BadgeAuth {
   /**
    * GET /me — the logged-in user's badge:
    * { username, badge: last digits | null, selfEnrolment, canChange }
-   * (`canChange`: the settings' selfEnrolment, or the `enrol` role).
+   * (`canChange`: the settings' selfEnrolment — the `enrol` role does not open it).
    */
   me = async (req: Request, res: Response): Promise<void> => {
     const user = await sessionUser(req).catch(() => null);
@@ -175,7 +169,7 @@ export class BadgeAuth {
       username: user.username,
       badge: uid ? lastDigits(uid) : null,
       selfEnrolment,
-      canChange: await this.canChangeOwn(user.username)
+      canChange: selfEnrolment
     });
   };
 
@@ -186,7 +180,7 @@ export class BadgeAuth {
       res.status(401).json({ status: 'error', error: 'not logged in' });
       return;
     }
-    if (!(await this.canChangeOwn(user.username))) {
+    if (!(await this.canChangeOwn())) {
       void audit({ action: 'BADGE_REFUSE_ENROLEMENT', username: user.username, userId: user.userId, host: clientAddress(req), reason: "Association par l'utilisateur non autorisée" });
       res.status(403).json({ status: 'forbidden' });
       return;
@@ -208,7 +202,7 @@ export class BadgeAuth {
       res.status(401).json({ status: 'error', error: 'not logged in' });
       return;
     }
-    if (!(await this.canChangeOwn(user.username))) {
+    if (!(await this.canChangeOwn())) {
       res.status(403).json({ status: 'forbidden' });
       return;
     }
@@ -228,16 +222,26 @@ export class BadgeAuth {
     res.json(await readSettings());
   };
 
-  /** PUT /settings  { badgeLoginEnabled?, selfEnrolment? } — the `configure` role: the stored settings. */
+  /**
+   * PUT /settings  { badgeLoginEnabled?, selfEnrolment?, prefix?, maxFrameMs?, minUidLength?, endKey? }
+   * — the `configure` role: the stored settings; 400 on a value out of bounds (badgeSettings.ts).
+   */
   putSettings = async (req: Request, res: Response): Promise<void> => {
     const actor = await this.authorize(req, res, 'configure');
     if (!actor) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const patch: Partial<BadgeSettings> = {};
-    if (typeof body['badgeLoginEnabled'] === 'boolean') patch.badgeLoginEnabled = body['badgeLoginEnabled'];
-    if (typeof body['selfEnrolment'] === 'boolean') patch.selfEnrolment = body['selfEnrolment'];
+    const patch: Record<string, unknown> = {};
+    for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof BadgeSettings)[]) {
+      if (!(key in body)) continue;
+      const value = validSetting(key, body[key]);
+      if (value === undefined) {
+        res.status(400).json({ status: 'invalid', field: key });
+        return;
+      }
+      patch[key] = value;
+    }
     const before = await readSettings();
-    const after = await writeSettings(patch);
+    const after = await writeSettings(patch as Partial<BadgeSettings>);
     const changes = (Object.keys(patch) as (keyof BadgeSettings)[])
       .filter((key) => before[key] !== after[key])
       .map((key) => `${key}=${String(after[key])}`);
@@ -299,16 +303,16 @@ export class BadgeAuth {
   /** Associates `uid` with a user, refused when it is another user's. */
   private async associate(userId: number, rawUid: unknown): Promise<EnrolStatus> {
     const uid = typeof rawUid === 'string' ? rawUid.trim() : '';
-    if (uid.length < MIN_UID_LENGTH) return 'invalid';
+    if (uid.length < (await readSettings()).minUidLength) return 'invalid';
     const owner = await this.userIdOf(uid);
     if (owner !== undefined && owner !== userId) return 'taken';
     await writeUserSetting(userId, SETTING, SETTING_NAME, [uid]);
     return 'ok';
   }
 
-  /** A user changes their own badge: every user with selfEnrolment, else the `enrol` role. */
-  private async canChangeOwn(username: string): Promise<boolean> {
-    return (await readSettings()).selfEnrolment || (await this.hasRole(username, 'enrol'));
+  /** A user changes their own badge on "Mon badge" with selfEnrolment only; else on "Badges", by the `enrol` role. */
+  private async canChangeOwn(): Promise<boolean> {
+    return (await readSettings()).selfEnrolment;
   }
 
   private async hasRole(username: string, role: Role): Promise<boolean> {
