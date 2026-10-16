@@ -8,6 +8,9 @@
 //                       `disabled`, the login page sends to the password form)
 //   selfEnrolment       every user associates their own badge on "Mon badge"
 //                       (false: a user with the `enrol` role does it on "Badges")
+//   hashBadges          the badge numbers stored as a one-way fingerprint
+//                       (badgeHash.ts); turned on, every number in clear is
+//                       rewritten — turned off, the fingerprints stay
 //
 // and the reader's frame (badge-frame-detector.ts, the browser's side; GET
 // /config hands it out):
@@ -33,6 +36,7 @@ export type EndKey = 'Enter' | 'Tab';
 export interface BadgeSettings {
   badgeLoginEnabled: boolean;
   selfEnrolment: boolean;
+  hashBadges: boolean;
   prefix: string;
   maxFrameMs: number;
   minUidLength: number;
@@ -42,6 +46,7 @@ export interface BadgeSettings {
 export const DEFAULT_SETTINGS: BadgeSettings = {
   badgeLoginEnabled: true,
   selfEnrolment: true,
+  hashBadges: false,
   prefix: process.env['WUI_BADGE_PREFIX'] ?? process.env['MSP_BADGE_PREFIX'] ?? '',
   maxFrameMs: 150,
   minUidLength: 4,
@@ -58,6 +63,7 @@ export function validSetting<K extends keyof BadgeSettings>(key: K, raw: unknown
     switch (key) {
       case 'badgeLoginEnabled':
       case 'selfEnrolment':
+      case 'hashBadges':
         return typeof raw === 'boolean' ? raw : undefined;
       case 'prefix':
         // Printable characters only: the reader types them.

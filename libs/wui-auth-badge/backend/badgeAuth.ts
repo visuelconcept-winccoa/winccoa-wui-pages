@@ -26,11 +26,16 @@
 // module `auth-badge` (src/app-security.roles.json), checked here against the
 // user of the request's WebUI token: a badge session has no webserver session,
 // so the guard's own `requireRole` could not tell who calls.
+//
+// The numbers may be stored as one-way fingerprints (the `hashBadges` setting,
+// badgeHash.ts): turned on, every number in clear is rewritten as one; turned
+// off, they stay — a badge then matches in clear or as a fingerprint.
 // -----------------------------------------------------------------------------
 
 import { Request, Response } from 'ultimate-express';
 
 import { identityOfUsername, roleAssignments, roleGranted } from './appSecurityGuard';
+import { hashKey, hashUid, isHashed, matches } from './badgeHash';
 import { BadgeSettings, DEFAULT_SETTINGS, readSettings, validSetting, writeSettings } from './badgeSettings';
 import {
   audit,
@@ -56,6 +61,7 @@ const MODULE = 'auth-badge';
 type Role = 'configure' | 'enrol';
 
 type EnrolStatus = 'ok' | 'taken' | 'invalid';
+type TestStatus = 'match' | 'other' | 'none' | 'invalid';
 
 /** Who calls a role-guarded route: the user of their WebUI token. */
 interface Actor {
@@ -154,7 +160,8 @@ export class BadgeAuth {
 
   /**
    * GET /me — the logged-in user's badge:
-   * { username, badge: last digits | null, selfEnrolment, canChange }
+   * { username, badge: last digits | null, hashed, selfEnrolment, canChange }
+   * (`hashed`: a badge is associated, stored as a fingerprint — no digits)
    * (`canChange`: the settings' selfEnrolment — the `enrol` role does not open it).
    */
   me = async (req: Request, res: Response): Promise<void> => {
@@ -167,7 +174,7 @@ export class BadgeAuth {
     const uid = (await readUserSettings(SETTING, SETTING_NAME)).get(user.userId)?.[0];
     res.json({
       username: user.username,
-      badge: uid ? lastDigits(uid) : null,
+      ...badgeView(uid),
       selfEnrolment,
       canChange: selfEnrolment
     });
@@ -223,8 +230,10 @@ export class BadgeAuth {
   };
 
   /**
-   * PUT /settings  { badgeLoginEnabled?, selfEnrolment?, prefix?, maxFrameMs?, minUidLength?, endKey? }
-   * — the `configure` role: the stored settings; 400 on a value out of bounds (badgeSettings.ts).
+   * PUT /settings  { badgeLoginEnabled?, selfEnrolment?, hashBadges?, prefix?, maxFrameMs?, minUidLength?, endKey? }
+   * — the `configure` role: the stored settings, and `migrated`: the numbers in clear rewritten as
+   * fingerprints (`hashBadges: true` — done before the setting is stored: a failure leaves it off);
+   * 400 on a value out of bounds (badgeSettings.ts).
    */
   putSettings = async (req: Request, res: Response): Promise<void> => {
     const actor = await this.authorize(req, res, 'configure');
@@ -241,6 +250,11 @@ export class BadgeAuth {
       patch[key] = value;
     }
     const before = await readSettings();
+    // Idempotent: asked again, it rewrites what was left in clear.
+    const migrated = patch['hashBadges'] === true ? await this.hashClearBadges() : 0;
+    if (migrated > 0) {
+      void audit({ action: 'BADGES_CHIFFRES', username: actor.username, userId: actor.userId, host: clientAddress(req), reason: `${migrated} code(s) badge chiffré(s)` });
+    }
     const after = await writeSettings(patch as Partial<BadgeSettings>);
     const changes = (Object.keys(patch) as (keyof BadgeSettings)[])
       .filter((key) => before[key] !== after[key])
@@ -248,10 +262,10 @@ export class BadgeAuth {
     if (changes.length > 0) {
       void audit({ action: 'CONFIG_BADGE_MODIFIEE', username: actor.username, userId: actor.userId, host: clientAddress(req), reason: changes.join(', ') });
     }
-    res.json(after);
+    res.json({ ...after, migrated });
   };
 
-  /** GET /users — the `enrol` role: every user a badge can open (root excepted), with their badge's last digits. */
+  /** GET /users — the `enrol` role: every user a badge can open (root excepted), with their badge (`badge`, `hashed`: as for /me). */
   listUsers = async (req: Request, res: Response): Promise<void> => {
     if (!(await this.authorize(req, res, 'enrol'))) return;
     const badges = await readUserSettings(SETTING, SETTING_NAME);
@@ -260,7 +274,7 @@ export class BadgeAuth {
       .sort((a, b) => a.username.localeCompare(b.username))
       .map((user) => {
         const uid = badges.get(user.userId)?.[0];
-        return { ...user, badge: uid ? lastDigits(uid) : null };
+        return { ...user, ...badgeView(uid) };
       });
     res.json(list);
   };
@@ -284,6 +298,34 @@ export class BadgeAuth {
     res.json({ status });
   };
 
+  /**
+   * POST /users/:userId/test  { uid } — the `enrol` role: does the presented badge open that user's session?
+   *   → { status: 'match' } | { status: 'other', username } (another user's) | { status: 'none' } | { status: 'invalid' }
+   * The login's own rules (the `hashBadges` setting); nothing is written. A disabled user's match is still a match.
+   */
+  testUser = async (req: Request, res: Response): Promise<void> => {
+    const actor = await this.authorize(req, res, 'enrol');
+    if (!actor) return;
+    const target = await userById(Number(req.params['userId']));
+    if (!target) {
+      res.status(404).json({ status: 'error', error: 'unknown user' });
+      return;
+    }
+    const body = (req.body ?? {}) as { uid?: unknown };
+    const uid = typeof body.uid === 'string' ? body.uid.trim() : '';
+    if (uid.length < (await readSettings()).minUidLength) {
+      res.json({ status: 'invalid' satisfies TestStatus });
+      return;
+    }
+    const owner = await this.userIdOf(uid);
+    if (owner === target.userId) {
+      res.json({ status: 'match' satisfies TestStatus });
+      return;
+    }
+    const other = owner === undefined ? undefined : await userById(owner);
+    res.json(other ? { status: 'other' satisfies TestStatus, username: other.username } : { status: 'none' satisfies TestStatus });
+  };
+
   /** DELETE /users/:userId — the `enrol` role: removes that user's badge. */
   forgetUser = async (req: Request, res: Response): Promise<void> => {
     const actor = await this.authorize(req, res, 'enrol');
@@ -303,11 +345,28 @@ export class BadgeAuth {
   /** Associates `uid` with a user, refused when it is another user's. */
   private async associate(userId: number, rawUid: unknown): Promise<EnrolStatus> {
     const uid = typeof rawUid === 'string' ? rawUid.trim() : '';
-    if (uid.length < (await readSettings()).minUidLength) return 'invalid';
-    const owner = await this.userIdOf(uid);
+    const { minUidLength, hashBadges } = await readSettings();
+    // A number shaped as a fingerprint would never match again.
+    if (uid.length < minUidLength || isHashed(uid)) return 'invalid';
+    // Refused in either form: a number in clear left over must not be given twice.
+    const owner = await this.userIdOf(uid, { anyForm: true });
     if (owner !== undefined && owner !== userId) return 'taken';
-    await writeUserSetting(userId, SETTING, SETTING_NAME, [uid]);
+    const stored = hashBadges ? hashUid(uid, hashKey(true) as Buffer) : uid;
+    await writeUserSetting(userId, SETTING, SETTING_NAME, [stored]);
     return 'ok';
+  }
+
+  /** Rewrites every number stored in clear as its fingerprint; how many were. */
+  private async hashClearBadges(): Promise<number> {
+    const key = hashKey(true) as Buffer;
+    let count = 0;
+    for (const [userId, content] of await readUserSettings(SETTING, SETTING_NAME)) {
+      const stored = content[0]?.trim();
+      if (!stored || isHashed(stored)) continue;
+      await writeUserSetting(userId, SETTING, SETTING_NAME, [hashUid(stored, key)]);
+      count += 1;
+    }
+    return count;
   }
 
   /** A user changes their own badge on "Mon badge" with selfEnrolment only; else on "Badges", by the `enrol` role. */
@@ -346,10 +405,16 @@ export class BadgeAuth {
     return actor;
   }
 
-  /** The user a badge number is associated with. */
-  private async userIdOf(uid: string): Promise<number | undefined> {
+  /**
+   * The user a badge number is associated with — by the login's rules: with
+   * `hashBadges`, fingerprints only; without, in clear or as a fingerprint.
+   * `anyForm`: either form whatever the setting (duplicates).
+   */
+  private async userIdOf(uid: string, { anyForm = false } = {}): Promise<number | undefined> {
+    const hashOnly = !anyForm && (await readSettings()).hashBadges;
+    const key = hashKey(false);
     for (const [userId, content] of await readUserSettings(SETTING, SETTING_NAME)) {
-      if (content[0]?.trim() === uid) return userId;
+      if (content[0] !== undefined && matches(content[0], uid, key, hashOnly)) return userId;
     }
     return undefined;
   }
@@ -368,7 +433,11 @@ export class BadgeAuth {
   }
 }
 
-/** What the browser may see of a badge number: its last digits. */
-function lastDigits(uid: string): string {
-  return uid.slice(-4);
+/**
+ * What the browser may see of a stored badge: the last digits of a number in
+ * clear (`badge`), nothing of a fingerprint (`hashed`).
+ */
+function badgeView(stored: string | undefined): { badge: string | null; hashed: boolean } {
+  if (!stored) return { badge: null, hashed: false };
+  return isHashed(stored) ? { badge: null, hashed: true } : { badge: stored.slice(-4), hashed: false };
 }

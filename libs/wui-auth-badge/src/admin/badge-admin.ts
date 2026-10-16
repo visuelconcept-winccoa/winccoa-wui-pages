@@ -8,15 +8,18 @@
  *   configure   the settings: the badge login enabled; every user enrols
  *               their own badge on "Mon badge" (self-service), or not; the
  *               reader's frame (prefix, longest burst, shortest number, end
- *               key), saved together
+ *               key), saved together; the numbers stored as one-way
+ *               fingerprints (confirmed first: the numbers in clear are
+ *               rewritten, for good)
  *   enrol       the WinCC OA users and their badge: associate one, presented
- *               to the reader (badge-reader.ts, the login page's capture), or
+ *               to the reader (badge-reader.ts, the login page's capture),
+ *               test that a presented badge opens that user's session, or
  *               remove it
  *
  * Two tabs: "Utilisateurs" (`enrol`; hidden without it) and "Configuration".
  * Without either role the page only says so. The server checks the same roles
  * on every call (backend/badgeAuth.ts); the badge numbers never reach the
- * browser, only their last digits.
+ * browser, only the last digits of a number in clear.
  */
 import { fetchAsUser } from '../session.js';
 import { DEFAULT_BADGE_FRAME_OPTIONS, type BadgeFrameOptions } from '../badge-frame-detector.js';
@@ -38,6 +41,7 @@ type ReaderSettings = Pick<BadgeFrameOptions, 'prefix' | 'maxFrameMs' | 'minUidL
 interface BadgeSettings extends ReaderSettings {
   badgeLoginEnabled: boolean;
   selfEnrolment: boolean;
+  hashBadges: boolean;
 }
 
 /** The server's bounds (backend/badgeSettings.ts, LIMITS). */
@@ -52,11 +56,20 @@ interface BadgeUser {
   username: string;
   fullName: string;
   enabled: boolean;
-  /** The last digits of the associated number, or null when there is none. */
+  /** The last digits of the associated number in clear, or null (none, or a fingerprint). */
   badge: string | null;
+  /** A badge is associated, stored as a fingerprint. */
+  hashed: boolean;
 }
 
 type EnrolStatus = 'ok' | 'taken' | 'invalid';
+type TestResult = { status: 'match' | 'none' | 'invalid' } | { status: 'other'; username: string };
+/** What the badge presented under a user's row is for. */
+type CaptureMode = 'enrol' | 'test';
+
+function hasBadge(user: BadgeUser): boolean {
+  return user.badge !== null || user.hashed;
+}
 
 @customElement('wui-auth-badge-admin')
 export class WuiAuthBadgeAdmin extends LitElement {
@@ -105,6 +118,11 @@ export class WuiAuthBadgeAdmin extends LitElement {
     tr.enrolment td {
       padding: 1rem 0.5rem;
     }
+    .confirm {
+      padding: 0.75rem 1rem;
+      border: 1px solid var(--theme-color-warning);
+      border-radius: var(--theme-default-border-radius);
+    }
     .filter {
       max-width: 24rem;
     }
@@ -131,12 +149,14 @@ export class WuiAuthBadgeAdmin extends LitElement {
   @state() private settings?: BadgeSettings;
   @state() private users: BadgeUser[] = [];
   @state() private filter = '';
-  /** The user whose badge is being presented, or the one whose removal awaits confirmation. */
-  @state() private enrolling?: number;
+  /** The user whose badge is being presented (to enrol or to test), or the one whose removal awaits confirmation. */
+  @state() private capture?: { userId: number; mode: CaptureMode };
   @state() private confirmingRemoval?: number;
+  /** Hashing asked for, awaiting confirmation. */
+  @state() private confirmingHash = false;
   @state() private message = '';
   @state() private failed = false;
-  /** A badge presented is being associated. */
+  /** A badge presented is being associated or tested. */
   @state() private associating = false;
   /** The last badge presented was refused: why, under the reader. */
   @state() private readerError = '';
@@ -156,7 +176,8 @@ export class WuiAuthBadgeAdmin extends LitElement {
         this.canConfigure = configure;
         this.canEnrol = enrol;
         if (!enrol) {
-          this.enrolling = this.confirmingRemoval = undefined;
+          this.capture = undefined;
+          this.confirmingRemoval = undefined;
           this.usersRequested = false;
         } else if (!this.usersRequested) {
           this.usersRequested = true;
@@ -191,7 +212,8 @@ export class WuiAuthBadgeAdmin extends LitElement {
   private onTabChange(event: CustomEvent<string | undefined>): void {
     if (!event.detail || event.detail === this.activeTab) return;
     // Leaving the users: no badge awaited, no removal pending.
-    this.enrolling = this.confirmingRemoval = undefined;
+    this.capture = undefined;
+    this.confirmingRemoval = undefined;
     this.activeTab = event.detail;
   }
 
@@ -229,6 +251,37 @@ export class WuiAuthBadgeAdmin extends LitElement {
                 </div>
               </span>
             </label>
+            <label class="option">
+              <ix-toggle
+                hide-text
+                data-testid="hash-badges"
+                .checked=${settings.hashBadges || this.confirmingHash}
+                ?disabled=${!this.canConfigure || this.confirmingHash}
+                @checkedChange=${(e: CustomEvent<boolean>) => this.onHashToggle(e.detail)}
+              ></ix-toggle>
+              <span>
+                Chiffrer les codes badge
+                <div class="hint">
+                  Les numéros sont stockés sous forme d'empreinte irréversible (HMAC-SHA256, clé secrète du serveur) et
+                  seule l'empreinte est reconnue. Désactivée : les nouveaux badges sont stockés en clair ; les codes
+                  déjà chiffrés le restent et sont toujours reconnus.
+                </div>
+              </span>
+            </label>
+            ${this.confirmingHash
+              ? html`<div class="confirm" role="alertdialog" aria-label="Confirmer le chiffrement">
+                  <p>
+                    Tous les codes badge enregistrés en clair seront réécrits chiffrés. C'est définitif : désactiver
+                    l'option plus tard ne les déchiffrera pas. Sauvegardez la clé du serveur
+                    (<code>config/wui-auth-badge.key</code>) avec le projet : sans elle, les badges chiffrés devront être
+                    réenrôlés.
+                  </p>
+                  <div class="buttons">
+                    <ix-button data-testid="confirm-hash" @click=${() => void this.confirmHash()}>Chiffrer les codes</ix-button>
+                    <ix-button variant="secondary" @click=${() => (this.confirmingHash = false)}>Annuler</ix-button>
+                  </div>
+                </div>`
+              : nothing}
             ${this.canConfigure ? nothing : html`<p class="hint">Modification réservée au rôle « Configurer ».</p>`}`
         : html`<p>Chargement…</p>`}
     </section>
@@ -335,38 +388,45 @@ export class WuiAuthBadgeAdmin extends LitElement {
     return html`<tr class=${user.enabled ? '' : 'disabled'}>
       <td>${user.username}${user.enabled ? nothing : html` (désactivé)`}</td>
       <td>${user.fullName}</td>
-      <td>${user.badge ? html`•••• ${user.badge}` : '—'}</td>
+      <td>${user.hashed ? 'Associé (chiffré)' : user.badge ? html`•••• ${user.badge}` : '—'}</td>
       <td><div class="actions">${this.renderActions(user)}</div></td>
     </tr>
-    ${this.enrolling === user.userId ? this.renderEnrolment(user) : nothing}`;
+    ${this.capture?.userId === user.userId ? this.renderCapture(user, this.capture.mode) : nothing}`;
   }
 
-  private renderEnrolment(user: BadgeUser): unknown {
+  private renderCapture(user: BadgeUser, mode: CaptureMode): unknown {
+    const prompt = mode === 'test' ? `Présentez le badge à tester pour ${user.username}` : `Présentez le badge de ${user.username}`;
     return html`<tr class="enrolment">
       <td colspan="4">
         <wui-auth-badge-reader
-          heading=${this.associating ? 'Lecture du badge…' : `Présentez le badge de ${user.username}`}
+          heading=${this.associating ? 'Lecture du badge…' : prompt}
           .message=${this.readerError}
           tone=${this.readerError ? 'error' : ''}
           .options=${this.frameOptions}
           ?paused=${this.associating}
-          @badge-read=${(e: CustomEvent<string>) => void this.associate(user, e.detail)}
+          @badge-read=${(e: CustomEvent<string>) =>
+            void (mode === 'test' ? this.testBadge(user, e.detail) : this.associate(user, e.detail))}
         ></wui-auth-badge-reader>
-        <ix-button variant="secondary" @click=${() => (this.enrolling = undefined)}>Annuler</ix-button>
+        <ix-button variant="secondary" @click=${() => (this.capture = undefined)}>Annuler</ix-button>
       </td>
     </tr>`;
   }
 
   private renderActions(user: BadgeUser): unknown {
-    if (this.enrolling === user.userId) return nothing;
+    if (this.capture?.userId === user.userId) return nothing;
     if (this.confirmingRemoval === user.userId) {
       return html`<ix-button variant="danger-primary" @click=${() => void this.removeBadge(user)}>Confirmer le retrait</ix-button>
         <ix-button variant="secondary" @click=${() => (this.confirmingRemoval = undefined)}>Annuler</ix-button>`;
     }
-    return html`<ix-button data-testid="enrol-${user.userId}" @click=${() => this.startEnrolment(user)}>
-        ${user.badge ? 'Remplacer' : 'Associer'}
+    return html`${hasBadge(user)
+        ? html`<ix-button variant="secondary" data-testid="test-${user.userId}" @click=${() => this.startCapture(user, 'test')}>
+            Tester
+          </ix-button>`
+        : nothing}
+      <ix-button data-testid="enrol-${user.userId}" @click=${() => this.startCapture(user, 'enrol')}>
+        ${hasBadge(user) ? 'Remplacer' : 'Associer'}
       </ix-button>
-      ${user.badge
+      ${hasBadge(user)
         ? html`<ix-button variant="secondary" @click=${() => (this.confirmingRemoval = user.userId)}>Retirer</ix-button>`
         : nothing}`;
   }
@@ -399,18 +459,37 @@ export class WuiAuthBadgeAdmin extends LitElement {
 
   private async patchSettings(patch: Partial<BadgeSettings>): Promise<void> {
     try {
-      const settings = await fetchAsUser<BadgeSettings>(`${API}/settings`, { method: 'PUT', body: JSON.stringify(patch) });
+      const { migrated, ...settings } = await fetchAsUser<BadgeSettings & { migrated?: number }>(`${API}/settings`, {
+        method: 'PUT',
+        body: JSON.stringify(patch)
+      });
       // The reader's draft follows a save of its own fields, not a toggle's.
       this.applySettings(settings, Object.keys(patch).some((key) => key in readerOf(settings)));
-      this.report(true, 'Options enregistrées.');
+      this.report(true, migrated ? `Options enregistrées : ${migrated} code(s) badge chiffré(s).` : 'Options enregistrées.');
+      if (migrated) await this.loadUsers();
     } catch (error) {
       this.report(false, `Options non enregistrées (${String(error)}).`);
       await this.loadSettings();
     }
   }
 
-  private startEnrolment(user: BadgeUser): void {
-    this.enrolling = user.userId;
+  /** Turning hashing on asks for confirmation first; turning it off does not (the fingerprints stay). */
+  private onHashToggle(checked: boolean): void {
+    if (!this.settings || checked === this.settings.hashBadges) return;
+    if (checked) {
+      this.confirmingHash = true;
+      return;
+    }
+    void this.patchSettings({ hashBadges: false });
+  }
+
+  private async confirmHash(): Promise<void> {
+    this.confirmingHash = false;
+    await this.patchSettings({ hashBadges: true });
+  }
+
+  private startCapture(user: BadgeUser, mode: CaptureMode): void {
+    this.capture = { userId: user.userId, mode };
     this.confirmingRemoval = undefined;
     this.readerError = '';
     this.message = '';
@@ -424,7 +503,7 @@ export class WuiAuthBadgeAdmin extends LitElement {
         body: JSON.stringify({ uid })
       });
       if (status === 'ok') {
-        this.enrolling = undefined;
+        this.capture = undefined;
         this.report(true, `Badge associé au compte ${user.username}.`);
         await this.loadUsers();
       } else {
@@ -432,6 +511,33 @@ export class WuiAuthBadgeAdmin extends LitElement {
       }
     } catch (error) {
       this.readerError = `Association impossible (${String(error)}).`;
+    } finally {
+      this.associating = false;
+    }
+  }
+
+  /** Does the presented badge open that user's session — by the login's own rules? Nothing is written. */
+  private async testBadge(user: BadgeUser, uid: string): Promise<void> {
+    this.associating = true;
+    try {
+      const result = await fetchAsUser<TestResult>(`${API}/users/${user.userId}/test`, {
+        method: 'POST',
+        body: JSON.stringify({ uid })
+      });
+      if (result.status === 'invalid') {
+        this.readerError = 'Numéro de badge trop court.';
+        return;
+      }
+      this.capture = undefined;
+      if (result.status === 'match') {
+        this.report(true, `Badge reconnu : il ouvre la session de ${user.username}${user.enabled ? '' : ' (compte désactivé)'}.`);
+      } else if (result.status === 'other') {
+        this.report(false, `Ce badge ne correspond pas à ${user.username} : il est associé au compte ${result.username}.`);
+      } else {
+        this.report(false, `Ce badge ne correspond pas à ${user.username} : il n'est associé à aucun compte.`);
+      }
+    } catch (error) {
+      this.readerError = `Test impossible (${String(error)}).`;
     } finally {
       this.associating = false;
     }
