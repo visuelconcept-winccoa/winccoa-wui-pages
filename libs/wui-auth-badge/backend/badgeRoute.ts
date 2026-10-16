@@ -13,6 +13,7 @@
 //   PUT    /settings        change them                   (idem; `configure`)
 //   GET    /users           the users and their badge     (idem; `enrol`)
 //   PUT    /users/:userId   { uid }  associate a badge    (idem; `enrol`)
+//   POST   /users/:userId/test  { uid }  does it open that user's session (idem; `enrol`)
 //   DELETE /users/:userId   remove it                     (idem; `enrol`)
 // -----------------------------------------------------------------------------
 
@@ -44,6 +45,7 @@ export class BadgeRoute {
     router.put('/settings', safe(badge.putSettings));
     router.get('/users', safe(badge.listUsers));
     router.put('/users/:userId', safe(badge.enrolUser));
+    router.post('/users/:userId/test', safe(badge.testUser));
     router.delete('/users/:userId', safe(badge.forgetUser));
     return router;
   }

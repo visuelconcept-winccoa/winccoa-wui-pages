@@ -16,7 +16,7 @@ see the toolkit's `docs/REFERENCE.md`, "A module's login page"). A site selects
   role (below).
 - **Switch user** in the menu (the extension's `wui-switch-user-menu-item`).
 - Backend `/api/auth-badge` (`backend/badgeRoute.ts`, `badgeAuth.ts`,
-  `badgeSettings.ts`, `oaAuth.ts`).
+  `badgeHash.ts`, `badgeSettings.ts`, `oaAuth.ts`).
 
 Taken from fra-stma, then developed in `winccoa-wui-auth` beside
 `wui-auth-hello` (Windows Hello). The two share three files — keep them equal:
@@ -59,7 +59,7 @@ groups to them in `/app-security`:
 | Role | Gives |
 | --- | --- |
 | `configure` | the page's settings (shown read-only without it) |
-| `enrol` | the users list: associate a badge with any WinCC OA user (presented to the reader, a number another user has refused) or remove it — one's own included, here and not on Mon badge |
+| `enrol` | the users list: associate a badge with any WinCC OA user (presented to the reader, a number another user has refused), **test** that a presented badge opens that user's session (the login's own rules, nothing written: `POST /users/:userId/test` → `match`, `other` + the owner's name, `none`), or remove it — one's own included, here and not on Mon badge |
 
 The page has two tabs: **Utilisateurs** (shown with `enrol` only) and
 **Configuration** (the settings below; read-only without `configure`). A user
@@ -72,6 +72,7 @@ with neither role sees only that the page is reserved. The settings:
   behaviour of before 0.3): off, Mon badge only shows the badge and
   `PUT`/`DELETE /me` answer 403 to every user, `enrol` included (audit
   `BADGE_REFUSE_ENROLEMENT`): the badges are then enrolled on Badges only.
+- **Chiffrer les codes badge** (`hashBadges`, default off): below.
 - **Lecteur de badge** — the reader's frame, saved together (Enregistrer):
   the **prefix** typed before the number (16 characters at most, default
   `WUI_BADGE_PREFIX`), the **longest burst** from the first character to the
@@ -102,6 +103,34 @@ would let every call through. The module therefore requires `para` and
 `oaAuth.ts` now exports `users()` (the whole `_Users` directory): give
 `wui-auth-hello`'s copy the same export when it is next synced.
 
+## Badge numbers as fingerprints (`hashBadges`)
+
+Stored as `$hmac-sha256$<hex>` (`backend/badgeHash.ts`): HMAC-SHA256 of the
+number with a server secret key — one-way (it cannot be read back),
+deterministic (a badge is still looked up, a duplicate still refused), and
+keyed: a badge has few possible numbers (10^8 for eight digits), a plain hash
+would be reversed by trying them all.
+
+- **Turned on** (confirmed on the page): every number stored in clear is
+  rewritten as its fingerprint first (audit `BADGES_CHIFFRES`, the count), then
+  the setting is stored — a failure leaves it off. From then on new badges are
+  stored hashed, and **only fingerprints match** at login, on test and for
+  `taken`. Asked again, it rewrites whatever was left in clear.
+- **Turned off**: nothing is decrypted — it cannot be. The fingerprints stay
+  and still match; new badges are stored in clear; a stored value matches in
+  clear or as a fingerprint.
+- Duplicates are refused in either form, whatever the setting.
+- The pages never get digits of a hashed badge: `hashed: true`, `badge: null`
+  ("Associé (chiffré)", "code chiffré").
+
+The key: `WUI_BADGE_HASH_KEY` in the webserver's environment (its text as the
+key), else `wui-auth-badge.key` beside the project's config file (PVSS_II),
+32 random bytes in hex, generated (mode 0600) at the first activation — never
+just to compare: a lost key is not silently replaced. **Back it up with the
+project**: without it the hashed badges no longer open anything and must be
+enrolled again. Several webservers of one project share the file; give each
+other project the same `WUI_BADGE_HASH_KEY` to share badges.
+
 ## Here
 
 `npx wui dev` runs the **Mon badge** page with its mock (`mock/api.mjs`), not
@@ -110,7 +139,8 @@ as a user without `enrol` (turn self-service off with
 `PUT /api/auth-badge/settings`); **Badges** is in the same bundle
 (`wui-auth-badge-admin`) but not in the harness menu, which shows one entry
 per page. `npm test` checks its types
-(page and backend) and runs `src/badge-frame-detector.spec.ts`.
+(page and backend) and runs `src/badge-frame-detector.spec.ts` and
+`backend/badgeHash.spec.ts`. The mock hashes with a fixed dev key.
 
 ## Not done
 

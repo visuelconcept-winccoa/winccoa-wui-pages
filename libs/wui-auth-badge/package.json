@@ -1,8 +1,8 @@
 {
   "name": "@visuelconcept-winccoa/wui-auth-badge",
   "type": "module",
-  "version": "0.3.0",
-  "description": "Badge login for the WebUI shell — a login provider's login extension: an RFID reader in keyboard emulation, badge → user through the RFID_UID user setting, the login page locked after three unknown badges, an audit line per event; \"Mon badge\" (/auth-badge) lets a user associate their badge when self-service is on; \"Badges\" (/auth-badge/admin), by Application Security role, turns the badge login on or off, opens or closes self-service and enrols any user's badge; \"Switch user\" in the menu.",
+  "version": "0.4.0",
+  "description": "Badge login for the WebUI shell — a login provider's login extension: an RFID reader in keyboard emulation, badge → user through the RFID_UID user setting, the login page locked after three unknown badges, an audit line per event; \"Mon badge\" (/auth-badge) lets a user associate their badge when self-service is on; \"Badges\" (/auth-badge/admin), by Application Security role, turns the badge login on or off, opens or closes self-service, stores the numbers as one-way fingerprints (HMAC-SHA256), enrols any user's badge and tests that a badge opens their session; \"Switch user\" in the menu.",
   "author": {
     "name": "Visuel Concept"
   },
@@ -51,6 +51,7 @@
       "files": [
         "badgeRoute.ts",
         "badgeAuth.ts",
+        "badgeHash.ts",
         "badgeSettings.ts",
         "oaAuth.ts"
       ],
@@ -60,7 +61,8 @@
       "notes": [
         "reader frame prefix: WUI_BADGE_PREFIX in the webserver's environment, until one is saved on Badges",
         "audit lines go to an _AuditTrail DP, when it exists: auditDp in the [wui-auth] section of config/config (auditDp = \"AuditTrail_MSP\"), else WUI_AUTH_AUDIT_DP, else AuditTrail_Auth",
-        "settings (badge login enabled, self-service enrolment, the reader's frame: prefix, burst, minimum length, end key) in the DP WuiAuthBadge_Config.settings, its type and DP created at the first change"
+        "settings (badge login enabled, self-service enrolment, the reader's frame: prefix, burst, minimum length, end key) in the DP WuiAuthBadge_Config.settings, its type and DP created at the first change",
+        "badge numbers as fingerprints (hashBadges): the HMAC key is WUI_BADGE_HASH_KEY, else config/wui-auth-badge.key (generated at the first activation) — back it up with the project, without it the hashed badges must be enrolled again"
       ]
     }
   },

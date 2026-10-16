@@ -27,8 +27,10 @@ const API = '/api/auth-badge';
 
 interface MyBadge {
   username: string;
-  /** The last digits of the associated number, or null when there is none. */
+  /** The last digits of the associated number in clear, or null (none, or a fingerprint). */
   badge: string | null;
+  /** A badge is associated, stored as a fingerprint (no digits to show). */
+  hashed: boolean;
   /** The user may associate or remove their badge here: self-service on, roles aside. */
   canChange: boolean;
 }
@@ -84,14 +86,16 @@ export class WuiAuthBadge extends LitElement {
     return html`<div class="card">
       <ix-typography format="h2">Mon badge</ix-typography>
       <p>
-        ${this.me.badge
+        ${this.me.hashed
+          ? html`Un badge est associé au compte <b>${this.me.username}</b> (code chiffré).`
+          : this.me.badge
           ? html`Un badge est associé au compte <b>${this.me.username}</b> (numéro se terminant par
               <b>${this.me.badge}</b>).`
           : html`Aucun badge n'est associé au compte <b>${this.me.username}</b>.`}
       </p>
       ${!this.me.canChange
         ? html`<p>
-            Pour associer ${this.me.badge ? 'un autre badge' : 'un badge'} à votre compte ou le retirer, demandez
+            Pour associer ${this.hasBadge ? 'un autre badge' : 'un badge'} à votre compte ou le retirer, demandez
             l'enrôlement à une personne habilitée.
           </p>`
         : this.enrolling
@@ -108,14 +112,18 @@ export class WuiAuthBadge extends LitElement {
             </div>`
         : html`<div class="row">
             <ix-button data-testid="enrol-badge" @click=${this.startEnrolment}>
-              ${this.me.badge ? 'Associer un autre badge' : 'Associer un badge'}
+              ${this.hasBadge ? 'Associer un autre badge' : 'Associer un badge'}
             </ix-button>
-            ${this.me.badge
+            ${this.hasBadge
               ? html`<ix-button variant="secondary" data-testid="forget-badge" @click=${this.forget}>Retirer le badge</ix-button>`
               : nothing}
           </div>`}
       <p class=${this.failed ? 'error' : 'success'}>${this.message}</p>
     </div>`;
+  }
+
+  private get hasBadge(): boolean {
+    return this.me !== undefined && (this.me.badge !== null || this.me.hashed);
   }
 
   private async load(): Promise<void> {
