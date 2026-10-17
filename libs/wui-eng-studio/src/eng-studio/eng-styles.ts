@@ -24,9 +24,323 @@ export const engStudioStyles = [
     .topbar wui-content-header {
       min-width: 0;
     }
-    .lang-picker {
-      width: 6.5rem;
+    /* Model tab, MASTER–DETAIL: a narrow list of models, the content beside it. The
+       list is narrow on purpose — it answers "which model", not "what is in it". */
+    .split2.model {
+      grid-template-columns: minmax(14rem, 22%) 1fr;
+    }
+    .model-master-scroll {
+      flex: 1;
+      overflow: auto;
+      min-height: 0;
+      padding: 0.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    /* EVERY model verb lives in the detail header, top-right (New / Delete / Edit, then
+       Cancel / Save): they were split across the two columns, so "the actions" were
+       something to look for in two places. */
+    .model-detail .browser-head ix-button {
+      flex: 0 0 auto;
+    }
+
+    /* The datapoint search behind a leaf's magnifier — over the panel, dismissed by its
+       backdrop. A dialog rather than a third column: it answers one field, once. */
+    .dp-pick-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgb(0 0 0 / 45%);
+      z-index: 10;
+    }
+    .dp-pick {
+      position: absolute;
+      top: 12%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(34rem, 90%);
+      max-height: 70%;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--eng-primary);
+      border-radius: var(--eng-radius);
+      background: var(--eng-surface);
+      z-index: 11;
+      overflow: hidden;
+    }
+    /* The CHECK-IN REPORT, as a dialog: it can carry thousands of lines, and inline it simply
+       ran off the bottom of the screen. Wider than the datapoint search, and its list is the
+       part that scrolls — the counts stay in view. */
+    .report-dialog {
+      width: min(60rem, 94%);
+      max-height: 80%;
+      top: 8%;
+    }
+    .report-scroll {
+      overflow: auto;
+      min-height: 0;
+      padding: 0 0.5rem 0.5rem;
+    }
+    .report-scroll table.grid {
+      font-size: 0.75rem;
+    }
+    .dp-pick-body {
+      padding: 0.6rem 0.75rem 0.75rem;
+      overflow: auto;
+      min-height: 0;
+    }
+    .dp-pick-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+      margin-top: 0.35rem;
+    }
+
+    /* The source catalogs of a model: one per line, since a model may read several —
+       "use it" on the left, "mirror it into the structure" on the right. */
+    .box-list.source-list {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.2rem;
+      padding: 0 0.1rem 0.35rem;
+    }
+    .source-box {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .source-use,
+    .source-mirror {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      cursor: pointer;
+      min-width: 0;
+    }
+    .source-use {
+      flex: 0 1 auto;
+    }
+    /* The description of a model: free text (a sentence, not a structure), so it gets
+       the UI font and height rather than the outline editor's monospace. */
+    textarea.model-desc {
+      width: 100%;
+      box-sizing: border-box;
+      resize: vertical;
+      background: var(--eng-field-bg);
+      color: var(--eng-text);
+      border: 1px solid var(--eng-field-bdr);
+      border-radius: var(--eng-radius);
+      padding: 0.3rem 0.4rem;
+      font: inherit;
+      font-size: 0.75rem;
+      line-height: 1.4;
+    }
+    .gen-row-tall {
+      align-items: flex-start;
+    }
+    .gen-row-tall span {
+      padding-top: 0.3rem;
+    }
+    .gen-row-tall textarea {
+      flex: 1;
+      min-width: 0;
+    }
+
+    /* One INSTANCE in the Instances detail: its header row, then the DPEs it carries. */
+    .instance-block {
+      border: 1px solid var(--eng-border);
+      border-radius: var(--eng-radius);
+      margin-bottom: 0.5rem;
+      overflow: hidden;
+    }
+    .instance-block table.grid {
+      font-size: 0.75rem;
+    }
+
+    /* A NEW instance, declared on a row of the tree: the same shape as the instance rows
+       around it, with the two fields in place of the name and the equipment it reads. */
+    .tree-instance-draft {
+      border-color: var(--eng-primary);
+    }
+    .tree-instance-draft .instance-name {
+      flex: 1 1 40%;
+      min-width: 0;
+    }
+    .tree-instance-draft .instance-device {
+      flex: 1 1 40%;
+      min-width: 0;
+    }
+
+    /* Level 1 of the Model tab: the models, as rows. A dropdown hid how many there
+       were and how many instances each had produced. */
+    .model-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      margin: 0.35rem 0 0.5rem;
+      max-height: 11rem;
+      overflow: auto;
+    }
+    .model-empty {
+      padding: 0.25rem 0.1rem;
+    }
+    /* A row carries four things — name, type, instances, then its description and the
+       catalogs it reads — so it WRAPS: the catalogs are what tell two models of the same
+       machine apart, and truncating them away was the whole problem. */
+    .model-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.3rem;
+      width: 100%;
+      padding: 0.35rem 0.5rem;
+      border: 1px solid var(--eng-border);
+      border-radius: var(--eng-radius);
+      background: var(--eng-surface);
+      color: var(--eng-soft);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .model-row-desc,
+    .model-row-books {
+      flex: 1 1 100%;
+      min-width: 0;
+    }
+    .model-row-desc {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      line-height: 1.3;
+    }
+    .model-row-books {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.2rem;
+    }
+    .model-row:hover {
+      border-color: var(--eng-primary);
+      color: var(--eng-text);
+    }
+    .model-row.active {
+      background: var(--eng-surface-2);
+      border-color: var(--eng-primary);
+      color: var(--eng-text);
+    }
+    .model-row-name {
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* --- Instances tree (models → their datapoints) -----------------------
+       No height cap: level 1 IS the list of models, and a cap silently hid the models
+       past the fourth one — the one thing this tree exists to enumerate. */
+    .instance-tree {
+      padding: 0.5rem 0.9rem;
+      overflow: visible;
+    }
+    .tree-model {
+      border: 1px solid var(--eng-border);
+      border-radius: var(--eng-radius);
+      margin-bottom: 0.4rem;
+      background: var(--eng-surface);
+    }
+    .tree-row {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.35rem 0.5rem;
+    }
+    /* An instance row is a child: indented, and quieter than its model. */
+    .tree-instance {
+      border-top: 1px solid var(--eng-border);
+      background: var(--eng-surface-2);
+    }
+    .tree-indent {
+      width: 1.25rem;
       flex-shrink: 0;
+    }
+    .tree-toggle {
+      width: 1.25rem;
+      flex-shrink: 0;
+      border: 0;
+      background: none;
+      color: var(--eng-soft);
+      cursor: pointer;
+      font: inherit;
+    }
+    .tree-name {
+      font-weight: 600;
+      max-width: 22rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .tree-instance .tree-name {
+      font-weight: 400;
+    }
+    /* The equipment an instance reads — a link, because it goes somewhere. */
+    .tree-device {
+      border: 0;
+      background: none;
+      color: var(--eng-primary);
+      cursor: pointer;
+      font: inherit;
+      padding: 0;
+      text-decoration: underline;
+    }
+    .tree-empty {
+      padding: 0.35rem 0.5rem 0.35rem 1.75rem;
+      border-top: 1px solid var(--eng-border);
+    }
+    .diff-title {
+      padding: 0.6rem 0.9rem 0;
+      font-weight: 600;
+    }
+
+    /* The deployment table of the Model tab: it lives inside the composer column,
+       so it scrolls in its own frame rather than pushing the generate button away. */
+    .gen-policy {
+      margin-top: 0.75rem;
+      border-top: 1px solid var(--eng-border);
+      padding-top: 0.6rem;
+    }
+    .gen-policy .policy-scroll {
+      max-height: 16rem;
+    }
+    /* Seven columns in the composer's narrow column: everything is tightened so
+       the four DECISION columns (role, alarm, archive, range) fit without a
+       horizontal scroll, and the two free-text ones stay wide enough to read a
+       class or a group name. */
+    .gen-policy table.grid {
+      font-size: 0.75rem;
+    }
+    .gen-policy table.grid th,
+    .gen-policy table.grid td {
+      padding: 0.2rem 0.3rem;
+    }
+    .policy-text {
+      width: 4.5rem;
+      min-width: 0;
+    }
+    .policy-num {
+      width: 3rem;
+      min-width: 0;
+    }
+    .policy-range {
+      display: flex;
+      gap: 0.2rem;
+    }
+    /* The certificate-relaxation checkboxes: one per line — 8 side by side would
+       read as one blur, and each deserves its own second of hesitation. */
+    .box-list.bits {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.3rem;
     }
     ix-tabs {
       flex-shrink: 0;
@@ -125,36 +439,37 @@ export const engStudioStyles = [
       gap: 0.75rem;
       padding: 0.9rem;
     }
-    .book-tabs {
+    /* Catalog LINKS of the device detail — rows that jump to the Catalogues tab. */
+    .card.book-links {
+      margin: 0 0.9rem 0.9rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    .book-link {
       display: flex;
       align-items: center;
-      flex-wrap: wrap;
-      gap: 0.4rem;
-      padding: 0.75rem 0.9rem 0.25rem;
-    }
-    .book-tabs-label {
-      color: var(--eng-soft);
-      font-size: 0.8rem;
-    }
-    .book-tab {
-      display: inline-flex;
-      align-items: center;
       gap: 0.35rem;
-      padding: 0.3rem 0.55rem;
+      width: 100%;
+      padding: 0.45rem 0.6rem;
       border: 1px solid var(--eng-border);
       border-radius: var(--eng-radius);
       background: var(--eng-surface);
       color: var(--eng-soft);
       font: inherit;
+      text-align: left;
       cursor: pointer;
     }
-    .book-tab:hover {
+    .book-link:hover {
       border-color: var(--eng-primary);
-    }
-    .book-tab.active {
-      background: var(--eng-surface-2);
       color: var(--eng-text);
-      border-color: var(--eng-primary);
+    }
+    .book-link .spacer {
+      flex: 1;
+    }
+    .book-link-go {
+      color: var(--eng-primary);
+      font-weight: 600;
     }
     .book-tab-name {
       font-weight: 600;
@@ -193,6 +508,19 @@ export const engStudioStyles = [
       margin: 0 0.9rem 0.9rem;
       padding: 0;
     }
+    /* The device's model-datapoints card opens the detail column, so it carries
+       the top spacing the book sections get from the tabs bar above them. */
+    .card.model-dps {
+      margin-top: 0.9rem;
+    }
+    .card.model-dps .empty.small {
+      padding: 0.75rem;
+    }
+    /* Compact: the card opens the detail, and the address book below must stay
+       reachable — a large model scrolls inside its own frame. */
+    .card.model-dps .grid-scroll {
+      max-height: 18rem;
+    }
     .signals-head {
       display: flex;
       align-items: center;
@@ -216,8 +544,7 @@ export const engStudioStyles = [
     .addr-cell {
       white-space: normal;
     }
-    .card.warnings,
-    .card.report {
+    .card.warnings {
       margin: 0 0.9rem 0.9rem;
     }
     .warn-text {
@@ -566,9 +893,6 @@ export const engStudioStyles = [
     table.grid td.pick {
       width: 1.6rem;
       padding-right: 0;
-    }
-    .report {
-      margin-top: 0.5rem;
     }
   `
 ];

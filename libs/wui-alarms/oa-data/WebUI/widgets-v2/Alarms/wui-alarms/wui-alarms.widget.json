@@ -1,0 +1,237 @@
+{
+  "types": [],
+  "widgetType": "wui-alarms",
+  "label": "WUI_Widget_WuiAlarms.Label",
+  "description": "WUI_Widget_WuiAlarms.Description",
+  "svgFile": "/data/WebUI/svg/wui-alarms.svg",
+  "size": {
+    "minRows": 8,
+    "minCols": 8
+  },
+  "defaultSettings": {
+    "machineId": "",
+    "lockMachine": false,
+    "strictScope": true,
+    "source": "active",
+    "layout": "panel",
+    "lockSource": false,
+    "hideStats": false,
+    "noAck": false,
+    "showRangePicker": true,
+    "pageSize": 25
+  },
+  "variables": {
+    "context": "group",
+    "config": {
+      "sTimeRange": "now/d"
+    }
+  },
+  "componentSettings": {
+    "styles": [],
+    "scripts": ["/data/dashboard-wc/widgets/wui-alarms"],
+    "tagname": "wui-alarms-widget",
+    "jsonSchema": {
+      "type": "object",
+      "properties": {
+        "variables": { "type": "object" },
+        "atelier": {
+          "type": "object",
+          "properties": {
+            "datapoint": { "type": "string" },
+            "value": { "type": "string" }
+          }
+        },
+        "machineId": { "type": "string" },
+        "lockMachine": { "type": "boolean" },
+        "dpFilter": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "dp": { "type": "string" }
+            }
+          }
+        },
+        "strictScope": { "type": "boolean" },
+        "source": {
+          "type": "string",
+          "oneOf": [
+            {
+              "const": "active",
+              "title": "WUI_Widget_WuiAlarms.Source.Active"
+            },
+            {
+              "const": "history",
+              "title": "WUI_Widget_WuiAlarms.Source.History"
+            }
+          ]
+        },
+        "layout": {
+          "type": "string",
+          "oneOf": [
+            { "const": "panel", "title": "WUI_Widget_WuiAlarms.Layout.Panel" },
+            { "const": "page", "title": "WUI_Widget_WuiAlarms.Layout.Page" }
+          ]
+        },
+        "lockSource": { "type": "boolean" },
+        "hideStats": { "type": "boolean" },
+        "noAck": { "type": "boolean" },
+        "showRangePicker": { "type": "boolean" },
+        "pageSize": { "type": "number" }
+      }
+    },
+    "uiSchema": {
+      "type": "object",
+      "elements": [
+        {
+          "type": "Tab",
+          "scope": "#/properties/variables",
+          "elements": [
+            {
+              "type": "WuiLayout",
+              "label": "WUI_Settings.Area.TimeRange",
+              "options": {
+                "collapsible": "open",
+                "showFirstElementAsHeader": false,
+                "noborder": true
+              },
+              "elements": [
+                {
+                  "type": "TimeRangeControl",
+                  "scope": "#/properties/sTimeRange"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "WuiLayout",
+          "label": "WUI_Widget_WuiAlarms.Settings.Scope",
+          "options": {
+            "collapsible": "open",
+            "showFirstElementAsHeader": false,
+            "noborder": true
+          },
+          "elements": [
+            {
+              "type": "VerticalGroup",
+              "scope": "#/properties/atelier",
+              "label": "WUI_Widget_WuiAlarms.Settings.Atelier",
+              "options": { "noborder": true },
+              "elements": [
+                {
+                  "type": "DataPointControl",
+                  "scope": "#/properties/datapoint",
+                  "label": "WUI_Widget_WuiAlarms.Settings.AtelierDp",
+                  "options": {
+                    "allowedDpt": ["MachineFleet3D_Config"],
+                    "tooltip": "WUI_Widget_WuiAlarms.Settings.AtelierHint"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "Control",
+              "scope": "#/properties/machineId",
+              "label": "WUI_Widget_WuiAlarms.Settings.MachineId",
+              "options": {
+                "tooltip": "WUI_Widget_WuiAlarms.Settings.MachineIdHint"
+              }
+            },
+            {
+              "type": "CheckboxControl",
+              "scope": "#/properties/lockMachine",
+              "label": "WUI_Widget_WuiAlarms.Settings.LockMachine",
+              "options": {
+                "tooltip": "WUI_Widget_WuiAlarms.Settings.LockMachineHint"
+              }
+            },
+            {
+              "type": "SeriesGroup",
+              "scope": "#/properties/dpFilter",
+              "label": "WUI_Widget_WuiAlarms.Settings.DpFilter",
+              "options": {
+                "itemLabel": "WUI_Widget_WuiAlarms.Settings.DpFilterItem",
+                "tooltip": "WUI_Widget_WuiAlarms.Settings.DpFilterHint"
+              },
+              "elements": [
+                {
+                  "type": "DatapointSelectorControl",
+                  "scope": "#/properties/dp",
+                  "label": "WUI_Settings.Area.Datapoint",
+                  "options": { "selectionMode": "dp" }
+                }
+              ]
+            },
+            {
+              "type": "CheckboxControl",
+              "scope": "#/properties/strictScope",
+              "label": "WUI_Widget_WuiAlarms.Settings.StrictScope",
+              "options": {
+                "tooltip": "WUI_Widget_WuiAlarms.Settings.StrictScopeHint"
+              }
+            }
+          ]
+        },
+        {
+          "type": "WuiLayout",
+          "label": "WUI_Settings.Area.Formatting",
+          "options": {
+            "collapsible": true,
+            "showFirstElementAsHeader": false,
+            "noborder": true
+          },
+          "elements": [
+            {
+              "type": "SelectControl",
+              "scope": "#/properties/source",
+              "label": "WUI_Widget_WuiAlarms.Settings.Source"
+            },
+            {
+              "type": "SelectControl",
+              "scope": "#/properties/layout",
+              "label": "WUI_Widget_WuiAlarms.Settings.Layout"
+            },
+            {
+              "type": "NumberControl",
+              "scope": "#/properties/pageSize",
+              "label": "WUI_Widget_WuiAlarms.Settings.PageSize"
+            },
+            {
+              "type": "WuiLayout",
+              "options": { "orient": "horizontal", "noborder": true },
+              "elements": [
+                {
+                  "type": "CheckboxControl",
+                  "scope": "#/properties/lockSource",
+                  "label": "WUI_Widget_WuiAlarms.Settings.LockSource"
+                },
+                {
+                  "type": "CheckboxControl",
+                  "scope": "#/properties/hideStats",
+                  "label": "WUI_Widget_WuiAlarms.Settings.HideStats"
+                }
+              ]
+            },
+            {
+              "type": "WuiLayout",
+              "options": { "orient": "horizontal", "noborder": true },
+              "elements": [
+                {
+                  "type": "CheckboxControl",
+                  "scope": "#/properties/noAck",
+                  "label": "WUI_Widget_WuiAlarms.Settings.NoAck"
+                },
+                {
+                  "type": "CheckboxControl",
+                  "scope": "#/properties/showRangePicker",
+                  "label": "WUI_Settings.RangeSelector.ChangeAble"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

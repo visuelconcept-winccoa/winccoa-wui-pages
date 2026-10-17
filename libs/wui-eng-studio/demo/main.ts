@@ -16,7 +16,7 @@
  */
 import { bootstrapIx } from './ix-bootstrap.js';
 
-const PANELS = new Set(['devices', 'books', 'model', 'control']);
+const PANELS = new Set(['devices', 'books', 'model', 'instances']);
 
 /** Not a top-level await: the demo's build target predates it. */
 async function start(): Promise<void> {

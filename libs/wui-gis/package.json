@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-gis",
   "type": "module",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "GIS — standalone WinCC OA WebUI page: map-based monitoring on MapLibre GL / OpenStreetMap (no licence cost). One GIS_Site datapoint per site, holding geo-located assets bound to datapoints, areas (districts / sectors / catchments) grouping them, live value overlays, alarm highlighting from the OA alert state and a configurable drill-down from map to area to asset to its process or 3D view.",
   "author": {
     "name": "Visuel Concept"
@@ -66,6 +66,14 @@
       "type": "GIS_Site",
       "prefix": "GIS_",
       "note": "One datapoint per site (Struct with String elements name + json), auto-created through /api/para on first use. Assets bind freely to existing project datapoints — the page creates none of them. Falls back to two in-memory demo sites (water network, smart city district) when no GIS_Site datapoint exists."
+    },
+    "backend": {
+      "managers": [
+        "gisSim"
+      ],
+      "notes": [
+        "gisSim — optional network simulator (no REST route of its own); drives the GisSim_* datapoints the site and the gis-plants page read"
+      ]
     }
   },
   "peerDependenciesMeta": {
@@ -99,6 +107,7 @@
   },
   "files": [
     "src",
+    "managers",
     "menu.fragment.jsonc",
     "!**/*.spec.ts",
     "!**/*.test.ts"

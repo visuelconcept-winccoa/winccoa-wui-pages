@@ -71,6 +71,22 @@ The alert config lives on the **datapoint**, so a binding to an element
 — otherwise an alarm raised on `Pump01` would be missed. The same widening scopes the
 Alarms drill-down.
 
+### A quiet datapoint is not an absent one
+
+The snapshot has **three** states per binding, not two: no entry at all (the datapoint could
+not be followed — it does not exist, or there is no alert config), `''` (it resolved and has
+**no active alert**), and a colour (in alarm). Every consumer must treat the first two the
+same, and `??` does not: it only replaces the absent one.
+
+That cost the network its whole rendering once the bindings pointed at datapoints that exist.
+`alarm ?? routeColour` kept the empty string, `line-color: ''` is not a colour, and MapLibre
+drew **no line at all** — while the markers, which test the same value for truthiness, were
+perfectly fine. The mirror image of the same slip made `alarmColors.get(dp) !== undefined`
+report every quiet asset as being in alarm, so each zone badge showed a red count of all its
+members. Both are now one named function each, `inAlarm` and `alarmColorOr` in
+`map/style.ts`, tested in `map/alarm-color.spec.ts` — the trap is invisible until a site is
+bound to real datapoints, which is exactly when a demo becomes a deployment.
+
 Emissions are **coalesced to one notification per animation frame**. A site can bind two
 hundred elements, and a plant that has just been switched on emits an initial value for
 every one of them within milliseconds; notifying per emission would repaint the whole map
@@ -472,7 +488,18 @@ editing can never resurrect a stale version of the site.
 
 64 areas and 10 000 assets per site (`normalize.ts`), 2000 points per `generate` op. The
 output budget is configurable per project (`AI_Assistant_Config.maxTokens`, default 32768)
-and a budget-capped answer is reported as truncated rather than silently offered.
+and a budget-capped answer is reported as truncated rather than silently offered. The
+agentic loop has its own ceiling (`AI_Assistant_Config.maxToolRounds`, default 12 LLM⇄tool
+round-trips): exploring a site through the MCP tools eats rounds quickly, and a prompt that
+exhausts them still answers — the last round runs with the tools disabled, so the assistant
+concludes from what it collected instead of losing the whole prompt.
+
+The panel says what that costs, as it happens: the manager publishes a running token total
+on the progress channel, so the counter climbs round by round under the working indicator;
+each answer then keeps its own total underneath it, and the panel header carries the sum for
+the thread (cleared with the conversation). On an agentic assistant the input dwarfs the
+output — every round re-sends the whole conversation — and that is precisely what a user
+about to raise « Tours d'outils » should be able to see before doing it.
 
 **That sanitiser ceiling is a guard against a runaway answer, not a capacity claim.** Three
 real limits sit below it, and none of them moved when it was raised from 1000 — in the order
@@ -675,6 +702,123 @@ seeing a blank background needs to know it is the tile server and not the data. 
 HTTP fetch failure raises that notice; style-validation and shader errors are not the
 operator's problem to fix.
 
+## The network simulator (`gisSim`)
+
+An **optional** manager (`libs/wui-gis/managers/gisSim/`), for demos, training and
+commissioning a site before its real datapoints exist. The page stays **Tier 1**: it does
+not know the simulator exists, and nothing here changes if it is not running.
+
+Four decisions carry it.
+
+### It simulates the network, not 200 independent values
+
+The site already holds a topology — `Connection.from`/`.to` name assets — so a consumer's
+demand can be served *by the sources the graph actually connects it to, through the segments
+that actually join them*. A tick is one allocation over that graph (`network.js`), which is
+what makes the map behave like a plant rather than like a screensaver:
+
+- a plant taken out stops feeding, and the cities it fed are picked up by the plants that
+  remain — every remaining line's flux rises;
+- a **tripped segment** leaves the graph, so the flow reroutes if another path exists and the
+  consumer is visibly short if none does (`couverture` drops and alarms);
+- a segment's flux is the **sum of what transits it**, so it agrees with both of its ends.
+
+The allocation is a two-step proportional split — each source's capacity shared between the
+consumers that can reach it, in proportion to their demand, then two rebalancing rounds
+handing unserved demand to spare capacity — with **one shortest path per (source, consumer)
+pair** and no routing through another consumer. It is a supervision demo, not a load flow: a
+meshed network loads one path instead of splitting by impedance, so a segment's `charge` is a
+plausible figure and not an engineering one.
+
+### A route is the second topological coupling
+
+A network that carries no *flow* has a topology worth simulating all the same. A metro is the
+case that showed it: nothing is consumed, so the allocation above has nothing to allocate —
+and yet closing one tunnel section is exactly the event an operator has to see.
+
+So a segment also belongs to a **route**, and the route's state is derived: a line with any
+section out of service runs *thinned* on every section that is still open, its delays rise
+along the whole line, and the stations at both ends of each segment inherit the worst service
+of the lines that touch them. The other line on the same map is untouched. That is a property
+of the drawing — of which segments the author put on which route — and it needs no
+configuration at all.
+
+Which is also why `metro` and `rail` are two families rather than one: a metro section is
+supervised on its tunnel temperature and its third-rail voltage, and a mainline section is
+not.
+
+### The family comes from the kind CROSSED WITH the links
+
+`AssetKind` says what glyph to draw, not what the thing does: a `station` is a power plant in
+one site and a pumping station in another. The only evidence in the model is **what it is
+wired with** — `power` connections make it electrical, `pipe` connections hydraulic — so the
+family is resolved from the pair (`families.js`), and a site drawn by hand comes out
+simulated correctly with nothing to configure. `sim:famille=` in an object's `notes` is the
+escape hatch, because the domain model has no field for this and a demo occasionally needs
+one.
+
+### One FLAT datapoint per value, not one struct per asset
+
+`GisSim_<assetId>_<element>`, `GisLink_<connectionId>_<element>`. The reason is how this page
+resolves an alarm: `alarmColor` widens `asset.dp` to its **datapoint** (`bareDp`) and follows
+that datapoint's `_alert_hdl.._act_state_color`. On a struct that root is the struct node,
+which would need a **summary-alert** config; on a flat datapoint the alert sits exactly where
+the page looks, using the plain binary/analog alert configuration. It is also the shape the
+page's own demo binds to (`ExampleDP_*`).
+
+So the element that carries the alert is a Bool, `defaut`, and that is what an asset's `dp`
+is bound to — it is the alarm state and the Alarms drill-down scope, never a displayed value.
+`etat` (0 arrêt, 1 marche, 2 défaut, 3 maintenance) and the measurements are separate
+datapoints, some with their own analog thresholds. The cost of flat is the count (a couple of
+hundred datapoints for a site of thirty assets) and a drill-down scoped to one datapoint
+rather than to a whole asset; both were worth paying for an alarm path that works.
+
+The manager configures alerts **only on the datapoints it has just created**, so a threshold
+retuned in PARA is never overwritten, and every failure is logged and survived — a project
+without the standard alarm classes loses the highlighting, not the values.
+
+### It never writes to a site
+
+A binding is the page's business. The manager creates and drives datapoints; the **naming
+rule above is the contract**, and the companion CLI `bind-site.js` writes exactly those names
+into an exported site (same catalogue, so the two cannot drift). An asset left unbound is
+still simulated — only nothing on the map reads it yet, and the manager names such bindings
+in its log.
+
+The alternative — the `AUTO_MAP` that `machineSim` performs on its ateliers — would have the
+manager rewrite the `GIS_Site` datapoint behind the page's back, bypassing its audit trail
+and racing an open edit session. Import a bound file instead; the round-trip is a reviewed
+one.
+
+### Sizing, and why it is capped by the topology
+
+Capacity and demand come from `sim:capacite=` / `sim:demande=` in the notes when stated —
+which is how a demo carries the installed power of a real plant — else from the family
+default spread by a **stable hash of the id**, so two plants are not clones and a restart does
+not change the shape of the demo. Any other `sim:` key naming an element of the family sets
+**that element's** baseline (`sim:affluence=2600` on an interchange station), because the hash
+spread applies to a capacity and a demand, never to a free value: scaling a baseline that
+happens to be a voltage or a temperature by ±40 % would produce a 240 kV grid and a 15 °C
+platform. Unstated demands are then scaled to ~78 % of the production
+available *in their domain*, and **capped at what the topology can actually bring to that
+consumer**: a node wired to one 3 660 MW plant is served by 3 660 MW however large the fleet
+on the map is, and sizing it beyond that would leave it permanently short — an alarm about the
+sizing rather than about the plant. A **stated** demand is never capped, only reported when
+its sources cannot follow: the author said what they meant, and an under-served consumer may
+well be the point.
+
+### Its limits
+
+- **Asset and connection ids are unique within a site**, not across sites, so two sites that
+  both hold an asset `paris` would claim the same datapoints. The second is skipped and named
+  in the log rather than driven from two places.
+- **No persistence.** Levels and totalisers restart from their defaults when the manager
+  does; only the *configuration* survives (it is re-read from the sites every minute).
+- **Reachability is recomputed every tick**, which is fine for the sites this page is meant
+  for and would need caching at a few thousand assets.
+- **Nothing is written to the process.** The simulator drives its own datapoints only; it
+  never touches an asset's real bindings.
+
 ## Limits
 
 - **Assets per site: comfortable to a few hundred.** HTML markers cost a DOM node each.
@@ -705,11 +849,14 @@ operator's problem to fix.
 - **No writing to the process.** The page is read-only towards the plant: it displays
   datapoints and navigates, it never commands one. Editing changes the *site*, never the
   assets' own datapoints.
-- **No simulator manager.** Unlike the AGV and Ampère pages, this module ships none: the
-  demo binds to the standard `ExampleDP_*` datapoints, which a new/example project
-  already drives. Those are **absent from a production project** (see
+- **No datapoints created by the page.** The demo binds to the standard `ExampleDP_*`
+  datapoints, which a new/example project already drives; those are **absent from a
+  production project** (see
   `docs/knowledge/project/webui-runtime-example-datapoints.md` in the dashboard repo).
-  Rebinding them is what the asset inspector is for.
+  Rebinding them is what the asset inspector is for — or the **optional `gisSim`
+  manager**, which creates datapoints of its own and drives them (see
+  [The network simulator](#the-network-simulator-gissim)). The page itself never creates a
+  process datapoint, with or without it.
 
 ## Known duplication
 

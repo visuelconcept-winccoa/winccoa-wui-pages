@@ -26,14 +26,77 @@
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
-
 const PROGRESS_DPE = 'AI_Assistant_Progress.json';
+
+/** Above this, an exact count is noise: the order of magnitude is the information. */
+const TOKENS_EXACT_BELOW = 10_000;
+const THOUSAND = 1000;
+
+/**
+ * Token consumption, summed over the rounds of one prompt.
+ *
+ * Each round re-sends the whole conversation, so its input counts the previous rounds
+ * again — which is exactly what the provider bills, and why the input of a tool-heavy
+ * prompt grows much faster than its output.
+ *
+ * The manager publishes the running total on this channel while the prompt runs, and
+ * returns the final one with the answer (`ai-store.ts`): same shape both times, so a
+ * panel shows the same line live and after the fact, and adds up a conversation from
+ * its answers. Rendering it as text belongs to `ai-usage.ts` — that one localizes, and
+ * this module must stay importable without the translation runtime.
+ */
+export interface AiUsage {
+  /** Prompt tokens read by the model, cached part included. */
+  tokensIn: number;
+  /** Tokens the model produced — reasoning included, where the provider counts it. */
+  tokensOut: number;
+  /** The part of `tokensIn` the provider served from its own prompt cache. */
+  tokensCached: number;
+  /** How many model calls (LLM⇄tool round-trips) it took. */
+  rounds: number;
+}
+
+/** A usage that has counted nothing yet — the neutral element of {@link addUsage}. */
+export function emptyUsage(): AiUsage {
+  return { tokensIn: 0, tokensOut: 0, tokensCached: 0, rounds: 0 };
+}
+
+/** Sum of two usages — how a conversation total is built from its answers. */
+export function addUsage(a: AiUsage, b: AiUsage): AiUsage {
+  return {
+    tokensIn: a.tokensIn + b.tokensIn,
+    tokensOut: a.tokensOut + b.tokensOut,
+    tokensCached: a.tokensCached + b.tokensCached,
+    rounds: a.rounds + b.rounds
+  };
+}
+
+/**
+ * A token count, grouped by the browser locale and shortened past ten thousand
+ * (`12,3 k`): the last three digits of a live counter change every round and read as
+ * noise, while the magnitude is the thing worth watching.
+ */
+export function formatTokens(count: number): string {
+  if (count < TOKENS_EXACT_BELOW) return new Intl.NumberFormat().format(count);
+  const thousands = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(
+    count / THOUSAND
+  );
+  return `${thousands} k`;
+}
 
 /** One narrated step of a running prompt. */
 export interface AiProgressEvent {
-  type: 'start' | 'mcp' | 'model' | 'thinking' | 'tool-start' | 'tool' | 'done' | 'error';
+  type: 'start' | 'mcp' | 'model' | 'thinking' | 'tool-start' | 'tool' | 'usage' | 'done' | 'error';
   /** `model`: which round of the agentic loop (1-based). */
   round?: number;
+  /**
+   * `usage`: the running token total. There is at most ONE such event in the list —
+   * the manager updates it in place rather than appending one per round.
+   */
+  tokensIn?: number;
+  tokensOut?: number;
+  tokensCached?: number;
+  rounds?: number;
   model?: string;
   provider?: string;
   /** `mcp`: how many tools were offered, and in which exposure mode. */
@@ -47,6 +110,21 @@ export interface AiProgressEvent {
   text?: string;
   /** `error`: why the prompt failed. */
   message?: string;
+}
+
+/**
+ * The running token total carried by a progress list, or `null` while the first
+ * round is still in flight (and on a manager that predates the counter).
+ */
+export function progressUsage(events: readonly AiProgressEvent[]): AiUsage | null {
+  const event = events.find((step) => step.type === 'usage');
+  if (!event) return null;
+  return {
+    tokensIn: event.tokensIn ?? 0,
+    tokensOut: event.tokensOut ?? 0,
+    tokensCached: event.tokensCached ?? 0,
+    rounds: event.rounds ?? 0
+  };
 }
 
 /** A fresh id for one prompt. Not a secret — just something to filter on. */

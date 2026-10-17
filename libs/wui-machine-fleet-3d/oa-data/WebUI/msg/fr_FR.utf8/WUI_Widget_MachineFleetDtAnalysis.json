@@ -1,0 +1,36 @@
+{
+  "Label": "Analyse des arrêts machine",
+  "Description": "Temps d’arrêt d’une machine du parc sur la période du tableau de bord, décomposé par cause : disponibilité, MTBF et MTTR, Pareto et tableau (datapoints d’état et de cause archivés).",
+  "Settings": {
+    "StateDp": "État machine (archivé)",
+    "CauseDp": "Cause d’arrêt (archivée)",
+    "Mapping": "Mapping d’état et causes d’arrêt",
+    "StateMapping": "Mapping d’état",
+    "StateMappingHint": "Liez le datapoint de configuration de l’atelier (MachineFleet3D_<atelier>.json) ou collez un mapping JSON. Vide = standard du parc (0 = arrêt, 1 = production, 2 = défaut, 3 = maintenance).",
+    "MachineId": "Id machine",
+    "MachineIdHint": "Id de la machine dans la configuration de l’atelier : son propre mapping d’état est utilisé.",
+    "StateMappingId": "Id du mapping d’état",
+    "StateMappingIdHint": "Id du mapping à utiliser dans la configuration de l’atelier lorsqu’aucun id machine n’est donné. Vide = premier mapping.",
+    "StopCauses": "Catalogue des causes d’arrêt",
+    "StopCausesHint": "Liez MachineFleet3D_StopCauses.json. Le catalogue donne à chaque code son libellé ET sa classification planifié / non planifié ; sans lui, tout arrêt compte comme non planifié.",
+    "Analysis": "Analyse par défaut",
+    "StopClass": "Classe d’arrêt",
+    "Metric": "Métrique",
+    "TopN": "Causes affichées",
+    "ShowKpis": "Bandeau KPI",
+    "ShowTable": "Tableau"
+  },
+  "Class": {
+    "Unplanned": "Arrêts non planifiés",
+    "Planned": "Arrêts planifiés"
+  },
+  "Metric": {
+    "Downtime": "Temps d’arrêt cumulé",
+    "Frequency": "Fréquence (occurrences)"
+  },
+  "Top": {
+    "Five": "Top 5",
+    "Ten": "Top 10",
+    "All": "Toutes"
+  }
+}

@@ -34,7 +34,7 @@ an address silently binds the wrong transformation. Every constant used by
 | `_active` | bool | an **inactive** address exists and keeps its attributes, but the driver does not use it: no value exchange, no connection built for the DPE, and **conflicts with other addresses are not checked** |
 | `_poll_group` | dpid | reference to a poll group (replaces `_interval` / `_start`); **only set when given as system name + datapoint name**, otherwise it is not even displayed in para |
 | `_subindex` | uint32 | access part of an address, e.g. individual bits of a 32-bit word |
-| `_offset` | uint16 | optional driver-specific address information |
+| `_offset` | uint16 | optional driver-specific address information — **on the OPC UA driver it IS the "Historical" checkbox** of the address tab (0/1): the address takes part in the driver's historical queries. Verified in the vendor's own code, not from the help: `scripts/libs/opcuaDrvPara.ctl` reads the `cbHistory` shape into `dpc[10]` (`paOPCUAUpdateDpcFromPanel`) and writes it back (`paOPCUAUpdatePanelFromDpc`), and `scripts/libs/para.ctl`, `case "opcua"`, maps `dpc[10]` to `_address.._offset`. The panel's own tooltip: *"Determines if this address is included in historical queries"* (`panels/para/address_opcua.pnl`). On **Modbus** the same attribute is a **bit count** (`modDrvPara.ctl`), which is why the flag is written and read back for the OPC UA driver alone. |
 | `_connection` | string | used by some drivers |
 | `_mode` | char | legacy combination of `_direction` + `_internal` + `_lowlevel` — **replaced** by those three |
 | `_interval`, `_start` | time | **obsolete** (superseded by poll groups) |

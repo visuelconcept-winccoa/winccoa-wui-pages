@@ -120,6 +120,20 @@ describe('diffWorkspace', () => {
     expect(plan.items[0].detail).toBe('+range');
   });
 
+  it('scopes the live read to the types of the workspace DATAPOINTS too', () => {
+    // A model that PARAMETERISES an existing DP type: the workspace holds the datapoint, the
+    // type is the project's. Leaving that type out of the scope meant the live read never
+    // listed the datapoint — and the diff then offered to CREATE one that exists.
+    const workspace: Workspace = {
+      name: 'ws1',
+      types: [],
+      dps: [{ dpName: 'Z01_FOUR002', dpType: 'Equip_Four' }],
+      configs: {},
+      baseline: {}
+    };
+    expect(liveScopeOf(workspace).types).toContain('Equip_Four');
+  });
+
   it('fingerprint is key-order independent (stable baselines)', () => {
     expect(fingerprint({ a: 1, b: { c: 2, d: 3 } })).toBe(fingerprint({ b: { d: 3, c: 2 }, a: 1 }));
   });

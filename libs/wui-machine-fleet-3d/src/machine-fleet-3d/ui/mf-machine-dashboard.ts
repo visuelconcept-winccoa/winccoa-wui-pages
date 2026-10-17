@@ -15,15 +15,18 @@
  * panels stack below 1100 px, and the whole content column scrolls rather than
  * squeezing a panel out of sight.
  *
- * Data is read live (process params from the machine object) and from the
- * archived history (state timeline + Pareto), reusing the fleet-stop-analysis
- * engine. Rendered with plain SVG/DOM (no echarts) to stay light in this bundle.
+ * Data is read live (`dpConnect` on the state, the stop cause and the bound
+ * process parameters) and from the archived history (state timeline + Pareto),
+ * reusing the fleet-stop-analysis engine. The panel stays live on its own: a
+ * state or cause transition re-queries the history, and a slow tick keeps the
+ * running segment and the ongoing downtime growing in between.
+ * Rendered with plain SVG/DOM (no echarts) to stay light in this bundle.
  */
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, svg, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { Subscription } from 'rxjs';
+import { Subscription, firstValueFrom } from 'rxjs';
 import { normDp } from '../data/dp-utils.js';
 import {
   KPI_TYPE_INFO,
@@ -109,8 +112,12 @@ const PARETO_CLASS_OPTIONS: { value: ParetoClass; label: MultiLangString }[] = [
 const BAR_COLORS = ['#f59e0b', '#ef4444', '#d4a5a5', '#9aa1ad', '#8b5cf6', '#10b981'];
 const ALL_STATES: MachineState[] = ['ok', 'warn', 'stop', 'maint'];
 const DAYS_PER_WEEK = 7;
-/** Debounce before re-querying the archived history after a live state change. */
+/** Debounce before re-querying the archived history after a live state/cause change. */
 const HISTORY_RELOAD_DEBOUNCE_MS = 1500;
+/** Cadence of the background refresh, while the window ends at "now". */
+const LIVE_REFRESH_MS = 30_000;
+/** Slack allowed when deciding whether the window still ends at "now". */
+const LIVE_WINDOW_TOLERANCE_MS = 60_000;
 
 /** Gauge geometry (SVG user units, viewBox 100 × 64): a 180° arc, centre (50,50), r 40. */
 const GAUGE_ARC = 'M 10 50 A 40 40 0 0 1 90 50';
@@ -170,7 +177,15 @@ export class MfMachineDashboard extends LitElement {
   private dpSub = new Subscription();
   /** Normalised state-DP name (to detect state changes in the live stream). */
   private stateKey = '';
+  /** Normalised stop-cause-DP name (a cause assignment re-classifies a stop). */
+  private causeKey = '';
+  /** Last state/cause seen live — a rewrite of the same value is not a transition. */
+  private lastState = '';
+  private lastCause = '';
   private historyDebounce = 0;
+  private liveTimer = 0;
+  /** Generation of the running history query — a superseded one must not land. */
+  private reloadGen = 0;
   /** Observed [min,max] per card key — the gauge scale of the values seen so far. */
   private readonly observed = new Map<string, { min: number; max: number }>();
 
@@ -219,49 +234,150 @@ export class MfMachineDashboard extends LitElement {
     window.removeEventListener('keydown', this.onKeyDown);
     this.dpSub.unsubscribe();
     window.clearTimeout(this.historyDebounce);
+    window.clearInterval(this.liveTimer);
   }
 
   protected override firstUpdated(_changed: PropertyValues): void {
-    void this.reload();
-    this.connectLive();
+    void this.init();
+    this.startLiveRefresh();
   }
 
-  /** Subscribe to the machine's live DPs (state + process params) via dpConnect —
-   * same mechanism as the 3D view / popup. Process params update reactively; a
-   * state change re-queries the archived history so the Gantt stays live. */
-  private connectLive(): void {
+  /**
+   * Open the panel on the data as it stands NOW.
+   *
+   * The order matters: the live values are read (and the DP list validated)
+   * first, then the history is queried ONCE. The first paint must never depend
+   * on the next state transition to arrive — the machine may well sit in the
+   * same state for minutes — and going through the live seed first means the
+   * history query is issued on a channel that has just demonstrably answered.
+   * From there on only a real state/cause change, or the slow tick, re-queries.
+   */
+  private async init(): Promise<void> {
+    this.loading = true;
+    await this.connectLive();
+    await this.reload();
+  }
+
+  /**
+   * Subscribe to the machine's live DPs — **state**, **stop cause** and the bound
+   * process parameters — via `dpConnect`, the same mechanism as the 3D view.
+   *
+   * Parameters render reactively off the stream; a **state** transition redraws
+   * the Gantt and a **cause** assignment re-classifies the stop it belongs to
+   * (Gantt bubble AND Pareto), so both re-query the archived history.
+   */
+  private async connectLive(): Promise<void> {
     const api = this.api;
     const m = this.machine;
     if (!api) return;
-    const dps = [m.stateDp, ...(m.kpis ?? []).map((k) => k.dp)].filter(
-      (d): d is string => typeof d === 'string' && d !== ''
-    );
-    if (dps.length === 0) return;
     this.stateKey = m.stateDp ? normDp(m.stateDp) : '';
+    this.causeKey = m.stopCauseDp ? normDp(m.stopCauseDp) : '';
+    const dps = [
+      ...new Set(
+        [m.stateDp, m.stopCauseDp, ...(m.kpis ?? []).map((k) => k.dp)].filter(
+          (d): d is string => typeof d === 'string' && d !== ''
+        )
+      )
+    ];
+    if (dps.length === 0) return;
+    await this.connectValidDps(api, dps);
+  }
+
+  /**
+   * Validate the candidates with a one-shot `dpGet` (which doubles as the initial
+   * value seed), then open a single `dpConnect` block over the survivors.
+   *
+   * `dpConnect` fails as a BLOCK: one stale binding — a parameter DP left behind
+   * by a renamed machine, say — would take the state and cause down with it and
+   * silently freeze the Gantt. Same reasoning as the 3D view's `connectValidDps`.
+   */
+  private async connectValidDps(api: OaRxJsApi, dps: string[]): Promise<void> {
+    const results = await Promise.allSettled(dps.map((dp) => firstValueFrom(api.dpGet(dp))));
+    const live: Record<string, unknown> = { ...this.liveValues };
+    const valid: string[] = [];
+    for (const [i, dp] of dps.entries()) {
+      const result = results[i];
+      if (result.status !== 'fulfilled') continue; // missing / unreadable → exclude
+      valid.push(dp);
+      live[normDp(dp)] = result.value;
+    }
+    this.liveValues = live;
+    // The seeds ARE the values the initial load draws: recording them here is what
+    // makes the opening `dpConnect` answer a non-event (see `onLive`).
+    this.lastState = this.liveText(this.stateKey);
+    this.lastCause = this.liveText(this.causeKey);
+    if (valid.length === 0) return;
     try {
-      this.dpSub = api.dpConnect(dps, true).subscribe({
-        next: (e: { dp: string[]; value: unknown[] }) => this.onLive(e),
-        error: () => this.requestUpdate()
-      });
+      // Added to the block subscription: if the panel closed while the values
+      // were being validated, the new subscription is torn down at once.
+      this.dpSub.add(
+        api.dpConnect(valid, true).subscribe({
+          next: (e: { dp: string[]; value: unknown[] }) => this.onLive(e),
+          error: () => this.requestUpdate() // live channel dropped — keep the seeds
+        })
+      );
     } catch {
-      // dpConnect failed (e.g. an unbound DP) — params fall back to static values.
+      // Backend not connected — params fall back to their static values.
     }
   }
 
+  /**
+   * Fold a live emission into the rendered values, and re-query the history when
+   * the timeline actually moved.
+   *
+   * Only a CHANGE of state or cause counts: `dpConnect(…, true)` opens with an
+   * answer carrying the current values (already drawn by the initial load), and
+   * the simulator rewrites both every 30 s whether they moved or not — neither is
+   * a transition, and neither is worth a pair of archive queries.
+   */
   private onLive(e: { dp: string[]; value: unknown[] }): void {
     const live: Record<string, unknown> = { ...this.liveValues };
-    let stateChanged = false;
-    for (const [i, name] of e.dp.entries()) {
-      const key = normDp(name);
-      live[key] = e.value[i];
-      if (key === this.stateKey) stateChanged = true;
-    }
+    for (const [i, name] of e.dp.entries()) live[normDp(name)] = e.value[i];
     this.liveValues = live;
-    // A state transition changes the Gantt timeline → re-query (debounced).
-    if (stateChanged) {
-      window.clearTimeout(this.historyDebounce);
-      this.historyDebounce = window.setTimeout(() => void this.reload(true), HISTORY_RELOAD_DEBOUNCE_MS);
-    }
+    const state = this.liveText(this.stateKey);
+    const cause = this.liveText(this.causeKey);
+    if (state === this.lastState && cause === this.lastCause) return;
+    this.lastState = state;
+    this.lastCause = cause;
+    this.scheduleReload();
+  }
+
+  /** A live value in comparable form (arrays unwrapped, absent = empty). */
+  private liveText(key: string): string {
+    if (key === '') return '';
+    const raw = extractScalar(this.liveValues[key]);
+    return raw == null ? '' : String(raw);
+  }
+
+  /** Coalesce the re-queries a burst of live changes would otherwise trigger. */
+  private scheduleReload(): void {
+    window.clearTimeout(this.historyDebounce);
+    this.historyDebounce = window.setTimeout(
+      () => void this.reload(true),
+      HISTORY_RELOAD_DEBOUNCE_MS
+    );
+  }
+
+  /**
+   * Slow background refresh, only while the window ends at "now".
+   *
+   * The transition-driven reload above covers the instant a state or a cause
+   * changes, but it cannot make the *running* segment grow, and an ongoing stop
+   * keeps accumulating downtime in the Pareto while nothing changes at all. The
+   * tick keeps both honest; it stands down on a past window (nothing moves
+   * there) and on a hidden tab, so it never polls the archive for nobody.
+   */
+  private startLiveRefresh(): void {
+    this.liveTimer = window.setInterval(() => {
+      if (this.loading || document.visibilityState === 'hidden' || !this.isLiveWindow()) return;
+      void this.reload(true);
+    }, LIVE_REFRESH_MS);
+  }
+
+  /** True when the selected window still ends at "now". */
+  private isLiveWindow(): boolean {
+    if (this.offsetMs !== 0) return false;
+    return this.resolveRange().end.getTime() >= Date.now() - LIVE_WINDOW_TOLERANCE_MS;
   }
 
   /**
@@ -538,7 +654,13 @@ export class MfMachineDashboard extends LitElement {
     downloadCsv(`gantt_${this.machine.id}.csv`, rows);
   };
 
-  /** Hover bubble for a Gantt segment: start/end, state and any stop cause. */
+  /**
+   * Hover bubble for a Gantt segment: start/end, state and any stop cause.
+   *
+   * Timestamped **to the second**, like the CSV export: a state can flip within
+   * the same minute, and at minute precision two adjacent segments read as
+   * starting and ending at the very same instant.
+   */
   private renderTip(): TemplateResult {
     const tip = this.tip;
     if (!tip) return html``;
@@ -546,8 +668,8 @@ export class MfMachineDashboard extends LitElement {
     return html`
       <div class="gantt-tip" style="left:${tip.x}px;top:${tip.y}px">
         <div class="tip-state" style="color:${stateColor(this.mapping, s.state)}">${STATE_LABELS[s.state]}</div>
-        <div>${localizeDir(MSG.machineDash.tipStart)} ${formatDateTime(s.startMs)}</div>
-        <div>${localizeDir(MSG.machineDash.tipEnd)} ${formatDateTime(s.endMs)}</div>
+        <div>${localizeDir(MSG.machineDash.tipStart)} ${formatDateTimeSec(s.startMs)}</div>
+        <div>${localizeDir(MSG.machineDash.tipEnd)} ${formatDateTimeSec(s.endMs)}</div>
         ${s.causeLabel ? html`<div>${localizeDir(MSG.machineDash.tipCause)} ${s.causeLabel}</div>` : ''}
       </div>
     `;
@@ -774,11 +896,21 @@ export class MfMachineDashboard extends LitElement {
     window.open(`${base}#/fleet-stops?${q}`, '_blank', 'noopener');
   };
 
+  /**
+   * Re-query the archived history and rebuild the Gantt + the Pareto.
+   *
+   * `silent` skips the spinner: a live refresh must not blank the timeline the
+   * operator is reading. Several triggers coexist (period change, live
+   * transition, background tick), so a query that has been superseded while it
+   * was in flight is dropped rather than overwriting a fresher result.
+   */
   private async reload(silent = false): Promise<void> {
     const m = this.machine;
+    const gen = ++this.reloadGen;
     if (!this.api || !m.stateDp) {
       this.segments = [];
       this.pareto = [];
+      this.loading = false;
       return;
     }
     if (!silent) this.loading = true;
@@ -787,8 +919,11 @@ export class MfMachineDashboard extends LitElement {
       this.loading = false;
       return;
     }
-    this.segments = await this.buildSegments(m, start, end);
-    this.pareto = m.stopCauseDp ? await this.buildPareto(m, start, end) : [];
+    const segments = await this.buildSegments(m, start, end);
+    const pareto = m.stopCauseDp ? await this.buildPareto(m, start, end) : [];
+    if (gen !== this.reloadGen) return;
+    this.segments = segments;
+    this.pareto = pareto;
     this.loading = false;
   }
 

@@ -11,7 +11,14 @@
 // reflect-metadata first, as in the app shell: tsyringe (the kit's DI) refuses to load without it.
 import 'reflect-metadata';
 import { describe, expect, it } from 'vitest';
-import { newProgressId, parseProgress } from './ai-progress.js';
+import {
+  addUsage,
+  emptyUsage,
+  formatTokens,
+  newProgressId,
+  parseProgress,
+  progressUsage
+} from './ai-progress.js';
 
 const ID = 'p-abc';
 
@@ -66,6 +73,63 @@ describe('parseProgress', () => {
     );
     expect(first).toHaveLength(1);
     expect(later).toHaveLength(3);
+  });
+});
+
+describe('progressUsage', () => {
+  it('reads the running total off the list', () => {
+    const events = parseProgress(
+      payload(ID, [
+        { type: 'start' },
+        { type: 'usage', tokensIn: 12_000, tokensOut: 800, tokensCached: 9000, rounds: 3 }
+      ]),
+      ID
+    );
+    expect(progressUsage(events ?? [])).toEqual({
+      tokensIn: 12_000,
+      tokensOut: 800,
+      tokensCached: 9000,
+      rounds: 3
+    });
+  });
+
+  it('says nothing before the first round lands, or on a manager without the counter', () => {
+    expect(progressUsage([{ type: 'start' }, { type: 'model', round: 1 }])).toBeNull();
+    expect(progressUsage([])).toBeNull();
+  });
+
+  it('fills in the fields an older payload omits, rather than rendering undefined', () => {
+    expect(progressUsage([{ type: 'usage', tokensIn: 500 }])).toEqual({
+      tokensIn: 500,
+      tokensOut: 0,
+      tokensCached: 0,
+      rounds: 0
+    });
+  });
+});
+
+describe('addUsage', () => {
+  it('sums a conversation from its answers', () => {
+    const first = { tokensIn: 1000, tokensOut: 200, tokensCached: 0, rounds: 1 };
+    const second = { tokensIn: 4000, tokensOut: 350, tokensCached: 900, rounds: 4 };
+    expect(addUsage(addUsage(emptyUsage(), first), second)).toEqual({
+      tokensIn: 5000,
+      tokensOut: 550,
+      tokensCached: 900,
+      rounds: 5
+    });
+  });
+});
+
+describe('formatTokens', () => {
+  it('keeps small counts exact and shortens the big ones', () => {
+    // Grouping separators are the browser's, so the assertions are on the shape:
+    // below ten thousand every digit is there, above it the count is in thousands.
+    expect(formatTokens(0)).toBe('0');
+    expect(formatTokens(842)).toBe('842');
+    expect(formatTokens(9999)).not.toMatch(/k$/);
+    expect(formatTokens(12_340)).toMatch(/^12[.,]3 k$/);
+    expect(formatTokens(1_200_000)).toMatch(/k$/);
   });
 });
 

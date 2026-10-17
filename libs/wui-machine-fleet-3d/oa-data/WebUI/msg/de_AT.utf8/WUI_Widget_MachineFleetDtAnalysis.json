@@ -1,0 +1,36 @@
+{
+  "Label": "Stillstandsanalyse Maschine",
+  "Description": "Stillstandszeit einer Maschine des Parks über den Zeitraum des Dashboards, aufgeschlüsselt nach Ursache: Verfügbarkeit, MTBF und MTTR, Pareto-Diagramm und Tabelle (archivierte Zustands- und Ursachen-Datenpunkte).",
+  "Settings": {
+    "StateDp": "Maschinenzustand (archiviert)",
+    "CauseDp": "Stillstandsursache (archiviert)",
+    "Mapping": "Zustands-Mapping und Stillstandsursachen",
+    "StateMapping": "Zustands-Mapping",
+    "StateMappingHint": "Binden Sie den Konfigurations-Datenpunkt des Ateliers (MachineFleet3D_<atelier>.json) oder fügen Sie ein Mapping-JSON ein. Leer = Standard des Parks (0 = Stillstand, 1 = Produktion, 2 = Störung, 3 = Wartung).",
+    "MachineId": "Maschinen-Id",
+    "MachineIdHint": "Id der Maschine in der Atelier-Konfiguration: ihr eigenes Zustands-Mapping wird verwendet.",
+    "StateMappingId": "Id des Zustands-Mappings",
+    "StateMappingIdHint": "Id des Mappings in der Atelier-Konfiguration, wenn keine Maschinen-Id angegeben ist. Leer = erstes Mapping.",
+    "StopCauses": "Katalog der Stillstandsursachen",
+    "StopCausesHint": "Binden Sie MachineFleet3D_StopCauses.json. Der Katalog liefert zu jedem Code Bezeichnung UND Klassifizierung geplant / ungeplant; ohne ihn zählt jeder Stillstand als ungeplant.",
+    "Analysis": "Analyse-Voreinstellungen",
+    "StopClass": "Stillstandsklasse",
+    "Metric": "Kennzahl",
+    "TopN": "Angezeigte Ursachen",
+    "ShowKpis": "KPI-Leiste",
+    "ShowTable": "Tabelle"
+  },
+  "Class": {
+    "Unplanned": "Ungeplante Stillstände",
+    "Planned": "Geplante Stillstände"
+  },
+  "Metric": {
+    "Downtime": "Kumulierte Stillstandszeit",
+    "Frequency": "Häufigkeit (Vorkommen)"
+  },
+  "Top": {
+    "Five": "Top 5",
+    "Ten": "Top 10",
+    "All": "Alle"
+  }
+}

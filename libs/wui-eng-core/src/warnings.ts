@@ -110,6 +110,15 @@ export const WARNING_CODES = {
     ACCESS_PARTLY_ASSUMED: 'browse.access-partly-assumed',
     ACCESS_READ: 'browse.access-read'
   },
+  s7plus: {
+    ACCESS_ASSUMED: 's7plus.access-assumed',
+    HMI_FILTERED: 's7plus.hmi-filtered',
+    SOURCE_ONLINE: 's7plus.source-online',
+    SOURCE_PROJECT: 's7plus.source-project',
+    ARRAYS_EXPANDED: 's7plus.arrays-expanded',
+    ARRAY_TRUNCATED: 's7plus.array-truncated',
+    TYPE_UNMAPPED: 's7plus.type-unmapped'
+  },
   nodeset: {
     FILE_LOCAL_NODEIDS: 'nodeset.file-local-nodeids',
     TEMPLATES_ONLY: 'nodeset.templates-only',
@@ -133,7 +142,13 @@ export const WARNING_CODES = {
     UNRESOLVED_REFERENCE: 'modelgen.unresolved-reference',
     NO_DATATYPE: 'modelgen.no-datatype',
     DIRECTION_ADJUSTED: 'modelgen.direction-adjusted',
-    ACCESS_ASSUMED: 'modelgen.access-assumed'
+    ACCESS_ASSUMED: 'modelgen.access-assumed',
+    MIRROR_COLLISION: 'modelgen.mirror-collision',
+    MIRROR_KEPT: 'modelgen.mirror-kept',
+    ALARM_UNSUPPORTED: 'modelgen.alarm-unsupported',
+    SUBSCRIPTION_MISSING: 'modelgen.subscription-missing',
+    HISTORICAL_ADDRESSES: 'modelgen.historical-addresses',
+    CONNECTION_REPOINTED: 'modelgen.connection-repointed'
   },
   outline: {
     ODD_INDENT: 'outline.odd-indent',
@@ -153,6 +168,7 @@ export const WARNING_CODES = {
     MEMBER_NO_ADDRESS: 'schneider.member-no-address',
     XVM_UNVERIFIED_SCHEMA: 'schneider.xvm-unverified-schema',
     XVM_NOTHING_RECOGNISED: 'schneider.xvm-nothing-recognised',
+    XVM_CRYPTED: 'schneider.xvm-crypted',
     XVM_UNREADABLE: 'schneider.xvm-unreadable'
   },
   simaticml: {
@@ -163,6 +179,39 @@ export const WARNING_CODES = {
     NO_BLOCK_NUMBER: 'simaticml.no-block-number',
     DATATYPE_UNMAPPED: 'simaticml.datatype-unmapped'
   },
+  s7sym: {
+    UNREADABLE_LINE: 's7sym.unreadable-line',
+    UNREADABLE_ADDRESS: 's7sym.unreadable-address',
+    NO_ADDRESS_COLUMN: 's7sym.no-address-column',
+    NO_SYMBOL: 's7sym.no-symbol',
+    DUPLICATE_SYMBOL: 's7sym.duplicate-symbol',
+    DUPLICATE_ADDRESS: 's7sym.duplicate-address',
+    WIDTH_MISMATCH: 's7sym.width-mismatch',
+    DATATYPE_UNMAPPED: 's7sym.datatype-unmapped',
+    NO_DB_CONTENT: 's7sym.no-db-content',
+    NO_SIGNAL: 's7sym.no-signal'
+  },
+  s7awl: {
+    NO_BLOCK: 's7awl.no-block',
+    NO_BLOCK_IN_FILE: 's7awl.no-block-in-file',
+    NO_BLOCK_NUMBER: 's7awl.no-block-number',
+    UNREADABLE_DECLARATION: 's7awl.unreadable-declaration',
+    UDT_MISSING: 's7awl.udt-missing',
+    UDT_RECURSIVE: 's7awl.udt-recursive',
+    INSTANCE_TYPE_MISSING: 's7awl.instance-type-missing',
+    ARRAY_SKIPPED: 's7awl.array-skipped',
+    EMPTY_BLOCK: 's7awl.empty-block',
+    DATATYPE_UNMAPPED: 's7awl.datatype-unmapped',
+    NO_OFFSET: 's7awl.no-offset',
+    STANDARD_LAYOUT: 's7awl.standard-layout'
+  },
+  s7browse: {
+    DB_ABSENT: 's7browse.db-absent',
+    DB_OVERRUN: 's7browse.db-overrun',
+    DB_UNKNOWN: 's7browse.db-unknown',
+    DB_UNCATALOGUED: 's7browse.db-uncatalogued',
+    NO_DB_ADDRESSED: 's7browse.no-db-addressed'
+  },
   diff: {
     RETYPE_UNSUPPORTED: 'diff.retype-unsupported',
     DP_TYPE_MISSING: 'diff.dp-type-missing'
@@ -172,10 +221,11 @@ export const WARNING_CODES = {
     NAME_INVALID: 'device.name-invalid',
     NAME_TAKEN: 'device.name-taken',
     ID_TAKEN: 'device.id-taken',
-    NO_ACCESS_MODE: 'device.no-access-mode',
     PARAM_REQUIRED: 'device.param-required',
     PARAM_INVALID: 'device.param-invalid',
     DRIVER_INVALID: 'device.driver-invalid',
-    DRIVER_RECOMMENDED: 'device.driver-recommended'
+    DRIVER_RECOMMENDED: 'device.driver-recommended',
+    SECURITY_MISMATCH: 'device.security-mismatch',
+    PASSWORD_WITHOUT_USER: 'device.password-without-user'
   }
 } as const;

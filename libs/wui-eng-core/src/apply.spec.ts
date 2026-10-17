@@ -26,7 +26,8 @@ function fakePort(state: FakeState): EngPort {
     dpCreate: async (name, type) => void state.dps.set(name, type),
     dpDelete: async (name) => void state.dps.delete(name),
     dpSetWait: async (dpes, values) => void state.writes.push({ dpes, values }),
-    resolveAddressContext: async () => ({ driverNumber: 2, pollGroupDp: '_EngStudio_Poll' })
+    resolveAddressContext: async () => ({ driverNumber: 2, pollGroupDp: '_EngStudio_Poll' }),
+    resolveArchiveGroup: async (group) => (group === 'EVENT' ? '_NGA_G_EVENT' : group),
   };
 }
 
@@ -87,6 +88,48 @@ describe('applyPlan', () => {
     expect(report.ok).toBe(true);
   });
 
+  it('CHANGES an existing type instead of re-creating it (the datapoints survive)', async () => {
+    const s = state();
+    s.types.set('Equip_Pompe', { name: 'Equip_Pompe', type: 'Struct', children: [{ name: 'Run', type: 'Bool' }] });
+    s.dps.set('Z01_PMP001', 'Equip_Pompe');
+    const plan: EngPlan = {
+      workspace: 'ws1',
+      warnings: [],
+      items: [
+        {
+          kind: 'type',
+          op: 'update',
+          name: 'Equip_Pompe',
+          payload: { typeName: 'Equip_Pompe', structure: { name: 'Equip_Pompe', type: 'Struct', children: [{ name: 'Run', type: 'Bool' }, { name: 'Defaut', type: 'Bool' }] } }
+        }
+      ]
+    };
+    const report = await applyPlan(plan, fakePort(s));
+    expect(report.results[0].status).toBe('applied');
+    // The new element is there…
+    expect(s.types.get('Equip_Pompe')?.children).toHaveLength(2);
+    // …and the datapoint of that type was never touched.
+    expect(s.dps.get('Z01_PMP001')).toBe('Equip_Pompe');
+  });
+
+  it('re-creates ONLY when asked, and then the datapoint is dropped and re-made', async () => {
+    const s = state();
+    s.types.set('Equip_Pompe', { name: 'Equip_Pompe', type: 'Struct', children: [] });
+    s.dps.set('Z01_PMP001', 'Equip_Pompe');
+    const plan: EngPlan = {
+      workspace: 'ws1',
+      warnings: [],
+      items: [
+        { kind: 'type', op: 'update', name: 'Equip_Pompe', payload: { typeName: 'Equip_Pompe', structure: { name: 'Equip_Pompe', type: 'Struct', children: [{ name: 'Run', type: 'Bool' }] } } },
+        { kind: 'dp', op: 'create', name: 'Z01_PMP001', payload: { dpName: 'Z01_PMP001', dpType: 'Equip_Pompe' } }
+      ]
+    };
+    const report = await applyPlan(plan, fakePort(s), { recreate: true });
+    expect(report.results.map((result) => result.status)).toEqual(['applied', 'applied']);
+    expect(s.types.get('Equip_Pompe')?.children).toEqual([{ name: 'Run', type: 'Bool' }]);
+    expect(s.dps.get('Z01_PMP001')).toBe('Equip_Pompe');
+  });
+
   it('refuses conflicting items', async () => {
     const s = state();
     const plan: EngPlan = {
@@ -120,6 +163,89 @@ describe('applyPlan', () => {
     expect(s.writes).toHaveLength(3);
     expect(s.writes[0].dpes[0]).toBe('Z01_FOUR001.Temperature:_alert_hdl.._type');
     expect(s.writes[2]).toEqual({ dpes: ['Z01_FOUR001.Temperature:_alert_hdl.._active'], values: [true] });
+  });
+
+  it('writes many configs in ONE call, and still reports every item', async () => {
+    const s = state();
+    s.dps.set('Z01_FOUR001', 'Equip_Four');
+    const address = (reference: string): AddressConfig => ({
+      deviceId: 'd1',
+      mode: 'opcua',
+      reference,
+      direction: 4,
+      datatype: 761,
+      active: true
+    });
+    const plan: EngPlan = {
+      workspace: 'ws1',
+      warnings: [],
+      items: Array.from({ length: 25 }, (_, index) => ({
+        kind: 'config' as const,
+        op: 'create' as const,
+        name: `Z01_FOUR001.M${index}`,
+        payload: { address: address(`C$$1$1$m${index}`) }
+      }))
+    };
+    const report = await applyPlan(plan, fakePort(s));
+    // 25 DPEs × 6 pairs = 150 pairs → one dpSetWait, not 25.
+    expect(s.writes).toHaveLength(1);
+    expect(report.results).toHaveLength(25);
+    expect(report.results.every((result) => result.status === 'applied')).toBe(true);
+  });
+
+  it('replays a FAILED batch item by item, so the report names the culprit', async () => {
+    const s = state();
+    s.dps.set('Z01_FOUR001', 'Equip_Four');
+    const port = fakePort(s);
+    // The first call (the batch) fails; the replayed single writes succeed except the one
+    // naming the bad DPE — which is exactly what a real runtime does with one bad attribute.
+    let firstCall = true;
+    const failing: EngPort = {
+      ...port,
+      dpSetWait: async (dpes, values) => {
+        if (firstCall) {
+          firstCall = false;
+          throw new Error('one of these is invalid');
+        }
+        if (dpes.some((dpe) => dpe.includes('BAD'))) throw new Error('invalid attribute');
+        await port.dpSetWait(dpes, values);
+      }
+    };
+    const address: AddressConfig = { deviceId: 'd1', mode: 'opcua', reference: 'C$$1$1$x', direction: 4, datatype: 761, active: true };
+    const plan: EngPlan = {
+      workspace: 'ws1',
+      warnings: [],
+      items: [
+        { kind: 'config', op: 'create', name: 'Z01_FOUR001.Good', payload: { address } },
+        { kind: 'config', op: 'create', name: 'Z01_FOUR001.BAD', payload: { address } }
+      ]
+    };
+    const report = await applyPlan(plan, failing);
+    expect(report.ok).toBe(false);
+    expect(report.results.map((result) => `${result.name}:${result.status}`)).toEqual([
+      'Z01_FOUR001.Good:applied',
+      'Z01_FOUR001.BAD:failed'
+    ]);
+  });
+
+  it('writes the archive group the PORT resolved, not the token the model carries', async () => {
+    // The reported failure: a model says `EVENT`, the project holds `_NGA_G_EVENT`, and
+    // `_archive.1._class` must name the datapoint — the token failed the whole write.
+    const s = state();
+    s.dps.set('ESAB.P01', 'Probe');
+    const plan: EngPlan = {
+      workspace: 'ws1',
+      warnings: [],
+      items: [
+        { kind: 'config', op: 'create', name: 'ESAB.P01.SampleValue', payload: { archive: { group: 'EVENT', active: true } } }
+      ]
+    };
+    const report = await applyPlan(plan, fakePort(s));
+    expect(report.ok).toBe(true);
+    const write = s.writes.at(-1);
+    const classIndex = write?.dpes.findIndex((dpe) => dpe.endsWith('_archive.1._class')) ?? -1;
+    expect(classIndex).toBeGreaterThanOrEqual(0);
+    expect(write?.values[classIndex]).toBe('_NGA_G_EVENT');
   });
 
   it('dry-run executes nothing but reports outcomes', async () => {
