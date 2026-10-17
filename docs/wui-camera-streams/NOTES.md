@@ -112,3 +112,14 @@ assigns groups in `/app-security` (docs/wui-app-security/INTEGRATION.md).
 - No server-side guard yet: the camera CRUD goes through the SHARED PARA
   persistence API (deliberately not gated per module — see the para notes);
   the `/api/rtsp/*` bridge is read/relay only.
+
+## `wui dev` mock — `mock/api.mjs`
+
+The package ships a mock of the HTTP side of `/api/rtsp`, merged by wui-toolkit into any site that
+selects the module (`wui dev`, screenshots; wui-toolkit ≥ 0.20). `clients` answers that nobody is
+watching, `status` gives the four demo cameras (`DEMO_STREAMS`) a fresh probe result — three reachable,
+the nitriding oven unreachable ("délai dépassé") — and `health` names the manager endpoint.
+
+Not mocked: the stream itself, a WebSocket (`/api/rtsp/ws`) relayed to ffmpeg — the viewer reports that
+it cannot connect. The camera list still comes from the page's in-memory demo: the para mock knows no
+`RtspCamera_Stream` type unless the site's fixtures declare it, hence the offline-mode notice.

@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-tag-importer",
   "type": "module",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Tag Importer — standalone WinCC OA WebUI page: import device tags into datapoint types + datapoints from an OPC UA NodeSet2 XML file (mutualising repeated node instances into one DPType) or by browsing a live OPC UA server (a selected instance's subtree becomes the DPType). Protocol-agnostic core with pluggable source adapters (OPC UA today, extensible). Online import also writes the peripheral address configs. Engineering ops via the /api/tag-importer API.",
   "author": {
     "name": "Visuel Concept"
@@ -93,7 +93,9 @@
     "src",
     "backend",
     "menu.fragment.jsonc",
+    "mock",
     "!**/*.spec.ts",
+    "!**/*.spec.mjs",
     "!**/*.test.ts"
   ],
   "repository": {
