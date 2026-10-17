@@ -1,0 +1,24 @@
+{
+  "module": "auth-badge",
+  "title": { "en_US.utf8": "Badge login", "fr.utf8": "Connexion par badge", "de.utf8": "Ausweis-Anmeldung" },
+  "roles": [
+    {
+      "id": "configure",
+      "label": { "en_US.utf8": "Configure", "fr.utf8": "Configurer", "de.utf8": "Konfigurieren" },
+      "description": {
+        "en_US.utf8": "Open the Badges page and change its settings: badge login enabled, self-service enrolment on My badge, the badge reader's frame, the badge numbers stored as one-way fingerprints.",
+        "fr.utf8": "Ouvrir la page Badges et en modifier les options : connexion par badge activée, enrôlement libre dans Mon badge, trame du lecteur de badge, chiffrement irréversible des codes badge.",
+        "de.utf8": "Die Seite Ausweise öffnen und ihre Einstellungen ändern: Ausweis-Anmeldung aktiv, Selbstregistrierung unter Mein Ausweis, Rahmen des Ausweislesers, Ausweisnummern als Einweg-Fingerabdruck gespeichert."
+      }
+    },
+    {
+      "id": "enrol",
+      "label": { "en_US.utf8": "Enrol badges", "fr.utf8": "Enrôler les badges", "de.utf8": "Ausweise zuordnen" },
+      "description": {
+        "en_US.utf8": "On the Badges page, associate a badge with any WinCC OA user, test that a badge opens their session, or remove it.",
+        "fr.utf8": "Dans la page Badges, associer un badge à n'importe quel utilisateur WinCC OA, tester qu'un badge ouvre sa session, ou le retirer.",
+        "de.utf8": "Auf der Seite Ausweise einem beliebigen WinCC OA-Benutzer einen Ausweis zuordnen, prüfen, ob ein Ausweis seine Sitzung öffnet, oder ihn entfernen."
+      }
+    }
+  ]
+}

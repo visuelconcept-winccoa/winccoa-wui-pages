@@ -123,6 +123,13 @@ import { requireRole } from './appSecurityGuard';
 router.post('/deploy', requireRole('<page-id>', 'deploy'), controller.deploy);
 ```
 
+   A route whose caller is authenticated another way — a login provider's
+   backend, which verifies the request's WebUI token itself — resolves the
+   identity with `identityOfUsername(<verified user name>)` and applies
+   `roleGranted(await roleAssignments('<page-id>'), '<role>', who)` (see
+   `libs/wui-auth-badge/backend/badgeAuth.ts`). Never pass a name the client
+   sent.
+
 The guard resolves the SESSION user (passport — never client-declared data),
 applies the same rules as the client, answers 403, and **fails open on its own
 errors** (a guard outage must not take the API down).

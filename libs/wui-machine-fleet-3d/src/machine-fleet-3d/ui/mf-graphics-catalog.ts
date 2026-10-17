@@ -61,7 +61,7 @@ export class MfGraphicsCatalog extends LitElement {
   /** When false, the library is view-only: importing/deleting is disabled. */
   @property({ type: Boolean }) canEdit = true;
 
-  @state() private tab = 0;
+  @state() private tab: GraphicKind = 'glb';
   @state() private lists: Record<GraphicKind, GlbResource[]> = { glb: [], billboard: [] };
   /** Resolved preview data URLs for image-able resources, keyed by resource id. */
   @state() private previews: Record<string, string> = {};
@@ -75,7 +75,7 @@ export class MfGraphicsCatalog extends LitElement {
   @query('.res-file') private fileInput?: HTMLInputElement;
 
   private get kind(): GraphicKind {
-    return KINDS[this.tab] ?? 'glb';
+    return this.tab;
   }
 
   override render(): TemplateResult {
@@ -87,8 +87,8 @@ export class MfGraphicsCatalog extends LitElement {
             <ix-typography format="h3">${localizeDir(MSG.graphicsCatalog.title)}</ix-typography>
             <ix-icon-button ghost icon="close" @click=${this.close}></ix-icon-button>
           </div>
-          <ix-tabs .selected=${this.tab} @selectedChange=${(e: CustomEvent<number>) => this.onTab(e.detail)}>
-            ${KINDS.map((k) => html`<ix-tab-item>${localizeDir(KIND_CFG[k].label)}</ix-tab-item>`)}
+          <ix-tabs .activeTabKey=${this.tab} @tabChange=${(e: CustomEvent<string | undefined>) => this.onTab(e.detail)}>
+            ${KINDS.map((k) => html`<ix-tab-item tab-key=${k}>${localizeDir(KIND_CFG[k].label)}</ix-tab-item>`)}
           </ix-tabs>
           <div class="panel-body">
             ${this.canEdit ? this.renderImport(cfg) : ''} ${this.renderList(cfg)}
@@ -204,8 +204,11 @@ export class MfGraphicsCatalog extends LitElement {
     `;
   }
 
-  private onTab(index: number): void {
-    this.tab = index;
+  /** `ix-tabs` reports the `tab-key` (iX 5), which is the graphic kind. */
+  private onTab(key: string | undefined): void {
+    const kind = KINDS.find((k) => k === key);
+    if (kind === undefined) return;
+    this.tab = kind;
     this.resetImport();
     void this.reload();
   }

@@ -711,13 +711,13 @@ export class WuiEngStudio extends LitElement {
           : nothing}
       </header>
       <ix-tabs
-        .selected=${PANEL_ORDER.indexOf(this.panel)}
-        @selectedChange=${(event: CustomEvent<number>) => this.onTab(event.detail)}
+        .activeTabKey=${this.panel}
+        @tabChange=${(event: CustomEvent<string | undefined>) => this.onTab(event.detail)}
       >
-        <ix-tab-item>${this.tr(MSG.stepDevices)}</ix-tab-item>
-        <ix-tab-item>${this.tr(MSG.stepBooks)}${countSuffix(this.books.length)}</ix-tab-item>
-        <ix-tab-item>${this.tr(MSG.stepModel)}</ix-tab-item>
-        <ix-tab-item>${this.tr(MSG.stepInstances)}${countSuffix(changes)}</ix-tab-item>
+        <ix-tab-item tab-key="devices">${this.tr(MSG.stepDevices)}</ix-tab-item>
+        <ix-tab-item tab-key="books">${this.tr(MSG.stepBooks)}${countSuffix(this.books.length)}</ix-tab-item>
+        <ix-tab-item tab-key="model">${this.tr(MSG.stepModel)}</ix-tab-item>
+        <ix-tab-item tab-key="instances">${this.tr(MSG.stepInstances)}${countSuffix(changes)}</ix-tab-item>
       </ix-tabs>
       ${this.notice === ''
         ? nothing
@@ -729,9 +729,9 @@ export class WuiEngStudio extends LitElement {
     `;
   }
 
-  /** `ix-tabs` reports an INDEX; the panel is the state everything else reads. */
-  private onTab(index: number): void {
-    const panel = PANEL_ORDER[index];
+  /** `ix-tabs` reports the `tab-key` (iX 5), which is the panel name. */
+  private onTab(key: string | undefined): void {
+    const panel = PANEL_ORDER.find((name) => name === key);
     if (panel !== undefined) this.panel = panel;
   }
 

@@ -28,7 +28,7 @@ import '@visuelconcept-winccoa/wui-alarms-core/ui/wui-alarm-ranges.js';
 import '@wincc-oa/wui-ix-wrappers/wui-content-header/wui-content-header.js';
 import '@wincc-oa/wui-oarxjs-context/components/wui-context-generator/wui-context-generator.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
-import { WuiRouterServiceToken } from '@wincc-oa/wui-shared/tokens/wui-router-service.token.js';
+import { WuiRouterFacadeToken } from '@wincc-oa/wui-shared/tokens/wui-router-facade.token.js';
 import type { WuiRouterFacade } from '@wincc-oa/wui-models/interfaces/wui-router/wui-router.facade.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
@@ -175,7 +175,7 @@ export class WuiAlarms extends LitElement {
   private routerScope(): readonly string[] {
     if (this.routeSearch !== null) return scopeFromSearch(this.routeSearch);
     try {
-      const router = container.resolve<WuiRouterFacade>(WuiRouterServiceToken);
+      const router = container.resolve<WuiRouterFacade>(WuiRouterFacadeToken);
       return parseScopeAttribute(router.getSearchParam('dp') ?? '');
     } catch {
       // No router in the container (embedded / test host) — the attribute rules.

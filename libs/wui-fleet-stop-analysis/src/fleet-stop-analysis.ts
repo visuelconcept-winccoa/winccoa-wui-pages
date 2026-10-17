@@ -59,9 +59,9 @@ import {
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { MSG, localize, localizeDir, rawStopCountMsg } from './i18n.js';
 
-const TAB_TABLE = 0;
-const TAB_CHART = 1;
-const TAB_RAW = 2;
+const TAB_TABLE = 'table';
+const TAB_CHART = 'chart';
+const TAB_RAW = 'raw';
 const DEBOUNCE_MS = 300;
 const DATE_FORMAT = 'yyyy-MM-dd';
 const END_OF_DAY_MS = 24 * 60 * 60 * 1000 - 1;
@@ -132,7 +132,7 @@ export class WuiFleetStopAnalysis extends LitElement {
   @state() private machineSearch = '';
   @state() private rawSortCol: RawSortCol = 'start';
   @state() private rawSortDir: SortDir = 'desc';
-  @state() private tab = TAB_TABLE;
+  @state() private tab: string = TAB_TABLE;
   @state() private result: AnalysisResult | null = null;
   @state() private loading = false;
   @state() private offline = false;
@@ -321,10 +321,10 @@ export class WuiFleetStopAnalysis extends LitElement {
 
   private renderTabs(): TemplateResult {
     return html`
-      <ix-tabs .selected=${this.tab} @selectedChange=${(e: CustomEvent<number>) => (this.tab = e.detail)}>
-        <ix-tab-item>${localizeDir(MSG.tabs.table)}</ix-tab-item>
-        <ix-tab-item>${localizeDir(MSG.tabs.chart)}</ix-tab-item>
-        <ix-tab-item>${localizeDir(MSG.tabs.raw)}</ix-tab-item>
+      <ix-tabs .activeTabKey=${this.tab} @tabChange=${(e: CustomEvent<string | undefined>) => (this.tab = e.detail ?? this.tab)}>
+        <ix-tab-item tab-key=${TAB_TABLE}>${localizeDir(MSG.tabs.table)}</ix-tab-item>
+        <ix-tab-item tab-key=${TAB_CHART}>${localizeDir(MSG.tabs.chart)}</ix-tab-item>
+        <ix-tab-item tab-key=${TAB_RAW}>${localizeDir(MSG.tabs.raw)}</ix-tab-item>
       </ix-tabs>
     `;
   }

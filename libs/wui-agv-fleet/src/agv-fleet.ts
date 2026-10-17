@@ -45,7 +45,7 @@ import './agv-fleet/ui/af-kpi-bar.js';
 import './agv-fleet/ui/af-map.js';
 import './agv-fleet/ui/af-missions.js';
 
-/** Tab order — the index `ix-tabs` reports and selects. */
+/** The tabs — each one's name is its `ix-tab-item` `tab-key`. */
 const TAB_ORDER = ['fleet', 'missions'] as const;
 type Tab = (typeof TAB_ORDER)[number];
 
@@ -120,11 +120,11 @@ export class WuiAgvFleet extends LitElement {
         </wui-context-generator>
 
         <ix-tabs
-          .selected=${TAB_ORDER.indexOf(this.tab)}
-          @selectedChange=${(event: CustomEvent<number>) => this.onTab(event.detail)}
+          .activeTabKey=${this.tab}
+          @tabChange=${(event: CustomEvent<string | undefined>) => this.onTab(event.detail)}
         >
-          <ix-tab-item>${localizeDir(MSG.tabs.fleet)}</ix-tab-item>
-          <ix-tab-item
+          <ix-tab-item tab-key="fleet">${localizeDir(MSG.tabs.fleet)}</ix-tab-item>
+          <ix-tab-item tab-key="missions"
             >${localizeDir(MSG.tabs.missions)}${this.missionCountSuffix()}</ix-tab-item
           >
         </ix-tabs>
@@ -141,9 +141,9 @@ export class WuiAgvFleet extends LitElement {
     `;
   }
 
-  /** `ix-tabs` reports an INDEX; the tab name is what everything else reads. */
-  private onTab(index: number): void {
-    const tab = TAB_ORDER[index];
+  /** `ix-tabs` reports the `tab-key` (iX 5), which is the tab name. */
+  private onTab(key: string | undefined): void {
+    const tab = TAB_ORDER.find((name) => name === key);
     if (tab !== undefined) this.tab = tab;
   }
 

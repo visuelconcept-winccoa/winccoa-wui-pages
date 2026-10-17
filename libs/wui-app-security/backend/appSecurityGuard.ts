@@ -9,6 +9,8 @@
 // import). Provides:
 //
 //   identityOf(req)              session user → { username, userId, admin, groups }
+//   identityOfUsername(name)     the same for a user authenticated otherwise
+//                                (a verified WebUI token)
 //   listGroups()                 OA group directory ({ id, name }[])
 //   requireRole(module, role)    express middleware → 403 when the session user
 //                                lacks the role (mirrors the client rules:
@@ -200,8 +202,16 @@ function sessionUsername(req: Request): string {
 }
 
 /** Resolve the session user's identity + OA groups (server-side only). */
-export async function identityOf(req: Request): Promise<AppSecurityIdentity> {
-  const username = sessionUsername(req);
+export function identityOf(req: Request): Promise<AppSecurityIdentity> {
+  return identityOfUsername(sessionUsername(req));
+}
+
+/**
+ * Identity + OA groups of a user the caller has ALREADY authenticated by other
+ * means — e.g. a verified WebUI token (a login provider's session has no
+ * passport identity). Never pass a client-declared name here.
+ */
+export async function identityOfUsername(username: string): Promise<AppSecurityIdentity> {
   if (!username) return { username: '', userId: -1, admin: false, groups: [] };
   const dir = await directory();
   const userId = dir.userIds.get(username) ?? -1;
