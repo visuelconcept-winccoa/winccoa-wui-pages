@@ -82,3 +82,17 @@ group lives in `_poll_group`, not the reference).
    mapping (mirror `core/opcua-mapping.ts`) and branch the address builder in
    `core/generate.ts` / the backend `writeAddress` on the discriminator.
 4. Add a source option in `ui/ti-source.ts` and wire it in `tag-importer.ts`.
+
+## `wui dev` mock — `mock/api.mjs`
+
+The package ships a mock of `/api/tag-importer`, merged by wui-toolkit into any site that selects the
+module (`wui dev`, screenshots; wui-toolkit ≥ 0.20).
+
+- Two OPC UA connections (`Remplisseuse` connected, `Etiqueteuse` not), one running OPC UA client driver
+  (4), and the project's DP types for "reuse an existing type".
+- `browse` answers a small bottle-filler address space on the connected server (`Etat`, `Mesures`,
+  `Consignes`, one array variable), level by level or `depth` levels flat as the driver's `GetBranch`
+  does; the disconnected one times out (502), so the whole wizard runs online in `wui dev`.
+- `apply` writes nothing and reports what the backend would: a dry run `created` ("would be created") or
+  `skipped` (exists, reused), a real run `created` — a reused type only when it is extended.
+- Creating, reading and updating a connection are answered and change nothing.

@@ -85,3 +85,15 @@ assigns groups in `/app-security` (docs/wui-app-security/INTEGRATION.md).
 - UI gating only (best-effort UX): `/api/vnc/*` remains unauthenticated
   (`fullAccess`, see the Security pitfall above) — server-side hardening of the
   relay is still the pre-production TODO.
+
+## `wui dev` mock — `mock/api.mjs`
+
+The package ships a mock of the HTTP side of `/api/vnc`, merged by wui-toolkit into any site that
+selects the module (`wui dev`, screenshots; wui-toolkit ≥ 0.20). `status` gives the four demo
+connections (`DEMO_CONNECTIONS`) a fresh TCP test result — three reachable, the welding robot refused
+(`ECONNREFUSED`) — `resolve` answers their host:port (502 for any other id) and `health` reports the
+MSA client.
+
+Not mocked: the RFB session, a WebSocket (`/api/vnc/ws`) relayed to the VNC server — the viewer reports
+that it cannot connect. The connection list still comes from the page's in-memory demo: the para mock
+knows no `RemoteVnc_Connection` type unless the site's fixtures declare it, hence the offline-mode notice.

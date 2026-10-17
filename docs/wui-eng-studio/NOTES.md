@@ -2003,3 +2003,24 @@ unverified — see the verification status in [S7-BROWSING.md](./S7-BROWSING.md)
   from a NodeSet or from the model generation, not from the walk.
 - Mass-edit rules & config profiles, auto-map-by-name, multi-user check-out
   locking (the baseline already detects the conflict; it does not prevent it).
+
+## `wui dev` mock — `mock/api.mjs`
+
+The package ships a mock of `/api/eng`, merged by wui-toolkit into any site that selects the module
+(`wui dev`, screenshots; wui-toolkit ≥ 0.20 for the `:id` routes). Its data, `mock/eng-demo.json`, is a
+subset of the offline demo as `DemoEngGateway` reports it — four equipments (`S7_Four1`,
+`Ligne_Embouteillage` on its Étiqueteuse catalog only, `Z01_Pompe1/2` sharing `Catalogue_Pompe_KSB`),
+their three catalogs, the `STD_Four` model, the `Atelier_Fours` workspace and the live project where
+`Equip_Four` and `Z01_FOUR001` already exist. It is a frozen copy: when the demo changes, refresh it
+by hand if the screenshots should follow.
+
+- Mocked: `health`, `roles` (all four granted), the device registry and its state refresh, connections,
+  drivers, config options, datapoint search (`*`/`?` wildcards), DP types, S7Plus health/connections,
+  S7 connections, the catalogs and their per-path edits, models, workspace, check-out, live read (it
+  honours its scope), test-read and check-in.
+- Writes change nothing: a save answers the registry as it would be after it (so the page shows what it
+  just did), the next read answers the seed again; check-in reports every plan item `applied`
+  (conflicts `skipped`).
+- Not mocked — they answer 503: online browsing (OPC UA level and walk, S7Plus projects/stations/levels),
+  catalog ingestion (its parsers live in the backend), the S7 probe and inventory. `POST /plan` is not
+  mocked: the page diffs in the browser.

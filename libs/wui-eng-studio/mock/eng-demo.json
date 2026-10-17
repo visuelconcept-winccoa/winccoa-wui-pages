@@ -1,0 +1,964 @@
+{
+  "devices": [
+    {
+      "id": "s7-four1",
+      "name": "S7_Four1",
+      "protocol": "s7plus",
+      "connection": {
+        "ip": "192.168.10.21",
+        "rack": 0,
+        "slot": 1,
+        "cpu": "S7-1500"
+      },
+      "accessModes": [
+        "s7plus"
+      ],
+      "driverNumber": 3,
+      "pollGroup": "_EngStudio_Poll",
+      "bookIds": [
+        "book-s7-four"
+      ],
+      "state": "connected",
+      "stateSource": "connstate",
+      "stateConnection": "192.168.10.21",
+      "stateCode": 257
+    },
+    {
+      "id": "ligne-embouteillage",
+      "name": "Ligne_Embouteillage",
+      "protocol": "opcua",
+      "accessModes": [
+        "opcua"
+      ],
+      "driverNumber": 4,
+      "pollGroup": "_EngStudio_Poll",
+      "bookIds": [
+        "book-opcua-etiqueteuse"
+      ],
+      "state": "connected",
+      "stateSource": "connstate",
+      "stateConnection": "Etiqueteuse",
+      "stateCode": 256,
+      "passwordSet": false
+    },
+    {
+      "id": "z01-pompe1",
+      "name": "Z01_Pompe1",
+      "protocol": "s7plus",
+      "accessModes": [
+        "s7plus"
+      ],
+      "bookIds": [
+        "book-catalogue-pompe"
+      ],
+      "state": "unknown",
+      "stateSource": "unprobed"
+    },
+    {
+      "id": "z01-pompe2",
+      "name": "Z01_Pompe2",
+      "protocol": "s7plus",
+      "accessModes": [
+        "s7plus"
+      ],
+      "bookIds": [
+        "book-catalogue-pompe"
+      ],
+      "state": "unknown",
+      "stateSource": "unprobed"
+    }
+  ],
+  "books": [
+    {
+      "id": "book-s7-four",
+      "name": "TIA Four1 (DB_Four + DB_Echange)",
+      "provenance": {
+        "kind": "simaticml",
+        "generatedAt": "2026-08-01T09:12:00.000Z",
+        "file": "Four1_export.zip",
+        "detail": "TIA V17 · CPU PLC_Four"
+      },
+      "interface": {
+        "protocol": "s7plus",
+        "connection": "PLC_Four",
+        "params": {
+          "ip": "192.168.10.21",
+          "rack": 0,
+          "slot": 1
+        },
+        "driverNumber": 3
+      },
+      "entries": [
+        {
+          "path": "DB_Four.Etat.EnChauffe",
+          "sourceType": "Bool",
+          "leafType": "Bool",
+          "access": "rw",
+          "addresses": {
+            "s7plus": "\"DB_Four\".\"Etat\".\"EnChauffe\"",
+            "opcua": "ns=3;s=\"DB_Four\".\"Etat\".\"EnChauffe\""
+          },
+          "comment": "Four en chauffe",
+          "role": "state"
+        },
+        {
+          "path": "DB_Four.Etat.PorteOuverte",
+          "sourceType": "Bool",
+          "leafType": "Bool",
+          "access": "rw",
+          "addresses": {
+            "s7plus": "\"DB_Four\".\"Etat\".\"PorteOuverte\"",
+            "opcua": "ns=3;s=\"DB_Four\".\"Etat\".\"PorteOuverte\""
+          },
+          "role": "state"
+        },
+        {
+          "path": "DB_Four.Mesures.Temperature",
+          "sourceType": "Real",
+          "leafType": "Float",
+          "access": "rw",
+          "addresses": {
+            "s7plus": "\"DB_Four\".\"Mesures\".\"Temperature\"",
+            "opcua": "ns=3;s=\"DB_Four\".\"Mesures\".\"Temperature\""
+          },
+          "comment": "Température (°C)",
+          "role": "measure"
+        },
+        {
+          "path": "DB_Four.Mesures.Hygrometrie",
+          "sourceType": "Real",
+          "leafType": "Float",
+          "access": "rw",
+          "addresses": {
+            "s7plus": "\"DB_Four\".\"Mesures\".\"Hygrometrie\"",
+            "opcua": "ns=3;s=\"DB_Four\".\"Mesures\".\"Hygrometrie\""
+          },
+          "role": "measure"
+        },
+        {
+          "path": "DB_Four.Consignes.Temperature",
+          "sourceType": "Real",
+          "leafType": "Float",
+          "access": "rw",
+          "addresses": {
+            "s7plus": "\"DB_Four\".\"Consignes\".\"Temperature\"",
+            "opcua": "ns=3;s=\"DB_Four\".\"Consignes\".\"Temperature\""
+          },
+          "role": "setpoint"
+        },
+        {
+          "path": "DB_Four.Consignes.Rampe",
+          "sourceType": "Real",
+          "leafType": "Float",
+          "access": "rw",
+          "addresses": {
+            "s7plus": "\"DB_Four\".\"Consignes\".\"Rampe\"",
+            "opcua": "ns=3;s=\"DB_Four\".\"Consignes\".\"Rampe\""
+          },
+          "role": "setpoint"
+        },
+        {
+          "path": "DB_Four.Moteur.Marche",
+          "sourceType": "Bool",
+          "leafType": "Bool",
+          "access": "rw",
+          "addresses": {
+            "s7plus": "\"DB_Four\".\"Moteur\".\"Marche\"",
+            "opcua": "ns=3;s=\"DB_Four\".\"Moteur\".\"Marche\""
+          },
+          "comment": "Retour de marche",
+          "typeId": "UDT_Moteur",
+          "role": "command"
+        },
+        {
+          "path": "DB_Four.Moteur.Defaut",
+          "sourceType": "Bool",
+          "leafType": "Bool",
+          "access": "rw",
+          "addresses": {
+            "s7plus": "\"DB_Four\".\"Moteur\".\"Defaut\"",
+            "opcua": "ns=3;s=\"DB_Four\".\"Moteur\".\"Defaut\""
+          },
+          "comment": "Défaut moteur",
+          "typeId": "UDT_Moteur",
+          "role": "alarm"
+        },
+        {
+          "path": "DB_Four.Moteur.Vitesse",
+          "sourceType": "Real",
+          "leafType": "Float",
+          "access": "rw",
+          "addresses": {
+            "s7plus": "\"DB_Four\".\"Moteur\".\"Vitesse\"",
+            "opcua": "ns=3;s=\"DB_Four\".\"Moteur\".\"Vitesse\""
+          },
+          "comment": "Vitesse (tr/min)",
+          "typeId": "UDT_Moteur",
+          "role": "measure"
+        },
+        {
+          "path": "DB_Four.Moteur.Courant",
+          "sourceType": "Real",
+          "leafType": "Float",
+          "access": "rw",
+          "addresses": {
+            "s7plus": "\"DB_Four\".\"Moteur\".\"Courant\"",
+            "opcua": "ns=3;s=\"DB_Four\".\"Moteur\".\"Courant\""
+          },
+          "comment": "Courant (A)",
+          "typeId": "UDT_Moteur",
+          "role": "measure"
+        },
+        {
+          "path": "DB_Echange.Vie",
+          "sourceType": "Bool",
+          "leafType": "Bool",
+          "access": "rw",
+          "addresses": {
+            "s7plus": "\"DB_Echange\".\"Vie\"",
+            "opcua": "ns=3;s=\"DB_Echange\".\"Vie\"",
+            "s7": "DB12.DBX0.0"
+          },
+          "comment": "Bit de vie",
+          "role": "command"
+        },
+        {
+          "path": "DB_Echange.Acquit",
+          "sourceType": "Bool",
+          "leafType": "Bool",
+          "access": "rw",
+          "addresses": {
+            "s7plus": "\"DB_Echange\".\"Acquit\"",
+            "opcua": "ns=3;s=\"DB_Echange\".\"Acquit\"",
+            "s7": "DB12.DBX0.1"
+          },
+          "role": "command"
+        },
+        {
+          "path": "DB_Echange.ModeAuto",
+          "sourceType": "Bool",
+          "leafType": "Bool",
+          "access": "rw",
+          "addresses": {
+            "s7plus": "\"DB_Echange\".\"ModeAuto\"",
+            "opcua": "ns=3;s=\"DB_Echange\".\"ModeAuto\"",
+            "s7": "DB12.DBX0.2"
+          },
+          "role": "command"
+        },
+        {
+          "path": "DB_Echange.Reserve",
+          "sourceType": "Byte",
+          "leafType": "Int",
+          "access": "rw",
+          "addresses": {
+            "s7plus": "\"DB_Echange\".\"Reserve\"",
+            "opcua": "ns=3;s=\"DB_Echange\".\"Reserve\"",
+            "s7": "DB12.DBB1"
+          },
+          "role": "setpoint"
+        },
+        {
+          "path": "DB_Echange.ConsigneTemp",
+          "sourceType": "Real",
+          "leafType": "Float",
+          "access": "rw",
+          "addresses": {
+            "s7plus": "\"DB_Echange\".\"ConsigneTemp\"",
+            "opcua": "ns=3;s=\"DB_Echange\".\"ConsigneTemp\"",
+            "s7": "DB12.DBD2"
+          },
+          "comment": "Consigne température (°C)",
+          "role": "setpoint"
+        },
+        {
+          "path": "DB_Echange.MesureTemp",
+          "sourceType": "Real",
+          "leafType": "Float",
+          "access": "rw",
+          "addresses": {
+            "s7plus": "\"DB_Echange\".\"MesureTemp\"",
+            "opcua": "ns=3;s=\"DB_Echange\".\"MesureTemp\"",
+            "s7": "DB12.DBD6"
+          },
+          "role": "measure"
+        },
+        {
+          "path": "DB_Echange.NbPieces",
+          "sourceType": "Int",
+          "leafType": "Int",
+          "access": "rw",
+          "addresses": {
+            "s7plus": "\"DB_Echange\".\"NbPieces\"",
+            "opcua": "ns=3;s=\"DB_Echange\".\"NbPieces\"",
+            "s7": "DB12.DBW10"
+          },
+          "role": "setpoint"
+        },
+        {
+          "path": "DB_Echange.Recette",
+          "sourceType": "String[20]",
+          "leafType": "String",
+          "access": "rw",
+          "addresses": {
+            "s7plus": "\"DB_Echange\".\"Recette\"",
+            "opcua": "ns=3;s=\"DB_Echange\".\"Recette\"",
+            "s7": "DB12.DBB12"
+          },
+          "role": "parameter"
+        },
+        {
+          "path": "DB_Echange.Statut.Code",
+          "sourceType": "Int",
+          "leafType": "Int",
+          "access": "rw",
+          "addresses": {
+            "s7plus": "\"DB_Echange\".\"Statut\".\"Code\"",
+            "opcua": "ns=3;s=\"DB_Echange\".\"Statut\".\"Code\"",
+            "s7": "DB12.DBW34"
+          },
+          "role": "setpoint"
+        },
+        {
+          "path": "DB_Echange.Statut.Message",
+          "sourceType": "String[16]",
+          "leafType": "String",
+          "access": "rw",
+          "addresses": {
+            "s7plus": "\"DB_Echange\".\"Statut\".\"Message\"",
+            "opcua": "ns=3;s=\"DB_Echange\".\"Statut\".\"Message\"",
+            "s7": "DB12.DBB36"
+          },
+          "role": "parameter"
+        }
+      ],
+      "types": [
+        {
+          "id": "UDT_Moteur",
+          "name": "UDT_Moteur",
+          "members": [
+            {
+              "path": "Marche",
+              "sourceType": "Bool",
+              "leafType": "Bool",
+              "comment": "Retour de marche"
+            },
+            {
+              "path": "Defaut",
+              "sourceType": "Bool",
+              "leafType": "Bool",
+              "comment": "Défaut moteur"
+            },
+            {
+              "path": "Vitesse",
+              "sourceType": "Real",
+              "leafType": "Float",
+              "comment": "Vitesse (tr/min)"
+            },
+            {
+              "path": "Courant",
+              "sourceType": "Real",
+              "leafType": "Float",
+              "comment": "Courant (A)"
+            }
+          ]
+        }
+      ],
+      "warnings": [
+        {
+          "code": "simaticml.array-skipped",
+          "message": "Member \"{path}\": array datatypes are not imported in v1 — skipped.",
+          "params": {
+            "path": "Alarmes"
+          }
+        }
+      ]
+    },
+    {
+      "id": "book-opcua-etiqueteuse",
+      "name": "OPC UA Étiqueteuse",
+      "provenance": {
+        "kind": "opcua-browse",
+        "generatedAt": "2026-08-01T10:03:00.000Z",
+        "detail": "browse ns=2;Objects/Etiqueteuse"
+      },
+      "interface": {
+        "protocol": "opcua",
+        "connection": "Etiqueteuse",
+        "params": {
+          "endpoint": "opc.tcp://192.168.10.42:4840",
+          "server": "Etiqueteuse"
+        }
+      },
+      "entries": [
+        {
+          "path": "Etiqueteuse.Cadence",
+          "sourceType": "Int32",
+          "leafType": "Int",
+          "access": "r",
+          "addresses": {
+            "opcua": "Etiqueteuse$$1$1$ns=2;s=Etiqueteuse.Cadence"
+          },
+          "comment": "Cadence (étiquettes/min)",
+          "role": "measure"
+        },
+        {
+          "path": "Etiqueteuse.StockEtiquettes",
+          "sourceType": "Int32",
+          "leafType": "Int",
+          "access": "r",
+          "addresses": {
+            "opcua": "Etiqueteuse$$1$1$ns=2;s=Etiqueteuse.StockEtiquettes"
+          },
+          "comment": "Stock étiquettes",
+          "role": "measure"
+        },
+        {
+          "path": "Etiqueteuse.EnMarche",
+          "sourceType": "Boolean",
+          "leafType": "Bool",
+          "access": "r",
+          "addresses": {
+            "opcua": "Etiqueteuse$$1$1$ns=2;s=Etiqueteuse.EnMarche"
+          },
+          "role": "state"
+        },
+        {
+          "path": "Etiqueteuse.BourrageDetecte",
+          "sourceType": "Boolean",
+          "leafType": "Bool",
+          "access": "r",
+          "addresses": {
+            "opcua": "Etiqueteuse$$1$1$ns=2;s=Etiqueteuse.BourrageDetecte"
+          },
+          "comment": "Bourrage détecté",
+          "role": "alarm"
+        }
+      ],
+      "types": [],
+      "warnings": []
+    },
+    {
+      "id": "book-catalogue-pompe",
+      "name": "Catalogue_Pompe_KSB",
+      "provenance": {
+        "kind": "nodeset",
+        "file": "KSB_Etanorm.xml",
+        "generatedAt": "2026-07-20T14:00:00.000Z",
+        "detail": "Catalogue type (sans interface) — mutualisé"
+      },
+      "entries": [
+        {
+          "path": "Etat.Marche",
+          "sourceType": "Bool",
+          "leafType": "Bool",
+          "access": "r",
+          "addresses": {
+            "s7plus": "\"Etat\".\"Marche\""
+          },
+          "comment": "Retour de marche",
+          "role": "command"
+        },
+        {
+          "path": "Etat.Defaut",
+          "sourceType": "Bool",
+          "leafType": "Bool",
+          "access": "r",
+          "addresses": {
+            "s7plus": "\"Etat\".\"Defaut\""
+          },
+          "comment": "Défaut pompe",
+          "role": "alarm"
+        },
+        {
+          "path": "Mesures.Debit",
+          "sourceType": "LReal",
+          "leafType": "Float",
+          "access": "r",
+          "addresses": {
+            "s7plus": "\"Mesures\".\"Debit\""
+          },
+          "comment": "Débit (m³/h)",
+          "role": "measure"
+        },
+        {
+          "path": "Mesures.Pression",
+          "sourceType": "LReal",
+          "leafType": "Float",
+          "access": "r",
+          "addresses": {
+            "s7plus": "\"Mesures\".\"Pression\""
+          },
+          "comment": "Pression (bar)",
+          "role": "measure"
+        },
+        {
+          "path": "Mesures.Courant",
+          "sourceType": "LReal",
+          "leafType": "Float",
+          "access": "r",
+          "addresses": {
+            "s7plus": "\"Mesures\".\"Courant\""
+          },
+          "comment": "Courant moteur (A)",
+          "role": "measure"
+        },
+        {
+          "path": "Commande.Consigne",
+          "sourceType": "LReal",
+          "leafType": "Float",
+          "access": "rw",
+          "addresses": {
+            "s7plus": "\"Commande\".\"Consigne\""
+          },
+          "comment": "Consigne vitesse (%)",
+          "role": "setpoint"
+        },
+        {
+          "path": "Commande.MarcheArret",
+          "sourceType": "Bool",
+          "leafType": "Bool",
+          "access": "w",
+          "addresses": {
+            "s7plus": "\"Commande\".\"MarcheArret\""
+          },
+          "comment": "Ordre marche/arrêt",
+          "role": "command"
+        }
+      ],
+      "types": [],
+      "warnings": []
+    }
+  ],
+  "connections": [
+    {
+      "name": "Etiqueteuse",
+      "connected": true
+    },
+    {
+      "name": "Injecteuse",
+      "connected": false
+    }
+  ],
+  "s7plusConnections": [
+    {
+      "name": "Four2",
+      "connected": true,
+      "station": "Four_Plasma_V17|PLC_Four",
+      "driverNumber": 3,
+      "address": "192.168.10.21",
+      "connState": 258
+    },
+    {
+      "name": "Presse_S7",
+      "connected": false,
+      "driverNumber": 3,
+      "address": "192.168.10.28",
+      "connState": 1
+    }
+  ],
+  "s7plusManager": {
+    "reachable": true,
+    "drivers": [
+      3
+    ],
+    "connections": 2
+  },
+  "s7Connections": [
+    {
+      "name": "S7_Pompage",
+      "connected": true
+    }
+  ],
+  "drivers": [
+    {
+      "number": 1,
+      "type": "",
+      "running": false
+    },
+    {
+      "number": 2,
+      "type": "MODBUS",
+      "running": true
+    },
+    {
+      "number": 3,
+      "type": "S7",
+      "running": true
+    },
+    {
+      "number": 4,
+      "type": "OPCUAC",
+      "running": true,
+      "mode": "opcua"
+    },
+    {
+      "number": 7,
+      "type": "OPCUAC",
+      "running": false,
+      "mode": "opcua"
+    }
+  ],
+  "configOptions": {
+    "alarmClasses": [
+      "_alert_high",
+      "_alert_low",
+      "_came",
+      "_came_ack",
+      "_came_went",
+      "_warning",
+      "Defaut_Process"
+    ],
+    "archiveGroups": [
+      "_NGA_G_EVENT",
+      "_NGA_G_MEASURE",
+      "_NGA_G_SLOW"
+    ],
+    "subscriptions": [
+      "Sub_Fast",
+      "Sub_Process"
+    ],
+    "pollGroups": [
+      "_Poll_Fast",
+      "_Poll_Normal",
+      "_Poll_Slow"
+    ]
+  },
+  "models": [
+    {
+      "id": "std-four",
+      "name": "STD_Four",
+      "description": "Four de séchage — standard maison : mesures, consignes, état. Mappé sur le DB d’échange de l’automate, non reproduit (la structure est la nôtre, pas celle du DB).",
+      "typeName": "STD_Four",
+      "sourceBookId": "book-s7-four",
+      "sources": [
+        {
+          "bookId": "book-s7-four"
+        }
+      ],
+      "structure": {
+        "name": "STD_Four",
+        "type": "Struct",
+        "children": [
+          {
+            "name": "PV",
+            "type": "Struct",
+            "children": [
+              {
+                "name": "Temperature",
+                "type": "Float"
+              },
+              {
+                "name": "Hygrometrie",
+                "type": "Float"
+              }
+            ]
+          },
+          {
+            "name": "SP",
+            "type": "Struct",
+            "children": [
+              {
+                "name": "Temperature",
+                "type": "Float"
+              },
+              {
+                "name": "Rampe",
+                "type": "Float"
+              }
+            ]
+          },
+          {
+            "name": "Etat",
+            "type": "Struct",
+            "children": [
+              {
+                "name": "EnChauffe",
+                "type": "Bool"
+              },
+              {
+                "name": "Defaut",
+                "type": "Bool"
+              }
+            ]
+          }
+        ]
+      },
+      "bindings": {
+        "PV.Temperature": "book-s7-four::DB_Four.Mesures.Temperature",
+        "PV.Hygrometrie": "book-s7-four::DB_Four.Mesures.Hygrometrie",
+        "SP.Temperature": "book-s7-four::DB_Four.Consignes.Temperature",
+        "SP.Rampe": "book-s7-four::DB_Four.Consignes.Rampe",
+        "Etat.EnChauffe": "book-s7-four::DB_Four.Etat.EnChauffe",
+        "Etat.Defaut": "book-s7-four::DB_Four.Etat.PorteOuverte"
+      },
+      "policy": {
+        "PV.Temperature": {
+          "archive": {
+            "active": true,
+            "group": "_NGA_G_EVENT"
+          },
+          "range": {
+            "min": 0,
+            "max": 450
+          }
+        },
+        "Etat.Defaut": {
+          "alarm": {
+            "active": true,
+            "alarmClass": "_alert_high"
+          }
+        }
+      },
+      "savedAt": "2026-08-03T09:10:00.000Z"
+    }
+  ],
+  "workspace": {
+    "name": "Atelier_Fours",
+    "types": [
+      {
+        "typeName": "Equip_Four",
+        "structure": {
+          "name": "Equip_Four",
+          "type": "Struct",
+          "children": [
+            {
+              "name": "Etat",
+              "type": "Struct",
+              "children": [
+                {
+                  "name": "EnChauffe",
+                  "type": "Bool"
+                },
+                {
+                  "name": "PorteOuverte",
+                  "type": "Bool"
+                }
+              ]
+            },
+            {
+              "name": "Mesures",
+              "type": "Struct",
+              "children": [
+                {
+                  "name": "Temperature",
+                  "type": "Float"
+                },
+                {
+                  "name": "Hygrometrie",
+                  "type": "Float"
+                }
+              ]
+            },
+            {
+              "name": "Consignes",
+              "type": "Struct",
+              "children": [
+                {
+                  "name": "Temperature",
+                  "type": "Float"
+                },
+                {
+                  "name": "Rampe",
+                  "type": "Float"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "dps": [
+      {
+        "dpName": "Z01_FOUR001",
+        "dpType": "Equip_Four"
+      },
+      {
+        "dpName": "Z01_FOUR002",
+        "dpType": "Equip_Four"
+      }
+    ],
+    "configs": {
+      "Z01_FOUR001.Mesures.Temperature": {
+        "address": {
+          "deviceId": "s7-four1",
+          "mode": "s7plus",
+          "reference": "\"DB_Four\".\"Mesures\".\"Temperature\"",
+          "direction": 4,
+          "datatype": 760,
+          "active": true
+        },
+        "alarm": {
+          "kind": "analog",
+          "alarmClass": "alert",
+          "direction": "ASC",
+          "thresholds": [
+            200,
+            250
+          ],
+          "bounds": [
+            -273,
+            1000
+          ],
+          "active": true
+        },
+        "archive": {
+          "group": "EVENT",
+          "active": true
+        },
+        "range": {
+          "min": 0,
+          "max": 450,
+          "inclMin": true,
+          "inclMax": true
+        }
+      },
+      "Z01_FOUR001.Consignes.Temperature": {
+        "address": {
+          "deviceId": "s7-four1",
+          "mode": "s7plus",
+          "reference": "\"DB_Four\".\"Consignes\".\"Temperature\"",
+          "direction": 7,
+          "datatype": 760,
+          "active": true
+        }
+      },
+      "Z01_FOUR001.Etat.EnChauffe": {
+        "address": {
+          "deviceId": "s7-four1",
+          "mode": "s7plus",
+          "reference": "\"DB_Four\".\"Etat\".\"EnChauffe\"",
+          "direction": 4,
+          "datatype": 751,
+          "active": true
+        }
+      },
+      "Z01_FOUR002.Mesures.Temperature": {
+        "address": {
+          "deviceId": "s7-four1",
+          "mode": "s7plus",
+          "reference": "\"DB_Four\".\"Mesures\".\"Temperature\"",
+          "direction": 4,
+          "datatype": 760,
+          "active": true
+        },
+        "alarm": {
+          "kind": "analog",
+          "alarmClass": "alert",
+          "direction": "ASC",
+          "thresholds": [
+            200,
+            250
+          ],
+          "bounds": [
+            -273,
+            1000
+          ],
+          "active": true
+        },
+        "archive": {
+          "group": "EVENT",
+          "active": true
+        },
+        "range": {
+          "min": 0,
+          "max": 450,
+          "inclMin": true,
+          "inclMax": true
+        }
+      },
+      "Z01_FOUR002.Consignes.Temperature": {
+        "address": {
+          "deviceId": "s7-four1",
+          "mode": "s7plus",
+          "reference": "\"DB_Four\".\"Consignes\".\"Temperature\"",
+          "direction": 7,
+          "datatype": 760,
+          "active": true
+        }
+      },
+      "Z01_FOUR002.Etat.EnChauffe": {
+        "address": {
+          "deviceId": "s7-four1",
+          "mode": "s7plus",
+          "reference": "\"DB_Four\".\"Etat\".\"EnChauffe\"",
+          "direction": 4,
+          "datatype": 751,
+          "active": true
+        }
+      }
+    },
+    "baseline": {
+      "type:Equip_Four": "{\"children\":[{\"children\":[{\"name\":\"EnChauffe\",\"type\":\"Bool\"},{\"name\":\"PorteOuverte\",\"type\":\"Bool\"}],\"name\":\"Etat\",\"type\":\"Struct\"},{\"children\":[{\"name\":\"Temperature\",\"type\":\"Float\"}],\"name\":\"Mesures\",\"type\":\"Struct\"},{\"children\":[{\"name\":\"Temperature\",\"type\":\"Float\"},{\"name\":\"Rampe\",\"type\":\"Float\"}],\"name\":\"Consignes\",\"type\":\"Struct\"}],\"name\":\"Equip_Four\",\"type\":\"Struct\"}",
+      "dp:Z01_FOUR001": "{\"dpName\":\"Z01_FOUR001\",\"dpType\":\"Equip_Four\"}",
+      "cfg:Z01_FOUR001.Mesures.Temperature": "{\"archive\":{\"active\":true,\"group\":\"EVENT\"}}"
+    },
+    "checkedOutAt": "2026-08-02T08:30:00.000Z",
+    "checkedOutBy": "demo"
+  },
+  "live": {
+    "types": [
+      {
+        "typeName": "Equip_Four",
+        "structure": {
+          "name": "Equip_Four",
+          "type": "Struct",
+          "children": [
+            {
+              "name": "Etat",
+              "type": "Struct",
+              "children": [
+                {
+                  "name": "EnChauffe",
+                  "type": "Bool"
+                },
+                {
+                  "name": "PorteOuverte",
+                  "type": "Bool"
+                }
+              ]
+            },
+            {
+              "name": "Mesures",
+              "type": "Struct",
+              "children": [
+                {
+                  "name": "Temperature",
+                  "type": "Float"
+                }
+              ]
+            },
+            {
+              "name": "Consignes",
+              "type": "Struct",
+              "children": [
+                {
+                  "name": "Temperature",
+                  "type": "Float"
+                },
+                {
+                  "name": "Rampe",
+                  "type": "Float"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "dps": [
+      {
+        "dpName": "Z01_FOUR001",
+        "dpType": "Equip_Four"
+      }
+    ],
+    "configs": {
+      "Z01_FOUR001.Mesures.Temperature": {
+        "archive": {
+          "group": "EVENT",
+          "active": true
+        }
+      }
+    }
+  }
+}
