@@ -102,3 +102,11 @@ idea was rejected for that reason). Role/group direction is role → groups
   late user-settings load). `hasRole$` consumes it, so every module's gates
   re-evaluate on a user switch; the page banner subscribes to it too. Never
   cache `identity()` yourself at module scope.
+
+## `wui dev` mock — `mock/api.mjs`
+
+The package ships a mock of `/api/app-security` (`health`, `me`, `groups`), merged by wui-toolkit into
+any site that selects or requires the module. `me` answers the fixtures' user (`"user": { "userName" }`,
+else `dev`) as an administrator member of three demo groups (Administrateurs, Exploitants, Maintenance),
+so every role reads as granted — a page shows all of its features in `wui dev` and in screenshots.
+The fixtures' user needs wui-toolkit ≥ 0.20; older toolkits answer `dev`.

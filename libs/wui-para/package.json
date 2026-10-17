@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-para",
   "type": "module",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "PARA — standalone WinCC OA WebUI page: two tabs — a nested DP-type model editor (create/change-in-place/delete types) and an instances/values browser (live values + config attributes, create/rename/delete DPs). Embeds a proposal-only AI assistant (via /api/ai) and DPL ASCII import/export (multi-select DP/DPT) via the dplAscii MSA manager. Requires the PARA REST route to mutate.",
   "author": {
     "name": "Visuel Concept"
@@ -108,7 +108,9 @@
     "backend",
     "managers",
     "menu.fragment.jsonc",
+    "mock",
     "!**/*.spec.ts",
+    "!**/*.spec.mjs",
     "!**/*.test.ts"
   ],
   "repository": {

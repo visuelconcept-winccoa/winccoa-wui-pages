@@ -181,3 +181,20 @@ All OPEN until an admin assigns groups in `/app-security`
 - `edit-values` also gates the **Archive** and **Alarm** tabs' writes (archive
   group select + enable toggle in para-archive; Apply/Disable in para-alarm) —
   they write `_archive` / `_alert_hdl` configs through the same dp/set API.
+
+## `wui dev` mock — `mock/api.mjs`
+
+The package ships a mock of its backend, merged by wui-toolkit into any site that selects or requires
+the module (`wui dev`, screenshots). It needs wui-toolkit ≥ 0.20 (route `:params`, the handler's
+`fixtures`); an older toolkit leaves the `:name` routes unmatched, as before.
+
+- A datapoint type **exists only when the site's fixtures declare it** (`"types": { "<T>": { "structure": … } }`):
+  `GET dptype/<T>` answers its structure (the mock's element types mapped to PARA's names, `Struct` for
+  objects), and `POST dptype/create` answers 400 ("already exists") — what `DpJsonStore` /
+  `DpSingleJsonStore` / `ensureAppSecurityType` accept as "type ready", so they read the fixtures'
+  datapoints.
+- Any other type answers 404, and creating it 503: the stores fall back to their in-memory mode with the
+  page's own demo data. A mock answering "created" would switch them online onto empty datapoints.
+- `dptype/change` and `DELETE dptype/<T>` answer 503; `dp/create`, `dp/set`, `dp/rename`, `DELETE dp/<name>`
+  answer `ok` and change nothing (the datapoints live in the browser's mock). `dpl/health` reports no
+  dplAscii manager.
