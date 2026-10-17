@@ -108,7 +108,9 @@
     "backend",
     "managers",
     "menu.fragment.jsonc",
+    "mock",
     "!**/*.spec.ts",
+    "!**/*.spec.mjs",
     "!**/*.test.ts"
   ],
   "repository": {
