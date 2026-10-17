@@ -1,0 +1,33 @@
+{
+  "Label": "Alarmes",
+  "Description": "Le module Alarmes en widget : alarmes actives ou archivées d’une machine (ou de tout l’atelier, ou de tout filtre de datapoints) sur la période du tableau de bord, avec compteurs, plages de priorité, recherche, tri, pagination et acquittement.",
+  "Settings": {
+    "Scope": "Périmètre des alarmes",
+    "Atelier": "Atelier",
+    "AtelierDp": "Configuration de l’atelier",
+    "AtelierHint": "Choisissez l’atelier (un datapoint MachineFleet3D_Config, élément .json). Le widget liste alors ses machines ; les datapoints liés de chaque machine forment le périmètre des alarmes, comme dans le tableau de bord machine du parc.",
+    "MachineId": "Machine présélectionnée (id)",
+    "MachineIdHint": "Id de la machine affichée à l’ouverture du widget. Vide = tout l’atelier. Les ids sont ceux de la configuration de l’atelier (ex. four-600).",
+    "LockMachine": "Verrouiller la machine",
+    "LockMachineHint": "Masquer la liste des machines dans le widget : la machine présélectionnée est définitive.",
+    "DpFilter": "Filtre de datapoints",
+    "DpFilterItem": "Datapoint {{i}}",
+    "DpFilterHint": "Datapoints supplémentaires dont les alarmes sont affichées (un datapoint couvre tous ses éléments). À combiner avec l’atelier, ou seul.",
+    "StrictScope": "Périmètre strict",
+    "StrictScopeHint": "Sans périmètre, n’afficher aucune alarme plutôt que toutes celles de l’installation.",
+    "Source": "Onglet par défaut",
+    "Layout": "Densité",
+    "PageSize": "Lignes par page",
+    "LockSource": "Verrouiller l’onglet",
+    "HideStats": "Masquer les statistiques",
+    "NoAck": "Lecture seule (sans acquittement)"
+  },
+  "Source": {
+    "Active": "Alarmes actives",
+    "History": "Historique"
+  },
+  "Layout": {
+    "Panel": "Panneau (compact)",
+    "Page": "Page (toutes les colonnes)"
+  }
+}

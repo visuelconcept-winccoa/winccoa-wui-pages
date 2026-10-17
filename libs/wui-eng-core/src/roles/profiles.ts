@@ -23,6 +23,7 @@
 
 import type { ArchiveConfig, AlarmConfig, BookEntry, RangeConfig } from '../model.js';
 import { DpAddressDirection, directionFor } from '../drivers/opcua.js';
+import { isAlarmableLeafType, type LeafPolicy } from '../structure.js';
 import type { SignalRole } from './roles.js';
 
 /** How a role is turned into configs. */
@@ -57,6 +58,10 @@ export interface RoleProfileContext {
   archiveGroup?: string;
   /** Alert class used by the alarm role. */
   alarmClass?: string;
+  /** Poll group of a POLLED leaf (a `_PollGroup` datapoint of the project). */
+  pollGroup?: string;
+  /** Subscription of a SUBSCRIBED leaf (an `_OPCUASubscription` datapoint, no leading `_`). */
+  subscription?: string;
 }
 
 /** The configs a role implies for one entry (address direction + config bodies). */
@@ -170,6 +175,68 @@ export function configsForRole(
     };
   }
   return result;
+}
+
+/**
+ * The DEFAULT deployment policy of one mapped leaf — what a model proposes before
+ * an engineer touches it.
+ *
+ * Three rules, each chosen so the studio never configures something nobody asked
+ * for (the same line the ranges and the analog alarms already hold):
+ *
+ * - **alarm: on only for the `alarm` role.** A fault datapoint is the one signal
+ *   whose whole purpose is to raise something; arming an alert on a measure
+ *   because its profile mentions archiving would put alarms in a project by
+ *   accident. The class is the project's (`ctx.alarmClass`, default `alert`) and
+ *   is meant to be overridden per leaf.
+ * - **archive: on only when the SOURCE says it keeps a history**
+ *   (`BookEntry.historized`, read from the OPC UA `Historizing` attribute or the
+ *   `HistoryRead` bit — the catalog's own history column). That is evidence about
+ *   the signal rather than a guess about the project, and it makes the default
+ *   answer to "should WinCC OA archive this?" the machine's own answer. Every
+ *   other signal starts NOT archived, and archiving it is a decision an engineer
+ *   takes explicitly.
+ * - **range: none.** A meaningful range is engineering knowledge.
+ *
+ * The role profiles still decide the address DIRECTION (that is a reconciliation
+ * with the declared access, not a policy) — see {@link configsForRole}.
+ */
+export function defaultLeafPolicy(entry: BookEntry, role: SignalRole, ctx: RoleProfileContext = {}): LeafPolicy {
+  return {
+    // A BOOL fault bit is alarming when it is TRUE, so the healthy value is FALSE — stated
+    // rather than derived, because half the fault bits of a plant are active-low and the
+    // model has to be able to say which (see LeafPolicy.alarm.goodRange).
+    // An alarm only where an alert can exist: a String (or a Blob, or a Time) has no value to
+    // compare, so the `alarm` role on one is a catalog fact the deployment cannot honour — it is
+    // ignored here rather than turned into a config the runtime rejects.
+    alarm: { active: role === 'alarm' && isAlarmableLeafType(entry.leafType), alarmClass: ctx.alarmClass ?? 'alert', goodRange: false },
+    // ACQUISITION, by role: an alarm or a state is pushed (a transition between two ticks is the
+    // information, and a fault learnt one period late is worth little); everything else is
+    // sampled, whose load is flat and predictable. A write has no acquisition to choose.
+    acquisition:
+      role === 'alarm' || role === 'state'
+        ? { mode: 'spont', ...(ctx.subscription === undefined ? {} : { subscription: ctx.subscription }) }
+        : { mode: 'poll', ...(ctx.pollGroup === undefined ? {} : { pollGroup: ctx.pollGroup }) },
+    archive: { active: entry.historized === true, group: ctx.archiveGroup ?? 'EVENT' }
+  };
+}
+
+/**
+ * The default policy with the model's stored decisions on top — field by field,
+ * so a model that only pins the archive group keeps the default alarm.
+ */
+export function resolveLeafPolicy(entry: BookEntry, role: SignalRole, stored: LeafPolicy | undefined, ctx: RoleProfileContext = {}): LeafPolicy {
+  const base = defaultLeafPolicy(entry, role, ctx);
+  if (stored === undefined) return base;
+  return {
+    alarm:
+      stored.alarm === undefined
+        ? base.alarm
+        : { alarmClass: base.alarm?.alarmClass, goodRange: base.alarm?.goodRange, ...stored.alarm },
+    archive: stored.archive === undefined ? base.archive : { group: base.archive?.group, ...stored.archive },
+    acquisition: stored.acquisition === undefined ? base.acquisition : { ...base.acquisition, ...stored.acquisition },
+    ...(stored.range === undefined ? {} : { range: stored.range })
+  };
 }
 
 /** True when a role yields nothing to configure (must be qualified/ignored). */

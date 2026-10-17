@@ -7,7 +7,7 @@
  * through the builders — the property that makes the diff trustworthy.
  */
 import { describe, expect, it } from 'vitest';
-import type { DpeConfigs } from '../model.js';
+import { fingerprint, type DpeConfigs } from '../model.js';
 import { buildAddressWrite, buildAlarmWrites, buildArchiveWrite, buildRangeWrite } from './builders.js';
 import { CONFIG_READ_ATTRS, comparableConfigs, configReadPaths, configsFromRaw } from './read.js';
 
@@ -101,10 +101,91 @@ describe('configsFromRaw', () => {
   });
 });
 
+/**
+ * `_offset` is only the "Historical" checkbox on the OPC UA driver. Read as one
+ * everywhere, a Modbus bit count would report a history nobody configured — and the
+ * check-in diff would show that address as modified for ever.
+ */
+describe('the OPC UA "Historical" flag', () => {
+  it('reads _address.._offset as historical for the OPC UA driver', () => {
+    const address = configsFromRaw(
+      raw({ ':_address.._type': 16, ':_address.._reference': 'C$$1$1$x', ':_address.._drv_ident': 'OPCUA', ':_address.._offset': 1 })
+    )?.address;
+    expect(address?.historical).toBe(true);
+  });
+
+  it('leaves it ABSENT — never false — when the box is not checked', () => {
+    const address = configsFromRaw(
+      raw({ ':_address.._type': 16, ':_address.._reference': 'C$$1$1$x', ':_address.._drv_ident': 'OPCUA', ':_address.._offset': 0 })
+    )?.address;
+    expect(address).not.toHaveProperty('historical');
+  });
+
+  it('ignores a non-zero _offset on another driver (Modbus: a bit count)', () => {
+    const address = configsFromRaw(
+      raw({ ':_address.._type': 16, ':_address.._reference': '1.40001', ':_address.._drv_ident': 'MODBUS', ':_address.._offset': 8 })
+    )?.address;
+    expect(address).not.toHaveProperty('historical');
+  });
+});
+
+/**
+ * The two fields the acquisition decision introduced, and the phantom diff they caused:
+ * neither was read back, yet neither was dropped from the comparison — so every address
+ * carrying a poll group (the default) read as "to update" at every single check-in.
+ */
+describe('poll group and subscription in the diff', () => {
+  const polled = (extra: Partial<DpeConfigs['address']> = {}): DpeConfigs => ({
+    address: { deviceId: 'opc1', mode: 'opcua', reference: 'C$$1$1$ns=2;s=T', direction: 4, datatype: 761, active: true, ...extra }
+  });
+
+  it('compares a poll group BY TOKEN — the model names it, the project holds its dpid', () => {
+    const model = comparableConfigs(polled({ pollGroup: '_Poll_Normal' }));
+    const live = comparableConfigs(polled({ pollGroup: 'System1:_Poll_Normal.' }));
+    expect(fingerprint(live)).toBe(fingerprint(model));
+    // A REAL change of group still differs — the token normalises the notation, not the name.
+    expect(fingerprint(comparableConfigs(polled({ pollGroup: '_Poll_Slow' })))).not.toBe(fingerprint(model));
+  });
+
+  it('ignores the poll group on a direction the builder does not write it for', () => {
+    const subscribed = { direction: 2, pollGroup: '_Poll_Normal' } as const;
+    expect(fingerprint(comparableConfigs(polled(subscribed)))).toBe(fingerprint(comparableConfigs(polled({ direction: 2 }))));
+  });
+
+  it('never compares the subscription — it IS field 2 of the reference', () => {
+    const withSub: DpeConfigs = {
+      address: { mode: 'opcua', reference: 'C$Sub_Fast$1$1$ns=2;s=T', direction: 2, datatype: 761, subscription: 'Sub_Fast', active: true }
+    };
+    const readBack: DpeConfigs = {
+      address: { reference: 'C$Sub_Fast$1$1$ns=2;s=T', direction: 2, datatype: 761, active: true }
+    };
+    expect(fingerprint(comparableConfigs(readBack))).toBe(fingerprint(comparableConfigs(withSub)));
+    // Re-pointing the leaf at ANOTHER subscription is a real change: the reference says so.
+    const other: DpeConfigs = { address: { ...readBack.address!, reference: 'C$Sub_Slow$1$1$ns=2;s=T' } };
+    expect(fingerprint(comparableConfigs(other))).not.toBe(fingerprint(comparableConfigs(withSub)));
+  });
+
+  it('an UNSET dpid reads as no poll group at all', () => {
+    const address = configsFromRaw(
+      raw({ ':_address.._type': 16, ':_address.._reference': 'C$$1$1$x', ':_address.._direction': 4, ':_address.._poll_group': '(no dp)' })
+    )?.address;
+    expect(address).not.toHaveProperty('pollGroup');
+  });
+});
+
 describe('write → read round trip', () => {
   it('an address written by the builder reads back identically (written fields)', () => {
     const configs: DpeConfigs = {
-      address: { deviceId: 'opc1', mode: 'opcua', reference: 'C$$1$1$ns=2;s=T', direction: 4, datatype: 761, active: true }
+      address: {
+        deviceId: 'opc1',
+        mode: 'opcua',
+        reference: 'C$$1$1$ns=2;s=T',
+        direction: 4,
+        datatype: 761,
+        historical: true,
+        pollGroup: '_Poll',
+        active: true
+      }
     };
     const write = buildAddressWrite('DP1.T', configs.address!, 2, '_Poll');
     // Replay the write into the read-back's raw slots.
@@ -112,7 +193,10 @@ describe('write → read round trip', () => {
       const index = write.dpes.indexOf(`DP1.T${attr}`);
       return index === -1 ? null : write.values[index];
     });
-    expect(configsFromRaw(values)?.address).toEqual(comparableConfigs(configs).address);
+    // Compared the way the DIFF compares them: through `comparableConfigs` on BOTH sides, so
+    // the poll group is matched by token rather than by notation (`_Poll` vs the project's dpid).
+    const readBack = configsFromRaw(values)!;
+    expect(comparableConfigs(readBack).address).toEqual(comparableConfigs(configs).address);
   });
 
   it('archive, binary alarm and range also round trip', () => {
@@ -148,8 +232,17 @@ describe('comparableConfigs', () => {
     expect(comparable.address).toEqual({ reference: 'R', direction: 4, datatype: 0, active: true });
   });
 
-  it('leaves configs without an address untouched', () => {
-    const configs: DpeConfigs = { archive: { group: 'EVENT', active: true } };
-    expect(comparableConfigs(configs)).toBe(configs);
+  it('compares an ARCHIVE GROUP by its token, so a model and the project can name it differently', () => {
+    // The model carries what an engineer typed, the project the datapoint it resolves to. Compared
+    // verbatim, an instance stayed "to update" after every check-in.
+    const model: DpeConfigs = { archive: { group: 'EVENT', active: true } };
+    const live: DpeConfigs = { archive: { group: '_NGA_G_EVENT', active: true } };
+    expect(comparableConfigs(model)).toEqual(comparableConfigs(live));
+  });
+
+  it('still sees a REAL change of archive group', () => {
+    const before: DpeConfigs = { archive: { group: '_NGA_G_EVENT', active: true } };
+    const after: DpeConfigs = { archive: { group: '_NGA_G_SLOW', active: true } };
+    expect(comparableConfigs(before)).not.toEqual(comparableConfigs(after));
   });
 });

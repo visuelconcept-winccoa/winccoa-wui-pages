@@ -17,6 +17,7 @@ import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { firstValueFrom } from 'rxjs';
 import { container } from 'tsyringe';
 import { AI_MSG, localize } from '../i18n.js';
+import { emptyUsage, type AiUsage } from './ai-progress.js';
 
 const CONFIG_DP = 'AI_Assistant_Config';
 const CONFIG_TYPE = 'AI_Assistant_Config';
@@ -27,20 +28,35 @@ const CREATE_DP_URL = '/api/para/dp/create';
 const CHAT_URL = '/api/ai/chat';
 
 /** The config elements, in DP-type order. All String — the manager parses them. */
-const CONFIG_ELEMENTS = ['provider', 'model', 'token', 'mcpServers', 'webSearch', 'effort', 'maxTokens'] as const;
+const CONFIG_ELEMENTS = [
+  'provider',
+  'model',
+  'token',
+  'mcpServers',
+  'webSearch',
+  'effort',
+  'maxTokens',
+  'maxToolRounds'
+] as const;
 
 /**
  * Elements added after the first release. They are read and written apart from the
  * core four, because a deployed type may not carry them yet — see
  * {@link loadLateElements} and {@link setLateElements}.
  */
-const LATE_ELEMENTS = ['webSearch', 'effort', 'maxTokens'] as const;
+const LATE_ELEMENTS = ['webSearch', 'effort', 'maxTokens', 'maxToolRounds'] as const;
 
 /** Output-budget bounds, mirrored from the manager (which clamps authoritatively). */
 export const AI_MAX_TOKENS_MIN = 1024;
 export const AI_MAX_TOKENS_MAX = 128_000;
 /** Generous by default: a truncated JSON proposal is worse than a slow answer. */
 export const DEFAULT_AI_MAX_TOKENS = 32_768;
+
+/** Tool-round bounds, mirrored from the manager (which clamps authoritatively). */
+export const AI_TOOL_ROUNDS_MIN = 2;
+export const AI_TOOL_ROUNDS_MAX = 30;
+/** Enough rounds to explore a project before the loop has to conclude. */
+export const DEFAULT_AI_TOOL_ROUNDS = 12;
 
 /** One MCP server attached to the provider call. */
 export interface McpServer {
@@ -63,6 +79,12 @@ export interface AiConfig {
   effort: AiEffort;
   /** Output budget in tokens — what cuts a long proposal short when too low. */
   maxTokens: number;
+  /**
+   * How many LLM⇄tool round-trips one prompt may run. The last one always runs with
+   * the tools disabled, so a prompt that exhausts its budget still answers with what
+   * it gathered — the setting buys depth of exploration, not the answer itself.
+   */
+  maxToolRounds: number;
 }
 
 /** Provider catalog (default model first) — mirrors the aiAssistant manager. */
@@ -92,6 +114,13 @@ export function toMaxTokens(raw: string | number): number {
   const value = typeof raw === 'number' ? raw : Number.parseInt(raw.trim(), 10);
   if (!Number.isFinite(value)) return DEFAULT_AI_MAX_TOKENS;
   return Math.min(Math.max(Math.round(value), AI_MAX_TOKENS_MIN), AI_MAX_TOKENS_MAX);
+}
+
+/** Clamp a tool-round ceiling into the accepted range; unparsable -> the default. */
+export function toToolRounds(raw: string | number): number {
+  const value = typeof raw === 'number' ? raw : Number.parseInt(raw.trim(), 10);
+  if (!Number.isFinite(value)) return DEFAULT_AI_TOOL_ROUNDS;
+  return Math.min(Math.max(Math.round(value), AI_TOOL_ROUNDS_MIN), AI_TOOL_ROUNDS_MAX);
 }
 
 /** Default MCP server (the WinCC OA MCP server, StreamableHTTP on :3000). */
@@ -158,11 +187,16 @@ export async function loadAiConfig(): Promise<AiConfig> {
   }
 }
 
-type LateConfig = Pick<AiConfig, 'webSearch' | 'effort' | 'maxTokens'>;
+type LateConfig = Pick<AiConfig, 'webSearch' | 'effort' | 'maxTokens' | 'maxToolRounds'>;
 
 /** Defaults for the late elements — mirrored from the manager. */
 function lateDefaults(): LateConfig {
-  return { webSearch: true, effort: DEFAULT_AI_EFFORT, maxTokens: DEFAULT_AI_MAX_TOKENS };
+  return {
+    webSearch: true,
+    effort: DEFAULT_AI_EFFORT,
+    maxTokens: DEFAULT_AI_MAX_TOKENS,
+    maxToolRounds: DEFAULT_AI_TOOL_ROUNDS
+  };
 }
 
 /**
@@ -181,7 +215,8 @@ async function loadLateElements(api: OaRxJsApi): Promise<LateConfig> {
     return {
       webSearch: scalar(arr[0]).trim().toLowerCase() !== 'false',
       effort: toEffort(scalar(arr[1])),
-      maxTokens: toMaxTokens(scalar(arr[2]))
+      maxTokens: toMaxTokens(scalar(arr[2])),
+      maxToolRounds: toToolRounds(scalar(arr[3]))
     };
   } catch {
     return lateDefaults();
@@ -244,7 +279,8 @@ async function setLateElements(cfg: AiConfig): Promise<string[]> {
   const writes: [string, string][] = [
     ['webSearch', cfg.webSearch ? 'true' : 'false'],
     ['effort', cfg.effort],
-    ['maxTokens', String(toMaxTokens(cfg.maxTokens))]
+    ['maxTokens', String(toMaxTokens(cfg.maxTokens))],
+    ['maxToolRounds', String(toToolRounds(cfg.maxToolRounds))]
   ];
   const missing: string[] = [];
   for (const [element, value] of writes) {
@@ -305,6 +341,17 @@ export interface AiAnswer {
    * any JSON proposal inside it is incomplete and must not be trusted.
    */
   truncated: boolean;
+  /**
+   * The answer was written on the wrap-up round, the loop having used up its tool
+   * budget. Unlike {@link truncated} the text IS complete — the model simply stopped
+   * short of everything it wanted to look up first.
+   */
+  toolLimit: boolean;
+  /**
+   * What this answer cost, summed over the rounds of its agentic loop. All zeros on a
+   * manager that predates the counter, so a page can add it up unconditionally.
+   */
+  usage: AiUsage;
 }
 
 /**
@@ -338,6 +385,8 @@ export interface AskAiOptions {
   effort?: AiEffort;
   /** Per-call output-budget override (e.g. a page that expects a large proposal). */
   maxTokens?: number;
+  /** Per-call tool-round override (e.g. a page whose prompts explore the project deeply). */
+  maxToolRounds?: number;
   /**
    * Id of the live-progress channel for this prompt, from `newProgressId()`. When
    * set, the manager narrates its loop into the `AI_Assistant_Progress` datapoint —
@@ -356,6 +405,7 @@ export async function askAi(prompt: string, options: AskAiOptions = {}): Promise
   if (typeof options.webSearch === 'boolean') body.webSearch = options.webSearch;
   if (options.effort) body.effort = options.effort;
   if (options.maxTokens) body.maxTokens = options.maxTokens;
+  if (options.maxToolRounds) body.maxToolRounds = options.maxToolRounds;
   if (options.progressId) body.progressId = options.progressId;
   const res = await fetch(CHAT_URL, jsonPost(body));
   let data: {
@@ -364,7 +414,9 @@ export async function askAi(prompt: string, options: AskAiOptions = {}): Promise
     error?: string;
     toolCalls?: ToolCall[];
     truncated?: boolean;
+    toolLimit?: boolean;
     mcpTools?: number;
+    usage?: Partial<AiUsage>;
   };
   try {
     data = (await res.json()) as typeof data;
@@ -376,6 +428,8 @@ export async function askAi(prompt: string, options: AskAiOptions = {}): Promise
     text: data.text ?? '',
     toolCalls: Array.isArray(data.toolCalls) ? data.toolCalls : [],
     truncated: data.truncated === true,
+    toolLimit: data.toolLimit === true,
+    usage: { ...emptyUsage(), ...data.usage },
     mcpTools: typeof data.mcpTools === 'number' ? data.mcpTools : 0
   };
 }

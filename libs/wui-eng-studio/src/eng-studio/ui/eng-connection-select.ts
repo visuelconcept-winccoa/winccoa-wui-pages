@@ -18,8 +18,10 @@
  *     declaration is never blocked by a diagnosis the page could not make;
  *   * the stored value is not in the list → it is offered as its own option, so
  *     editing an equipment never silently drops what was declared before;
- *   * `editable`, so a connection the list does not carry can still be typed — a
- *     connection may legitimately be created after the equipment is declared.
+ *   * `editable`, so a connection the list does not carry can still be typed — that
+ *     is how a NEW connection is requested: saving the equipment then creates its
+ *     `_OPCUAServer` datapoint in the project (see the backend's
+ *     `provisionOpcUaConnection`).
  *
  * A rendering function rather than an element: it is a few lines of markup over the
  * caller's own draft (see the note at the top of `eng-driver-select.ts`).
@@ -88,9 +90,10 @@ export function renderConnectionSelect(options: ConnectionSelectOptions): Templa
 /**
  * Advisory when the declared connection is not one the project has.
  *
- * Stated rather than refused: the connection may be created afterwards, and a form
- * that blocks on it would stop a legitimate declaration. But it must be SAID, because
- * the consequences are silent — no state to read, and addresses that will not bind.
+ * Stated rather than refused — and since the save CREATES the missing connection
+ * (a name the project does not carry is a request for a new one), the hint says
+ * what will happen and asks for the endpoint the driver will need. It must be
+ * SAID either way: a typo here would silently create a connection nobody wanted.
  * `null` when the page has no list to compare against: an empty registry is not
  * evidence that a name is wrong.
  */

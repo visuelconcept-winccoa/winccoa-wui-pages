@@ -64,6 +64,14 @@ function variable(
 const ACCESS_READ = 1;
 const ACCESS_WRITE = 2;
 const ACCESS_READ_WRITE = 3;
+/**
+ * `HistoryRead` (bit 2) on top of the current-access bits: the server keeps a
+ * HISTORY of that signal. Real servers historize their measurements and their
+ * counters, so the demo does too — that is what the catalog's `historique`
+ * column reports, and what an engineer weighs before archiving it twice.
+ */
+const ACCESS_READ_HIST = 5;
+const ACCESS_READ_WRITE_HIST = 7;
 /** The driver returned no AccessLevel for this node. */
 const ACCESS_NOT_REPORTED = null;
 
@@ -81,16 +89,19 @@ function addressSpace(generation: number): Record<string, OpcUaBrowseNode[]> {
     variable('EquipmentInterlock_Blocked', 'Status.Blocked', 'Boolean'),
     variable('EquipmentInterlock_Starved', 'Status.Starved', 'Boolean')
   ];
+  // Historized on the server (AccessLevel HistoryRead) — the usual case for
+  // measurements, and the one the catalog's history column is there to surface.
   const measures: OpcUaBrowseNode[] = [
-    variable('TemperatureProduit', 'Mes.TempProduit', 'Double'),
-    variable('PressionCuve', 'Mes.PressionCuve', 'Double'),
-    variable('NiveauCuve', 'Mes.NiveauCuve', 'Float'),
+    variable('TemperatureProduit', 'Mes.TempProduit', 'Double', ACCESS_READ_HIST),
+    variable('PressionCuve', 'Mes.PressionCuve', 'Double', ACCESS_READ_HIST),
+    variable('NiveauCuve', 'Mes.NiveauCuve', 'Float', ACCESS_READ_HIST),
+    // Not historized: the difference must be visible in one column read.
     variable('DebitRemplissage', 'Mes.Debit', 'Float')
   ];
   // Setpoints are readable AND writable on a real server — that is what makes the
   // generated address I/O instead of a guess.
   const setpoints: OpcUaBrowseNode[] = [
-    variable('ConsigneTemperature', 'Cons.Temp', 'Double', ACCESS_READ_WRITE),
+    variable('ConsigneTemperature', 'Cons.Temp', 'Double', ACCESS_READ_WRITE_HIST),
     variable('ConsigneVolume', 'Cons.Volume', 'Float', ACCESS_READ_WRITE),
     // Deliberately read-only on the server though its NAME says "consigne": the
     // generator must downgrade the direction and SAY so (a write here would be
@@ -98,8 +109,8 @@ function addressSpace(generation: number): Record<string, OpcUaBrowseNode[]> {
     variable('ConsigneCadence', 'Cons.Cadence', 'Float', ACCESS_READ)
   ];
   const admin: OpcUaBrowseNode[] = [
-    variable('ProdProcessedCount', 'Admin.ProdCount', 'UInt32'),
-    variable('ProdDefectiveCount', 'Admin.DefectCount', 'UInt32'),
+    variable('ProdProcessedCount', 'Admin.ProdCount', 'UInt32', ACCESS_READ_HIST),
+    variable('ProdDefectiveCount', 'Admin.DefectCount', 'UInt32', ACCESS_READ_HIST),
     variable('AlarmActive', 'Admin.AlarmActive', 'Boolean'),
     variable('AlarmHistory', 'Admin.AlarmHistory', 'String', ACCESS_READ, 1), // array → flagged
     // This one models a node whose AccessLevel the driver did NOT return.

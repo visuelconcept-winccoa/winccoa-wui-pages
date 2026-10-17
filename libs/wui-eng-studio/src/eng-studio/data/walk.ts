@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The client-driven OPC UA walk — shared by both gateways.
+ * The client-driven walks (OPC UA and S7Plus) — shared by both gateways.
  *
  * `POST /books/browse` walks a server entirely on the backend and answers once. On a
  * real machine that is minutes with nothing on screen, no way to look at the address
@@ -18,12 +18,14 @@
 
 import {
   buildBookFromOpcUaBrowse,
+  buildBookFromS7PlusBrowse,
   diffBooks,
   refreshWarnings,
   type AddressBook,
-  type OpcUaBrowsePort
+  type OpcUaBrowsePort,
+  type S7PlusBrowsePort
 } from '@visuelconcept-winccoa/wui-eng-core';
-import type { BookDelta, WalkRequest } from './gateway.js';
+import type { BookDelta, S7PlusWalkRequest, WalkRequest } from './gateway.js';
 
 /** A walked book plus what moved since the stored generation. */
 export interface WalkOutcome {
@@ -65,6 +67,44 @@ export async function walkIntoBook(
   });
   // A catalog with no entries yet (declared, then walked) is not a "previous
   // generation": diffing against it would report every signal as added.
+  if (previous === null || previous.entries.length === 0) return { book: fresh };
+  const delta = diffBooks(previous, fresh);
+  return {
+    book: { ...fresh, warnings: [...refreshWarnings(delta), ...fresh.warnings] },
+    delta: summarise(delta)
+  };
+}
+
+/**
+ * Same, for an **S7Plus** station — one function per protocol rather than a
+ * parameterised one: the two walkers take different sources (a node id versus a
+ * TIA `project|station`), and the only part that would be shared is the four lines
+ * of diffing below, which are not worth an abstraction that hides the difference.
+ *
+ * The diff matters more here than anywhere else: a PLC program is edited daily, so
+ * a signal that vanished from a re-browsed station is very likely still referenced
+ * by a model — which is exactly what `refreshWarnings` puts in front of the
+ * operator.
+ */
+export async function walkS7PlusIntoBook(
+  port: S7PlusBrowsePort,
+  previous: AddressBook | null,
+  request: S7PlusWalkRequest
+): Promise<WalkOutcome> {
+  const fresh = await buildBookFromS7PlusBrowse(port, {
+    bookId: request.bookId,
+    connection: request.connection,
+    station: request.station,
+    ...(request.name === undefined ? {} : { name: request.name }),
+    ...(request.root === undefined ? {} : { root: request.root }),
+    ...(request.hmiVisibleOnly === undefined ? {} : { hmiVisibleOnly: request.hmiVisibleOnly }),
+    ...(request.driverNumber === undefined ? {} : { driverNumber: request.driverNumber }),
+    ...(request.maxDepth === undefined ? {} : { maxDepth: request.maxDepth }),
+    ...(request.maxEntries === undefined ? {} : { maxEntries: request.maxEntries }),
+    ...(request.maxRequests === undefined ? {} : { maxRequests: request.maxRequests }),
+    ...(request.maxArrayElements === undefined ? {} : { maxArrayElements: request.maxArrayElements }),
+    ...(request.onProgress === undefined ? {} : { onProgress: request.onProgress })
+  });
   if (previous === null || previous.entries.length === 0) return { book: fresh };
   const delta = diffBooks(previous, fresh);
   return {

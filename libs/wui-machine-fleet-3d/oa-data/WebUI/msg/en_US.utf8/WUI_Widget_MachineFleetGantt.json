@@ -1,0 +1,19 @@
+{
+  "Label": "Machine state Gantt",
+  "Description": "State timeline of one fleet machine over the dashboard time range, each stop segment carrying its stop cause (archived state and cause datapoints).",
+  "Settings": {
+    "StateDp": "Machine state (archived)",
+    "CauseDp": "Stop cause (archived, optional)",
+    "Mapping": "State mapping and stop causes",
+    "StateMapping": "State mapping",
+    "StateMappingHint": "Bind the atelier configuration datapoint (MachineFleet3D_<atelier>.json) or paste a mapping JSON. Empty = fleet standard (0 = stop, 1 = production, 2 = fault, 3 = maintenance).",
+    "MachineId": "Machine id",
+    "MachineIdHint": "Id of the machine inside the atelier configuration: its own state mapping is used.",
+    "StateMappingId": "State mapping id",
+    "StateMappingIdHint": "Id of the mapping to use inside the atelier configuration when no machine id is given. Empty = first mapping.",
+    "StopCauses": "Stop-cause catalog",
+    "StopCausesHint": "Bind MachineFleet3D_StopCauses.json (code, description, classification). Codes are shown as \"code — description\"; unknown codes fold onto the catalog default.",
+    "ShowLegend": "Legend",
+    "ShowTimeAxis": "Time axis"
+  }
+}

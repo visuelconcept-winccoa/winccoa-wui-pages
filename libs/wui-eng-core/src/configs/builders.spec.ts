@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import type { AddressConfig } from '../model.js';
 import { buildOpcUaReference, directionFor, opcUaDatatypeCode } from '../drivers/opcua.js';
 import { s7Operand } from '../drivers/s7.js';
+import type { ConfigWrite } from './builders.js';
 import {
   buildAddressWrite,
   buildAlarmWrites,
@@ -39,6 +40,29 @@ describe('address write', () => {
     expect(at(':_address.._direction')).toBe(4);
     expect(at(':_address.._datatype')).toBe(761);
     expect(at(':_address.._active')).toBe(true);
+  });
+
+  /**
+   * `_address.._offset` IS the "Historical" checkbox of the OPC UA address tab
+   * (`opcuaDrvPara.ctl`: `cbHistory` → `dpc[10]`; `para.ctl`, `case "opcua"`:
+   * `dpc[10]` → `_offset`). The attribute is driver specific, so the flag may not
+   * leak onto another family — on Modbus the same `_offset` is a bit count.
+   */
+  it('writes the OPC UA "Historical" flag into _address.._offset', () => {
+    const config: AddressConfig = {
+      deviceId: 'opc1',
+      mode: 'opcua',
+      reference: buildOpcUaReference('Cellule1', 'ns=2;s=Pump1.Flow'),
+      direction: directionFor('r'),
+      datatype: opcUaDatatypeCode('Double'),
+      historical: true,
+      active: true
+    };
+    const at = (write: ConfigWrite, attr: string): unknown => write.values[write.dpes.findIndex((d) => d.endsWith(attr))];
+    expect(at(buildAddressWrite('DP.Debit', config, 2, '_Poll'), ':_address.._offset')).toBe(1);
+    expect(at(buildAddressWrite('DP.Debit', { ...config, historical: undefined }, 2, '_Poll'), ':_address.._offset')).toBe(0);
+    // Another driver keeps the 0 every address had: `_offset` means something else there.
+    expect(at(buildAddressWrite('DP.Debit', { ...config, mode: 'modbus' }, 2, '_Poll'), ':_address.._offset')).toBe(0);
   });
 
   it('maps the S7 driver family ident', () => {
@@ -91,6 +115,72 @@ describe('alarm writes', () => {
       .map((dpe, i) => [dpe, ranges.values[i]] as const)
       .filter(([dpe]) => dpe.includes('._l_limit') || dpe.includes('._u_limit'));
     expect(limits.map(([, v]) => v)).toEqual([-1000, 100, 100, 200, 200, 1000]);
+  });
+
+  it('gives each alarming range ITS OWN class, in threshold order', () => {
+    // Escalation: crossing 80 warns, crossing 95 alarms. Same limits, two classes.
+    const writes = buildAlarmWrites('DP1.Temp', {
+      kind: 'analog',
+      alarmClass: '_alert_high',
+      alarmClasses: ['_warning', '_alert_high'],
+      direction: 'ASC',
+      thresholds: [80, 95],
+      bounds: [0, 150],
+      active: true
+    });
+    const ranges = writes[1];
+    const classes = ranges.dpes
+      .map((dpe, index) => [dpe, ranges.values[index]] as const)
+      .filter(([dpe]) => dpe.endsWith('._class'));
+    // Range 1 (0..80) is the healthy one and takes no class; 2 warns, 3 alarms.
+    expect(classes.map(([dpe]) => dpe)).toEqual(['DP1.Temp:_alert_hdl.2._class', 'DP1.Temp:_alert_hdl.3._class']);
+    expect(classes.map(([, value]) => value)).toEqual(['_warning.', '_alert_high.']);
+  });
+
+  it('falls back to the single class for a range the model did not pin', () => {
+    const writes = buildAlarmWrites('DP1.Temp', {
+      kind: 'analog',
+      alarmClass: '_alert_high',
+      alarmClasses: ['_warning'],
+      direction: 'ASC',
+      thresholds: [80, 95],
+      active: true
+    });
+    const ranges = writes[1];
+    const values = ranges.dpes.map((dpe, index) => [dpe, ranges.values[index]] as const).filter(([dpe]) => dpe.endsWith('._class'));
+    expect(values.map(([, value]) => value)).toEqual(['_warning.', '_alert_high.']);
+  });
+
+  it('reads the classes in threshold order when the alarming side is BELOW', () => {
+    // Descending: the LOWEST range is the furthest from health, so it takes the last class.
+    const writes = buildAlarmWrites('DP1.Niveau', {
+      kind: 'analog',
+      alarmClass: '_alert_low',
+      alarmClasses: ['_warning', '_alert_low'],
+      direction: 'DESC',
+      thresholds: [10, 20],
+      bounds: [0, 100],
+      active: true
+    });
+    const ranges = writes[1];
+    const classes = ranges.dpes
+      .map((dpe, index) => [dpe, ranges.values[index]] as const)
+      .filter(([dpe]) => dpe.endsWith('._class'));
+    // Range 1 (0..10) is below BOTH thresholds → the strongest; range 2 (10..20) warns.
+    expect(classes.map(([, value]) => value)).toEqual(['_alert_low.', '_warning.']);
+  });
+
+  it('writes ok_range from the model DECISION, whatever the direction says', () => {
+    // An active-low fault bit: healthy at TRUE, alarming at FALSE. Only `goodRange` can
+    // express that — the direction would have inverted it.
+    const writes = buildAlarmWrites('DP1.Defaut', {
+      kind: 'binary',
+      alarmClass: '_alert_high',
+      direction: 'ASC',
+      goodRange: true,
+      active: true
+    });
+    expect(writes[0].values).toEqual([12, '_alert_high.', true, true]);
   });
 
   it('rejects an analog alarm without thresholds', () => {

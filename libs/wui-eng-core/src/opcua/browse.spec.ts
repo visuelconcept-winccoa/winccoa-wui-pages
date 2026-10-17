@@ -105,6 +105,27 @@ describe('buildBookFromOpcUaBrowse', () => {
     expect(book.warnings.some((w) => warningText(w).includes('AccessLevel read from the server'))).toBe(true);
   });
 
+  /**
+   * The HISTORY bits of the same AccessLevel: they change no binding, but "the
+   * server already archives this" is what decides whether WinCC OA should too.
+   * Absent evidence stays ABSENT — an unexposed AccessLevel must not read as
+   * "no history".
+   */
+  it('reads the HISTORY bits of AccessLevel, and stays silent without evidence', async () => {
+    const space = {
+      [OPCUA_OBJECTS_FOLDER]: [
+        withAccessLevel(variable('Archivee', 'ns=2;s=h', 'Double'), 5), // CurrentRead + HistoryRead
+        withAccessLevel(variable('Vivante', 'ns=2;s=l', 'Double'), 1), // CurrentRead only
+        withAccessLevel(variable('HistEcriture', 'ns=2;s=hw', 'Double'), 11), // + HistoryWrite
+        variable('Inconnue', 'ns=2;s=u', 'Double') // no AccessLevel at all
+      ]
+    };
+    const book = await buildBookFromOpcUaBrowse(fakePort(space), { bookId: 'b1', connection: 'C' });
+    expect(book.entries.map((e) => e.historized)).toEqual([true, false, true, undefined]);
+    // The history bits must not leak into the access mode.
+    expect(book.entries.map((e) => e.access)).toEqual(['r', 'r', 'rw', 'r']);
+  });
+
   it('reports the MIX when only some nodes carry an AccessLevel', async () => {
     const space = {
       [OPCUA_OBJECTS_FOLDER]: [withAccessLevel(variable('A', 'ns=2;s=a', 'Double'), 3), variable('B', 'ns=2;s=b', 'Double')]

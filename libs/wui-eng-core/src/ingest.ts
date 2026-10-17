@@ -4,8 +4,9 @@
 /**
  * FILE ingestion, in one place: payload → {@link AddressBook}.
  *
- * The four file generators (TIA/SimaticML, Control Expert CSV and XVM, OPC UA
- * NodeSet2) each take their own bundle shape, so choosing between them used to be a
+ * The six file generators (TIA/SimaticML, STEP 7 symbol tables and AWL sources,
+ * Control Expert CSV and XVM, OPC UA NodeSet2) each take their own bundle shape, so
+ * choosing between them used to be a
  * `switch` written three times — in the backend route, in the offline demo gateway,
  * and (once the form gained a preview) in the page. Three copies of the same decision
  * is three chances for the preview to disagree with what ingestion actually produces,
@@ -20,12 +21,14 @@ import { buildBookFromSchneiderExport } from './schneider/variables.js';
 import { buildBookFromXvm } from './schneider/xvm.js';
 import { buildBookFromSimaticMl } from './simaticml/parse.js';
 import { buildBookFromNodeSet } from './opcua/nodeset.js';
+import { buildBookFromS7Symbols, parseS7SymbolTable } from './s7/symbols.js';
+import { buildBookFromAwlSources } from './s7/awl.js';
 import type { AddressBook, BookInterface } from './model.js';
 
 /** The generators a file can be ingested through. */
-export type IngestFormat = 'simaticml' | 'xvm' | 'csv' | 'nodeset';
+export type IngestFormat = 'simaticml' | 's7sym' | 's7awl' | 'xvm' | 'csv' | 'nodeset';
 
-/** Union of what the four generators need; `format` says which fields matter. */
+/** Union of what the six generators need; `format` says which fields matter. */
 export interface IngestPayload {
   bookId: string;
   name?: string;
@@ -38,8 +41,23 @@ export interface IngestPayload {
   documents?: { fileName: string; xml: string }[];
   /** `xvm` / `nodeset`: the XML document. */
   xml?: string;
-  /** `csv`: the Control Expert variables export. */
+  /** `csv`: the Control Expert variables export. `s7sym`: the symbol table. */
   text?: string;
+  /**
+   * `s7awl`: the AWL/STL source documents (one file may declare several blocks).
+   *
+   * Separate from `documents` because that field carries XML and this one carries
+   * plain text: one shape per payload kind keeps a mis-picked file a refusal
+   * rather than a parser reading XML as AWL and producing an empty book.
+   */
+  sources?: { fileName: string; text: string }[];
+  /**
+   * `s7awl`: the symbol table ingested BESIDE the sources, so a data block is
+   * pathed by its project name (`Echange.Consigne`) rather than by its number.
+   * Optional — without it the block number is used, and the addresses are the
+   * same either way.
+   */
+  symbolText?: string;
   /** Injected so a test (or a preview) is deterministic. */
   generatedAt?: string;
 }
@@ -69,6 +87,24 @@ export function buildBookFromIngest(payload: IngestPayload): AddressBook {
         throw new Error('documents[{fileName,xml}] is required for the simaticml format');
       }
       return buildBookFromSimaticMl({ ...common, documents: payload.documents });
+    }
+    case 's7sym': {
+      if (!payload.text) throw new Error('text is required for the s7sym format');
+      return buildBookFromS7Symbols({ ...common, text: payload.text });
+    }
+    case 's7awl': {
+      if (!payload.sources || payload.sources.length === 0) {
+        throw new Error('sources[{fileName,text}] is required for the s7awl format');
+      }
+      // The symbol table is read for its BLOCK DIRECTORY only (`DB10` = `Echange`).
+      // Its own signals belong to an `s7sym` catalog: merging both into one book
+      // would make a re-ingest of either source silently drop the other half.
+      const blockNames = payload.symbolText === undefined ? undefined : parseS7SymbolTable(payload.symbolText).blocks;
+      return buildBookFromAwlSources({
+        ...common,
+        documents: payload.sources,
+        ...(blockNames === undefined ? {} : { blockNames })
+      });
     }
     case 'xvm': {
       if (!payload.xml) throw new Error('xml is required for the xvm format');

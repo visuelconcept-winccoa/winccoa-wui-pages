@@ -23,9 +23,14 @@ import type {
   DeviceDraft,
   DeviceStateUpdate,
   EngPlan,
+  EngType,
   LiveSnapshot,
   ModelTemplate,
   OpcUaBrowseNode,
+  S7CrossCheck,
+  S7Inventory,
+  S7PlusBrowseNode,
+  S7PlusBrowseProgress,
   SignalRole,
   TagAccess,
   Workspace
@@ -65,6 +70,81 @@ export interface EngConnection {
 }
 
 /**
+ * One S7Plus connection (`_S7PlusConnection`) of the project, offered for browsing.
+ *
+ * Richer than {@link EngConnection} because an S7Plus browse needs more than a
+ * name to start: it reads a TIA **source** (`station`), through a **driver** that
+ * has to be running, and the connection's own state decides whether an ONLINE walk
+ * can work at all. All of it is read from the project — never typed from memory.
+ */
+export interface EngS7PlusConnection {
+  name: string;
+  connected: boolean;
+  /** Raw `Common.State.ConnState`, when it was read. */
+  connState?: number;
+  /**
+   * `Config.StationName`: the `project|station` the WinCC OA side is already
+   * configured for (or the reserved online marker) — offered as the default source.
+   */
+  station?: string;
+  driverNumber?: number;
+  address?: string;
+  /** Why this connection could not be fully read (never fatal). */
+  error?: string;
+}
+
+/** One browsable S7Plus source: a TIA export, or the reserved online project. */
+export interface EngS7PlusProject {
+  name: string;
+  /** True for `S7Plus$Online` — a walk of it reads the live PLC. */
+  online: boolean;
+}
+
+/** One station of a TIA project, with the `project|station` item to walk. */
+export interface EngS7PlusStation {
+  name: string;
+  station: string;
+}
+
+/**
+ * An S7Plus walk driven by the PAGE, one level at a time — the exact counterpart of
+ * {@link WalkRequest}, with a TIA `project|station` where OPC UA has a node id.
+ */
+export interface S7PlusWalkRequest {
+  bookId: string;
+  connection: string;
+  /** `<project>|<station>`, or the reserved `S7Plus$Online|Online`. */
+  station: string;
+  name?: string;
+  /** Sub-tree item to walk (defaults to the station). */
+  root?: string;
+  /** The driver's "Visible in HMI Engineering" filter (default true). */
+  hmiVisibleOnly?: boolean;
+  driverNumber?: number;
+  maxDepth?: number;
+  maxEntries?: number;
+  maxRequests?: number;
+  maxArrayElements?: number;
+  /** Called on every browse request; THROW from it to cancel the walk. */
+  onProgress?: (progress: S7PlusBrowseProgress) => void;
+}
+
+/**
+ * Whether the dedicated S7Plus browse manager answers, and what it can see.
+ *
+ * The page asks because "no S7Plus connection in this project" and "the browse
+ * service is not installed" are different problems with different fixes — and only
+ * the second one is about the studio.
+ */
+export interface S7PlusManagerHealth {
+  reachable: boolean;
+  /** Running S7Plus driver manager numbers, when the manager could tell. */
+  drivers?: number[];
+  connections?: number;
+  error?: string;
+}
+
+/**
  * One driver of the project, as the device form offers it.
  *
  * `driverNumber` is the manager number every `_address` write of the equipment
@@ -89,6 +169,28 @@ export interface EngDriver {
 }
 
 /**
+ * What the deployment decisions of a model may refer to, read from the project.
+ *
+ * Two lists rather than free text because both are DATAPOINT NAMES: `_alert_hdl.._class`
+ * must name an existing `_AlertClass` instance and `_archive.1._class` an `_NGA_Group`
+ * one, so a value typed from memory yields a config the runtime rejects. Both may be
+ * empty — "could not tell" — and the editor then accepts free entry.
+ */
+export interface EngConfigOptions {
+  alarmClasses: string[];
+  archiveGroups: string[];
+  /**
+   * OPC UA SUBSCRIPTIONS of the project (`_OPCUASubscription` datapoints, without their leading
+   * underscore) — what a subscribed leaf is written through, and where the publishing interval and
+   * the deadband live. Empty means the project has none: the studio then keeps offering polling
+   * only, because an address subscribed to nothing is a polled address.
+   */
+  subscriptions: string[];
+  /** The poll groups the studio offers and creates (`POLL_GROUPS` of the core). */
+  pollGroups: string[];
+}
+
+/**
  * Ingest an address book from a FILE — the path that creates a catalog without
  * any equipment and without touching a machine (see the Catalogues panel).
  *
@@ -102,7 +204,7 @@ export interface EngDriver {
 export interface IngestRequest {
   bookId: string;
   name?: string;
-  format: 'simaticml' | 'xvm' | 'csv' | 'nodeset';
+  format: 'simaticml' | 's7sym' | 's7awl' | 'xvm' | 'csv' | 'nodeset';
   /** Source file name, recorded in the book's provenance. */
   file?: string;
   interface?: AddressBook['interface'];
@@ -110,8 +212,28 @@ export interface IngestRequest {
   documents?: { fileName: string; xml: string }[];
   /** `xvm` / `nodeset`: the XML document. */
   xml?: string;
-  /** `csv`: the Control Expert variables export. */
+  /** `csv`: the Control Expert variables export. `s7sym`: the symbol table. */
   text?: string;
+  /** `s7awl`: the AWL/STL sources (plain text — one file may declare several blocks). */
+  sources?: { fileName: string; text: string }[];
+  /**
+   * `s7awl`: a symbol table ingested beside the sources, read for its BLOCK
+   * DIRECTORY only — it is what names a data block `Echange` instead of `DB10`.
+   * The addresses are identical with or without it.
+   */
+  symbolText?: string;
+}
+
+/**
+ * What the CPU of a classic S7 equipment answers about itself and its blocks.
+ *
+ * Requested per catalog, never stored: it is a reading of the MACHINE, while the
+ * catalog is a reading of the PROJECT, and the whole value of asking is that the
+ * two can disagree. See the core's `s7/inventory.ts`.
+ */
+export interface S7InventoryResult {
+  inventory: S7Inventory;
+  crossCheck: S7CrossCheck;
 }
 
 /** Both registries a catalog deletion changes (it detaches from every device). */
@@ -172,6 +294,43 @@ export interface BookRefresh {
   note?: string;
 }
 
+/**
+ * What a device save did about the connection the equipment declares.
+ *
+ * Present only when the declared OPC UA server matched no project connection —
+ * i.e. when the declaration was a request for a NEW connection. `created` says
+ * whether its `_OPCUAServer` datapoint was written; `warnings` carry what is
+ * still missing (no endpoint declared, no driver to register with, or why the
+ * creation failed). A failure never fails the device save itself.
+ */
+export interface ConnectionProvision {
+  /** Connection name as the device declares it (the `_address` reference). */
+  name: string;
+  /** The `_OPCUAServer` datapoint, when it was created. */
+  dp?: string;
+  created: boolean;
+  warnings: string[];
+}
+
+/**
+ * What a save did about the connection's SECURITY settings (OPC UA user,
+ * password, policy, certificate flags). `passwordSet` is present only when a
+ * password was pushed, and reports what the runtime's blob READS BACK — the
+ * studio never stores the secret, so that is the only honest statement.
+ */
+export interface ConnectionSecurity {
+  applied: string[];
+  passwordSet?: boolean;
+  warnings: string[];
+}
+
+/** Registry after a device save, plus the connection provisioning outcome. */
+export interface DeviceSaveResult {
+  devices: Device[];
+  connectionProvision?: ConnectionProvision;
+  connectionSecurity?: ConnectionSecurity;
+}
+
 export interface EngGateway {
   /** Whether this gateway is the offline demo (drives a visible banner). */
   readonly isDemo: boolean;
@@ -193,10 +352,13 @@ export interface EngGateway {
   /**
    * Create or update ONE equipment (a single-device upsert, not a registry
    * replacement: replacing the list from a UI that loaded it minutes ago would
-   * discard whatever another operator added since). Returns the fresh registry.
+   * discard whatever another operator added since). Returns the fresh registry,
+   * plus what the save did about the DECLARED connection when it did not exist
+   * yet (an OPC UA server name the project does not carry is a request for a
+   * NEW connection: the save creates its `_OPCUAServer` datapoint).
    * Rejects with the validation message when the backend refuses the draft.
    */
-  saveDevice(id: string, draft: DeviceDraft): Promise<Device[]>;
+  saveDevice(id: string, draft: DeviceDraft): Promise<DeviceSaveResult>;
   /**
    * Forget an equipment. Its BOOKS are kept — the relation is many-to-many, so a
    * catalog may be shared — and nothing already checked in is touched.
@@ -220,6 +382,41 @@ export interface EngGateway {
    * to a list the caller is already showing, and re-fetching it would race.
    */
   ingestBook(request: IngestRequest): Promise<{ book: AddressBook; books: AddressBook[] }>;
+
+  /**
+   * Read the block directory of a classic-S7 CPU and compare it with a catalog.
+   *
+   * The counterpart of a re-browse for a protocol that HAS no browse: an S7-300/400
+   * answers which blocks exist and how big they are, never a symbol, so the online
+   * side cannot regenerate the catalog — it can only say how far the project export
+   * it was built from is still true. Nothing is written: the answer is a reading of
+   * the machine, shown beside the catalog for the operator to act on.
+   *
+   * `deviceId` is preferred to a typed address — the equipment already declares its
+   * ip/rack/slot, and a second declaration is a second thing to keep in step.
+   */
+  s7Inventory(bookId: string, target: { deviceId?: string; host?: string; rack?: number; slot?: number }): Promise<S7InventoryResult>;
+
+  /**
+   * Is the classic-S7 reader deployed?
+   *
+   * Asked because its absence is NOT a degradation: an S7-300/400 catalog is built
+   * from the STEP 7 exports and is complete without any manager. Only the online
+   * cross-check needs it, so the page hides that one action rather than showing it
+   * fail — "the reader is not installed" and "this catalog cannot be checked" are
+   * different statements, and only the first is about the studio.
+   */
+  s7BrowseHealth(): Promise<{ reachable: boolean }>;
+
+  /**
+   * The project's classic-S7 connections (`_S7_Conn`), for the device form.
+   *
+   * An equipment that NAMES its connection gets an exact state read; one that does
+   * not can only be matched by searching its IP in the connection's address, which
+   * says nothing when two stations share it. So the form offers the list, exactly
+   * as it does for OPC UA.
+   */
+  listS7Connections(): Promise<EngConnection[]>;
 
   /**
    * Create an EMPTY catalog (identity + interface only).
@@ -268,10 +465,61 @@ export interface EngGateway {
   listDrivers(): Promise<EngDriver[]>;
 
   /**
+   * What a per-leaf deployment decision may REFER TO in this project: the alarm classes
+   * (`_AlertClass` datapoints) and the usable archive groups (`_NGA_Group`).
+   *
+   * An empty list means "could not tell" and the editor falls back to free entry: a class
+   * or a group created after this read must stay usable, and an alarm class is a
+   * datapoint name — one typed from memory produces a config the runtime rejects, so
+   * offering the project's own list is what makes the decision safe.
+   */
+  listConfigOptions(): Promise<EngConfigOptions>;
+
+  /**
+   * Search the project's DATAPOINTS by pattern (WinCC OA wildcards), optionally of one DP
+   * type — what the model editor's magnifier offers when the value wanted is a datapoint
+   * the studio's own lists do not carry.
+   *
+   * Capped by the backend, which reports the truncation rather than pretending the answer
+   * is complete: `*` on a real project matches tens of thousands of names.
+   */
+  searchDps(pattern: string, type?: string): Promise<{ dps: string[]; truncated: boolean }>;
+
+  /**
+   * The project's own DP TYPES (names, internal ones excluded) — what a model may be started
+   * from when the type already exists, which is the normal case on a project engineered in
+   * PARA before the studio arrived.
+   */
+  listDpTypes(): Promise<string[]>;
+
+  /** One DP type's structure, read on demand (a picker must not read them all). */
+  readDpType(typeName: string): Promise<EngType>;
+
+  /**
    * Walk a live OPC UA server into a book and store it under `bookId`.
    * Replaces a book of the same id — that is what a "re-browse" is.
    */
   browseBook(request: BrowseRequest): Promise<BookRefresh>;
+
+  // --- S7Plus (S7-1200/1500 symbolic) ----------------------------------------
+  // The same three shapes as OPC UA — list the sources, one level, one walk —
+  // kept as their OWN methods rather than a `protocol` parameter: the two
+  // protocols address a node differently (a TIA `project|station` path versus a
+  // node id), and a union that hides that would only move the branching into the
+  // callers.
+
+  /** Whether the S7Plus browse manager answers (and what it sees). */
+  s7plusHealth(): Promise<S7PlusManagerHealth>;
+  /** The project's S7Plus connections (empty in the demo without one). */
+  listS7PlusConnections(): Promise<EngS7PlusConnection[]>;
+  /** The browsable sources of a connection: TIA exports + the online project. */
+  listS7PlusProjects(connection: string): Promise<EngS7PlusProject[]>;
+  /** The stations of one TIA project. */
+  listS7PlusStations(connection: string, project: string): Promise<EngS7PlusStation[]>;
+  /** Children of one item of an S7Plus station (one round-trip). */
+  browseS7PlusLevel(connection: string, item?: string, hmiVisibleOnly?: boolean): Promise<S7PlusBrowseNode[]>;
+  /** Walk a station into a book from the page, reporting progress as it goes. */
+  walkS7PlusIntoBook(request: S7PlusWalkRequest): Promise<BookRefresh>;
   /**
    * Persist the operator's MANUAL role overrides of a book (path → role).
    * Rule-derived roles are recomputed, manual ones are kept.
@@ -310,7 +558,13 @@ export interface EngGateway {
    */
   liveSnapshot(scope?: LiveScope): Promise<LiveSnapshot>;
   /** Apply a plan; `dryRun` previews without writing. */
-  checkin(plan: EngPlan, dryRun: boolean): Promise<ApplyReport>;
+  /**
+   * Apply the plan. `recreate` is DESTRUCTIVE and opt-in: without it an existing DP type is
+   * CHANGED in place and an existing datapoint is left alone (only its configs are
+   * written) — which is what keeps a running project's datapoints, their configs and their
+   * archived values. With it, both are deleted and re-made.
+   */
+  checkin(plan: EngPlan, dryRun: boolean, recreate?: boolean): Promise<ApplyReport>;
 
   // --- validation -------------------------------------------------------------
   /** Read current values for a set of DPEs via the device connection. */

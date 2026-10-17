@@ -1,0 +1,33 @@
+{
+  "Label": "Alarms",
+  "Description": "The Alarms module as a widget: standing or archived alarms of a machine (or of the whole atelier, or of any datapoint filter) over the dashboard time range, with counters, priority ranges, search, sort, paging and acknowledge.",
+  "Settings": {
+    "Scope": "Alarm scope",
+    "Atelier": "Atelier",
+    "AtelierDp": "Atelier configuration",
+    "AtelierHint": "Pick the atelier (a MachineFleet3D_Config datapoint, element .json). The widget then lists its machines; each machine's bound datapoints become the alarm scope, like the fleet's machine dashboard.",
+    "MachineId": "Preselected machine (id)",
+    "MachineIdHint": "Id of the machine shown when the widget opens. Empty = the whole atelier. The machine ids are those of the atelier configuration (e.g. four-600).",
+    "LockMachine": "Lock the machine",
+    "LockMachineHint": "Hide the machine list in the widget: the preselected machine is final.",
+    "DpFilter": "Datapoint filter",
+    "DpFilterItem": "Datapoint {{i}}",
+    "DpFilterHint": "Additional datapoints whose alarms are shown (a datapoint covers all its elements). Combine with the atelier or use alone.",
+    "StrictScope": "Strict scope",
+    "StrictScopeHint": "When nothing is scoped, show nothing rather than every alarm of the plant.",
+    "Source": "Default tab",
+    "Layout": "Density",
+    "PageSize": "Rows per page",
+    "LockSource": "Lock the tab",
+    "HideStats": "Hide the statistics",
+    "NoAck": "Read-only (no acknowledge)"
+  },
+  "Source": {
+    "Active": "Active alarms",
+    "History": "History"
+  },
+  "Layout": {
+    "Panel": "Panel (compact)",
+    "Page": "Page (full columns)"
+  }
+}

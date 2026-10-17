@@ -34,7 +34,13 @@
  *    way the book says which of the two happened.
  */
 
-import { buildOpcUaReference, isUnmappedOpcUaType, opcUaAccessFromLevel, opcUaLeafType } from '../drivers/opcua.js';
+import {
+  buildOpcUaReference,
+  isUnmappedOpcUaType,
+  opcUaAccessFromLevel,
+  opcUaHistorizedFromLevel,
+  opcUaLeafType
+} from '../drivers/opcua.js';
 import { WARNING_CODES, warn, type EngWarning } from '../warnings.js';
 import type { AddressBook, BookEntry, BookInterface } from '../model.js';
 
@@ -214,6 +220,9 @@ async function walk(port: OpcUaBrowsePort, options: BrowseBookOptions): Promise<
           leafType: opcUaLeafType(child.dataType),
           access: known ? opcUaAccessFromLevel(child.accessLevel!) : 'r',
           accessSource: known ? 'declared' : 'assumed',
+          // Only claimed when the driver actually exposed AccessLevel: with no
+          // evidence the field stays ABSENT ("unknown"), never `false`.
+          ...(known ? { historized: opcUaHistorizedFromLevel(child.accessLevel!) } : {}),
           addresses: { opcua: buildOpcUaReference(options.connection, child.nodeId) },
           unmapped: isUnmappedOpcUaType(child.dataType) || array || undefined
         });

@@ -97,6 +97,24 @@ describe('buildBookFromXvm', () => {
     expect(warningText(book.warnings[0])).toMatch(/schema not verified against a vendor export/);
   });
 
+  it('names encryption as the cause when Control Expert exported a protected project', () => {
+    // Real-world head of a Unity Pro V13 "Fichier source variables" export of a
+    // password-protected project: the whole payload is one <crypted> hex blob.
+    const crypted =
+      '<XVMExchangeFile>' +
+      '<fileHeader company="Schneider Automation" product="Unity Pro L V13.0" content="Fichier source variables" DTDVersion="41"/>' +
+      '<contentHeader name="IONISOS D3" version="1.0.572"/>' +
+      '<crypted Encoding="65001">8805EC2103B762CE86</crypted>' +
+      '<applicationIDs CID="56680742" MID="42611218"/>' +
+      '</XVMExchangeFile>';
+    const book = buildBookFromXvm({ bookId: 'b', xml: crypted });
+    expect(book.entries).toHaveLength(0);
+    const texts = book.warnings.map(warningText);
+    expect(texts.some((t) => /ENCRYPTED/.test(t))).toBe(true);
+    // ...and NOT the misleading "add an alias" advice.
+    expect(texts.some((t) => /Add the missing element/.test(t))).toBe(false);
+  });
+
   it('detects a register overlap coming from an XVM export too', () => {
     const xml = `<VariableList><variables>
       <elementaryVariable name="Debit" typeName="DINT" topologicalAddress="%MW112"/>

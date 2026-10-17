@@ -111,34 +111,41 @@ const LANG = arg('lang', 'en');
 const PANELS = [
   { id: 'devices', file: '01-devices.png', desc: 'Devices + address book' },
   { id: 'model', file: '02-model.png', desc: 'Model: book + signal grid' },
-  { id: 'control', file: '03-control.png', desc: 'Control: diff + check-in (dry-run)' },
+  { id: 'instances', file: '03-control.png', desc: 'Instances: models → instances, status + check-in' },
   // Appended rather than renumbered: 01..20 are referenced by name throughout the
   // docs, and renumbering them would silently break every one of those links.
   { id: 'books', file: '21-books.png', desc: 'Catalogues: every address book, with its users' }
 ];
 
-// Extra Devices-panel shots that showcase the many-to-many device↔book relation.
+// Extra shots that showcase the many-to-many device↔book relation. The device
+// screen now shows only LINKS to its catalogs (the model DPs + the links card),
+// so the shots about a BOOK'S CONTENT are captured on the Catalogues panel —
+// selecting the device first still picks its default book, same as a user
+// following a link. `panel` defaults to 'devices'.
 const DEVICE_SHOTS = [
-  { device: 'ligne-embouteillage', file: '04-book-aggregation.png', desc: 'Aggregation: two OPC UA interfaces + PackML on one device' },
+  { device: 'ligne-embouteillage', file: '04-book-aggregation.png', desc: 'Aggregation: two OPC UA interfaces + PackML linked on one device' },
   { device: 'z01-pompe1', file: '05-book-mutualisation.png', desc: 'Sharing: one catalog book across devices' },
-  { device: 'pac-depart1', file: '06-book-pac3200.png', desc: 'PAC3200: shared Modbus register catalog' },
-  { device: 'ligne-encaisseuse', file: '07-book-packml.png', desc: 'PackML: shared standard OPC UA interface' },
-  { device: 'm580-station', file: '08-book-schneider-m580.png', desc: 'Schneider M580: book from a Control Expert variables export' },
+  { device: 'pac-depart1', panel: 'books', file: '06-book-pac3200.png', desc: 'PAC3200: shared Modbus register catalog' },
+  { device: 'ligne-encaisseuse', panel: 'books', file: '07-book-packml.png', desc: 'PackML: shared standard OPC UA interface' },
+  { device: 'm580-station', panel: 'books', file: '08-book-schneider-m580.png', desc: 'Schneider M580: book from a Control Expert variables export' },
   {
     device: 'm580-station',
     book: 'book-m580-pesage-xvm',
+    panel: 'books',
     file: '09-book-schneider-xvm.png',
     desc: 'Schneider XVM: a second generator (XML) on the same device'
   },
   {
     device: 'm580-station',
     book: 'book-m580-station',
+    panel: 'books',
     file: '10-roles-qualification.png',
     desc: 'Qualification: rule-derived roles + bulk assignment'
   },
   {
     device: 'pac-depart1',
     role: 'counter',
+    panel: 'books',
     file: '11-roles-pac3200.png',
     desc: 'PAC3200 auto-qualification: the energy counters isolated among 45 signals'
   }
@@ -206,7 +213,7 @@ const NODESET_SAMPLE = `<?xml version="1.0" encoding="utf-8"?>
 
 const GENERATION_SHOTS = [
   { file: '12-model-generation.png', panel: 'model', desc: 'Model generation from the book (roles → configs)' },
-  { file: '13-control-generated.png', panel: 'control', desc: 'Check-in diff produced by the generation' }
+  { file: '13-control-generated.png', panel: 'instances', desc: 'Instances + diff produced by the generation' }
 ];
 
 async function reachable(url) {
@@ -271,10 +278,16 @@ async function main() {
       await page.waitForSelector('wui-eng-studio');
       // Let the element boot its demo data + Lit render.
       await page.waitForTimeout(600);
-      // For the control panel, trigger a dry-run so the report shows too. The
-      // buttons are `ix-button`s, and the label is localised ("dry-run" / "Dry-Run"),
-      // hence the case-insensitive match.
-      if (panel.id === 'control') {
+      // The Instances panel: EXPAND the models so the tree shows what it is about
+      // (models → their datapoints → the equipment each reads), then trigger a
+      // dry-run so the report shows too. The buttons are `ix-button`s and the label
+      // is localised ("dry-run" / "Dry-Run"), hence the case-insensitive match.
+      if (panel.id === 'instances') {
+        await page.evaluate(() => {
+          const app = document.querySelector('wui-eng-studio');
+          app?.shadowRoot?.querySelectorAll('.tree-toggle').forEach((toggle) => toggle.click());
+        });
+        await page.waitForTimeout(300);
         await page.evaluate(() => {
           const app = document.querySelector('wui-eng-studio');
           app?.shadowRoot?.querySelectorAll('ix-button').forEach((b) => {
@@ -296,9 +309,9 @@ async function main() {
       console.log(`[eng-shots] ${panel.file} — ${panel.desc}`);
     }
 
-    // Device-specific Devices-panel shots (many-to-many showcase).
+    // Device-specific shots (many-to-many showcase) — see DEVICE_SHOTS for panels.
     for (const shot of DEVICE_SHOTS) {
-      await page.goto(`${devUrl}/?panel=devices&lang=${LANG}`, { waitUntil: 'load' });
+      await page.goto(`${devUrl}/?panel=${shot.panel ?? 'devices'}&lang=${LANG}`, { waitUntil: 'load' });
       await page.waitForSelector('wui-eng-studio');
       await page.waitForTimeout(500);
       await page.evaluate((id) => {
@@ -326,7 +339,9 @@ async function main() {
     //   1. the book produced by the real core walker (level-by-level, warnings);
     //   2. the same book RE-BROWSED after the machine's program drifted → the
     //      delta (added / removed / changed) that makes a refresh worth doing.
-    await page.goto(`${devUrl}/?panel=devices&lang=${LANG}`, { waitUntil: 'load' });
+    // On the Catalogues panel: browse and refresh live there since the device
+    // screen was reduced to links (the delta renders above the signal table).
+    await page.goto(`${devUrl}/?panel=books&lang=${LANG}`, { waitUntil: 'load' });
     await page.waitForSelector('wui-eng-studio');
     await page.waitForTimeout(500);
     await page.evaluate(() => {
@@ -361,6 +376,167 @@ async function main() {
     await page.screenshot({ path: resolve(OUT, '16-custom-structure-mapping.png') });
     console.log('[eng-shots] 16-custom-structure-mapping.png — Custom structure + signal mapping');
 
+    // The DEPLOYMENT policy table sits under the structure editor, so the composer
+    // column has to be scrolled to it: it is the "define it once" half of a model
+    // (alarm / archive / range per mapping) and the defaults are the point.
+    // Scrolled TWICE, with a beat in between: the first scroll happens while the tree is
+    // still growing, so a single one lands short of the deployment cells this shot is about.
+    for (const _ of [0, 1]) {
+      await page.evaluate(() => {
+        const app = document.querySelector('wui-eng-studio');
+        const scroller = app?.shadowRoot?.querySelector('.composer-scroll');
+        if (scroller) scroller.scrollTop = scroller.scrollHeight;
+      });
+      await page.waitForTimeout(400);
+    }
+    await page.screenshot({ path: resolve(OUT, '30-model-deployment-policy.png') });
+    console.log('[eng-shots] 30-model-deployment-policy.png — Deployment policy per mapping (alarm / archive / range)');
+
+    // MASTER–DETAIL + several source catalogs: pick a stored model in the left list
+    // (the row goes active and its content opens on the right), then check a SECOND
+    // catalog — the one case a single `ix-select` could not express.
+    await page.goto(`${devUrl}/?panel=model&lang=${LANG}`, { waitUntil: 'load' });
+    await page.waitForSelector('wui-eng-studio');
+    await page.waitForTimeout(500);
+    await page.evaluate(() => {
+      const root = document.querySelector('wui-eng-studio')?.shadowRoot;
+      root?.querySelector('.model-master-scroll .model-row')?.click();
+    });
+    await page.waitForTimeout(400);
+    // A model is READ-ONLY until "Edit": the shot has to open the editor before it can
+    // check a second source catalog, which is the point of that button.
+    await page.evaluate(() => {
+      const root = document.querySelector('wui-eng-studio')?.shadowRoot;
+      const edit = [...(root?.querySelectorAll('.model-detail .browser-head ix-button') ?? [])].at(-1);
+      edit?.click();
+    });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => {
+      const root = document.querySelector('wui-eng-studio')?.shadowRoot;
+      const boxes = [...(root?.querySelectorAll('.source-use input[type="checkbox"]') ?? [])];
+      boxes.find((box) => !box.checked)?.click();
+    });
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: resolve(OUT, '31-model-master-detail.png') });
+    console.log('[eng-shots] 31-model-master-detail.png — Model list + its content, two source catalogs');
+
+    // HOW a leaf alarms: a BOOL element chooses its GOOD RANGE, a numeric one its
+    // thresholds and the alarming side. A short structure on purpose — these cells are the
+    // subject, and they sit at the right end of a leaf's row.
+    await page.goto(`${devUrl}/?panel=model&lang=${LANG}`, { waitUntil: 'load' });
+    await page.waitForSelector('wui-eng-studio');
+    await page.waitForTimeout(500);
+    await page.evaluate(() => {
+      const app = document.querySelector('wui-eng-studio');
+      app?.selectDeviceById('s7-four1');
+      app?.customStructureForDemo('STD_Four', ['STD_Four', '  Temperature : Float', '  Defaut : Bool', '  SecuriteOk : Bool'].join('\n'));
+      app?.policyForDemo({
+        // A measure alarmed by THRESHOLDS (two of them → three ranges), high side.
+        // Two thresholds, and a class PER RANGE: crossing 80 warns, crossing 95 alarms.
+        Temperature: {
+          alarm: { active: true, alarmClass: '_alert_high', thresholds: [80, 95], direction: 'ASC', alarmClasses: ['_warning', '_alert_high'] },
+          range: { min: 0, max: 150 }
+        },
+        // A fault bit: healthy at FALSE.
+        Defaut: { alarm: { active: true, alarmClass: '_alert_high', goodRange: false } },
+        // An active-LOW safety chain: healthy at TRUE — the case a derived direction got wrong.
+        SecuriteOk: { alarm: { active: true, alarmClass: '_warning', goodRange: true } }
+      });
+    });
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: resolve(OUT, '34-alarm-shapes.png') });
+    console.log('[eng-shots] 34-alarm-shapes.png — Alarm per element: good range (BOOL) / thresholds (numeric)');
+
+    // HOW a leaf is ACQUIRED: cyclic on a poll group, or pushed through an OPC UA
+    // subscription. Same short structure as above so the acquisition cells are the subject:
+    // the two TA/TS signals are subscribed (the role's own default), the measure is polled.
+    await page.evaluate(() => {
+      const app = document.querySelector('wui-eng-studio');
+      app?.customStructureForDemo('STD_Four', ['STD_Four', '  Temperature : Float', '  Cadence : Float', '  Defaut : Bool', '  Marche : Bool'].join('\n'));
+      app?.policyForDemo({
+        // Measures: asked for, on the two rhythms a plant actually distinguishes.
+        Temperature: { acquisition: { mode: 'poll', pollGroup: '_Poll_Normal' } },
+        Cadence: { acquisition: { mode: 'poll', pollGroup: '_Poll_Fast' } },
+        // An event is worth nothing polled a second late: pushed, each on its subscription.
+        Defaut: { alarm: { active: true, alarmClass: '_alert_high', goodRange: false }, acquisition: { mode: 'spont', subscription: 'Sub_Fast' } },
+        Marche: { acquisition: { mode: 'spont', subscription: 'Sub_Process' } }
+      });
+    });
+    // Scrolled to the tree, twice like the deployment shot: the subscribed leaves are the
+    // bottom half of this structure, and they are the half the shot is about.
+    for (const _ of [0, 1]) {
+      await page.evaluate(() => {
+        const app = document.querySelector('wui-eng-studio');
+        const scroller = app?.shadowRoot?.querySelector('.composer-scroll');
+        if (scroller) scroller.scrollTop = scroller.scrollHeight;
+      });
+      await page.waitForTimeout(400);
+    }
+    await page.screenshot({ path: resolve(OUT, '38-acquisition.png') });
+    console.log('[eng-shots] 38-acquisition.png — Acquisition per element: poll group or OPC UA subscription');
+
+    // Creating a model: name and description FIRST, because everything after it (the
+    // catalogs, the mirroring, the mapping) is saved against that record.
+    // Everything at once: the identity, the source catalogs, and which of them mirrors
+    // (the labeller's browse is mirrored, PackML is only mapped onto).
+    await page.evaluate(() => {
+      document
+        .querySelector('wui-eng-studio')
+        ?.modelFormForDemo(
+          'STD_Remplisseuse',
+          'Remplisseuse — standard maison : cadence, niveaux, défauts. Reproduit du parcours OPC UA de la ligne, complété par l’interface PackML.',
+          [
+            { bookId: 'book-opcua-etiqueteuse', mirror: true },
+            { bookId: 'book-packml-v101' }
+          ]
+        );
+    });
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: resolve(OUT, '32-model-create.png') });
+    console.log('[eng-shots] 32-model-create.png — Creating a model: its name and its description');
+
+    // The OTHER way in: a DP type the project already has. The model then PARAMETERISES that
+    // type — it does not make a second one beside it.
+    await page.evaluate(() => {
+      document
+        .querySelector('wui-eng-studio')
+        ?.modelFormForDemo(
+          'Four — paramétrage',
+          'Paramètre le type Equip_Four déjà présent dans le projet : mappings, alarmes et archives, sans toucher au type.',
+          [],
+          'Equip_Four'
+        );
+    });
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: resolve(OUT, '35-model-from-dptype.png') });
+    console.log('[eng-shots] 35-model-from-dptype.png — A model that parameterises an EXISTING DP type');
+
+    // Create it, then check a catalog: the DP type's STRUCTURE is in the model, branch by
+    // branch, each one ready to be bound to a signal (attribute by attribute).
+    await page.evaluate(() => {
+      const root = document.querySelector('wui-eng-studio')?.shadowRoot;
+      const buttons = [...(root?.querySelectorAll('.model-detail .composer-scroll ix-button') ?? [])];
+      buttons.at(-1)?.click();
+    });
+    await page.waitForTimeout(700);
+    await page.evaluate(() => {
+      const root = document.querySelector('wui-eng-studio')?.shadowRoot;
+      const boxes = [...(root?.querySelectorAll('.source-use input[type="checkbox"]') ?? [])];
+      boxes.find((box) => !box.checked)?.click();
+    });
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: resolve(OUT, '36-model-dptype-mapping.png') });
+    console.log('[eng-shots] 36-model-dptype-mapping.png — The DP type imported, branch by branch, ready to map');
+
+    // Applying a model = creating INSTANCES, which is why the form lives here and not in
+    // the Model tab: the equipment names and the target device are all it needs.
+    await page.evaluate(() => {
+      document.querySelector('wui-eng-studio')?.instanceFormForDemo('STD_Four', 'FOUR021, FOUR022', 's7-four1');
+    });
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: resolve(OUT, '33-instance-form.png') });
+    console.log('[eng-shots] 33-instance-form.png — New instance of a model: names + target equipment');
+
     // Generation scenario: qualify → generate → diff, captured end to end.
     await page.goto(`${devUrl}/?panel=model&lang=${LANG}`, { waitUntil: 'load' });
     await page.waitForSelector('wui-eng-studio');
@@ -368,7 +544,7 @@ async function main() {
     await page.evaluate(() => {
       const app = document.querySelector('wui-eng-studio');
       app?.selectDeviceById('s7-four1');
-      app?.generateForDemo('Equip_Four_Gen', 'Z04', 'FOUR010, FOUR011');
+      app?.generateForDemo('Equip_Four_Gen', 'FOUR010, FOUR011');
     });
     await page.waitForTimeout(700);
     for (const shot of GENERATION_SHOTS) {
@@ -382,6 +558,28 @@ async function main() {
       console.log(`[eng-shots] ${shot.file} — ${shot.desc}`);
     }
 
+    // The check-in REPORT, as its own dialog: thousands of lines fit because the list scrolls
+    // inside it, and failures are sorted first.
+    await page.evaluate(() => {
+      const app = document.querySelector('wui-eng-studio');
+      if (app) app.panel = 'instances';
+    });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => {
+      const root = document.querySelector('wui-eng-studio')?.shadowRoot;
+      const preview = [...(root?.querySelectorAll('.panel-head ix-button') ?? [])].find((button) =>
+        /Preview|Aperçu|Vorschau/.test(button.textContent ?? '')
+      );
+      preview?.click();
+    });
+    await page.waitForTimeout(700);
+    await page.screenshot({ path: resolve(OUT, '37-checkin-report.png') });
+    console.log('[eng-shots] 37-checkin-report.png — The check-in report: a dialog whose list scrolls');
+    await page.evaluate(() => {
+      const root = document.querySelector('wui-eng-studio')?.shadowRoot;
+      root?.querySelector('.dp-pick-backdrop')?.click();
+    });
+
     // Device declaration form, in the two states worth documenting:
     //   1. a CREATION mid-typing, showing the core's live validation (an invalid
     //      name and a missing required parameter);
@@ -393,7 +591,6 @@ async function main() {
       document.querySelector('wui-eng-studio')?.deviceFormForDemo(undefined, {
         name: 'Four n°2 (zone B)',
         protocol: 's7plus',
-        accessModes: ['s7plus', 'opcua'],
         connection: {}
       });
     });
@@ -409,6 +606,17 @@ async function main() {
     await page.waitForTimeout(400);
     await page.screenshot({ path: resolve(OUT, '20-device-form-edit.png') });
     console.log('[eng-shots] 20-device-form-edit.png — Device form: editing a Modbus equipment (declared driver settings)');
+
+    // The OPC UA SECURITY card: user/password/policy + the certificate-relaxation
+    // checkboxes, on an OPC UA equipment (they exist for no other protocol).
+    await page.evaluate(() => {
+      document.querySelector('wui-eng-studio')?.deviceFormForDemo('ligne-embouteillage', {
+        connection: { server: 'Remplisseuse', user: 'operator1', securityPolicy: 'Basic256Sha256', messageMode: 'SignAndEncrypt' }
+      });
+    });
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: resolve(OUT, '29-device-form-security.png') });
+    console.log('[eng-shots] 29-device-form-security.png — OPC UA security: user/password, policy, certificate relaxations');
 
     // The catalogue creation form — the screen that makes an address book with no
     // equipment at all. Captured on the FILE generator (the one that needs no
@@ -512,7 +720,7 @@ async function main() {
     // staged for creation. Reproduced by dropping the generated type from the workspace
     // AND from the live snapshot — which is what the deletion leaves behind — so the shot
     // shows the warning that names the orphans and the bar that removes them.
-    await page.goto(`${devUrl}/?panel=control&lang=${LANG}`, { waitUntil: 'load' });
+    await page.goto(`${devUrl}/?panel=instances&lang=${LANG}`, { waitUntil: 'load' });
     await page.waitForSelector('wui-eng-studio');
     await page.waitForTimeout(900);
     await page.evaluate(() => {
