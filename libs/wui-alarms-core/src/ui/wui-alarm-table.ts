@@ -8,43 +8,31 @@
  * {@link AlarmPage} and reports intent (`wui:sort`, `wui:page`, `wui:selection`,
  * `wui:select`). The view owns the query, so the page table and an embedded panel
  * table cannot drift apart.
+ *
+ * The columns are the profile's (see `profile.ts`): the built-in ones are drawn
+ * here, an additional one shows its `extra` value — or what an extension's
+ * renderer makes of the row.
  */
 import { localizeDate } from '@wincc-oa/wui-i18n-shared/localize-date.js';
 import { DatetimeFormat } from '@wincc-oa/wui-models/enums/wui-i18n/datetime-format.js';
-import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { LitElement, html, nothing, type TemplateResult } from 'lit';
 import { property } from 'lit/decorators.js';
+import { ackText, columnLabel, columnSort, dateTimeText, directionText, levelLabel } from '../columns.js';
+import type { AlarmColumnRenderer } from '../extensions.js';
 import { MSG, localize, localizeDir, pagerRangeMsg } from '../i18n.js';
+import { DEFAULT_PROFILE, columnField, type AlarmColumn } from '../profile.js';
 import type { AlarmPage } from '../query.js';
 import type { SortDir, SortField } from '../severity.js';
 import { canAcknowledge, DEFAULT_RANGES, type Alarm, type AlarmRange } from '../types.js';
-import { alarmColor, rangeAbbr, rangeColor, severityTokens } from './alarm-tokens.js';
+import { alarmColor, rangeColor, severityTokens } from './alarm-tokens.js';
 import { alarmTableStyles } from './wui-alarm-table.styles.js';
 
 /** Page buttons kept around the current one. */
 const PAGER_NEIGHBOURS = 1;
 
-/**
- * Colour tone of the state chip.
- *
- * Acknowledgement comes FIRST: an alarm that went while nobody took it over is
- * still an open item, so it keeps the alert class' colour instead of the grey of
- * a closed row — greying it out is exactly how a pending acknowledgement gets
- * overlooked.
- */
-function stateTone(alarm: Alarm): string {
-  if (!alarm.acked) return '';
-  return alarm.cleared === null ? 'ok' : 'gone';
-}
-
 function ariaSort(active: boolean, dir: SortDir): 'ascending' | 'descending' | 'none' {
   if (!active) return 'none';
   return dir === 'asc' ? 'ascending' : 'descending';
-}
-
-function fmtDateTime(ms: number | null): string {
-  if (ms === null || ms === 0) return '—';
-  return localizeDate(new Date(ms), undefined, DatetimeFormat.Default);
 }
 
 function fmtTime(ms: number | null): string {
@@ -63,24 +51,32 @@ export class WuiAlarmTable extends LitElement {
   @property({ type: Boolean, reflect: true }) compact = false;
   /** Show the checkbox column — off when acknowledging is not available. */
   @property({ type: Boolean }) selectable = true;
-  /** Show the "cleared" column — only meaningful on an archived period. */
+  /**
+   * Without explicit `columns`: the history columns (the clearing time and who
+   * acknowledged) rather than the active ones.
+   */
   @property({ type: Boolean, attribute: 'show-cleared' }) showCleared = false;
-  /** The project's priority ranges — the pill's label and colour come from them. */
+  /** The columns, in order; the profile defaults when unset. */
+  @property({ attribute: false }) columns: readonly AlarmColumn[] | null = null;
+  /** How the additional columns are drawn, by column id (from the extensions). */
+  @property({ attribute: false }) renderers: ReadonlyMap<string, AlarmColumnRenderer> = new Map();
+  /** The project's levels — the severity's name and colour come from them. */
   @property({ attribute: false }) ranges: readonly AlarmRange[] = DEFAULT_RANGES;
 
   override render(): TemplateResult {
     const rows = this.page?.rows ?? [];
+    const columns = this.effectiveColumns();
     return html`
       <div class="wrap">
         <table>
           <thead>
             <tr>
-              ${this.selectable ? html`<th style="width:1.5rem">${this.renderSelectAll(rows)}</th>` : nothing}
-              ${this.renderHead()}
+              ${this.selectable ? html`<th class="chk">${this.renderSelectAll(rows)}</th>` : nothing}
+              ${columns.map((column) => this.renderHead(column))}
             </tr>
           </thead>
           <tbody>
-            ${rows.map((alarm) => this.renderRow(alarm))}
+            ${rows.map((alarm) => this.renderRow(alarm, columns))}
           </tbody>
         </table>
         ${rows.length === 0 ? html`<div class="empty">${localizeDir(MSG.table.empty)}</div>` : nothing}
@@ -89,86 +85,135 @@ export class WuiAlarmTable extends LitElement {
     `;
   }
 
-  private renderHead(): TemplateResult {
-    if (this.compact) {
-      return html`
-        ${this.th('raised', MSG.table.raised)} ${this.th('rank', MSG.table.severity)}
-        ${this.th('text', MSG.table.text)} ${this.th('status', MSG.table.status)}
-      `;
-    }
-    return html`
-      ${this.th('raised', MSG.table.raised)}
-      ${this.showCleared ? this.th('cleared', MSG.table.cleared) : nothing} ${this.th('rank', MSG.table.severity)}
-      ${this.th('prior', MSG.table.prior)}
-      <th>${localizeDir(MSG.table.class)}</th>
-      ${this.th('dp', MSG.table.dpe)} ${this.th('text', MSG.table.text)} ${this.th('value', MSG.table.value)}
-      ${this.th('status', MSG.table.status)}
-      <th>${localizeDir(MSG.table.ackBy)}</th>
-    `;
+  private effectiveColumns(): readonly AlarmColumn[] {
+    if (this.columns !== null) return this.columns;
+    if (this.compact) return DEFAULT_PROFILE.panelColumns;
+    return this.showCleared ? DEFAULT_PROFILE.historyColumns : DEFAULT_PROFILE.columns;
   }
 
-  private renderRow(alarm: Alarm): TemplateResult {
-    const classes = `${alarm.acked ? '' : 'unacked'} ${alarm.cleared === null ? '' : 'cleared'}`;
+  private renderHead(column: AlarmColumn): TemplateResult {
+    const label = columnLabel(column);
+    const field = columnSort(column);
+    const style = column.width ? `width:${column.width}` : '';
+    if (field === null) return html`<th style=${style}>${label}</th>`;
+    const active = this.sort === field;
+    const glyph = this.sortDir === 'asc' ? '▲' : '▼';
+    return html`<th
+      class="sortable"
+      style=${style}
+      aria-sort=${ariaSort(active, this.sortDir)}
+      title=${`${localize(MSG.table.sortBy)} ${label}`}
+      @click=${() => this.emitSort(field)}
+    >
+      ${label}${active ? ` ${glyph}` : ''}
+    </th>`;
+  }
+
+  private renderRow(alarm: Alarm, columns: readonly AlarmColumn[]): TemplateResult {
+    const unacked = canAcknowledge(alarm);
+    const classes = [
+      unacked ? 'unacked' : '',
+      alarm.cleared === null ? '' : 'went',
+      this.selection.has(alarm.id) ? 'sel' : ''
+    ].join(' ');
     return html`
-      <tr
-        class=${classes}
-        style=${`border-left-color:${rangeColor(alarm.rank, this.ranges)}`}
-        @click=${() => this.emitSelect(alarm)}
-      >
-        ${this.selectable ? html`<td>${this.renderCheckbox(alarm)}</td>` : nothing}
-        ${this.compact ? this.renderCompactCells(alarm) : this.renderFullCells(alarm)}
+      <tr class=${classes} @click=${() => this.emitSelect(alarm)}>
+        ${this.selectable ? html`<td class="chk">${this.renderCheckbox(alarm)}</td>` : nothing}
+        ${columns.map((column) => this.renderCell(alarm, column))}
       </tr>
     `;
   }
 
-  private renderCompactCells(alarm: Alarm): TemplateResult {
-    return html`
-      <td class="mono">${fmtTime(alarm.raised)}</td>
-      <td>${this.renderRange(alarm)}</td>
-      <td class="text">
-        ${alarm.text || alarm.dpe}
-        <div class="muted mono ell">${alarm.dpe}</div>
-      </td>
-      <td>${this.renderState(alarm)}</td>
-    `;
+  // eslint-disable-next-line complexity -- one case per built-in column, flat on purpose
+  private renderCell(alarm: Alarm, column: AlarmColumn): TemplateResult {
+    switch (column.id) {
+      case 'severity': {
+        return html`<td>${this.renderSeverity(alarm)}</td>`;
+      }
+      case 'raised': {
+        return html`<td class="nowrap mono">${this.compact ? fmtTime(alarm.raised) : dateTimeText(alarm.raised)}</td>`;
+      }
+      case 'cleared': {
+        return html`<td class="nowrap mono">${dateTimeText(alarm.cleared) || '—'}</td>`;
+      }
+      case 'class': {
+        return html`<td title=${`${alarm.abbr} · ${localize(MSG.table.prior)} ${alarm.prior}`}>
+          <span class="pill" style=${`background:${alarmColor(alarm, this.ranges)}`}>${alarm.abbr || '—'}</span>
+        </td>`;
+      }
+      case 'prior': {
+        return html`<td class="num mono muted" title=${localize(MSG.table.priorHint)}>${alarm.prior}</td>`;
+      }
+      case 'source': {
+        return html`<td class="wrap">
+          <code>${alarm.dpe}</code>
+          ${alarm.description && alarm.description !== alarm.dpe ? html`<div class="muted">${alarm.description}</div>` : nothing}
+        </td>`;
+      }
+      case 'dpe': {
+        return html`<td class="mono ell dpe" title=${alarm.dpe}>${alarm.dpe}</td>`;
+      }
+      case 'description': {
+        return html`<td class="wrap">${alarm.description}</td>`;
+      }
+      case 'text': {
+        return this.renderText(alarm);
+      }
+      case 'value': {
+        return html`<td class="num mono">${alarm.value || '—'}</td>`;
+      }
+      case 'state': {
+        return html`<td class="nowrap">${this.renderState(alarm)}</td>`;
+      }
+      case 'ackBy': {
+        return html`<td class="nowrap">
+          ${alarm.acked ? html`${alarm.ackBy ?? '—'}<div class="legend mono">${dateTimeText(alarm.ackAt)}</div>` : '—'}
+        </td>`;
+      }
+      default: {
+        const renderer = this.renderers.get(column.id);
+        return html`<td class="wrap">${renderer ? renderer.render(alarm) : (alarm.extra?.[columnField(column)] ?? '')}</td>`;
+      }
+    }
   }
 
-  private renderFullCells(alarm: Alarm): TemplateResult {
-    return html`
-      <td class="mono">${fmtDateTime(alarm.raised)}</td>
-      ${this.showCleared ? html`<td class="mono">${fmtDateTime(alarm.cleared)}</td>` : nothing}
-      <td>${this.renderRange(alarm)}</td>
-      <td class="num mono muted" title=${localize(MSG.table.priorHint)}>${alarm.prior}</td>
-      <td><span class="pill" style=${`background:${alarmColor(alarm, this.ranges)}`}>${alarm.abbr || '—'}</span></td>
-      <td class="mono ell" style="max-width:14rem" title=${alarm.dpe}>${alarm.dpe}</td>
-      <td class="text" title=${alarm.description}>${alarm.text || alarm.description || '—'}</td>
-      <td class="num mono">${alarm.value || '—'}</td>
-      <td>${this.renderState(alarm)}</td>
-      <td class="mono muted">${alarm.ackBy ?? '—'}</td>
-    `;
-  }
-
-  /** The range pill: the project's own label and colour for that priority band. */
-  private renderRange(alarm: Alarm): TemplateResult {
-    const style = `background:${rangeColor(alarm.rank, this.ranges)}`;
-    return html`<span class="pill" style=${style} title=${`prior ${alarm.prior}`}
-      >${rangeAbbr(alarm.rank, this.ranges)}</span
+  /** The level: its colour and its name, never the colour alone. */
+  private renderSeverity(alarm: Alarm): TemplateResult {
+    const classes = alarm.rank === 1 ? 'sev top' : 'sev';
+    return html`<span class=${classes} style=${`--sev-color:${rangeColor(alarm.rank, this.ranges)}`} title=${`prior ${alarm.prior}`}
+      >${levelLabel(alarm.rank, this.ranges)}</span
     >`;
   }
 
-  private renderState(alarm: Alarm): TemplateResult {
-    const tone = stateTone(alarm);
-    const style = tone === '' ? `color:${alarmColor(alarm, this.ranges)}` : '';
-    const classes = `state ${tone}`;
-    return html`<span class=${classes} style=${style}>${localizeDir(MSG.status[alarm.status])}</span>`;
+  private renderText(alarm: Alarm): TemplateResult {
+    if (this.compact) {
+      return html`<td class="wrap text">${alarm.text || alarm.dpe}<div class="muted mono ell">${alarm.dpe}</div></td>`;
+    }
+    return html`<td class="wrap text">
+      ${alarm.text || '—'}
+      ${alarm.acked && alarm.ackBy ? html`<div class="legend">${localize(MSG.state.ackedBy)} ${alarm.ackBy}</div>` : nothing}
+    </td>`;
   }
 
-  private renderCheckbox(alarm: Alarm): TemplateResult {
+  /**
+   * Direction and acknowledgement, as two badges. An alarm that went while
+   * nobody took it over keeps its "to acknowledge" badge: greying it out is
+   * exactly how a pending acknowledgement gets overlooked.
+   */
+  private renderState(alarm: Alarm): TemplateResult {
+    const ack = ackText(alarm);
+    return html`<span class=${alarm.cleared === null ? 'badge came' : 'badge'}>${directionText(alarm)}</span>
+      ${ack === '' ? nothing : html` <span class=${alarm.acked ? 'badge acked' : 'badge to-ack'}>${ack}</span>`}`;
+  }
+
+  private renderCheckbox(alarm: Alarm): TemplateResult | typeof nothing {
+    if (!canAcknowledge(alarm)) {
+      return alarm.ackable ? nothing : html`<span class="muted" title=${localize(MSG.table.notAckable)}>—</span>`;
+    }
     return html`<input
       type="checkbox"
-      title=${alarm.ackable ? '' : localize(MSG.table.notAckable)}
+      aria-label=${localize(MSG.table.select)}
       .checked=${this.selection.has(alarm.id)}
-      ?disabled=${!canAcknowledge(alarm)}
       @click=${(event: Event) => event.stopPropagation()}
       @change=${() => this.toggle(alarm.id)}
     />`;
@@ -179,6 +224,7 @@ export class WuiAlarmTable extends LitElement {
     const all = ackable.length > 0 && ackable.every((alarm) => this.selection.has(alarm.id));
     return html`<input
       type="checkbox"
+      aria-label=${localize(MSG.table.selectAll)}
       title=${localize(MSG.table.selectAll)}
       .checked=${all}
       ?disabled=${ackable.length === 0}
@@ -186,20 +232,8 @@ export class WuiAlarmTable extends LitElement {
     />`;
   }
 
-  private th(field: SortField, label: MultiLangString): TemplateResult {
-    const active = this.sort === field;
-    const glyph = this.sortDir === 'asc' ? '▲' : '▼';
-    return html`<th
-      class="sortable"
-      aria-sort=${ariaSort(active, this.sortDir)}
-      title=${`${localize(MSG.table.sortBy)} ${localize(label)}`}
-      @click=${() => this.emitSort(field)}
-    >
-      ${localizeDir(label)}${active ? ` ${glyph}` : ''}
-    </th>`;
-  }
-
-  private renderPager(page: AlarmPage): TemplateResult {
+  private renderPager(page: AlarmPage): TemplateResult | typeof nothing {
+    if (page.pages <= 1 && this.compact) return nothing;
     const from = page.filtered === 0 ? 0 : (page.page - 1) * page.pageSize + 1;
     const to = Math.min(page.page * page.pageSize, page.filtered);
     const numbers = [1, page.page - PAGER_NEIGHBOURS, page.page, page.page + PAGER_NEIGHBOURS, page.pages]

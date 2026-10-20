@@ -20,7 +20,11 @@
     "PageSize": "Zeilen pro Seite",
     "LockSource": "Reiter sperren",
     "HideStats": "Statistiken ausblenden",
-    "NoAck": "Nur lesen (keine Quittierung)"
+    "NoAck": "Nur lesen (keine Quittierung)",
+    "ClassFilter": "Alarmklassen",
+    "ClassFilterHint": "Kürzel der angezeigten Alarmklassen, durch Kommas getrennt (OOS, AOS, A*). Leer = alle Klassen. Der Bediener kann ihn zurücksetzen.",
+    "ProfileName": "Anzeigeprofil",
+    "ProfileNameHint": "Name eines in der Alarm-Seite gespeicherten Anzeigeprofils (Spalten, Filter, Zähler, Quittierung). Leer = die Standarddarstellung."
   },
   "Source": {
     "Active": "Aktive Alarme",

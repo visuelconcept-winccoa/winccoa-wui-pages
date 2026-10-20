@@ -18,7 +18,9 @@
     "hideStats": false,
     "noAck": false,
     "showRangePicker": true,
-    "pageSize": 25
+    "pageSize": 25,
+    "profileName": "",
+    "classFilter": ""
   },
   "variables": {
     "context": "group",
@@ -77,7 +79,9 @@
         "hideStats": { "type": "boolean" },
         "noAck": { "type": "boolean" },
         "showRangePicker": { "type": "boolean" },
-        "pageSize": { "type": "number" }
+        "pageSize": { "type": "number" },
+        "profileName": { "type": "string" },
+        "classFilter": { "type": "string" }
       }
     },
     "uiSchema": {
@@ -170,6 +174,14 @@
               "options": {
                 "tooltip": "WUI_Widget_WuiAlarms.Settings.StrictScopeHint"
               }
+            },
+            {
+              "type": "Control",
+              "scope": "#/properties/classFilter",
+              "label": "WUI_Widget_WuiAlarms.Settings.ClassFilter",
+              "options": {
+                "tooltip": "WUI_Widget_WuiAlarms.Settings.ClassFilterHint"
+              }
             }
           ]
         },
@@ -182,6 +194,14 @@
             "noborder": true
           },
           "elements": [
+            {
+              "type": "Control",
+              "scope": "#/properties/profileName",
+              "label": "WUI_Widget_WuiAlarms.Settings.ProfileName",
+              "options": {
+                "tooltip": "WUI_Widget_WuiAlarms.Settings.ProfileNameHint"
+              }
+            },
             {
               "type": "SelectControl",
               "scope": "#/properties/source",

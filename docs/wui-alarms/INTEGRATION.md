@@ -78,7 +78,7 @@ import { scopeFromDpes } from '@visuelconcept-winccoa/wui-alarms-core/scope.js';
 | --------------------------- | ----------------------------- | -------------- | --------------------------------------------------------------------------------------------------------- |
 | `source`                    | `source`                      | `active`       | `active` = standing alarms (live) · `history` = the archive of the period                                 |
 | `lockSource`                | `lock-source`                 | `false`        | Hide the Active/History tabs (the host decides)                                                           |
-| `period`                    | `period`                      | `today`        | `today` · `24h` · `7d` · `30d` · `week` · `month` · `custom`                                              |
+| `period`                    | `period`                      | `24h`          | `1h` · `8h` · `today` · `24h` · `7d` · `30d` · `week` · `month` · `custom`                                |
 | `shift`                     | `shift`                       | `0`            | Whole periods back (1 = the previous one)                                                                 |
 | `customStart` / `customEnd` | `custom-start` / `custom-end` | `''`           | `YYYY-MM-DD` bounds for `custom`                                                                          |
 | `from` / `to`               | `from` / `to`                 | `0`            | Explicit epoch-ms bounds; **win over `period`** — the case where the host already owns a period selector  |
@@ -86,7 +86,7 @@ import { scopeFromDpes } from '@visuelconcept-winccoa/wui-alarms-core/scope.js';
 | `scope`                     | —                             | `null`         | Datapoint scope as a property (wins over `dps`)                                                           |
 | `strictScope`               | `strict-scope`                | `false`        | **Set it when embedding**: an empty scope shows nothing instead of the whole system                       |
 | `layout`                    | `layout`                      | `page`         | `panel` = embedded density (fewer columns, compact statistics strip)                                      |
-| `hideStats`                 | `hide-stats`                  | `false`        | Hide the counters / histogram / bad actors                                                                |
+| `hideStats`                 | `hide-stats`                  | `false`        | Hide the counter tiles / histogram / recurring alarms                                                     |
 | `hideToolbar`               | `hide-toolbar`                | `false`        | Hide the toolbar entirely (read-only tile)                                                                |
 | `hidePeriod`                | `hide-period`                 | `false`        | Hide the period controls (the host drives `from`/`to`)                                                    |
 | `noAck`                     | `no-ack`                      | `false`        | Read-only: no selection, no acknowledge                                                                   |
@@ -94,11 +94,101 @@ import { scopeFromDpes } from '@visuelconcept-winccoa/wui-alarms-core/scope.js';
 | `maxResults`                | `max-results`                 | `5000`         | Archive query ceiling (a truncated answer is signalled in the view)                                       |
 | `ranges`                    | —                             | project config | Priority ranges. Left unset, the view reads the project's own from `Alarms_Config` and follows edits live |
 | `statsWindowMs`             | `stats-window`                | 3 h            | How far back the occurrence statistics look on the active tab                                             |
+| `profile`                   | —                             | `null`         | The host's display profile (columns, filters, tiles, acknowledgement…) — see [Customise](#customise-the-view) |
+| `profileName`               | `profile-name`                | `''`           | A profile stored in `Alarms_Config.profiles` (engineering), layered over `profile`                        |
+| `extensions`                | —                             | `[]`           | The host's extensions: classifier, column renderers, filters, acknowledgement override                    |
+| `filters`                   | —                             | `null`         | Starting filter values (`classes`, `ranks`, `search`, `unackOnly`, `fields`, `source`); the operator may clear them |
 
 Events (all `bubbles` + `composed`): `wui:counters` (the scoped `AlarmCounters` — for
 a badge in the host), `wui:select` (the clicked `Alarm`).
 Method: `acknowledgeAll()` acknowledges every row the current filters select, page or
 not.
+
+## Customise the view
+
+Four levers, from the plainest to the deepest — see [NOTES.md](./NOTES.md#customisation--profiles-extensions-tokens)
+for the reasoning.
+
+**1. A link with filters** — another module opens the Alarms page on its alarms,
+no code in the alarms module:
+
+```
+#/alarms?dp=stma/*&class=OOS,AOS,OOC&unack=1
+```
+
+| Parameter    | Meaning                                                   |
+| ------------ | --------------------------------------------------------- |
+| `dp`         | datapoint scope (comma separated, globs) — not clearable  |
+| `class`      | alert class abbreviations (comma separated, globs)        |
+| `rank`       | levels (`1,2`)                                            |
+| `q`          | search                                                    |
+| `unack`      | `1`: unacknowledged only                                  |
+| `source`     | `active` / `history`                                      |
+| `f.<filter>` | value of a profile's field filter                         |
+| `profile`    | a stored display profile                                  |
+
+**2. A profile** — JSON, in code (`.profile`) or stored by name (the _Display
+profiles_ button of the page, role `configure`; the _Display profile_ setting of the
+widget):
+
+```json
+{
+  "columns": ["severity", "raised", "class", "source", "text", { "id": "of", "label": "OF" }, "state"],
+  "historyColumns": ["raised", "cleared", "severity", "source", "text", "of", "state", "ackBy"],
+  "filters": { "classes": false, "fields": [{ "id": "origin", "label": "Origin" }] },
+  "tiles": true,
+  "stats": false,
+  "defaults": { "unackOnly": true },
+  "ack": { "selection": true, "all": false, "confirm": true },
+  "history": { "csv": true },
+  "extensions": ["msp"]
+}
+```
+
+Built-in columns: `severity`, `raised`, `cleared`, `class`, `prior`, `source`
+(element + description), `dpe`, `description`, `text`, `value`, `state`
+(came/went + acknowledgement), `ackBy`. Any other id is an additional column
+showing `Alarm.extra[field ?? id]` (sortable, searched, exported).
+
+**3. An extension** — code, for what JSON cannot say:
+
+```ts
+import { registerAlarmExtension } from '@visuelconcept-winccoa/wui-alarms-core/extensions.js';
+
+registerAlarmExtension({
+  id: 'msp',
+  // a module's own reading of each row, and the rows it shows at all
+  classify: (alarm, alert) => ({ ...alarm, extra: { ...alarm.extra, origin: originOf(alarm.dpe) } }),
+  keep: (alarm) => alarm.abbr !== 'EVE',
+  // its acknowledgement, for the alarms it owns
+  acknowledge: {
+    applies: (alarm) => MSP_CLASSES.has(alarm.abbr),
+    confirms: true, // it asks the operator itself (cause + action)
+    acknowledge: async (alarms, { host }) => {
+      const answer = await askCauseAndAction(host); // null = cancelled
+      if (answer === null) return null;
+      return postAck(alarms.map((a) => a.atime), answer); // one alertSet per occurrence, server side
+    }
+  }
+});
+```
+
+The other alarms of the same selection keep the kit's acknowledgement.
+
+**4. Design tokens** — the site's charter, on `:root`, nothing else:
+
+```css
+:root {
+  --wui-alarm-level-1: var(--fr-severity-alarm);
+  --wui-alarm-level-2: var(--fr-severity-warning);
+  --wui-alarm-surface: var(--fr-surface-base);
+  --wui-alarm-unacknowledged: var(--fr-state-alarm);
+}
+```
+
+The full list, with its Siemens iX defaults, heads `ui/alarm-tokens.ts`. A level
+with no colour of its own (`color: ""` — _theme_ in the level editor) takes its
+`--wui-alarm-level-<n>` token.
 
 ### Machine-scoped panel (the Machine Fleet case)
 
@@ -121,6 +211,8 @@ an alarm on an element the host does not read is still the machine's alarm.
 ## Notes / security
 
 - **No backend module or manager**: nothing to deploy, nothing to start, no `acl` to harden.
+  An acknowledgement OVERRIDE belongs to the module that registers it, and so does
+  its backend route and the role that route checks.
 - **Acknowledging** is a plain WinCC OA `dpSet` of `<dpe>:_alert_hdl.._ack = 2`
   from the browser, on the operator's own session: WinCC OA enforces the user's
   **write permission** itself and records the operator's name. The page hides the

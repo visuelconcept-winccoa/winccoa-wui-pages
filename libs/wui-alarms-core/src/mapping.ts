@@ -21,7 +21,14 @@
 import { AckState } from '@wincc-oa/wui-models/enums/wui-alert/ack-state.js';
 import type { Alert } from '@wincc-oa/wui-models/interfaces/wui-alert/alert.js';
 import { splitDpe } from './scope.js';
-import { DEFAULT_RANGES, rankFor, type Alarm, type AlarmRange, type AlarmStatus } from './types.js';
+import { DEFAULT_RANGES, rankFor, type Alarm, type AlarmRange, type AlarmStatus, type AlarmTime } from './types.js';
+
+/**
+ * A module's own reading of an alarm, applied to every row as it is mapped: it
+ * may re-rank it (a severity known from the alert class rather than its
+ * priority) and add `extra` values. See {@link ./extensions.ts}.
+ */
+export type AlarmClassifier = (alarm: Alarm, alert: Alert) => Alarm;
 
 /** Below this, a timestamp is seconds rather than milliseconds. */
 const SECONDS_THRESHOLD = 1e12;
@@ -117,6 +124,17 @@ function wordingOf(alert: Alert): Pick<Alarm, 'text' | 'description' | 'value'> 
   return { text: alert.text ?? '', description: alert.dpeDescription ?? '', value: valueOf(alert) };
 }
 
+/** The occurrence stamp, when the answer carries a usable one. */
+function atimeOf(alert: Alert): AlarmTime | null {
+  const stamp = alert.atime;
+  if (!stamp || typeof stamp.time !== 'number' || stamp.time === 0) return null;
+  return {
+    time: toEpochMs(stamp.time),
+    count: Number(stamp.count) || 0,
+    dpid: typeof stamp.dpid === 'string' && stamp.dpid !== '' ? stamp.dpid : (alert.dpeName ?? '')
+  };
+}
+
 /** One alert event as a standalone {@link Alarm} (no pairing). */
 export function toAlarm(alert: Alert, ranges: readonly AlarmRange[] = DEFAULT_RANGES): Alarm {
   const came = isCame(alert);
@@ -139,7 +157,9 @@ export function toAlarm(alert: Alert, ranges: readonly AlarmRange[] = DEFAULT_RA
     ...wordingOf(alert),
     acked,
     ackable: isAckable(alert),
-    ...ackOf(alert, acked)
+    ...ackOf(alert, acked),
+    atime: atimeOf(alert),
+    extra: {}
   };
 }
 
@@ -170,7 +190,9 @@ function fold(previous: Alarm, incoming: Alarm): Alarm {
     status: statusOf(cleared === null, acked),
     acked,
     ackBy: previous.ackBy ?? incoming.ackBy,
-    ackAt: previous.ackAt ?? incoming.ackAt
+    ackAt: previous.ackAt ?? incoming.ackAt,
+    atime: identity.atime ?? previous.atime ?? incoming.atime ?? null,
+    extra: { ...incoming.extra, ...previous.extra, ...identity.extra }
   };
 }
 
@@ -181,11 +203,16 @@ function fold(previous: Alarm, incoming: Alarm): Alarm {
  * deliver the two halves of one occurrence; a row is therefore never duplicated
  * between "it came" and "it went". Newest first.
  */
-export function mergeAlerts(alerts: readonly Alert[], ranges: readonly AlarmRange[] = DEFAULT_RANGES): Alarm[] {
+export function mergeAlerts(
+  alerts: readonly Alert[],
+  ranges: readonly AlarmRange[] = DEFAULT_RANGES,
+  classify?: AlarmClassifier
+): Alarm[] {
   const byOccurrence = new Map<string, Alarm>();
   for (const alert of alerts) {
     if (!alert || typeof alert.dpeName !== 'string' || alert.dpeName === '') continue;
-    const alarm = toAlarm(alert, ranges);
+    const mapped = toAlarm(alert, ranges);
+    const alarm = classify ? classify(mapped, alert) : mapped;
     const previous = byOccurrence.get(alarm.id);
     byOccurrence.set(alarm.id, previous === undefined ? alarm : fold(previous, alarm));
   }

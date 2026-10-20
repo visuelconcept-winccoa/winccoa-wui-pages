@@ -9,7 +9,7 @@ export function alarmStatsStyles(): ReturnType<typeof css> {
   return css`
     :host {
       display: block;
-      color: var(--theme-color-std-text);
+      color: var(--_text);
       font-size: 0.75rem;
     }
     .banner {
@@ -22,6 +22,9 @@ export function alarmStatsStyles(): ReturnType<typeof css> {
       gap: 0.625rem;
       align-items: stretch;
     }
+    .banner.charts {
+      grid-template-columns: minmax(15rem, 1.3fr) minmax(15rem, 1fr);
+    }
     @media (max-width: 90rem) {
       .banner {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -33,9 +36,9 @@ export function alarmStatsStyles(): ReturnType<typeof css> {
       }
     }
     .card {
-      border: 1px solid var(--theme-color-soft-bdr);
-      border-radius: var(--theme-default-border-radius);
-      background: var(--theme-color-2);
+      border: 1px solid var(--_border);
+      border-radius: var(--_radius);
+      background: var(--_surface);
       padding: 0.5rem 0.6875rem;
       min-width: 0;
     }
@@ -43,22 +46,22 @@ export function alarmStatsStyles(): ReturnType<typeof css> {
       font-size: 0.625rem;
       letter-spacing: 0.07em;
       text-transform: uppercase;
-      color: var(--theme-color-soft-text);
+      color: var(--_text-soft);
     }
     .unack {
-      border-color: color-mix(in srgb, var(--wui-alarm-severity-1) 55%, transparent);
-      background: color-mix(in srgb, var(--wui-alarm-severity-1) 8%, var(--theme-color-2));
+      border-color: color-mix(in srgb, var(--_level-1) 55%, transparent);
+      background: color-mix(in srgb, var(--_level-1) 8%, var(--_surface));
     }
     .unack b {
       display: block;
       font-size: 1.875rem;
       font-weight: 400;
       line-height: 1.1;
-      color: var(--wui-alarm-severity-1);
+      color: var(--_level-1);
     }
     .hint {
       font-size: 0.6875rem;
-      color: var(--theme-color-soft-text);
+      color: var(--_text-soft);
     }
     .row {
       display: flex;
@@ -76,7 +79,7 @@ export function alarmStatsStyles(): ReturnType<typeof css> {
       display: inline-flex;
       align-items: baseline;
       gap: 0.25rem;
-      border: 1px solid var(--theme-color-soft-bdr);
+      border: 1px solid var(--_border);
       border-radius: 0.125rem;
       padding: 0 0.25rem;
       cursor: pointer;
@@ -86,8 +89,8 @@ export function alarmStatsStyles(): ReturnType<typeof css> {
       font-size: 0.75rem;
     }
     .band[aria-pressed='true'] {
-      border-color: var(--theme-color-primary);
-      background: color-mix(in srgb, var(--theme-color-primary) 12%, transparent);
+      border-color: var(--_accent);
+      background: color-mix(in srgb, var(--_accent) 12%, transparent);
     }
     .band .n {
       font-variant-numeric: tabular-nums;
@@ -95,7 +98,7 @@ export function alarmStatsStyles(): ReturnType<typeof css> {
     }
     .band .ack {
       font-size: 0.625rem;
-      color: var(--theme-color-soft-text);
+      color: var(--_text-soft);
     }
     .last {
       display: flex;
@@ -129,23 +132,23 @@ export function alarmStatsStyles(): ReturnType<typeof css> {
       transform: translate(-50%, -120%);
       pointer-events: none;
       white-space: nowrap;
-      background: var(--theme-color-1);
-      border: 1px solid var(--theme-color-soft-bdr);
-      border-radius: var(--theme-default-border-radius);
+      background: var(--_surface-sunken);
+      border: 1px solid var(--_border);
+      border-radius: var(--_radius);
       box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.35);
       padding: 0.25rem 0.5rem;
       font-size: 0.6875rem;
       z-index: 2;
     }
     .tip-when {
-      color: var(--theme-color-soft-text);
+      color: var(--_text-soft);
     }
     .tip-over {
-      color: var(--theme-color-warning);
+      color: var(--_threshold);
     }
     .actor {
       display: grid;
-      grid-template-columns: 1.5rem 1fr auto;
+      grid-template-columns: auto 1fr auto;
       gap: 0.4375rem;
       align-items: center;
       line-height: 1.5;
@@ -153,25 +156,25 @@ export function alarmStatsStyles(): ReturnType<typeof css> {
     }
     .actor .sub {
       font-size: 0.625rem;
-      color: var(--theme-color-soft-text);
+      color: var(--_text-soft);
     }
     .actor .n {
       font-variant-numeric: tabular-nums;
-      color: var(--theme-color-soft-text);
+      color: var(--_text-soft);
     }
     .tab {
       background: transparent;
       border: 0;
       border-bottom: 0.125rem solid transparent;
-      color: var(--theme-color-soft-text);
+      color: var(--_text-soft);
       font: inherit;
       font-size: 0.75rem;
       padding: 0.125rem 0.375rem;
       cursor: pointer;
     }
     .tab[aria-current='true'] {
-      color: var(--theme-color-primary);
-      border-bottom-color: var(--theme-color-primary);
+      color: var(--_accent);
+      border-bottom-color: var(--_accent);
     }
     :host([compact]) .banner {
       display: flex;

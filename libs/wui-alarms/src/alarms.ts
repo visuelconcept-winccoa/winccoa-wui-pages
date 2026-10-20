@@ -12,18 +12,30 @@
  * The page is deliberately THIN: everything above is the shared
  * `<wui-alarm-view>` of {@link @visuelconcept-winccoa/wui-alarms-core}, which the Machine
  * Fleet machine dashboard embeds in its panel form. The page adds only what is
- * page-level — the content header, the Application-Security gate, and the
- * datapoint scope taken from the URL so a link can open the list on one machine
- * (`#/alarms?dp=System1:Press01`). That scope is **pushed in by the router**
- * ({@link WuiAlarms.onBeforeEnter}) rather than pulled while rendering; the comment there
- * says what pulling it cost.
+ * page-level — the content header, the Application-Security gate, the editors of
+ * the project's levels and display profiles, and what the URL carries so another
+ * module can open the list on ITS alarms:
+ *
+ *   - the datapoint scope (`#/alarms?dp=System1:Press01`);
+ *   - starting filters the operator may clear (`class=OOS,AOS`, `rank=1,2`, `q=…`,
+ *     `unack=1`, `source=history`, `f.<filter>=…` — see `filtersFromSearch`);
+ *   - a stored display profile (`profile=msp`).
+ *
+ * The query string is **pushed in by the router** ({@link WuiAlarms.onBeforeEnter})
+ * rather than pulled while rendering; the comment there says what pulling it cost.
  *
  * Registered at `/alarms` (component `wui-alarms`).
  */
 import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import { MSG, localizeDir } from '@visuelconcept-winccoa/wui-alarms-core/i18n.js';
+import {
+  filtersFromSearch,
+  profileNameFromSearch,
+  type AlarmFilterValues
+} from '@visuelconcept-winccoa/wui-alarms-core/profile.js';
 import { parseScopeAttribute, scopeFromSearch } from '@visuelconcept-winccoa/wui-alarms-core/scope.js';
 import '@visuelconcept-winccoa/wui-alarms-core/ui/wui-alarm-view.js';
+import '@visuelconcept-winccoa/wui-alarms-core/ui/wui-alarm-profiles.js';
 import '@visuelconcept-winccoa/wui-alarms-core/ui/wui-alarm-ranges.js';
 import '@wincc-oa/wui-ix-wrappers/wui-content-header/wui-content-header.js';
 import '@wincc-oa/wui-oarxjs-context/components/wui-context-generator/wui-context-generator.js';
@@ -60,6 +72,8 @@ export class WuiAlarms extends LitElement {
 
   @state() private rangesOpen = false;
 
+  @state() private profilesOpen = false;
+
   /**
    * The `search` of the route as the ROUTER handed it over; `null` until it does.
    *
@@ -82,7 +96,10 @@ export class WuiAlarms extends LitElement {
       hasRole$(MODULE_ID, 'configure').subscribe((granted) => {
         this.roleConfigure = granted;
         // Close an editor opened before the grant was revoked.
-        if (!granted) this.rangesOpen = false;
+        if (!granted) {
+          this.rangesOpen = false;
+          this.profilesOpen = false;
+        }
       })
     );
   }
@@ -126,7 +143,12 @@ export class WuiAlarms extends LitElement {
       <div class="body">
         ${this.roleView
           ? html`${this.renderConfigBar()}
-              <wui-alarm-view .scope=${this.scope()} .noAck=${!this.roleAck}></wui-alarm-view>`
+              <wui-alarm-view
+                .scope=${this.scope()}
+                .filters=${this.linkFilters()}
+                profile-name=${this.linkProfile()}
+                .noAck=${!this.roleAck}
+              ></wui-alarm-view>`
           : html`<div class="center">${localizeDir(MSG.view.forbidden)}</div>`}
       </div>
       ${this.rangesOpen
@@ -134,6 +156,12 @@ export class WuiAlarms extends LitElement {
             ?can-edit=${this.roleConfigure}
             @wui:close=${() => (this.rangesOpen = false)}
           ></wui-alarm-ranges>`
+        : nothing}
+      ${this.profilesOpen
+        ? html`<wui-alarm-profiles
+            ?can-edit=${this.roleConfigure}
+            @wui:close=${() => (this.profilesOpen = false)}
+          ></wui-alarm-profiles>`
         : nothing}
     `;
   }
@@ -147,6 +175,9 @@ export class WuiAlarms extends LitElement {
     if (!this.roleConfigure) return nothing;
     return html`
       <div class="actions">
+        <ix-button variant="secondary" @click=${() => (this.profilesOpen = true)}>
+          <ix-icon name="table-settings" slot="icon"></ix-icon>${localizeDir(MSG.profiles.open)}
+        </ix-button>
         <ix-button variant="secondary" @click=${() => (this.rangesOpen = true)}>
           <ix-icon name="cogwheel" slot="icon"></ix-icon>${localizeDir(MSG.ranges.open)}
         </ix-button>
@@ -165,6 +196,33 @@ export class WuiAlarms extends LitElement {
     if (fromAttribute.length > 0) return fromAttribute;
     const parameter = this.routerScope();
     return parameter.length > 0 ? parameter : null;
+  }
+
+  /** The starting filters the route carries; `null` when it carries none. */
+  private linkFilters(): AlarmFilterValues | null {
+    const filters = filtersFromSearch(this.currentSearch());
+    return Object.keys(filters).length === 0 ? null : filters;
+  }
+
+  /** The stored display profile the route names. */
+  private linkProfile(): string {
+    return profileNameFromSearch(this.currentSearch());
+  }
+
+  /** The query string: what the router pushed in, else what the facade knows. */
+  private currentSearch(): string {
+    if (this.routeSearch !== null) return this.routeSearch;
+    try {
+      const router = container.resolve<WuiRouterFacade>(WuiRouterFacadeToken);
+      const parameters = new URLSearchParams();
+      for (const key of ['class', 'rank', 'q', 'unack', 'source', 'profile']) {
+        const value = router.getSearchParam(key);
+        if (value) parameters.set(key, value);
+      }
+      return parameters.toString();
+    } catch {
+      return '';
+    }
   }
 
   /**
@@ -203,6 +261,7 @@ function pageStyles(): ReturnType<typeof css> {
     .actions {
       display: flex;
       justify-content: flex-end;
+      gap: 0.5rem;
       margin-bottom: 0.5rem;
     }
     .center {

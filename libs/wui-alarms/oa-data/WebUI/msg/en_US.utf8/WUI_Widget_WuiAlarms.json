@@ -20,7 +20,11 @@
     "PageSize": "Rows per page",
     "LockSource": "Lock the tab",
     "HideStats": "Hide the statistics",
-    "NoAck": "Read-only (no acknowledge)"
+    "NoAck": "Read-only (no acknowledge)",
+    "ClassFilter": "Alarm classes",
+    "ClassFilterHint": "Abbreviations of the alert classes shown, comma separated (OOS, AOS, A*). Empty = every class. The operator may clear it.",
+    "ProfileName": "Display profile",
+    "ProfileNameHint": "Name of a display profile stored in the Alarms page (columns, filters, counters, acknowledgement). Empty = the default layout."
   },
   "Source": {
     "Active": "Active alarms",

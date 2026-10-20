@@ -66,6 +66,28 @@ export interface Alarm {
   ackable: boolean;
   ackBy: string | null;
   ackAt: number | null;
+  /**
+   * The occurrence as WinCC OA identifies it (`atime`): what an acknowledgement
+   * of THIS occurrence — not of every pending alarm of the element — is addressed
+   * to (see {@link ../extensions.ts AlarmAckHandler}). `null` when the answer
+   * carried none.
+   */
+  atime?: AlarmTime | null;
+  /**
+   * Values an integrating module adds to the row — an origin, a work order, a
+   * group… (see {@link ../extensions.ts AlarmClassifier}). Additional columns and
+   * filters of a profile read them by key; the search reads them too.
+   */
+  extra?: Readonly<Record<string, string>>;
+}
+
+/** WinCC OA's identity of one alarm occurrence: its CAME time, its count, its alert element. */
+export interface AlarmTime {
+  /** Epoch ms of the occurrence (the CAME event). */
+  time: number;
+  count: number;
+  /** The alert element, as the backend names it (`System1:Pump1.state:_alert_hdl.2` on a real system). */
+  dpid: string;
 }
 
 /**
@@ -94,7 +116,16 @@ export interface AlarmRange {
   id: string;
   /** Short label on the pill: `P1`, `CRIT`, … */
   abbr: string;
-  /** Pill and row colour, a CSS hex (`#E5484D`). */
+  /**
+   * Readable name of the level (`Danger`, `Alarme`…), shown on the counter tiles
+   * and in the severity filter; the abbreviation when absent.
+   */
+  label?: string;
+  /**
+   * Pill and row colour, a CSS colour (`#E5484D`). EMPTY = the theme's colour for
+   * that level, the `--wui-alarm-level-<rank>` token (see `ui/alarm-tokens.ts`):
+   * a site styles its levels from its charter instead of a datapoint.
+   */
   color: string;
   /** Inclusive lower bound of `Alert.prior`. */
   minPrior: number;
@@ -119,7 +150,8 @@ export function normaliseRanges(ranges: readonly AlarmRange[] | undefined): Alar
     .map((range) => ({
       id: range.id,
       abbr: range.abbr === '' ? range.id.toUpperCase() : range.abbr,
-      color: range.color,
+      ...(typeof range.label === 'string' && range.label !== '' ? { label: range.label } : {}),
+      color: typeof range.color === 'string' ? range.color : '',
       minPrior: Number.isFinite(range.minPrior) ? range.minPrior : 0
     }));
   if (kept.length === 0) return structuredClone(DEFAULT_RANGES) as AlarmRange[];

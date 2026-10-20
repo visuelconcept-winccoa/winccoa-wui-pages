@@ -5,20 +5,25 @@
  * Period resolution for the archived view.
  *
  * The same vocabulary as the Machine Fleet dashboards (`today`, `24h`, `7d`,
- * `30d`, `week`, `month`, `custom`) so an embedded alarm panel can be driven by
- * the host page's existing period selector instead of growing a second one, and
- * so a shifted window ("previous week") means the same thing on both sides.
+ * `30d`, `week`, `month`, `custom`, plus the alarm list's `1h` and `8h`) so an
+ * embedded alarm panel can be driven by the host page's existing period selector
+ * instead of growing a second one, and so a shifted window ("previous week")
+ * means the same thing on both sides.
  */
 
-export type AlarmPeriod = 'today' | '24h' | '7d' | '30d' | 'week' | 'month' | 'custom';
+export type AlarmPeriod = '1h' | '8h' | 'today' | '24h' | '7d' | '30d' | 'week' | 'month' | 'custom';
 
-export const ALARM_PERIODS: readonly AlarmPeriod[] = ['today', '24h', '7d', '30d', 'week', 'month', 'custom'];
+export const ALARM_PERIODS: readonly AlarmPeriod[] = ['1h', '8h', 'today', '24h', '7d', '30d', 'week', 'month', 'custom'];
+
+/** The one-click shortcuts of the archived tab: the last hour to the last month. */
+export const QUICK_PERIODS: readonly AlarmPeriod[] = ['1h', '8h', '24h', '7d', '30d'];
 
 export interface Range {
   start: number;
   end: number;
 }
 
+const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
 const WEEK_DAYS = 7;
 const END_OF_DAY_MS = DAY_MS - 1;
@@ -72,6 +77,12 @@ function currentRange(period: AlarmPeriod, now: number): Range {
   switch (period) {
     case 'today': {
       return { start: startOfDay(now), end: startOfDay(now) + END_OF_DAY_MS };
+    }
+    case '1h': {
+      return { start: now - HOUR_MS, end: now };
+    }
+    case '8h': {
+      return { start: now - 8 * HOUR_MS, end: now };
     }
     case '24h': {
       return { start: now - DAY_MS, end: now };

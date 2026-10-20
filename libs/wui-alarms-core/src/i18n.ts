@@ -93,6 +93,34 @@ export const MSG = {
       'Archive truncated — narrow the period.',
       'Archive tronquée — resserrez la période.',
       'Archiv gekürzt — Zeitraum einschränken.'
+    ),
+    severityMin: ml('Minimum severity', 'Sévérité minimale', 'Mindestschweregrad'),
+    classes: ml('Class', 'Classe', 'Klasse'),
+    all: ml('All', 'Toutes', 'Alle'),
+    searchLabel: ml('Search', 'Rechercher', 'Suchen'),
+    exportCsv: ml('Export CSV', 'Exporter CSV', 'CSV exportieren'),
+    noMatch: ml(
+      'No alarm matches the filters.',
+      'Aucune alarme ne correspond aux filtres.',
+      'Kein Alarm entspricht den Filtern.'
+    ),
+    noActive: ml('No standing alarm.', 'Aucune alarme en cours.', 'Kein anstehender Alarm.'),
+    noHistory: ml(
+      'No alarm over the period.',
+      'Aucune alarme sur la période.',
+      'Kein Alarm im Zeitraum.'
+    ),
+    clearFilters: ml('Clear the filters', 'Effacer les filtres', 'Filter zurücksetzen'),
+    cancel: ml('Cancel', 'Annuler', 'Abbrechen'),
+    ackElements: ml(
+      'Every pending alarm of these elements is acknowledged with them.',
+      'Toutes les alarmes en attente de ces éléments sont acquittées avec elles.',
+      'Alle anstehenden Alarme dieser Elemente werden mit quittiert.'
+    ),
+    ackNoWrite: ml(
+      'Some alarms were left out: acknowledging them needs the WinCC OA write permission.',
+      'Des alarmes ont été écartées : leur acquittement demande le droit d’écriture WinCC OA.',
+      'Einige Alarme wurden ausgelassen: Ihre Quittierung erfordert das WinCC-OA-Schreibrecht.'
     )
   },
   counters: {
@@ -133,9 +161,12 @@ export const MSG = {
     )
   },
   table: {
-    raised: ml('Raised', 'Apparition', 'Kommt'),
-    cleared: ml('Cleared', 'Retombée', 'Geht'),
-    severity: ml('Range', 'Plage', 'Bereich'),
+    raised: ml('Raised', 'Venue le', 'Gekommen'),
+    cleared: ml('Cleared', 'Partie le', 'Gegangen'),
+    severity: ml('Severity', 'Sévérité', 'Schweregrad'),
+    source: ml('Source', 'Source', 'Quelle'),
+    description: ml('Description', 'Description', 'Beschreibung'),
+    select: ml('Select', 'Sélectionner', 'Auswählen'),
     prior: ml('Prior.', 'Prio.', 'Prio.'),
     priorHint: ml(
       'The alert class priority WinCC OA returns — the range above is derived from it.',
@@ -147,7 +178,7 @@ export const MSG = {
     text: ml('Text', 'Texte', 'Text'),
     value: ml('Value', 'Valeur', 'Wert'),
     status: ml('State', 'État', 'Status'),
-    ackBy: ml('Ack. by', 'Acq. par', 'Quitt. von'),
+    ackBy: ml('Acknowledgement', 'Acquittement', 'Quittierung'),
     empty: ml('No alarm.', 'Aucune alarme.', 'Kein Alarm.'),
     sortBy: ml('Sort by', 'Trier par', 'Sortieren nach'),
     selectAll: ml('Select the page', 'Sélectionner la page', 'Seite auswählen'),
@@ -156,6 +187,13 @@ export const MSG = {
       'Cette classe d’alarme n’accepte pas l’acquittement.',
       'Diese Alarmklasse akzeptiert keine Quittierung.'
     )
+  },
+  state: {
+    came: ml('came', 'venue', 'gekommen'),
+    went: ml('went', 'partie', 'gegangen'),
+    toAck: ml('to acknowledge', 'à acquitter', 'zu quittieren'),
+    acked: ml('acknowledged', 'acquittée', 'quittiert'),
+    ackedBy: ml('acknowledged by', 'acquittée par', 'quittiert von')
   },
   status: {
     ACTIVE: ml('ACTIVE', 'ACTIVE', 'AKTIV'),
@@ -177,6 +215,13 @@ export const MSG = {
       'Ein Bereich gruppiert die Prioritäten der WinCC-OA-Alarmklassen des Projekts. Kürzel und Farbe erscheinen in der Liste; Alarme unterhalb des niedrigsten Bereichs fallen in diesen.'
     ),
     colAbbr: ml('Abbreviation', 'Abréviation', 'Kürzel'),
+    colLabel: ml('Name', 'Nom', 'Name'),
+    theme: ml('theme', 'thème', 'Thema'),
+    themeHint: ml(
+      'The theme’s colour for this level (the site’s charter)',
+      'La couleur du thème pour ce niveau (la charte du site)',
+      'Die Farbe des Themas für diese Stufe (die Charta der Site)'
+    ),
     colColor: ml('Colour', 'Couleur', 'Farbe'),
     colMinPrior: ml('From priority', 'À partir de la priorité', 'Ab Priorität'),
     colPreview: ml('Preview', 'Aperçu', 'Vorschau'),
@@ -206,8 +251,27 @@ export const MSG = {
       'Kein Bereich — es gelten die Standardwerte.'
     )
   },
+  profiles: {
+    title: ml('Display profiles', 'Profils d’affichage', 'Anzeigeprofile'),
+    open: ml('Display profiles', 'Profils d’affichage', 'Anzeigeprofile'),
+    intro: ml(
+      'A profile sets the columns, the filters, the counters and the acknowledgement of an alarm list. A page, a module or a dashboard widget picks one by its name.',
+      'Un profil fixe les colonnes, les filtres, les compteurs et l’acquittement d’une liste d’alarmes. Une page, un module ou un widget de dashboard en choisit un par son nom.',
+      'Ein Profil legt Spalten, Filter, Zähler und Quittierung einer Alarmliste fest. Eine Seite, ein Modul oder ein Dashboard-Widget wählt es über seinen Namen.'
+    ),
+    empty: ml('No profile yet.', 'Aucun profil pour l’instant.', 'Noch kein Profil.'),
+    name: ml('Name of a new profile', 'Nom d’un nouveau profil', 'Name eines neuen Profils'),
+    add: ml('Add the profile', 'Ajouter le profil', 'Profil hinzufügen'),
+    keys: ml(
+      'Keys: columns, historyColumns, panelColumns, filters { severity, classes, search, unackOnly, fields }, tiles, stats, defaults { ranks, classes, search, unackOnly, fields }, ack { selection, all, confirm }, history { csv }, extensions.',
+      'Clés : columns, historyColumns, panelColumns, filters { severity, classes, search, unackOnly, fields }, tiles, stats, defaults { ranks, classes, search, unackOnly, fields }, ack { selection, all, confirm }, history { csv }, extensions.',
+      'Schlüssel: columns, historyColumns, panelColumns, filters { severity, classes, search, unackOnly, fields }, tiles, stats, defaults { ranks, classes, search, unackOnly, fields }, ack { selection, all, confirm }, history { csv }, extensions.'
+    )
+  },
   period: {
     label: ml('Period', 'Période', 'Zeitraum'),
+    '1h': ml('Last hour', 'Dernière heure', 'Letzte Stunde'),
+    '8h': ml('Last 8 h', '8 dernières heures', 'Letzte 8 Std.'),
     today: ml('Today', 'Aujourd’hui', 'Heute'),
     '24h': ml('Last 24 h', '24 dernières heures', 'Letzte 24 Std.'),
     '7d': ml('Last 7 days', '7 derniers jours', 'Letzte 7 Tage'),
@@ -312,5 +376,48 @@ export function rangeLabelMsg(start: string, end: string): string {
 export function selectedMsg(count: number): string {
   return localize(
     ml(`${count} selected`, `${count} sélectionnée(s)`, `${count} ausgewählt`)
+  );
+}
+
+/** Short label of a one-click period ("1 h", "7 days"). */
+export function quickPeriodMsg(period: string): string {
+  const labels: Record<string, MultiLangString> = {
+    '1h': ml('1 h', '1 h', '1 Std.'),
+    '8h': ml('8 h', '8 h', '8 Std.'),
+    '24h': ml('24 h', '24 h', '24 Std.'),
+    '7d': ml('7 days', '7 jours', '7 Tage'),
+    '30d': ml('30 days', '30 jours', '30 Tage')
+  };
+  const label = labels[period];
+  return label ? localize(label) : period;
+}
+
+/** "Acknowledge the selection (3)". */
+export function ackSelectionMsg(count: number): string {
+  return localize(
+    ml(`Acknowledge the selection (${count})`, `Acquitter la sélection (${count})`, `Auswahl quittieren (${count})`)
+  );
+}
+
+/** "Acknowledge all (12)". */
+export function ackAllMsg(count: number): string {
+  return localize(ml(`Acknowledge all (${count})`, `Tout acquitter (${count})`, `Alle quittieren (${count})`));
+}
+
+/** The confirmation question: how many alarms, on how many elements. */
+export function ackConfirmMsg(alarms: number, elements: number): string {
+  return localize(
+    ml(
+      `Acknowledge ${alarms} alarm(s) on ${elements} element(s)?`,
+      `Acquitter ${alarms} alarme(s) sur ${elements} élément(s) ?`,
+      `${alarms} Alarm(e) auf ${elements} Element(en) quittieren?`
+    )
+  );
+}
+
+/** "3 alarm(s) acknowledged." */
+export function ackDoneMsg(count: number): string {
+  return localize(
+    ml(`${count} alarm(s) acknowledged.`, `${count} alarme(s) acquittée(s).`, `${count} Alarm(e) quittiert.`)
   );
 }

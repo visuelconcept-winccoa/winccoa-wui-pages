@@ -12,7 +12,16 @@
 import type { Alarm } from './types.js';
 
 export const SORT_FIELDS = ['raised', 'cleared', 'rank', 'prior', 'dp', 'text', 'status', 'value', 'criticality'] as const;
-export type SortField = (typeof SORT_FIELDS)[number];
+/**
+ * A built-in field, or `x:<key>` — an `extra` value a module added to the rows
+ * (the additional columns of a profile sort on it).
+ */
+export type SortField = (typeof SORT_FIELDS)[number] | `x:${string}`;
+
+/** The sort key of an additional column. */
+export function extraSortField(key: string): SortField {
+  return `x:${key}`;
+}
 export type SortDir = 'asc' | 'desc';
 
 function cmpNum(a: number, b: number): number {
@@ -74,7 +83,9 @@ function cmpField(first: Alarm, second: Alarm, field: SortField): number {
       return cmpCriticality(first, second);
     }
     default: {
-      return 0;
+      if (!field.startsWith('x:')) return 0;
+      const key = field.slice(2);
+      return cmpStr(first.extra?.[key] ?? '', second.extra?.[key] ?? '');
     }
   }
 }
