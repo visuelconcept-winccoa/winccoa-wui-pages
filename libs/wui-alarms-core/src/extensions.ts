@@ -7,6 +7,9 @@
  *
  *  - `classify`: its own reading of each row — a level known from the alert
  *    class rather than from its priority, an origin, a work order (`extra`);
+ *  - `keep`: which rows the module shows at all — its collection rules (a
+ *    perimeter, a minimum severity, keywords), applied before any filter the
+ *    operator sees;
  *  - `columns`: how an additional column is drawn, when its raw `extra` text is
  *    not enough (a badge, a link);
  *  - `filters`: additional filters it always offers;
@@ -65,6 +68,8 @@ export interface AlarmColumnRenderer {
 export interface AlarmViewExtension {
   id: string;
   classify?: AlarmClassifier;
+  /** False for a row the module does not show (after `classify`). */
+  keep?: (alarm: Alarm) => boolean;
   columns?: readonly AlarmColumnRenderer[];
   filters?: readonly AlarmFieldFilter[];
   acknowledge?: AlarmAckHandler;
@@ -99,6 +104,39 @@ export function combinedClassifier(extensions: readonly AlarmViewExtension[]): A
   const classifiers = extensions.map((extension) => extension.classify).filter((classify): classify is AlarmClassifier => !!classify);
   if (classifiers.length === 0) return undefined;
   return (alarm, alert) => classifiers.reduce((current, classify) => classify(current, alert), alarm);
+}
+
+/** The `keep` rules of a set of extensions: a row is shown when all of them keep it. */
+export function combinedKeep(extensions: readonly AlarmViewExtension[]): ((alarm: Alarm) => boolean) | undefined {
+  const rules = extensions.map((extension) => extension.keep).filter((keep): keep is (alarm: Alarm) => boolean => !!keep);
+  if (rules.length === 0) return undefined;
+  return (alarm) => rules.every((keep) => keep(alarm));
+}
+
+/** A stable number per function — how a view tells a NEW reading of the rows from the same one. */
+const identities = new WeakMap<object, number>();
+let nextIdentity = 1;
+
+function identityOf(value: object): number {
+  let id = identities.get(value);
+  if (id === undefined) {
+    id = nextIdentity++;
+    identities.set(value, id);
+  }
+  return id;
+}
+
+/**
+ * What the rows depend on in a set of extensions: their `classify` and `keep`
+ * functions, by identity. An extension rebuilt with a new classifier (its model
+ * changed) changes the key, and the view re-maps its snapshot.
+ */
+export function readingKey(extensions: readonly AlarmViewExtension[]): string {
+  return extensions
+    .map((extension) =>
+      [extension.classify, extension.keep].map((fn) => (fn ? identityOf(fn) : 0)).join(':')
+    )
+    .join('|');
 }
 
 /**

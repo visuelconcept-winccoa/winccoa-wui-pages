@@ -9,7 +9,14 @@
 import { AckState } from '@wincc-oa/wui-models/enums/wui-alert/ack-state.js';
 import type { Alert } from '@wincc-oa/wui-models/interfaces/wui-alert/alert.js';
 import { describe, expect, it } from 'vitest';
-import { combinedClassifier, partitionAck, registerAlarmExtension, registeredExtensions } from './extensions.js';
+import {
+  combinedClassifier,
+  combinedKeep,
+  partitionAck,
+  readingKey,
+  registerAlarmExtension,
+  registeredExtensions
+} from './extensions.js';
 import { mergeAlerts, toAlarm } from './mapping.js';
 import { resolvePeriod } from './period.js';
 import {
@@ -185,6 +192,22 @@ describe('extensions', () => {
     expect(handled).toHaveLength(1);
     expect(handled[0]?.alarms.map((row) => row.id)).toEqual(['a', 'c']);
     expect(native.map((row) => row.id)).toEqual(['b']);
+  });
+
+  it('keeps a row only when every rule keeps it', () => {
+    const keep = combinedKeep([{ id: 'a', keep: (row) => row.prior >= 40 }, { id: 'b', keep: (row) => row.abbr !== 'EVE' }, { id: 'c' }]);
+    expect(keep?.(alarm({ prior: 60 }))).toBe(true);
+    expect(keep?.(alarm({ prior: 60, abbr: 'EVE' }))).toBe(false);
+    expect(keep?.(alarm({ prior: 10 }))).toBe(false);
+    expect(combinedKeep([{ id: 'none' }])).toBeUndefined();
+  });
+
+  it('tells a new reading of the rows from the same one', () => {
+    const classify = (row: Alarm): Alarm => row;
+    const same = readingKey([{ id: 'x', classify }]);
+    expect(readingKey([{ id: 'x', classify }])).toBe(same);
+    expect(readingKey([{ id: 'x', classify: (row: Alarm): Alarm => row }])).not.toBe(same);
+    expect(readingKey([{ id: 'y' }])).toBe('0:0');
   });
 
   it('finds a registered extension from any bundle, by id', () => {

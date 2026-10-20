@@ -179,8 +179,11 @@ What a page, a module or a dashboard widget changes in the view, without forking
   Alarms page on ITS alarms instead of keeping a list of its own.
 - **Extension** (`extensions.ts`) — code: `classify` (a module's own reading of a
   row: re-rank it from the alert class, add `extra` values such as an origin or a
-  work order), `columns` (how an additional column is drawn), `filters`,
-  `acknowledge` (above). Handed to the view (`.extensions`) or registered by id on
+  work order), `keep` (the rows the module shows at all — its collection rules,
+  before any filter the operator sees), `columns` (how an additional column is
+  drawn), `filters`, `acknowledge` (above). A view re-maps its snapshot when the
+  `classify` / `keep` FUNCTIONS change (by identity): a module whose model changes
+  hands the view a rebuilt extension. Handed to the view (`.extensions`) or registered by id on
   `globalThis` (`registerAlarmExtension`; the kit is copied into several bundles,
   a module-level registry would not be shared) and named by a profile.
 - **Design tokens** (`ui/alarm-tokens.ts`) — every colour, surface and radius is a

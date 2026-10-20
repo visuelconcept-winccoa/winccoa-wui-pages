@@ -56,7 +56,9 @@ import { Subscription } from 'rxjs';
 import { toCsv } from '../columns.js';
 import {
   combinedClassifier,
+  combinedKeep,
   partitionAck,
+  readingKey,
   registeredExtensions,
   type AckResult,
   type AlarmAckHandler,
@@ -288,7 +290,7 @@ export class WuiAlarmView extends LitElement {
   private scopeKey = '';
   /** Content key of the filter values last applied (profile defaults + link). */
   private filtersKey: string | null = null;
-  /** Content key of the classifiers the store was built with. */
+  /** Identity key of the classifiers and keep rules the store was built with. */
   private extensionsKey = '';
   private flashTimer = 0;
 
@@ -407,10 +409,7 @@ export class WuiAlarmView extends LitElement {
   }
 
   private classifierKey(): string {
-    return this.activeExtensions()
-      .filter((extension) => extension.classify)
-      .map((extension) => extension.id)
-      .join('|');
+    return readingKey(this.activeExtensions());
   }
 
   private renderers(): Map<string, AlarmColumnRenderer> {
@@ -1013,7 +1012,8 @@ export class WuiAlarmView extends LitElement {
   private resolveStore(): AlarmStore | null {
     if (this.store !== null) return this.store;
     try {
-      this.store = new AlarmStore(this.effectiveRanges(), combinedClassifier(this.activeExtensions()));
+      const extensions = this.activeExtensions();
+      this.store = new AlarmStore(this.effectiveRanges(), combinedClassifier(extensions), combinedKeep(extensions));
     } catch {
       // No WinCC OA runtime in the container (standalone/demo host).
       this.notice = localize(MSG.view.loadFailed);

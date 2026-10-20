@@ -157,8 +157,9 @@ import { registerAlarmExtension } from '@visuelconcept-winccoa/wui-alarms-core/e
 
 registerAlarmExtension({
   id: 'msp',
-  // a module's own reading of each row
+  // a module's own reading of each row, and the rows it shows at all
   classify: (alarm, alert) => ({ ...alarm, extra: { ...alarm.extra, origin: originOf(alarm.dpe) } }),
+  keep: (alarm) => alarm.abbr !== 'EVE',
   // its acknowledgement, for the alarms it owns
   acknowledge: {
     applies: (alarm) => MSP_CLASSES.has(alarm.abbr),

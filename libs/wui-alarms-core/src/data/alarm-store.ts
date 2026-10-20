@@ -61,11 +61,16 @@ export class AlarmStore {
   private readonly api: OaRxJsApi;
   private readonly ranges: readonly AlarmRange[];
   private readonly classify: AlarmClassifier | undefined;
+  private readonly keep: ((alarm: Alarm) => boolean) | undefined;
 
-  /** `classify`: the integrating module's own reading of each row (see `extensions.ts`). */
-  constructor(ranges: readonly AlarmRange[] = DEFAULT_RANGES, classify?: AlarmClassifier) {
+  /**
+   * `classify`: the integrating module's own reading of each row; `keep`: the
+   * rows it shows at all (see `extensions.ts`).
+   */
+  constructor(ranges: readonly AlarmRange[] = DEFAULT_RANGES, classify?: AlarmClassifier, keep?: (alarm: Alarm) => boolean) {
     this.ranges = ranges;
     this.classify = classify;
+    this.keep = keep;
     this.alertService = container.resolve(AlertService);
     this.api = container.resolve(OaRxJsApi);
   }
@@ -74,7 +79,7 @@ export class AlarmStore {
   live$(): Observable<Alarm[]> {
     return this.alertService
       .connect()
-      .pipe(map((alerts: Alert[]) => mergeAlerts(alerts, this.ranges, this.classify)));
+      .pipe(map((alerts: Alert[]) => this.toAlarms(alerts)));
   }
 
   /** The archived alarms of a period. */
@@ -92,9 +97,15 @@ export class AlarmStore {
     );
     const alerts: Alert[] = Object.values(answer?.alerts ?? {});
     return {
-      alarms: mergeAlerts(alerts, this.ranges, this.classify),
+      alarms: this.toAlarms(alerts),
       truncated: alerts.length >= maxResults
     };
+  }
+
+  /** Alert events → the rows the module shows. */
+  private toAlarms(alerts: readonly Alert[]): Alarm[] {
+    const alarms = mergeAlerts(alerts, this.ranges, this.classify);
+    return this.keep ? alarms.filter(this.keep) : alarms;
   }
 
   /**
