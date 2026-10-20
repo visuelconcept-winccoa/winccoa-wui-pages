@@ -46,6 +46,9 @@ export function alarmTableStyles(): ReturnType<typeof css> {
     td.chk {
       width: 1.5rem;
     }
+    td.chk .ack-one {
+      margin: -0.25rem 0;
+    }
     tbody td {
       padding: 0.375rem 0.5rem;
       border-bottom: 1px solid var(--_border);

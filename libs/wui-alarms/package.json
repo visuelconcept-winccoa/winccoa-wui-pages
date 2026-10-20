@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-alarms",
   "type": "module",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Alarms — standalone WinCC OA WebUI page (/alarms): the plant's alarm list, live (standing alarms) or over an archived period, with the unacknowledged counter, the P1–P4 severity bands as a filter, the EEMUA-191 flood histogram, the recurring bad actors, free-text search, server-side-style sort/paging and acknowledge — through WinCC OA's own API (browser dpSet, recorded under the operator's name), hidden without the WinCC OA write permission. The whole view is the shared <wui-alarm-view> component from @visuelconcept-winccoa/wui-alarms-core, so the same view embeds in other pages (Machine Fleet machine dashboard).",
   "author": {
     "name": "Visuel Concept"
@@ -17,7 +17,7 @@
   "license": "AGPL-3.0-only",
   "dependencies": {
     "@visuelconcept-winccoa/wui-kit": "^0.1.0",
-    "@visuelconcept-winccoa/wui-alarms-core": "^0.2.0",
+    "@visuelconcept-winccoa/wui-alarms-core": "^0.3.0",
     "@visuelconcept-winccoa/wui-app-security": "^0.1.0",
     "@visuelconcept-winccoa/wui-para": "^0.1.0"
   },

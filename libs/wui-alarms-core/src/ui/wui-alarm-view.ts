@@ -42,6 +42,10 @@
  * does with a module's own alarms is an EXTENSION (`extensions.ts`): its reading
  * of a row, its columns, its filters, its acknowledgement.
  *
+ * The charts (flood histogram, recurring alarms) are FOLDED by default — a
+ * button of the toolbar opens them, the profile's `statsOpen` opens them on
+ * arrival, and the operator's last choice is remembered per browser.
+ *
  * A live list re-orders itself under the cursor, which makes acknowledging
  * error-prone; so as soon as the operator has a selection, incoming updates are
  * HELD (the status dot turns amber) and applied when the selection is released.
@@ -58,6 +62,7 @@ import {
   combinedClassifier,
   combinedKeep,
   partitionAck,
+  singleAck,
   readingKey,
   registeredExtensions,
   type AckResult,
@@ -179,6 +184,26 @@ function labelText(label: AlarmFieldFilter['label']): string {
   return typeof label === 'string' ? label : localize(label);
 }
 
+/** Where the operator's choice to show the statistics is remembered (per browser, every view). */
+const STATS_KEY = 'wui-alarms-core.stats-open';
+
+function readStatsChoice(): boolean | null {
+  try {
+    const stored = globalThis.localStorage?.getItem(STATS_KEY);
+    return stored === null || stored === undefined ? null : stored === '1';
+  } catch {
+    return null;
+  }
+}
+
+function writeStatsChoice(open: boolean): void {
+  try {
+    globalThis.localStorage?.setItem(STATS_KEY, open ? '1' : '0');
+  } catch {
+    // Storage blocked (private window, kiosk): the choice lasts as long as the view.
+  }
+}
+
 /** A stable key of a value's content — a host recomputing an equal object must not reset the view. */
 function contentKey(value: unknown): string {
   return value === null || value === undefined ? '' : JSON.stringify(value);
@@ -270,6 +295,8 @@ export class WuiAlarmView extends LitElement {
   @state() private pageNo = 1;
   @state() private selection: ReadonlySet<string> = new Set<string>();
   @state() private grouping: ActorGrouping = 'text';
+  /** The operator's own choice to show the statistics; `null` = the profile's `statsOpen`. */
+  @state() private statsChoice: boolean | null = readStatsChoice();
   @state() private loading = false;
   @state() private busy = false;
   @state() private notice = '';
@@ -520,6 +547,11 @@ export class WuiAlarmView extends LitElement {
 
   // --- acknowledgement availability -----------------------------------------
 
+  /** The alarms acknowledged one at a time (row button, never in bulk). */
+  private singlePredicate(): (alarm: Alarm) => boolean {
+    return singleAck(this.activeExtensions());
+  }
+
   private hasAckOverride(): boolean {
     return this.activeExtensions().some((extension) => extension.acknowledge);
   }
@@ -559,10 +591,14 @@ export class WuiAlarmView extends LitElement {
         @wui:ranks=${(event: CustomEvent<number[]>) => this.patch({ ranks: event.detail })}
       ></wui-alarm-stats>`;
     }
-    const occurrences = profile.stats ? this.statsRows(scoped) : [];
+    const open = this.chartsShown(profile);
+    const occurrences = open ? this.statsRows(scoped) : [];
     return html`
       ${profile.tiles ? this.renderTiles(counters, visible.length) : nothing}
-      ${profile.stats
+      ${open && occurrences.length === 0
+        ? html`<div class="stats-none muted">${localizeDir(MSG.histogram.none)} (${this.windowLabel()})</div>`
+        : nothing}
+      ${open && occurrences.length > 0
         ? html`<wui-alarm-stats
             charts-only
             .counters=${counters}
@@ -575,6 +611,26 @@ export class WuiAlarmView extends LitElement {
           ></wui-alarm-stats>`
         : nothing}
     `;
+  }
+
+  /** The charts exist in this view (page layout, a profile that has them). */
+  private chartsAvailable(profile: ResolvedProfile): boolean {
+    return !this.hideStats && this.layout === 'page' && profile.stats;
+  }
+
+  /**
+   * The charts are shown: folded unless the profile opens them, then as the
+   * operator last left them. Folded, they cost no height and no archive query.
+   */
+  private chartsShown(profile: ResolvedProfile): boolean {
+    return this.chartsAvailable(profile) && (this.statsChoice ?? profile.statsOpen);
+  }
+
+  private toggleStats(profile: ResolvedProfile): void {
+    const open = !this.chartsShown(profile);
+    this.statsChoice = open;
+    writeStatsChoice(open);
+    if (open && this.store !== null) void this.loadStatsWindow(this.store);
   }
 
   /** The counter tiles: they read the tab and double as its filters. */
@@ -621,7 +677,7 @@ export class WuiAlarmView extends LitElement {
           ${this.lockSource ? nothing : this.renderTabs(page)}
           ${this.source === 'history' && !this.hidePeriod ? this.renderPeriod() : nothing}
           <span class="grow"></span>
-          ${this.renderStatus()}
+          ${this.renderStatus()} ${this.renderStatsToggle(profile)}
         </div>
         <div class="row filters">
           ${this.renderFilters(profile, scoped)}
@@ -802,8 +858,9 @@ export class WuiAlarmView extends LitElement {
           </ix-button>`
         : nothing;
     if (this.ackDisabled) return html`${csv}`;
-    const selected = this.selectedAlarms();
-    const all = profile.ack.all ? this.allSelected().filter((alarm) => canAcknowledge(alarm)) : [];
+    const single = this.singlePredicate();
+    const selected = this.selectedAlarms().filter((alarm) => !single(alarm));
+    const all = profile.ack.all ? this.allSelected().filter((alarm) => canAcknowledge(alarm) && !single(alarm)) : [];
     return html`
       ${csv}
       ${profile.ack.selection
@@ -821,6 +878,22 @@ export class WuiAlarmView extends LitElement {
           </ix-button>`
         : nothing}
     `;
+  }
+
+  private renderStatsToggle(profile: ResolvedProfile): TemplateResult | typeof nothing {
+    if (!this.chartsAvailable(profile)) return nothing;
+    const open = this.chartsShown(profile);
+    const label = localize(open ? MSG.view.statsHide : MSG.view.statsShow);
+    return html`<ix-icon-button
+      class="stats-toggle"
+      variant=${open ? 'secondary' : 'tertiary'}
+      icon="barchart"
+      size="16"
+      title=${label}
+      aria-label=${label}
+      aria-pressed=${open ? 'true' : 'false'}
+      @click=${() => this.toggleStats(profile)}
+    ></ix-icon-button>`;
   }
 
   private renderStatus(): TemplateResult {
@@ -870,12 +943,14 @@ export class WuiAlarmView extends LitElement {
         .selection=${this.selection}
         .compact=${this.layout === 'panel'}
         .selectable=${!this.ackDisabled}
+        .single=${this.singlePredicate()}
         .columns=${this.columnsFor(profile)}
         .renderers=${this.renderers()}
         .ranges=${this.effectiveRanges()}
         @wui:sort=${(event: CustomEvent<SortField>) => this.onSort(event.detail)}
         @wui:page=${(event: CustomEvent<number>) => (this.pageNo = event.detail)}
         @wui:selection=${(event: CustomEvent<string[]>) => this.onSelection(event.detail)}
+        @wui:ack=${(event: CustomEvent<Alarm>) => void this.acknowledge([event.detail])}
       ></wui-alarm-table>
     `;
   }
@@ -938,7 +1013,7 @@ export class WuiAlarmView extends LitElement {
 
   /** Seed the occurrence window from the archive — the past is not in the live set. */
   private async loadStatsWindow(store: AlarmStore): Promise<void> {
-    if (this.source !== 'active' || this.hideStats || this.layout === 'panel' || !this.resolvedProfile().stats) return;
+    if (this.source !== 'active' || !this.chartsShown(this.resolvedProfile())) return;
     const end = Date.now();
     try {
       const { alarms } = await store.history({ start: end - this.statsWindowMs, end }, this.maxResults);
@@ -1080,7 +1155,7 @@ export class WuiAlarmView extends LitElement {
 
   /** Fold the live rows into the occurrence window, dropping whatever aged out. */
   private mergeWindow(live: readonly Alarm[]): void {
-    if (this.source !== 'active' || this.hideStats) return;
+    if (this.source !== 'active' || !this.chartsShown(this.resolvedProfile())) return;
     this.windowRows = mergeOccurrences(this.windowRows, live, Date.now() - this.statsWindowMs);
   }
 
@@ -1120,7 +1195,9 @@ export class WuiAlarmView extends LitElement {
     // Told apart on purpose: a selection with nothing acknowledgeable in it is not
     // a backend failure, and reporting one would send the operator hunting a
     // permission problem that does not exist.
-    const targets = alarms.filter((alarm) => canAcknowledge(alarm));
+    // An alarm acknowledged one at a time never rides a bulk acknowledgement.
+    const single = this.singlePredicate();
+    const targets = alarms.filter((alarm) => canAcknowledge(alarm) && (alarms.length === 1 || !single(alarm)));
     if (targets.length === 0) {
       this.notice = localize(MSG.view.ackNothing);
       this.onSelection([]);

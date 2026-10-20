@@ -152,6 +152,12 @@ claimed alarms go to their handler, the others to the kit's `dpSet`. The handler
 addressed to the OCCURRENCE (`Alarm.atime`: its time, count and alert element),
 not to every pending alarm of the element as `_ack` is.
 
+A handler may also forbid bulk acknowledgement (`single: true`, 0.3): its answers
+belong to ONE alarm (MSP: the cause and the action picked from the routing model
+of that alarm's control card), so the same answer must never be stamped on a
+selection. Its alarms carry an acknowledge button on their row instead of a
+checkbox, and "acknowledge the selection / all" skip them (`singleAck`).
+
 The kit's own write keeps the rule above (no WinCC OA write permission → withheld);
 an override is the module's own business — its backend checks its own role. So the
 affordance shows when at least one of them can act, and the alarms the kit could
@@ -237,6 +243,15 @@ tested there: a drill-down percent-encodes the `:` of the system prefix, and a s
 still carrying `%3A` matches no datapoint at all.
 
 ## Statistics: state vs. occurrences
+
+**Folded by default (0.3).** The charts took a third of the page for a reading the
+operator needs now and then, and a list embedded in another page (a workcenter tab)
+had less room still. They now sit behind a toolbar button (bar chart icon): folded
+unless the profile says `statsOpen: true`, then as the operator last left them
+(remembered per browser, `localStorage` key `wui-alarms-core.stats-open`). Folded,
+they cost no height and no archive query. Open over a window without any occurrence,
+they draw one line ("No alarm raised over this window") instead of an empty chart.
+The counter tiles stay: they ARE the level filter.
 
 Two different questions, two different sets — the banner shows both side by side:
 

@@ -68,6 +68,8 @@ export const MSG = {
       'L’acquittement a échoué — l’écriture a été refusée',
       'Quittieren fehlgeschlagen — der Schreibvorgang wurde abgelehnt'
     ),
+    statsShow: ml('Show the statistics', 'Afficher les statistiques', 'Statistik anzeigen'),
+    statsHide: ml('Hide the statistics', 'Masquer les statistiques', 'Statistik ausblenden'),
     ackNothing: ml(
       'Nothing to acknowledge in the selection.',
       'Rien à acquitter dans la sélection.',
@@ -138,6 +140,11 @@ export const MSG = {
     fromPrior: ml('from priority', 'à partir de la priorité', 'ab Priorität')
   },
   histogram: {
+    none: ml(
+      'No alarm raised over this window.',
+      'Aucune alarme apparue sur cette fenêtre.',
+      'Kein Alarm in diesem Zeitfenster.'
+    ),
     window: ml('last 3 hours', '3 dernières heures', 'letzte 3 Stunden'),
     alarms: ml('alarms raised', 'alarmes apparues', 'aufgetretene Alarme'),
     over: ml(
@@ -161,6 +168,11 @@ export const MSG = {
     )
   },
   table: {
+    ackOne: ml(
+      'Acknowledge this alarm (one at a time)',
+      'Acquitter cette alarme (une à la fois)',
+      'Diesen Alarm quittieren (einzeln)'
+    ),
     raised: ml('Raised', 'Venue le', 'Gekommen'),
     cleared: ml('Cleared', 'Partie le', 'Gegangen'),
     severity: ml('Severity', 'Sévérité', 'Schweregrad'),
@@ -263,9 +275,9 @@ export const MSG = {
     name: ml('Name of a new profile', 'Nom d’un nouveau profil', 'Name eines neuen Profils'),
     add: ml('Add the profile', 'Ajouter le profil', 'Profil hinzufügen'),
     keys: ml(
-      'Keys: columns, historyColumns, panelColumns, filters { severity, classes, search, unackOnly, fields }, tiles, stats, defaults { ranks, classes, search, unackOnly, fields }, ack { selection, all, confirm }, history { csv }, extensions.',
-      'Clés : columns, historyColumns, panelColumns, filters { severity, classes, search, unackOnly, fields }, tiles, stats, defaults { ranks, classes, search, unackOnly, fields }, ack { selection, all, confirm }, history { csv }, extensions.',
-      'Schlüssel: columns, historyColumns, panelColumns, filters { severity, classes, search, unackOnly, fields }, tiles, stats, defaults { ranks, classes, search, unackOnly, fields }, ack { selection, all, confirm }, history { csv }, extensions.'
+      'Keys: columns, historyColumns, panelColumns, filters { severity, classes, search, unackOnly, fields }, tiles, stats, statsOpen, defaults { ranks, classes, search, unackOnly, fields }, ack { selection, all, confirm }, history { csv }, extensions.',
+      'Clés : columns, historyColumns, panelColumns, filters { severity, classes, search, unackOnly, fields }, tiles, stats, statsOpen, defaults { ranks, classes, search, unackOnly, fields }, ack { selection, all, confirm }, history { csv }, extensions.',
+      'Schlüssel: columns, historyColumns, panelColumns, filters { severity, classes, search, unackOnly, fields }, tiles, stats, statsOpen, defaults { ranks, classes, search, unackOnly, fields }, ack { selection, all, confirm }, history { csv }, extensions.'
     )
   },
   period: {

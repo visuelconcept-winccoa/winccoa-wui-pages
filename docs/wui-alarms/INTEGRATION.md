@@ -137,7 +137,8 @@ widget):
   "historyColumns": ["raised", "cleared", "severity", "source", "text", "of", "state", "ackBy"],
   "filters": { "classes": false, "fields": [{ "id": "origin", "label": "Origin" }] },
   "tiles": true,
-  "stats": false,
+  "stats": true,
+  "statsOpen": false,
   "defaults": { "unackOnly": true },
   "ack": { "selection": true, "all": false, "confirm": true },
   "history": { "csv": true },
@@ -173,7 +174,10 @@ registerAlarmExtension({
 });
 ```
 
-The other alarms of the same selection keep the kit's acknowledgement.
+The other alarms of the same selection keep the kit's acknowledgement. A handler
+with `single: true` takes its alarms **one at a time**: they get an acknowledge
+button on their row instead of a checkbox, and the bulk buttons leave them out —
+for answers (a cause, an action) that belong to one alarm.
 
 **4. Design tokens** — the site's charter, on `:root`, nothing else:
 

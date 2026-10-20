@@ -6,7 +6,7 @@
  *
  * Dumb on purpose: it receives an already filtered / sorted / paged
  * {@link AlarmPage} and reports intent (`wui:sort`, `wui:page`, `wui:selection`,
- * `wui:select`). The view owns the query, so the page table and an embedded panel
+ * `wui:select`, `wui:ack` for a row acknowledged on its own). The view owns the query, so the page table and an embedded panel
  * table cannot drift apart.
  *
  * The columns are the profile's (see `profile.ts`): the built-in ones are drawn
@@ -60,6 +60,11 @@ export class WuiAlarmTable extends LitElement {
   @property({ attribute: false }) columns: readonly AlarmColumn[] | null = null;
   /** How the additional columns are drawn, by column id (from the extensions). */
   @property({ attribute: false }) renderers: ReadonlyMap<string, AlarmColumnRenderer> = new Map();
+  /**
+   * The alarms acknowledged one at a time (see `AlarmAckHandler.single`): an
+   * acknowledge button on their row instead of a checkbox (`wui:ack`).
+   */
+  @property({ attribute: false }) single: (alarm: Alarm) => boolean = () => false;
   /** The project's levels — the severity's name and colour come from them. */
   @property({ attribute: false }) ranges: readonly AlarmRange[] = DEFAULT_RANGES;
 
@@ -210,6 +215,20 @@ export class WuiAlarmTable extends LitElement {
     if (!canAcknowledge(alarm)) {
       return alarm.ackable ? nothing : html`<span class="muted" title=${localize(MSG.table.notAckable)}>—</span>`;
     }
+    if (this.single(alarm)) {
+      return html`<ix-icon-button
+        class="ack-one"
+        variant="tertiary"
+        icon="check"
+        size="16"
+        title=${localize(MSG.table.ackOne)}
+        aria-label=${localize(MSG.table.ackOne)}
+        @click=${(event: Event) => {
+          event.stopPropagation();
+          this.emitAck(alarm);
+        }}
+      ></ix-icon-button>`;
+    }
     return html`<input
       type="checkbox"
       aria-label=${localize(MSG.table.select)}
@@ -220,7 +239,7 @@ export class WuiAlarmTable extends LitElement {
   }
 
   private renderSelectAll(rows: readonly Alarm[]): TemplateResult {
-    const ackable = rows.filter((alarm) => canAcknowledge(alarm));
+    const ackable = rows.filter((alarm) => canAcknowledge(alarm) && !this.single(alarm));
     const all = ackable.length > 0 && ackable.every((alarm) => this.selection.has(alarm.id));
     return html`<input
       type="checkbox"
@@ -265,6 +284,10 @@ export class WuiAlarmTable extends LitElement {
 
   private emitSelection(ids: readonly string[]): void {
     this.dispatchEvent(new CustomEvent('wui:selection', { detail: [...ids], bubbles: true, composed: true }));
+  }
+
+  private emitAck(alarm: Alarm): void {
+    this.dispatchEvent(new CustomEvent('wui:ack', { detail: alarm, bubbles: true, composed: true }));
   }
 
   private emitSort(field: SortField): void {

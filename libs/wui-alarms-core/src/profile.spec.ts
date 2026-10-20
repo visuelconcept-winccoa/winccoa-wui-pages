@@ -15,6 +15,7 @@ import {
   partitionAck,
   readingKey,
   registerAlarmExtension,
+  singleAck,
   registeredExtensions
 } from './extensions.js';
 import { mergeAlerts, toAlarm } from './mapping.js';
@@ -75,6 +76,13 @@ describe('profiles', () => {
   it('derives the history columns from the active ones, with the clearing time and who acknowledged', () => {
     const resolved = mergeProfiles({ columns: ['severity', 'raised', 'text'] });
     expect(resolved.historyColumns.map((column) => column.id)).toEqual(['severity', 'raised', 'cleared', 'text', 'ackBy']);
+  });
+
+  it('folds the statistics unless a layer opens them', () => {
+    expect(mergeProfiles().statsOpen).toBe(false);
+    expect(mergeProfiles({ statsOpen: true }).statsOpen).toBe(true);
+    expect(parseProfile({ statsOpen: true }).profile.statsOpen).toBe(true);
+    expect(parseProfile({ statsOpen: 'yes' }).errors).toHaveLength(1);
   });
 
   it('keeps the defaults without any layer, and never mutates them', () => {
@@ -192,6 +200,15 @@ describe('extensions', () => {
     expect(handled).toHaveLength(1);
     expect(handled[0]?.alarms.map((row) => row.id)).toEqual(['a', 'c']);
     expect(native.map((row) => row.id)).toEqual(['b']);
+  });
+
+  it('tells the alarms acknowledged one at a time, by the first override that claims them', () => {
+    const msp = { applies: (row: Alarm) => row.abbr === 'OOS', acknowledge: () => Promise.resolve({ ok: true }), single: true };
+    const other = { applies: () => true, acknowledge: () => Promise.resolve({ ok: true }) };
+    const single = singleAck([{ id: 'msp', acknowledge: msp }, { id: 'other', acknowledge: other }]);
+    expect(single(alarm({ abbr: 'OOS' }))).toBe(true);
+    expect(single(alarm({ abbr: 'A' }))).toBe(false);
+    expect(singleAck([{ id: 'other', acknowledge: other }])(alarm({ abbr: 'OOS' }))).toBe(false);
   });
 
   it('keeps a row only when every rule keeps it', () => {

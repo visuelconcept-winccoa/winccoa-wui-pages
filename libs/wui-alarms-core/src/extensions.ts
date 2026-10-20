@@ -17,6 +17,9 @@
  *    dialog asking a cause and an action, then a write of its own (one
  *    `alertSet` on the server carrying the acknowledgement and the answers).
  *    The other alarms of the same selection keep the kit's acknowledgement.
+ *    A `single` handler takes its alarms ONE AT A TIME: they get an
+ *    acknowledge button on their row instead of a checkbox, and stay out of
+ *    the bulk buttons — the answers it asks belong to one alarm.
  *
  * An extension is handed to a view directly (`.extensions=${[…]}`), or
  * registered once by id ({@link registerAlarmExtension}) and activated by a
@@ -56,6 +59,12 @@ export interface AlarmAckHandler {
    * then skips its confirmation for these alarms.
    */
   confirms?: boolean;
+  /**
+   * True when each alarm must be acknowledged on its own (a cause and an
+   * action that belong to ONE alarm): no checkbox, no bulk acknowledgement, an
+   * acknowledge button on the row.
+   */
+  single?: boolean;
 }
 
 /** How an additional column is drawn. */
@@ -156,4 +165,14 @@ export function partitionAck(
     else native.push(alarm);
   }
   return { handled: handled.filter((entry) => entry.alarms.length > 0), native };
+}
+
+/**
+ * True for an alarm whose owner acknowledges one alarm at a time — the FIRST
+ * handler claiming it decides, as in {@link partitionAck}.
+ */
+export function singleAck(extensions: readonly AlarmViewExtension[]): (alarm: Alarm) => boolean {
+  const handlers = extensions.map((extension) => extension.acknowledge).filter((handler): handler is AlarmAckHandler => !!handler);
+  if (!handlers.some((handler) => handler.single)) return () => false;
+  return (alarm) => handlers.find((handler) => handler.applies(alarm))?.single === true;
 }
