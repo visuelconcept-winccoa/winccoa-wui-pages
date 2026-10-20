@@ -148,7 +148,7 @@ export function alarmStatsStyles(): ReturnType<typeof css> {
     }
     .actor {
       display: grid;
-      grid-template-columns: 1.5rem 1fr auto;
+      grid-template-columns: auto 1fr auto;
       gap: 0.4375rem;
       align-items: center;
       line-height: 1.5;
