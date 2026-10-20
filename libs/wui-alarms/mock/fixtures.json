@@ -1,0 +1,12 @@
+{
+  "alerts": [
+    { "dpe": "Press01.temperature", "text": "Temperature high", "prior": 80, "abbr": "A", "color": "#E5484D", "value": "91.5 °C", "ago": 4 },
+    { "dpe": "Press01.pressure", "text": "Pressure high", "prior": 60, "abbr": "A", "color": "#E5484D", "value": "4.9 bar", "ago": 12 },
+    { "dpe": "Oven02.door", "text": "Door open during cycle", "prior": 40, "abbr": "W", "color": "#F5A524", "value": "TRUE", "ago": 25 },
+    { "dpe": "Oven02.fan", "text": "Fan speed low", "prior": 40, "abbr": "W", "color": "#F5A524", "value": "820 rpm", "ago": 48, "acked": true, "ackedBy": "operator" },
+    { "dpe": "Pump03.vibration", "text": "Vibration above threshold", "prior": 60, "abbr": "A", "color": "#E5484D", "value": "7.2 mm/s", "ago": 70, "state": "went" },
+    { "dpe": "Line1.counter", "text": "Counter reset", "prior": 20, "abbr": "I", "color": "#00A0D2", "value": "0", "ago": 95 },
+    { "dpe": "Line1.quality", "text": "Quality sample due", "prior": 10, "abbr": "I", "color": "#00A0D2", "value": "", "ago": 130, "acked": true, "ackedBy": "shift-lead" },
+    { "dpe": "Pump03.fault", "text": "Pump 3 fault", "prior": 90, "abbr": "A", "color": "#E5484D", "value": "TRUE", "after": 20 }
+  ]
+}

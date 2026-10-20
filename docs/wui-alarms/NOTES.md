@@ -1,6 +1,6 @@
 # wui-alarms — business & architecture notes
 
-WinCC OA WebUI page module, **Tier 3** (one small backend route, no manager).
+WinCC OA WebUI page module, **Tier 1** (no backend route, no manager).
 Route `/alarms`, component `wui-alarms`. The whole view lives in the shared kit
 **`@visuelconcept-winccoa/wui-alarms-core`**, which other pages embed.
 
@@ -11,6 +11,14 @@ actors, "296 of 2,727" server-side-style query) is kept; the mock gateway is
 replaced by the real WinCC OA alert stream, and the mock-only notions
 (shelving / suppression, plant & area hierarchy) are dropped — see
 [Deliberate gaps](#deliberate-gaps).
+
+Since **0.2.0** the view's LAYOUT is the one of the _Alarmes_ module of the
+`winccoa-fra-msp-stma` project (counter tiles that double as filters, a filter bar
+with minimum severity / class / search / unacknowledged, level badges, came/went and
+to-acknowledge/acknowledged badges, quick periods and CSV export of the history),
+with this module's statistics kept (EEMUA histogram, recurring alarms, occurrence
+window), and it is customised by **profiles**, **extensions** and **design tokens** —
+see [Customisation](#customisation--profiles-extensions-tokens).
 
 ## Domain / purpose
 
@@ -66,9 +74,14 @@ Design rules that matter:
 - **`Alarm.rank`** is the derived position (1 = most urgent), and it is what the
   counters key on and the ordering compares. Editing the ranges re-maps the
   snapshot (the view reloads), so a rank is never read against the wrong table.
-- **Where each colour is used**: the RANGE colour carries the row's left border
-  and its range pill (the project's severity scale); the ALERT CLASS colour stays
-  on the class pill and the state chip.
+- **Where each colour is used**: the LEVEL colour carries the severity badge and
+  the counter tile (the project's severity scale); the ALERT CLASS colour stays on
+  the class pill; the row's left edge marks an UNACKNOWLEDGED row
+  (`--wui-alarm-unacknowledged`), whatever its level.
+- **A level may carry no colour** (`color: ""`): it then takes the theme's colour
+  for its rank, the `--wui-alarm-level-<n>` token — how a site's charter colours
+  the levels instead of the datapoint. A level may also carry a `label` (`Danger`,
+  `Alarme`…), shown on the badge, the tile and the severity filter.
 - **Read once, shared**: `loadAlarmConfig()` caches the datapoint read for the
   whole session, and a save announces itself on `window` (`wui:alarmconfig`), so
   a dozen embedded views re-rank immediately without the page wiring anything.
@@ -78,17 +91,18 @@ Design rules that matter:
 An alarm leaves the **Active** list when it is cleared **AND** acknowledged —
 never on the clearing alone:
 
-| Came          | Acknowledged | In "Active" | State chip        |
-| ------------- | ------------ | ----------- | ----------------- |
-| yes           | no           | ✔           | `ACTIVE`          |
-| yes           | yes          | ✔           | `ACTIVE - ACK`    |
-| **no (went)** | **no**       | **✔**       | `CLEARED - UNACK` |
-| no            | yes          | ✘ (history) | `CLEARED - ACK`   |
+| Came          | Acknowledged | In "Active" | Badges                        |
+| ------------- | ------------ | ----------- | ----------------------------- |
+| yes           | no           | ✔           | `came` · `to acknowledge`     |
+| yes           | yes          | ✔           | `came` · `acknowledged`       |
+| **no (went)** | **no**       | **✔**       | `went` · **`to acknowledge`** |
+| no            | yes          | ✘ (history) | `went` · `acknowledged`       |
 
 A condition that came and went while nobody took it over is precisely the one an
 operator must still answer for. It also stays in `unacknowledged` (the "target 0"
-card) and keeps the alert colour in the list instead of the grey of a closed row —
-greying it out is how a pending acknowledgement gets overlooked.
+card) and keeps its _to acknowledge_ badge and its unacknowledged edge even though
+the gone row is greyed — losing those is how a pending acknowledgement gets
+overlooked.
 
 ## Acknowledging — WinCC OA's own API, under the OPERATOR's name
 
@@ -101,8 +115,9 @@ without it gets _"User is not permitted to use dpSet"_.
 The rule that follows (decided 2026-09-15): **no write permission → no acknowledge
 affordance at all.** The view reads `canWriteDatapoints$()` (`wui-kit`,
 `WuiUserService.canWrite` re-emitted on `user$`) and, when it is false, renders
-neither the checkbox column nor the button (`ackDisabled = noAck || !canWrite`),
-instead of offering a write the runtime would refuse. The Application-Security
+neither the checkbox column nor the buttons (`ackDisabled = noAck || (!canWrite &&
+no acknowledgement override)`, see below), instead of offering a write the runtime
+would refuse. The Application-Security
 role `acknowledge` folds into the same flag through the host's `no-ack`.
 
 History: an earlier version routed the write through a backend endpoint
@@ -124,6 +139,57 @@ for the whole plant; an ABSENT flag falls back to "an unacknowledged alert is
 acknowledgeable", because a refused write reports itself while an action the
 operator cannot even attempt does not. A selection with nothing acknowledgeable in
 it returns `ok: false`, never a silent success.
+
+### Acknowledgement overrides (extensions)
+
+A module may own some alarms whose acknowledgement is MORE than `_ack = 2`: the MSP
+project acknowledges its SPC alarms with a **cause and an action**, written in the
+same `alertSet` as the acknowledgement (one atomic write on the server). An
+extension's `acknowledge` handler claims those alarms (`applies`), asks what it
+needs (its own dialog — `confirms: true` skips the view's confirmation) and writes
+by its own means; the view splits every selection with `partitionAck` — the
+claimed alarms go to their handler, the others to the kit's `dpSet`. The handler is
+addressed to the OCCURRENCE (`Alarm.atime`: its time, count and alert element),
+not to every pending alarm of the element as `_ack` is.
+
+The kit's own write keeps the rule above (no WinCC OA write permission → withheld);
+an override is the module's own business — its backend checks its own role. So the
+affordance shows when at least one of them can act, and the alarms the kit could
+not acknowledge are left out with a notice saying why.
+
+## Customisation — profiles, extensions, tokens
+
+What a page, a module or a dashboard widget changes in the view, without forking it:
+
+- **Profile** (`profile.ts`) — plain JSON: the columns (active, history, panel; a
+  built-in id or an additional column `{ id, label, field }` reading
+  `Alarm.extra[field]`), the filters (minimum severity, class, search,
+  unacknowledged, additional selects over a field), the counter tiles, the
+  statistics, the acknowledgement buttons and confirmation, the CSV export, the
+  starting filter values, and the registered extensions to activate. Layers, later
+  wins (`mergeProfiles`): the kit's defaults → the host's `.profile` (code) → the
+  profile stored in `Alarms_Config.profiles` and named by `profile-name`
+  (engineering: edited as JSON in the page, role `configure`; picked by name in the
+  dashboard widget). Lists are REPLACED, switches merge. A stored profile is parsed
+  before it is saved (`parseProfile`), so what the view would not understand is
+  reported, never stored.
+- **Starting filters** (`filters`, `filtersFromSearch`) — not a profile: what a
+  link opens the list on (`#/alarms?dp=stma/*&class=OOS,AOS&unack=1`). The operator
+  may clear them (_Clear the filters_). That is how another module opens the
+  Alarms page on ITS alarms instead of keeping a list of its own.
+- **Extension** (`extensions.ts`) — code: `classify` (a module's own reading of a
+  row: re-rank it from the alert class, add `extra` values such as an origin or a
+  work order), `columns` (how an additional column is drawn), `filters`,
+  `acknowledge` (above). Handed to the view (`.extensions`) or registered by id on
+  `globalThis` (`registerAlarmExtension`; the kit is copied into several bundles,
+  a module-level registry would not be shared) and named by a profile.
+- **Design tokens** (`ui/alarm-tokens.ts`) — every colour, surface and radius is a
+  public `--wui-alarm-*` property with a Siemens iX default, READ through private
+  `--_*` properties declared on each component's host. A site sets the public ones
+  on `:root` from its charter; declaring them on `:host` would shadow the site's
+  values (an element's own declaration beats an inherited one) — which is also why
+  0.1's `--wui-alarm-severity-1`, used but declared nowhere, left the
+  unacknowledged card uncoloured.
 
 ## Scoping
 
@@ -213,7 +279,10 @@ permission.
 ```
 libs/wui-alarms-core/src/          the KIT (shared, vendored into each host bundle)
   types.ts        Alarm / counters / histogram / bad actors / severity bands
-  mapping.ts      Alert → Alarm, CAME/WENT pairing, ack DPE
+  mapping.ts      Alert → Alarm, CAME/WENT pairing, ack DPE, the classifier hook
+  profile.ts      display profiles: layering, validation, link filters
+  extensions.ts   classifiers, column renderers, filters, acknowledgement overrides
+  columns.ts      column headers, sort fields and cell text (table + CSV)
   scope.ts        datapoint scoping (subtree + glob), scopeFromDpes
   query.ts        applyQuery: filter + sort + paginate (one definition)
   severity.ts     criticality ordering, stable tie-break on the id
@@ -221,13 +290,15 @@ libs/wui-alarms-core/src/          the KIT (shared, vendored into each host bund
   period.ts       period vocabulary shared with the fleet dashboards
   occurrences.ts  the occurrence-window merge (archive + live)
   data/alarm-store.ts        live subscription / archive query / acknowledge
-  data/alarm-config-store.ts the Alarms_Config datapoint (ranges), shared read
-  ui/wui-alarm-view.ts  THE embeddable component (page | panel)
-  ui/wui-alarm-table.ts dumb table (one page of a query)
-  ui/wui-alarm-stats.ts counters + histogram + bad actors
-  ui/wui-alarm-ranges.ts the range editor (role `configure`)
+  data/alarm-config-store.ts the Alarms_Config datapoint (ranges + profiles), shared read
+  ui/alarm-tokens.ts     the --wui-alarm-* design tokens and the colour rules
+  ui/wui-alarm-view.ts   THE embeddable component (page | panel)
+  ui/wui-alarm-table.ts  dumb table (one page of a query, the profile's columns)
+  ui/wui-alarm-stats.ts  histogram + recurring alarms (+ the panel's compact strip)
+  ui/wui-alarm-ranges.ts the level editor (role `configure`)
+  ui/wui-alarm-profiles.ts the display profile editor (role `configure`)
   ui/period-bar.ts       the archived tab's period controls
-libs/wui-alarms/src/alarms.ts      the page: header, role gate, `?dp=` scope
+libs/wui-alarms/src/alarms.ts      the page: header, role gate, what the URL carries
 libs/wui-alarms/src/widgets/wui-alarms.ts   the dashboard widget (see below)
 ```
 

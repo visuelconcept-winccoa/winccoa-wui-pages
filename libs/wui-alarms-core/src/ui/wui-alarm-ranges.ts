@@ -4,8 +4,9 @@
 /**
  * `<wui-alarm-ranges>` — the priority-range editor of the alarms module.
  *
- * One row per range: its abbreviation, its colour, and the WinCC OA alert-class
- * priority it starts at. The list is what the alarm view groups, filters, colours
+ * One row per range: its abbreviation, its name, its colour — its own, or the
+ * theme's for that level (the `--wui-alarm-level-<n>` token a site sets from its
+ * charter) — and the WinCC OA alert-class priority it starts at. The list is what the alarm view groups, filters, colours
  * and orders by, and it is stored in the module's configuration datapoint, so the
  * decision is the PROJECT's — the defaults shipped with the module are a seed for
  * a project nobody has configured yet, not a rule about how alert classes are
@@ -23,7 +24,7 @@ import { property, state } from 'lit/decorators.js';
 import { MSG, localize, localizeDir } from '../i18n.js';
 import { AlarmConfigStore } from '../data/alarm-config-store.js';
 import { DEFAULT_RANGES, normaliseRanges, type AlarmRange } from '../types.js';
-import { severityTokens } from './alarm-tokens.js';
+import { rangeColor, severityTokens } from './alarm-tokens.js';
 import { rangeStyles } from './wui-alarm-ranges.styles.js';
 
 /** Colour given to a freshly added range, until the operator picks one. */
@@ -86,6 +87,7 @@ export class WuiAlarmRanges extends LitElement {
         <thead>
           <tr>
             <th>${localizeDir(MSG.ranges.colAbbr)}</th>
+            <th>${localizeDir(MSG.ranges.colLabel)}</th>
             <th>${localizeDir(MSG.ranges.colColor)}</th>
             <th>${localizeDir(MSG.ranges.colMinPrior)}</th>
             <th>${localizeDir(MSG.ranges.colPreview)}</th>
@@ -118,11 +120,31 @@ export class WuiAlarmRanges extends LitElement {
         </td>
         <td>
           <input
-            type="color"
-            .value=${range.color}
+            class="label"
+            .value=${range.label ?? ''}
             ?disabled=${!this.canEdit}
-            @input=${(event: Event) => this.patch(index, { color: (event.target as HTMLInputElement).value })}
+            @input=${(event: Event) => this.patch(index, { label: (event.target as HTMLInputElement).value })}
           />
+        </td>
+        <td class="color">
+          ${range.color === ''
+            ? nothing
+            : html`<input
+                type="color"
+                .value=${range.color}
+                ?disabled=${!this.canEdit}
+                @input=${(event: Event) => this.patch(index, { color: (event.target as HTMLInputElement).value })}
+              />`}
+          <label class="theme" title=${localize(MSG.ranges.themeHint)}>
+            <input
+              type="checkbox"
+              .checked=${range.color === ''}
+              ?disabled=${!this.canEdit}
+              @change=${(event: Event) =>
+                this.patch(index, { color: (event.target as HTMLInputElement).checked ? '' : NEW_RANGE_COLOR })}
+            />
+            ${localizeDir(MSG.ranges.theme)}
+          </label>
         </td>
         <td>
           <input
@@ -133,7 +155,7 @@ export class WuiAlarmRanges extends LitElement {
             @input=${(event: Event) => this.patch(index, { minPrior: Number((event.target as HTMLInputElement).value) })}
           />
         </td>
-        <td><span class="pill" style=${`background:${range.color}`}>${range.abbr || '—'}</span></td>
+        <td><span class="pill" style=${`background:${rangeColor(index + 1, this.rows)}`}>${range.abbr || '—'}</span></td>
         <td>
           ${this.canEdit
             ? html`<ix-icon-button
@@ -186,7 +208,7 @@ export class WuiAlarmRanges extends LitElement {
     this.notice = '';
     try {
       const ranges = normaliseRanges(this.rows);
-      await this.store.save({ ranges });
+      await this.store.update({ ranges });
       if (this.store.offline) {
         this.offline = true;
         this.notice = localize(MSG.ranges.saveFailed);

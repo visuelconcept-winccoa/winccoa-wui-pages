@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The alarms module's configuration: the priority ranges, in ONE datapoint.
+ * The alarms module's configuration — the priority ranges and the named display
+ * profiles — in ONE datapoint.
  *
  * Stored as JSON in `Alarms_Config` (a Struct with a single String element,
  * auto-created on first use) through the kit's {@link DpSingleJsonStore} — the
@@ -17,6 +18,7 @@
  * alarms immediately, without the page having to wire anything.
  */
 import { DpSingleJsonStore } from '@visuelconcept-winccoa/wui-kit/data/dp-single-json-store.js';
+import { normaliseProfiles, type AlarmViewProfile } from '../profile.js';
 import { DEFAULT_RANGES, normaliseRanges, type AlarmRange } from '../types.js';
 
 /** DP type and instance holding the module's configuration. */
@@ -34,10 +36,19 @@ export const ALARM_CONFIG_EVENT = 'wui:alarmconfig';
 
 export interface AlarmConfig {
   ranges: AlarmRange[];
+  /**
+   * Named display profiles — the engineering layer of the view's customisation
+   * (see `profile.ts`): a view or a widget picks one by name (`profile-name`).
+   */
+  profiles: Record<string, AlarmViewProfile>;
 }
 
 export function defaultAlarmConfig(): AlarmConfig {
-  return { ranges: structuredClone(DEFAULT_RANGES) as AlarmRange[] };
+  return { ranges: structuredClone(DEFAULT_RANGES) as AlarmRange[], profiles: {} };
+}
+
+function normaliseConfig(config: Partial<AlarmConfig> | null | undefined): AlarmConfig {
+  return { ranges: normaliseRanges(config?.ranges), profiles: normaliseProfiles(config?.profiles) };
 }
 
 /** Read / write the module's configuration datapoint. */
@@ -50,16 +61,24 @@ export class AlarmConfigStore {
   }
 
   async load(): Promise<AlarmConfig> {
-    const config = await this.store.load();
-    return { ranges: normaliseRanges(config.ranges) };
+    return normaliseConfig(await this.store.load());
   }
 
   /** Persist, then invalidate the shared read and tell the open views. */
   async save(config: AlarmConfig): Promise<void> {
-    const normalised: AlarmConfig = { ranges: normaliseRanges(config.ranges) };
+    const normalised = normaliseConfig(config);
     await this.store.save(normalised);
     shared = Promise.resolve(normalised);
     globalThis.dispatchEvent(new CustomEvent('wui:alarmconfig', { detail: normalised }));
+  }
+
+  /**
+   * Change PART of the configuration: the rest is re-read first, so the range
+   * editor saving its ranges does not wipe the profiles, nor the reverse.
+   */
+  async update(change: Partial<AlarmConfig>): Promise<void> {
+    const current = await this.load();
+    await this.save({ ...current, ...change });
   }
 }
 

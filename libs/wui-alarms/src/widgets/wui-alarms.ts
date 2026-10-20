@@ -25,6 +25,10 @@
  *                   off → the view shows its own period controls
  *   source          `active` | `history` (the operator flips the tabs unless `lockSource`)
  *   layout          `panel` | `page`,  hideStats, noAck, pageSize
+ *   profileName     a display profile stored in the Alarms page (the engineering
+ *                   layer of the view's customisation: columns, filters, counters…)
+ *   classFilter     alert class abbreviations shown (`OOS, AOS, A*`) — a starting
+ *                   filter the operator may clear
  *
  * The scope of a machine is `scopeFromDpes` over its bound datapoint ELEMENTS
  * (state, communication, stop cause, work order, operation, parameters), so an alarm
@@ -32,8 +36,7 @@
  * reading.
  *
  * Application Security is the alarms module's own: `view` gates the body,
- * `acknowledge` folds into `no-ack`. The impersonated acknowledgement route stays
- * role-gated server-side whatever a widget shows.
+ * `acknowledge` folds into `no-ack`.
  *
  * This file is BUILT by the pages build (`libs/wui-<page>/src/widgets/<widget>.ts` →
  * `/data/dashboard-wc/widgets/wui-alarms.js`), because the alarms kit is not part
@@ -48,8 +51,10 @@ import {
 import {
   MSG,
   localize,
-  localizeDir
+  localizeDir,
+  ml
 } from '@visuelconcept-winccoa/wui-alarms-core/i18n.js';
+import type { AlarmFilterValues } from '@visuelconcept-winccoa/wui-alarms-core/profile.js';
 import type { AlarmSource } from '@visuelconcept-winccoa/wui-alarms-core/query.js';
 import {
   parseScopeAttribute,
@@ -60,7 +65,6 @@ import '@visuelconcept-winccoa/wui-alarms-core/ui/wui-alarm-view.js';
 import '@wincc-oa/wui-ui-elements/wui-datetime-range-button/wui-datetime-range-button.js';
 import { parseTimeRange } from '@wincc-oa/wui-shared/parseTimeRange.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
-import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
@@ -75,11 +79,6 @@ const LIVE_TICK_MS = 60_000;
 /** Value of the machine list entry meaning "every machine of the atelier". */
 const WHOLE_ATELIER = '';
 
-const ml = (en: string, fr: string, de: string): MultiLangString => ({
-  'en_US.utf8': en,
-  'fr_FR.utf8': fr,
-  'de_AT.utf8': de
-});
 const WIDGET_MSG = {
   machine: ml('Machine', 'Machine', 'Maschine'),
   wholeAtelier: ml('Whole atelier', 'Atelier entier', 'Gesamtes Atelier'),
@@ -143,6 +142,10 @@ export class WuiAlarmsWidget extends LitElement {
   @property({ type: Boolean }) strictScope = false;
   @property({ type: Boolean }) showRangePicker = false;
   @property({ type: Number }) pageSize = DEFAULT_PAGE_SIZE;
+  /** A display profile stored in the Alarms page, by name. */
+  @property() profileName = '';
+  /** Alert class abbreviations to start on, comma separated. */
+  @property() classFilter = '';
 
   /** Application-Security grants (open until assigned). */
   @state() private roleView = true;
@@ -239,8 +242,16 @@ export class WuiAlarmsWidget extends LitElement {
         .from=${from}
         .to=${to}
         .scope=${this.scope(machines, filter)}
+        .filters=${this.startFilters()}
+        profile-name=${this.profileName}
       ></wui-alarm-view>
     `;
+  }
+
+  /** The class filter of the settings, as starting filter values (`null`: none). */
+  private startFilters(): AlarmFilterValues | null {
+    const classes = parseScopeAttribute(this.classFilter);
+    return classes.length === 0 ? null : { classes };
   }
 
   private syncViewSource(): void {

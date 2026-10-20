@@ -14,7 +14,7 @@
  * which: that is precisely why the same component serves both.
  */
 import { compareAlarms, type SortDir, type SortField } from './severity.js';
-import { inScope } from './scope.js';
+import { globToRegExp, inScope } from './scope.js';
 import type { Alarm } from './types.js';
 
 /** Which snapshot the view reads: standing alarms, or an archived period. */
@@ -27,7 +27,22 @@ export interface AlarmQuery {
   scope?: readonly string[];
   /** Range ranks to keep; empty = every range. */
   ranks?: readonly number[];
-  /** Free text over the datapoint element, the alarm text and the description. */
+  /**
+   * Alert classes to keep, by ABBREVIATION (`OOS`, `A*`) — the one name of the
+   * class an alert carries. Case-insensitive, `*` / `?` globs; empty = every class.
+   */
+  classes?: readonly string[];
+  /**
+   * Exact values to keep per field — a profile filter (`{ origin: 'ua' }`). The key
+   * is an `extra` key of the row, or one of `abbr`, `system`, `dp`; an empty value
+   * keeps every row.
+   */
+  fields?: Readonly<Record<string, string>>;
+  /**
+   * Free text over the readable fields of the row (datapoint element, text,
+   * description, class, value and the `extra` values): every word must appear,
+   * case and accents ignored.
+   */
   search?: string;
   /** Only alarms nobody has taken over. */
   unacknowledgedOnly?: boolean;
@@ -66,24 +81,70 @@ export function inSource(alarm: Alarm, source: AlarmSource): boolean {
   return alarm.cleared === null || !alarm.acked;
 }
 
-/** True when the free-text needle is anywhere in the alarm's readable fields. */
-export function matchesSearch(alarm: Alarm, needle: string): boolean {
-  if (needle === '') return true;
-  const haystack = `${alarm.dpe} ${alarm.text} ${alarm.description} ${alarm.abbr} ${alarm.value}`.toLowerCase();
-  return haystack.includes(needle);
+/** Lower case without accents — `Température` and `temperature` are the same word. */
+export function fold(text: string): string {
+  return text.normalize('NFD').replaceAll(/[\u0300-\u036F]/g, '').toLowerCase();
+}
+
+/** The words of a search, folded. */
+export function searchWords(search: string): string[] {
+  return fold(search.trim()).split(/\s+/).filter((word) => word !== '');
+}
+
+/** True when every word of the search is somewhere in the alarm's readable fields. */
+export function matchesSearch(alarm: Alarm, needle: string | readonly string[]): boolean {
+  const words = typeof needle === 'string' ? searchWords(needle) : needle;
+  if (words.length === 0) return true;
+  const extra = Object.values(alarm.extra ?? {}).join(' ');
+  const haystack = fold(`${alarm.dpe} ${alarm.text} ${alarm.description} ${alarm.abbr} ${alarm.value} ${extra}`);
+  return words.every((word) => haystack.includes(word));
+}
+
+/** True when the alarm's class abbreviation is one of the patterns (empty = every class). */
+export function matchesClasses(alarm: Pick<Alarm, 'abbr'>, classes: readonly string[] | undefined): boolean {
+  const patterns = (classes ?? []).map((entry) => entry.trim()).filter((entry) => entry !== '');
+  if (patterns.length === 0) return true;
+  return patterns.some((pattern) => globToRegExp(pattern).test(alarm.abbr));
+}
+
+/** The value of a filterable field: an `extra` key first, then the built-in ones. */
+export function fieldValue(alarm: Alarm, key: string): string {
+  const extra = alarm.extra?.[key];
+  if (extra !== undefined) return extra;
+  switch (key) {
+    case 'abbr': {
+      return alarm.abbr;
+    }
+    case 'system': {
+      return alarm.system;
+    }
+    case 'dp': {
+      return alarm.dp;
+    }
+    default: {
+      return '';
+    }
+  }
+}
+
+function matchesFields(alarm: Alarm, fields: Readonly<Record<string, string>> | undefined): boolean {
+  if (!fields) return true;
+  return Object.entries(fields).every(([key, value]) => value === '' || fieldValue(alarm, key) === value);
 }
 
 /** Filter + sort + paginate. The single definition of what a query means. */
 export function applyQuery(all: readonly Alarm[], query: AlarmQuery, now: number): AlarmPage {
   const inSnapshot = all.filter((alarm) => inSource(alarm, query.source));
-  const needle = (query.search ?? '').trim().toLowerCase();
+  const words = searchWords(query.search ?? '');
   const ranks = query.ranks && query.ranks.length > 0 ? new Set<number>(query.ranks) : null;
 
   const filtered = inSnapshot.filter((alarm) => {
     if (!inScope(alarm, query.scope)) return false;
     if (ranks && !ranks.has(alarm.rank)) return false;
     if (query.unacknowledgedOnly === true && alarm.acked) return false;
-    return matchesSearch(alarm, needle);
+    if (!matchesClasses(alarm, query.classes)) return false;
+    if (!matchesFields(alarm, query.fields)) return false;
+    return matchesSearch(alarm, words);
   });
 
   const sort = query.sort ?? 'raised';

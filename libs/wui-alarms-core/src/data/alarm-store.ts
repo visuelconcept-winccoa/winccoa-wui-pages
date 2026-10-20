@@ -25,7 +25,8 @@ import { AlertService } from '@wincc-oa/wui-alert-data/alert-service.js';
 import type { Alert } from '@wincc-oa/wui-models/interfaces/wui-alert/alert.js';
 import { firstValueFrom, map, type Observable } from 'rxjs';
 import { container } from 'tsyringe';
-import { ackDpe, mergeAlerts } from '../mapping.js';
+import type { AckResult } from '../extensions.js';
+import { ackDpe, mergeAlerts, type AlarmClassifier } from '../mapping.js';
 import type { Range } from '../period.js';
 import {
   DEFAULT_RANGES,
@@ -41,9 +42,7 @@ const ACK_COMMAND = 2;
 
 /** What an acknowledgement did. The browser writes AS the operator, so a
  * successful write is attributed to them by WinCC OA itself. */
-export interface AckResult {
-  ok: boolean;
-}
+export type { AckResult } from '../extensions.js';
 
 export interface HistoryResult {
   alarms: Alarm[];
@@ -61,9 +60,12 @@ export class AlarmStore {
   private readonly alertService: AlertService;
   private readonly api: OaRxJsApi;
   private readonly ranges: readonly AlarmRange[];
+  private readonly classify: AlarmClassifier | undefined;
 
-  constructor(ranges: readonly AlarmRange[] = DEFAULT_RANGES) {
+  /** `classify`: the integrating module's own reading of each row (see `extensions.ts`). */
+  constructor(ranges: readonly AlarmRange[] = DEFAULT_RANGES, classify?: AlarmClassifier) {
     this.ranges = ranges;
+    this.classify = classify;
     this.alertService = container.resolve(AlertService);
     this.api = container.resolve(OaRxJsApi);
   }
@@ -72,7 +74,7 @@ export class AlarmStore {
   live$(): Observable<Alarm[]> {
     return this.alertService
       .connect()
-      .pipe(map((alerts: Alert[]) => mergeAlerts(alerts, this.ranges)));
+      .pipe(map((alerts: Alert[]) => mergeAlerts(alerts, this.ranges, this.classify)));
   }
 
   /** The archived alarms of a period. */
@@ -90,7 +92,7 @@ export class AlarmStore {
     );
     const alerts: Alert[] = Object.values(answer?.alerts ?? {});
     return {
-      alarms: mergeAlerts(alerts, this.ranges),
+      alarms: mergeAlerts(alerts, this.ranges, this.classify),
       truncated: alerts.length >= maxResults
     };
   }

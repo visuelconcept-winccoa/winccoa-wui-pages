@@ -20,7 +20,11 @@
     "PageSize": "Lignes par page",
     "LockSource": "Verrouiller l’onglet",
     "HideStats": "Masquer les statistiques",
-    "NoAck": "Lecture seule (sans acquittement)"
+    "NoAck": "Lecture seule (sans acquittement)",
+    "ClassFilter": "Classes d’alarme",
+    "ClassFilterHint": "Abréviations des classes d’alarme affichées, séparées par des virgules (OOS, AOS, A*). Vide = toutes les classes. L’opérateur peut l’effacer.",
+    "ProfileName": "Profil d’affichage",
+    "ProfileNameHint": "Nom d’un profil d’affichage enregistré dans la page Alarmes (colonnes, filtres, compteurs, acquittement). Vide = la présentation par défaut."
   },
   "Source": {
     "Active": "Alarmes actives",

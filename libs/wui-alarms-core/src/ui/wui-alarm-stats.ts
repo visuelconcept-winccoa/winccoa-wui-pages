@@ -61,6 +61,11 @@ export class WuiAlarmStats extends LitElement {
   @property({ attribute: 'window-label' }) windowLabel = '';
   /** Single-strip variant for an embedded panel. */
   @property({ type: Boolean, reflect: true }) compact = false;
+  /**
+   * The flood histogram and the recurring alarms only — the host draws the
+   * counters itself (the alarm view's tiles, which double as filters).
+   */
+  @property({ type: Boolean, attribute: 'charts-only', reflect: true }) chartsOnly = false;
 
   /** Hovered bar, as CSS pixels inside the chart plus the bucket under the cursor. */
   @state() private tip: { x: number; y: number; bucket: HistogramBucket } | null = null;
@@ -71,6 +76,13 @@ export class WuiAlarmStats extends LitElement {
   override render(): TemplateResult {
     if (this.compact) {
       return html`<div class="banner">${this.renderRanges()} ${this.renderLast()}</div>`;
+    }
+    if (this.chartsOnly) {
+      return html`
+        <div class="banner charts">
+          ${this.renderHistogram()} ${this.actors.length === 0 ? nothing : this.renderActors()}
+        </div>
+      `;
     }
     return html`
       <div class="banner">
@@ -116,7 +128,7 @@ export class WuiAlarmStats extends LitElement {
     return html`<button
       class="band"
       aria-pressed=${this.selected.includes(rank) ? 'true' : 'false'}
-      title=${`${localize(MSG.counters.fromPrior)} ${range.minPrior}`}
+      title=${`${range.label ?? range.abbr} · ${localize(MSG.counters.fromPrior)} ${range.minPrior}`}
       @click=${() => this.toggleRank(rank)}
     >
       <span class="pill" style=${`background:${rangeColor(rank, this.ranges)}`}>${rangeAbbr(rank, this.ranges)}</span>
@@ -263,16 +275,17 @@ export class WuiAlarmStats extends LitElement {
     const barWidth = (width - pad.left - pad.right) / histogram.buckets.length;
     this.geometry = { padLeft: pad.left, barWidth, ratio };
 
-    context.fillStyle = cssToken(this, '--theme-color-soft-text');
+    context.fillStyle = cssToken(this, '--_text-soft');
     context.font = `${9 * ratio}px ui-monospace, monospace`;
     context.fillText(String(max), 2 * ratio, pad.top + 7 * ratio);
 
-    // A bucket over the operator-load ceiling is drawn in the most urgent range's
+    // A bucket over the operator-load ceiling is drawn in the most urgent level's
     // own colour, so "too many alarms" reads in the project's own scale.
-    const over = this.ranges[0]?.color || cssToken(this, '--theme-color-alarm');
+    const over = this.ranges[0]?.color || cssToken(this, '--_bar-over');
+    const bar = cssToken(this, '--_bar');
     for (const [index, bucket] of histogram.buckets.entries()) {
       const barHeight = (bucket.count / max) * plot;
-      context.fillStyle = bucket.overThreshold ? over : cssToken(this, '--theme-color-primary');
+      context.fillStyle = bucket.overThreshold ? over : bar;
       context.fillRect(
         pad.left + index * barWidth + ratio,
         height - pad.bottom - barHeight,
@@ -283,7 +296,7 @@ export class WuiAlarmStats extends LitElement {
 
     const thresholdY = height - pad.bottom - (histogram.threshold / max) * plot;
     context.setLineDash([3 * ratio, 3 * ratio]);
-    context.strokeStyle = cssToken(this, '--theme-color-warning');
+    context.strokeStyle = cssToken(this, '--_threshold');
     context.beginPath();
     context.moveTo(pad.left, thresholdY);
     context.lineTo(width - pad.right, thresholdY);
@@ -293,7 +306,7 @@ export class WuiAlarmStats extends LitElement {
     const first = histogram.buckets[0];
     const last = histogram.buckets.at(-1);
     if (!first || !last) return;
-    context.fillStyle = cssToken(this, '--theme-color-soft-text');
+    context.fillStyle = cssToken(this, '--_text-soft');
     context.fillText(clockLabel(first.from), pad.left, height - 2 * ratio);
     context.fillText(clockLabel(last.from), width - 32 * ratio, height - 2 * ratio);
   }

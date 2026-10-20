@@ -1,10 +1,16 @@
 # @visuelconcept-winccoa/wui-alarms — source module (Tier 1)
 
 **Alarms** page for a WinCC OA WebUI dashboard, on **`/alarms`**: the plant's alarm
-list either **live** (the standing alarms) or over an **archived period**, with the
-**unacknowledged** counter, the project's **priority ranges** doubling as a filter, the
-**EEMUA-191 flood histogram**, the **recurring bad actors**, a free-text search,
-click-to-sort headers, paging and **acknowledge**.
+list either **live** (the standing alarms) or over an **archived period**, with
+**counter tiles** (standing, unacknowledged, one per level) doubling as filters, the
+**EEMUA-191 flood histogram**, the **recurring alarms**, a filter bar (minimum
+severity, class, search, unacknowledged), click-to-sort headers, paging,
+**acknowledge** and a **CSV export** of the history.
+
+Each integration customises it without a fork: a **link** carries starting filters,
+a **display profile** (code or stored, by name) sets the columns, filters, counters
+and acknowledgement, an **extension** adds a module's own reading of the rows and its
+own acknowledgement, and **design tokens** (`--wui-alarm-*`) take the site's charter.
 
 The whole view is the shared component **`<wui-alarm-view>`** of
 `@visuelconcept-winccoa/wui-alarms-core`, so the same view **embeds in other pages** — the
@@ -55,28 +61,37 @@ Nothing to restart: the page owns no backend.
 
 ## Usage
 
-- **Active / History** — the two tabs switch snapshot. `History` shows the period
-  selector (today, 24 h, 7 d, 30 d, current week, current month, custom) with
-  previous/next-period arrows.
-- **Range chips** — click to filter; each chip reads `total (n ack)`. The ranges
-  themselves (abbreviation, colour, priority threshold) are the project's own:
-  the cogwheel opens the editor and stores them in the `Alarms_Config` datapoint.
-- **Unacknowledged only**, free-text search (datapoint, text, description, class),
-  click-to-sort headers, paging.
-- **Acknowledge** — tick the rows, then _Acknowledge (n)_. While a selection is open
-  the live list is **held** so rows do not move under the cursor (the status dot
-  turns amber); releasing the selection applies the pending updates.
-- **Scope by URL** — `#/alarms?dp=System1:Press01` opens the list on one datapoint
-  (comma-separated, globs allowed: `?dp=Line1_*`).
+- **Active / History** — the two tabs switch snapshot. `History` shows the quick
+  periods (1 h, 8 h, 24 h, 7 days, 30 days), the period selector (also today,
+  current week, current month, custom) with previous/next-period arrows, and
+  _Export CSV_ (the filtered rows, `;` separated, for Excel).
+- **Counter tiles** — _Standing_ resets the filters, _Unacknowledged_ toggles the
+  unacknowledged-only filter, a level tile keeps that level. The levels themselves
+  (abbreviation, name, colour — their own or the theme's — and priority threshold)
+  are the project's own: _Configure the ranges_ stores them in `Alarms_Config`.
+- **Filter bar** — minimum severity, class, search (every word, accents ignored:
+  datapoint, text, description, class, value, additional columns), unacknowledged
+  only, _Clear the filters_; click-to-sort headers, paging.
+- **Acknowledge** — tick the rows, then _Acknowledge the selection (n)_, or
+  _Acknowledge all (n)_ (every acknowledgeable row the filters keep), after a
+  confirmation. While a selection is open the live list is **held** so rows do not
+  move under the cursor (the status dot turns amber); releasing the selection
+  applies the pending updates.
+- **By URL** — `#/alarms?dp=System1:Press01` opens the list on one datapoint
+  (comma-separated, globs allowed: `?dp=Line1_*`); `class`, `rank`, `q`, `unack`,
+  `source`, `f.<filter>` and `profile` add starting filters and a profile (see
+  [INTEGRATION.md](./INTEGRATION.md#customise-the-view)).
+- **Display profiles** (role `configure`) — the named profiles a page, a link or a
+  widget picks, edited as JSON and validated before they are saved.
 
 ## Application Security
 
 Module id `alarms`, roles `view`, `acknowledge` and `configure` (open until groups
 are assigned). `acknowledge` hides the acknowledge affordance (the WinCC OA write
 permission is what WinCC OA enforces on the write itself — and the affordance is
-hidden on its own when that permission is missing); `configure` hides the range editor —
-without it the dialog is read-only, because seeing how the ranges are set explains
-the list even to someone who may not change them.
+hidden on its own when that permission is missing); `configure` hides the level and
+profile editors — without it they are read-only, because seeing how the levels are
+set explains the list even to someone who may not change them.
 
 ## Contents
 
@@ -89,9 +104,12 @@ src/widgets/wui-alarms.ts                     the Alarms dashboard widget
 @visuelconcept-winccoa/wui-alarms-core (npm dependency, libs/wui-alarms-core/src/)
   ├─ types.ts / mapping.ts / scope.ts / query.ts / severity.ts / statistics.ts
   ├─ period.ts / occurrences.ts               period vocabulary, occurrence-window merge
+  ├─ profile.ts / extensions.ts / columns.ts  profiles, extensions, columns (table + CSV)
   ├─ data/alarm-store.ts                      live subscription, archive query, acknowledge
-  ├─ data/alarm-config-store.ts               the Alarms_Config datapoint (priority ranges)
-  └─ ui/wui-alarm-view.ts + wui-alarm-table.ts + wui-alarm-stats.ts + wui-alarm-ranges.ts
+  ├─ data/alarm-config-store.ts               the Alarms_Config datapoint (levels + profiles)
+  ├─ ui/alarm-tokens.ts                       the --wui-alarm-* design tokens
+  └─ ui/wui-alarm-view.ts + wui-alarm-table.ts + wui-alarm-stats.ts
+     + wui-alarm-ranges.ts + wui-alarm-profiles.ts
 README.md / INTEGRATION.md / NOTES.md         this documentation
 ```
 
@@ -102,18 +120,16 @@ import '@visuelconcept-winccoa/wui-alarms-core/ui/wui-alarm-view.js';
 import { scopeFromDpes } from '@visuelconcept-winccoa/wui-alarms-core/scope.js';
 ```
 
+<!-- prettier-ignore -->
 ```html
 <wui-alarm-view
   layout="panel"
   hide-period
   strict-scope
-  .from="${range.start.getTime()}"
-  .to="${range.end.getTime()}"
-  .scope="${scopeFromDpes([machine.stateDp,"
-  ...machine.kpis.map((k)=""
->
-  k.dp)])} ></wui-alarm-view
->
+  .from=${range.start.getTime()}
+  .to=${range.end.getTime()}
+  .scope=${scopeFromDpes([machine.stateDp, ...machine.kpis.map((k) => k.dp)])}
+></wui-alarm-view>
 ```
 
 See [INTEGRATION.md](./INTEGRATION.md) for the full property list and
@@ -147,8 +163,10 @@ the Machine Fleet machine dashboard, freely placeable on any `/dashboard`.
   the scope. With _Range selectable_ on, the range button appears while the
   History tab is shown and drives the view's `from`/`to` (the view's own period
   controls are hidden); off, the History tab shows the view's own period bar.
-- **Formatting**: default tab (active / history), density (panel / page), rows per
-  page, lock the tab, hide the statistics, read-only.
+- **Formatting**: display profile (by name), default tab (active / history),
+  density (panel / page), rows per page, lock the tab, hide the statistics,
+  read-only. _Alarm classes_ (scope) starts the list on some alert classes
+  (`OOS, AOS`), which the operator may clear.
 - **Roles and rights**: the alarms module's own — `view` gates the widget body,
   `acknowledge` folds into read-only. Acknowledging goes through WinCC OA's own
   API (browser `dpSet`), so the checkboxes and the button are also hidden when the
