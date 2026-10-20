@@ -106,6 +106,12 @@ export interface AlarmViewProfile {
   tiles?: boolean;
   /** EEMUA-191 flood histogram and recurring alarms. */
   stats?: boolean;
+  /**
+   * The statistics open on arrival. Folded by default: they take the height of
+   * the list for a reading the operator only needs now and then. Once the
+   * operator opens or folds them, their choice is remembered (per browser).
+   */
+  statsOpen?: boolean;
   /** What the view opens on. */
   defaults?: AlarmFilterValues;
   ack?: {
@@ -132,6 +138,7 @@ export interface ResolvedProfile {
   filters: { severity: boolean; classes: boolean; search: boolean; unackOnly: boolean; fields: AlarmFieldFilter[] };
   tiles: boolean;
   stats: boolean;
+  statsOpen: boolean;
   defaults: AlarmFilterValues;
   ack: { selection: boolean; all: boolean; confirm: boolean };
   history: { csv: boolean };
@@ -146,6 +153,7 @@ export const DEFAULT_PROFILE: ResolvedProfile = {
   filters: { severity: true, classes: true, search: true, unackOnly: true, fields: [] },
   tiles: true,
   stats: true,
+  statsOpen: false,
   defaults: {},
   ack: { selection: true, all: true, confirm: true },
   history: { csv: true },
@@ -205,6 +213,7 @@ export function mergeProfiles(...layers: readonly (AlarmViewProfile | null | und
       },
       tiles: layer.tiles ?? resolved.tiles,
       stats: layer.stats ?? resolved.stats,
+      statsOpen: layer.statsOpen ?? resolved.statsOpen,
       defaults: { ...resolved.defaults, ...layer.defaults },
       ack: { ...resolved.ack, ...layer.ack },
       history: { ...resolved.history, ...layer.history },
@@ -338,6 +347,8 @@ export function parseProfile(value: unknown): { profile: AlarmViewProfile; error
   if (tiles !== undefined) profile.tiles = tiles;
   const stats = parseBoolean(value['stats'], errors, 'stats');
   if (stats !== undefined) profile.stats = stats;
+  const statsOpen = parseBoolean(value['statsOpen'], errors, 'statsOpen');
+  if (statsOpen !== undefined) profile.statsOpen = statsOpen;
   const defaults = parseDefaults(value['defaults'], errors);
   if (defaults) profile.defaults = defaults;
   const ack = parseSwitches(value['ack'], ['selection', 'all', 'confirm'] as const, errors, 'ack');

@@ -66,6 +66,11 @@ export function alarmViewStyles(): ReturnType<typeof css> {
       color: var(--_text-soft);
     }
 
+    .stats-none {
+      font-size: 0.75rem;
+      color: var(--_text-soft);
+    }
+
     /* Counter tiles: what the tab holds, and a filter each. */
     .tiles {
       display: flex;
