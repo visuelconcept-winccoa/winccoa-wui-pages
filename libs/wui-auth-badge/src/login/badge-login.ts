@@ -8,9 +8,11 @@
  *
  * The reader is captured while this page is shown (badge-reader.ts, the
  * capture "Badges" uses too): an invisible field that keeps the focus, only a
- * reader's frame kept. The badge → user resolution, the lock after
- * unknown badges and the audit are the server's (/api/auth-badge/login): the
- * badge numbers never reach the browser.
+ * reader's frame kept. The badge → user resolution, the user's lock after
+ * refused logins and the audit are the server's (/api/auth-badge/login): the
+ * badge numbers never reach the browser. A locked account is shown with its
+ * user's name for a moment; the page then waits for the next badge — the lock
+ * is the user's, not the station's.
  *
  * The badge login turned off on the "Badges" page (`/config`'s `enabled`, or a
  * login answered `disabled`): the page says so; the password form stays.
@@ -27,6 +29,8 @@ import { fetchBadgeConfig, WuiAuthBadgeReader } from '../badge-reader.js';
 const API = '/api/auth-badge';
 /** How long an error stays before the page is back at rest (ms). */
 const ERROR_DISPLAY_MS = 4000;
+/** How long a locked account's message stays before the page is back at rest (ms). */
+const LOCKED_DISPLAY_MS = 8000;
 /** How long the user's name and the success stay before the session opens (ms). */
 const WELCOME_DISPLAY_MS = 3000;
 /** The number the test mode's button presents. */
@@ -35,7 +39,8 @@ const TEST_BADGE = '12345678';
 type LoginResult =
   | { status: 'ok'; username: string; fullName?: string; token: string }
   | { status: 'unknown' }
-  | { status: 'locked'; lockedUntil: number }
+  /** `lockedUntil` null: until unlocked on "Badges". */
+  | { status: 'locked'; lockedUntil: number | null; username?: string; fullName?: string }
   | { status: 'disabled' };
 
 type Phase = 'idle' | 'resolving' | 'welcome' | 'error' | 'locked' | 'disabled';
@@ -47,7 +52,7 @@ export class WuiAuthBadgeLogin extends LoginProviderElement {
   @state() private phase: Phase = 'idle';
   @state() private message = '';
   @state() private sessionReady = false;
-  @state() private lockedUntil = 0;
+  @state() private lockedUntil: number | null = null;
 
   @state() private frameOptions: BadgeFrameOptions = DEFAULT_BADGE_FRAME_OPTIONS;
 
@@ -113,9 +118,11 @@ export class WuiAuthBadgeLogin extends LoginProviderElement {
         };
       case 'locked':
         return {
-          heading: 'Connexion par badge verrouillée',
-          message: html`${this.message ? html`${this.message}<br />` : nothing} Réessayez après
-            ${formatTime(this.lockedUntil)}, ou connectez-vous par identifiant et mot de passe.`,
+          heading: this.message ? `Compte ${this.message} verrouillé` : 'Compte verrouillé',
+          message: html`Trop de connexions par badge refusées.<br />
+            ${this.lockedUntil === null
+              ? 'Faites déverrouiller le compte par une personne habilitée'
+              : `Réessayez après ${formatTime(this.lockedUntil)}`}, ou connectez-vous par identifiant et mot de passe.`,
           tone: 'error'
         };
       default:
@@ -125,7 +132,6 @@ export class WuiAuthBadgeLogin extends LoginProviderElement {
 
   private async handleBadge(uid: string): Promise<void> {
     clearTimeout(this.returnToIdleTimer);
-    const wasLocked = this.phase === 'locked';
     this.phase = 'resolving';
 
     let result: LoginResult;
@@ -140,7 +146,7 @@ export class WuiAuthBadgeLogin extends LoginProviderElement {
       return;
     }
     if (result.status === 'locked') {
-      this.showLocked(result.lockedUntil, wasLocked ? 'Badge refusé : la mire est verrouillée.' : '');
+      this.showLocked(result.lockedUntil, result.fullName || result.username || '');
       return;
     }
     if (result.status !== 'ok' || !result.token) {
@@ -162,11 +168,12 @@ export class WuiAuthBadgeLogin extends LoginProviderElement {
     this.returnToIdleTimer = setTimeout(() => this.returnToIdle(), ERROR_DISPLAY_MS);
   }
 
-  private showLocked(lockedUntil: number, message: string): void {
+  /** The user's account is locked — not the page: back at rest after a moment, for the next badge. */
+  private showLocked(lockedUntil: number | null, name: string): void {
     this.phase = 'locked';
     this.lockedUntil = lockedUntil;
-    this.message = message;
-    this.returnToIdleTimer = setTimeout(() => this.returnToIdle(), Math.max(0, lockedUntil - Date.now()));
+    this.message = name;
+    this.returnToIdleTimer = setTimeout(() => this.returnToIdle(), LOCKED_DISPLAY_MS);
   }
 
   private returnToIdle(): void {

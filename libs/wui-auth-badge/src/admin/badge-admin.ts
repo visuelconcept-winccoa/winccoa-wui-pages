@@ -10,11 +10,12 @@
  *               reader's frame (prefix, longest burst, shortest number, end
  *               key), saved together; the numbers stored as one-way
  *               fingerprints (confirmed first: the numbers in clear are
- *               rewritten, for good)
+ *               rewritten, for good); the account lock (refused logins
+ *               before it, its duration), saved together
  *   enrol       the WinCC OA users and their badge: associate one, presented
  *               to the reader (badge-reader.ts, the login page's capture),
  *               test that a presented badge opens that user's session, or
- *               remove it
+ *               remove it; their badge lock, lifted with a reason
  *
  * Two tabs: "Utilisateurs" (`enrol`; hidden without it) and "Configuration".
  * Without either role the page only says so. The server checks the same roles
@@ -38,14 +39,29 @@ const TAB_CONFIGURATION = 'configuration';
 
 type ReaderSettings = Pick<BadgeFrameOptions, 'prefix' | 'maxFrameMs' | 'minUidLength' | 'endKey'>;
 
-interface BadgeSettings extends ReaderSettings {
+interface LockSettings {
+  /** Refused badge logins in a row before the account's badge is locked; 0: never. */
+  lockAfterFailures: number;
+  /** Minutes; 0: until unlocked here. */
+  lockDurationMin: number;
+}
+
+interface BadgeSettings extends ReaderSettings, LockSettings {
   badgeLoginEnabled: boolean;
   selfEnrolment: boolean;
   hashBadges: boolean;
 }
 
 /** The server's bounds (backend/badgeSettings.ts, LIMITS). */
-const LIMITS = { prefixLength: 16, maxFrameMs: [20, 2000], minUidLength: [1, 64] } as const;
+const LIMITS = {
+  prefixLength: 16,
+  maxFrameMs: [20, 2000],
+  minUidLength: [1, 64],
+  lockAfterFailures: [0, 20],
+  lockDurationMin: [0, 1440]
+} as const;
+/** The longest reason of an unlock (the server cuts beyond). */
+const MAX_REASON_LENGTH = 200;
 const END_KEYS: { key: ReaderSettings['endKey']; label: string }[] = [
   { key: 'Enter', label: 'Entrée' },
   { key: 'Tab', label: 'Tabulation' }
@@ -60,6 +76,8 @@ interface BadgeUser {
   badge: string | null;
   /** A badge is associated, stored as a fingerprint. */
   hashed: boolean;
+  /** The badge lock (an expired one shown as none); absent from an older backend. */
+  lock?: { locked: boolean; lockedAt: number | null; lockedUntil: number | null; failures: number };
 }
 
 type EnrolStatus = 'ok' | 'taken' | 'invalid';
@@ -69,6 +87,11 @@ type CaptureMode = 'enrol' | 'test';
 
 function hasBadge(user: BadgeUser): boolean {
   return user.badge !== null || user.hashed;
+}
+
+/** Locked, or failures counted: something to unlock. */
+function hasLock(user: BadgeUser): boolean {
+  return !!user.lock && (user.lock.locked || user.lock.failures > 0);
 }
 
 @customElement('wui-auth-badge-admin')
@@ -152,6 +175,8 @@ export class WuiAuthBadgeAdmin extends LitElement {
   /** The user whose badge is being presented (to enrol or to test), or the one whose removal awaits confirmation. */
   @state() private capture?: { userId: number; mode: CaptureMode };
   @state() private confirmingRemoval?: number;
+  /** The user whose unlock awaits its reason and confirmation. */
+  @state() private unlocking?: { userId: number; reason: string };
   /** Hashing asked for, awaiting confirmation. */
   @state() private confirmingHash = false;
   @state() private message = '';
@@ -163,6 +188,8 @@ export class WuiAuthBadgeAdmin extends LitElement {
   @state() private frameOptions: BadgeFrameOptions = DEFAULT_BADGE_FRAME_OPTIONS;
   /** The reader's settings being edited, saved together. */
   @state() private readerDraft?: ReaderSettings;
+  /** The lock's settings being edited, saved together. */
+  @state() private lockDraft?: LockSettings;
 
   private roleSub?: Subscription;
   /** The users were asked for since `enrol` was last granted. */
@@ -178,6 +205,7 @@ export class WuiAuthBadgeAdmin extends LitElement {
         if (!enrol) {
           this.capture = undefined;
           this.confirmingRemoval = undefined;
+          this.unlocking = undefined;
           this.usersRequested = false;
         } else if (!this.usersRequested) {
           this.usersRequested = true;
@@ -211,9 +239,10 @@ export class WuiAuthBadgeAdmin extends LitElement {
 
   private onTabChange(event: CustomEvent<string | undefined>): void {
     if (!event.detail || event.detail === this.activeTab) return;
-    // Leaving the users: no badge awaited, no removal pending.
+    // Leaving the users: no badge awaited, no removal or unlock pending.
     this.capture = undefined;
     this.confirmingRemoval = undefined;
+    this.unlocking = undefined;
     this.activeTab = event.detail;
   }
 
@@ -285,7 +314,60 @@ export class WuiAuthBadgeAdmin extends LitElement {
             ${this.canConfigure ? nothing : html`<p class="hint">Modification réservée au rôle « Configurer ».</p>`}`
         : html`<p>Chargement…</p>`}
     </section>
-    ${settings && this.readerDraft ? this.renderReaderSettings(settings, this.readerDraft) : nothing}`;
+    ${settings && this.readerDraft ? this.renderReaderSettings(settings, this.readerDraft) : nothing}
+    ${settings && this.lockDraft ? this.renderLockSettings(settings, this.lockDraft) : nothing}`;
+  }
+
+  /** The account lock: after how many refused badge logins, for how long. */
+  private renderLockSettings(settings: BadgeSettings, draft: LockSettings): unknown {
+    const changed = (Object.keys(draft) as (keyof LockSettings)[]).some((key) => draft[key] !== settings[key]);
+    const [minFailures, maxFailures] = LIMITS.lockAfterFailures;
+    const [minDuration, maxDuration] = LIMITS.lockDurationMin;
+    return html`<section>
+      <ix-typography format="h3">Verrouillage des comptes</ix-typography>
+      <p class="hint">
+        Un compte dont le badge est refusé plusieurs fois de suite (compte désactivé, sans droit de connexion WebUI) voit
+        son badge verrouillé sur tous les postes ; une connexion réussie remet le compteur à zéro. Un badge inconnu ne
+        verrouille rien : il est seulement tracé.
+      </p>
+      <div class="reader-fields">
+        <ix-number-input
+          label="Tentatives avant verrouillage"
+          helper-text="${minFailures + 1} à ${maxFailures} ; 0 : jamais."
+          min=${minFailures}
+          max=${maxFailures}
+          .value=${draft.lockAfterFailures}
+          ?disabled=${!this.canConfigure}
+          @valueChange=${(e: CustomEvent<number>) => this.patchLockDraft({ lockAfterFailures: Number(e.detail) })}
+        ></ix-number-input>
+        <ix-number-input
+          label="Durée du verrouillage (min)"
+          helper-text="${minDuration + 1} à ${maxDuration} ; 0 : jusqu'au déverrouillage manuel."
+          min=${minDuration}
+          max=${maxDuration}
+          .value=${draft.lockDurationMin}
+          ?disabled=${!this.canConfigure}
+          @valueChange=${(e: CustomEvent<number>) => this.patchLockDraft({ lockDurationMin: Number(e.detail) })}
+        ></ix-number-input>
+      </div>
+      ${this.canConfigure
+        ? html`<div class="buttons">
+            <ix-button
+              data-testid="save-lock"
+              ?disabled=${!changed || !lockValid(draft)}
+              @click=${() => void this.patchSettings(draft)}
+              >Enregistrer</ix-button
+            >
+            <ix-button variant="secondary" ?disabled=${!changed} @click=${() => (this.lockDraft = lockOf(settings))}
+              >Annuler</ix-button
+            >
+          </div>`
+        : nothing}
+    </section>`;
+  }
+
+  private patchLockDraft(patch: Partial<LockSettings>): void {
+    if (this.lockDraft) this.lockDraft = { ...this.lockDraft, ...patch };
   }
 
   /** The reader's frame: what the login page, Mon badge and this page accept as a badge. */
@@ -374,6 +456,7 @@ export class WuiAuthBadgeAdmin extends LitElement {
             <th>Utilisateur</th>
             <th>Nom complet</th>
             <th>Badge</th>
+            <th>Verrouillage</th>
             <th></th>
           </tr>
         </thead>
@@ -389,15 +472,45 @@ export class WuiAuthBadgeAdmin extends LitElement {
       <td>${user.username}${user.enabled ? nothing : html` (désactivé)`}</td>
       <td>${user.fullName}</td>
       <td>${user.hashed ? 'Associé (chiffré)' : user.badge ? html`•••• ${user.badge}` : '—'}</td>
+      <td class=${user.lock?.locked ? 'error' : ''}>${lockText(user)}</td>
       <td><div class="actions">${this.renderActions(user)}</div></td>
     </tr>
-    ${this.capture?.userId === user.userId ? this.renderCapture(user, this.capture.mode) : nothing}`;
+    ${this.capture?.userId === user.userId ? this.renderCapture(user, this.capture.mode) : nothing}
+    ${this.unlocking?.userId === user.userId ? this.renderUnlock(user, this.unlocking.reason) : nothing}`;
+  }
+
+  /** The unlock's confirmation: a reason is required (the server refuses one without). */
+  private renderUnlock(user: BadgeUser, reason: string): unknown {
+    return html`<tr class="enrolment">
+      <td colspan="5">
+        <div class="confirm" role="alertdialog" aria-label="Confirmer le déverrouillage">
+          <p>Déverrouiller le badge de ${user.username} et remettre son compteur d'échecs à zéro. Le motif est tracé.</p>
+          <ix-input
+            label="Motif du déverrouillage"
+            required
+            maxlength=${MAX_REASON_LENGTH}
+            data-testid="unlock-reason-${user.userId}"
+            .value=${reason}
+            @valueChange=${(e: CustomEvent<string>) => (this.unlocking = { userId: user.userId, reason: e.detail ?? '' })}
+          ></ix-input>
+          <div class="buttons">
+            <ix-button
+              data-testid="confirm-unlock-${user.userId}"
+              ?disabled=${reason.trim() === ''}
+              @click=${() => void this.unlock(user, reason)}
+              >Déverrouiller</ix-button
+            >
+            <ix-button variant="secondary" @click=${() => (this.unlocking = undefined)}>Annuler</ix-button>
+          </div>
+        </div>
+      </td>
+    </tr>`;
   }
 
   private renderCapture(user: BadgeUser, mode: CaptureMode): unknown {
     const prompt = mode === 'test' ? `Présentez le badge à tester pour ${user.username}` : `Présentez le badge de ${user.username}`;
     return html`<tr class="enrolment">
-      <td colspan="4">
+      <td colspan="5">
         <wui-auth-badge-reader
           heading=${this.associating ? 'Lecture du badge…' : prompt}
           .message=${this.readerError}
@@ -413,7 +526,7 @@ export class WuiAuthBadgeAdmin extends LitElement {
   }
 
   private renderActions(user: BadgeUser): unknown {
-    if (this.capture?.userId === user.userId) return nothing;
+    if (this.capture?.userId === user.userId || this.unlocking?.userId === user.userId) return nothing;
     if (this.confirmingRemoval === user.userId) {
       return html`<ix-button variant="danger-primary" @click=${() => void this.removeBadge(user)}>Confirmer le retrait</ix-button>
         <ix-button variant="secondary" @click=${() => (this.confirmingRemoval = undefined)}>Annuler</ix-button>`;
@@ -428,22 +541,51 @@ export class WuiAuthBadgeAdmin extends LitElement {
       </ix-button>
       ${hasBadge(user)
         ? html`<ix-button variant="secondary" @click=${() => (this.confirmingRemoval = user.userId)}>Retirer</ix-button>`
+        : nothing}
+      ${hasLock(user)
+        ? html`<ix-button variant="secondary" data-testid="unlock-${user.userId}" @click=${() => this.startUnlock(user)}>
+            Déverrouiller
+          </ix-button>`
         : nothing}`;
+  }
+
+  private startUnlock(user: BadgeUser): void {
+    this.unlocking = { userId: user.userId, reason: '' };
+    this.capture = undefined;
+    this.confirmingRemoval = undefined;
+    this.message = '';
+  }
+
+  private async unlock(user: BadgeUser, reason: string): Promise<void> {
+    if (reason.trim() === '') return;
+    try {
+      await fetchAsUser(`${API}/users/${user.userId}/unlock`, { method: 'POST', body: JSON.stringify({ reason: reason.trim() }) });
+      this.unlocking = undefined;
+      this.report(true, `Badge de ${user.username} déverrouillé.`);
+      await this.loadUsers();
+    } catch (error) {
+      this.report(false, `Déverrouillage impossible (${String(error)}).`);
+    }
   }
 
   private async loadSettings(): Promise<void> {
     try {
-      this.applySettings(await fetchAsUser<BadgeSettings>(`${API}/settings`), true);
+      this.applySettings(await fetchAsUser<BadgeSettings>(`${API}/settings`));
     } catch (error) {
       this.report(false, `Options indisponibles (${String(error)}).`);
     }
   }
 
-  /** The settings in the page; the reader's draft follows them when `resetDraft`, else it is kept. */
-  private applySettings(settings: BadgeSettings, resetDraft: boolean): void {
+  /**
+   * The settings in the page; a draft follows them when `saved` holds one of its fields (or
+   * none was given: a load), else it is kept.
+   */
+  private applySettings(settings: BadgeSettings, saved?: string[]): void {
     this.settings = settings;
     this.frameOptions = readerOf(settings);
-    if (resetDraft || !this.readerDraft) this.readerDraft = readerOf(settings);
+    const touches = (fields: object): boolean => !saved || saved.some((key) => key in fields);
+    if (!this.readerDraft || touches(readerOf(settings))) this.readerDraft = readerOf(settings);
+    if (!this.lockDraft || touches(lockOf(settings))) this.lockDraft = lockOf(settings);
   }
 
   private async loadUsers(): Promise<void> {
@@ -463,8 +605,8 @@ export class WuiAuthBadgeAdmin extends LitElement {
         method: 'PUT',
         body: JSON.stringify(patch)
       });
-      // The reader's draft follows a save of its own fields, not a toggle's.
-      this.applySettings(settings, Object.keys(patch).some((key) => key in readerOf(settings)));
+      // A draft follows a save of its own fields, not a toggle's.
+      this.applySettings(settings, Object.keys(patch));
       this.report(true, migrated ? `Options enregistrées : ${migrated} code(s) badge chiffré(s).` : 'Options enregistrées.');
       if (migrated) await this.loadUsers();
     } catch (error) {
@@ -562,6 +704,28 @@ export class WuiAuthBadgeAdmin extends LitElement {
 
 function readerOf({ prefix, maxFrameMs, minUidLength, endKey }: ReaderSettings): ReaderSettings {
   return { prefix, maxFrameMs, minUidLength, endKey };
+}
+
+function lockOf({ lockAfterFailures, lockDurationMin }: LockSettings): LockSettings {
+  return { lockAfterFailures, lockDurationMin };
+}
+
+function lockValid({ lockAfterFailures, lockDurationMin }: LockSettings): boolean {
+  const within = (value: number, [min, max]: readonly [number, number]): boolean =>
+    Number.isInteger(value) && value >= min && value <= max;
+  return within(lockAfterFailures, LIMITS.lockAfterFailures) && within(lockDurationMin, LIMITS.lockDurationMin);
+}
+
+/** The lock column: locked until when, or the failures counted. */
+function lockText(user: BadgeUser): string {
+  const lock = user.lock;
+  if (!lock) return '—';
+  if (lock.locked) {
+    return lock.lockedUntil === null
+      ? 'Verrouillé (déverrouillage manuel)'
+      : `Verrouillé jusqu'à ${new Date(lock.lockedUntil).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}`;
+  }
+  return lock.failures > 0 ? `${lock.failures} échec(s)` : '—';
 }
 
 function readerValid({ prefix, maxFrameMs, minUidLength }: ReaderSettings): boolean {

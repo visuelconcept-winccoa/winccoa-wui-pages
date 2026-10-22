@@ -11,6 +11,10 @@
 //   hashBadges          the badge numbers stored as a one-way fingerprint
 //                       (badgeHash.ts); turned on, every number in clear is
 //                       rewritten — turned off, the fingerprints stay
+//   lockAfterFailures   the refused badge logins in a row, imputable to one
+//                       user (disabled account, no WebUI login permission),
+//                       after which that user's badge is locked (0: never)
+//   lockDurationMin     how long, in minutes (0: until unlocked on "Badges")
 //
 // and the reader's frame (badge-frame-detector.ts, the browser's side; GET
 // /config hands it out):
@@ -41,6 +45,8 @@ export interface BadgeSettings {
   maxFrameMs: number;
   minUidLength: number;
   endKey: EndKey;
+  lockAfterFailures: number;
+  lockDurationMin: number;
 }
 
 export const DEFAULT_SETTINGS: BadgeSettings = {
@@ -50,11 +56,19 @@ export const DEFAULT_SETTINGS: BadgeSettings = {
   prefix: process.env['WUI_BADGE_PREFIX'] ?? process.env['MSP_BADGE_PREFIX'] ?? '',
   maxFrameMs: 150,
   minUidLength: 4,
-  endKey: 'Enter'
+  endKey: 'Enter',
+  lockAfterFailures: 3,
+  lockDurationMin: 15
 };
 
-/** The bounds of the reader's settings, the page's too. */
-export const LIMITS = { prefixLength: 16, maxFrameMs: [20, 2000], minUidLength: [1, 64] } as const;
+/** The bounds of the reader's and the lock's settings, the page's too (0: never / until unlocked, for the lock's). */
+export const LIMITS = {
+  prefixLength: 16,
+  maxFrameMs: [20, 2000],
+  minUidLength: [1, 64],
+  lockAfterFailures: [0, 20],
+  lockDurationMin: [0, 1440]
+} as const;
 const END_KEYS: readonly EndKey[] = ['Enter', 'Tab'];
 
 /** A setting's value if `raw` is a valid one, else undefined. */
@@ -72,6 +86,10 @@ export function validSetting<K extends keyof BadgeSettings>(key: K, raw: unknown
         return inRange(raw, LIMITS.maxFrameMs);
       case 'minUidLength':
         return inRange(raw, LIMITS.minUidLength);
+      case 'lockAfterFailures':
+        return inRange(raw, LIMITS.lockAfterFailures);
+      case 'lockDurationMin':
+        return inRange(raw, LIMITS.lockDurationMin);
       case 'endKey':
         return END_KEYS.includes(raw as EndKey) ? raw : undefined;
       default:
