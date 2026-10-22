@@ -1,4 +1,4 @@
-// `wui dev`: the badge backend, mocked. Badge 12345678 is "dev"'s.
+// `wui dev`: the badge backend, mocked. Badge 12345678 is "dev"'s; "former" is locked.
 import { createHmac } from 'node:crypto';
 
 const users = [
@@ -7,7 +7,11 @@ const users = [
   { userId: 3, username: 'former', fullName: 'Ancien compte', enabled: false }
 ];
 const badges = new Map([[1, '12345678']]);
-const settings = { badgeLoginEnabled: true, selfEnrolment: true, hashBadges: false, prefix: '', maxFrameMs: 150, minUidLength: 4, endKey: 'Enter' };
+const settings = { badgeLoginEnabled: true, selfEnrolment: true, hashBadges: false, prefix: '', maxFrameMs: 150, minUidLength: 4, endKey: 'Enter', lockAfterFailures: 3, lockDurationMin: 15 };
+const NO_LOCK = { locked: false, lockedAt: null, lockedUntil: null, failures: 0 };
+const locks = new Map([[3, { locked: true, lockedAt: Date.now(), lockedUntil: Date.now() + 15 * 60_000, failures: 3 }]]);
+/** An HTTP error, as the harness answers it. */
+const httpError = (status, message) => Object.assign(new Error(message), { status });
 
 // As backend/badgeHash.ts, with a fixed dev key.
 const PREFIX = '$hmac-sha256$';
@@ -44,6 +48,11 @@ export default {
     const { prefix, maxFrameMs, minUidLength, endKey, badgeLoginEnabled } = settings;
     return { prefix, maxFrameMs, minUidLength, endKey, enabled: badgeLoginEnabled };
   },
+  // The session's close: audited by the backend; nothing to keep here.
+  'POST /api/auth-badge/logout': ({ body }) => {
+    if (!['logout', 'switch-user', 'idle'].includes(body?.reason)) throw httpError(400, 'reason');
+    return { status: 'ok' };
+  },
   'POST /api/auth-badge/login': ({ body }) => {
     if (!settings.badgeLoginEnabled) return { status: 'disabled' };
     const userId = ownerOf(body?.uid);
@@ -75,12 +84,21 @@ export default {
     for (const key of Object.keys(settings)) if (typeof body?.[key] === typeof settings[key]) settings[key] = body[key];
     return { ...settings, migrated };
   },
-  'GET /api/auth-badge/users': () => users.map((user) => ({ ...user, ...view(user.userId) })),
+  'GET /api/auth-badge/users': () =>
+    users.map((user) => ({ ...user, ...view(user.userId), lock: locks.get(user.userId) ?? NO_LOCK })),
   // Exact paths only in `wui dev`: one route per mock user.
   ...Object.fromEntries(
     users.flatMap(({ userId }) => [
       [`PUT /api/auth-badge/users/${userId}`, ({ body }) => associate(userId, body?.uid)],
       [`POST /api/auth-badge/users/${userId}/test`, ({ body }) => test(userId, body?.uid)],
+      [
+        `POST /api/auth-badge/users/${userId}/unlock`,
+        ({ body }) => {
+          if (typeof body?.reason !== 'string' || body.reason.trim() === '') throw httpError(400, 'reason');
+          locks.delete(userId);
+          return { status: 'ok' };
+        }
+      ],
       [
         `DELETE /api/auth-badge/users/${userId}`,
         () => {
