@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// BadgeAuth against an in-memory WinCC OA: the users, their settings (badges,
-// locks) and the audit lines, mocked in place of oaAuth.ts; the settings and
-// the Application Security guard, mocked too.
+// BadgeAuth against an in-memory WinCC OA: the users, their settings (badges)
+// and the audit lines, mocked in place of oaAuth.ts; the DPs (the blacklist's,
+// through the real badgeBlacklist.ts) in place of @winccoa/backend; the
+// settings and the Application Security guard, mocked too.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Request, Response } from 'ultimate-express';
@@ -18,8 +19,31 @@ const oa = vi.hoisted(() => ({
   noPermission: new Set<string>(),
   /** users with the `enrol` role */
   enrol: new Set<string>(),
-  badgeSettings: {} as Record<string, unknown>
+  /** users with the `configure` role */
+  configure: new Set<string>(),
+  badgeSettings: {} as Record<string, unknown>,
+  /** DP → value (the blacklist's) */
+  dps: new Map<string, unknown>()
 }));
+
+vi.mock('@winccoa/backend', () => ({
+  WsjServerGlobal: {
+    winccoa: {
+      dpExists: (dp: string) => oa.dps.has(dp),
+      dpTypes: () => [],
+      dpTypeCreate: async () => true,
+      dpCreate: async (dp: string) => {
+        oa.dps.set(dp, '');
+        return true;
+      },
+      dpGet: async (dpe: string) => oa.dps.get(dpe.split('.')[0] as string),
+      dpSetWait: async (dpe: string, value: unknown) => {
+        oa.dps.set(dpe.split('.')[0] as string, value);
+      }
+    }
+  }
+}));
+vi.mock('winccoa-manager', () => ({ WinccoaDpTypeNode: class {}, WinccoaElementType: {} }));
 
 vi.mock('./oaAuth', () => ({
   users: async () => oa.users,
@@ -33,7 +57,7 @@ vi.mock('./oaAuth', () => ({
   // A token is `jwt-<username>`.
   verifyWebUiToken: async (jwt: string) => (jwt.startsWith('jwt-') ? jwt.slice(4) : ''),
   sessionUser: async () => null,
-  clientAddress: () => 'station-1',
+  clientAddress: (req: { ip?: string }) => req.ip ?? '',
   audit: async (line: (typeof oa.audit)[number]) => {
     oa.audit.push(line);
   }
@@ -49,7 +73,8 @@ vi.mock('./badgeSettings', () => ({
 vi.mock('./appSecurityGuard', () => ({
   roleAssignments: async () => ({}),
   identityOfUsername: async (username: string) => username,
-  roleGranted: (_assignments: unknown, role: string, who: string) => role === 'enrol' && oa.enrol.has(who)
+  roleGranted: (_assignments: unknown, role: string, who: string) =>
+    (role === 'enrol' && oa.enrol.has(who)) || (role === 'configure' && oa.configure.has(who))
 }));
 
 interface Answer {
@@ -59,7 +84,7 @@ interface Answer {
 
 async function call(
   handler: (req: Request, res: Response) => Promise<void>,
-  { body = {}, params = {}, as }: { body?: unknown; params?: Record<string, string>; as?: string } = {}
+  { body = {}, params = {}, as, ip = 'station-1' }: { body?: unknown; params?: Record<string, string>; as?: string; ip?: string } = {}
 ): Promise<Answer> {
   const answer: Answer = { status: 200, body: {} };
   const res = {
@@ -72,13 +97,21 @@ async function call(
       return res;
     }
   };
-  const req = { body, params, headers: as ? { authorization: `Bearer jwt-${as}` } : {}, ip: 'station-1' };
+  const req = { body, params, headers: as ? { authorization: `Bearer jwt-${as}` } : {}, ip };
   await handler(req as unknown as Request, res as unknown as Response);
   return answer;
 }
 
-const lockOf = (userId: number): string | undefined => oa.settings.get('BADGE_LOCK')?.get(userId)?.[0];
 const actions = (): string[] => oa.audit.map((line) => line.action);
+/** The stored blacklist, as the DP holds it. */
+const stored = (): { counters: { ip: string; failures: number }[]; records: Record<string, unknown>[] } =>
+  JSON.parse((oa.dps.get('WuiAuthBadge_Blacklist') as string | undefined) || '{"counters":[],"records":[]}');
+/** `count` badges presented from `ip`. */
+async function present(badge: BadgeAuth, uid: string, count: number, ip = 'station-1'): Promise<Answer[]> {
+  const answers: Answer[] = [];
+  for (let attempt = 0; attempt < count; attempt += 1) answers.push(await call(badge.login, { body: { uid, item: 'WC1' }, ip }));
+  return answers;
+}
 
 beforeEach(() => {
   vi.useRealTimers();
@@ -87,12 +120,15 @@ beforeEach(() => {
     { username: 'alice', fullName: 'Alice', userId: 1, enabled: true },
     { username: 'bob', fullName: 'Bob', userId: 2, enabled: false },
     { username: 'carol', fullName: 'Carol', userId: 3, enabled: true },
-    { username: 'admin', fullName: 'Admin', userId: 4, enabled: true }
+    { username: 'admin', fullName: 'Admin', userId: 4, enabled: true },
+    { username: 'config', fullName: 'Config', userId: 5, enabled: true }
   ];
   oa.settings = new Map([['RFID_UID', new Map([[1, ['11111111']], [2, ['22222222']], [3, ['33333333']]])]]);
   oa.audit = [];
   oa.noPermission = new Set(['carol']);
   oa.enrol = new Set(['admin']);
+  oa.configure = new Set(['config']);
+  oa.dps = new Map();
   oa.badgeSettings = {
     badgeLoginEnabled: true,
     selfEnrolment: true,
@@ -106,143 +142,185 @@ beforeEach(() => {
   };
 });
 
-describe('login: the lock', () => {
-  it('locks a user after N refusals imputable to them, on every station, past a restart', async () => {
+describe('login: the lock per station', () => {
+  it('N refused badges in a row lock that station only, unknown and refused users alike', async () => {
     const badge = new BadgeAuth();
-    for (let attempt = 1; attempt < 3; attempt += 1) {
-      expect((await call(badge.login, { body: { uid: '33333333', item: 'WC1' } })).body).toEqual({ status: 'unknown' });
-    }
-    const third = await call(badge.login, { body: { uid: '33333333' } });
-    expect(third.body).toMatchObject({ status: 'locked', username: 'carol', fullName: 'Carol' });
-    expect(third.body['lockedUntil']).toBeGreaterThan(Date.now() + 14 * 60_000);
-    expect(JSON.parse(lockOf(3) as string)).toMatchObject({ failures: 3, host: 'station-1' });
-    expect(actions()).toEqual(['SESSION_REFUSEE', 'SESSION_REFUSEE', 'SESSION_REFUSEE', 'BADGE_VERROUILLE']);
-    expect(oa.audit[0]?.item).toBe('WC1');
+    // An unknown badge, then a disabled account (bob): two refusals of station-1.
+    expect((await present(badge, '99999999', 1))[0]?.body).toEqual({ status: 'unknown' });
+    expect((await present(badge, '22222222', 1))[0]?.body).toEqual({ status: 'unknown' });
+    expect(stored().counters).toEqual([expect.objectContaining({ ip: 'station-1', failures: 2, item: 'WC1' })]);
+    const third = (await present(badge, '33333333', 1))[0];
+    expect(third?.body).toMatchObject({ status: 'locked' });
+    expect(third?.body['lockedUntil']).toBeGreaterThan(Date.now() + 14 * 60_000);
+    expect(Object.keys(third?.body ?? {}).sort()).toEqual(['lockedUntil', 'status']);
+    expect(actions()).toEqual(['BADGE_INCONNU', 'SESSION_REFUSEE', 'SESSION_REFUSEE', 'MIRE_VERROUILLEE']);
+    expect(oa.audit.at(-1)).toMatchObject({ host: 'station-1', item: 'WC1' });
+    expect(oa.audit.at(-1)?.reason).toContain('3 badges refusés');
+    expect(stored().records).toEqual([expect.objectContaining({ ip: 'station-1', failures: 3, state: 'active', item: 'WC1' })]);
 
-    // A new instance: the webserver restarted — the lock is the user's setting.
+    // Locked: even alice's badge is refused there, before it is looked up…
     oa.audit = [];
-    oa.noPermission.clear();
-    const restarted = new BadgeAuth();
-    expect((await call(restarted.login, { body: { uid: '33333333' } })).body).toMatchObject({ status: 'locked', username: 'carol' });
+    expect((await present(badge, '11111111', 1))[0]?.body).toMatchObject({ status: 'locked' });
     expect(actions()).toEqual(['BADGE_REFUSE_VERROU']);
+    expect(oa.audit[0]?.username).toBeUndefined();
+    // …and opens her session on another station.
+    expect((await present(badge, '11111111', 1, 'station-2'))[0]?.body).toMatchObject({ status: 'ok', token: 'token-of-alice' });
   });
 
-  it('a disabled account counts as a refusal', async () => {
+  it('a login resets the station\'s count', async () => {
     const badge = new BadgeAuth();
-    await call(badge.login, { body: { uid: '22222222' } });
-    expect(JSON.parse(lockOf(2) as string)).toMatchObject({ failures: 1, lockedAt: null });
-    expect(oa.audit[0]).toMatchObject({ action: 'SESSION_REFUSEE', username: 'bob' });
+    await present(badge, '99999999', 2);
+    await present(badge, '99999999', 1, 'station-2');
+    expect((await present(badge, '11111111', 1))[0]?.body).toMatchObject({ status: 'ok' });
+    expect(stored().counters.map((counter) => counter.ip)).toEqual(['station-2']);
+    // Two more refusals do not lock: the count started again.
+    expect((await present(badge, '99999999', 2)).map((answer) => answer.body['status'])).toEqual(['unknown', 'unknown']);
   });
 
-  it('a login resets the count', async () => {
-    const badge = new BadgeAuth();
-    oa.noPermission.add('alice');
-    await call(badge.login, { body: { uid: '11111111' } });
-    await call(badge.login, { body: { uid: '11111111' } });
-    expect(JSON.parse(lockOf(1) as string)).toMatchObject({ failures: 2 });
-    oa.noPermission.delete('alice');
-    expect((await call(badge.login, { body: { uid: '11111111' } })).body).toMatchObject({ status: 'ok', token: 'token-of-alice' });
-    expect(lockOf(1)).toBeUndefined();
+  it('the lock survives a restart: kept in the DP, not in memory', async () => {
+    await present(new BadgeAuth(), '99999999', 3);
+    // A webserver restart: the modules loaded again, nothing kept but the DPs.
+    vi.resetModules();
+    const { BadgeAuth: Restarted } = await import('./badgeAuth');
+    const restarted = new Restarted();
+    expect((await present(restarted, '11111111', 1))[0]?.body).toMatchObject({ status: 'locked' });
+    // GET /config tells the login page so as soon as it loads.
+    expect((await call(restarted.getConfig)).body).toMatchObject({ locked: true });
+    expect((await call(restarted.getConfig, { ip: 'station-2' })).body).toMatchObject({ locked: false, lockedUntil: null });
   });
 
-  it('expires at the deadline, audited when the badge is next presented', async () => {
+  it('expires at the deadline, audited, and kept in the history', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(1_800_000_000_000);
     oa.badgeSettings['lockAfterFailures'] = 1;
     const badge = new BadgeAuth();
-    expect((await call(badge.login, { body: { uid: '33333333' } })).body).toMatchObject({ status: 'locked' });
+    expect((await present(badge, '99999999', 1))[0]?.body).toEqual({ status: 'locked', lockedUntil: 1_800_000_000_000 + 15 * 60_000 });
     vi.setSystemTime(1_800_000_000_000 + 15 * 60_000);
-    oa.noPermission.clear();
     oa.audit = [];
-    expect((await call(badge.login, { body: { uid: '33333333' } })).body).toMatchObject({ status: 'ok' });
-    expect(actions()).toEqual(['BADGE_VERROU_EXPIRE', 'OUVERTURE_SESSION']);
+    expect((await present(badge, '11111111', 1))[0]?.body).toMatchObject({ status: 'ok' });
+    expect(actions()).toEqual(['VERROU_EXPIRE', 'OUVERTURE_SESSION']);
+    expect(oa.audit[0]).toMatchObject({ host: 'station-1' });
+    expect(stored().records).toEqual([expect.objectContaining({ ip: 'station-1', state: 'expired' })]);
   });
 
   it('duration 0: locked until unlocked', async () => {
     oa.badgeSettings['lockAfterFailures'] = 1;
     oa.badgeSettings['lockDurationMin'] = 0;
-    const badge = new BadgeAuth();
-    expect((await call(badge.login, { body: { uid: '33333333' } })).body).toMatchObject({ status: 'locked', lockedUntil: null });
+    expect((await present(new BadgeAuth(), '99999999', 1))[0]?.body).toEqual({ status: 'locked', lockedUntil: null });
   });
 
-  it('threshold 0: never locks', async () => {
+  it('threshold 0: never counts nor locks', async () => {
     oa.badgeSettings['lockAfterFailures'] = 0;
-    const badge = new BadgeAuth();
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      expect((await call(badge.login, { body: { uid: '33333333' } })).body).toEqual({ status: 'unknown' });
-    }
-    expect(lockOf(3)).toBeUndefined();
+    const answers = await present(new BadgeAuth(), '99999999', 5);
+    expect(answers.every((answer) => answer.body['status'] === 'unknown')).toBe(true);
+    expect(oa.dps.size).toBe(0);
+  });
+
+  it('no audit line holds a badge number', async () => {
+    await present(new BadgeAuth(), '99999999', 4);
+    expect(oa.audit.every((line) => !line.reason.includes('99999999'))).toBe(true);
+  });
+
+  it('the user setting BADGE_LOCK of 0.5.0 is ignored', async () => {
+    oa.settings.set('BADGE_LOCK', new Map([[1, ['{"failures":3,"lockedAt":1,"lockedUntil":null,"host":"x"}']]]));
+    expect((await present(new BadgeAuth(), '11111111', 1))[0]?.body).toMatchObject({ status: 'ok' });
   });
 });
 
-describe('login: unknown badges', () => {
-  it('never lock anything, and are each audited', async () => {
+describe('GET /blacklist', () => {
+  it('401 without a token, 403 without `enrol` or `configure`', async () => {
     const badge = new BadgeAuth();
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      expect((await call(badge.login, { body: { uid: '99999999', item: 'WC1' } })).body).toEqual({ status: 'unknown' });
+    expect((await call(badge.getBlacklist)).status).toBe(401);
+    expect((await call(badge.getBlacklist, { as: 'alice' })).status).toBe(403);
+  });
+
+  it('the locks, newest first, and the refusals counted — for `enrol` and `configure`', async () => {
+    const badge = new BadgeAuth();
+    await present(badge, '99999999', 3, 'station-1');
+    await present(badge, '99999999', 1, 'station-2');
+    for (const as of ['admin', 'config']) {
+      const { status, body } = await call(badge.getBlacklist, { as });
+      expect(status).toBe(200);
+      expect(body['records']).toEqual([expect.objectContaining({ ip: 'station-1', state: 'active', failures: 3, item: 'WC1' })]);
+      expect(body['pending']).toEqual([expect.objectContaining({ ip: 'station-2', failures: 1 })]);
     }
-    expect(actions()).toEqual(Array(10).fill('BADGE_INCONNU'));
-    expect(oa.audit.every((line) => line.item === 'WC1' && !line.reason.includes('99999999'))).toBe(true);
-    expect(oa.settings.get('BADGE_LOCK')).toBeUndefined();
-    // The station still opens a known badge.
-    expect((await call(badge.login, { body: { uid: '11111111' } })).body).toMatchObject({ status: 'ok' });
+  });
+
+  it('turns the locks run out expired, audited', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(1_800_000_000_000);
+    const badge = new BadgeAuth();
+    await present(badge, '99999999', 3);
+    vi.setSystemTime(1_800_000_000_000 + 16 * 60_000);
+    oa.audit = [];
+    const { body } = await call(badge.getBlacklist, { as: 'admin' });
+    expect(body['records']).toEqual([expect.objectContaining({ state: 'expired' })]);
+    expect(actions()).toEqual(['VERROU_EXPIRE']);
   });
 });
 
-describe('POST /users/:userId/unlock', () => {
-  async function lockCarol(badge: InstanceType<typeof BadgeAuth>): Promise<void> {
-    for (let attempt = 0; attempt < 3; attempt += 1) await call(badge.login, { body: { uid: '33333333' } });
+describe('POST /blacklist/:ip/unlock', () => {
+  async function lockStation(badge: InstanceType<typeof BadgeAuth>): Promise<void> {
+    await present(badge, '99999999', 3);
     oa.audit = [];
   }
 
-  it('401 without a token, 403 without the `enrol` role', async () => {
+  it('401 without a token, 403 without the `enrol` role (`configure` is not enough)', async () => {
     const badge = new BadgeAuth();
-    await lockCarol(badge);
-    expect((await call(badge.unlockUser, { params: { userId: '3' }, body: { reason: 'x' } })).status).toBe(401);
-    expect((await call(badge.unlockUser, { params: { userId: '3' }, body: { reason: 'x' }, as: 'alice' })).status).toBe(403);
-    expect(lockOf(3)).toBeDefined();
+    await lockStation(badge);
+    const params = { ip: 'station-1' };
+    expect((await call(badge.unlockStation, { params, body: { reason: 'x' } })).status).toBe(401);
+    expect((await call(badge.unlockStation, { params, body: { reason: 'x' }, as: 'alice' })).status).toBe(403);
+    expect((await call(badge.unlockStation, { params, body: { reason: 'x' }, as: 'config' })).status).toBe(403);
+    expect(stored().records[0]).toMatchObject({ state: 'active' });
   });
 
   it('400 without a reason', async () => {
     const badge = new BadgeAuth();
-    await lockCarol(badge);
+    await lockStation(badge);
     for (const body of [{}, { reason: '' }, { reason: '   ' }, { reason: 42 }]) {
-      const answer = await call(badge.unlockUser, { params: { userId: '3' }, body, as: 'admin' });
+      const answer = await call(badge.unlockStation, { params: { ip: 'station-1' }, body, as: 'admin' });
       expect(answer.status).toBe(400);
       expect(answer.body).toEqual({ status: 'invalid', field: 'reason' });
     }
-    expect(lockOf(3)).toBeDefined();
+    expect(stored().records[0]).toMatchObject({ state: 'active' });
     expect(oa.audit).toEqual([]);
   });
 
-  it('lifts the lock and resets the count, audited with the reason', async () => {
+  it('404 for a station not locked', async () => {
     const badge = new BadgeAuth();
-    await lockCarol(badge);
-    const answer = await call(badge.unlockUser, { params: { userId: '3' }, body: { reason: ' Badge prêté ' }, as: 'admin' });
-    expect(answer).toEqual({ status: 200, body: { status: 'ok' } });
-    expect(lockOf(3)).toBeUndefined();
-    expect(oa.audit).toHaveLength(1);
-    expect(oa.audit[0]).toMatchObject({ action: 'BADGE_DEVERROUILLE', username: 'admin' });
-    expect(oa.audit[0]?.reason).toContain('carol');
-    expect(oa.audit[0]?.reason).toContain('Badge prêté');
+    await lockStation(badge);
+    expect((await call(badge.unlockStation, { params: { ip: 'station-2' }, body: { reason: 'x' }, as: 'admin' })).status).toBe(404);
   });
 
-  it('404 for an unknown user', async () => {
-    expect((await call(new BadgeAuth().unlockUser, { params: { userId: '77' }, body: { reason: 'x' }, as: 'admin' })).status).toBe(404);
+  it('lifts the lock, kept in the history with who, when and why, and audited', async () => {
+    const badge = new BadgeAuth();
+    await lockStation(badge);
+    const answer = await call(badge.unlockStation, { params: { ip: 'station-1' }, body: { reason: ' Badge prêté ' }, as: 'admin', ip: 'office' });
+    expect(answer.status).toBe(200);
+    expect(answer.body['record']).toMatchObject({ ip: 'station-1', state: 'lifted', liftedBy: 'admin', reason: 'Badge prêté' });
+    expect(stored().records).toEqual([expect.objectContaining({ state: 'lifted', liftedBy: 'admin', reason: 'Badge prêté' })]);
+    expect(oa.audit).toHaveLength(1);
+    expect(oa.audit[0]).toMatchObject({ action: 'VERROU_LEVE', username: 'admin', host: 'office' });
+    expect(oa.audit[0]?.reason).toContain('station-1');
+    expect(oa.audit[0]?.reason).toContain('Badge prêté');
+    // The station opens a badge again.
+    expect((await present(badge, '11111111', 1))[0]?.body).toMatchObject({ status: 'ok' });
   });
 });
 
-describe('GET /users: the lock', () => {
-  it('shows locked users and the failures counted', async () => {
-    const badge = new BadgeAuth();
-    for (let attempt = 0; attempt < 3; attempt += 1) await call(badge.login, { body: { uid: '33333333' } });
-    await call(badge.login, { body: { uid: '22222222' } });
-    const list = (await call(badge.listUsers, { as: 'admin' })).body as unknown as { username: string; lock: Record<string, unknown> }[];
-    const byName = Object.fromEntries(list.map((user) => [user.username, user.lock]));
-    expect(byName['carol']).toMatchObject({ locked: true, failures: 3 });
-    expect(byName['bob']).toMatchObject({ locked: false, failures: 1 });
-    expect(byName['alice']).toEqual({ locked: false, lockedAt: null, lockedUntil: null, failures: 0 });
-    expect(byName['root']).toBeUndefined();
+describe('GET /users', () => {
+  it('the users and their badge, no lock any more', async () => {
+    const list = (await call(new BadgeAuth().listUsers, { as: 'admin' })).body as unknown as Record<string, unknown>[];
+    expect(list.map((user) => user['username'])).toEqual(['admin', 'alice', 'bob', 'carol', 'config']);
+    expect(list.find((user) => user['username'] === 'alice')).toEqual({
+      username: 'alice',
+      fullName: 'Alice',
+      userId: 1,
+      enabled: true,
+      badge: '1111',
+      hashed: false
+    });
   });
 });
 

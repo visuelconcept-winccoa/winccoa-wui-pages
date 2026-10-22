@@ -4,7 +4,8 @@
 // -----------------------------------------------------------------------------
 // BadgeRoute — mounted at /api/auth-badge (badgeAuth.ts):
 //
-//   GET    /config          the reader's frame (prefix, timing), the login enabled
+//   GET    /config          the reader's frame (prefix, timing), the login enabled,
+//                            the requesting station's lock (locked, lockedUntil)
 //   POST   /login           { uid, dbrw?, item? }  the badge login — no session needed
 //   POST   /logout          { reason, item?, provider?, idleMinutes? }  the session's close, audited
 //                                                        (Authorization: Bearer <WebUI token>)
@@ -17,7 +18,9 @@
 //   PUT    /users/:userId   { uid }  associate a badge    (idem; `enrol`)
 //   POST   /users/:userId/test  { uid }  does it open that user's session (idem; `enrol`)
 //   DELETE /users/:userId   remove it                     (idem; `enrol`)
-//   POST   /users/:userId/unlock  { reason }  lift their badge lock (idem; `enrol`)
+//   GET    /blacklist       the stations' locks and their history, the refusals
+//                            counted (idem; `enrol` or `configure`)
+//   POST   /blacklist/:ip/unlock  { reason }  lift a station's lock (idem; `enrol`)
 // -----------------------------------------------------------------------------
 
 import { Request, Response, Router, json } from 'ultimate-express';
@@ -51,7 +54,8 @@ export class BadgeRoute {
     router.put('/users/:userId', safe(badge.enrolUser));
     router.post('/users/:userId/test', safe(badge.testUser));
     router.delete('/users/:userId', safe(badge.forgetUser));
-    router.post('/users/:userId/unlock', safe(badge.unlockUser));
+    router.get('/blacklist', safe(badge.getBlacklist));
+    router.post('/blacklist/:ip/unlock', safe(badge.unlockStation));
     return router;
   }
 }

@@ -6,8 +6,9 @@ see the toolkit's `docs/REFERENCE.md`, "A module's login page"). A site selects
 **one** login provider; wui refuses two.
 
 - **Login page**: an RFID reader in keyboard emulation, badge → user through
-  the `RFID_UID` user setting, a user's badge locked after N refused logins
-  (below, "Badge lock"), an audit line per event.
+  the `RFID_UID` user setting, a station's badge login locked after N refused
+  badges from its IP address, kept in a blacklist with its history (below,
+  "Station lock and blacklist"), an audit line per event.
 - **Session close**: the module's shell boot script hooks every logout and
   "Switch user"; `POST /logout` writes its audit line for the token's user
   (below, "Session close").
@@ -19,7 +20,7 @@ see the toolkit's `docs/REFERENCE.md`, "A module's login page"). A site selects
   role (below).
 - **Switch user** in the menu (the extension's `wui-switch-user-menu-item`).
 - Backend `/api/auth-badge` (`backend/badgeRoute.ts`, `badgeAuth.ts`,
-  `badgeHash.ts`, `badgeSettings.ts`, `oaAuth.ts`).
+  `badgeBlacklist.ts`, `badgeHash.ts`, `badgeSettings.ts`, `oaAuth.ts`).
 
 Taken from fra-stma, then developed in `winccoa-wui-auth` beside
 `wui-auth-hello` (Windows Hello). The two share three files — keep them equal:
@@ -61,12 +62,14 @@ groups to them in `/app-security`:
 
 | Role | Gives |
 | --- | --- |
-| `configure` | the page's settings (shown read-only without it) |
-| `enrol` | the users list: associate a badge with any WinCC OA user (presented to the reader, a number another user has refused), **test** that a presented badge opens that user's session (the login's own rules, nothing written: `POST /users/:userId/test` → `match`, `other` + the owner's name, `none`), or remove it — one's own included, here and not on Mon badge; see each user's badge lock and **unlock** it, with a reason |
+| `configure` | the page's settings (shown read-only without it); the blacklist, read-only |
+| `enrol` | the users list: associate a badge with any WinCC OA user (presented to the reader, a number another user has refused), **test** that a presented badge opens that user's session (the login's own rules, nothing written: `POST /users/:userId/test` → `match`, `other` + the owner's name, `none`), or remove it — one's own included, here and not on Mon badge; the blacklist, and **unlock** a locked station, with a reason |
 
-The page has two tabs: **Utilisateurs** (shown with `enrol` only) and
-**Configuration** (the settings below; read-only without `configure`). A user
-with neither role sees only that the page is reserved. The settings:
+The page has three tabs: **Utilisateurs** (shown with `enrol` only), **Liste
+noire** (the stations' locks, below; read with `enrol` or `configure`,
+Déverrouiller with `enrol`) and **Configuration** (the settings below;
+read-only without `configure`). A user with neither role sees only that the
+page is reserved. The settings:
 
 - **Connexion par badge activée** (`badgeLoginEnabled`, default on): off, the
   login page says so and `/login` answers `disabled` (audit
@@ -83,11 +86,12 @@ with neither role sees only that the page is reserved. The settings:
   (1–64, default 4; the server checks it again when a badge is associated),
   the **end key** (Entrée or Tabulation, default Entrée). `GET /config` hands
   them to the pages; `PUT /settings` answers 400 on a value out of bounds.
-- **Verrouillage des comptes** — saved together (Enregistrer): the **refused
-  logins** before a user's badge is locked (`lockAfterFailures`, 1–20, 0 =
-  never, default 3) and **how long** (`lockDurationMin`, 1–1440 min, 0 = until
-  unlocked on this page, default 15). Bounded by the server as the reader's
-  settings, taken into account at the next badge (no restart).
+- **Verrouillage des postes** — saved together (Enregistrer): the **refused
+  badges** in a row before a station's badge login is locked
+  (`lockAfterFailures`, 1–20, 0 = never, default 3) and **how long**
+  (`lockDurationMin`, 1–1440 min, 0 = until unlocked on this page, default
+  15). Bounded by the server as the reader's settings, taken into account at
+  the next badge (no restart).
 
 The login page, Mon badge and the users list read the badge with one
 component, `wui-auth-badge-reader` (`src/badge-reader.ts`): the prompt (heading
@@ -111,34 +115,65 @@ would let every call through. The module therefore requires `para` and
 `oaAuth.ts` now exports `users()` (the whole `_Users` directory): give
 `wui-auth-hello`'s copy the same export when it is next synced.
 
-## Badge lock
+## Station lock and blacklist
 
-Per **user**, never per station (`backend/badgeLock.ts`):
+Per **station** — the request's IP address (`clientAddress`: the first
+`X-Forwarded-For` address, else the socket's) —, never per user
+(`backend/badgeBlacklist.ts`):
 
-- Only refusals imputable to a user count: their badge is recognised but the
-  account is disabled, or has no WebUI login permission (audit
-  `SESSION_REFUSEE`). At `lockAfterFailures` in a row their badge is locked
-  (`BADGE_VERROUILLE`) for `lockDurationMin`, or until unlocked; a login
-  resets the count.
-- Kept in the user's setting `BADGE_LOCK` (`_usr_<UserId>_BADGE_LOCK`, created
-  at first need as `RFID_UID` is): `{ failures, lockedAt, lockedUntil, host }`
-  — `lockedUntil` null: until unlocked. The lock survives a webserver restart
-  and holds on every station.
-- While locked, the user's badge gets `{ status: 'locked', lockedUntil,
-  username, fullName }` (`BADGE_REFUSE_VERROU`); the login page shows the
-  user's name a moment, then waits for the next badge. The expiry is audited
-  when the badge is next presented (`BADGE_VERROU_EXPIRE`).
-- An **unknown badge locks nothing** — not the page, not the station, not a
-  user: `{ status: 'unknown' }` and an audit line (`BADGE_INCONNU`, station,
-  item) every time. The 0.4 station lock (`MIRE_VERROUILLEE`) is gone. This
-  departs from fra-stma's SL-BDG-09 wording ("3 badges / 15 min"): to be
-  recorded in the site's SDS or tracking register.
-- **Badges › Utilisateurs** shows each user's lock (locked until when, or the
-  failures counted) and, with `enrol`, **Déverrouiller**: a confirmation that
-  requires a reason. `POST /users/:userId/unlock { reason }` — 401 without a
-  token, 403 without `enrol`, 400 without a reason (200 characters kept) —
-  clears the lock and the count; audit `BADGE_DEVERROUILLE` with who unlocked,
-  whom, and the reason.
+- **Every refused badge counts** for its station: an unknown badge
+  (`BADGE_INCONNU`) or a recognised user refused — disabled account, no WebUI
+  login permission (`SESSION_REFUSEE`). At `lockAfterFailures` in a row the
+  station's badge login is locked (`MIRE_VERROUILLEE`: the address, the count)
+  for `lockDurationMin`, or until unlocked. A login from the station resets
+  its count. The other stations are not touched.
+- While locked, **every** badge from that address gets
+  `{ status: 'locked', lockedUntil }` before it is even looked up
+  (`BADGE_REFUSE_VERROU`) — `lockedUntil` null: until unlocked. The login page
+  shows « Connexion par badge verrouillée sur ce poste » with the deadline
+  (`GET /config` tells it as it loads: `locked`, `lockedUntil`) and keeps
+  reading: a badge asks the server again, so an unlock is taken at once. The
+  password login stays open.
+- **The blacklist**: every lock is a record `{ id, ip, lockedAt, lockedUntil,
+  failures, item, state, liftedBy, liftedAt, reason }` — `item` the last one
+  the station sent (its workcenter), `state` `active`, `expired` (its deadline
+  passed: `VERROU_EXPIRE`, written at the next badge or the next look at the
+  list) or `lifted` (unlocked by hand: who, when, why). The ended records stay
+  as the history, **500 at most**: beyond, the oldest ended ones are purged —
+  never an active lock. The counts of the stations not locked are kept beside
+  (`pending`, 500 addresses at most).
+- Kept as JSON in the DP **`WuiAuthBadge_Blacklist.state`** (type
+  `WuiAuthBadge_Blacklist`, created with the DP at the first refusal, as
+  `WuiAuthBadge_Config` is) and read again for every decision — nothing is
+  kept in the webserver's memory: a lock survives a restart. One webserver
+  serialises its own changes; several webservers of one project share the
+  DP (a refusal counted at the same instant on two of them may be lost).
+- **Badges › Liste noire**: the locks — active ones, or all of them with the
+  history (read-only) —: address, state, locked since, until, refusals,
+  station item, who lifted it, when and why; the refusals counted below. With
+  `enrol`, **Déverrouiller** on an active lock: a confirmation that requires a
+  reason.
+
+| Route | Role | Answer |
+| --- | --- | --- |
+| `GET /blacklist` | `enrol` **or** `configure` (both see the tab: one sets the threshold, the other unlocks) | `{ records, pending }`, records newest first; the locks run out turned `expired` first |
+| `POST /blacklist/:ip/unlock { reason }` | `enrol` | `{ status: 'ok', record }` — 401 without a token, 403 without `enrol`, 400 without a reason (200 characters kept), 404 when the address is not locked; the count reset, audit `VERROU_LEVE` (who, the address, the reason) |
+
+The roles are checked on the request's WebUI token, as for the users list.
+
+`clientAddress` (`oaAuth.ts`, shared with `wui-auth-hello`) trusts the
+`X-Forwarded-For` header: behind no reverse proxy, a client that forges it
+chooses the address its refusals count for. Where the stations reach the
+webserver directly, have the network (or a proxy that overwrites the header)
+guarantee it.
+
+**Since 0.6.0** the lock per user of 0.5.0 is gone — the user settings `BADGE_LOCK`
+(`_usr_<UserId>_BADGE_LOCK`, `_uss_BADGE_LOCK`) are no longer read nor
+written (delete them by hand if wished), `GET /users` no longer gives a
+`lock`, `POST /users/:userId/unlock` is gone, and so are the audit actions
+`BADGE_VERROUILLE`, `BADGE_VERROU_EXPIRE` and `BADGE_DEVERROUILLE`. A station
+holding three unknown badges is locked as fra-stma's SL-BDG-09 asks
+("3 badges / 15 min" by default).
 
 No audit line ever holds a badge number.
 
@@ -216,13 +251,17 @@ as a user without `enrol` (turn self-service off with
 (`wui-auth-badge-admin`) but not in the harness menu, which shows one entry
 per page. `npm test` checks its types
 (page and backend) and runs `src/badge-frame-detector.spec.ts` and the
-backend's specs: `badgeHash`, `badgeLock` (count, expiry, persistence's
-format), `badgeSettings` (the lock's bounds) and `badgeAuth` (the login's lock
-across a restart, unknown badges never locking, unlock refused without the
-role or a reason, the session close's audit line — against a mocked WinCC OA),
+backend's specs: `badgeHash`, `badgeBlacklist` (the count per address, expiry,
+unlock, the history's bound, the DP read again and the changes serialised),
+`badgeSettings` (the lock's bounds) and `badgeAuth` (the station's lock —
+unknown and refused badges alike, that station only, reset by a login —
+across a restart, its expiry, `GET /blacklist` and the unlock refused without
+the role or a reason, the session close's audit line — against a mocked
+WinCC OA),
 and `src/shell/boot.spec.ts` (the logout hook's request). The boot script does
 not run in `wui dev` (no shell there).
-The mock's user `former` is locked (Déverrouiller). The mock hashes with a fixed dev key.
+The mock's station 10.0.0.42 is locked (Liste noire › Déverrouiller), with
+two past locks in the history. The mock hashes with a fixed dev key.
 
 ## Not done
 

@@ -10,14 +10,17 @@
  *               reader's frame (prefix, longest burst, shortest number, end
  *               key), saved together; the numbers stored as one-way
  *               fingerprints (confirmed first: the numbers in clear are
- *               rewritten, for good); the account lock (refused logins
+ *               rewritten, for good); the stations' lock (refused badges
  *               before it, its duration), saved together
  *   enrol       the WinCC OA users and their badge: associate one, presented
  *               to the reader (badge-reader.ts, the login page's capture),
  *               test that a presented badge opens that user's session, or
- *               remove it; their badge lock, lifted with a reason
+ *               remove it; a locked station (IP address) unlocked, with a
+ *               reason
  *
- * Two tabs: "Utilisateurs" (`enrol`; hidden without it) and "Configuration".
+ * Three tabs: "Utilisateurs" (`enrol`; hidden without it), "Liste noire" (the
+ * stations' locks, active or all with the history — read with either role,
+ * "Déverrouiller" with `enrol`) and "Configuration".
  * Without either role the page only says so. The server checks the same roles
  * on every call (backend/badgeAuth.ts); the badge numbers never reach the
  * browser, only the last digits of a number in clear.
@@ -35,12 +38,13 @@ const API = '/api/auth-badge';
 
 /** Tab keys (the ix-tab-item `tab-key`s — iX 5 selects tabs by key, not index). */
 const TAB_USERS = 'users';
+const TAB_BLACKLIST = 'blacklist';
 const TAB_CONFIGURATION = 'configuration';
 
 type ReaderSettings = Pick<BadgeFrameOptions, 'prefix' | 'maxFrameMs' | 'minUidLength' | 'endKey'>;
 
 interface LockSettings {
-  /** Refused badge logins in a row before the account's badge is locked; 0: never. */
+  /** Refused badges in a row from a station before its badge login is locked; 0: never. */
   lockAfterFailures: number;
   /** Minutes; 0: until unlocked here. */
   lockDurationMin: number;
@@ -76,9 +80,37 @@ interface BadgeUser {
   badge: string | null;
   /** A badge is associated, stored as a fingerprint. */
   hashed: boolean;
-  /** The badge lock (an expired one shown as none); absent from an older backend. */
-  lock?: { locked: boolean; lockedAt: number | null; lockedUntil: number | null; failures: number };
 }
+
+/** A station's lock, current or past (GET /blacklist; backend/badgeBlacklist.ts). */
+interface BlacklistRecord {
+  id: string;
+  ip: string;
+  lockedAt: number;
+  /** null: until unlocked here. */
+  lockedUntil: number | null;
+  failures: number;
+  /** The last item the station sent (its workcenter…). */
+  item: string;
+  state: 'active' | 'expired' | 'lifted';
+  liftedBy: string | null;
+  liftedAt: number | null;
+  reason: string | null;
+}
+
+/** A station's refused badges counted, not locked (yet). */
+interface PendingFailures {
+  ip: string;
+  failures: number;
+  item: string;
+  lastAt: number;
+}
+
+const LOCK_STATES: Record<BlacklistRecord['state'], string> = {
+  active: 'Verrouillé',
+  expired: 'Expiré',
+  lifted: 'Levé'
+};
 
 type EnrolStatus = 'ok' | 'taken' | 'invalid';
 type TestResult = { status: 'match' | 'none' | 'invalid' } | { status: 'other'; username: string };
@@ -87,11 +119,6 @@ type CaptureMode = 'enrol' | 'test';
 
 function hasBadge(user: BadgeUser): boolean {
   return user.badge !== null || user.hashed;
-}
-
-/** Locked, or failures counted: something to unlock. */
-function hasLock(user: BadgeUser): boolean {
-  return !!user.lock && (user.lock.locked || user.lock.failures > 0);
 }
 
 @customElement('wui-auth-badge-admin')
@@ -175,8 +202,12 @@ export class WuiAuthBadgeAdmin extends LitElement {
   /** The user whose badge is being presented (to enrol or to test), or the one whose removal awaits confirmation. */
   @state() private capture?: { userId: number; mode: CaptureMode };
   @state() private confirmingRemoval?: number;
-  /** The user whose unlock awaits its reason and confirmation. */
-  @state() private unlocking?: { userId: number; reason: string };
+  /** The stations' locks (newest first) and the refusals counted; undefined until loaded. */
+  @state() private blacklist?: { records: BlacklistRecord[]; pending: PendingFailures[] };
+  /** The blacklist's filter: the active locks, or all of them with the history. */
+  @state() private blacklistScope: 'active' | 'all' = 'active';
+  /** The station whose unlock awaits its reason and confirmation. */
+  @state() private unlocking?: { ip: string; reason: string };
   /** Hashing asked for, awaiting confirmation. */
   @state() private confirmingHash = false;
   @state() private message = '';
@@ -211,6 +242,7 @@ export class WuiAuthBadgeAdmin extends LitElement {
           this.usersRequested = true;
           void this.loadUsers();
         }
+        if (enrol || configure) void this.loadBlacklist();
       }
     );
     void this.loadSettings();
@@ -226,14 +258,17 @@ export class WuiAuthBadgeAdmin extends LitElement {
       return html`<ix-typography format="h2">Badges</ix-typography>
         <p>Accès réservé aux personnes habilitées à configurer la connexion par badge ou à enrôler les badges.</p>`;
     }
-    // The users without `enrol`: the configuration only (read-only without `configure`).
-    const tab = this.canEnrol ? this.activeTab : TAB_CONFIGURATION;
+    // The users without `enrol`: the blacklist (read-only) and the configuration (read-only without `configure`).
+    const tab = !this.canEnrol && this.activeTab === TAB_USERS ? TAB_BLACKLIST : this.activeTab;
     return html`<ix-typography format="h2">Badges</ix-typography>
       <ix-tabs .activeTabKey=${tab} @tabChange=${this.onTabChange}>
         ${this.canEnrol ? html`<ix-tab-item tab-key=${TAB_USERS}>Utilisateurs</ix-tab-item>` : nothing}
+        <ix-tab-item tab-key=${TAB_BLACKLIST}>Liste noire</ix-tab-item>
         <ix-tab-item tab-key=${TAB_CONFIGURATION}>Configuration</ix-tab-item>
       </ix-tabs>
-      <div class="tab-body">${tab === TAB_USERS ? this.renderUsers() : this.renderSettings()}</div>
+      <div class="tab-body">
+        ${tab === TAB_USERS ? this.renderUsers() : tab === TAB_BLACKLIST ? this.renderBlacklist() : this.renderSettings()}
+      </div>
       <p class=${this.failed ? 'error' : 'success'} role="status">${this.message}</p>`;
   }
 
@@ -244,6 +279,7 @@ export class WuiAuthBadgeAdmin extends LitElement {
     this.confirmingRemoval = undefined;
     this.unlocking = undefined;
     this.activeTab = event.detail;
+    if (event.detail === TAB_BLACKLIST) void this.loadBlacklist();
   }
 
   private renderSettings(): unknown {
@@ -324,11 +360,12 @@ export class WuiAuthBadgeAdmin extends LitElement {
     const [minFailures, maxFailures] = LIMITS.lockAfterFailures;
     const [minDuration, maxDuration] = LIMITS.lockDurationMin;
     return html`<section>
-      <ix-typography format="h3">Verrouillage des comptes</ix-typography>
+      <ix-typography format="h3">Verrouillage des postes</ix-typography>
       <p class="hint">
-        Un compte dont le badge est refusé plusieurs fois de suite (compte désactivé, sans droit de connexion WebUI) voit
-        son badge verrouillé sur tous les postes ; une connexion réussie remet le compteur à zéro. Un badge inconnu ne
-        verrouille rien : il est seulement tracé.
+        Un poste (adresse IP) sur lequel plusieurs badges sont refusés de suite — badge inconnu, compte désactivé ou sans
+        droit de connexion WebUI — voit sa connexion par badge verrouillée ; les autres postes ne sont pas touchés et la
+        connexion par identifiant et mot de passe reste possible. Une connexion réussie remet le compteur du poste à
+        zéro. Les verrouillages sont listés dans l'onglet « Liste noire ».
       </p>
       <div class="reader-fields">
         <ix-number-input
@@ -456,7 +493,6 @@ export class WuiAuthBadgeAdmin extends LitElement {
             <th>Utilisateur</th>
             <th>Nom complet</th>
             <th>Badge</th>
-            <th>Verrouillage</th>
             <th></th>
           </tr>
         </thead>
@@ -472,32 +508,109 @@ export class WuiAuthBadgeAdmin extends LitElement {
       <td>${user.username}${user.enabled ? nothing : html` (désactivé)`}</td>
       <td>${user.fullName}</td>
       <td>${user.hashed ? 'Associé (chiffré)' : user.badge ? html`•••• ${user.badge}` : '—'}</td>
-      <td class=${user.lock?.locked ? 'error' : ''}>${lockText(user)}</td>
       <td><div class="actions">${this.renderActions(user)}</div></td>
     </tr>
-    ${this.capture?.userId === user.userId ? this.renderCapture(user, this.capture.mode) : nothing}
-    ${this.unlocking?.userId === user.userId ? this.renderUnlock(user, this.unlocking.reason) : nothing}`;
+    ${this.capture?.userId === user.userId ? this.renderCapture(user, this.capture.mode) : nothing}`;
+  }
+
+  /** The stations' locks: the active ones, or all of them (the history, read-only). */
+  private renderBlacklist(): unknown {
+    const blacklist = this.blacklist;
+    if (!blacklist) return html`<p>Chargement…</p>`;
+    const records =
+      this.blacklistScope === 'active' ? blacklist.records.filter((record) => record.state === 'active') : blacklist.records;
+    return html`<section>
+      <p class="hint">
+        Un poste est verrouillé après ${this.settings ? this.settings.lockAfterFailures : 'N'} badges refusés de suite
+        (onglet « Configuration »). Le déverrouillage demande un motif ; il est tracé.
+      </p>
+      <div class="buttons">
+        <ix-select
+          class="filter"
+          label="Afficher"
+          data-testid="blacklist-scope"
+          .value=${this.blacklistScope}
+          @valueChange=${(e: CustomEvent<string>) => (this.blacklistScope = e.detail === 'all' ? 'all' : 'active')}
+        >
+          <ix-select-item label="Verrouillages actifs" value="active"></ix-select-item>
+          <ix-select-item label="Tous (historique)" value="all"></ix-select-item>
+        </ix-select>
+        <ix-button variant="secondary" data-testid="blacklist-refresh" @click=${() => void this.loadBlacklist()}>Actualiser</ix-button>
+      </div>
+      ${records.length === 0
+        ? html`<p>${this.blacklistScope === 'active' ? 'Aucun poste verrouillé.' : 'Aucun verrouillage enregistré.'}</p>`
+        : html`<table>
+            <thead>
+              <tr>
+                <th>Adresse IP</th>
+                <th>État</th>
+                <th>Verrouillé depuis</th>
+                <th>Jusqu'à</th>
+                <th>Refus</th>
+                <th>Poste / item</th>
+                <th>Levée</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${records.map((record) => this.renderLock(record))}
+            </tbody>
+          </table>`}
+      ${blacklist.pending.length > 0
+        ? html`<p class="hint">
+            Refus en cours, sans verrouillage :
+            ${blacklist.pending.map((pending) => `${pending.ip} (${pending.failures})`).join(', ')}.
+          </p>`
+        : nothing}
+    </section>`;
+  }
+
+  private renderLock(record: BlacklistRecord): unknown {
+    const unlocking = this.unlocking?.ip === record.ip && record.state === 'active' ? this.unlocking : undefined;
+    return html`<tr>
+        <td>${record.ip}</td>
+        <td class=${record.state === 'active' ? 'error' : ''}>${LOCK_STATES[record.state]}</td>
+        <td>${formatDateTime(record.lockedAt)}</td>
+        <td>${record.lockedUntil === null ? 'Déverrouillage manuel' : formatDateTime(record.lockedUntil)}</td>
+        <td>${record.failures}</td>
+        <td>${record.item || '—'}</td>
+        <td>
+          ${record.state === 'lifted'
+            ? `${record.liftedBy ?? '?'}, ${record.liftedAt === null ? '' : formatDateTime(record.liftedAt)} : ${record.reason ?? ''}`
+            : '—'}
+        </td>
+        <td>
+          <div class="actions">
+            ${record.state === 'active' && this.canEnrol && !unlocking
+              ? html`<ix-button variant="secondary" data-testid="unlock-${record.ip}" @click=${() => this.startUnlock(record.ip)}>
+                  Déverrouiller
+                </ix-button>`
+              : nothing}
+          </div>
+        </td>
+      </tr>
+      ${unlocking ? this.renderUnlock(record, unlocking.reason) : nothing}`;
   }
 
   /** The unlock's confirmation: a reason is required (the server refuses one without). */
-  private renderUnlock(user: BadgeUser, reason: string): unknown {
+  private renderUnlock(record: BlacklistRecord, reason: string): unknown {
     return html`<tr class="enrolment">
-      <td colspan="5">
+      <td colspan="8">
         <div class="confirm" role="alertdialog" aria-label="Confirmer le déverrouillage">
-          <p>Déverrouiller le badge de ${user.username} et remettre son compteur d'échecs à zéro. Le motif est tracé.</p>
+          <p>
+            Déverrouiller la connexion par badge du poste ${record.ip} et remettre son compteur de refus à zéro. Le motif est
+            tracé.
+          </p>
           <ix-input
             label="Motif du déverrouillage"
             required
             maxlength=${MAX_REASON_LENGTH}
-            data-testid="unlock-reason-${user.userId}"
+            data-testid="unlock-reason"
             .value=${reason}
-            @valueChange=${(e: CustomEvent<string>) => (this.unlocking = { userId: user.userId, reason: e.detail ?? '' })}
+            @valueChange=${(e: CustomEvent<string>) => (this.unlocking = { ip: record.ip, reason: e.detail ?? '' })}
           ></ix-input>
           <div class="buttons">
-            <ix-button
-              data-testid="confirm-unlock-${user.userId}"
-              ?disabled=${reason.trim() === ''}
-              @click=${() => void this.unlock(user, reason)}
+            <ix-button data-testid="confirm-unlock" ?disabled=${reason.trim() === ''} @click=${() => void this.unlock(record.ip, reason)}
               >Déverrouiller</ix-button
             >
             <ix-button variant="secondary" @click=${() => (this.unlocking = undefined)}>Annuler</ix-button>
@@ -510,7 +623,7 @@ export class WuiAuthBadgeAdmin extends LitElement {
   private renderCapture(user: BadgeUser, mode: CaptureMode): unknown {
     const prompt = mode === 'test' ? `Présentez le badge à tester pour ${user.username}` : `Présentez le badge de ${user.username}`;
     return html`<tr class="enrolment">
-      <td colspan="5">
+      <td colspan="4">
         <wui-auth-badge-reader
           heading=${this.associating ? 'Lecture du badge…' : prompt}
           .message=${this.readerError}
@@ -526,7 +639,7 @@ export class WuiAuthBadgeAdmin extends LitElement {
   }
 
   private renderActions(user: BadgeUser): unknown {
-    if (this.capture?.userId === user.userId || this.unlocking?.userId === user.userId) return nothing;
+    if (this.capture?.userId === user.userId) return nothing;
     if (this.confirmingRemoval === user.userId) {
       return html`<ix-button variant="danger-primary" @click=${() => void this.removeBadge(user)}>Confirmer le retrait</ix-button>
         <ix-button variant="secondary" @click=${() => (this.confirmingRemoval = undefined)}>Annuler</ix-button>`;
@@ -541,30 +654,36 @@ export class WuiAuthBadgeAdmin extends LitElement {
       </ix-button>
       ${hasBadge(user)
         ? html`<ix-button variant="secondary" @click=${() => (this.confirmingRemoval = user.userId)}>Retirer</ix-button>`
-        : nothing}
-      ${hasLock(user)
-        ? html`<ix-button variant="secondary" data-testid="unlock-${user.userId}" @click=${() => this.startUnlock(user)}>
-            Déverrouiller
-          </ix-button>`
         : nothing}`;
   }
 
-  private startUnlock(user: BadgeUser): void {
-    this.unlocking = { userId: user.userId, reason: '' };
-    this.capture = undefined;
-    this.confirmingRemoval = undefined;
+  private startUnlock(ip: string): void {
+    this.unlocking = { ip, reason: '' };
     this.message = '';
   }
 
-  private async unlock(user: BadgeUser, reason: string): Promise<void> {
+  private async unlock(ip: string, reason: string): Promise<void> {
     if (reason.trim() === '') return;
     try {
-      await fetchAsUser(`${API}/users/${user.userId}/unlock`, { method: 'POST', body: JSON.stringify({ reason: reason.trim() }) });
+      await fetchAsUser(`${API}/blacklist/${encodeURIComponent(ip)}/unlock`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: reason.trim() })
+      });
       this.unlocking = undefined;
-      this.report(true, `Badge de ${user.username} déverrouillé.`);
-      await this.loadUsers();
+      this.report(true, `Poste ${ip} déverrouillé.`);
     } catch (error) {
       this.report(false, `Déverrouillage impossible (${String(error)}).`);
+    }
+    await this.loadBlacklist();
+  }
+
+  private async loadBlacklist(): Promise<void> {
+    if (!this.canEnrol && !this.canConfigure) return;
+    try {
+      this.blacklist = await fetchAsUser<{ records: BlacklistRecord[]; pending: PendingFailures[] }>(`${API}/blacklist`);
+    } catch (error) {
+      this.blacklist = { records: [], pending: [] };
+      if (!String(error).includes('403')) this.report(false, `Liste noire indisponible (${String(error)}).`);
     }
   }
 
@@ -716,16 +835,8 @@ function lockValid({ lockAfterFailures, lockDurationMin }: LockSettings): boolea
   return within(lockAfterFailures, LIMITS.lockAfterFailures) && within(lockDurationMin, LIMITS.lockDurationMin);
 }
 
-/** The lock column: locked until when, or the failures counted. */
-function lockText(user: BadgeUser): string {
-  const lock = user.lock;
-  if (!lock) return '—';
-  if (lock.locked) {
-    return lock.lockedUntil === null
-      ? 'Verrouillé (déverrouillage manuel)'
-      : `Verrouillé jusqu'à ${new Date(lock.lockedUntil).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}`;
-  }
-  return lock.failures > 0 ? `${lock.failures} échec(s)` : '—';
+function formatDateTime(epochMs: number): string {
+  return new Date(epochMs).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
 }
 
 function readerValid({ prefix, maxFrameMs, minUidLength }: ReaderSettings): boolean {
