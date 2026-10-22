@@ -51,6 +51,19 @@ import {
   type CauseRow,
   type RawStop
 } from '@visuelconcept-winccoa/wui-fleet-core/engine.js';
+import {
+  allowedSpans,
+  clipToSpans,
+  loadDashboardFilter,
+  paretoFromStops,
+  saveDashboardFilter,
+  spanValues,
+  valueSpans,
+  type DashboardFilter,
+  type ValueSpan
+} from '@visuelconcept-winccoa/wui-fleet-core/dashboard-filter.js';
+import type { FleetFilter } from '@visuelconcept-winccoa/wui-fleet-core/filters.js';
+import './mf-filter-bar.js';
 import { scopeFromDpes } from '@visuelconcept-winccoa/wui-alarms-core/scope.js';
 import '@visuelconcept-winccoa/wui-alarms-core/ui/wui-alarm-view.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
@@ -168,11 +181,14 @@ export class MfMachineDashboard extends LitElement {
   @state() private paretoTop = DEFAULT_PARETO_TOP;
   @state() private paretoMetric: ParetoMetric = 'downtime';
   @state() private paretoClass: ParetoClass = 'unplanned';
-  @state() private segments: StateSegment[] = [];
+  @state() private segmentsAll: StateSegment[] = [];
   /** Full sorted (desc) list of unplanned causes; sliced per `paretoTop` at render. */
-  @state() private pareto: CauseRow[] = [];
+  @state() private paretoAll: CauseRow[] = [];
   /** Stops of the period, most recent first, split by cause (SL-TDB-04). */
-  @state() private stops: RawStop[] = [];
+  @state() private stopsAll: RawStop[] = [];
+  /** Dashboard filters (SL-TDB-05), remembered in the browser; context = work order and filterable params. */
+  @state() private filter: DashboardFilter = loadDashboardFilter();
+  @state() private contextDims: { key: string; label: string; spans: ValueSpan[] }[] = [];
   @state() private loading = false;
   @state() private tip: { x: number; y: number; seg: StateSegment } | null = null;
   /** Live DP values from `dpConnect`, keyed by normalised DP name. */
@@ -205,7 +221,7 @@ export class MfMachineDashboard extends LitElement {
             <span class="grow"></span>
             <ix-icon-button ghost icon="close" title=${localize(MSG.machineDash.close)} @click=${this.close}></ix-icon-button>
           </div>
-          ${this.renderToolbar()}
+          ${this.renderToolbar()} ${this.renderFilters()}
           <div class="content">
             <section class="zone zone-params">
               <h4>${localizeDir(MSG.machineDash.processParams)}</h4>
@@ -479,6 +495,92 @@ export class MfMachineDashboard extends LitElement {
         <span class="range">${this.rangeLabel()}</span>
       </div>
     `;
+  }
+
+  // --- dashboard filters (SL-TDB-05) --------------------------------------------
+
+  /** Work order and the parameters marked filterable, each as value spans over the period. */
+  private async buildContext(m: Machine, start: Date, end: Date): Promise<{ key: string; label: string; spans: ValueSpan[] }[]> {
+    const lookback = new Date(start.getTime() - (end.getTime() - start.getTime()));
+    const dims: { key: string; label: string; dp: string }[] = [];
+    if (m.workOrderDp) dims.push({ key: 'of', label: localize(MSG.machineDash.filterWorkOrder), dp: m.workOrderDp });
+    for (const k of m.kpis ?? []) if (k.filterable && k.dp) dims.push({ key: `param:${k.key}`, label: k.label || k.key, dp: k.dp });
+    const out: { key: string; label: string; spans: ValueSpan[] }[] = [];
+    for (const d of dims) {
+      // eslint-disable-next-line no-await-in-loop
+      const samples = await queryHistory(this.api, d.dp, lookback, end);
+      out.push({ key: d.key, label: d.label, spans: valueSpans(samples, start.getTime(), end.getTime()) });
+    }
+    return out;
+  }
+
+  /** Periods the context selection keeps (null = no context filter). */
+  private allowed(): { s: number; e: number }[] | null {
+    const dims = Object.fromEntries(this.contextDims.map((d) => [d.key, d.spans]));
+    const selected: Record<string, string[]> = {};
+    for (const d of this.contextDims) {
+      const values = (this.filter.context[d.key] ?? []).filter((v) => d.spans.some((x) => x.v === v));
+      if (values.length) selected[d.key] = values;
+    }
+    return allowedSpans(dims, selected);
+  }
+
+  private filterActive(): boolean {
+    return this.allowed() !== null || this.filter.states.length > 0 || this.filter.causes.length > 0;
+  }
+
+  /** State of the machine when a stop started (from the unfiltered timeline). */
+  private stateAt(t: number): string {
+    return this.segmentsAll.find((s) => t >= s.startMs && t < s.endMs)?.state ?? '';
+  }
+
+  /** The Gantt segments within the kept periods. */
+  private get segments(): StateSegment[] {
+    return clipToSpans(this.segmentsAll, this.allowed());
+  }
+
+  /** The stops within the kept periods, of the selected states and causes. */
+  private get stops(): RawStop[] {
+    const { states, causes } = this.filter;
+    return clipToSpans(this.stopsAll, this.allowed()).filter(
+      (s) => (states.length === 0 || states.includes(this.stateAt(s.startMs))) && (causes.length === 0 || causes.includes(s.causeKey))
+    );
+  }
+
+  /** Pareto rows: the analysis' own without filter, else recomputed from the filtered stops. */
+  private get pareto(): CauseRow[] {
+    if (!this.filterActive()) return this.paretoAll;
+    return paretoFromStops(this.stops).filter((r) => r.classification === 'unplanned' || r.classification === 'planned');
+  }
+
+  /** Filter bar: state, stop cause, then the context dimensions (labels shown, keys kept). */
+  private renderFilters(): TemplateResult {
+    const stateLabels = new Map(statesOf(this.mapping).map((s) => [s.key, s.label]));
+    const causeLabels = new Map(this.stopsAll.map((s) => [s.causeKey, s.causeLabel]));
+    const dims = [
+      { key: localize(MSG.machineDash.filterState), values: [...stateLabels.values()] },
+      { key: localize(MSG.machineDash.filterCause), values: [...new Set(causeLabels.values())].sort() },
+      ...this.contextDims.map((d) => ({ key: d.label, values: spanValues(d.spans) }))
+    ].filter((d) => d.values.length > 0);
+    const selected: FleetFilter = {
+      [localize(MSG.machineDash.filterState)]: this.filter.states.map((k) => stateLabels.get(k) ?? k),
+      [localize(MSG.machineDash.filterCause)]: this.filter.causes.map((k) => causeLabels.get(k) ?? k)
+    };
+    for (const d of this.contextDims) selected[d.label] = this.filter.context[d.key] ?? [];
+    const onFilter = (e: CustomEvent<FleetFilter>): void => {
+      const f = e.detail;
+      const back = (labels: Map<string, string>, chosen: string[] | undefined): string[] =>
+        [...labels].filter(([, label]) => (chosen ?? []).includes(label)).map(([key]) => key);
+      const context: Record<string, string[]> = {};
+      for (const d of this.contextDims) if (f[d.label]?.length) context[d.key] = f[d.label];
+      this.filter = {
+        states: back(stateLabels, f[localize(MSG.machineDash.filterState)]),
+        causes: back(causeLabels, f[localize(MSG.machineDash.filterCause)]),
+        context
+      };
+      saveDashboardFilter(this.filter);
+    };
+    return html`<mf-filter-bar class="dash-filters" .dimensions=${dims} .filter=${selected} @wui:filter=${onFilter}></mf-filter-bar>`;
   }
 
   /** "du <début> au <fin>" for the resolved period — always shown. */
@@ -983,9 +1085,10 @@ export class MfMachineDashboard extends LitElement {
     const m = this.machine;
     const gen = ++this.reloadGen;
     if (!this.api || !m.stateDp) {
-      this.segments = [];
-      this.pareto = [];
-      this.stops = [];
+      this.segmentsAll = [];
+      this.paretoAll = [];
+      this.stopsAll = [];
+      this.contextDims = [];
       this.loading = false;
       return;
     }
@@ -996,12 +1099,14 @@ export class MfMachineDashboard extends LitElement {
       return;
     }
     const segments = await this.buildSegments(m, start, end);
+    const contextDims = await this.buildContext(m, start, end);
     // Stops without a cause datapoint still count: they are listed without a cause.
     const analysis = await this.analyse(m, start, end);
     if (gen !== this.reloadGen) return;
-    this.segments = segments;
-    this.pareto = analysis.rows;
-    this.stops = analysis.stops;
+    this.segmentsAll = segments;
+    this.contextDims = contextDims;
+    this.paretoAll = analysis.rows;
+    this.stopsAll = analysis.stops;
     this.loading = false;
   }
 
@@ -1345,6 +1450,9 @@ function dashboardStyles() {
       background: color-mix(in srgb, #10b981 8%, transparent);
       /* The chart keeps its floor size and the panel scrolls rather than crop it. */
       overflow: auto;
+    }
+    .dash-filters {
+      margin: 0.5rem 0.75rem 0;
     }
     .zone-stops {
       flex: 0 0 auto;

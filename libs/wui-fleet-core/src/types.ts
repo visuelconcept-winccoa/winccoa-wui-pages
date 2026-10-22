@@ -340,6 +340,11 @@ export interface Kpi {
   showInCard?: boolean;
   /** Order within the detail card (ascending). */
   cardOrder?: number;
+  /**
+   * A production-context value over time (article, contract…): offered as a filter of the
+   * machine dashboard, like the work order (needs the datapoint archived).
+   */
+  filterable?: boolean;
 }
 
 /** Maximum number of KPI parameters bound per machine. */
