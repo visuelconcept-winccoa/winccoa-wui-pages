@@ -45,6 +45,22 @@ describe('the logout hook', () => {
     expect(JSON.parse(init.body as string)).toEqual({ reason: 'logout', provider: 'standard' });
   });
 
+  it('an idle expiry put in the login context by a site module is audited as idle, with its delay', async () => {
+    const fetch = vi.fn(async () => new Response('{}'));
+    vi.stubGlobal('fetch', fetch);
+    await bootWith()({ reason: 'switch-user', provider: 'auth-badge', context: { item: 'WC1', logoutReason: 'idle', idleMinutes: '30' } });
+    const [, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ reason: 'idle', item: 'WC1', provider: 'auth-badge', idleMinutes: 30 });
+  });
+
+  it('an idle expiry without a valid delay is audited as idle, without it', async () => {
+    const fetch = vi.fn(async () => new Response('{}'));
+    vi.stubGlobal('fetch', fetch);
+    await bootWith()({ reason: 'switch-user', provider: undefined, context: { logoutReason: 'idle', idleMinutes: 'x' } });
+    const [, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ reason: 'idle', provider: 'standard' });
+  });
+
   it('never rejects: a failed request does not hold the logout', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('network'))));
     await expect(bootWith()({ reason: 'logout', provider: 'auth-badge', context: {} })).resolves.toBeUndefined();

@@ -212,8 +212,11 @@ closed —, the session still open; `provider` is the shell's (`auth-badge`…),
 `standard` for the standard form or OIDC. The shell waits for it 3 s at most
 and never lets it block the logout. The boot script declares neither a header
 element nor `loginHome`: it goes along with the site's own boot script (the
-station's page and `item`). `idle` is not a reason the shell gives: it is
-there for the module that closes an idle session itself.
+station's page and `item`). `idle` is not a reason the shell gives: a site
+module that closes an idle session through `shell.switchUser()` first puts
+`logoutReason: 'idle'` and `idleMinutes` in the login context
+(`setLoginContext`); the hook then audits the close as `idle`, with the delay
+(0.6.2), instead of `switch-user`.
 
 ## Badge numbers as fingerprints (`hashBadges`)
 

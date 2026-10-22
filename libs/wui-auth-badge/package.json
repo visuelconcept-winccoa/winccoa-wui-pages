@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-auth-badge",
   "type": "module",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Badge login for the WebUI shell — a login provider's login extension: an RFID reader in keyboard emulation, badge → user through the RFID_UID user setting, a station's badge login locked after N refused badges from its IP address (unknown or refused alike; kept in a blacklist DP, with its history), an audit line per event, every session's close audited through the shell's logout hook (POST /logout); \"Mon badge\" (/auth-badge) lets a user associate their badge when self-service is on; \"Badges\" (/auth-badge/admin), by Application Security role, turns the badge login on or off, opens or closes self-service, stores the numbers as one-way fingerprints (HMAC-SHA256), sets the lock's threshold and duration, enrols any user's badge, tests that a badge opens their session, shows the blacklist and unlocks a locked station with a reason; \"Switch user\" in the menu.",
   "author": {
     "name": "Visuel Concept"
