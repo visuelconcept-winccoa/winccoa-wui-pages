@@ -39,6 +39,8 @@ import {
   type MachineProcess,
   type MachineType,
   type PortiqueSize,
+  placeFromMarker,
+  type PlacementMarker,
   type StateMapping,
   type TrsThresholds,
   type TrsWindow
@@ -112,6 +114,8 @@ export class MfMachineDialog extends LitElement {
   @property({ attribute: false }) machine!: MachineDef;
   @property({ attribute: false }) mappings: StateMapping[] = [];
   @property({ attribute: false }) thresholds: TrsThresholds[] = [];
+  /** Placement markers of the atelier, to place the machine from one (SDS 2.2 SL-IMP-02). */
+  @property({ attribute: false }) markers: PlacementMarker[] = [];
   @property({ attribute: false }) glbResources: GlbResource[] = [];
   @property({ attribute: false }) billboardResources: GlbResource[] = [];
   @property({ attribute: false }) dashboards: DashboardOption[] = [];
@@ -517,6 +521,7 @@ export class MfMachineDialog extends LitElement {
           .value=${m.loc ?? ''}
           @valueChange=${(e: IxValueEvent) => this.patch({ loc: String(e.detail) })}
         ></ix-input>
+        ${this.renderMarker()}
         <div class="grid3">
           <ix-number-input
             label="X"
@@ -979,6 +984,49 @@ export class MfMachineDialog extends LitElement {
     if (a.mlfb) parts.push(a.mlfb);
     if (a.area) parts.push(a.area);
     return parts.join(' · ');
+  }
+
+  /** Placed from a marker: its choice and the offset, the position following from them. */
+  private renderMarker(): TemplateResult {
+    if (this.markers.length === 0) return html``;
+    const m = this.working;
+    const marker = this.markers.find((k) => k.id === m.markerId);
+    return html`
+      <div class="grid3">
+        <ix-select
+          label=${localize(MSG.markers.placeFrom)}
+          .value=${marker?.id ?? ''}
+          @valueChange=${(e: IxValueEvent) => this.bindMarker(String(e.detail))}
+        >
+          <ix-select-item label=${localize(MSG.markers.noMarker)} value=""></ix-select-item>
+          ${this.markers.map((k) => html`<ix-select-item label=${k.label} value=${k.id}></ix-select-item>`)}
+        </ix-select>
+        ${marker
+          ? html`<ix-number-input
+                label=${localize(MSG.markers.offsetX)}
+                .value=${Math.round((m.x - marker.x) * 10) / 10}
+                @valueChange=${(e: IxValueEvent) => this.patch(placeFromMarker(m, marker, Number(e.detail) || 0, m.z - marker.z))}
+              ></ix-number-input>
+              <ix-number-input
+                label=${localize(MSG.markers.offsetZ)}
+                .value=${Math.round((m.z - marker.z) * 10) / 10}
+                @valueChange=${(e: IxValueEvent) => this.patch(placeFromMarker(m, marker, m.x - marker.x, Number(e.detail) || 0))}
+              ></ix-number-input>`
+          : ''}
+      </div>
+    `;
+  }
+
+  /** Bind the machine to a marker (placed on it, no offset) or free it (position kept). */
+  private bindMarker(id: string): void {
+    const marker = this.markers.find((k) => k.id === id);
+    if (marker) {
+      this.patch(placeFromMarker(this.working, marker, 0, 0));
+    } else {
+      const free = { ...this.working };
+      delete free.markerId;
+      this.working = free;
+    }
   }
 
   private renderProduction(): TemplateResult {

@@ -39,6 +39,7 @@ import {
   isRunningState,
   mappingStates,
   MAX_DASHBOARD_LINKS,
+  followMarkers,
   isDisconnected,
   placeMachine,
   resolveConnected,
@@ -56,6 +57,7 @@ import {
   type GlbResource,
   type Machine,
   type MachineDef,
+  type PlacementMarker,
   type StateMapping,
   type StopCause,
   type TrsThresholds,
@@ -81,6 +83,7 @@ import {
 } from '@visuelconcept-winccoa/wui-fleet-core/filters.js';
 import './mf-ai-prompt.js';
 import './mf-building-dialog.js';
+import './mf-markers-dialog.js';
 import './mf-config-panel.js';
 import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
 import './mf-graphics-catalog.js';
@@ -177,6 +180,8 @@ export class MfAtelierView extends LitElement {
   @state() private bubblesOpen = false;
   @state() private mappings: StateMapping[] = [];
   @state() private thresholds: TrsThresholds[] = [];
+  @state() private markers: PlacementMarker[] = [];
+  @state() private markersOpen = false;
   @state() private thresholdsOpen = false;
   /** Right machine-list drawer — hidden by default; shown on demand. */
   @state() private panelOpen = false;
@@ -280,6 +285,7 @@ export class MfAtelierView extends LitElement {
       this.machines = structuredClone(this.atelier.machines);
       this.mappings = structuredClone(this.atelier.mappings);
       this.thresholds = structuredClone(this.atelier.trsThresholds ?? DEFAULT_TRS_THRESHOLDS);
+      this.markers = structuredClone(this.atelier.markers ?? []);
       this.viewpoints = structuredClone(this.atelier.viewpoints ?? []);
       this.defaultViewpointId = this.atelier.defaultViewpointId ?? '';
       this.bubblePrefs = loadBubblePrefs(this.atelier.id);
@@ -314,6 +320,7 @@ export class MfAtelierView extends LitElement {
     this.scene.setOnMachineMove((id, x, z) => this.onMachineMove(id, x, z));
     this.scene.setOnRotate(this.onCameraRotate);
     this.scene.setBuilding(this.building);
+    this.scene.setMarkers(this.markers);
     this.scene.setMachines(this.machines);
     this.applyStateColors();
     this.applyDisplay();
@@ -346,6 +353,7 @@ export class MfAtelierView extends LitElement {
         <ix-icon-button icon="screenshot" ghost title=${localize(MSG.view.viewpoints)} variant=${this.viewpointsOpen ? 'primary' : 'secondary'} @click=${() => { this.viewpointsOpen = !this.viewpointsOpen; this.bubblesOpen = false; }}></ix-icon-button>
         <ix-icon-button icon="box-open" ghost title=${localize(MSG.view.graphicsCatalogGlb)} @click=${() => (this.resourcesOpen = true)}></ix-icon-button>
         <ix-icon-button icon="building1" ghost title=${localize(MSG.view.configureBuilding)} @click=${() => (this.buildingOpen = true)}></ix-icon-button>
+        <ix-icon-button icon="location" ghost title=${localize(MSG.markers.title)} @click=${() => (this.markersOpen = true)}></ix-icon-button>
         <ix-icon-button icon="configuration" ghost title=${localize(MSG.view.stateMappings)} @click=${() => (this.mappingOpen = true)}></ix-icon-button>
         ${this.canEdit
           ? html`<ix-icon-button icon="upload" ghost title=${localize(MSG.view.importAtelier)} @click=${this.triggerImport}></ix-icon-button>`
@@ -760,9 +768,18 @@ export class MfAtelierView extends LitElement {
             @wui:close=${() => (this.buildingOpen = false)}
           ></mf-building-dialog>`
         : ''}
+      ${this.markersOpen
+        ? html`<mf-markers-dialog
+            .markers=${this.markers}
+            .canEdit=${this.canEdit}
+            @wui:apply=${(e: CustomEvent<{ markers: PlacementMarker[] }>) => this.onMarkers(e.detail.markers)}
+            @wui:close=${() => (this.markersOpen = false)}
+          ></mf-markers-dialog>`
+        : ''}
       ${this.editing
         ? html`<mf-machine-dialog
             .machine=${this.editing}
+            .markers=${this.markers}
             .store=${this.store}
             .mappings=${this.mappings}
             .thresholds=${this.thresholds}
@@ -1060,6 +1077,15 @@ export class MfAtelierView extends LitElement {
     this.scheduleSave();
   }
 
+  /** New markers: the machines bound to a moved marker follow it (SDS 2.2 SL-IMP-02). */
+  private onMarkers(markers: PlacementMarker[]): void {
+    this.machines = followMarkers(this.machines, this.markers, markers);
+    this.markers = markers;
+    this.markersOpen = false;
+    this.scene?.setMarkers(markers);
+    this.rebuildMachines();
+  }
+
   private onThresholds(thresholds: TrsThresholds[]): void {
     this.thresholds = thresholds;
     this.thresholdsOpen = false;
@@ -1199,6 +1225,7 @@ export class MfAtelierView extends LitElement {
       machines: this.machines,
       mappings: this.mappings,
       trsThresholds: this.thresholds,
+      ...(this.markers.length > 0 || this.atelier.markers ? { markers: this.markers } : {}),
       viewpoints: this.viewpoints,
       defaultViewpointId: this.defaultViewpointId || undefined
     };
@@ -1240,7 +1267,9 @@ export class MfAtelierView extends LitElement {
     if (Array.isArray(imported.viewpoints)) this.viewpoints = imported.viewpoints;
     this.defaultViewpointId = imported.defaultViewpointId ?? '';
     if (Array.isArray(imported.machines)) this.machines = imported.machines;
+    if (Array.isArray(imported.markers)) this.markers = imported.markers;
     this.scene?.setBuilding(this.building);
+    this.scene?.setMarkers(this.markers);
     this.applyDisplay();
     this.rebuildMachines();
   }

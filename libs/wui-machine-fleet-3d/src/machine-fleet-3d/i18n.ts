@@ -36,6 +36,26 @@ export const MSG = {
       'Ihre Gruppen besitzen die Rolle „Ansehen" dieser Seite nicht.'
     )
   },
+  markers: {
+    title: ml('Placement markers', "Repères d'implantation", 'Platzierungsmarken'),
+    hint: ml(
+      'Posts or other landmarks of this view; a machine placed from one follows it when it moves',
+      "Poteaux ou autres repères de cette vue ; une machine placée à partir d'un repère le suit quand il bouge",
+      'Pfosten oder andere Marken dieser Ansicht; eine davon platzierte Maschine folgt ihr'
+    ),
+    label: ml('Marker', 'Repère', 'Marke'),
+    add: ml('Add a marker', 'Ajouter un repère', 'Marke hinzufügen'),
+    none: ml('No marker yet.', 'Aucun repère.', 'Noch keine Marke.'),
+    remove: ml('Delete this marker', 'Supprimer ce repère', 'Diese Marke löschen'),
+    newLabel: ml('Post', 'Poteau', 'Pfosten'),
+    save: ml('Save', 'Enregistrer', 'Speichern'),
+    cancel: ml('Cancel', 'Annuler', 'Abbrechen'),
+    close: ml('Close', 'Fermer', 'Schließen'),
+    placeFrom: ml('Placed from marker', 'Placée à partir du repère', 'Platziert von Marke'),
+    noMarker: ml('— free position —', '— position libre —', '— freie Position —'),
+    offsetX: ml('Offset X (m)', 'Décalage X (m)', 'Versatz X (m)'),
+    offsetZ: ml('Offset Z (m)', 'Décalage Z (m)', 'Versatz Z (m)')
+  },
   toPlace: {
     label: ml('To place', 'À placer', 'Zu platzieren'),
     hint: ml(

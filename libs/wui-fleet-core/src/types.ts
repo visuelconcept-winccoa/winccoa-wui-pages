@@ -529,6 +529,12 @@ export interface MachineDef {
   /** When true, the machine is not rendered in the 3D scene (still listed/editable). */
   hidden?: boolean;
   /**
+   * Placement marker of the atelier the machine is placed from ({@link PlacementMarker}): its
+   * position is the marker's plus an offset, kept when the marker moves; moving the machine by
+   * hand adjusts the offset.
+   */
+  markerId?: string;
+  /**
    * "À placer": the machine was laid out automatically by an integration (e.g. a machine that
    * joined this atelier), so the user still has to place it. Shown on its bubble, its dot and in
    * the machine list; cleared as soon as the user moves it ({@link placeMachine}).
@@ -864,4 +870,45 @@ export interface Atelier {
   viewpoints?: Viewpoint[];
   /** Id of the viewpoint applied automatically when the 3D view loads. */
   defaultViewpointId?: string;
+  /** Placement markers of this atelier (posts or other landmarks), machines placed from them. */
+  markers?: PlacementMarker[];
+}
+
+/**
+ * A placement marker of an atelier: a named point of the floor (a post, a landmark) from which
+ * machines are placed. A machine bound to it keeps its offset when the marker moves.
+ */
+export interface PlacementMarker {
+  id: string;
+  label: string;
+  x: number;
+  z: number;
+}
+
+/** The machine placed from a marker at an offset (dx, dz): its position follows from it. */
+export function placeFromMarker<T extends MachineDef>(m: T, marker: PlacementMarker, dx: number, dz: number): T {
+  return { ...m, markerId: marker.id, x: marker.x + dx, z: marker.z + dz };
+}
+
+/**
+ * Machines after the markers changed from `before` to `after`: a machine bound to a moved
+ * marker moves with it (same offset); one bound to a removed marker keeps its place, unbound.
+ */
+export function followMarkers<T extends MachineDef>(
+  machines: T[],
+  before: readonly PlacementMarker[],
+  after: readonly PlacementMarker[]
+): T[] {
+  return machines.map((m) => {
+    if (!m.markerId) return m;
+    const old = before.find((k) => k.id === m.markerId);
+    const now = after.find((k) => k.id === m.markerId);
+    if (!now) {
+      const unbound = { ...m };
+      delete unbound.markerId;
+      return unbound;
+    }
+    if (!old || (old.x === now.x && old.z === now.z)) return m;
+    return { ...m, x: m.x + now.x - old.x, z: m.z + now.z - old.z };
+  });
 }

@@ -14,7 +14,9 @@ import {
   ACESFilmicToneMapping,
   AmbientLight,
   Box3,
+  CanvasTexture,
   Color,
+  CylinderGeometry,
   DirectionalLight,
   Fog,
   Group,
@@ -31,6 +33,8 @@ import {
   Raycaster,
   SRGBColorSpace,
   Scene,
+  Sprite,
+  SpriteMaterial,
   Vector2,
   Vector3,
   WebGLRenderer
@@ -45,6 +49,7 @@ import {
   type Machine,
   type MachineDef,
   type MachineState,
+  type PlacementMarker,
   type StateColorKey,
   type StateDef
 } from '../types.js';
@@ -56,6 +61,31 @@ import { BILLBOARD_CHILD, applyBillboardTexture, buildMachine } from './machine-
 import { OrbitController } from './orbit-controller.js';
 
 const ACCENT_POOL_SIZE = 6;
+/** Placement marker post: radius and height (m), colour; label width (m). */
+const MARKER_RADIUS = 0.25;
+const MARKER_HEIGHT = 4;
+const MARKER_COLOR = 0xF5_9E_0B;
+const MARKER_LABEL_W = 6;
+
+/** A label texture for a placement marker (text on a light plate). */
+function markerLabel(text: string): CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#1f2937';
+    ctx.font = 'bold 36px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2, canvas.width - 12);
+  }
+  const tex = new CanvasTexture(canvas);
+  tex.colorSpace = SRGBColorSpace;
+  return tex;
+}
 const DRAG_THRESHOLD_PX = 5;
 /** If the longest GLB dimension exceeds this (metres), assume mm → scale by 0.001. */
 const MM_TO_M_THRESHOLD = 100;
@@ -81,6 +111,8 @@ export class SceneController {
   private buildingGroup: Group | null = null;
   private roofGroup: Group | null = null;
   private machinesGroup = new Group();
+  /** Placement markers: a post with its label each. */
+  private markersGroup = new Group();
   private machines: Machine[] = [];
   /** Machines left out by the filter bar (kept across setMachines). */
   private filteredOut: ReadonlySet<string> = new Set();
@@ -123,6 +155,7 @@ export class SceneController {
 
     this.addLights();
     this.scene.add(this.machinesGroup);
+    this.scene.add(this.markersGroup);
     // Support gltfpack/meshopt-compressed GLBs (as the prototype did).
     this.gltfLoader.setMeshoptDecoder(MeshoptDecoder);
 
@@ -158,6 +191,28 @@ export class SceneController {
       z2: this.cfg.width / 2,
       height: this.cfg.height
     });
+  }
+
+  /** Draw the atelier's placement markers: a thin post topped by its label. */
+  setMarkers(markers: readonly PlacementMarker[]): void {
+    this.markersGroup.traverse((obj) => {
+      if (obj instanceof Sprite) {
+        obj.material.map?.dispose();
+        obj.material.dispose();
+      }
+    });
+    disposeObject(this.markersGroup);
+    for (const k of markers) {
+      const post = new Mesh(
+        new CylinderGeometry(MARKER_RADIUS, MARKER_RADIUS, MARKER_HEIGHT, 12),
+        new MeshStandardMaterial({ color: MARKER_COLOR })
+      );
+      post.position.set(k.x, MARKER_HEIGHT / 2, k.z);
+      const label = new Sprite(new SpriteMaterial({ map: markerLabel(k.label), depthTest: false }));
+      label.scale.set(MARKER_LABEL_W, MARKER_LABEL_W / 4, 1);
+      label.position.set(k.x, MARKER_HEIGHT + 1, k.z);
+      this.markersGroup.add(post, label);
+    }
   }
 
   setMachines(defs: MachineDef[]): void {
