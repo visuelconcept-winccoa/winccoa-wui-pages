@@ -665,14 +665,21 @@ export class WuiAuthBadgeAdmin extends LitElement {
   private async unlock(ip: string, reason: string): Promise<void> {
     if (reason.trim() === '') return;
     try {
-      await fetchAsUser(`${API}/blacklist/${encodeURIComponent(ip)}/unlock`, {
+      // The address in the body, not the path: an IPv6 one holds `:` (#24).
+      await fetchAsUser(`${API}/blacklist/unlock`, {
         method: 'POST',
-        body: JSON.stringify({ reason: reason.trim() })
+        body: JSON.stringify({ ip, reason: reason.trim() })
       });
       this.unlocking = undefined;
       this.report(true, `Poste ${ip} déverrouillé.`);
     } catch (error) {
-      this.report(false, `Déverrouillage impossible (${String(error)}).`);
+      if (String(error).includes('HTTP 404')) {
+        // Its lock ran out or was lifted meanwhile: the reloaded list shows it.
+        this.unlocking = undefined;
+        this.report(false, `Le poste ${ip} n'est plus verrouillé (verrou expiré ou déjà levé).`);
+      } else {
+        this.report(false, `Déverrouillage impossible (${String(error)}).`);
+      }
     }
     await this.loadBlacklist();
   }

@@ -20,7 +20,8 @@
 //   DELETE /users/:userId   remove it                     (idem; `enrol`)
 //   GET    /blacklist       the stations' locks and their history, the refusals
 //                            counted (idem; `enrol` or `configure`)
-//   POST   /blacklist/:ip/unlock  { reason }  lift a station's lock (idem; `enrol`)
+//   POST   /blacklist/unlock  { ip, reason }  lift a station's lock (idem; `enrol`)
+//   POST   /blacklist/:ip/unlock  { reason }  the same, the address in the path (0.6.0)
 // -----------------------------------------------------------------------------
 
 import { Request, Response, Router, json } from 'ultimate-express';
@@ -55,7 +56,8 @@ export class BadgeRoute {
     router.post('/users/:userId/test', safe(badge.testUser));
     router.delete('/users/:userId', safe(badge.forgetUser));
     router.get('/blacklist', safe(badge.getBlacklist));
-    router.post('/blacklist/:ip/unlock', safe(badge.unlockStation));
+    router.post('/blacklist/unlock', safe(badge.unlockStation));
+    router.post('/blacklist/:ip/unlock', safe(badge.unlockStationByPath));
     return router;
   }
 }

@@ -376,19 +376,38 @@ export class BadgeAuth {
   };
 
   /**
-   * POST /blacklist/:ip/unlock  { reason } — the `enrol` role: lifts the station's active lock and
-   * resets its count; 400 without a reason (200 characters kept), 404 when the address is not
-   * locked. Kept in the record (liftedBy, liftedAt, reason) and audited (VERROU_LEVE).
+   * POST /blacklist/unlock  { ip, reason } — the `enrol` role: lifts the station's active lock and
+   * resets its count; 400 without an address or a reason (200 characters kept), 404 when the
+   * address is not locked. Kept in the record (liftedBy, liftedAt, reason) and audited (VERROU_LEVE).
+   * The address travels in the body: an IPv6 one (`::ffff:10.1.2.3`, `::1`) holds `:`.
    */
   unlockStation = async (req: Request, res: Response): Promise<void> => {
+    const ip = textOf(((req.body ?? {}) as { ip?: unknown }).ip, MAX_IP_LENGTH);
+    await this.unlock(req, res, ip);
+  };
+
+  /**
+   * POST /blacklist/:ip/unlock  { reason } — the same, the address in the path (0.6.0). It is
+   * decoded here: ultimate-express leaves `%3A` (an encoded `:`) as is in a path parameter, and the
+   * address of an IPv6 station then matched no lock (404).
+   */
+  unlockStationByPath = async (req: Request, res: Response): Promise<void> => {
+    const ip = decodedParam(req.params['ip']);
+    await this.unlock(req, res, ip === undefined ? '' : textOf(ip, MAX_IP_LENGTH));
+  };
+
+  private unlock = async (req: Request, res: Response, ip: string): Promise<void> => {
     const actor = await this.authorize(req, res, 'enrol');
     if (!actor) return;
+    if (ip === '') {
+      res.status(400).json({ status: 'invalid', field: 'ip' });
+      return;
+    }
     const reason = textOf(((req.body ?? {}) as { reason?: unknown }).reason, MAX_REASON_LENGTH);
     if (reason === '') {
       res.status(400).json({ status: 'invalid', field: 'reason' });
       return;
     }
-    const ip = textOf(req.params['ip'], MAX_IP_LENGTH);
     const lifted = await updateBlacklist((before) => {
       const { blacklist, lifted: record } = lift(before, ip, actor.username, reason, Date.now());
       return { blacklist, result: record };
@@ -603,6 +622,16 @@ function auditExpiry(record: BlacklistRecord): void {
 /** A trimmed text of at most `max` characters; '' when not a string. */
 function textOf(raw: unknown, max: number): string {
   return typeof raw === 'string' ? raw.trim().slice(0, max) : '';
+}
+
+/** A path parameter, decoded (ultimate-express does not); undefined when it is not a valid encoding. */
+function decodedParam(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return undefined;
+  }
 }
 
 /**

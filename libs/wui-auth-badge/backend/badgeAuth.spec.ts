@@ -259,7 +259,7 @@ describe('GET /blacklist', () => {
   });
 });
 
-describe('POST /blacklist/:ip/unlock', () => {
+describe('POST /blacklist/unlock', () => {
   async function lockStation(badge: InstanceType<typeof BadgeAuth>): Promise<void> {
     await present(badge, '99999999', 3);
     oa.audit = [];
@@ -268,18 +268,18 @@ describe('POST /blacklist/:ip/unlock', () => {
   it('401 without a token, 403 without the `enrol` role (`configure` is not enough)', async () => {
     const badge = new BadgeAuth();
     await lockStation(badge);
-    const params = { ip: 'station-1' };
-    expect((await call(badge.unlockStation, { params, body: { reason: 'x' } })).status).toBe(401);
-    expect((await call(badge.unlockStation, { params, body: { reason: 'x' }, as: 'alice' })).status).toBe(403);
-    expect((await call(badge.unlockStation, { params, body: { reason: 'x' }, as: 'config' })).status).toBe(403);
+    const body = { ip: 'station-1', reason: 'x' };
+    expect((await call(badge.unlockStation, { body })).status).toBe(401);
+    expect((await call(badge.unlockStation, { body, as: 'alice' })).status).toBe(403);
+    expect((await call(badge.unlockStation, { body, as: 'config' })).status).toBe(403);
     expect(stored().records[0]).toMatchObject({ state: 'active' });
   });
 
   it('400 without a reason', async () => {
     const badge = new BadgeAuth();
     await lockStation(badge);
-    for (const body of [{}, { reason: '' }, { reason: '   ' }, { reason: 42 }]) {
-      const answer = await call(badge.unlockStation, { params: { ip: 'station-1' }, body, as: 'admin' });
+    for (const body of [{ ip: 'station-1' }, { ip: 'station-1', reason: '' }, { ip: 'station-1', reason: '   ' }, { ip: 'station-1', reason: 42 }]) {
+      const answer = await call(badge.unlockStation, { body, as: 'admin' });
       expect(answer.status).toBe(400);
       expect(answer.body).toEqual({ status: 'invalid', field: 'reason' });
     }
@@ -287,16 +287,39 @@ describe('POST /blacklist/:ip/unlock', () => {
     expect(oa.audit).toEqual([]);
   });
 
-  it('404 for a station not locked', async () => {
+  it('400 without an address', async () => {
     const badge = new BadgeAuth();
     await lockStation(badge);
-    expect((await call(badge.unlockStation, { params: { ip: 'station-2' }, body: { reason: 'x' }, as: 'admin' })).status).toBe(404);
+    for (const body of [{ reason: 'x' }, { ip: '', reason: 'x' }, { ip: 42, reason: 'x' }]) {
+      const answer = await call(badge.unlockStation, { body, as: 'admin' });
+      expect(answer.status).toBe(400);
+      expect(answer.body).toEqual({ status: 'invalid', field: 'ip' });
+    }
+    expect(stored().records[0]).toMatchObject({ state: 'active' });
+  });
+
+  it('404 for a station not locked, or no more', async () => {
+    const badge = new BadgeAuth();
+    await lockStation(badge);
+    expect((await call(badge.unlockStation, { body: { ip: 'station-2', reason: 'x' }, as: 'admin' })).status).toBe(404);
+    expect((await call(badge.unlockStation, { body: { ip: 'station-1', reason: 'x' }, as: 'admin' })).status).toBe(200);
+    expect((await call(badge.unlockStation, { body: { ip: 'station-1', reason: 'x' }, as: 'admin' })).status).toBe(404);
+  });
+
+  it('an IPv6 station (`::ffff:10.1.2.3`, `::1`) is unlocked (#24)', async () => {
+    const badge = new BadgeAuth();
+    for (const ip of ['::ffff:10.1.2.3', '::1']) {
+      await present(badge, '99999999', 3, ip);
+      const answer = await call(badge.unlockStation, { body: { ip, reason: 'x' }, as: 'admin' });
+      expect(answer.status).toBe(200);
+      expect(answer.body['record']).toMatchObject({ ip, state: 'lifted' });
+    }
   });
 
   it('lifts the lock, kept in the history with who, when and why, and audited', async () => {
     const badge = new BadgeAuth();
     await lockStation(badge);
-    const answer = await call(badge.unlockStation, { params: { ip: 'station-1' }, body: { reason: ' Badge prêté ' }, as: 'admin', ip: 'office' });
+    const answer = await call(badge.unlockStation, { body: { ip: 'station-1', reason: ' Badge prêté ' }, as: 'admin', ip: 'office' });
     expect(answer.status).toBe(200);
     expect(answer.body['record']).toMatchObject({ ip: 'station-1', state: 'lifted', liftedBy: 'admin', reason: 'Badge prêté' });
     expect(stored().records).toEqual([expect.objectContaining({ state: 'lifted', liftedBy: 'admin', reason: 'Badge prêté' })]);
@@ -306,6 +329,24 @@ describe('POST /blacklist/:ip/unlock', () => {
     expect(oa.audit[0]?.reason).toContain('Badge prêté');
     // The station opens a badge again.
     expect((await present(badge, '11111111', 1))[0]?.body).toMatchObject({ status: 'ok' });
+  });
+});
+
+describe('POST /blacklist/:ip/unlock (0.6.0)', () => {
+  it('decodes the address: ultimate-express leaves `%3A` in a path parameter (#24)', async () => {
+    const badge = new BadgeAuth();
+    await present(badge, '99999999', 3, '::ffff:10.1.2.3');
+    const params = { ip: encodeURIComponent('::ffff:10.1.2.3') };
+    const answer = await call(badge.unlockStationByPath, { params, body: { reason: 'x' }, as: 'admin' });
+    expect(answer.status).toBe(200);
+    expect(answer.body['record']).toMatchObject({ ip: '::ffff:10.1.2.3', state: 'lifted' });
+  });
+
+  it('an address already decoded is unchanged; a bad encoding is 400', async () => {
+    const badge = new BadgeAuth();
+    await present(badge, '99999999', 3);
+    expect((await call(badge.unlockStationByPath, { params: { ip: '%E0%A4%A' }, body: { reason: 'x' }, as: 'admin' })).status).toBe(400);
+    expect((await call(badge.unlockStationByPath, { params: { ip: 'station-1' }, body: { reason: 'x' }, as: 'admin' })).status).toBe(200);
   });
 });
 
