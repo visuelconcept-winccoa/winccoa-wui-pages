@@ -485,6 +485,12 @@ export const MSG = {
     stopCauseDpLabel: ml('Stop-cause DP', "DP cause d'arrêt", 'Stillstandsursache-DP'),
     workOrderDpLabel: ml('Current work order DP', "DP OF en cours", 'DP aktueller Fertigungsauftrag'),
     operationDpLabel: ml('Current operation DP', "DP opération en cours", 'DP aktueller Vorgang'),
+    minStopLabel: ml('Minimum stop (s)', "Délai minimal d'arrêt (s)", 'Mindest-Stillstand (s)'),
+    minStopHint: ml(
+      'A shorter stop counts as production: not in the Gantt, the stops or the TRS',
+      'Un arrêt plus court compte comme de la production : ni dans le Gantt, ni dans les arrêts, ni dans le TRS',
+      'Ein kürzerer Stillstand zählt als Produktion: weder im Gantt, noch bei den Stillständen, noch in der OEE'
+    ),
     dashboardMachine: ml('Machine dashboard', 'Dashboard machine', 'Maschinen-Dashboard'),
     dashboardModeLabel: ml(
       'Dashboard opened from the machine card',

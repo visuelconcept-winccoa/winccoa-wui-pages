@@ -354,11 +354,12 @@ function codeAt(samples, t) {
 }
 
 /** Merged non-production intervals within [start,end] from state history. */
-function nonProductionIntervals(samples, mapping, start, end) {
+function nonProductionIntervals(samples, mapping, start, end, minStopMs = 0) {
   if (samples.length === 0) return [];
   const intervals = [];
   for (let i = 0; i < samples.length; i++) {
-    const segStart = Math.max(samples[i].t, start);
+    // Whole periods first (unclipped start): a short stop is judged on its full length.
+    const segStart = samples[i].t;
     const segEnd = Math.min(samples[i + 1] ? samples[i + 1].t : end, end);
     if (segEnd <= segStart) continue;
     const value = Math.round(toNumber(samples[i].v));
@@ -367,7 +368,11 @@ function nonProductionIntervals(samples, mapping, start, end) {
     if (last && last.e >= segStart) last.e = Math.max(last.e, segEnd);
     else intervals.push({ s: segStart, e: segEnd });
   }
-  return intervals;
+  // A period shorter than the machine's minimum stop is production (MachineDef.minStopSec).
+  return intervals
+    .filter((iv) => iv.e - iv.s >= minStopMs)
+    .map((iv) => ({ s: Math.max(iv.s, start), e: Math.min(iv.e, end) }))
+    .filter((iv) => iv.e > iv.s);
 }
 
 /** Merged intervals within [start,end] spent in a state taken out of the opening time. */
@@ -383,12 +388,12 @@ function offOpeningIntervals(samples, mapping, start, end) {
   return clipMerge(intervals);
 }
 
-function computeValue(type, stateSamples, causeSamples, mapping, closures, start, end) {
+function computeValue(type, stateSamples, causeSamples, mapping, closures, start, end, minStopMs = 0) {
   const windowMs = end - start;
   // Opening time = window minus non-worked periods: closures, and time in off-opening states.
   const closed = clipMerge([...closures, ...offOpeningIntervals(stateSamples, mapping, start, end)]);
   const openingMs = Math.max(0, windowMs - sumLength(closed));
-  const stops = nonProductionIntervals(stateSamples, mapping, start, end);
+  const stops = nonProductionIntervals(stateSamples, mapping, start, end, minStopMs);
   let plannedMs = 0;
   let unplannedMs = 0;
   let failures = 0;
@@ -486,7 +491,8 @@ async function refreshKpi(entry) {
     ? await queryHistory(machine.stopCauseDp, start - windowMs, end)
     : [];
   const closed = closedIntervals(atelierId, machine.id, start, end);
-  const value = computeValue(kpi.type, stateSamples, causeSamples, mapping, closed, start, end);
+  const minStopMs = (Number(machine.minStopSec) || 0) * 1000;
+  const value = computeValue(kpi.type, stateSamples, causeSamples, mapping, closed, start, end, minStopMs);
   const unit = kpi.type === 'TRS' ? '%' : 'min';
   try {
     await winccoa.dpSet([

@@ -579,6 +579,12 @@ export interface MachineDef {
    * its dashboard in the same tab. Usually written by the integration that places the machine.
    */
   ownerLink?: { label: string; url: string };
+  /**
+   * Shortest stop that counts, in seconds: a non-producing period shorter than this (a stop,
+   * maintenance, no connection…) is taken as production — it appears neither in the Gantt nor
+   * in the stops, and does not lower the TRS. 0 or absent: every stop counts.
+   */
+  minStopSec?: number;
 }
 
 /** Source of a machine's dashboard: built-in contextualised vs. specific WinCC OA. */

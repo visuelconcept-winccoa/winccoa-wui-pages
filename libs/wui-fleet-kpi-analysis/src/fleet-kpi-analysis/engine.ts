@@ -108,7 +108,7 @@ export async function analyseKpi(
 
     let plannedMs = 0;
     let unplannedMs = 0;
-    for (const stop of nonProductionIntervals(stateSamples, machine.mapping, startMs, endMs)) {
+    for (const stop of nonProductionIntervals(stateSamples, machine.mapping, startMs, endMs, machine.minStopMs)) {
       for (const seg of partitionByCause(stop, causeSamples)) {
         // Only count downtime that falls within worked (open) time.
         const worked = seg.end - seg.start - overlapLength(seg.start, seg.end, closed);

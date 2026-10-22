@@ -8,7 +8,7 @@
  * the wrong way, a stopped machine would count as available.
  */
 import { describe, expect, it } from 'vitest';
-import { nonProductionIntervals, offOpeningIntervals } from './engine.js';
+import { nonProductionIntervals, offOpeningIntervals, shortStopIntervals } from './engine.js';
 import {
   BUILTIN_STATES,
   DEFAULT_STATE_MAPPINGS,
@@ -139,5 +139,34 @@ describe('a state taken out of the opening time', () => {
       states: FIVE.states?.map((st) => (st.key === 'production' ? { ...st, outsideOpening: true } : st))
     };
     expect(isOutsideOpening(odd, 'production')).toBe(false);
+  });
+});
+
+describe('the shortest stop that counts', () => {
+  const t = (min: number): number => min * 60_000;
+  const FIVE_MIN = t(5);
+
+  it('takes a shorter stop as production, and keeps the longer ones', () => {
+    const samples = [
+      { t: t(0), v: 0 }, // production
+      { t: t(10), v: 1 }, // arrêt, 4 min
+      { t: t(14), v: 0 },
+      { t: t(20), v: 1 }, // arrêt, 6 min
+      { t: t(26), v: 0 }
+    ];
+    expect(nonProductionIntervals(samples, FIVE, t(0), t(30), FIVE_MIN)).toEqual([{ s: t(20), e: t(26) }]);
+    expect(shortStopIntervals(samples, FIVE, t(0), t(30), FIVE_MIN)).toEqual([{ s: t(10), e: t(14) }]);
+    expect(nonProductionIntervals(samples, FIVE, t(0), t(30))).toHaveLength(2);
+  });
+
+  it('judges a period on its whole length, stop and maintenance together', () => {
+    const samples = [
+      { t: t(0), v: 1 }, // arrêt started before the window
+      { t: t(8), v: 2 }, // then maintenance
+      { t: t(11), v: 0 }
+    ];
+    // Only 3 min of it fall in the window, but it lasted 11: it counts.
+    expect(nonProductionIntervals(samples, FIVE, t(8), t(20), FIVE_MIN)).toEqual([{ s: t(8), e: t(11) }]);
+    expect(shortStopIntervals(samples, FIVE, t(8), t(20), FIVE_MIN)).toEqual([]);
   });
 });

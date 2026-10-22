@@ -1001,6 +1001,13 @@ export class MfMachineDialog extends LitElement {
           .value=${m.operationDp ?? ''}
           @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ operationDp: e.detail.value })}
         ></wui-dp-input>
+        <ix-number-input
+          label=${localize(MSG.machineDialog.minStopLabel)}
+          helper-text=${localize(MSG.machineDialog.minStopHint)}
+          min="0"
+          .value=${m.minStopSec ?? 0}
+          @valueChange=${(e: IxValueEvent) => this.patch({ minStopSec: Math.max(0, Number(e.detail) || 0) })}
+        ></ix-number-input>
       </div>
     `;
   }

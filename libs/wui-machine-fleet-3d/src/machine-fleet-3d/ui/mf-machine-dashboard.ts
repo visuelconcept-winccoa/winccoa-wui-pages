@@ -46,6 +46,7 @@ import {
   analyseStopCauses,
   formatDuration,
   queryHistory,
+  shortStopIntervals,
   sortRows,
   type AnalysisMachine,
   type CauseRow,
@@ -1182,7 +1183,35 @@ export class MfMachineDashboard extends LitElement {
         segs.push({ state, startMs: segStart, endMs: segEnd, causeLabel });
       }
     }
-    return segs;
+    return this.withoutShortStops(segs, samples, startMs, endMs, (m.minStopSec ?? 0) * 1000);
+  }
+
+  /**
+   * The Gantt segments with the stops shorter than the machine's minimum (MachineDef.minStopSec)
+   * drawn as production, then merged with their neighbours.
+   */
+  private withoutShortStops(
+    segs: StateSegment[],
+    samples: HistorySample[],
+    startMs: number,
+    endMs: number,
+    minStopMs: number
+  ): StateSegment[] {
+    const short = shortStopIntervals(samples, this.mapping, startMs, endMs, minStopMs);
+    if (short.length === 0) return segs;
+    const running = statesOf(this.mapping).find((s) => isRunningState(this.mapping, s.key))?.key ?? 'ok';
+    const out: StateSegment[] = [];
+    for (const seg of segs) {
+      const inShort = short.some((i) => seg.startMs >= i.s && seg.endMs <= i.e);
+      const next = inShort ? { ...seg, state: running, causeLabel: undefined } : seg;
+      const last = out.at(-1);
+      if (last && last.state === next.state && last.causeLabel === next.causeLabel && last.endMs >= next.startMs) {
+        last.endMs = next.endMs;
+      } else {
+        out.push({ ...next });
+      }
+    }
+    return out;
   }
 
   /** Stop-cause label active at time `t` (catalog-resolved), or undefined. */
@@ -1203,7 +1232,8 @@ export class MfMachineDashboard extends LitElement {
       machineName: m.name,
       stateDp: m.stateDp ?? '',
       stopCauseDp: m.stopCauseDp ?? '',
-      mapping: this.mapping
+      mapping: this.mapping,
+      minStopMs: (m.minStopSec ?? 0) * 1000
     };
     const result = await analyseStopCauses(this.api, [target], this.stopCauses, start, end);
     // Keep both planned & unplanned; the Pareto filters by the chosen class. A stop with no
