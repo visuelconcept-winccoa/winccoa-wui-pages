@@ -14,6 +14,7 @@ import {
   ACESFilmicToneMapping,
   AmbientLight,
   Box3,
+  BufferGeometry,
   CanvasTexture,
   Color,
   CylinderGeometry,
@@ -21,6 +22,8 @@ import {
   Fog,
   Group,
   HemisphereLight,
+  LineBasicMaterial,
+  LineLoop,
   Mesh,
   MeshStandardMaterial,
   type Object3D,
@@ -67,7 +70,27 @@ const MARKER_HEIGHT = 4;
 const MARKER_COLOR = 0xF5_9E_0B;
 const MARKER_LABEL_W = 6;
 
-/** A label texture for a placement marker (text on a light plate). */
+/** Machine group outline: margin around its machines and height (m), colour; label height. */
+const GROUP_MARGIN = 1.5;
+const GROUP_Y = 0.05;
+const GROUP_COLOR = 0x00_66_CC;
+const GROUP_LABEL_Y = 1.2;
+
+/** Free an overlay group (outlines, posts and label sprites), then empty it. */
+function clearOverlay(group: Group): void {
+  group.traverse((obj) => {
+    if (obj instanceof Sprite) {
+      obj.material.map?.dispose();
+      obj.material.dispose();
+    } else if (obj instanceof LineLoop) {
+      obj.geometry.dispose();
+      (obj.material as LineBasicMaterial).dispose();
+    }
+  });
+  disposeObject(group);
+}
+
+/** A label texture for a placement marker or a group (text on a light plate). */
 function markerLabel(text: string): CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = 256;
@@ -113,6 +136,8 @@ export class SceneController {
   private machinesGroup = new Group();
   /** Placement markers: a post with its label each. */
   private markersGroup = new Group();
+  /** Machine groups (MachineDef.group): a floor outline and the group's name each. */
+  private groupsGroup = new Group();
   private machines: Machine[] = [];
   /** Machines left out by the filter bar (kept across setMachines). */
   private filteredOut: ReadonlySet<string> = new Set();
@@ -156,6 +181,7 @@ export class SceneController {
     this.addLights();
     this.scene.add(this.machinesGroup);
     this.scene.add(this.markersGroup);
+    this.scene.add(this.groupsGroup);
     // Support gltfpack/meshopt-compressed GLBs (as the prototype did).
     this.gltfLoader.setMeshoptDecoder(MeshoptDecoder);
 
@@ -195,13 +221,7 @@ export class SceneController {
 
   /** Draw the atelier's placement markers: a thin post topped by its label. */
   setMarkers(markers: readonly PlacementMarker[]): void {
-    this.markersGroup.traverse((obj) => {
-      if (obj instanceof Sprite) {
-        obj.material.map?.dispose();
-        obj.material.dispose();
-      }
-    });
-    disposeObject(this.markersGroup);
+    clearOverlay(this.markersGroup);
     for (const k of markers) {
       const post = new Mesh(
         new CylinderGeometry(MARKER_RADIUS, MARKER_RADIUS, MARKER_HEIGHT, 12),
@@ -223,6 +243,43 @@ export class SceneController {
     this.machines = defs.map((def) => this.createMachine(def));
     this.labels.setMachines(this.machines);
     this.setFilteredOut(this.filteredOut);
+  }
+
+  /**
+   * Outline the machines of each group (MachineDef.group) on the floor, with the group's name;
+   * only the machines shown count (hidden and filtered-out ones are left out).
+   */
+  private drawGroups(): void {
+    clearOverlay(this.groupsGroup);
+    const bounds = new Map<string, { x1: number; x2: number; z1: number; z2: number }>();
+    for (const m of this.machines) {
+      if (!m.group || m.hidden || this.filteredOut.has(m.id)) continue;
+      const b = bounds.get(m.group) ?? { x1: Infinity, x2: -Infinity, z1: Infinity, z2: -Infinity };
+      b.x1 = Math.min(b.x1, m.x - m.w / 2);
+      b.x2 = Math.max(b.x2, m.x + m.w / 2);
+      b.z1 = Math.min(b.z1, m.z - m.d / 2);
+      b.z2 = Math.max(b.z2, m.z + m.d / 2);
+      bounds.set(m.group, b);
+    }
+    for (const [name, b] of bounds) {
+      const x1 = b.x1 - GROUP_MARGIN;
+      const x2 = b.x2 + GROUP_MARGIN;
+      const z1 = b.z1 - GROUP_MARGIN;
+      const z2 = b.z2 + GROUP_MARGIN;
+      const outline = new LineLoop(
+        new BufferGeometry().setFromPoints([
+          new Vector3(x1, GROUP_Y, z1),
+          new Vector3(x2, GROUP_Y, z1),
+          new Vector3(x2, GROUP_Y, z2),
+          new Vector3(x1, GROUP_Y, z2)
+        ]),
+        new LineBasicMaterial({ color: GROUP_COLOR })
+      );
+      const label = new Sprite(new SpriteMaterial({ map: markerLabel(name), depthTest: false }));
+      label.scale.set(MARKER_LABEL_W, MARKER_LABEL_W / 4, 1);
+      label.position.set((x1 + x2) / 2, GROUP_LABEL_Y, z1);
+      this.groupsGroup.add(outline, label);
+    }
   }
 
   setRoofVisible(visible: boolean): void {
@@ -247,6 +304,7 @@ export class SceneController {
     this.filteredOut = ids;
     for (const m of this.machines) m.mesh.visible = !m.hidden && !ids.has(m.id);
     this.labels.setFilteredOut(ids);
+    this.drawGroups();
   }
 
   /** Set the atelier's states for the labels (state label, producing states). */
@@ -747,7 +805,10 @@ export class SceneController {
     this.dragging = null;
     window.removeEventListener('pointermove', this.onEditMove);
     window.removeEventListener('pointerup', this.onEditUp);
-    if (m && this.dragMoved) this.onMachineMove?.(m.id, m.mesh.position.x, m.mesh.position.z);
+    if (m && this.dragMoved) {
+      this.drawGroups();
+      this.onMachineMove?.(m.id, m.mesh.position.x, m.mesh.position.z);
+    }
   };
 }
 

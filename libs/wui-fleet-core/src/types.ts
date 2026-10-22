@@ -538,6 +538,11 @@ export interface MachineDef {
    */
   markerId?: string;
   /**
+   * Group the machine belongs to (e.g. its work centre): the machines of a group are outlined
+   * together on the floor, with the group's name. Usually written by the integration.
+   */
+  group?: string;
+  /**
    * "À placer": the machine was laid out automatically by an integration (e.g. a machine that
    * joined this atelier), so the user still has to place it. Shown on its bubble, its dot and in
    * the machine list; cleared as soon as the user moves it ({@link placeMachine}).
