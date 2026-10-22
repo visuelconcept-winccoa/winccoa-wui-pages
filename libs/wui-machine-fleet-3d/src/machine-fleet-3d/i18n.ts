@@ -79,6 +79,17 @@ export const MSG = {
   view: {
     filterState: ml('State', 'État', 'Zustand'),
     backToAteliers: ml('Back to ateliers', 'Retour aux ateliers', 'Zurück zu den Werkstätten'),
+    bubbles: ml('My bubbles', 'Mes encarts', 'Meine Infoblasen'),
+    bubblesHint: ml(
+      'What the bubbles show for you (kept in this browser, other users unaffected)',
+      'Ce que les encarts affichent pour vous (mémorisé dans ce navigateur, sans effet pour les autres)',
+      'Was die Infoblasen für Sie zeigen (in diesem Browser gespeichert, ohne Wirkung für andere)'
+    ),
+    bubblesReset: ml('Back to the configuration', 'Revenir à la configuration', 'Zurück zur Konfiguration'),
+    hideBubble: ml("Hide this machine's bubble", "Masquer l'encart de cette machine", 'Infoblase dieser Maschine ausblenden'),
+    showBubble: ml("Show this machine's bubble", "Afficher l'encart de cette machine", 'Infoblase dieser Maschine einblenden'),
+    hiddenBubbles: ml('hidden bubbles', 'encarts masqués', 'ausgeblendete Infoblasen'),
+    showAllBubbles: ml('Show them all', 'Tous les afficher', 'Alle einblenden'),
     confirm: ml('Confirm', 'Valider', 'Bestätigen'),
     atelier: ml('Atelier', 'Atelier', 'Werkstatt'),
     renameAtelier: ml("Rename the atelier", "Renommer l'atelier", 'Werkstatt umbenennen'),

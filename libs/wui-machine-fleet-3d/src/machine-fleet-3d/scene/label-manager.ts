@@ -27,6 +27,11 @@ import {
   type StateColorKey,
   type StateDef
 } from '../types.js';
+import {
+  EMPTY_BUBBLE_PREFS,
+  showsInBubble,
+  type BubblePrefs
+} from '@visuelconcept-winccoa/wui-fleet-core/bubble-prefs.js';
 
 /** What the bubbles need to know about the atelier's states. */
 interface StateInfo {
@@ -93,11 +98,11 @@ interface BubbleLine {
 
 const DECIMALS = 2;
 
-/** Ordered, visible bubble lines for a machine (order = the Affichage tab). */
-function buildBubbleLines(m: Machine, states: StateInfo): BubbleLine[] {
+/** Ordered, visible bubble lines for a machine (order = the Affichage tab; the viewer's choice wins). */
+function buildBubbleLines(m: Machine, states: StateInfo, prefs: BubblePrefs): BubbleLine[] {
   const lines: BubbleLine[] = [];
   for (const slot of resolveDisplaySlots(m)) {
-    if (!slot.inBubble) continue;
+    if (!showsInBubble(prefs, slot.ref, slot.inBubble)) continue;
     const line = bubbleLineFor(slot, m, states);
     if (line) lines.push(line);
   }
@@ -122,8 +127,9 @@ function bubbleLineFor(slot: DisplaySlot, m: Machine, states: StateInfo): Bubble
       : null;
   }
   if (slot.kind === 'param') {
+    // Label – value, as the other lines (a bare value says nothing once several are shown).
     const text = formatKpi(slot.param);
-    return text ? { text, cls: LINE_KPI_CLS } : null;
+    return text ? { text: `${slot.label} ${text}`, cls: LINE_KPI_CLS } : null;
   }
   if (slot.kind === 'obsolescence') {
     // Composite ALI risk score (0–100) + level, resolved from the linked asset.
@@ -238,6 +244,8 @@ export class LabelManager {
   private alertOnly = false;
   /** Machines left out by the filter bar: no bubble, no dot. */
   private filteredOut: ReadonlySet<string> = new Set();
+  /** The viewer's own bubble choices (lines shown, machines whose bubble is hidden). */
+  private prefs: BubblePrefs = EMPTY_BUBBLE_PREFS;
   private readonly anchor = new Vector3();
   private readonly corner = new Vector3();
   private buildingBounds: BuildingBounds | null = null;
@@ -280,6 +288,11 @@ export class LabelManager {
 
   setAlertOnly(on: boolean): void {
     this.alertOnly = on;
+  }
+
+  setBubblePrefs(prefs: BubblePrefs): void {
+    this.prefs = prefs;
+    for (const entry of this.entries) if (prefs.hidden.includes(entry.machine.id)) this.hideEntry(entry);
   }
 
   setFilteredOut(ids: ReadonlySet<string>): void {
@@ -349,7 +362,11 @@ export class LabelManager {
     height: number
   ): Placeable | null {
     const { machine, el, dotEl, leaderEl } = entry;
-    if (this.filteredOut.has(machine.id) || (this.alertOnly && this.states.running(machine.state))) {
+    if (
+      this.filteredOut.has(machine.id) ||
+      this.prefs.hidden.includes(machine.id) ||
+      (this.alertOnly && this.states.running(machine.state))
+    ) {
       this.hideEntry(entry);
       return null;
     }
@@ -385,7 +402,7 @@ export class LabelManager {
     // info lines (state / production / params / KPIs) per the Affichage config.
     const lines = offline
       ? [{ text: DISCONNECTED_LABEL, cls: 'mf-label__badge' }]
-      : buildBubbleLines(machine, this.states);
+      : buildBubbleLines(machine, this.states, this.prefs);
     this.renderLines(entry.linesEl, lines);
     return { entry, ax, ay };
   }

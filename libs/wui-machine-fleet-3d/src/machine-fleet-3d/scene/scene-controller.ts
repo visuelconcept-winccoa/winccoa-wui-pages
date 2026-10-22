@@ -9,6 +9,7 @@
  * Ported from the prototype's scene setup, `updateAccentLights`, `addMachine`
  * and `tick`, scoped to a single instance (no module-level globals).
  */
+import type { BubblePrefs } from '@visuelconcept-winccoa/wui-fleet-core/bubble-prefs.js';
 import {
   ACESFilmicToneMapping,
   AmbientLight,
@@ -179,6 +180,11 @@ export class SceneController {
 
   setAlertOnly(on: boolean): void {
     this.labels.setAlertOnly(on);
+  }
+
+  /** The viewer's own bubble choices (lines shown, bubbles hidden). */
+  setBubblePrefs(prefs: BubblePrefs): void {
+    this.labels.setBubblePrefs(prefs);
   }
 
   /** Hide the machines left out by the filter bar (mesh, bubble, picking); the others show again. */

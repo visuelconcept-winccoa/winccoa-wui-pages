@@ -61,6 +61,13 @@ import {
   type Viewpoint
 } from '../types.js';
 import {
+  bubbleItems,
+  loadBubblePrefs,
+  saveBubblePrefs,
+  showsInBubble,
+  type BubblePrefs
+} from '@visuelconcept-winccoa/wui-fleet-core/bubble-prefs.js';
+import {
   filterDimensions,
   isFilterActive,
   loadFleetFilter,
@@ -164,6 +171,9 @@ export class MfAtelierView extends LitElement {
   @state() private filter: FleetFilter = loadFleetFilter();
   /** Remembered state filter (state keys); machines in another state are hidden. */
   @state() private stateFilter: string[] = loadStateFilter();
+  /** The viewer's own bubble choices for this atelier (browser storage, SL-ENC-04 / -06). */
+  @state() private bubblePrefs: BubblePrefs = { lines: {}, hidden: [] };
+  @state() private bubblesOpen = false;
   @state() private mappings: StateMapping[] = [];
   @state() private thresholds: TrsThresholds[] = [];
   @state() private thresholdsOpen = false;
@@ -248,7 +258,7 @@ export class MfAtelierView extends LitElement {
           <div class="viewport">
             <canvas></canvas>
             <div class="overlay-layer"></div>
-            ${this.renderViewpoints()} ${this.renderDetail()} ${this.renderNav()}
+            ${this.renderViewpoints()} ${this.renderBubbles()} ${this.renderDetail()} ${this.renderNav()}
             ${this.renderViewBar()}
           </div>
           ${this.renderPanel()}
@@ -271,6 +281,7 @@ export class MfAtelierView extends LitElement {
       this.thresholds = structuredClone(this.atelier.trsThresholds ?? DEFAULT_TRS_THRESHOLDS);
       this.viewpoints = structuredClone(this.atelier.viewpoints ?? []);
       this.defaultViewpointId = this.atelier.defaultViewpointId ?? '';
+      this.bubblePrefs = loadBubblePrefs(this.atelier.id);
     }
   }
 
@@ -281,6 +292,7 @@ export class MfAtelierView extends LitElement {
       // The card of a machine the filter leaves out closes with it.
       if (this.selectedId && out.has(this.selectedId)) this.selectedId = null;
     }
+    if (changed.has('bubblePrefs')) this.scene?.setBubblePrefs(this.bubblePrefs);
   }
 
   protected override firstUpdated(_changed: PropertyValues): void {
@@ -304,6 +316,7 @@ export class MfAtelierView extends LitElement {
     this.scene.setMachines(this.machines);
     this.applyStateColors();
     this.applyDisplay();
+    this.scene.setBubblePrefs(this.bubblePrefs);
     this.scene.resize();
     this.scene.start();
     this.applyDefaultViewpoint();
@@ -328,7 +341,8 @@ export class MfAtelierView extends LitElement {
         <ix-icon-button icon="home" ghost title=${localize(MSG.view.roof)} variant=${this.display.roof ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, roof: !this.display.roof })}></ix-icon-button>
         <ix-icon-button icon="label" ghost title=${localize(MSG.view.labels)} variant=${this.display.labels ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, labels: !this.display.labels })}></ix-icon-button>
         <ix-icon-button icon="warning" ghost title=${localize(MSG.view.alertsOnly)} variant=${this.display.alertOnly ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, alertOnly: !this.display.alertOnly })}></ix-icon-button>
-        <ix-icon-button icon="screenshot" ghost title=${localize(MSG.view.viewpoints)} variant=${this.viewpointsOpen ? 'primary' : 'secondary'} @click=${() => (this.viewpointsOpen = !this.viewpointsOpen)}></ix-icon-button>
+        <ix-icon-button icon="list" ghost title=${localize(MSG.view.bubblesHint)} variant=${this.bubblesOpen ? 'primary' : 'secondary'} @click=${() => { this.bubblesOpen = !this.bubblesOpen; this.viewpointsOpen = false; }}></ix-icon-button>
+        <ix-icon-button icon="screenshot" ghost title=${localize(MSG.view.viewpoints)} variant=${this.viewpointsOpen ? 'primary' : 'secondary'} @click=${() => { this.viewpointsOpen = !this.viewpointsOpen; this.bubblesOpen = false; }}></ix-icon-button>
         <ix-icon-button icon="box-open" ghost title=${localize(MSG.view.graphicsCatalogGlb)} @click=${() => (this.resourcesOpen = true)}></ix-icon-button>
         <ix-icon-button icon="building1" ghost title=${localize(MSG.view.configureBuilding)} @click=${() => (this.buildingOpen = true)}></ix-icon-button>
         <ix-icon-button icon="configuration" ghost title=${localize(MSG.view.stateMappings)} @click=${() => (this.mappingOpen = true)}></ix-icon-button>
@@ -505,6 +519,54 @@ export class MfAtelierView extends LitElement {
     `;
   }
 
+  /** "My bubbles": the lines the viewer shows, for every machine offering them (SL-ENC-04). */
+  private renderBubbles(): TemplateResult {
+    if (!this.bubblesOpen) return html``;
+    const prefs = this.bubblePrefs;
+    const hidden = prefs.hidden.filter((id) => this.machines.some((m) => m.id === id));
+    return html`
+      <div class="viewpoints bubbles">
+        <div class="vp-head">
+          <span title=${localize(MSG.view.bubblesHint)}>${localizeDir(MSG.view.bubbles)}</span>
+          <ix-button variant="secondary" ?disabled=${Object.keys(prefs.lines).length === 0} @click=${() => this.setBubblePrefs({ ...prefs, lines: {} })}>
+            ${localizeDir(MSG.view.bubblesReset)}
+          </ix-button>
+        </div>
+        <div class="vp-list">
+          ${bubbleItems(this.machines).map(
+            (item) => html`<label class="bubble-item">
+              <input
+                type="checkbox"
+                .checked=${showsInBubble(prefs, item.ref, item.byDefault)}
+                @change=${(e: Event) => this.setBubblePrefs({ ...prefs, lines: { ...prefs.lines, [item.ref]: (e.target as HTMLInputElement).checked } })}
+              />
+              ${item.label}
+            </label>`
+          )}
+        </div>
+        ${hidden.length > 0
+          ? html`<div class="muted bubble-hidden">
+              ${hidden.length} ${localize(MSG.view.hiddenBubbles)}
+              <ix-button ghost @click=${() => this.setBubblePrefs({ ...prefs, hidden: [] })}>${localizeDir(MSG.view.showAllBubbles)}</ix-button>
+            </div>`
+          : ''}
+      </div>
+    `;
+  }
+
+  private setBubblePrefs(prefs: BubblePrefs): void {
+    this.bubblePrefs = prefs;
+    saveBubblePrefs(this.atelier.id, prefs);
+  }
+
+  /** Hide or show one machine's bubble, for this viewer only (SL-ENC-06). */
+  private toggleBubble(id: string): void {
+    const hidden = this.bubblePrefs.hidden.includes(id)
+      ? this.bubblePrefs.hidden.filter((x) => x !== id)
+      : [...this.bubblePrefs.hidden, id];
+    this.setBubblePrefs({ ...this.bubblePrefs, hidden });
+  }
+
   private renderViewpointRow(vp: Viewpoint): TemplateResult {
     if (this.renamingVpId === vp.id) {
       return html`<div class="vp-row">
@@ -570,6 +632,9 @@ export class MfAtelierView extends LitElement {
           <span class="dot" style="background:${headColor}"></span>
           <ix-typography class="name" format="h3" title=${m.name}>${m.name}</ix-typography>
           <ix-chip outline>${m.loc ?? m.type}</ix-chip>
+          ${this.bubblePrefs.hidden.includes(m.id)
+            ? html`<ix-icon-button ghost icon="eye" title=${localize(MSG.view.showBubble)} @click=${() => this.toggleBubble(m.id)}></ix-icon-button>`
+            : html`<ix-icon-button ghost icon="eye-cancelled" title=${localize(MSG.view.hideBubble)} @click=${() => this.toggleBubble(m.id)}></ix-icon-button>`}
           <ix-icon-button ghost icon=${this.canEdit ? 'pen' : 'eye'} title=${this.canEdit ? localize(MSG.view.edit) : localize(MSG.view.viewOnly)} @click=${() => this.onEdit(m.id)}></ix-icon-button>
           <ix-icon-button ghost icon="close" title=${localize(MSG.view.close)} @click=${() => (this.selectedId = null)}></ix-icon-button>
         </div>
@@ -1425,6 +1490,18 @@ function viewStyles() {
     }
     .import-input {
       display: none;
+    }
+    .bubble-item {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.85rem;
+    }
+    .bubble-hidden {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-top: 0.5rem;
     }
     .filters {
       padding: 0.4rem 0.75rem;
