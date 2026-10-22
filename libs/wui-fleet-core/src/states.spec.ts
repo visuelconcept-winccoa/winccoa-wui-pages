@@ -8,13 +8,14 @@
  * the wrong way, a stopped machine would count as available.
  */
 import { describe, expect, it } from 'vitest';
-import { nonProductionIntervals } from './engine.js';
+import { nonProductionIntervals, offOpeningIntervals } from './engine.js';
 import {
   BUILTIN_STATES,
   DEFAULT_STATE_MAPPINGS,
   STATE_COLORS,
   UNKNOWN_STATE_COLOR,
   atelierStates,
+  isOutsideOpening,
   isRunningState,
   mappingStates,
   resolveState,
@@ -108,5 +109,35 @@ describe('the stop analysis follows the producing flag', () => {
       { s: t(10), e: t(20) },
       { s: t(30), e: t(40) }
     ]);
+  });
+});
+
+describe('a state taken out of the opening time', () => {
+  const OFF: StateMapping = {
+    ...FIVE,
+    states: FIVE.states?.map((st) => (st.key === 'idle' ? { ...st, outsideOpening: true } : st))
+  };
+  const t = (min: number): number => min * 60_000;
+  const samples = [
+    { t: t(0), v: 0 }, // production
+    { t: t(10), v: 3 }, // hors production, outside the opening time
+    { t: t(20), v: 0 }, // production
+    { t: t(30), v: 1 } // arrêt
+  ];
+
+  it('is neither downtime nor available', () => {
+    expect(isOutsideOpening(OFF, 'idle')).toBe(true);
+    expect(isOutsideOpening(OFF, 'stopped')).toBe(false);
+    expect(isOutsideOpening(FIVE, 'idle')).toBe(false);
+    expect(nonProductionIntervals(samples, OFF, t(0), t(40))).toEqual([{ s: t(30), e: t(40) }]);
+    expect(offOpeningIntervals(samples, OFF, t(0), t(40))).toEqual([{ s: t(10), e: t(20) }]);
+  });
+
+  it('never applies to a producing state', () => {
+    const odd: StateMapping = {
+      ...FIVE,
+      states: FIVE.states?.map((st) => (st.key === 'production' ? { ...st, outsideOpening: true } : st))
+    };
+    expect(isOutsideOpening(odd, 'production')).toBe(false);
   });
 });

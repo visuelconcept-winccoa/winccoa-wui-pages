@@ -609,6 +609,12 @@ export const MSG = {
       'Compte comme temps de production (Gantt, analyse des arrêts, TRS)',
       'Zählt als Produktionszeit (Gantt, Stillstandsanalyse, OEE)'
     ),
+    stateOffOpening: ml('Off opening', 'Hors ouverture', 'Außerhalb der Öffnungszeit'),
+    stateOffOpeningHint: ml(
+      'Neither available nor a stop: removed from the opening time, like a non-worked period (TRS)',
+      "Ni disponible ni arrêt : retiré du temps d'ouverture, comme une période non travaillée (TRS)",
+      'Weder verfügbar noch Stillstand: aus der Öffnungszeit herausgenommen, wie eine arbeitsfreie Zeit (OEE)'
+    ),
     addState: ml('Add a state', 'Ajouter un état', 'Zustand hinzufügen'),
     deleteState: ml('Delete this state', 'Supprimer cet état', 'Diesen Zustand löschen')
   },

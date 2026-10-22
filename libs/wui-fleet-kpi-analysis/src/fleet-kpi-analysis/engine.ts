@@ -23,6 +23,7 @@
 import type { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import {
   nonProductionIntervals,
+  offOpeningIntervals,
   partitionByCause,
   queryHistory,
   resolveGroup,
@@ -97,7 +98,12 @@ export async function analyseKpi(
     const hasData = stateSamples.length > 0 || causeSamples.length > 0;
     if (hasData) anySample = true;
 
-    const closed = mergeClip(nonWorked.get(machine.machineId) ?? [], startMs, endMs);
+    // Not worked: closures, and time in a state taken out of the opening time.
+    const closed = mergeClip(
+      [...(nonWorked.get(machine.machineId) ?? []), ...offOpeningIntervals(stateSamples, machine.mapping, startMs, endMs)],
+      startMs,
+      endMs
+    );
     const openingMs = Math.max(0, totalMs - sumLength(closed));
 
     let plannedMs = 0;

@@ -274,6 +274,12 @@ export function isRunningState(mapping: StateMapping | undefined, key: string): 
   return key === 'ok';
 }
 
+/** True when the time spent in that state is taken out of the opening time (see StateDef.outsideOpening). */
+export function isOutsideOpening(mapping: StateMapping | undefined, key: string): boolean {
+  const def = mapping?.states?.find((s) => s.key === key);
+  return Boolean(def?.outsideOpening && !def.running);
+}
+
 /** Resolve one state/overlay colour for a mapping (its override, else its state's, else default). */
 export function stateColor(mapping: StateMapping | undefined, key: StateColorKey): string {
   return mapping?.colors?.[key] ?? mapping?.states?.find((s) => s.key === key)?.color
@@ -356,6 +362,11 @@ export interface StateDef {
   label: string;
   color: string;
   running?: boolean;
+  /**
+   * Neither available nor a stop (e.g. no work order in progress): the time spent in this
+   * state is removed from the opening time, as a non-worked period is. Ignored when `running`.
+   */
+  outsideOpening?: boolean;
 }
 
 /** A named, ordered value→state mapping (first matching rule wins). */

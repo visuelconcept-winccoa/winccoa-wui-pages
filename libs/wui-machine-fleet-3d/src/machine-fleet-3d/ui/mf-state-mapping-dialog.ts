@@ -185,6 +185,15 @@ export class MfStateMappingDialog extends LitElement {
           />
           ${localizeDir(MSG.stateMapping.stateRunning)}
         </label>
+        <label class="running" title=${localize(MSG.stateMapping.stateOffOpeningHint)}>
+          <input
+            type="checkbox"
+            .checked=${Boolean(s.outsideOpening)}
+            ?disabled=${!this.canEdit || Boolean(s.running)}
+            @change=${(e: Event) => this.patchState(i, { outsideOpening: (e.target as HTMLInputElement).checked })}
+          />
+          ${localizeDir(MSG.stateMapping.stateOffOpening)}
+        </label>
         <ix-icon-button
           ghost
           icon="trashcan"
@@ -395,7 +404,7 @@ function extraStyles(): ReturnType<typeof css> {
     }
     .state-row {
       display: grid;
-      grid-template-columns: auto 1fr 1.6fr auto auto;
+      grid-template-columns: auto 1fr 1.6fr auto auto auto;
       gap: 0.4rem;
       align-items: end;
     }

@@ -28,6 +28,7 @@ import { firstValueFrom } from 'rxjs';
 import {
   DEFAULT_STATE_MAPPINGS,
   isRunningState,
+  isOutsideOpening,
   resolveState,
   type Atelier,
   type StateMapping,
@@ -305,7 +306,30 @@ export function nonProductionIntervals(
     const segEnd = Math.min(samples[i + 1]?.t ?? windowEnd, windowEnd);
     if (segEnd <= segStart) continue;
     const state = resolveState(mapping, Math.round(toNumber(sample.v)));
-    if (isRunningState(mapping, state)) continue;
+    if (isRunningState(mapping, state) || isOutsideOpening(mapping, state)) continue;
+    const last = intervals.at(-1);
+    if (last && last.e >= segStart) last.e = Math.max(last.e, segEnd);
+    else intervals.push({ s: segStart, e: segEnd });
+  }
+  return intervals;
+}
+
+/**
+ * Merged intervals within [windowStart, windowEnd] spent in a state its mapping takes out of
+ * the opening time (StateDef.outsideOpening): neither available nor a stop.
+ */
+export function offOpeningIntervals(
+  samples: Sample[],
+  mapping: StateMapping | undefined,
+  windowStart: number,
+  windowEnd: number
+): { s: number; e: number }[] {
+  const intervals: { s: number; e: number }[] = [];
+  for (const [i, sample] of samples.entries()) {
+    const segStart = Math.max(sample.t, windowStart);
+    const segEnd = Math.min(samples[i + 1]?.t ?? windowEnd, windowEnd);
+    if (segEnd <= segStart) continue;
+    if (!isOutsideOpening(mapping, resolveState(mapping, Math.round(toNumber(sample.v))))) continue;
     const last = intervals.at(-1);
     if (last && last.e >= segStart) last.e = Math.max(last.e, segEnd);
     else intervals.push({ s: segStart, e: segEnd });
