@@ -182,6 +182,8 @@ export class MfAtelierView extends LitElement {
   @state() private mappings: StateMapping[] = [];
   @state() private thresholds: TrsThresholds[] = [];
   @state() private markers: PlacementMarker[] = [];
+  /** The plant's machines an integration offers to add (MachineFleet3D_Catalog). */
+  @state() private catalog: MachineDef[] = [];
   @state() private markersOpen = false;
   @state() private thresholdsOpen = false;
   /** Right machine-list drawer — hidden by default; shown on demand. */
@@ -317,6 +319,7 @@ export class MfAtelierView extends LitElement {
     }
     void this.loadDashboards();
     void this.loadStopCauses();
+    void this.loadCatalog();
     void this.loadAliAssets();
     this.scene.setOnMachineMove((id, x, z) => this.onMachineMove(id, x, z));
     this.scene.setOnRotate(this.onCameraRotate);
@@ -620,6 +623,8 @@ export class MfAtelierView extends LitElement {
           .machines=${this.machines}
           .states=${atelierStates(this.mappings.length ? this.mappings : DEFAULT_STATE_MAPPINGS)}
           .canEdit=${this.canEdit}
+          .available=${this.catalog.filter((c) => !this.machines.some((m) => m.id === c.id))}
+          @wui:addfrom=${(e: CustomEvent<{ id: string }>) => this.onAddFrom(e.detail.id)}
           @wui:focus=${(e: CustomEvent<{ id: string }>) => this.onFocus(e.detail.id)}
           @wui:edit=${(e: CustomEvent<{ id: string }>) => this.onEdit(e.detail.id)}
           @wui:delete=${(e: CustomEvent<{ id: string }>) => this.onDelete(e.detail.id)}
@@ -860,6 +865,10 @@ export class MfAtelierView extends LitElement {
     this.billboardResources = await this.store.listResources('billboard');
   }
 
+  private async loadCatalog(): Promise<void> {
+    if (this.store) this.catalog = await this.store.listCatalog();
+  }
+
   private async loadStopCauses(): Promise<void> {
     if (!this.store) return;
     this.stopCauses = await this.store.listStopCauses();
@@ -1050,6 +1059,15 @@ export class MfAtelierView extends LitElement {
     };
     this.machines = [...this.machines, def];
     this.editing = def;
+    this.rebuildMachines();
+  }
+
+  /** Add a machine of the plant's catalogue: its bindings as the integration gives them, to be placed. */
+  private onAddFrom(id: string): void {
+    const entry = this.catalog.find((c) => c.id === id);
+    if (!entry || this.machines.some((m) => m.id === id)) return;
+    const def: MachineDef = { ...structuredClone(entry), x: 0, z: 0, toPlace: true };
+    this.machines = [...this.machines, def];
     this.rebuildMachines();
   }
 

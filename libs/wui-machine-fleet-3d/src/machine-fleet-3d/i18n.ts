@@ -607,6 +607,7 @@ export const MSG = {
       'Maschine suchen…'
     ),
     addMachine: ml('Add a machine', 'Ajouter une machine', 'Maschine hinzufügen'),
+    addFromCatalog: ml('Add a machine of the plant', 'Ajouter une machine du site', 'Maschine des Werks hinzufügen'),
     edit: ml('Edit', 'Éditer', 'Bearbeiten'),
     viewOnly: ml('View', 'Visualiser', 'Anzeigen'),
     delete: ml('Delete', 'Supprimer', 'Löschen')
