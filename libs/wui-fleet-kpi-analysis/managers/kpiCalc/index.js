@@ -177,11 +177,12 @@ async function loadClosures() {
   try {
     const cfg = JSON.parse(extractString(await winccoa.dpGet(`${SYS}${CLOSURES_DP}.json`)));
     closures = {
+      global: cfg && Array.isArray(cfg.global) ? cfg.global : [],
       ateliers: cfg && cfg.ateliers ? cfg.ateliers : {},
       machines: cfg && cfg.machines ? cfg.machines : {}
     };
   } catch {
-    closures = { ateliers: {}, machines: {} };
+    closures = { global: [], ateliers: {}, machines: {} };
   }
 }
 
@@ -193,7 +194,11 @@ function classify(code) {
 
 /** Closed (non-worked) intervals for a machine, clipped+merged to [start,end]. */
 function closedIntervals(atelierId, machineId, start, end) {
-  const ranges = [...(closures.ateliers[atelierId] || []), ...(closures.machines[machineId] || [])];
+  const ranges = [
+    ...(closures.global || []),
+    ...(closures.ateliers[atelierId] || []),
+    ...(closures.machines[machineId] || [])
+  ];
   const raw = [];
   for (const r of ranges) {
     const s = Date.parse(r && r.start);

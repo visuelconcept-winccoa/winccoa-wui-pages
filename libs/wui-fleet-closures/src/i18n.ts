@@ -59,7 +59,8 @@ export const MSG = {
     delete: ml('Delete', 'Supprimer', 'Löschen')
   },
   scope: {
-    atelierPrefix: ml('Workshop: ', 'Atelier : ', 'Werkstatt: ')
+    atelierPrefix: ml('Workshop: ', 'Atelier : ', 'Werkstatt: '),
+    global: ml('Global — every machine', 'Global — toutes les machines', 'Global — alle Maschinen')
   },
   overlap: {
     title: ml('Overlapping periods', 'Recouvrement de périodes', 'Überlappende Zeiträume'),
@@ -123,6 +124,11 @@ export function coveredReasonMsg(where: string, from: string, to: string): strin
       `Zeitraum ignoriert: vollständig durch einen größeren Zeitraum abgedeckt${where} (von ${from} bis ${to}).`
     )
   );
+}
+
+/** "at global level" suffix for {@link coveredReasonMsg} (plain string). */
+export function atGlobalLevelMsg(): string {
+  return localize(ml(' at global level', ' au niveau global', ' auf globaler Ebene'));
 }
 
 /** "at workshop level" suffix for {@link coveredReasonMsg} (plain string). */
