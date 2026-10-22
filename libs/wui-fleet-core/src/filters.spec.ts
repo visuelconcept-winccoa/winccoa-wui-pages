@@ -8,12 +8,15 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   FLEET_FILTER_STORAGE_KEY,
+  FLEET_STATE_FILTER_STORAGE_KEY,
   filterDimensions,
   isFilterActive,
   loadFleetFilter,
+  loadStateFilter,
   matchesFilter,
   pruneFilter,
-  saveFleetFilter
+  saveFleetFilter,
+  saveStateFilter
 } from './filters.js';
 
 const PRESS = { tags: { Line: ['L2'], Activity: ['Pressing'] } };
@@ -69,5 +72,15 @@ describe('remembered filter', () => {
     expect(loadFleetFilter()).toEqual({});
     store.set(FLEET_FILTER_STORAGE_KEY, '{nope');
     expect(loadFleetFilter()).toEqual({});
+  });
+
+  it('keeps the state filter apart, as state keys', () => {
+    Object.defineProperty(globalThis, 'localStorage', { value: fake, configurable: true });
+    saveStateFilter(['arret', 'maintenance']);
+    expect(store.get(FLEET_STATE_FILTER_STORAGE_KEY)).toBe('["arret","maintenance"]');
+    expect(loadStateFilter()).toEqual(['arret', 'maintenance']);
+    expect(loadFleetFilter()).toEqual({});
+    store.set(FLEET_STATE_FILTER_STORAGE_KEY, '{"a":1}');
+    expect(loadStateFilter()).toEqual([]);
   });
 });

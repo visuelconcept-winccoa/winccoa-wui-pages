@@ -22,6 +22,9 @@ export interface FilterDimension {
 /** localStorage key of the remembered filter. */
 export const FLEET_FILTER_STORAGE_KEY = 'wui.machine-fleet.filter';
 
+/** localStorage key of the remembered state filter of the atelier views (state keys). */
+export const FLEET_STATE_FILTER_STORAGE_KEY = 'wui.machine-fleet.state-filter';
+
 /** Dimensions found on the machines, in order of first appearance, values sorted. */
 export function filterDimensions(machines: Iterable<Pick<MachineDef, 'tags'>>): FilterDimension[] {
   const dims = new Map<string, Set<string>>();
@@ -85,5 +88,25 @@ export function saveFleetFilter(filter: FleetFilter): void {
     globalThis.localStorage?.setItem(FLEET_FILTER_STORAGE_KEY, JSON.stringify(filter));
   } catch {
     // Storage unavailable (private mode, blocked): the filter just isn't remembered.
+  }
+}
+
+/** The remembered state filter of the atelier views (state keys; empty when none). */
+export function loadStateFilter(): string[] {
+  try {
+    const raw = globalThis.localStorage?.getItem(FLEET_STATE_FILTER_STORAGE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Remember the state filter of the atelier views (best effort). */
+export function saveStateFilter(keys: string[]): void {
+  try {
+    globalThis.localStorage?.setItem(FLEET_STATE_FILTER_STORAGE_KEY, JSON.stringify(keys));
+  } catch {
+    // Storage unavailable: the state filter just isn't remembered.
   }
 }

@@ -77,6 +77,7 @@ export const MSG = {
     )
   },
   view: {
+    filterState: ml('State', 'État', 'Zustand'),
     backToAteliers: ml('Back to ateliers', 'Retour aux ateliers', 'Zurück zu den Werkstätten'),
     confirm: ml('Confirm', 'Valider', 'Bestätigen'),
     atelier: ml('Atelier', 'Atelier', 'Werkstatt'),

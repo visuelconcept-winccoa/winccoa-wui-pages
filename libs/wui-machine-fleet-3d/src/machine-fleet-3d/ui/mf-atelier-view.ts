@@ -37,6 +37,7 @@ import {
   atelierStates,
   formatStopCause,
   isRunningState,
+  mappingStates,
   MAX_DASHBOARD_LINKS,
   isDisconnected,
   resolveConnected,
@@ -63,9 +64,11 @@ import {
   filterDimensions,
   isFilterActive,
   loadFleetFilter,
+  loadStateFilter,
   matchesFilter,
   pruneFilter,
   saveFleetFilter,
+  saveStateFilter,
   type FleetFilter
 } from '@visuelconcept-winccoa/wui-fleet-core/filters.js';
 import './mf-ai-prompt.js';
@@ -159,6 +162,8 @@ export class MfAtelierView extends LitElement {
   @state() private machines: MachineDef[] = [];
   /** Remembered machine filter (shared with the overview); machines left out are hidden. */
   @state() private filter: FleetFilter = loadFleetFilter();
+  /** Remembered state filter (state keys); machines in another state are hidden. */
+  @state() private stateFilter: string[] = loadStateFilter();
   @state() private mappings: StateMapping[] = [];
   @state() private thresholds: TrsThresholds[] = [];
   @state() private thresholdsOpen = false;
@@ -270,7 +275,7 @@ export class MfAtelierView extends LitElement {
   }
 
   protected override updated(changed: PropertyValues): void {
-    if (changed.has('filter') || changed.has('machines')) {
+    if (changed.has('filter') || changed.has('stateFilter') || changed.has('machines')) {
       const out = this.filteredOutIds();
       this.scene?.setFilteredOut(out);
       // The card of a machine the filter leaves out closes with it.
@@ -409,33 +414,59 @@ export class MfAtelierView extends LitElement {
     this.scene?.setView(preset);
   }
 
-  /** Always-on bottom bar of ghost buttons to jump between saved camera views. */
-  /** The filter bar over this atelier's machines (filter pruned to what still exists). */
+  /** The filter bar over this atelier's machines (filter pruned to what still exists), plus their state. */
   private renderFilters(): TemplateResult {
     const dims = filterDimensions(this.machines);
-    if (dims.length === 0) return html``;
-    const filter = pruneFilter(this.filter, dims);
+    const states = this.stateValues();
+    if (dims.length === 0 && states.length === 0) return html``;
+    const stateDim = localize(MSG.view.filterState);
+    const filter: FleetFilter = { ...pruneFilter(this.filter, dims) };
+    const stateSelected = states.filter((s) => this.stateFilter.includes(s.key)).map((s) => s.label);
+    if (stateSelected.length > 0) filter[stateDim] = stateSelected;
     return html`<mf-filter-bar
       class="filters"
-      .dimensions=${dims}
+      .dimensions=${[...dims, { key: stateDim, values: states.map((s) => s.label) }]}
       .filter=${filter}
       .shown=${this.machines.length - this.filteredOutIds().size}
       .total=${this.machines.length}
-      @wui:filter=${(e: CustomEvent<FleetFilter>) => this.onFilter(e.detail)}
+      @wui:filter=${(e: CustomEvent<FleetFilter>) => this.onFilter(e.detail, stateDim)}
     ></mf-filter-bar>`;
   }
 
-  private onFilter(filter: FleetFilter): void {
-    this.filter = filter;
-    saveFleetFilter(filter);
+  private onFilter(filter: FleetFilter, stateDim: string): void {
+    const { [stateDim]: stateLabels = [], ...tags } = filter;
+    this.filter = tags;
+    saveFleetFilter(tags);
+    this.stateFilter = this.stateValues()
+      .filter((s) => stateLabels.includes(s.label))
+      .map((s) => s.key);
+    saveStateFilter(this.stateFilter);
   }
 
-  /** Ids of the machines the filter leaves out. */
+  /** The states the machines of this atelier can take (their mappings'), keyed and labelled. */
+  private stateValues(): { key: string; label: string }[] {
+    const out: { key: string; label: string }[] = [];
+    for (const m of this.machines) {
+      for (const s of mappingStates(this.mappingFor(m))) {
+        if (!out.some((o) => o.key === s.key)) out.push({ key: s.key, label: s.label });
+      }
+    }
+    return out;
+  }
+
+  /** Ids of the machines the filter leaves out (tags, then state). */
   private filteredOutIds(): Set<string> {
     const filter = pruneFilter(this.filter, filterDimensions(this.machines));
-    if (!isFilterActive(filter)) return new Set();
-    return new Set(this.machines.filter((m) => !matchesFilter(m, filter)).map((m) => m.id));
+    const byState = this.stateFilter.length > 0;
+    if (!isFilterActive(filter) && !byState) return new Set();
+    return new Set(
+      this.machines
+        .filter((m) => !matchesFilter(m, filter) || (byState && !this.stateFilter.includes(m.state)))
+        .map((m) => m.id)
+    );
   }
+
+  /** Always-on bottom bar of ghost buttons to jump between saved camera views. */
 
   private renderViewBar(): TemplateResult {
     if (this.viewpoints.length === 0) return html``;
@@ -809,7 +840,7 @@ export class MfAtelierView extends LitElement {
   }
 
   /** Resolve the state mapping bound to a machine (for the dashboard Gantt). */
-  private mappingFor(m: Machine): StateMapping {
+  private mappingFor(m: Pick<MachineDef, 'stateMappingId'>): StateMapping {
     return (
       this.mappings.find((mp) => mp.id === m.stateMappingId) ??
       this.mappings[0] ??
