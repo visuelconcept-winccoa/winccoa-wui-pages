@@ -66,6 +66,8 @@ import type { FleetFilter } from '@visuelconcept-winccoa/wui-fleet-core/filters.
 import './mf-filter-bar.js';
 import { scopeFromDpes } from '@visuelconcept-winccoa/wui-alarms-core/scope.js';
 import '@visuelconcept-winccoa/wui-alarms-core/ui/wui-alarm-view.js';
+import type { AlarmViewExtension } from '@visuelconcept-winccoa/wui-alarms-core/extensions.js';
+import type { AlarmViewProfile } from '@visuelconcept-winccoa/wui-alarms-core/profile.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import {
   MSG,
@@ -75,6 +77,19 @@ import {
   noStopOfClassMsg,
   rangeLabelMsg
 } from '../i18n.js';
+
+/**
+ * The alarm panel of the dashboard, with the duration of each alarm: from its appearance to its
+ * disappearance, or elapsed so far while it stands (SDS 2.2 SL-TDB-02). A column the alarm kit
+ * draws through its extension point — the kit itself is not changed.
+ */
+const ALARM_DURATION: AlarmViewExtension = {
+  id: 'machine-fleet-duration',
+  columns: [{ id: 'duration', render: (a) => formatDuration((a.cleared ?? Date.now()) - a.raised) }]
+};
+const ALARM_PROFILE: AlarmViewProfile = {
+  panelColumns: ['raised', 'severity', 'text', { id: 'duration', label: MSG.machineDash.alarmDuration }, 'state']
+};
 
 /** A piecewise-constant history sample (mirrors the engine's internal type). */
 interface HistorySample {
@@ -420,6 +435,8 @@ export class MfMachineDashboard extends LitElement {
         .from=${start.getTime()}
         .to=${end.getTime()}
         .scope=${this.alarmScope()}
+        .profile=${ALARM_PROFILE}
+        .extensions=${[ALARM_DURATION]}
       ></wui-alarm-view>
     `;
   }
@@ -777,6 +794,7 @@ export class MfMachineDashboard extends LitElement {
         <div class="tip-state" style="color:${stateColor(this.mapping, s.state)}">${stateLabel(this.mapping, s.state)}</div>
         <div>${localizeDir(MSG.machineDash.tipStart)} ${formatDateTimeSec(s.startMs)}</div>
         <div>${localizeDir(MSG.machineDash.tipEnd)} ${formatDateTimeSec(s.endMs)}</div>
+        <div>${localizeDir(MSG.machineDash.tipDuration)} ${formatDuration(s.endMs - s.startMs)}</div>
         ${s.causeLabel ? html`<div>${localizeDir(MSG.machineDash.tipCause)} ${s.causeLabel}</div>` : ''}
       </div>
     `;
