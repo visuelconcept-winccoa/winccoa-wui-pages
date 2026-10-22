@@ -6,10 +6,11 @@
  * one line per logout, switch user or idle expiry, for the user of the WebUI
  * token sent — whatever the login provider that opened the session.
  *
- * Meant for the shell's logout hook (wui-toolkit, visuelconcept-winccoa/
- * winccoa-wui-tools#27), called just before the session closes:
+ * Called by the shell's logout hook (shell/boot.ts, `shell.onLogout`), just
+ * before the session closes; `idle` is for a module that closes an idle
+ * session itself:
  *
- *   auditSessionClose('idle', { item, provider: sessionProvider(), idleMinutes: 30 });
+ *   auditSessionClose('idle', { item, provider, idleMinutes: 30 });
  *
  * Never blocks nor delays the logout: the request is sent `keepalive` (it
  * outlives the page's unload) and not waited for; it never throws — a failure
@@ -23,7 +24,7 @@ export type SessionCloseReason = 'logout' | 'switch-user' | 'idle';
 export interface SessionCloseContext {
   /** What the session was about (the station / workcenter): the audit line's item. */
   item?: string;
-  /** The login provider that opened the session (`sessionProvider()`: 'auth-badge', 'password'…). */
+  /** The login provider that opened the session (`sessionProvider()`: 'auth-badge', 'standard' for the shell's own form or OIDC…). */
   provider?: string;
   /** The idle delay applied, for `idle`. */
   idleMinutes?: number;

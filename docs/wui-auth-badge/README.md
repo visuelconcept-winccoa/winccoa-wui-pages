@@ -8,8 +8,9 @@ see the toolkit's `docs/REFERENCE.md`, "A module's login page"). A site selects
 - **Login page**: an RFID reader in keyboard emulation, badge → user through
   the `RFID_UID` user setting, a user's badge locked after N refused logins
   (below, "Badge lock"), an audit line per event.
-- **Session close**: `POST /logout` writes the audit line of a logout, a
-  switch user or an idle expiry, for the token's user (below, "Session close").
+- **Session close**: the module's shell boot script hooks every logout and
+  "Switch user"; `POST /logout` writes its audit line for the token's user
+  (below, "Session close").
 - **Mon badge** (`/auth-badge`): the logged-in user associates their badge with
   their account — when self-service is on; else the page shows the badge and
   sends the user to someone with the `enrol` role (self-service off, the
@@ -33,8 +34,8 @@ uses, token check, users, user settings, audit).
 npx wui use auth-badge      # npm install @visuelconcept-winccoa/wui-auth-badge + select it
 ```
 
-Runtime **2.0.1** (the shell extension exists for it only), wui-toolkit 0.11
-or later. `wui build` deploys the shell with the extension, the page, the login
+Runtime **2.0.1** (the shell extension exists for it only), wui-toolkit
+0.23.0 or later (the logout hook; 0.11 for the rest). `wui build` deploys the shell with the extension, the page, the login
 element and the routes; restart the webserver manager after.
 
 - A station that opens on the badge page: `https://<host>/?login=auth-badge`
@@ -100,6 +101,16 @@ its type and the DP at the first change — without them, the defaults. Audit
 lines: `CONFIG_BADGE_MODIFIEE`, and `BADGE_ASSOCIE` / `BADGE_RETIRE` with the
 target account and who did it.
 
+The roles are checked by the backend against the user of the request's WebUI
+token (`identityOfUsername` of the shared `appSecurityGuard.ts`): a badge
+session has no webserver session, so `requireRole`, which reads the latter,
+would let every call through. The module therefore requires `para` and
+`app-security` (role registration, `hasRole$`) and the shared guard
+(`wui-app-security` 0.1.3 or later).
+
+`oaAuth.ts` now exports `users()` (the whole `_Users` directory): give
+`wui-auth-hello`'s copy the same export when it is next synced.
+
 ## Badge lock
 
 Per **user**, never per station (`backend/badgeLock.ts`):
@@ -157,30 +168,16 @@ It sends the request `keepalive`, with the stored token (or `token`), and
 never throws nor rejects: the logout does not wait for it. Call it before the
 shell clears the token.
 
-**Not wired yet**: the call belongs in the shell's logout hook
-(visuelconcept-winccoa/winccoa-wui-tools#27, in development), called just
-before every close with the reason, `sessionProvider()` and the login context
-(`item`). Once its API is known, the module declares it in its shell boot
-script (`wuiPage.shell.boot`) or its login extension, e.g.:
-
-```ts
-// a hook as onLogout(cb), or a `wui:logout` event — whichever wui-toolkit ships
-onLogout(({ reason, provider, context, idleMinutes }) =>
-  void auditSessionClose(reason, { item: context?.item, provider, idleMinutes })
-);
-```
-
-The module has no shell boot script today.
-
-The roles are checked by the backend against the user of the request's WebUI
-token (`identityOfUsername` of the shared `appSecurityGuard.ts`): a badge
-session has no webserver session, so `requireRole`, which reads the latter,
-would let every call through. The module therefore requires `para` and
-`app-security` (role registration, `hasRole$`) and the shared guard
-(`wui-app-security` 0.1.3 or later).
-
-`oaAuth.ts` now exports `users()` (the whole `_Users` directory): give
-`wui-auth-hello`'s copy the same export when it is next synced.
+**Wired by the module's boot script** (`wuiPage.shell.boot`,
+`src/shell/boot.ts`, wui-toolkit 0.23.0 or later): `shell.onLogout` calls
+`auditSessionClose(info.reason, { item: info.context.item, provider })` once
+just before every close — the logout, "Switch user", a connection the server
+closed —, the session still open; `provider` is the shell's (`auth-badge`…),
+`standard` for the standard form or OIDC. The shell waits for it 3 s at most
+and never lets it block the logout. The boot script declares neither a header
+element nor `loginHome`: it goes along with the site's own boot script (the
+station's page and `item`). `idle` is not a reason the shell gives: it is
+there for the module that closes an idle session itself.
 
 ## Badge numbers as fingerprints (`hashBadges`)
 
@@ -222,11 +219,11 @@ per page. `npm test` checks its types
 backend's specs: `badgeHash`, `badgeLock` (count, expiry, persistence's
 format), `badgeSettings` (the lock's bounds) and `badgeAuth` (the login's lock
 across a restart, unknown badges never locking, unlock refused without the
-role or a reason, the session close's audit line — against a mocked WinCC OA).
+role or a reason, the session close's audit line — against a mocked WinCC OA),
+and `src/shell/boot.spec.ts` (the logout hook's request). The boot script does
+not run in `wui dev` (no shell there).
 The mock's user `former` is locked (Déverrouiller). The mock hashes with a fixed dev key.
 
 ## Not done
 
 - The extension for runtimes other than 2.0.1.
-- The session close's call from the shell's logout hook (above), waiting for
-  wui-toolkit's hook (visuelconcept-winccoa/winccoa-wui-tools#27).
