@@ -119,6 +119,9 @@ export class MfConfigPanel extends LitElement {
           <span class="row-name">${m.name}</span>
           <span class="row-sub">${m.type}${m.loc ? ` · ${m.loc}` : ''}</span>
         </span>
+        ${m.toPlace
+          ? html`<span class="to-place" title=${localize(MSG.toPlace.hint)}>${localize(MSG.toPlace.label)}</span>`
+          : ''}
         <span class="badge" style="--c:${color}">${label}</span>
         <ix-icon-button
           ghost
@@ -286,6 +289,17 @@ function panelStyles() {
       color: var(--c, var(--theme-color-primary));
       border: 1px solid var(--c, var(--theme-color-primary));
       background: color-mix(in srgb, var(--c) 16%, transparent);
+    }
+    .to-place {
+      flex-shrink: 0;
+      padding: 0.1rem 0.45rem;
+      border-radius: 0.3rem;
+      font-size: 0.68rem;
+      font-weight: 700;
+      white-space: nowrap;
+      color: var(--theme-color-std-text);
+      border: 1px dashed var(--theme-color-warning);
+      background: color-mix(in srgb, var(--theme-color-warning) 22%, transparent);
     }
     .add {
       margin-top: 0.5rem;

@@ -528,6 +528,12 @@ export interface MachineDef {
   variant?: string | number;
   /** When true, the machine is not rendered in the 3D scene (still listed/editable). */
   hidden?: boolean;
+  /**
+   * "À placer": the machine was laid out automatically by an integration (e.g. a machine that
+   * joined this atelier), so the user still has to place it. Shown on its bubble, its dot and in
+   * the machine list; cleared as soon as the user moves it ({@link placeMachine}).
+   */
+  toPlace?: boolean;
   /** Rotation about the scene's vertical axis, in degrees (multiple of 45). */
   rotationY?: number;
   /** Custom paint colour applied to the model's principal parts (`#RRGGBB`). */
@@ -680,6 +686,13 @@ export type DisplayKind =
   | 'obsolescence'
   | 'param'
   | 'kpi';
+
+/** The machine moved by the user to (x, z): placed, so no longer "à placer". */
+export function placeMachine<T extends MachineDef>(m: T, x: number, z: number): T {
+  const placed: T = { ...m, x, z };
+  delete placed.toPlace;
+  return placed;
+}
 
 export const DISPLAY_KIND_LABEL: Record<DisplayKind, string> = {
   state: 'État',

@@ -301,6 +301,7 @@ export class SceneController {
       aliRiskScore?: number;
       aliRiskLabel?: string;
       aliRiskColor?: string;
+      toPlace?: boolean;
     }
   ): void {
     const m = this.machines.find((x) => x.id === id);
@@ -324,6 +325,7 @@ export class SceneController {
     if ('aliRiskScore' in patch) m.aliRiskScore = patch.aliRiskScore;
     if ('aliRiskLabel' in patch) m.aliRiskLabel = patch.aliRiskLabel;
     if ('aliRiskColor' in patch) m.aliRiskColor = patch.aliRiskColor;
+    if ('toPlace' in patch) m.toPlace = patch.toPlace;
   }
 
   start(): void {

@@ -36,6 +36,14 @@ export const MSG = {
       'Ihre Gruppen besitzen die Rolle „Ansehen" dieser Seite nicht.'
     )
   },
+  toPlace: {
+    label: ml('To place', 'À placer', 'Zu platzieren'),
+    hint: ml(
+      'New in this atelier, or moved elsewhere in the plant: move it to its place in edit mode',
+      "Nouvelle dans cet atelier, ou réaffectée : déplacez-la à sa place en mode édition",
+      'Neu in dieser Werkstatt oder umgesetzt: im Bearbeitungsmodus an ihren Platz verschieben'
+    )
+  },
   filterBar: {
     label: ml('Filters', 'Filtres', 'Filter'),
     reset: ml('Reset', 'Réinitialiser', 'Zurücksetzen'),

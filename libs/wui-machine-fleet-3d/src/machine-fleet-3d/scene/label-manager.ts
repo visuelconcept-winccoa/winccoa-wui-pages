@@ -27,6 +27,7 @@ import {
   type StateColorKey,
   type StateDef
 } from '../types.js';
+import { MSG, localize } from '../i18n.js';
 import {
   EMPTY_BUBBLE_PREFS,
   showsInBubble,
@@ -56,6 +57,9 @@ const HIDDEN = 'none';
 const STATE_VAR = '--mf-state';
 /** CSS class for a numeric/value bubble line (parameters, KPIs, obsolescence). */
 const LINE_KPI_CLS = 'mf-label__kpi-line';
+/** CSS class of the "à placer" bubble line, and modifier of the dot of such a machine. */
+const TO_PLACE_CLS = 'mf-label__to-place';
+const DOT_TO_PLACE_CLS = 'mf-dot--to-place';
 
 /** Axis-aligned world footprint of the building (centred at the origin). */
 interface BuildingBounds {
@@ -387,7 +391,9 @@ export class LabelManager {
     dotEl.style.setProperty(STATE_VAR, color);
     leaderEl.style.setProperty(STATE_VAR, color);
 
-    // Dot is always shown (within the view frustum).
+    // Dot is always shown (within the view frustum). A machine "à placer" is said on the dot
+    // too (ring + tooltip + accessible name), for when its bubble is collapsed or hidden.
+    this.markToPlace(entry);
     dotEl.style.display = 'block';
     dotEl.style.transform = `translate(-50%, -50%) translate(${ax}px, ${ay}px)`;
 
@@ -403,8 +409,25 @@ export class LabelManager {
     const lines = offline
       ? [{ text: DISCONNECTED_LABEL, cls: 'mf-label__badge' }]
       : buildBubbleLines(machine, this.states, this.prefs);
+    // "À placer" heads the bubble, as text (not only a colour), whatever the viewer's choices.
+    if (machine.toPlace) lines.unshift({ text: localize(MSG.toPlace.label), cls: TO_PLACE_CLS });
     this.renderLines(entry.linesEl, lines);
     return { entry, ax, ay };
+  }
+
+  /** Mark (or unmark) the dot of a machine "à placer": ring, tooltip and accessible name. */
+  private markToPlace({ machine, dotEl }: LabelEntry): void {
+    const on = machine.toPlace === true;
+    if (dotEl.classList.contains(DOT_TO_PLACE_CLS) === on) return;
+    dotEl.classList.toggle(DOT_TO_PLACE_CLS, on);
+    if (on) {
+      const text = `${machine.name} — ${localize(MSG.toPlace.label)} : ${localize(MSG.toPlace.hint)}`;
+      dotEl.title = text;
+      dotEl.setAttribute('aria-label', text);
+    } else {
+      dotEl.removeAttribute('title');
+      dotEl.removeAttribute('aria-label');
+    }
   }
 
   /** Render one element per bubble line (class + text + colour), reusing existing

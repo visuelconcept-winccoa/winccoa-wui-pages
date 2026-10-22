@@ -40,6 +40,7 @@ import {
   mappingStates,
   MAX_DASHBOARD_LINKS,
   isDisconnected,
+  placeMachine,
   resolveConnected,
   resolveDashboardMode,
   resolveDisplaySlots,
@@ -993,9 +994,11 @@ export class MfAtelierView extends LitElement {
   }
 
   private onMachineMove(id: string, x: number, z: number): void {
+    // Moved by the user: placed, so its "à placer" mark goes (saved with the atelier).
     this.machines = this.machines.map((m) =>
-      m.id === id ? { ...m, x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10 } : m
+      m.id === id ? placeMachine(m, Math.round(x * 10) / 10, Math.round(z * 10) / 10) : m
     );
+    this.scene?.updateMachineLive(id, { toPlace: undefined });
     this.scheduleSave();
   }
 
@@ -1033,7 +1036,12 @@ export class MfAtelierView extends LitElement {
   }
 
   private onMachineApply(machine: MachineDef): void {
-    this.machines = this.machines.map((m) => (m.id === machine.id ? machine : m));
+    // A position changed in the dialog places the machine too.
+    this.machines = this.machines.map((m) => {
+      if (m.id !== machine.id) return m;
+      const moved = machine.toPlace && (machine.x !== m.x || machine.z !== m.z);
+      return moved ? placeMachine(machine, machine.x, machine.z) : machine;
+    });
     this.editing = null;
     this.rebuildMachines();
   }
@@ -1837,6 +1845,20 @@ function viewStyles() {
       color: var(--mf-state, var(--theme-color-primary));
       border: 1px solid var(--mf-state, var(--theme-color-primary));
       background: color-mix(in srgb, var(--mf-state) 16%, transparent);
+    }
+    .mf-label__to-place {
+      align-self: flex-start;
+      padding: 0.1rem 0.45rem;
+      border-radius: 0.3rem;
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: var(--theme-color-std-text);
+      border: 1px dashed var(--theme-color-warning);
+      background: color-mix(in srgb, var(--theme-color-warning) 22%, transparent);
+    }
+    .mf-dot--to-place {
+      outline: 2px dashed var(--theme-color-warning);
+      outline-offset: 2px;
     }
     .mf-label__cause:not(:empty) {
       font-size: 0.66rem;
