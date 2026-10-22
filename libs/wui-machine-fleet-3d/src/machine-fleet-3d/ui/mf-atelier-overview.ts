@@ -7,15 +7,27 @@
  * breakdown and a lightweight 2D top-down minimap. Clicking a card opens its 3D
  * view. Rename / delete actions live inside the atelier view, not on the card.
  * A "new atelier" action and (when empty) an "import demo" action are offered.
+ * The filter bar (machine tags) narrows the cards, counts and minimaps to the matching
+ * machines; an atelier with none is hidden. The selection is remembered in the browser.
  */
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, svg, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { FleetStore } from '../data/fleet-store.js';
 import { MSG, localize, localizeDir } from '../i18n.js';
-import { UNKNOWN_STATE_COLOR, atelierStates, type Atelier, type MachineState } from '../types.js';
+import {
+  filterDimensions,
+  isFilterActive,
+  loadFleetFilter,
+  matchesFilter,
+  pruneFilter,
+  saveFleetFilter,
+  type FleetFilter
+} from '@visuelconcept-winccoa/wui-fleet-core/filters.js';
+import { UNKNOWN_STATE_COLOR, atelierStates, type Atelier, type MachineDef, type MachineState } from '../types.js';
 import './mf-ai-prompt.js';
 import './mf-atelier-create-dialog.js';
+import './mf-filter-bar.js';
 import './mf-graphics-catalog.js';
 
 /** Minimap rendered height (px) — must match the `.minimap { height }` CSS. */
@@ -39,6 +51,8 @@ export class MfAtelierOverview extends LitElement {
   @state() private createTemplate = '';
   @state() private createDefaultName = '';
   @state() private resourcesOpen = false;
+  /** Remembered machine filter (shared with the atelier views). */
+  @state() private filter: FleetFilter = loadFleetFilter();
 
   override render(): TemplateResult {
     return html`
@@ -68,6 +82,7 @@ export class MfAtelierOverview extends LitElement {
             <ix-icon name="info"></ix-icon>${localizeDir(MSG.overview.offlineNotice)}
           </div>`
         : ''}
+      ${this.renderFilterBar()}
       ${this.ateliers.length === 0 ? this.renderEmpty() : this.renderGrid()}
       ${this.createOpen
         ? html`<mf-atelier-create-dialog
@@ -102,29 +117,64 @@ export class MfAtelierOverview extends LitElement {
     `;
   }
 
-  private renderGrid(): TemplateResult {
-    return html`<div class="grid">${this.ateliers.map((a) => this.renderCard(a))}</div>`;
+  /** The filter bar over every atelier's machines; the filter is pruned to what still exists. */
+  private renderFilterBar(): TemplateResult {
+    const all = this.ateliers.flatMap((a) => a.machines);
+    const dims = filterDimensions(all);
+    if (dims.length === 0) return html``;
+    const filter = pruneFilter(this.filter, dims);
+    return html`<mf-filter-bar
+      class="filters"
+      .dimensions=${dims}
+      .filter=${filter}
+      .shown=${all.filter((m) => matchesFilter(m, filter)).length}
+      .total=${all.length}
+      @wui:filter=${(e: CustomEvent<FleetFilter>) => this.onFilter(e.detail)}
+    ></mf-filter-bar>`;
   }
 
-  private renderCard(a: Atelier): TemplateResult {
+  private onFilter(filter: FleetFilter): void {
+    this.filter = filter;
+    saveFleetFilter(filter);
+  }
+
+  /** The machines of an atelier that pass the (pruned) filter. */
+  private visible(a: Atelier): MachineDef[] {
+    const filter = pruneFilter(this.filter, filterDimensions(this.ateliers.flatMap((x) => x.machines)));
+    return isFilterActive(filter) ? a.machines.filter((m) => matchesFilter(m, filter)) : a.machines;
+  }
+
+  private renderGrid(): TemplateResult {
+    // Without filter every atelier shows, empty ones included; with one, only those keeping a machine.
+    const filtering = isFilterActive(pruneFilter(this.filter, filterDimensions(this.ateliers.flatMap((x) => x.machines))));
+    const cards = this.ateliers
+      .map((a) => ({ a, machines: this.visible(a) }))
+      .filter(({ machines }) => !filtering || machines.length > 0);
+    if (cards.length === 0) {
+      return html`<div class="empty"><ix-typography>${localizeDir(MSG.filterBar.noMatch)}</ix-typography></div>`;
+    }
+    return html`<div class="grid">${cards.map(({ a, machines }) => this.renderCard(a, machines))}</div>`;
+  }
+
+  private renderCard(a: Atelier, machines: MachineDef[]): TemplateResult {
     return html`
       <ix-card class="card" title=${localize(MSG.overview.openView3d)} @click=${() => this.open(a)}>
         <ix-card-content>
           <div class="card-title">${a.name}</div>
-          ${this.renderMinimap(a)}
+          ${this.renderMinimap(a, machines)}
           <div class="stats">
-            <span class="count">${a.machines.length} ${localizeDir(MSG.overview.machineCount)}</span>
+            <span class="count">${machines.length} ${localizeDir(MSG.overview.machineCount)}</span>
             <span class="spacer"></span>
-            ${this.renderStateChips(a)}
+            ${this.renderStateChips(a, machines)}
           </div>
         </ix-card-content>
       </ix-card>
     `;
   }
 
-  private renderStateChips(a: Atelier): TemplateResult {
+  private renderStateChips(a: Atelier, machines: MachineDef[]): TemplateResult {
     const counts = new Map<MachineState, number>();
-    for (const m of a.machines) counts.set(m.state, (counts.get(m.state) ?? 0) + 1);
+    for (const m of machines) counts.set(m.state, (counts.get(m.state) ?? 0) + 1);
     // One chip per state of the atelier's mappings that has machines, in their display order.
     return html`
       ${atelierStates(a.mappings).filter((s) => counts.get(s.key)).map(
@@ -133,7 +183,7 @@ export class MfAtelierOverview extends LitElement {
     `;
   }
 
-  private renderMinimap(a: Atelier): TemplateResult {
+  private renderMinimap(a: Atelier, machines: MachineDef[]): TemplateResult {
     const { length, width } = a.building;
     // `meet` fits the footprint into the fixed-height minimap, so the scale is
     // 110px / width (height-limited for any aspect < ~2). Expressing the radius
@@ -144,7 +194,7 @@ export class MfAtelierOverview extends LitElement {
     return html`
       <svg class="minimap" viewBox="0 0 ${length} ${width}" preserveAspectRatio="xMidYMid meet">
         <rect x="0" y="0" width=${length} height=${width} class="minimap-bg"></rect>
-        ${a.machines.map(
+        ${machines.map(
           (m) =>
             svg`<circle
               cx=${m.x + length / 2}
@@ -214,6 +264,9 @@ function overviewStyles() {
     }
     .spacer {
       flex: 1;
+    }
+    .filters {
+      margin-bottom: 1rem;
     }
     .notice {
       display: flex;

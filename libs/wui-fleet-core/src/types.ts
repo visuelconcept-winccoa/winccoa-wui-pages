@@ -465,6 +465,11 @@ export const DEFAULT_DISPLAY: DisplayConfig = {
 export interface MachineDef {
   id: string;
   name: string;
+  /**
+   * Tags by dimension (e.g. { Line: ['L3'], Activity: ['Welding', 'Heat'] }): what the filter
+   * bar offers and filters on (see filters.ts). Usually written by an integration.
+   */
+  tags?: Record<string, string[]>;
   type: MachineType;
   /** Process family (usinage / soudage / generic). Drives the domain parameters
    * simulated & bound. When unset, derived from `type` ({@link resolveProcess}). */

@@ -81,6 +81,8 @@ export class SceneController {
   private roofGroup: Group | null = null;
   private machinesGroup = new Group();
   private machines: Machine[] = [];
+  /** Machines left out by the filter bar (kept across setMachines). */
+  private filteredOut: ReadonlySet<string> = new Set();
   private cfg: BuildingConfig = { ...DEFAULT_BUILDING };
   private resourceResolver: ((ref: string) => Promise<string | undefined>) | null = null;
   private onMachineMove: ((id: string, x: number, z: number) => void) | null = null;
@@ -164,6 +166,7 @@ export class SceneController {
     this.scene.add(this.machinesGroup);
     this.machines = defs.map((def) => this.createMachine(def));
     this.labels.setMachines(this.machines);
+    this.setFilteredOut(this.filteredOut);
   }
 
   setRoofVisible(visible: boolean): void {
@@ -176,6 +179,13 @@ export class SceneController {
 
   setAlertOnly(on: boolean): void {
     this.labels.setAlertOnly(on);
+  }
+
+  /** Hide the machines left out by the filter bar (mesh, bubble, picking); the others show again. */
+  setFilteredOut(ids: ReadonlySet<string>): void {
+    this.filteredOut = ids;
+    for (const m of this.machines) m.mesh.visible = !m.hidden && !ids.has(m.id);
+    this.labels.setFilteredOut(ids);
   }
 
   /** Set the atelier's states for the labels (state label, producing states). */
@@ -574,13 +584,17 @@ export class SceneController {
     this.setPointer(e);
     this.raycaster.setFromCamera(this.pointer, this.activeCamera());
     const hits = this.raycaster.intersectObjects(this.machinesGroup.children, true);
-    if (hits.length === 0) return undefined;
-    let obj: Object3D | null = hits[0].object;
-    while (obj && obj.userData['machineId'] == null) {
-      obj = obj.parent;
+    // The raycaster also hits hidden meshes: skip the machines hidden or filtered out.
+    for (const hit of hits) {
+      let obj: Object3D | null = hit.object;
+      while (obj && obj.userData['machineId'] == null) {
+        obj = obj.parent;
+      }
+      if (!obj?.visible) continue;
+      const id = obj.userData['machineId'];
+      return typeof id === 'string' ? this.machines.find((m) => m.id === id) : undefined;
     }
-    const id = obj?.userData['machineId'];
-    return typeof id === 'string' ? this.machines.find((m) => m.id === id) : undefined;
+    return undefined;
   }
 
   /** The camera used for rendering / projection (orthographic in 2D mode). */

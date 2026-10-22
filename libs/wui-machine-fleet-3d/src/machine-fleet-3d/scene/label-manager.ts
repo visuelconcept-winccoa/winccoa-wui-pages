@@ -236,6 +236,8 @@ export class LabelManager {
   private entries: LabelEntry[] = [];
   private enabled = true;
   private alertOnly = false;
+  /** Machines left out by the filter bar: no bubble, no dot. */
+  private filteredOut: ReadonlySet<string> = new Set();
   private readonly anchor = new Vector3();
   private readonly corner = new Vector3();
   private buildingBounds: BuildingBounds | null = null;
@@ -278,6 +280,11 @@ export class LabelManager {
 
   setAlertOnly(on: boolean): void {
     this.alertOnly = on;
+  }
+
+  setFilteredOut(ids: ReadonlySet<string>): void {
+    this.filteredOut = ids;
+    for (const entry of this.entries) if (ids.has(entry.machine.id)) this.hideEntry(entry);
   }
 
   /** Building footprint used to keep bubbles outside its projected silhouette. */
@@ -342,7 +349,7 @@ export class LabelManager {
     height: number
   ): Placeable | null {
     const { machine, el, dotEl, leaderEl } = entry;
-    if (this.alertOnly && this.states.running(machine.state)) {
+    if (this.filteredOut.has(machine.id) || (this.alertOnly && this.states.running(machine.state))) {
       this.hideEntry(entry);
       return null;
     }

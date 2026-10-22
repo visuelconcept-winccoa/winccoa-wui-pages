@@ -59,11 +59,21 @@ import {
   type TrsThresholds,
   type Viewpoint
 } from '../types.js';
+import {
+  filterDimensions,
+  isFilterActive,
+  loadFleetFilter,
+  matchesFilter,
+  pruneFilter,
+  saveFleetFilter,
+  type FleetFilter
+} from '@visuelconcept-winccoa/wui-fleet-core/filters.js';
 import './mf-ai-prompt.js';
 import './mf-building-dialog.js';
 import './mf-config-panel.js';
 import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
 import './mf-graphics-catalog.js';
+import './mf-filter-bar.js';
 import './mf-machine-dashboard.js';
 import './mf-machine-dialog.js';
 import './mf-state-mapping-dialog.js';
@@ -147,6 +157,8 @@ export class MfAtelierView extends LitElement {
   @state() private building!: BuildingConfig;
   @state() private display!: DisplayConfig;
   @state() private machines: MachineDef[] = [];
+  /** Remembered machine filter (shared with the overview); machines left out are hidden. */
+  @state() private filter: FleetFilter = loadFleetFilter();
   @state() private mappings: StateMapping[] = [];
   @state() private thresholds: TrsThresholds[] = [];
   @state() private thresholdsOpen = false;
@@ -226,6 +238,7 @@ export class MfAtelierView extends LitElement {
             : ''}
           ${this.roleAi ? html`<mf-ai-prompt></mf-ai-prompt>` : ''}
         </div>
+        ${this.renderFilters()}
         <div class="stage">
           <div class="viewport">
             <canvas></canvas>
@@ -253,6 +266,15 @@ export class MfAtelierView extends LitElement {
       this.thresholds = structuredClone(this.atelier.trsThresholds ?? DEFAULT_TRS_THRESHOLDS);
       this.viewpoints = structuredClone(this.atelier.viewpoints ?? []);
       this.defaultViewpointId = this.atelier.defaultViewpointId ?? '';
+    }
+  }
+
+  protected override updated(changed: PropertyValues): void {
+    if (changed.has('filter') || changed.has('machines')) {
+      const out = this.filteredOutIds();
+      this.scene?.setFilteredOut(out);
+      // The card of a machine the filter leaves out closes with it.
+      if (this.selectedId && out.has(this.selectedId)) this.selectedId = null;
     }
   }
 
@@ -388,6 +410,33 @@ export class MfAtelierView extends LitElement {
   }
 
   /** Always-on bottom bar of ghost buttons to jump between saved camera views. */
+  /** The filter bar over this atelier's machines (filter pruned to what still exists). */
+  private renderFilters(): TemplateResult {
+    const dims = filterDimensions(this.machines);
+    if (dims.length === 0) return html``;
+    const filter = pruneFilter(this.filter, dims);
+    return html`<mf-filter-bar
+      class="filters"
+      .dimensions=${dims}
+      .filter=${filter}
+      .shown=${this.machines.length - this.filteredOutIds().size}
+      .total=${this.machines.length}
+      @wui:filter=${(e: CustomEvent<FleetFilter>) => this.onFilter(e.detail)}
+    ></mf-filter-bar>`;
+  }
+
+  private onFilter(filter: FleetFilter): void {
+    this.filter = filter;
+    saveFleetFilter(filter);
+  }
+
+  /** Ids of the machines the filter leaves out. */
+  private filteredOutIds(): Set<string> {
+    const filter = pruneFilter(this.filter, filterDimensions(this.machines));
+    if (!isFilterActive(filter)) return new Set();
+    return new Set(this.machines.filter((m) => !matchesFilter(m, filter)).map((m) => m.id));
+  }
+
   private renderViewBar(): TemplateResult {
     if (this.viewpoints.length === 0) return html``;
     return html`
@@ -1345,6 +1394,10 @@ function viewStyles() {
     }
     .import-input {
       display: none;
+    }
+    .filters {
+      padding: 0.4rem 0.75rem;
+      border-bottom: 1px solid var(--theme-color-soft-bdr);
     }
     .viewbar {
       position: absolute;

@@ -36,6 +36,16 @@ export const MSG = {
       'Ihre Gruppen besitzen die Rolle „Ansehen" dieser Seite nicht.'
     )
   },
+  filterBar: {
+    label: ml('Filters', 'Filtres', 'Filter'),
+    reset: ml('Reset', 'Réinitialiser', 'Zurücksetzen'),
+    machines: ml('machines', 'machines', 'Maschinen'),
+    noMatch: ml(
+      'No atelier has a machine matching the filters.',
+      'Aucun atelier ne contient de machine correspondant aux filtres.',
+      'Keine Werkstatt hat eine Maschine, die den Filtern entspricht.'
+    )
+  },
   overview: {
     graphicsCatalog: ml('Graphics catalog', 'Catalogue graphiques', 'Grafikkatalog'),
     closures: ml('Non-working days', 'Jours non travaillés', 'Arbeitsfreie Tage'),
