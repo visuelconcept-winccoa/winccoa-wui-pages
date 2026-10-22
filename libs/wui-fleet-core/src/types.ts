@@ -505,6 +505,8 @@ export interface MachineDef {
   workOrderDp?: string;
   /** Datapoint giving the current operation. */
   operationDp?: string;
+  /** Datapoint giving the machine's alarm code — shown while the machine is not producing. */
+  alarmCodeDp?: string;
   /** Live server-computed KPI values (kpiCalc manager), keyed by `MachineKpi.id`. */
   kpiCalcValues?: Record<string, number>;
   /** Resolved threshold-band colour per KPI (TRS only), keyed by `MachineKpi.id`. */
@@ -515,6 +517,7 @@ export interface MachineDef {
   stopCauseLabel?: string;
   workOrder?: string | number;
   operation?: string | number;
+  alarmCode?: string | number;
   /** Linked Asset Lifecycle Intelligence (ALI) asset id (`AssetLifecycle_<id>`),
    * used to surface that asset's composite obsolescence/risk score on the machine. */
   aliAssetId?: string;
@@ -689,6 +692,7 @@ export type DisplayKind =
   | 'stopCause'
   | 'workOrder'
   | 'operation'
+  | 'alarmCode'
   | 'obsolescence'
   | 'param'
   | 'kpi';
@@ -705,6 +709,7 @@ export const DISPLAY_KIND_LABEL: Record<DisplayKind, string> = {
   stopCause: 'Production',
   workOrder: 'Production',
   operation: 'Production',
+  alarmCode: 'Production',
   obsolescence: 'ALI',
   param: 'Paramètre',
   kpi: 'KPI'
@@ -713,7 +718,7 @@ export const DISPLAY_KIND_LABEL: Record<DisplayKind, string> = {
 /**
  * One row of the unified "Affichage" tab: a displayable info item with its
  * bubble/popup visibility. The ITEM is identified by `ref`
- * (`state` | `stopCause` | `workOrder` | `operation` | `param:<key>` | `kpi:<id>`);
+ * (`state` | `stopCause` | `workOrder` | `operation` | `alarmCode` | `param:<key>` | `kpi:<id>`);
  * the display ORDER is the position of the entry within `MachineDef.display`.
  */
 export interface DisplayEntry {
@@ -739,7 +744,8 @@ const FIXED_DISPLAY: { ref: string; kind: DisplayKind; label: string }[] = [
   { ref: 'state', kind: 'state', label: 'État machine' },
   { ref: 'stopCause', kind: 'stopCause', label: "Cause d'arrêt" },
   { ref: 'workOrder', kind: 'workOrder', label: 'OF en cours' },
-  { ref: 'operation', kind: 'operation', label: 'Opération' }
+  { ref: 'operation', kind: 'operation', label: 'Opération' },
+  { ref: 'alarmCode', kind: 'alarmCode', label: 'Code alarme' }
 ];
 
 /**

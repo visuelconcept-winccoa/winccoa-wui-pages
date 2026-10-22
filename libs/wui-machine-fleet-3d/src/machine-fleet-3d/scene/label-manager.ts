@@ -130,6 +130,12 @@ function bubbleLineFor(slot: DisplaySlot, m: Machine, states: StateInfo): Bubble
       ? { text: `Op. ${m.operation}`, cls: 'mf-label__prod-line' }
       : null;
   }
+  if (slot.kind === 'alarmCode') {
+    // Shown while the machine is not producing (stop, maintenance…), as the stop cause.
+    return !states.running(m.state) && m.alarmCode != null && m.alarmCode !== ''
+      ? { text: `${localize(MSG.view.alarmCode)} ${m.alarmCode}`, cls: 'mf-label__cause' }
+      : null;
+  }
   if (slot.kind === 'param') {
     // Label – value, as the other lines (a bare value says nothing once several are shown).
     const text = formatKpi(slot.param);

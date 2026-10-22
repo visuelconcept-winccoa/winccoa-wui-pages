@@ -207,6 +207,7 @@ export const MSG = {
     state: ml('State', 'État', 'Zustand'),
     stopCause: ml("Stop cause", "Cause d'arrêt", 'Stillstandsursache'),
     workOrder: ml('Current work order', 'OF en cours', 'Aktueller Fertigungsauftrag'),
+    alarmCode: ml('Alarm code', 'Code alarme', 'Alarmcode'),
     operation: ml('Operation', 'Opération', 'Vorgang'),
     obsolescenceAli: ml('Obsolescence (ALI)', 'Obsolescence (ALI)', 'Obsoleszenz (ALI)'),
     confirmDeleteHeading: ml("Delete the atelier", "Supprimer l'atelier", 'Werkstatt löschen'),
@@ -479,6 +480,7 @@ export const MSG = {
     commLabel: ml('Communication', 'Communication', 'Kommunikation'),
     stopCauseLabel: ml('Stop cause', "Cause d'arrêt", 'Stillstandsursache'),
     workOrderLabel: ml('Current work order', 'OF en cours', 'Aktueller Fertigungsauftrag'),
+    alarmCodeLabel: ml('Alarm code', 'Code alarme', 'Alarmcode'),
     operationLabel: ml('Operation', 'Opération', 'Vorgang'),
     tiltAngleLabel: ml('Tilt angle', 'Angle basculement', 'Kippwinkel'),
     stateDpLabel: ml('State datapoint', "Datapoint d'état", 'Zustands-Datenpunkt'),
@@ -512,6 +514,7 @@ export const MSG = {
     production: ml('Production tracking', 'Suivi production', 'Produktionsverfolgung'),
     stopCauseDpLabel: ml('Stop-cause DP', "DP cause d'arrêt", 'Stillstandsursache-DP'),
     workOrderDpLabel: ml('Current work order DP', "DP OF en cours", 'DP aktueller Fertigungsauftrag'),
+    alarmCodeDpLabel: ml('Alarm code DP', 'DP code alarme', 'DP Alarmcode'),
     operationDpLabel: ml('Current operation DP', "DP opération en cours", 'DP aktueller Vorgang'),
     minStopLabel: ml('Minimum stop (s)', "Délai minimal d'arrêt (s)", 'Mindest-Stillstand (s)'),
     minStopHint: ml(

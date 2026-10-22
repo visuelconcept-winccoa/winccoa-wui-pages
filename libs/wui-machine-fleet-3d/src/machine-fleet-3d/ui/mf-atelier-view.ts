@@ -104,6 +104,7 @@ type DpKind =
   | 'stopCause'
   | 'workOrder'
   | 'operation'
+  | 'alarmCode'
   | 'comm'
   | 'tilt';
 interface DpTarget {
@@ -733,6 +734,11 @@ export class MfAtelierView extends LitElement {
         ? { label: localize(MSG.view.operation), value: m.operation }
         : null;
     }
+    if (slot.kind === 'alarmCode') {
+      // Shown while the machine is not producing (stop, maintenance…), as the stop cause.
+      const code = isRunningState(this.mappingFor(m), m.state) ? undefined : m.alarmCode;
+      return code != null && code !== '' ? { label: localize(MSG.view.alarmCode), value: code } : null;
+    }
     if (slot.kind === 'param') {
       const p = slot.param;
       if (!p) return null;
@@ -1322,6 +1328,7 @@ export class MfAtelierView extends LitElement {
         [m.stopCauseDp, 'stopCause'],
         [m.workOrderDp, 'workOrder'],
         [m.operationDp, 'operation'],
+        [m.alarmCodeDp, 'alarmCode'],
         [m.commDp, 'comm'],
         [m.tiltDp, 'tilt']
       ];
@@ -1451,6 +1458,9 @@ export class MfAtelierView extends LitElement {
     } else if (target.kind === 'workOrder') {
       machine.workOrder = value;
       this.scene?.updateMachineLive(machine.id, { workOrder: value });
+    } else if (target.kind === 'alarmCode') {
+      machine.alarmCode = value;
+      this.scene?.updateMachineLive(machine.id, { alarmCode: value });
     } else {
       machine.operation = value;
       this.scene?.updateMachineLive(machine.id, { operation: value });

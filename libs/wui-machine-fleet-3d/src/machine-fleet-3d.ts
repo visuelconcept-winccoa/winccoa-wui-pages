@@ -74,6 +74,7 @@ const MACHINE_LIVE_FIELDS = new Set<string>([
   'stopCauseLabel',
   'workOrder',
   'operation',
+  'alarmCode',
   'tiltAngle',
   // Server-computed KPI values pushed live by the editor's dpConnect (not config).
   'kpiCalcValues',

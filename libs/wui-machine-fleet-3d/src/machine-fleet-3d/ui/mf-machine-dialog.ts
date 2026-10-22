@@ -249,6 +249,7 @@ export class MfMachineDialog extends LitElement {
       { label: localize(MSG.machineDialog.stopCauseLabel), dp: m.stopCauseDp },
       { label: localize(MSG.machineDialog.workOrderLabel), dp: m.workOrderDp },
       { label: localize(MSG.machineDialog.operationLabel), dp: m.operationDp },
+      { label: localize(MSG.machineDialog.alarmCodeLabel), dp: m.alarmCodeDp },
       { label: localize(MSG.machineDialog.tiltAngleLabel), dp: m.tiltDp },
       ...(m.kpis ?? []).map((k) => ({ label: k.label || k.key, dp: k.dp }))
     ];
@@ -1048,6 +1049,11 @@ export class MfMachineDialog extends LitElement {
           label=${localize(MSG.machineDialog.operationDpLabel)}
           .value=${m.operationDp ?? ''}
           @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ operationDp: e.detail.value })}
+        ></wui-dp-input>
+        <wui-dp-input
+          label=${localize(MSG.machineDialog.alarmCodeDpLabel)}
+          .value=${m.alarmCodeDp ?? ''}
+          @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ alarmCodeDp: e.detail.value })}
         ></wui-dp-input>
         <ix-number-input
           label=${localize(MSG.machineDialog.minStopLabel)}

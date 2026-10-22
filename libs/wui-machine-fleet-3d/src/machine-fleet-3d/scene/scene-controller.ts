@@ -349,6 +349,7 @@ export class SceneController {
       stopCauseLabel?: string;
       workOrder?: string | number;
       operation?: string | number;
+      alarmCode?: string | number;
       connected?: boolean;
       tiltAngle?: number;
       kpiCalcValues?: Record<string, number>;
@@ -372,6 +373,7 @@ export class SceneController {
     if (patch.stopCause !== undefined) m.stopCause = patch.stopCause;
     if (patch.stopCauseLabel !== undefined) m.stopCauseLabel = patch.stopCauseLabel;
     if (patch.workOrder !== undefined) m.workOrder = patch.workOrder;
+    if (patch.alarmCode !== undefined) m.alarmCode = patch.alarmCode;
     if (patch.operation !== undefined) m.operation = patch.operation;
     if (patch.connected !== undefined) m.connected = patch.connected;
     if (patch.kpiCalcValues !== undefined) m.kpiCalcValues = patch.kpiCalcValues;
