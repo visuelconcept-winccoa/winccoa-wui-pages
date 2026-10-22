@@ -30,6 +30,8 @@ export interface DashboardFilter {
   causes: string[];
   /** Context dimension key → selected values. */
   context: Record<string, string[]>;
+  /** Alarm types (alert-class abbreviations) the alarm panel keeps; absent or empty = all. */
+  alarmTypes?: string[];
 }
 
 export const EMPTY_DASHBOARD_FILTER: DashboardFilter = { states: [], causes: [], context: {} };
@@ -139,7 +141,8 @@ export function loadDashboardFilter(): DashboardFilter {
     const strings = (x: unknown): string[] => (Array.isArray(x) ? x.filter((v): v is string => typeof v === 'string') : []);
     const context: Record<string, string[]> = {};
     if (p.context && typeof p.context === 'object') for (const [k, v] of Object.entries(p.context)) context[k] = strings(v);
-    return { states: strings(p.states), causes: strings(p.causes), context };
+    const alarmTypes = strings(p.alarmTypes);
+    return { states: strings(p.states), causes: strings(p.causes), context, ...(alarmTypes.length > 0 ? { alarmTypes } : {}) };
   } catch {
     return { states: [], causes: [], context: {} };
   }

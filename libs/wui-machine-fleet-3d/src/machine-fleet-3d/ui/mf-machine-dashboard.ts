@@ -80,13 +80,13 @@ import {
 } from '../i18n.js';
 
 /**
- * The alarm panel of the dashboard, with the duration of each alarm: from its appearance to its
+ * The duration of each alarm in the dashboard's alarm panel: from its appearance to its
  * disappearance, or elapsed so far while it stands (SDS 2.2 SL-TDB-02). A column the alarm kit
  * draws through its extension point — the kit itself is not changed.
  */
-const ALARM_DURATION: AlarmViewExtension = {
-  id: 'machine-fleet-duration',
-  columns: [{ id: 'duration', render: (a) => formatDuration((a.cleared ?? Date.now()) - a.raised) }]
+const ALARM_DURATION_COLUMN = {
+  id: 'duration',
+  render: (a: { raised: number; cleared: number | null }) => formatDuration((a.cleared ?? Date.now()) - a.raised)
 };
 const ALARM_PROFILE: AlarmViewProfile = {
   panelColumns: ['raised', 'severity', 'text', { id: 'duration', label: MSG.machineDash.alarmDuration }, 'state']
@@ -205,6 +205,21 @@ export class MfMachineDashboard extends LitElement {
   /** Dashboard filters (SL-TDB-05), remembered in the browser; context = work order and filterable params. */
   @state() private filter: DashboardFilter = loadDashboardFilter();
   @state() private contextDims: { key: string; label: string; spans: ValueSpan[] }[] = [];
+  /** Alarm types (alert-class abbreviations) seen on this machine's alarms — the type filter's choices. */
+  @state() private alarmTypes: string[] = [];
+  /** Duration column, and the alarm types noted as the rows come (the kit's extension point). */
+  private readonly alarmExtension: AlarmViewExtension = {
+    id: 'machine-fleet-dashboard',
+    columns: [ALARM_DURATION_COLUMN],
+    classify: (alarm) => {
+      if (alarm.abbr !== '' && !this.alarmTypes.includes(alarm.abbr)) {
+        queueMicrotask(() => {
+          if (!this.alarmTypes.includes(alarm.abbr)) this.alarmTypes = [...this.alarmTypes, alarm.abbr].sort();
+        });
+      }
+      return alarm;
+    }
+  };
   @state() private loading = false;
   @state() private tip: { x: number; y: number; seg: StateSegment } | null = null;
   /** Live DP values from `dpConnect`, keyed by normalised DP name. */
@@ -442,7 +457,8 @@ export class MfMachineDashboard extends LitElement {
         .to=${end.getTime()}
         .scope=${this.alarmScope()}
         .profile=${ALARM_PROFILE}
-        .extensions=${[ALARM_DURATION]}
+        .extensions=${[this.alarmExtension]}
+        .filters=${{ classes: this.filter.alarmTypes ?? [] }}
       ></wui-alarm-view>
     `;
   }
@@ -583,13 +599,18 @@ export class MfMachineDashboard extends LitElement {
     const dims = [
       { key: localize(MSG.machineDash.filterState), values: [...stateLabels.values()] },
       { key: localize(MSG.machineDash.filterCause), values: [...new Set(causeLabels.values())].sort() },
-      ...this.contextDims.map((d) => ({ key: d.label, values: spanValues(d.spans) }))
+      ...this.contextDims.map((d) => ({ key: d.label, values: spanValues(d.spans) })),
+      {
+        key: localize(MSG.machineDash.filterAlarmType),
+        values: [...new Set([...this.alarmTypes, ...(this.filter.alarmTypes ?? [])])].sort()
+      }
     ].filter((d) => d.values.length > 0);
     const selected: FleetFilter = {
       [localize(MSG.machineDash.filterState)]: this.filter.states.map((k) => stateLabels.get(k) ?? k),
       [localize(MSG.machineDash.filterCause)]: this.filter.causes.map((k) => causeLabels.get(k) ?? k)
     };
     for (const d of this.contextDims) selected[d.label] = this.filter.context[d.key] ?? [];
+    selected[localize(MSG.machineDash.filterAlarmType)] = this.filter.alarmTypes ?? [];
     const onFilter = (e: CustomEvent<FleetFilter>): void => {
       const f = e.detail;
       const back = (labels: Map<string, string>, chosen: string[] | undefined): string[] =>
@@ -599,7 +620,8 @@ export class MfMachineDashboard extends LitElement {
       this.filter = {
         states: back(stateLabels, f[localize(MSG.machineDash.filterState)]),
         causes: back(causeLabels, f[localize(MSG.machineDash.filterCause)]),
-        context
+        context,
+        alarmTypes: f[localize(MSG.machineDash.filterAlarmType)] ?? []
       };
       saveDashboardFilter(this.filter);
     };

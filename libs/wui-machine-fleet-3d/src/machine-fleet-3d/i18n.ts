@@ -265,6 +265,7 @@ export const MSG = {
     filterState: ml('State', 'État', 'Zustand'),
     filterCause: ml('Stop cause', "Cause d'arrêt", 'Stillstandsursache'),
     filterWorkOrder: ml('Work order', 'OF', 'Auftrag'),
+    filterAlarmType: ml('Alarm type', "Type d'alarme", 'Alarmtyp'),
     stopsNone: ml('No stop over the period.', 'Aucun arrêt sur la période.', 'Kein Stillstand im Zeitraum.'),
     stopsStart: ml('Start', 'Début', 'Beginn'),
     stopsEnd: ml('End', 'Fin', 'Ende'),
