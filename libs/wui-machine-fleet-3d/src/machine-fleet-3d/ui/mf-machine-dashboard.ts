@@ -48,7 +48,8 @@ import {
   queryHistory,
   sortRows,
   type AnalysisMachine,
-  type CauseRow
+  type CauseRow,
+  type RawStop
 } from '@visuelconcept-winccoa/wui-fleet-core/engine.js';
 import { scopeFromDpes } from '@visuelconcept-winccoa/wui-alarms-core/scope.js';
 import '@visuelconcept-winccoa/wui-alarms-core/ui/wui-alarm-view.js';
@@ -170,6 +171,8 @@ export class MfMachineDashboard extends LitElement {
   @state() private segments: StateSegment[] = [];
   /** Full sorted (desc) list of unplanned causes; sliced per `paretoTop` at render. */
   @state() private pareto: CauseRow[] = [];
+  /** Stops of the period, most recent first, split by cause (SL-TDB-04). */
+  @state() private stops: RawStop[] = [];
   @state() private loading = false;
   @state() private tip: { x: number; y: number; seg: StateSegment } | null = null;
   /** Live DP values from `dpConnect`, keyed by normalised DP name. */
@@ -216,6 +219,7 @@ export class MfMachineDashboard extends LitElement {
               </section>
               <section class="zone zone-pareto">${this.renderPareto()}</section>
             </div>
+            <section class="zone zone-stops">${this.renderStops()}</section>
           </div>
         </div>
       </div>
@@ -695,6 +699,75 @@ export class MfMachineDashboard extends LitElement {
     return this.paretoMetric === 'downtime' ? r.downtimeMs : r.occurrences;
   }
 
+  /** List of the stops of the period, by cause (SL-TDB-04). */
+  private renderStops(): TemplateResult {
+    const shown = this.stops;
+    const head = html`
+      <div class="block-head">
+        <div class="block-title">${localizeDir(MSG.machineDash.stopsTitle)}</div>
+        <span class="muted small">${this.stops.length}</span>
+        <span class="grow"></span>
+        <ix-icon-button
+          ghost
+          size="16"
+          icon="export"
+          title=${localize(MSG.machineDash.exportStopsCsv)}
+          ?disabled=${shown.length === 0}
+          @click=${this.exportStopsCsv}
+        ></ix-icon-button>
+      </div>
+    `;
+    if (this.loading) return html`${head}<div class="center"><ix-spinner></ix-spinner></div>`;
+    if (shown.length === 0) return html`${head}<div class="muted small">${localizeDir(MSG.machineDash.stopsNone)}</div>`;
+    return html`${head}
+      <div class="stops-scroll">
+        <table class="stops">
+          <thead>
+            <tr>
+              <th>${localizeDir(MSG.machineDash.stopsStart)}</th>
+              <th>${localizeDir(MSG.machineDash.stopsEnd)}</th>
+              <th class="num">${localizeDir(MSG.machineDash.stopsDuration)}</th>
+              <th>${localizeDir(MSG.machineDash.stopsCause)}</th>
+              <th>${localizeDir(MSG.machineDash.stopsClass)}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${shown.map(
+              (s) => html`<tr>
+                <td>${formatDateTime(s.startMs)}</td>
+                <td>${formatDateTime(s.endMs)}</td>
+                <td class="num">${formatDuration(s.durationMs)}</td>
+                <td>${s.code !== '' ? s.causeLabel : '—'}</td>
+                <td>${stopClassLabel(s.classification)}</td>
+              </tr>`
+            )}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  private readonly exportStopsCsv = (): void => {
+    const rows: string[][] = [
+      [
+        localize(MSG.machineDash.stopsStart),
+        localize(MSG.machineDash.stopsEnd),
+        localize(MSG.machineDash.csvDowntimeSec),
+        localize(MSG.machineDash.stopsCause),
+        localize(MSG.machineDash.stopsClass)
+      ]
+    ];
+    for (const s of this.stops) {
+      rows.push([
+        formatDateTime(s.startMs),
+        formatDateTime(s.endMs),
+        String(Math.round(s.durationMs / 1000)),
+        s.code !== '' ? s.causeLabel : '',
+        stopClassLabel(s.classification)
+      ]);
+    }
+    downloadCsv(`arrets_${this.machine.id}.csv`, rows);
+  };
+
   /** Pareto of stop causes (planned/unplanned): bars (downtime or frequency) + cumulative curve. */
   private renderPareto(): TemplateResult {
     const sorted = this.paretoRows();
@@ -912,6 +985,7 @@ export class MfMachineDashboard extends LitElement {
     if (!this.api || !m.stateDp) {
       this.segments = [];
       this.pareto = [];
+      this.stops = [];
       this.loading = false;
       return;
     }
@@ -922,10 +996,12 @@ export class MfMachineDashboard extends LitElement {
       return;
     }
     const segments = await this.buildSegments(m, start, end);
-    const pareto = m.stopCauseDp ? await this.buildPareto(m, start, end) : [];
+    // Stops without a cause datapoint still count: they are listed without a cause.
+    const analysis = await this.analyse(m, start, end);
     if (gen !== this.reloadGen) return;
     this.segments = segments;
-    this.pareto = pareto;
+    this.pareto = analysis.rows;
+    this.stops = analysis.stops;
     this.loading = false;
   }
 
@@ -991,7 +1067,7 @@ export class MfMachineDashboard extends LitElement {
     return code === '' ? undefined : formatStopCause(this.stopCauses, code);
   }
 
-  private async buildPareto(m: Machine, start: Date, end: Date): Promise<CauseRow[]> {
+  private async analyse(m: Machine, start: Date, end: Date): Promise<{ rows: CauseRow[]; stops: RawStop[] }> {
     const target: AnalysisMachine = {
       atelierId: this.atelierId,
       atelierName: this.atelierName,
@@ -1002,10 +1078,12 @@ export class MfMachineDashboard extends LitElement {
       mapping: this.mapping
     };
     const result = await analyseStopCauses(this.api, [target], this.stopCauses, start, end);
-    // Keep both planned & unplanned; the Pareto filters by the chosen class.
-    return result.rows.filter(
-      (r) => r.classification === 'unplanned' || r.classification === 'planned'
-    );
+    // Keep both planned & unplanned; the Pareto filters by the chosen class. A stop with no
+    // cause and no catalog default has no classification: it is unplanned (as in the TRS).
+    const rows = result.rows
+      .map((r) => (r.classification ? r : { ...r, classification: 'unplanned' as const }))
+      .filter((r) => r.classification === 'unplanned' || r.classification === 'planned');
+    return { rows, stops: result.rawStops };
   }
 
   /** Pareto rows for the current class, sorted by the current metric. */
@@ -1021,6 +1099,13 @@ export class MfMachineDashboard extends LitElement {
   private readonly onKeyDown = (e: KeyboardEvent): void => {
     if (e.key === 'Escape') this.close();
   };
+}
+
+/** Label of a stop's class; no class (no cause, no catalog default) is unplanned. */
+function stopClassLabel(c: RawStop['classification']): string {
+  if (c === 'planned') return localize(MSG.machineDash.classPlanned);
+  if (c === 'production') return localize(MSG.machineDash.classProduction);
+  return localize(MSG.machineDash.classUnplanned);
 }
 
 /** Format a gauge/card value: two decimals, dropped for large magnitudes. */
@@ -1260,6 +1345,36 @@ function dashboardStyles() {
       background: color-mix(in srgb, #10b981 8%, transparent);
       /* The chart keeps its floor size and the panel scrolls rather than crop it. */
       overflow: auto;
+    }
+    .zone-stops {
+      flex: 0 0 auto;
+      background: var(--theme-color-1);
+    }
+    .stops-scroll {
+      max-height: 18rem;
+      overflow: auto;
+    }
+    table.stops {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    table.stops th,
+    table.stops td {
+      padding: 0.25rem 0.5rem;
+      border-bottom: 1px solid var(--theme-color-soft-bdr);
+      text-align: left;
+      white-space: nowrap;
+    }
+    table.stops th {
+      position: sticky;
+      top: 0;
+      background: var(--theme-color-1);
+      color: var(--theme-color-soft-text);
+      font-weight: 600;
+    }
+    table.stops .num {
+      text-align: right;
     }
     .zone h4 {
       margin: 0 0 0.5rem;

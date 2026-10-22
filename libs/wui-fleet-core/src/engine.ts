@@ -72,6 +72,8 @@ export interface RawStop {
   atelierName: string;
   /** Grouping key (same as the aggregated row's key). */
   causeKey: string;
+  /** Raw cause code read on the machine ('' when none). */
+  code: string;
   /** Display label, e.g. "12 — Manque matière". */
   causeLabel: string;
   classification?: StopClassification;
@@ -252,7 +254,7 @@ export async function queryHistory(
   start: Date,
   end: Date
 ): Promise<Sample[]> {
-  if (!api) return [];
+  if (!api || !dpe) return [];
   try {
     const raw = await firstValueFrom(api.dpGetPeriod(start, end, ALL_VALUES, dpe + VALUE_ATTR));
     return toSamples(raw);
@@ -395,6 +397,7 @@ function attributeStop(
       machineName: machine.machineName,
       atelierName: machine.atelierName,
       causeKey: key,
+      code: seg.code,
       causeLabel: label,
       classification,
       startMs: seg.start,
