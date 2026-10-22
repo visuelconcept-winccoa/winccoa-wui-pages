@@ -157,7 +157,8 @@ Per **station** — the request's IP address (`clientAddress`: the first
 | Route | Role | Answer |
 | --- | --- | --- |
 | `GET /blacklist` | `enrol` **or** `configure` (both see the tab: one sets the threshold, the other unlocks) | `{ records, pending }`, records newest first; the locks run out turned `expired` first |
-| `POST /blacklist/:ip/unlock { reason }` | `enrol` | `{ status: 'ok', record }` — 401 without a token, 403 without `enrol`, 400 without a reason (200 characters kept), 404 when the address is not locked; the count reset, audit `VERROU_LEVE` (who, the address, the reason) |
+| `POST /blacklist/unlock { ip, reason }` | `enrol` | `{ status: 'ok', record }` — 401 without a token, 403 without `enrol`, 400 without an address or a reason (200 characters kept), 404 when the address is not locked; the count reset, audit `VERROU_LEVE` (who, the address, the reason) |
+| `POST /blacklist/:ip/unlock { reason }` | `enrol` | the same, the address in the path (0.6.0, kept): decoded by the route, since ultimate-express leaves `%3A` in a path parameter — an IPv6 address (`::ffff:10.1.2.3`) otherwise matched no lock (404, #24); 400 on an invalid encoding |
 
 The roles are checked on the request's WebUI token, as for the users list.
 
