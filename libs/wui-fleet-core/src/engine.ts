@@ -27,6 +27,7 @@ import type { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { firstValueFrom } from 'rxjs';
 import {
   DEFAULT_STATE_MAPPINGS,
+  isRunningState,
   resolveState,
   type Atelier,
   type StateMapping,
@@ -304,7 +305,7 @@ export function nonProductionIntervals(
     const segEnd = Math.min(samples[i + 1]?.t ?? windowEnd, windowEnd);
     if (segEnd <= segStart) continue;
     const state = resolveState(mapping, Math.round(toNumber(sample.v)));
-    if (state === 'ok') continue;
+    if (isRunningState(mapping, state)) continue;
     const last = intervals.at(-1);
     if (last && last.e >= segStart) last.e = Math.max(last.e, segEnd);
     else intervals.push({ s: segStart, e: segEnd });

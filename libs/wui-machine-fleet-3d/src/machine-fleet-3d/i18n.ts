@@ -593,7 +593,24 @@ export const MSG = {
     colorsHeading: ml('Colours per state', 'Couleurs par état', 'Farben pro Zustand'),
     min: ml('min', 'min', 'min'),
     max: ml('max', 'max', 'max'),
-    newMappingName: ml('New mapping', 'Nouveau mapping', 'Neue Zuordnung')
+    newMappingName: ml('New mapping', 'Nouveau mapping', 'Neue Zuordnung'),
+    statesHeading: ml('States', 'États', 'Zustände'),
+    ownStates: ml(
+      'States of this mapping (instead of the four built-in ones)',
+      'États propres à ce mapping (au lieu des quatre états intégrés)',
+      'Eigene Zustände dieser Zuordnung (statt der vier eingebauten)'
+    ),
+    stateKey: ml('Key', 'Clé', 'Schlüssel'),
+    stateLabel: ml('Label', 'Libellé', 'Bezeichnung'),
+    stateColor: ml('Colour', 'Couleur', 'Farbe'),
+    stateRunning: ml('Production', 'Production', 'Produktion'),
+    stateRunningHint: ml(
+      'Counts as producing time (Gantt, stop analysis, TRS)',
+      'Compte comme temps de production (Gantt, analyse des arrêts, TRS)',
+      'Zählt als Produktionszeit (Gantt, Stillstandsanalyse, OEE)'
+    ),
+    addState: ml('Add a state', 'Ajouter un état', 'Zustand hinzufügen'),
+    deleteState: ml('Delete this state', 'Supprimer cet état', 'Diesen Zustand löschen')
   },
   trsThresholds: {
     title: ml('TRS thresholds', 'Seuils TRS', 'OEE-Schwellenwerte'),

@@ -16,13 +16,13 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import {
+  BUILTIN_STATES,
   DISCONNECTED_COLOR,
   DISCONNECTED_LABEL,
-  STATE_COLORS,
-  STATE_LABELS,
+  UNKNOWN_STATE_COLOR,
   isDisconnected,
   type MachineDef,
-  type MachineState
+  type StateDef
 } from '../types.js';
 import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
 import {
@@ -35,8 +35,11 @@ import {
 
 export type { DisplayConfig } from '../types.js';
 
-/** Machine-list sort priority: alert → stopped → production → maintenance. */
-const STATE_ORDER: Record<MachineState, number> = { warn: 0, stop: 1, ok: 2, maint: 3 };
+/** Machine-list sort priority of the built-in states: alert → stopped → production → maintenance. */
+const STATE_ORDER: Record<string, number> = { warn: 0, stop: 1, ok: 2, maint: 3 };
+/** Declared states sort after the built-in ones: non-producing first, in their order, then producing. */
+const DECLARED_RANK = 10;
+const RUNNING_RANK = 50;
 
 interface IxValueEvent {
   detail: string | number;
@@ -47,6 +50,8 @@ export class MfConfigPanel extends LitElement {
   static override readonly styles = [IXCoreStyles, panelStyles()];
 
   @property({ attribute: false }) machines: MachineDef[] = [];
+  /** States of the atelier (label, colour, producing), from its mappings. */
+  @property({ attribute: false }) states: StateDef[] = BUILTIN_STATES;
   /** When false, edit/delete/add are hidden and the row action becomes view-only. */
   @property({ type: Boolean }) canEdit = true;
 
@@ -98,8 +103,9 @@ export class MfConfigPanel extends LitElement {
 
   private renderRow(m: MachineDef): TemplateResult {
     const offline = isDisconnected(m);
-    const color = offline ? DISCONNECTED_COLOR : STATE_COLORS[m.state];
-    const label = offline ? DISCONNECTED_LABEL : STATE_LABELS[m.state];
+    const def = this.states.find((s) => s.key === m.state);
+    const color = offline ? DISCONNECTED_COLOR : (def?.color ?? UNKNOWN_STATE_COLOR);
+    const label = offline ? DISCONNECTED_LABEL : (def?.label ?? m.state);
     return html`
       <div
         class="row"
@@ -147,7 +153,12 @@ export class MfConfigPanel extends LitElement {
   }
 
   private rank(m: MachineDef): number {
-    return isDisconnected(m) ? -1 : STATE_ORDER[m.state];
+    if (isDisconnected(m)) return -1;
+    const builtin = STATE_ORDER[m.state];
+    if (builtin !== undefined) return builtin;
+    const i = this.states.findIndex((s) => s.key === m.state);
+    if (i < 0) return RUNNING_RANK * 2;
+    return (this.states[i].running ? RUNNING_RANK : DECLARED_RANK) + i;
   }
 
   private onEdit(e: Event, id: string): void {

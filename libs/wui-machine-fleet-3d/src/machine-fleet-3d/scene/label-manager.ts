@@ -16,15 +16,23 @@ import { Vector3, type Camera } from 'three';
 import {
   DEFAULT_STATE_COLOR_MAP,
   DISCONNECTED_LABEL,
+  BUILTIN_STATES,
   KPI_TYPE_INFO,
-  STATE_LABELS,
+  UNKNOWN_STATE_COLOR,
   isDisconnected,
   resolveDisplaySlots,
   type DisplaySlot,
   type Kpi,
   type Machine,
-  type StateColorKey
+  type StateColorKey,
+  type StateDef
 } from '../types.js';
+
+/** What the bubbles need to know about the atelier's states. */
+interface StateInfo {
+  label(key: string): string;
+  running(key: string): boolean;
+}
 
 /** Beyond this distance only the dot is shown (no bubble / leader). */
 const BUBBLE_MAX_DIST = 280;
@@ -86,20 +94,20 @@ interface BubbleLine {
 const DECIMALS = 2;
 
 /** Ordered, visible bubble lines for a machine (order = the Affichage tab). */
-function buildBubbleLines(m: Machine): BubbleLine[] {
+function buildBubbleLines(m: Machine, states: StateInfo): BubbleLine[] {
   const lines: BubbleLine[] = [];
   for (const slot of resolveDisplaySlots(m)) {
     if (!slot.inBubble) continue;
-    const line = bubbleLineFor(slot, m);
+    const line = bubbleLineFor(slot, m, states);
     if (line) lines.push(line);
   }
   return lines;
 }
 
-function bubbleLineFor(slot: DisplaySlot, m: Machine): BubbleLine | null {
-  if (slot.kind === 'state') return { text: STATE_LABELS[m.state], cls: 'mf-label__badge' };
+function bubbleLineFor(slot: DisplaySlot, m: Machine, states: StateInfo): BubbleLine | null {
+  if (slot.kind === 'state') return { text: states.label(m.state), cls: 'mf-label__badge' };
   if (slot.kind === 'stopCause') {
-    return m.state !== 'ok' && m.stopCauseLabel
+    return !states.running(m.state) && m.stopCauseLabel
       ? { text: m.stopCauseLabel, cls: 'mf-label__cause' }
       : null;
   }
@@ -233,6 +241,12 @@ export class LabelManager {
   private buildingBounds: BuildingBounds | null = null;
   /** State/overlay colours (from the atelier's mapping), with defaults. */
   private stateColors: Record<StateColorKey, string> = DEFAULT_STATE_COLOR_MAP;
+  /** States of the atelier (labels, producing ones), built-in four until told otherwise. */
+  private stateDefs: StateDef[] = BUILTIN_STATES;
+  private readonly states: StateInfo = {
+    label: (key) => this.stateDefs.find((s) => s.key === key)?.label ?? key,
+    running: (key) => this.stateDefs.find((s) => s.key === key)?.running ?? key === 'ok'
+  };
 
   constructor(
     private readonly overlay: HTMLElement,
@@ -242,6 +256,11 @@ export class LabelManager {
   /** Set the state/overlay colour map (dot, leader, bubble accent). */
   setStateColors(colors: Record<StateColorKey, string>): void {
     this.stateColors = colors;
+  }
+
+  /** Set the atelier's states (bubble state label, stop cause shown outside producing states, alert-only filter). */
+  setStateDefs(defs: StateDef[]): void {
+    this.stateDefs = defs;
   }
 
   setMachines(machines: Machine[]): void {
@@ -323,7 +342,7 @@ export class LabelManager {
     height: number
   ): Placeable | null {
     const { machine, el, dotEl, leaderEl } = entry;
-    if (this.alertOnly && machine.state === 'ok') {
+    if (this.alertOnly && this.states.running(machine.state)) {
       this.hideEntry(entry);
       return null;
     }
@@ -339,7 +358,7 @@ export class LabelManager {
     const ax = (projected.x * 0.5 + 0.5) * width;
     const ay = (-projected.y * 0.5 + 0.5) * height;
     const offline = isDisconnected(machine);
-    const color = this.stateColors[offline ? 'disconnected' : machine.state];
+    const color = this.stateColors[offline ? 'disconnected' : machine.state] ?? UNKNOWN_STATE_COLOR;
     el.style.setProperty(STATE_VAR, color);
     dotEl.style.setProperty(STATE_VAR, color);
     leaderEl.style.setProperty(STATE_VAR, color);
@@ -359,7 +378,7 @@ export class LabelManager {
     // info lines (state / production / params / KPIs) per the Affichage config.
     const lines = offline
       ? [{ text: DISCONNECTED_LABEL, cls: 'mf-label__badge' }]
-      : buildBubbleLines(machine);
+      : buildBubbleLines(machine, this.states);
     this.renderLines(entry.linesEl, lines);
     return { entry, ax, ay };
   }

@@ -30,11 +30,13 @@ import { Subscription, firstValueFrom } from 'rxjs';
 import { normDp } from '../data/dp-utils.js';
 import {
   KPI_TYPE_INFO,
-  STATE_LABELS,
   TRS_WINDOW_LABELS,
   formatStopCause,
+  isRunningState,
+  mappingStates as statesOf,
   resolveState,
   stateColor,
+  stateLabel,
   type Machine,
   type MachineState,
   type StateMapping,
@@ -110,7 +112,6 @@ const PARETO_CLASS_OPTIONS: { value: ParetoClass; label: MultiLangString }[] = [
 ];
 /** Bar palette for the Pareto chart (cycled). */
 const BAR_COLORS = ['#f59e0b', '#ef4444', '#d4a5a5', '#9aa1ad', '#8b5cf6', '#10b981'];
-const ALL_STATES: MachineState[] = ['ok', 'warn', 'stop', 'maint'];
 const DAYS_PER_WEEK = 7;
 /** Debounce before re-querying the archived history after a live state/cause change. */
 const HISTORY_RELOAD_DEBOUNCE_MS = 1500;
@@ -627,7 +628,7 @@ export class MfMachineDashboard extends LitElement {
       <div class="legend">
         ${this.mappingStates().map(
           (st) => html`<span class="leg"
-            ><i style="background:${stateColor(this.mapping, st)}"></i>${STATE_LABELS[st]}</span
+            ><i style="background:${stateColor(this.mapping, st)}"></i>${stateLabel(this.mapping, st)}</span
           >`
         )}
       </div>
@@ -647,7 +648,7 @@ export class MfMachineDashboard extends LitElement {
       rows.push([
         formatDateTimeSec(s.startMs),
         formatDateTimeSec(s.endMs),
-        STATE_LABELS[s.state],
+        stateLabel(this.mapping, s.state),
         s.causeLabel ?? ''
       ]);
     }
@@ -667,7 +668,7 @@ export class MfMachineDashboard extends LitElement {
     const s = tip.seg;
     return html`
       <div class="gantt-tip" style="left:${tip.x}px;top:${tip.y}px">
-        <div class="tip-state" style="color:${stateColor(this.mapping, s.state)}">${STATE_LABELS[s.state]}</div>
+        <div class="tip-state" style="color:${stateColor(this.mapping, s.state)}">${stateLabel(this.mapping, s.state)}</div>
         <div>${localizeDir(MSG.machineDash.tipStart)} ${formatDateTimeSec(s.startMs)}</div>
         <div>${localizeDir(MSG.machineDash.tipEnd)} ${formatDateTimeSec(s.endMs)}</div>
         ${s.causeLabel ? html`<div>${localizeDir(MSG.machineDash.tipCause)} ${s.causeLabel}</div>` : ''}
@@ -679,14 +680,15 @@ export class MfMachineDashboard extends LitElement {
     this.tip = { x: e.clientX, y: e.clientY, seg };
   }
 
-  /** States produced by the machine's state mapping (rules + fallback), in
-   * canonical order — so the Gantt legend conforms to that machine's mapping. */
+  /** States produced by the machine's state mapping (rules + fallback), in the
+   * mapping's display order — so the Gantt legend conforms to that machine's mapping. */
   private mappingStates(): MachineState[] {
+    const all = statesOf(this.mapping).map((s) => s.key);
     const mp = this.mapping;
-    if (!mp) return ALL_STATES;
+    if (!mp) return all;
     const present = new Set<MachineState>(mp.rules.map((r) => r.state));
     present.add(mp.fallback);
-    return ALL_STATES.filter((s) => present.has(s));
+    return all.filter((s) => present.has(s));
   }
 
   private metricVal(r: CauseRow): number {
@@ -968,7 +970,7 @@ export class MfMachineDashboard extends LitElement {
       const segEnd = Math.min(samples[i + 1] ? samples[i + 1].t : endMs, endMs);
       if (segEnd <= segStart) continue;
       const state = resolveState(this.mapping, Math.round(Number(s.v)));
-      const causeLabel = state === 'ok' ? undefined : this.causeAt(causeSamples, segStart);
+      const causeLabel = isRunningState(this.mapping, state) ? undefined : this.causeAt(causeSamples, segStart);
       const last = segs.at(-1);
       if (last && last.state === state && last.causeLabel === causeLabel && last.endMs >= segStart) {
         last.endMs = segEnd;

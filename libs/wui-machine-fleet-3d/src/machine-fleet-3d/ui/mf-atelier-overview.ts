@@ -13,12 +13,11 @@ import { LitElement, css, html, svg, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { FleetStore } from '../data/fleet-store.js';
 import { MSG, localize, localizeDir } from '../i18n.js';
-import { STATE_COLORS, type Atelier, type MachineState } from '../types.js';
+import { UNKNOWN_STATE_COLOR, atelierStates, type Atelier, type MachineState } from '../types.js';
 import './mf-ai-prompt.js';
 import './mf-atelier-create-dialog.js';
 import './mf-graphics-catalog.js';
 
-const STATES: MachineState[] = ['ok', 'warn', 'stop', 'maint'];
 /** Minimap rendered height (px) — must match the `.minimap { height }` CSS. */
 const MINIMAP_HEIGHT_PX = 110;
 /** Target machine-dot radius on screen (px) ≈ half a synthesis chip (1.4rem). */
@@ -126,9 +125,10 @@ export class MfAtelierOverview extends LitElement {
   private renderStateChips(a: Atelier): TemplateResult {
     const counts = new Map<MachineState, number>();
     for (const m of a.machines) counts.set(m.state, (counts.get(m.state) ?? 0) + 1);
+    // One chip per state of the atelier's mappings that has machines, in their display order.
     return html`
-      ${STATES.filter((s) => counts.get(s)).map(
-        (s) => html`<span class="chip" style="--c:${STATE_COLORS[s]}">${counts.get(s)}</span>`
+      ${atelierStates(a.mappings).filter((s) => counts.get(s.key)).map(
+        (s) => html`<span class="chip" style="--c:${s.color}" title=${s.label} aria-label=${`${s.label} : ${counts.get(s.key)}`}>${counts.get(s.key)}</span>`
       )}
     `;
   }
@@ -140,6 +140,7 @@ export class MfAtelierOverview extends LitElement {
     // in viewBox units as P·width/110 therefore renders a CONSTANT P px dot,
     // identical across ateliers, without changing the framing.
     const r = (MINIMAP_DOT_RADIUS_PX * width) / MINIMAP_HEIGHT_PX;
+    const colors = new Map(atelierStates(a.mappings).map((s) => [s.key, s.color]));
     return html`
       <svg class="minimap" viewBox="0 0 ${length} ${width}" preserveAspectRatio="xMidYMid meet">
         <rect x="0" y="0" width=${length} height=${width} class="minimap-bg"></rect>
@@ -149,7 +150,7 @@ export class MfAtelierOverview extends LitElement {
               cx=${m.x + length / 2}
               cy=${m.z + width / 2}
               r=${r}
-              fill=${STATE_COLORS[m.state]}
+              fill=${colors.get(m.state) ?? UNKNOWN_STATE_COLOR}
             ></circle>`
         )}
       </svg>

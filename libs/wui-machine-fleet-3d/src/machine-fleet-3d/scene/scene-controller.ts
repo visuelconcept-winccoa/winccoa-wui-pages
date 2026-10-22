@@ -44,7 +44,8 @@ import {
   type Machine,
   type MachineDef,
   type MachineState,
-  type StateColorKey
+  type StateColorKey,
+  type StateDef
 } from '../types.js';
 import { BuildingBuilder } from './building-builder.js';
 import { disposeObject } from './dispose.js';
@@ -175,6 +176,11 @@ export class SceneController {
 
   setAlertOnly(on: boolean): void {
     this.labels.setAlertOnly(on);
+  }
+
+  /** Set the atelier's states for the labels (state label, producing states). */
+  setStateDefs(defs: StateDef[]): void {
+    this.labels.setStateDefs(defs);
   }
 
   setStateColors(colors: Record<StateColorKey, string>): void {

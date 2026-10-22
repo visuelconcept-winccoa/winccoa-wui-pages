@@ -270,15 +270,24 @@ function partitionByCause(stop, causeSamples) {
 
 // ---- KPI math --------------------------------------------------------------
 
+/** True when the state counts as producing: its `running` flag when the mapping declares
+ *  its own states (wui-fleet-core isRunningState), else the built-in 'ok'. */
+function isRunningState(mapping, key) {
+  const states = mapping && Array.isArray(mapping.states) && mapping.states.length ? mapping.states : null;
+  if (!states) return key === 'ok';
+  const def = states.find((s) => s.key === key);
+  return Boolean(def && def.running);
+}
+
 function resolveStateOk(mapping, value) {
-  // Returns true when the machine is producing (state 'ok').
+  // Returns true when the machine is producing (a producing state of its mapping).
   if (!mapping || !Array.isArray(mapping.rules)) return value === 1;
   for (const rule of mapping.rules) {
     const okMin = rule.min == null || value >= rule.min;
     const okMax = rule.max == null || value <= rule.max;
-    if (okMin && okMax) return rule.state === 'ok';
+    if (okMin && okMax) return isRunningState(mapping, rule.state);
   }
-  return mapping.fallback === 'ok';
+  return isRunningState(mapping, mapping.fallback);
 }
 
 /** Parse one dpGetPeriod DPE result into time-sorted {t,v} samples. */

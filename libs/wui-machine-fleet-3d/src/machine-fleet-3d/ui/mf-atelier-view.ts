@@ -34,17 +34,18 @@ import {
   DEFAULT_TRS_THRESHOLDS,
   DISCONNECTED_LABEL,
   KPI_TYPE_INFO,
-  STATE_LABELS,
+  atelierStates,
   formatStopCause,
+  isRunningState,
   MAX_DASHBOARD_LINKS,
   isDisconnected,
   resolveConnected,
   resolveDashboardMode,
   resolveDisplaySlots,
   resolveState,
-  resolveStateColors,
   resolveTrsColor,
   stateColor,
+  stateLabel,
   type Atelier,
   type DisplaySlot,
   type BuildingConfig,
@@ -465,6 +466,7 @@ export class MfAtelierView extends LitElement {
       <div class="drawer">
         <mf-config-panel
           .machines=${this.machines}
+          .states=${atelierStates(this.mappings.length ? this.mappings : DEFAULT_STATE_MAPPINGS)}
           .canEdit=${this.canEdit}
           @wui:focus=${(e: CustomEvent<{ id: string }>) => this.onFocus(e.detail.id)}
           @wui:edit=${(e: CustomEvent<{ id: string }>) => this.onEdit(e.detail.id)}
@@ -559,12 +561,12 @@ export class MfAtelierView extends LitElement {
     if (slot.kind === 'state') {
       return {
         label: localize(MSG.view.state),
-        value: STATE_LABELS[m.state],
+        value: stateLabel(this.mappingFor(m), m.state),
         style: `color:${stateColor(this.mappingFor(m), m.state)};font-weight:700`
       };
     }
     if (slot.kind === 'stopCause') {
-      const cause = m.state === 'ok' ? undefined : (m.stopCauseLabel || m.stopCause);
+      const cause = isRunningState(this.mappingFor(m), m.state) ? undefined : (m.stopCauseLabel || m.stopCause);
       return cause != null && cause !== '' ? { label: localize(MSG.view.stopCause), value: cause } : null;
     }
     if (slot.kind === 'workOrder') {
@@ -775,9 +777,17 @@ export class MfAtelierView extends LitElement {
     );
   }
 
-  /** Push the resolved state/overlay colours to the scene (dots, leaders, bubbles). */
+  /**
+   * Push the atelier's states to the scene (dots, leaders, bubbles): those of every mapping
+   * of the atelier — a machine may use another mapping than the primary one — with the
+   * primary mapping's "not connected" overlay colour.
+   */
   private applyStateColors(): void {
-    this.scene?.setStateColors(resolveStateColors(this.primaryMapping()));
+    const defs = atelierStates(this.mappings.length ? this.mappings : DEFAULT_STATE_MAPPINGS);
+    const colors: Record<string, string> = Object.fromEntries(defs.map((s) => [s.key, s.color]));
+    colors['disconnected'] = stateColor(this.primaryMapping(), 'disconnected');
+    this.scene?.setStateColors(colors);
+    this.scene?.setStateDefs(defs);
   }
 
   private resolveDashboardService(): DashboardService | null {

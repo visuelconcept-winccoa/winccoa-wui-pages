@@ -11,8 +11,14 @@
  */
 import type { Group, PointLight } from 'three';
 
-/** Operational state of a machine or zone (drives status colour). */
-export type MachineState = 'ok' | 'warn' | 'stop' | 'maint';
+/** The four states every mapping knows when it declares no state list of its own. */
+export type BuiltinState = 'ok' | 'warn' | 'stop' | 'maint';
+
+/**
+ * Operational state of a machine or zone (drives status colour): one of the built-in
+ * states, or the key of a state a mapping declares (`StateMapping.states`).
+ */
+export type MachineState = BuiltinState | (string & {});
 
 /** Building roof construction (`none` = no roof). */
 export type RoofType = 'shed' | 'flat' | 'monoslope' | 'none';
@@ -195,7 +201,7 @@ export const PORTIQUE_SPANS: Record<PortiqueSize, number> = {
 };
 
 /** State → colour mapping (hex strings, also usable as CSS variables). */
-export const STATE_COLORS: Record<MachineState, string> = {
+export const STATE_COLORS: Record<BuiltinState, string> = {
   ok: '#10b981',
   warn: '#ef4444',
   stop: '#f59e0b',
@@ -203,7 +209,7 @@ export const STATE_COLORS: Record<MachineState, string> = {
 };
 
 /** Human-readable French state labels (for badges, chips, tooltips). */
-export const STATE_LABELS: Record<MachineState, string> = {
+export const STATE_LABELS: Record<BuiltinState, string> = {
   ok: 'Production',
   warn: 'Défaut',
   stop: 'Arrêt',
@@ -218,13 +224,13 @@ export const DISCONNECTED_COLOR = '#8B5CF6';
 export type StateColorKey = MachineState | 'disconnected';
 
 /** Default colour per state/overlay (used when a mapping has no override). */
-export const DEFAULT_STATE_COLOR_MAP: Record<StateColorKey, string> = {
+export const DEFAULT_STATE_COLOR_MAP: Record<BuiltinState | 'disconnected', string> = {
   ...STATE_COLORS,
   disconnected: DISCONNECTED_COLOR
 };
 
 /** French labels for the colour-config rows in the mapping dialog. */
-export const STATE_COLOR_LABELS: Record<StateColorKey, string> = {
+export const STATE_COLOR_LABELS: Record<BuiltinState | 'disconnected', string> = {
   ok: 'Production',
   warn: 'Défaut',
   stop: 'Arrêt',
@@ -234,20 +240,64 @@ export const STATE_COLOR_LABELS: Record<StateColorKey, string> = {
 
 export const STATE_COLOR_KEYS: StateColorKey[] = ['ok', 'warn', 'stop', 'maint', 'disconnected'];
 
-/** Resolve one state/overlay colour for a mapping (its override, else default). */
-export function stateColor(mapping: StateMapping | undefined, key: StateColorKey): string {
-  return mapping?.colors?.[key] ?? DEFAULT_STATE_COLOR_MAP[key];
+/** Colour of a state no mapping describes. */
+export const UNKNOWN_STATE_COLOR = '#9ca3af';
+
+/** The four built-in states, in display order ('ok' is the producing one). */
+export const BUILTIN_STATES: StateDef[] = [
+  { key: 'ok', label: STATE_LABELS.ok, color: STATE_COLORS.ok, running: true },
+  { key: 'warn', label: STATE_LABELS.warn, color: STATE_COLORS.warn },
+  { key: 'stop', label: STATE_LABELS.stop, color: STATE_COLORS.stop },
+  { key: 'maint', label: STATE_LABELS.maint, color: STATE_COLORS.maint }
+];
+
+/** States of a mapping, in display order: its own list, else the built-in four (colours resolved). */
+export function mappingStates(mapping: StateMapping | undefined): StateDef[] {
+  const own = mapping?.states?.length ? mapping.states : BUILTIN_STATES;
+  return own.map((s) => ({ ...s, color: mapping?.colors?.[s.key] ?? s.color }));
 }
 
-/** Resolve the full colour map for a mapping (all keys), for the scene/labels. */
+/** The state of that key in a mapping, if the mapping knows it. */
+export function stateDef(mapping: StateMapping | undefined, key: string): StateDef | undefined {
+  return mappingStates(mapping).find((s) => s.key === key);
+}
+
+/** Label of a state: the mapping's, else the built-in label, else the key itself. */
+export function stateLabel(mapping: StateMapping | undefined, key: string): string {
+  return stateDef(mapping, key)?.label ?? STATE_LABELS[key as BuiltinState] ?? key;
+}
+
+/** True when the machine counts as producing in that state ('ok' unless the mapping says otherwise). */
+export function isRunningState(mapping: StateMapping | undefined, key: string): boolean {
+  // A mapping with its own states: producing is only what it marks so ('ok' means nothing there).
+  if (mapping?.states?.length) return Boolean(mapping.states.find((s) => s.key === key)?.running);
+  return key === 'ok';
+}
+
+/** Resolve one state/overlay colour for a mapping (its override, else its state's, else default). */
+export function stateColor(mapping: StateMapping | undefined, key: StateColorKey): string {
+  return mapping?.colors?.[key] ?? mapping?.states?.find((s) => s.key === key)?.color
+    ?? DEFAULT_STATE_COLOR_MAP[key as BuiltinState | 'disconnected'] ?? UNKNOWN_STATE_COLOR;
+}
+
+/** Resolve the full colour map for a mapping (every state it knows + the overlay), for the scene/labels. */
 export function resolveStateColors(mapping: StateMapping | undefined): Record<StateColorKey, string> {
-  return {
-    ok: stateColor(mapping, 'ok'),
-    warn: stateColor(mapping, 'warn'),
-    stop: stateColor(mapping, 'stop'),
-    maint: stateColor(mapping, 'maint'),
-    disconnected: stateColor(mapping, 'disconnected')
-  };
+  const out: Record<string, string> = {};
+  for (const s of mappingStates(mapping)) out[s.key] = s.color;
+  out['disconnected'] = stateColor(mapping, 'disconnected');
+  return out;
+}
+
+/**
+ * States across all the mappings of an atelier, in order and without duplicates (the first
+ * mapping that declares a key wins) — what an atelier-wide legend or count shows.
+ */
+export function atelierStates(mappings: StateMapping[] | undefined): StateDef[] {
+  const out: StateDef[] = [];
+  for (const mp of mappings?.length ? mappings : [undefined]) {
+    for (const s of mappingStates(mp)) if (!out.some((o) => o.key === s.key)) out.push(s);
+  }
+  return out;
 }
 
 /** Resolve a communication datapoint value (bool or int) to a connected flag. */
@@ -263,7 +313,7 @@ export function isDisconnected(m: { commDp?: string; connected?: boolean }): boo
   return m.commDp != null && m.commDp !== '' && m.connected === false;
 }
 
-export const STATE_HEX: Record<MachineState, number> = {
+export const STATE_HEX: Record<BuiltinState, number> = {
   ok: 0x10_B9_81,
   warn: 0xF5_9E_0B,
   stop: 0xEF_44_44,
@@ -296,6 +346,18 @@ export interface StateRule {
   max?: number;
 }
 
+/**
+ * A state a mapping declares: its key (what the rules produce), label, colour, and whether
+ * the machine counts as producing in it — the only states that are not downtime for the
+ * Gantt, the stop analysis and the TRS.
+ */
+export interface StateDef {
+  key: string;
+  label: string;
+  color: string;
+  running?: boolean;
+}
+
 /** A named, ordered value→state mapping (first matching rule wins). */
 export interface StateMapping {
   id: string;
@@ -305,6 +367,11 @@ export interface StateMapping {
   fallback: MachineState;
   /** Optional per-state / per-overlay colour overrides (else the defaults). */
   colors?: Partial<Record<StateColorKey, string>>;
+  /**
+   * Optional state list of this mapping, in display order. Absent or empty: the four
+   * built-in states (`BUILTIN_STATES`), exactly as before.
+   */
+  states?: StateDef[];
 }
 
 export const DEFAULT_STATE_MAPPINGS: StateMapping[] = [
