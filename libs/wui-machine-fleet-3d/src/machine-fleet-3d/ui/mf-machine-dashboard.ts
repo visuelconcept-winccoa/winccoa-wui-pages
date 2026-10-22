@@ -234,6 +234,11 @@ export class MfMachineDashboard extends LitElement {
             <ix-typography format="h3">${m.name}</ix-typography>
             <ix-chip outline>${m.loc ?? m.type}</ix-chip>
             <span class="grow"></span>
+            ${m.ownerLink?.url
+              ? html`<ix-button variant="secondary" @click=${() => window.location.assign(m.ownerLink?.url ?? '')}
+                  >${m.ownerLink.label}</ix-button
+                >`
+              : ''}
             <ix-icon-button ghost icon="close" title=${localize(MSG.machineDash.close)} @click=${this.close}></ix-icon-button>
           </div>
           ${this.renderToolbar()} ${this.renderFilters()}

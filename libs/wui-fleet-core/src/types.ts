@@ -574,6 +574,11 @@ export interface MachineDef {
   /** Extra custom links (URL) shown as buttons in the machine popup; each opens
    * in a new browser tab. Up to {@link MAX_DASHBOARD_LINKS}. */
   dashboardLinks?: DashboardLink[];
+  /**
+   * The page of what the machine belongs to (e.g. its work centre), reached from a button of
+   * its dashboard in the same tab. Usually written by the integration that places the machine.
+   */
+  ownerLink?: { label: string; url: string };
 }
 
 /** Source of a machine's dashboard: built-in contextualised vs. specific WinCC OA. */
