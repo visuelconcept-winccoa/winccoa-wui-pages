@@ -1,4 +1,5 @@
-// `wui dev`: the badge backend, mocked. Badge 12345678 is "dev"'s; "former" is locked.
+// `wui dev`: the badge backend, mocked. Badge 12345678 is "dev"'s; the station 10.0.0.42 is locked
+// (Badges › Liste noire), with two past locks in the history; this browser is the station "127.0.0.1".
 import { createHmac } from 'node:crypto';
 
 const users = [
@@ -8,8 +9,39 @@ const users = [
 ];
 const badges = new Map([[1, '12345678']]);
 const settings = { badgeLoginEnabled: true, selfEnrolment: true, hashBadges: false, prefix: '', maxFrameMs: 150, minUidLength: 4, endKey: 'Enter', lockAfterFailures: 3, lockDurationMin: 15 };
-const NO_LOCK = { locked: false, lockedAt: null, lockedUntil: null, failures: 0 };
-const locks = new Map([[3, { locked: true, lockedAt: Date.now(), lockedUntil: Date.now() + 15 * 60_000, failures: 3 }]]);
+// As backend/badgeBlacklist.ts: the locks newest first, the refusals counted per address.
+const HOUR = 3_600_000;
+const lockRecord = (ip, lockedAt, lockedUntil, failures, item, state, lifted = {}) => ({
+  id: `${lockedAt}-${ip}`, ip, lockedAt, lockedUntil, failures, item, state,
+  liftedBy: lifted.by ?? null, liftedAt: lifted.at ?? null, reason: lifted.reason ?? null
+});
+const now0 = Date.now();
+const blacklist = {
+  records: [
+    lockRecord('10.0.0.42', now0 - 5 * 60_000, now0 + 10 * 60_000, 3, 'WC-12', 'active'),
+    lockRecord('10.0.0.17', now0 - 26 * HOUR, now0 - 26 * HOUR + 15 * 60_000, 3, 'WC-03', 'lifted', { by: 'dev', at: now0 - 26 * HOUR + 5 * 60_000, reason: 'Badge abîmé, remplacé' }),
+    lockRecord('10.0.0.42', now0 - 72 * HOUR, now0 - 72 * HOUR + 15 * 60_000, 3, 'WC-12', 'expired')
+  ],
+  pending: [{ ip: '10.0.0.7', failures: 1, item: 'WC-07', lastAt: now0 - 2 * 60_000 }]
+};
+const STATION = '127.0.0.1';
+const activeLock = (ip) =>
+  blacklist.records.find((record) => record.ip === ip && record.state === 'active' && (record.lockedUntil === null || record.lockedUntil > Date.now()));
+/** A refused badge from this browser's station: `locked` at the threshold. */
+const refuse = () => {
+  if (settings.lockAfterFailures <= 0) return { status: 'unknown' };
+  const counter = blacklist.pending.find((pending) => pending.ip === STATION) ?? { ip: STATION, failures: 0, item: '', lastAt: 0 };
+  blacklist.pending = blacklist.pending.filter((pending) => pending.ip !== STATION);
+  const failures = counter.failures + 1;
+  const now = Date.now();
+  if (failures < settings.lockAfterFailures) {
+    blacklist.pending.unshift({ ...counter, failures, lastAt: now });
+    return { status: 'unknown' };
+  }
+  const lockedUntil = settings.lockDurationMin > 0 ? now + settings.lockDurationMin * 60_000 : null;
+  blacklist.records.unshift(lockRecord(STATION, now, lockedUntil, failures, '', 'active'));
+  return { status: 'locked', lockedUntil };
+};
 /** An HTTP error, as the harness answers it. */
 const httpError = (status, message) => Object.assign(new Error(message), { status });
 
@@ -46,7 +78,8 @@ const test = (userId, uid) => {
 export default {
   'GET /api/auth-badge/config': () => {
     const { prefix, maxFrameMs, minUidLength, endKey, badgeLoginEnabled } = settings;
-    return { prefix, maxFrameMs, minUidLength, endKey, enabled: badgeLoginEnabled };
+    const lock = activeLock(STATION);
+    return { prefix, maxFrameMs, minUidLength, endKey, enabled: badgeLoginEnabled, locked: !!lock, lockedUntil: lock?.lockedUntil ?? null };
   },
   // The session's close: audited by the backend; nothing to keep here.
   'POST /api/auth-badge/logout': ({ body }) => {
@@ -55,8 +88,11 @@ export default {
   },
   'POST /api/auth-badge/login': ({ body }) => {
     if (!settings.badgeLoginEnabled) return { status: 'disabled' };
-    const userId = ownerOf(body?.uid);
-    return userId === 1 ? { status: 'ok', username: 'dev', fullName: 'Dev', token: 'mock-token' } : { status: 'unknown' };
+    const lock = activeLock(STATION);
+    if (lock) return { status: 'locked', lockedUntil: lock.lockedUntil };
+    if (ownerOf(body?.uid) !== 1) return refuse();
+    blacklist.pending = blacklist.pending.filter((pending) => pending.ip !== STATION);
+    return { status: 'ok', username: 'dev', fullName: 'Dev', token: 'mock-token' };
   },
   'GET /api/auth-badge/me': () => ({
     username: 'dev',
@@ -84,21 +120,32 @@ export default {
     for (const key of Object.keys(settings)) if (typeof body?.[key] === typeof settings[key]) settings[key] = body[key];
     return { ...settings, migrated };
   },
-  'GET /api/auth-badge/users': () =>
-    users.map((user) => ({ ...user, ...view(user.userId), lock: locks.get(user.userId) ?? NO_LOCK })),
+  'GET /api/auth-badge/users': () => users.map((user) => ({ ...user, ...view(user.userId) })),
+  'GET /api/auth-badge/blacklist': () => {
+    for (const record of blacklist.records) {
+      if (record.state === 'active' && record.lockedUntil !== null && record.lockedUntil <= Date.now()) record.state = 'expired';
+    }
+    return blacklist;
+  },
+  // Exact paths only in `wui dev`: one route per mock address.
+  ...Object.fromEntries(
+    ['10.0.0.42', '10.0.0.17', STATION].map((ip) => [
+      `POST /api/auth-badge/blacklist/${ip}/unlock`,
+      ({ body }) => {
+        if (typeof body?.reason !== 'string' || body.reason.trim() === '') throw httpError(400, 'reason');
+        const lock = activeLock(ip);
+        if (!lock) throw httpError(404, 'station not locked');
+        Object.assign(lock, { state: 'lifted', liftedBy: 'dev', liftedAt: Date.now(), reason: body.reason.trim().slice(0, 200) });
+        blacklist.pending = blacklist.pending.filter((pending) => pending.ip !== ip);
+        return { status: 'ok', record: lock };
+      }
+    ])
+  ),
   // Exact paths only in `wui dev`: one route per mock user.
   ...Object.fromEntries(
     users.flatMap(({ userId }) => [
       [`PUT /api/auth-badge/users/${userId}`, ({ body }) => associate(userId, body?.uid)],
       [`POST /api/auth-badge/users/${userId}/test`, ({ body }) => test(userId, body?.uid)],
-      [
-        `POST /api/auth-badge/users/${userId}/unlock`,
-        ({ body }) => {
-          if (typeof body?.reason !== 'string' || body.reason.trim() === '') throw httpError(400, 'reason');
-          locks.delete(userId);
-          return { status: 'ok' };
-        }
-      ],
       [
         `DELETE /api/auth-badge/users/${userId}`,
         () => {

@@ -7,13 +7,17 @@
 //
 //   - badge → user through the user setting RFID_UID (`_usr_<UserId>_RFID_UID`),
 //     resolved here so the badge numbers never reach the browser;
-//   - a user's badge locked after `lockAfterFailures` refused logins in a row
-//     imputable to them (disabled account, no WebUI login permission), for
-//     `lockDurationMin` minutes or until unlocked on "Badges" (the settings,
-//     badgeSettings.ts) — kept in their user setting BADGE_LOCK (badgeLock.ts):
-//     the lock survives a webserver restart and holds on every station; a
-//     login reset the count. An unknown badge locks nothing: it is only
-//     audited. The lock's expiry is audited when the badge is next presented;
+//   - the badge login of a station (its IP address, `clientAddress`) locked
+//     after `lockAfterFailures` refused badges in a row — unknown, or a
+//     recognised user refused (disabled account, no WebUI login permission) —
+//     for `lockDurationMin` minutes or until unlocked on "Badges" (the
+//     settings, badgeSettings.ts); a login from the station resets its count.
+//     Every lock is a record of the blacklist, kept in the DP
+//     WuiAuthBadge_Blacklist (badgeBlacklist.ts): it survives a webserver
+//     restart, its expiry and its unlock (with a reason) are kept as the
+//     history. Locked, every badge of the station is refused before it is
+//     even looked up; the password login stays open. (The 0.5 lock per user,
+//     the user setting BADGE_LOCK, is gone: those settings are not read.)
 //   - the session's close (logout, switch user, idle expiry), audited for the
 //     user of the request's WebUI token (POST /logout), whatever the login
 //     provider that opened it;
@@ -28,8 +32,9 @@
 // their badge, associated or removed — only when the settings let every user
 // do it (`selfEnrolment`); else on the "Badges" page, by the `enrol` role.
 //
-// The "Badges" page: the settings (badgeSettings.ts; the `configure` role) and
-// any user's badge and lock (the `enrol` role; an unlock needs a reason). The roles are Application Security's,
+// The "Badges" page: the settings (badgeSettings.ts; the `configure` role), any
+// user's badge (the `enrol` role) and the blacklist (read with `enrol` or
+// `configure`; a station unlocked with `enrol` and a reason). The roles are Application Security's,
 // module `auth-badge` (src/app-security.roles.json), checked here against the
 // user of the request's WebUI token: a badge session has no webserver session,
 // so the guard's own `requireRole` could not tell who calls.
@@ -44,17 +49,15 @@ import { Request, Response } from 'ultimate-express';
 import { identityOfUsername, roleAssignments, roleGranted } from './appSecurityGuard';
 import { hashKey, hashUid, isHashed, matches } from './badgeHash';
 import {
-  afterFailure,
-  BadgeLock,
-  hasExpired,
-  isLocked,
-  LOCK_SETTING,
-  LOCK_SETTING_NAME,
-  lockView,
-  NO_LOCK,
-  parseLock,
-  serializeLock
-} from './badgeLock';
+  activeLock,
+  BlacklistRecord,
+  expire,
+  lift,
+  readBlacklist,
+  recordFailure,
+  resetFailures,
+  updateBlacklist
+} from './badgeBlacklist';
 import { BadgeSettings, DEFAULT_SETTINGS, readSettings, validSetting, writeSettings } from './badgeSettings';
 import {
   audit,
@@ -64,13 +67,14 @@ import {
   signWebUiToken,
   userById,
   users,
-  OaUser,
   verifyWebUiToken,
   writeUserSetting
 } from './oaAuth';
 
 const MAX_ITEM_LENGTH = 64;
 const MAX_REASON_LENGTH = 200;
+/** An IP address, v6 included (and a zone). */
+const MAX_IP_LENGTH = 64;
 
 const SETTING = 'RFID_UID';
 const SETTING_NAME = 'Numéro de badge RFID';
@@ -97,20 +101,36 @@ const CLOSE_ACTIONS = {
 type CloseReason = keyof typeof CLOSE_ACTIONS;
 
 export class BadgeAuth {
-  /** GET /config — the reader's frame, and whether the badge login is enabled. */
-  getConfig = async (_req: Request, res: Response): Promise<void> => {
+  /**
+   * GET /config — the reader's frame, whether the badge login is enabled, and the requesting
+   * station's lock: `locked`, `lockedUntil` (null: until unlocked on "Badges").
+   */
+  getConfig = async (req: Request, res: Response): Promise<void> => {
     const { prefix, maxFrameMs, minUidLength, endKey, badgeLoginEnabled } = await readSettings();
-    res.json({ prefix, maxFrameMs, minUidLength, endKey, enabled: badgeLoginEnabled });
+    // The page only shows it: an unreadable blacklist says nothing here, /login decides.
+    const lock = await readBlacklist()
+      .then((blacklist) => activeLock(blacklist, clientAddress(req), Date.now()))
+      .catch(() => undefined);
+    res.json({
+      prefix,
+      maxFrameMs,
+      minUidLength,
+      endKey,
+      enabled: badgeLoginEnabled,
+      locked: !!lock,
+      lockedUntil: lock?.lockedUntil ?? null
+    });
   };
 
   /**
    * POST /login  { uid, dbrw?, item? }
    *   → { status: 'ok', username, fullName, token } | { status: 'unknown' }
-   *     | { status: 'locked', lockedUntil, username, fullName } (lockedUntil null: until unlocked on "Badges")
+   *     | { status: 'locked', lockedUntil } (the station's lock; lockedUntil null: until unlocked on "Badges")
    *     | { status: 'disabled' } (the settings' badgeLoginEnabled off)
-   * An unknown badge: `unknown`, audited, nothing locked. A recognised user refused (disabled,
-   * no WebUI login permission): `unknown`, one more failure of theirs — `locked` at the threshold.
-   * 400 without a number, 503 when the badges cannot be read.
+   * A badge from a locked station: `locked`, before it is looked up. An unknown badge, or a
+   * recognised user refused (disabled, no WebUI login permission): `unknown`, one more refusal of
+   * the station — `locked` at the threshold. A login resets the station's count.
+   * 400 without a number, 503 when the badges or the blacklist cannot be read.
    */
   login = async (req: Request, res: Response): Promise<void> => {
     const body = (req.body ?? {}) as { uid?: unknown; dbrw?: unknown; item?: unknown };
@@ -129,6 +149,14 @@ export class BadgeAuth {
       return;
     }
 
+    const now = Date.now();
+    const lock = await this.stationLock(host, now);
+    if (lock) {
+      void audit({ action: 'BADGE_REFUSE_VERROU', item, host, reason: 'Badge présenté pendant le verrouillage du poste' });
+      res.json(lockedAnswer(lock));
+      return;
+    }
+
     let userId: number | undefined;
     try {
       userId = await this.userIdOf(uid);
@@ -139,22 +167,14 @@ export class BadgeAuth {
     }
     const user = userId === undefined ? undefined : await userById(userId);
     if (!user) {
-      // Nobody to lock: audited only, every time.
       void audit({ action: 'BADGE_INCONNU', item, host, reason: 'Badge non reconnu' });
-      res.json({ status: 'unknown' });
-      return;
-    }
-
-    const now = Date.now();
-    const lock = await this.currentLock(user, now, item, host);
-    if (isLocked(lock, now)) {
-      void audit({ action: 'BADGE_REFUSE_VERROU', username: user.username, userId: user.userId, item, host, reason: 'Badge présenté pendant le verrouillage du compte' });
-      res.json(lockedAnswer(user, lock));
+      await this.refuse(res, { now, item, host, settings });
       return;
     }
 
     if (!user.enabled) {
-      await this.refuse(res, user, lock, { now, item, host, reason: 'Mode badge : compte désactivé' });
+      void audit({ action: 'SESSION_REFUSEE', username: user.username, userId: user.userId, item, host, reason: 'Mode badge : compte désactivé' });
+      await this.refuse(res, { now, item, host, settings });
       return;
     }
     let token = '';
@@ -166,12 +186,15 @@ export class BadgeAuth {
       return;
     }
     if (!token) {
-      await this.refuse(res, user, lock, { now, item, host, reason: 'Mode badge : permission de connexion absente' });
+      void audit({ action: 'SESSION_REFUSEE', username: user.username, userId: user.userId, item, host, reason: 'Mode badge : permission de connexion absente' });
+      await this.refuse(res, { now, item, host, settings });
       return;
     }
 
-    // A login resets the count; failing to store it must not refuse the login.
-    if (lock !== NO_LOCK) await this.storeLock(user.userId, NO_LOCK).catch((error: unknown) => console.error('[auth-badge] badge lock not reset', error));
+    // A login resets the station's count; failing to store it must not refuse the login.
+    await updateBlacklist((blacklist) => ({ blacklist: resetFailures(blacklist, host), result: undefined })).catch((error: unknown) =>
+      console.error('[auth-badge] station count not reset', error)
+    );
     void audit({ action: 'OUVERTURE_SESSION', username: user.username, userId: user.userId, item, host, reason: 'Mode badge' });
     res.json({ status: 'ok', username: user.username, fullName: user.fullName, token });
   };
@@ -321,56 +344,68 @@ export class BadgeAuth {
     res.json({ ...after, migrated });
   };
 
-  /**
-   * GET /users — the `enrol` role: every user a badge can open (root excepted), with their badge
-   * (`badge`, `hashed`: as for /me) and their lock (`lock`: { locked, lockedAt, lockedUntil, failures },
-   * an expired lock shown as none).
-   */
+  /** GET /users — the `enrol` role: every user a badge can open (root excepted), with their badge (`badge`, `hashed`: as for /me). */
   listUsers = async (req: Request, res: Response): Promise<void> => {
     if (!(await this.authorize(req, res, 'enrol'))) return;
-    const [badges, locks] = await Promise.all([
-      readUserSettings(SETTING, SETTING_NAME),
-      readUserSettings(LOCK_SETTING, LOCK_SETTING_NAME)
-    ]);
-    const now = Date.now();
+    const badges = await readUserSettings(SETTING, SETTING_NAME);
     const list = (await users())
       .filter((user) => user.userId > 0 && user.username)
       .sort((a, b) => a.username.localeCompare(b.username))
-      .map((user) => {
-        const uid = badges.get(user.userId)?.[0];
-        return { ...user, ...badgeView(uid), lock: lockView(parseLock(locks.get(user.userId)?.[0]), now) };
-      });
+      .map((user) => ({ ...user, ...badgeView(badges.get(user.userId)?.[0]) }));
     res.json(list);
   };
 
   /**
-   * POST /users/:userId/unlock  { reason } — the `enrol` role: lifts that user's badge lock and
-   * resets their failures; 400 without a reason (audited with it: BADGE_DEVERROUILLE).
+   * GET /blacklist — the `enrol` or the `configure` role: the stations' locks, newest first
+   * (`records`: { id, ip, lockedAt, lockedUntil, failures, item, state: 'active' | 'expired' | 'lifted',
+   * liftedBy, liftedAt, reason }, the history included — MAX_RECORDS at most) and the refusals counted
+   * of the stations not locked (`pending`: { ip, failures, item, lastAt }). The locks run out are
+   * turned `expired` first (audited).
    */
-  unlockUser = async (req: Request, res: Response): Promise<void> => {
+  getBlacklist = async (req: Request, res: Response): Promise<void> => {
+    if (!(await this.authorize(req, res, ['enrol', 'configure']))) return;
+    const now = Date.now();
+    const blacklist = await updateBlacklist((before) => {
+      const { blacklist: after, expired } = expire(before, now);
+      return { blacklist: after, result: { after, expired } };
+    }).then(({ after, expired }) => {
+      expired.forEach(auditExpiry);
+      return after;
+    });
+    res.json({ records: blacklist.records, pending: blacklist.counters });
+  };
+
+  /**
+   * POST /blacklist/:ip/unlock  { reason } — the `enrol` role: lifts the station's active lock and
+   * resets its count; 400 without a reason (200 characters kept), 404 when the address is not
+   * locked. Kept in the record (liftedBy, liftedAt, reason) and audited (VERROU_LEVE).
+   */
+  unlockStation = async (req: Request, res: Response): Promise<void> => {
     const actor = await this.authorize(req, res, 'enrol');
     if (!actor) return;
-    const target = await userById(Number(req.params['userId']));
-    if (!target) {
-      res.status(404).json({ status: 'error', error: 'unknown user' });
-      return;
-    }
     const reason = textOf(((req.body ?? {}) as { reason?: unknown }).reason, MAX_REASON_LENGTH);
     if (reason === '') {
       res.status(400).json({ status: 'invalid', field: 'reason' });
       return;
     }
-    const before = await this.readLock(target.userId);
-    await this.storeLock(target.userId, NO_LOCK);
-    const was = isLocked(before, Date.now()) ? 'verrouillé' : `${before.failures} échec(s) en cours`;
+    const ip = textOf(req.params['ip'], MAX_IP_LENGTH);
+    const lifted = await updateBlacklist((before) => {
+      const { blacklist, lifted: record } = lift(before, ip, actor.username, reason, Date.now());
+      return { blacklist, result: record };
+    });
+    if (!lifted) {
+      res.status(404).json({ status: 'error', error: 'station not locked' });
+      return;
+    }
     void audit({
-      action: 'BADGE_DEVERROUILLE',
+      action: 'VERROU_LEVE',
       username: actor.username,
       userId: actor.userId,
+      item: lifted.item,
       host: clientAddress(req),
-      reason: `Compte ${target.username} déverrouillé par ${actor.username} (${was}) : ${reason}`
+      reason: `Poste ${ip} déverrouillé par ${actor.username} (${lifted.failures} refus) : ${reason}`
     });
-    res.json({ status: 'ok' });
+    res.json({ status: 'ok', record: lifted });
   };
 
   /** PUT /users/:userId  { uid } — the `enrol` role: associates a badge with that user: { status: 'ok' | 'taken' | 'invalid' }. */
@@ -468,9 +503,10 @@ export class BadgeAuth {
     return (await readSettings()).selfEnrolment;
   }
 
-  private async hasRole(username: string, role: Role): Promise<boolean> {
+  /** The user has one of `roles`. */
+  private async hasRole(username: string, roles: readonly Role[]): Promise<boolean> {
     const [assignments, who] = await Promise.all([roleAssignments(MODULE), identityOfUsername(username)]);
-    return roleGranted(assignments, role, who);
+    return roles.some((role) => roleGranted(assignments, role, who));
   }
 
   /** The user of the request's WebUI token — root included, unlike `sessionUser` — or null. */
@@ -485,15 +521,16 @@ export class BadgeAuth {
     return user?.enabled ? { username: user.username, userId: user.userId } : null;
   }
 
-  /** The caller when they have `role`; else answers 401 / 403 and gives null. */
-  private async authorize(req: Request, res: Response, role: Role): Promise<Actor | null> {
+  /** The caller when they have `role` (one of them, for a list); else answers 401 / 403 and gives null. */
+  private async authorize(req: Request, res: Response, role: Role | readonly Role[]): Promise<Actor | null> {
     const actor = await this.actorOf(req);
     if (!actor) {
       res.status(401).json({ status: 'error', error: 'not logged in' });
       return null;
     }
-    if (!(await this.hasRole(actor.username, role))) {
-      res.status(403).json({ status: 'forbidden', error: `role '${role}' of '${MODULE}' required` });
+    const roles: readonly Role[] = typeof role === 'string' ? [role] : role;
+    if (!(await this.hasRole(actor.username, roles))) {
+      res.status(403).json({ status: 'forbidden', error: `role '${roles.join("' or '")}' of '${MODULE}' required` });
       return null;
     }
     return actor;
@@ -513,61 +550,54 @@ export class BadgeAuth {
     return undefined;
   }
 
-  private async readLock(userId: number): Promise<BadgeLock> {
-    return parseLock((await readUserSettings(LOCK_SETTING, LOCK_SETTING_NAME)).get(userId)?.[0]);
+  /** The station's active lock, or undefined — the locks run out turned `expired` first (audited). */
+  private async stationLock(host: string, now: number): Promise<BlacklistRecord | undefined> {
+    const { lock, expired } = await updateBlacklist((before) => {
+      const { blacklist, expired: ended } = expire(before, now);
+      return { blacklist, result: { lock: activeLock(blacklist, host, now), expired: ended } };
+    });
+    expired.forEach(auditExpiry);
+    return lock;
   }
 
-  private async storeLock(userId: number, lock: BadgeLock): Promise<void> {
-    await writeUserSetting(userId, LOCK_SETTING, LOCK_SETTING_NAME, serializeLock(lock));
-  }
-
-  /** The user's lock; an expired one lifted (and audited). */
-  private async currentLock(user: OaUser, now: number, item: string, host: string): Promise<BadgeLock> {
-    const lock = await this.readLock(user.userId);
-    if (!hasExpired(lock, now)) return lock;
-    await this.storeLock(user.userId, NO_LOCK);
-    void audit({ action: 'BADGE_VERROU_EXPIRE', username: user.username, userId: user.userId, item, host, reason: 'Fin du délai de verrouillage du compte' });
-    return NO_LOCK;
-  }
-
-  /** A login refused to a recognised user: audited, one more failure of theirs — locked at the threshold. */
+  /** A refused badge: one more refusal of the station — locked at the threshold (audited). */
   private async refuse(
     res: Response,
-    user: OaUser,
-    lock: BadgeLock,
-    { now, item, host, reason }: { now: number; item: string; host: string; reason: string }
+    { now, item, host, settings }: { now: number; item: string; host: string; settings: BadgeSettings }
   ): Promise<void> {
-    void audit({ action: 'SESSION_REFUSEE', username: user.username, userId: user.userId, item, host, reason });
-    const settings = await readSettings();
-    const next = afterFailure(lock, settings, now, host);
-    if (next.lock !== lock) {
-      try {
-        await this.storeLock(user.userId, next.lock);
-      } catch (error) {
-        // The refusal stands; only the count is lost.
-        console.error('[auth-badge] badge lock not stored', error);
-      }
+    let locked: BlacklistRecord | undefined;
+    try {
+      locked = await updateBlacklist((before) => {
+        const { blacklist, locked: record } = recordFailure(before, host, item, settings, now);
+        return { blacklist, result: record };
+      });
+    } catch (error) {
+      // The refusal stands; only the count is lost.
+      console.error('[auth-badge] station count not stored', error);
     }
-    if (!next.locked) {
+    if (!locked) {
       res.json({ status: 'unknown' });
       return;
     }
-    const until = next.lock.lockedUntil === null ? "jusqu'au déverrouillage manuel" : `${settings.lockDurationMin} min`;
+    const until = locked.lockedUntil === null ? "jusqu'au déverrouillage manuel" : `${settings.lockDurationMin} min`;
     void audit({
-      action: 'BADGE_VERROUILLE',
-      username: user.username,
-      userId: user.userId,
+      action: 'MIRE_VERROUILLEE',
       item,
       host,
-      reason: `${next.lock.failures} refus consécutifs : badge verrouillé (${until})`
+      reason: `${locked.failures} badges refusés consécutifs : connexion par badge verrouillée sur le poste ${host} (${until})`
     });
-    res.json(lockedAnswer(user, next.lock));
+    res.json(lockedAnswer(locked));
   }
 }
 
-/** The login's answer to a locked user's badge. */
-function lockedAnswer(user: OaUser, lock: BadgeLock): { status: 'locked'; lockedUntil: number | null; username: string; fullName: string } {
-  return { status: 'locked', lockedUntil: lock.lockedUntil, username: user.username, fullName: user.fullName };
+/** The login's answer to a badge from a locked station. */
+function lockedAnswer(lock: BlacklistRecord): { status: 'locked'; lockedUntil: number | null } {
+  return { status: 'locked', lockedUntil: lock.lockedUntil };
+}
+
+/** A station's lock ran out. */
+function auditExpiry(record: BlacklistRecord): void {
+  void audit({ action: 'VERROU_EXPIRE', item: record.item, host: record.ip, reason: `Fin du délai de verrouillage du poste ${record.ip}` });
 }
 
 /** A trimmed text of at most `max` characters; '' when not a string. */

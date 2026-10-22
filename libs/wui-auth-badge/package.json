@@ -1,8 +1,8 @@
 {
   "name": "@visuelconcept-winccoa/wui-auth-badge",
   "type": "module",
-  "version": "0.5.0",
-  "description": "Badge login for the WebUI shell — a login provider's login extension: an RFID reader in keyboard emulation, badge → user through the RFID_UID user setting, a user's badge locked after N refused logins (kept in their user settings, on every station; unknown badges only audited), an audit line per event, every session's close audited through the shell's logout hook (POST /logout); \"Mon badge\" (/auth-badge) lets a user associate their badge when self-service is on; \"Badges\" (/auth-badge/admin), by Application Security role, turns the badge login on or off, opens or closes self-service, stores the numbers as one-way fingerprints (HMAC-SHA256), sets the lock's threshold and duration, enrols any user's badge, tests that a badge opens their session and unlocks a locked user with a reason; \"Switch user\" in the menu.",
+  "version": "0.6.0",
+  "description": "Badge login for the WebUI shell — a login provider's login extension: an RFID reader in keyboard emulation, badge → user through the RFID_UID user setting, a station's badge login locked after N refused badges from its IP address (unknown or refused alike; kept in a blacklist DP, with its history), an audit line per event, every session's close audited through the shell's logout hook (POST /logout); \"Mon badge\" (/auth-badge) lets a user associate their badge when self-service is on; \"Badges\" (/auth-badge/admin), by Application Security role, turns the badge login on or off, opens or closes self-service, stores the numbers as one-way fingerprints (HMAC-SHA256), sets the lock's threshold and duration, enrols any user's badge, tests that a badge opens their session, shows the blacklist and unlocks a locked station with a reason; \"Switch user\" in the menu.",
   "author": {
     "name": "Visuel Concept"
   },
@@ -55,7 +55,7 @@
         "badgeRoute.ts",
         "badgeAuth.ts",
         "badgeHash.ts",
-        "badgeLock.ts",
+        "badgeBlacklist.ts",
         "badgeSettings.ts",
         "oaAuth.ts"
       ],
@@ -66,7 +66,7 @@
         "reader frame prefix: WUI_BADGE_PREFIX in the webserver's environment, until one is saved on Badges",
         "audit lines go to an _AuditTrail DP, when it exists: auditDp in the [wui-auth] section of config/config (auditDp = \"AuditTrail_MSP\"), else WUI_AUTH_AUDIT_DP, else AuditTrail_Auth",
         "settings (badge login enabled, self-service enrolment, the reader's frame: prefix, burst, minimum length, end key, the lock's threshold and duration) in the DP WuiAuthBadge_Config.settings, its type and DP created at the first change",
-        "each user's badge lock (refused logins in a row, locked until) in their user setting BADGE_LOCK (_usr_<UserId>_BADGE_LOCK), created at first need",
+        "the stations' badge lock (refused badges in a row per IP address, the locks and their history, 500 records at most) in the DP WuiAuthBadge_Blacklist.state, its type and DP created at the first refusal; the user settings BADGE_LOCK of 0.5.0 are no longer read",
         "badge numbers as fingerprints (hashBadges): the HMAC key is WUI_BADGE_HASH_KEY, else config/wui-auth-badge.key (generated at the first activation) — back it up with the project, without it the hashed badges must be enrolled again"
       ]
     }
