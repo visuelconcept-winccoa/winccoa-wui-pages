@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-ampere",
   "type": "module",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Ampère — standalone WinCC OA WebUI page (/ampere + /ampere/:networkid): draw single-line (mono-filaire) electrical distribution networks (switchboards/TGBT, disconnectors, circuit breakers, busbars, transformers…) including railway electrification (catenary sections, track return, rectifier, sectioning switch, autotransformer, train) with an in-place edit mode, an IEC 60617 symbol toolbox, free DP binding per device, live wire energisation computed by graph traversal through closed switchgear, free/attached live measurement labels, and a proposal-only AI assistant that generates network models. Frontend-only, 1 DP per network (Ampere_Network).",
   "author": {
     "name": "Visuel Concept"
@@ -66,6 +66,42 @@
       ],
       "notes": [
         "ampereSim (optional showcase simulator — creates + drives the shared AmpereSim_Demo datapoint)"
+      ]
+    },
+    "showcase": {
+      "entry": "/ampere",
+      "hide": [
+        "wui-ampere div.notice"
+      ],
+      "caption": {
+        "fr": "Le réseau électrique et ses postes",
+        "en": "The power network and its substations",
+        "de": "Das Stromnetz und seine Stationen"
+      },
+      "steps": [
+        {
+          "click": "am-network-table tr:has-text('MV/LV substation'), am-network-table tr:has-text('Poste HTA/BT'), am-network-table tr:has-text('MS/NS-Station')",
+          "zoom": true,
+          "caption": {
+            "fr": "Un poste : son schéma et ses mesures",
+            "en": "A substation: its diagram and readings",
+            "de": "Eine Station: ihr Schema und ihre Messwerte"
+          },
+          "pause": 4
+        },
+        {
+          "move": true,
+          "caption": {
+            "fr": "Tensions et courants en temps réel",
+            "en": "Voltages and currents in real time",
+            "de": "Spannungen und Ströme in Echtzeit"
+          },
+          "pause": 3
+        },
+        {
+          "move": true,
+          "pause": 3
+        }
       ]
     }
   },

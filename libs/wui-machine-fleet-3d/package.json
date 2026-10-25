@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-machine-fleet-3d",
   "type": "module",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Machine Fleet 3D — standalone WinCC OA WebUI page: multi-atelier 3D digital twin (Three.js) with live DP-bound machine state/KPIs, config UI, GLB/billboard library and dashboard export. The per-machine dashboard embeds the shared alarm view (standing alarms or the archived ones over the dashboard's period, scoped to the machine's datapoints). Hub page; depends on the fleet-core + ai-kit + alarms-core domain kits.",
   "author": {
     "name": "Visuel Concept"
@@ -78,6 +78,65 @@
         "/api/ai/chat (optional, AI assistant via wui-ai-kit)",
         "machineSim (optional, simulation)",
         "kpiCalc (optional, real-time TRS/MTBF/MTTR)"
+      ]
+    },
+    "showcase": {
+      "entry": "/fleet-3d",
+      "caption": {
+        "fr": "Les ateliers de l’usine",
+        "en": "The plant’s workshops",
+        "de": "Die Werkstätten des Werks"
+      },
+      "steps": [
+        {
+          "click": "mf-atelier-overview ix-card.card >> nth=0",
+          "caption": {
+            "fr": "L’atelier en 3D : chaque machine avec son état",
+            "en": "The workshop in 3D: every machine with its state",
+            "de": "Die Werkstatt in 3D: jede Maschine mit ihrem Zustand"
+          },
+          "slow": 8,
+          "pause": 2.5
+        },
+        {
+          "click": "ix-icon-button[icon='app-menu']",
+          "caption": {
+            "fr": "Les machines, celles qui demandent attention en tête",
+            "en": "The machines, those needing attention first",
+            "de": "Die Maschinen, die mit Handlungsbedarf zuerst"
+          },
+          "pause": 1
+        },
+        {
+          "click": "mf-config-panel .row >> nth=0",
+          "slow": 8,
+          "caption": {
+            "fr": "Zoom sur une machine en alerte",
+            "en": "Zooming in on a machine in alert",
+            "de": "Zoom auf eine Maschine im Alarm"
+          },
+          "pause": 2
+        },
+        {
+          "click": "mf-config-panel .row >> nth=1",
+          "slow": 8,
+          "caption": {
+            "fr": "Une autre, à l’arrêt : son état et ses mesures",
+            "en": "Another one, stopped: its state and readings",
+            "de": "Eine weitere, gestoppt: Zustand und Messwerte"
+          },
+          "pause": 2
+        },
+        {
+          "click": "div.nav ix-icon-button[icon='home']",
+          "slow": 8,
+          "caption": {
+            "fr": "Retour à la vue d’ensemble",
+            "en": "Back to the overview",
+            "de": "Zurück zur Gesamtansicht"
+          },
+          "pause": 1.5
+        }
       ]
     }
   },

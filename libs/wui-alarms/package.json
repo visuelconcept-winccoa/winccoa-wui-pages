@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-alarms",
   "type": "module",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Alarms — standalone WinCC OA WebUI page (/alarms): the plant's alarm list, live (standing alarms) or over an archived period, with the unacknowledged counter, the P1–P4 severity bands as a filter, the EEMUA-191 flood histogram, the recurring bad actors, free-text search, server-side-style sort/paging and acknowledge — through WinCC OA's own API (browser dpSet, recorded under the operator's name), hidden without the WinCC OA write permission. The whole view is the shared <wui-alarm-view> component from @visuelconcept-winccoa/wui-alarms-core, so the same view embeds in other pages (Machine Fleet machine dashboard).",
   "author": {
     "name": "Visuel Concept"
@@ -52,7 +52,63 @@
     "component": "wui-alarms",
     "module": "/data/dashboard-wc/pages/alarms.js",
     "icon": "alarm-bell",
-    "tier": 1
+    "tier": 1,
+    "showcase": {
+      "entry": "/alarms",
+      "caption": {
+        "fr": "Les alarmes, les plus graves d’abord",
+        "en": "The alarms, the most severe first",
+        "de": "Die Alarme, die schwersten zuerst"
+      },
+      "steps": [
+        {
+          "alarm": true,
+          "caption": {
+            "fr": "Une nouvelle alarme arrive, en tête de liste",
+            "en": "A new alarm comes in, at the top of the list",
+            "de": "Ein neuer Alarm kommt, oben in der Liste"
+          },
+          "pause": 1.5,
+          "hold": 1.5
+        }
+      ],
+      "acknowledge": [
+        {
+          "click": "wui-alarm-table tr:has-text('{alarm}') input[type=checkbox]",
+          "zoom": true,
+          "caption": {
+            "fr": "L’opérateur la sélectionne…",
+            "en": "The operator selects it…",
+            "de": "Der Bediener wählt ihn aus…"
+          },
+          "pause": 1
+        },
+        {
+          "click": "wui-alarm-view button.act.primary:has-text('Acknowledge'), wui-alarm-view button.act.primary:has-text('Acquitter'), wui-alarm-view button.act.primary:has-text('Quittieren')",
+          "caption": {
+            "fr": "… et l’acquitte",
+            "en": "… and acknowledges it",
+            "de": "… und quittiert ihn"
+          },
+          "pause": 1.5,
+          "hold": 1
+        },
+        {
+          "click": "wui-alarm-view button.tab:has-text('History'), wui-alarm-view button.tab:has-text('Historique'), wui-alarm-view button.tab:has-text('Historie')",
+          "caption": {
+            "fr": "L’historique garde la trace de chaque alarme",
+            "en": "The history keeps a trace of every alarm",
+            "de": "Die Historie hält jeden Alarm fest"
+          },
+          "pause": 2.5
+        },
+        {
+          "click": "wui-alarm-view button.tab:has-text('Active'), wui-alarm-view button.tab:has-text('Actives'), wui-alarm-view button.tab:has-text('Aktiv')",
+          "caption": null,
+          "pause": 1
+        }
+      ]
+    }
   },
   "peerDependenciesMeta": {
     "lit": {
