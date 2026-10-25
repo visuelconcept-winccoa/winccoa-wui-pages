@@ -322,6 +322,9 @@ export class SceneController {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    // setSize clears the canvas: draw again now, not at the next frame — a panel opening
+    // beside the view must not flash it black (a slow GPU takes a while to the next frame).
+    if (this.running) this.renderer.render(this.scene, this.activeCamera());
   }
 
   dispose(): void {

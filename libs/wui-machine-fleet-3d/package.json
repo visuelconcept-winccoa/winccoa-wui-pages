@@ -89,21 +89,42 @@
       },
       "steps": [
         {
-          "wait": 1,
-          "pause": 0
-        },
-        {
-          "click": "ix-button:has-text('Iso')",
+          "click": "ix-icon-button[icon='app-menu']",
           "caption": {
-            "fr": "Changer de point de vue",
-            "en": "Another point of view",
-            "de": "Ein anderer Blickwinkel"
+            "fr": "Les machines, celles qui demandent attention en tête",
+            "en": "The machines, those needing attention first",
+            "de": "Die Maschinen, die mit Handlungsbedarf zuerst"
           },
-          "pause": 1.5
+          "pause": 1
         },
         {
-          "click": "ix-icon-button[title=\"Rotate right\"], ix-icon-button[aria-label=\"Rotate right\"], ix-icon-button[title=\"Pivoter à droite\"], ix-icon-button[aria-label=\"Pivoter à droite\"], ix-icon-button[title=\"Nach rechts drehen\"], ix-icon-button[aria-label=\"Nach rechts drehen\"]",
-          "caption": null,
+          "click": "mf-config-panel .row >> nth=0",
+          "slow": 8,
+          "caption": {
+            "fr": "Zoom sur une machine en alerte",
+            "en": "Zooming in on a machine in alert",
+            "de": "Zoom auf eine Maschine im Alarm"
+          },
+          "pause": 2
+        },
+        {
+          "click": "mf-config-panel .row >> nth=1",
+          "slow": 8,
+          "caption": {
+            "fr": "Une autre, à l’arrêt : son état et ses mesures",
+            "en": "Another one, stopped: its state and readings",
+            "de": "Eine weitere, gestoppt: Zustand und Messwerte"
+          },
+          "pause": 2
+        },
+        {
+          "click": "div.nav ix-icon-button[icon='home']",
+          "slow": 8,
+          "caption": {
+            "fr": "Retour à la vue d’ensemble",
+            "en": "Back to the overview",
+            "de": "Zurück zur Gesamtansicht"
+          },
           "pause": 1.5
         }
       ]

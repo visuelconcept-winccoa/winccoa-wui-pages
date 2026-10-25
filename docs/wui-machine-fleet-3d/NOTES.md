@@ -177,6 +177,22 @@ pushes each bubble into the left/right gutter **beyond** the building (depending
 of the machine), stacked vertically, with a leader from the dot to the inner edge. Fallback
 `placeBubblesAbove` if there are no bounds. Multiple KPIs stacked one per row.
 
+### Camera glides and the showcase film (added 2026-10)
+- What a button asks of the camera — a preset (Top / Front / Side / Iso), "fly to machine"
+  (a row of the machine list), a saved viewpoint, the default view, a rotate / tilt / zoom step —
+  is eased (`OrbitController.glideTo`: 900 ms for a viewpoint, 320 ms for a step), so the eye
+  follows where the camera goes. A drag or the wheel takes over at once, from where the camera
+  is. No glide when the system asks for reduced motion (`prefers-reduced-motion`).
+- `SceneController.resize` draws at once after `setSize` (which clears the canvas): opening the
+  machine list beside the view no longer flashes it black on a slow GPU.
+- The demo atelier (`DEMO_ATELIER`, wui-fleet-core) has a light floor (`concrete-white`): its
+  machines and their state colours stand out when it is shown or filmed.
+- Showcase film (`wuiPage.showcase`, wui-toolkit ≥ 0.25): the machine list (sorted alert →
+  stopped → …, so the first rows are the machines to look at), a zoom on the first two, back to the
+  overview. Its camera steps are `"slow": 8`: without a GPU (SwiftShader) this scene draws about
+  3 frames a second whatever the size (382 draw calls), so they are recorded 8 times slower and
+  played back at their pace — about 15 frames a second of motion.
+
 ## Backend / manager
 
 **Tier hub** page: backend module `backend/modules/machine-fleet-3d` + **4 managers**.
