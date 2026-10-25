@@ -81,13 +81,23 @@
       ]
     },
     "showcase": {
-      "entry": "/fleet-3d/demo",
+      "entry": "/fleet-3d",
       "caption": {
-        "fr": "L’atelier en 3D : chaque machine avec son état",
-        "en": "The workshop in 3D: every machine with its state",
-        "de": "Die Werkstatt in 3D: jede Maschine mit ihrem Zustand"
+        "fr": "Les ateliers de l’usine",
+        "en": "The plant’s workshops",
+        "de": "Die Werkstätten des Werks"
       },
       "steps": [
+        {
+          "click": "mf-atelier-overview ix-card.card >> nth=0",
+          "caption": {
+            "fr": "L’atelier en 3D : chaque machine avec son état",
+            "en": "The workshop in 3D: every machine with its state",
+            "de": "Die Werkstatt in 3D: jede Maschine mit ihrem Zustand"
+          },
+          "slow": 8,
+          "pause": 2.5
+        },
         {
           "click": "ix-icon-button[icon='app-menu']",
           "caption": {
