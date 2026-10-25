@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-machine-fleet-3d",
   "type": "module",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Machine Fleet 3D — standalone WinCC OA WebUI page: multi-atelier 3D digital twin (Three.js) with live DP-bound machine state/KPIs, config UI, GLB/billboard library and dashboard export. The per-machine dashboard embeds the shared alarm view (standing alarms or the archived ones over the dashboard's period, scoped to the machine's datapoints). Hub page; depends on the fleet-core + ai-kit + alarms-core domain kits.",
   "author": {
     "name": "Visuel Concept"
@@ -78,6 +78,34 @@
         "/api/ai/chat (optional, AI assistant via wui-ai-kit)",
         "machineSim (optional, simulation)",
         "kpiCalc (optional, real-time TRS/MTBF/MTTR)"
+      ]
+    },
+    "showcase": {
+      "entry": "/fleet-3d/demo",
+      "caption": {
+        "fr": "L’atelier en 3D : chaque machine avec son état",
+        "en": "The workshop in 3D: every machine with its state",
+        "de": "Die Werkstatt in 3D: jede Maschine mit ihrem Zustand"
+      },
+      "steps": [
+        {
+          "wait": 1,
+          "pause": 0
+        },
+        {
+          "click": "ix-button:has-text('Iso')",
+          "caption": {
+            "fr": "Changer de point de vue",
+            "en": "Another point of view",
+            "de": "Ein anderer Blickwinkel"
+          },
+          "pause": 1.5
+        },
+        {
+          "click": "ix-icon-button[title=\"Rotate right\"], ix-icon-button[aria-label=\"Rotate right\"], ix-icon-button[title=\"Pivoter à droite\"], ix-icon-button[aria-label=\"Pivoter à droite\"], ix-icon-button[title=\"Nach rechts drehen\"], ix-icon-button[aria-label=\"Nach rechts drehen\"]",
+          "caption": null,
+          "pause": 1.5
+        }
       ]
     }
   },
