@@ -480,6 +480,11 @@ export interface MachineDef {
    * bar offers and filters on (see filters.ts). Usually written by an integration.
    */
   tags?: Record<string, string[]>;
+  /**
+   * Free tags the user puts on the machine's symbol in this atelier, saved with the atelier:
+   * filtered on under the CARD_TAGS_DIMENSION dimension (filters.ts), next to {@link tags}.
+   */
+  cardTags?: string[];
   type: MachineType;
   /** Process family (usinage / soudage / generic). Drives the domain parameters
    * simulated & bound. When unset, derived from `type` ({@link resolveProcess}). */

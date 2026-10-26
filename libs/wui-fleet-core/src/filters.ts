@@ -7,8 +7,20 @@
  * on the machines, with their values; a filter keeps, for each dimension where values are
  * selected, the machines having one of them (OR within a dimension, AND across dimensions).
  * The selection is remembered in the browser, shared by the overview and the atelier views.
+ * The free tags the user puts on a machine of an atelier ({@link MachineDef.cardTags}) are one
+ * more dimension, {@link CARD_TAGS_DIMENSION}.
  */
 import type { MachineDef } from './types.js';
+
+/** Dimension of the free tags put on the machines of an atelier ({@link MachineDef.cardTags}). */
+export const CARD_TAGS_DIMENSION = 'Étiquettes';
+
+/** Every tag of a machine, by dimension: its tags, plus its free tags of the atelier. */
+export function machineFilterTags(m: Pick<MachineDef, 'tags' | 'cardTags'>): Record<string, string[]> {
+  const cardTags = (m.cardTags ?? []).filter((t) => t !== '');
+  if (cardTags.length === 0) return m.tags ?? {};
+  return { ...m.tags, [CARD_TAGS_DIMENSION]: [...(m.tags?.[CARD_TAGS_DIMENSION] ?? []), ...cardTags] };
+}
 
 /** Selected values by dimension; a dimension absent or empty does not filter. */
 export type FleetFilter = Record<string, string[]>;
@@ -26,10 +38,10 @@ export const FLEET_FILTER_STORAGE_KEY = 'wui.machine-fleet.filter';
 export const FLEET_STATE_FILTER_STORAGE_KEY = 'wui.machine-fleet.state-filter';
 
 /** Dimensions found on the machines, in order of first appearance, values sorted. */
-export function filterDimensions(machines: Iterable<Pick<MachineDef, 'tags'>>): FilterDimension[] {
+export function filterDimensions(machines: Iterable<Pick<MachineDef, 'tags' | 'cardTags'>>): FilterDimension[] {
   const dims = new Map<string, Set<string>>();
   for (const m of machines) {
-    for (const [key, values] of Object.entries(m.tags ?? {})) {
+    for (const [key, values] of Object.entries(machineFilterTags(m))) {
       const set = dims.get(key) ?? new Set<string>();
       for (const v of values ?? []) if (v !== '') set.add(v);
       dims.set(key, set);
@@ -44,10 +56,11 @@ export function isFilterActive(filter: FleetFilter): boolean {
 }
 
 /** True when the machine passes the filter (every filtering dimension has one of its values). */
-export function matchesFilter(m: Pick<MachineDef, 'tags'>, filter: FleetFilter): boolean {
+export function matchesFilter(m: Pick<MachineDef, 'tags' | 'cardTags'>, filter: FleetFilter): boolean {
+  const tags = machineFilterTags(m);
   for (const [key, selected] of Object.entries(filter)) {
     if (selected.length === 0) continue;
-    const values = m.tags?.[key] ?? [];
+    const values = tags[key] ?? [];
     if (!values.some((v) => selected.includes(v))) return false;
   }
   return true;

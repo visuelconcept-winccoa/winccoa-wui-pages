@@ -586,6 +586,12 @@ export const MSG = {
       "Ce n'est pas une adresse de l'application : le lien n'est pas affiché.",
       'Keine Adresse der Anwendung: Der Link wird nicht angezeigt.'
     ),
+    cardTags: ml('Tags in this atelier', 'Étiquettes dans cette carte', 'Tags in diesem Atelier'),
+    cardTagsHint: ml(
+      'Free tags put on the machine in this atelier, separated by commas; they are filters of the views.',
+      'Étiquettes libres posées sur la machine dans cette carte, séparées par des virgules ; elles servent de filtres des vues.',
+      'Freie Tags der Maschine in diesem Atelier, durch Kommas getrennt; sie dienen als Filter der Ansichten.'
+    ),
     paramsTitle: ml('Parameters', 'Paramètres', 'Parameter'),
     addParam: ml('Add a parameter', 'Ajouter un paramètre', 'Parameter hinzufügen'),
     paramLabel: ml('Label', 'Libellé', 'Bezeichnung'),

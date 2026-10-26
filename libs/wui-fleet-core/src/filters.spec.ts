@@ -7,6 +7,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  CARD_TAGS_DIMENSION,
   FLEET_FILTER_STORAGE_KEY,
   FLEET_STATE_FILTER_STORAGE_KEY,
   filterDimensions,
@@ -82,5 +83,12 @@ describe('remembered filter', () => {
     expect(loadFleetFilter()).toEqual({});
     store.set(FLEET_STATE_FILTER_STORAGE_KEY, '{"a":1}');
     expect(loadStateFilter()).toEqual([]);
+  });
+
+  it('offer the free tags of the atelier as one more dimension, and filter on them', () => {
+    const tagged = { ...PRESS, cardTags: ['Zone A', ''] };
+    expect(filterDimensions([tagged, OVEN]).find((d) => d.key === CARD_TAGS_DIMENSION)).toEqual({ key: CARD_TAGS_DIMENSION, values: ['Zone A'] });
+    expect(matchesFilter(tagged, { [CARD_TAGS_DIMENSION]: ['Zone A'], Line: ['L2'] })).toBe(true);
+    expect(matchesFilter(OVEN, { [CARD_TAGS_DIMENSION]: ['Zone A'] })).toBe(false);
   });
 });

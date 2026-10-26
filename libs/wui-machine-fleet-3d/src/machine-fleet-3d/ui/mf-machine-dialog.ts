@@ -523,6 +523,12 @@ export class MfMachineDialog extends LitElement {
           .value=${m.loc ?? ''}
           @valueChange=${(e: IxValueEvent) => this.patch({ loc: String(e.detail) })}
         ></ix-input>
+        <ix-input
+          label=${localize(MSG.machineDialog.cardTags)}
+          helper-text=${localize(MSG.machineDialog.cardTagsHint)}
+          .value=${(m.cardTags ?? []).join(', ')}
+          @valueChange=${(e: IxValueEvent) => this.patchCardTags(String(e.detail))}
+        ></ix-input>
         ${this.renderMarker()}
         <div class="grid3">
           <ix-number-input
@@ -543,6 +549,12 @@ export class MfMachineDialog extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  /** Free tags of the machine in this atelier, typed comma-separated (cardTags). */
+  private patchCardTags(raw: string): void {
+    const tags = [...new Set(raw.split(',').map((t) => t.trim()).filter((t) => t !== ''))];
+    this.patch({ cardTags: tags.length > 0 ? tags : undefined });
   }
 
   private renderAppearance(): TemplateResult {
