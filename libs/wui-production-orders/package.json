@@ -59,7 +59,10 @@
       "notes": [
         "productionOrdersKpi (optional, server-computed KPI strip)"
       ]
-    }
+    },
+    "optional": [
+      "fleet-closures"
+    ]
   },
   "peerDependenciesMeta": {
     "lit": {

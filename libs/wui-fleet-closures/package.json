@@ -2,7 +2,7 @@
   "name": "@visuelconcept-winccoa/wui-fleet-closures",
   "type": "module",
   "version": "0.1.1",
-  "description": "Fleet Closures — standalone WinCC OA WebUI page: manage non-worked periods (jours non travaillés) per atelier/machine, used as the TRS opening-time denominator by the KPI page. One app-level JSON datapoint.",
+  "description": "Fleet Closures — standalone WinCC OA WebUI page: manage non-worked periods (jours non travaillés) per atelier/machine, used as the TRS opening-time denominator by the KPI page. One app-level JSON datapoint. Its backend, /api/fleet, carries the writes of every Machine Fleet page (ateliers, graphics resources, stop causes, non-worked periods, archive config of a bound datapoint), each checked on the server against the role it needs.",
   "author": {
     "name": "Visuel Concept"
   },
@@ -45,7 +45,25 @@
     "component": "wui-fleet-closures",
     "module": "/data/dashboard-wc/pages/fleet-closures.js",
     "hidden": true,
-    "tier": 1
+    "tier": 1,
+    "backend": {
+      "mount": "/api/fleet",
+      "routeClass": "FleetRoute",
+      "routeFile": "fleetRoute",
+      "files": [
+        "fleetRoute.ts",
+        "fleetController.ts",
+        "fleetRules.ts"
+      ],
+      "shared": [
+        "@visuelconcept-winccoa/wui-app-security/appSecurityGuard.ts",
+        "@visuelconcept-winccoa/wui-para/paraTypeNode.ts"
+      ],
+      "notes": [
+        "/api/fleet/dp/set, /dp/create, DELETE /dp/:name, /dptype/create: only the Fleet's datapoints (MachineFleet3D*) and the _archive config of a bound datapoint, each against its role (machine-fleet-3d edit; fleet-closures edit, or edit-machine for a single machine's periods); anything else 403",
+        "role check effective once the webserver has HTTP authentication (otherwise skipped and logged, as requireRole); without this backend the Fleet store writes through /api/para"
+      ]
+    }
   },
   "peerDependenciesMeta": {
     "lit": {
@@ -71,6 +89,7 @@
     }
   },
   "files": [
+    "backend",
     "src",
     "menu.fragment.jsonc",
     "!**/*.spec.ts",

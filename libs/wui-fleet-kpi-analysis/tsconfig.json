@@ -31,6 +31,9 @@
       "@visuelconcept-winccoa/wui-app-security/*": [
         "../wui-app-security/src/*"
       ],
+      "@visuelconcept-winccoa/wui-fleet-closures/*": [
+        "../wui-fleet-closures/src/*"
+      ],
       "@visuelconcept-winccoa/wui-fleet-core/*": [
         "../wui-fleet-core/src/*"
       ],

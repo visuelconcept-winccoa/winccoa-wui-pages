@@ -60,6 +60,12 @@ const CREATE_TYPE_URL = '/api/para/dptype/create';
 const CREATE_DP_URL = '/api/para/dp/create';
 const DP_SET_URL = '/api/para/dp/set';
 const DELETE_DP_BASE = '/api/para/dp';
+/**
+ * The Fleet's guarded writes (backend of wui-fleet-closures): the same endpoints, each checked on the server
+ * against the role it needs. Used when deployed; otherwise the writes go to /api/para.
+ */
+const FLEET_API = '/api/fleet';
+const PARA_API = '/api/para';
 const ID_RADIX = 36;
 const HTTP_BAD_REQUEST = 400;
 
@@ -100,6 +106,8 @@ export class FleetStore {
   private readonly api = this.resolveApi();
   private readonly dpe = this.resolveDpe();
   private memory: Atelier[] | null = null;
+  /** Whether /api/fleet answers (asked once, on the first write). */
+  private fleetApi: Promise<boolean> | null = null;
   private typeReady = false;
   private readonly resourceReady = new Map<GraphicKind, boolean>();
   /**
@@ -525,7 +533,7 @@ export class FleetStore {
     }
     try {
       const res = await fetch(
-        CREATE_TYPE_URL,
+        await this.writeUrl(CREATE_TYPE_URL),
         jsonPost({ typeName, structure: { name: typeName, type: 'Struct', children } })
       );
       return res.ok || res.status === HTTP_BAD_REQUEST;
@@ -593,8 +601,16 @@ export class FleetStore {
     return undefined;
   }
 
+  /** A write's URL: through the Fleet's guarded writes when they are deployed, else PARA's. */
+  private async writeUrl(url: string): Promise<string> {
+    this.fleetApi ??= fetch(`${FLEET_API}/health`)
+      .then((r) => r.ok)
+      .catch(() => false);
+    return (await this.fleetApi) && url.startsWith(PARA_API) ? FLEET_API + url.slice(PARA_API.length) : url;
+  }
+
   private async send(url: string, init: RequestInit): Promise<void> {
-    const res = await fetch(url, init);
+    const res = await fetch(await this.writeUrl(url), init);
     if (!res.ok) throw new Error(`${init.method ?? 'GET'} ${url} → ${res.status}`);
   }
 
