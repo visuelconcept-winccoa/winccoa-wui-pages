@@ -588,6 +588,12 @@ export interface MachineDef {
   kpiCalcs?: MachineKpi[];
   /** GLB asset URL when type === 'glb'. */
   glbUrl?: string;
+  /**
+   * Model of the machine's family, shown while the machine has no model of its own (`type`
+   * 'glb' with a {@link glbUrl}) — e.g. "dp:MachineFleet3D_Glb_x". Usually written by the
+   * integration.
+   */
+  familyGlbUrl?: string;
   /** Icon URL for a `billboard` (textured plane facing the camera). */
   billboardUrl?: string;
   /** Billboard plane width in metres (default 6). */

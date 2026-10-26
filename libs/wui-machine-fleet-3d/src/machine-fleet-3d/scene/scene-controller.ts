@@ -547,6 +547,8 @@ export class SceneController {
       accentConfig: this.accentConfigFor(def)
     };
     if (def.type === 'glb' && def.glbUrl) this.loadGlb(machine, def.glbUrl);
+    // No model of its own: the model of its family, when there is one (familyGlbUrl).
+    else if (def.type !== 'billboard' && def.familyGlbUrl) this.loadGlb(machine, def.familyGlbUrl);
     if (def.type === 'billboard' && def.billboardUrl) this.loadBillboard(machine, def.billboardUrl);
     return machine;
   }
