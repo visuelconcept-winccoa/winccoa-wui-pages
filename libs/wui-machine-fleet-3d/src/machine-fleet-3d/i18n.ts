@@ -573,6 +573,19 @@ export const MSG = {
       'https://exemple.com/tableau-de-bord',
       'https://beispiel.de/dashboard'
     ),
+    appLinks: ml('Links of the application', "Liens de l'application", 'Links der Anwendung'),
+    appLinksHint: ml(
+      'Up to 3 links to pages of the application appear as buttons in the machine card (popup); each opens in the application. Address: a route (#/…) or a path of this server (/…).',
+      "Jusqu'à 3 liens vers des pages de l'application s'affichent comme boutons dans la fiche machine (popup) ; chacun s'ouvre dans l'application. Adresse : une route (#/…) ou un chemin de ce serveur (/…).",
+      'Bis zu 3 Links zu Seiten der Anwendung erscheinen als Schaltflächen in der Maschinenkarte (Popup); jeder öffnet sich in der Anwendung. Adresse: eine Route (#/…) oder ein Pfad dieses Servers (/…).'
+    ),
+    appUrlLabel: ml('Address (#/… or /…)', 'Adresse (#/… ou /…)', 'Adresse (#/… oder /…)'),
+    appUrlPlaceholder: ml('#/alarmes', '#/alarmes', '#/alarmes'),
+    appUrlInvalid: ml(
+      'Not an address of the application: the link is not shown.',
+      "Ce n'est pas une adresse de l'application : le lien n'est pas affiché.",
+      'Keine Adresse der Anwendung: Der Link wird nicht angezeigt.'
+    ),
     paramsTitle: ml('Parameters', 'Paramètres', 'Parameter'),
     addParam: ml('Add a parameter', 'Ajouter un paramètre', 'Parameter hinzufügen'),
     paramLabel: ml('Label', 'Libellé', 'Bezeichnung'),

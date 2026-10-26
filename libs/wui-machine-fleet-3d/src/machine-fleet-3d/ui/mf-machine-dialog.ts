@@ -23,6 +23,7 @@ import {
   MAX_PARAMS,
   PORTIQUE_SPANS,
   TRS_WINDOW_LABELS,
+  appLinkHref,
   resolveDashboardMode,
   resolveDisplaySlots,
   resolveProcess,
@@ -1122,10 +1123,12 @@ export class MfMachineDialog extends LitElement {
   /** Configure up to MAX_DASHBOARD_LINKS custom URL buttons (shown in the popup). */
   private renderDashboardLinks(): TemplateResult {
     const links = this.working.dashboardLinks ?? [];
+    // Links that stay within the application (appLinksOnly): addresses of the application only.
+    const inApp = this.working.appLinksOnly === true;
     return html`
-      <div class="subhead">${localizeDir(MSG.machineDialog.externalLinks)}</div>
+      <div class="subhead">${localizeDir(inApp ? MSG.machineDialog.appLinks : MSG.machineDialog.externalLinks)}</div>
       <div class="hint">
-        ${dashboardLinksHintMsg(MAX_DASHBOARD_LINKS)}
+        ${inApp ? localizeDir(MSG.machineDialog.appLinksHint) : dashboardLinksHintMsg(MAX_DASHBOARD_LINKS)}
       </div>
       <div class="kpi-head">
         <span class="spacer"></span>
@@ -1145,6 +1148,7 @@ export class MfMachineDialog extends LitElement {
 
   private renderDashboardLinkRow(link: DashboardLink, i: number): TemplateResult {
     const icon = link.icon || DEFAULT_DASHBOARD_LINK_ICON;
+    const inApp = this.working.appLinksOnly === true;
     return html`
       <div class="kpi-card">
         <div class="kpi-card-head">
@@ -1185,11 +1189,14 @@ export class MfMachineDialog extends LitElement {
           </div>
         </div>
         <ix-input
-          label=${localize(MSG.machineDialog.urlLabel)}
-          placeholder=${localize(MSG.machineDialog.urlPlaceholder)}
+          label=${localize(inApp ? MSG.machineDialog.appUrlLabel : MSG.machineDialog.urlLabel)}
+          placeholder=${localize(inApp ? MSG.machineDialog.appUrlPlaceholder : MSG.machineDialog.urlPlaceholder)}
           .value=${link.url}
           @valueChange=${(e: IxValueEvent) => this.patchDashboardLink(i, { url: String(e.detail) })}
         ></ix-input>
+        ${inApp && link.url.trim() !== '' && appLinkHref(link.url) === undefined
+          ? html`<div class="hint" style="color: var(--theme-color-alarm)">${localizeDir(MSG.machineDialog.appUrlInvalid)}</div>`
+          : ''}
       </div>
     `;
   }

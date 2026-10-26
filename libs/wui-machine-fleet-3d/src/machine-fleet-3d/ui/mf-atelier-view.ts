@@ -39,6 +39,7 @@ import {
   isRunningState,
   mappingStates,
   MAX_DASHBOARD_LINKS,
+  appLinkHref,
   followMarkers,
   isDisconnected,
   placeMachine,
@@ -665,8 +666,9 @@ export class MfAtelierView extends LitElement {
     // Always offer a dashboard: the built-in contextualised one, or — when the
     // machine is configured for it — a specific WinCC OA dashboard. Plus any
     // custom URL links (each opens in a new tab).
+    // A machine whose links stay within the application shows only those (appLinksOnly).
     const links = (m.dashboardLinks ?? [])
-      .filter((l) => l.url.trim() !== '')
+      .filter((l) => l.url.trim() !== '' && (!m.appLinksOnly || appLinkHref(l.url) !== undefined))
       .slice(0, MAX_DASHBOARD_LINKS);
     return html`
       <ix-button class="dash-btn" variant="primary" @click=${() => this.openMachineDashboard(m)}>
@@ -678,14 +680,22 @@ export class MfAtelierView extends LitElement {
           variant="secondary"
           icon=${l.icon || 'ontology'}
           title=${l.url}
-          @click=${() => this.openLink(l.url)}
+          @click=${() => this.openLink(l.url, m.appLinksOnly === true)}
         >${l.label || localize(MSG.view.link)}</ix-button>`
       )}
     `;
   }
 
-  /** Open a configured dashboard-link URL in a new browser tab. */
-  private openLink(raw: string): void {
+  /**
+   * Open a configured dashboard-link URL in a new browser tab — or, for a link that stays
+   * within the application (`inApp`), in the application itself.
+   */
+  private openLink(raw: string, inApp = false): void {
+    if (inApp) {
+      const href = appLinkHref(raw);
+      if (href) window.location.assign(href);
+      return;
+    }
     const url = raw.trim();
     if (!url) return;
     // Accept full URLs and site-relative paths; otherwise assume https.

@@ -600,6 +600,11 @@ export interface MachineDef {
    * in a new browser tab. Up to {@link MAX_DASHBOARD_LINKS}. */
   dashboardLinks?: DashboardLink[];
   /**
+   * The links stay within the application: only an address of the application is accepted
+   * ({@link appLinkHref}), and each opens in the same tab. Usually written by the integration.
+   */
+  appLinksOnly?: boolean;
+  /**
    * The page of what the machine belongs to (e.g. its work centre), reached from a button of
    * its dashboard in the same tab. Usually written by the integration that places the machine.
    */
@@ -649,6 +654,18 @@ export interface DashboardLink {
 
 /** Maximum custom dashboard links per machine. */
 export const MAX_DASHBOARD_LINKS = 3;
+
+/**
+ * The address of a link within the application, or undefined when it would lead out of it: a
+ * route of the application ("#/…") or a path of this server ("/…", not "//host"); anything with
+ * a scheme ("https:", "javascript:"…) or a host is refused ({@link MachineDef.appLinksOnly}).
+ */
+export function appLinkHref(raw: string): string | undefined {
+  const url = raw.trim();
+  if (url.startsWith('#')) return url.length > 1 ? url : undefined;
+  if (url.startsWith('/') && !url.startsWith('//') && !url.includes('\\')) return url;
+  return undefined;
+}
 
 /** Default icon for a freshly added dashboard link. */
 export const DEFAULT_DASHBOARD_LINK_ICON = 'ontology';
