@@ -345,6 +345,11 @@ export interface Kpi {
    * machine dashboard, like the work order (needs the datapoint archived).
    */
   filterable?: boolean;
+  /**
+   * Where the value comes from (e.g. "Automatique", "Manuelle", "Calculée"), shown on its card of
+   * the machine dashboard. Usually written by the integration.
+   */
+  source?: string;
 }
 
 /** Maximum number of KPI parameters bound per machine. */

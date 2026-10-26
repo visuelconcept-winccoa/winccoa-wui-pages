@@ -652,7 +652,8 @@ export class MfMachineDashboard extends LitElement {
     const cards: ParamCard[] = (m.kpis ?? []).map((k) => {
       // Prefer the live dpConnect value; fall back to the last known value.
       const live = k.dp ? extractScalar(this.liveValues[normDp(k.dp)]) : undefined;
-      return { key: `param:${k.key}`, label: k.label || k.key, value: live ?? k.value, unit: k.unit ?? '' };
+      // Where the value comes from (automatic, manual…), when the integration tells it.
+      return { key: `param:${k.key}`, label: k.label || k.key, value: live ?? k.value, unit: k.unit ?? '', hint: k.source };
     });
     for (const kpi of m.kpiCalcs ?? []) {
       const info = KPI_TYPE_INFO[kpi.type];
