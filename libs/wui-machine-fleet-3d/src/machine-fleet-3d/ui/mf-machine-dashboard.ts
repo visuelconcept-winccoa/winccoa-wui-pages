@@ -478,7 +478,8 @@ export class MfMachineDashboard extends LitElement {
       m.stopCauseDp,
       m.workOrderDp,
       m.operationDp,
-      ...(m.kpis ?? []).map((k) => k.dp)
+      ...(m.kpis ?? []).map((k) => k.dp),
+      ...(m.alarmDps ?? [])
     ]);
   }
 

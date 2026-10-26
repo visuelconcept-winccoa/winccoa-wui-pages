@@ -605,6 +605,11 @@ export interface MachineDef {
    */
   ownerLink?: { label: string; url: string };
   /**
+   * More datapoints whose alarms are the machine's, in its dashboard (e.g. the machine's own
+   * datapoint when its state is read elsewhere). Usually written by the integration.
+   */
+  alarmDps?: string[];
+  /**
    * Shortest stop that counts, in seconds: a non-producing period shorter than this (a stop,
    * maintenance, no connection…) is taken as production — it appears neither in the Gantt nor
    * in the stops, and does not lower the TRS. 0 or absent: every stop counts.
