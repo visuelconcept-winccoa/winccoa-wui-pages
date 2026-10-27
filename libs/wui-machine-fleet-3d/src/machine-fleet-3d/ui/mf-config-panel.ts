@@ -4,8 +4,10 @@
 /**
  * Right-hand drawer for the Machine Fleet 3D page.
  *
- * Holds the labelled display toggles and the machine list (search field on top,
- * one compact row per machine with focus / edit / delete actions). Building
+ * Holds the labelled display toggles, the machine list (search field on top,
+ * one compact row per machine with focus / edit / delete actions) and the
+ * atelier's placement markers (label, floor position, add / delete), edited
+ * while the 3D view stays usable beside the drawer. Building
  * configuration lives in a separate dialog (`mf-building-dialog`); per-machine
  * editing opens `mf-machine-dialog`. This component only lists and emits intent
  * — the page owns the source of truth.
@@ -22,6 +24,7 @@ import {
   UNKNOWN_STATE_COLOR,
   isDisconnected,
   type MachineDef,
+  type PlacementMarker,
   type StateDef
 } from '../types.js';
 import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
@@ -56,13 +59,15 @@ export class MfConfigPanel extends LitElement {
   @property({ type: Boolean }) canEdit = true;
   /** Machines of the plant's catalogue not yet in this atelier, offered to add (by an integration). */
   @property({ attribute: false }) available: MachineDef[] = [];
+  /** The atelier's placement markers; every change is emitted at once as `wui:markers`. */
+  @property({ attribute: false }) markers: PlacementMarker[] = [];
 
   @state() private query = '';
   @state() private confirmId: string | null = null;
 
   override render(): TemplateResult {
     return html`
-      <div class="panel">${this.renderMachineSection()}</div>
+      <div class="panel">${this.renderMachineSection()} ${this.renderMarkerSection()}</div>
       ${this.renderConfirm()}
     `;
   }
@@ -155,6 +160,68 @@ export class MfConfigPanel extends LitElement {
           : ''}
       </div>
     `;
+  }
+
+  /** Placement markers (posts or other landmarks): a machine placed from one follows it. */
+  private renderMarkerSection(): TemplateResult {
+    const ro = !this.canEdit;
+    return html`
+      <section class="markers">
+        <div class="section-title">${localizeDir(MSG.markers.title)}</div>
+        <div class="hint">${localizeDir(MSG.markers.hint)}</div>
+        ${this.markers.length === 0 ? html`<div class="hint">${localizeDir(MSG.markers.none)}</div>` : ''}
+        ${this.markers.map(
+          (k, i) => html`<div class="marker-row">
+            <ix-input
+              label=${localize(MSG.markers.label)}
+              .value=${k.label}
+              ?readonly=${ro}
+              @valueChange=${(e: IxValueEvent) => this.patchMarker(i, { label: String(e.detail) })}
+            ></ix-input>
+            <ix-number-input
+              label="X"
+              .value=${k.x}
+              ?readonly=${ro}
+              @valueChange=${(e: IxValueEvent) => this.patchMarker(i, { x: Number(e.detail) || 0 })}
+            ></ix-number-input>
+            <ix-number-input
+              label="Z"
+              .value=${k.z}
+              ?readonly=${ro}
+              @valueChange=${(e: IxValueEvent) => this.patchMarker(i, { z: Number(e.detail) || 0 })}
+            ></ix-number-input>
+            ${ro
+              ? ''
+              : html`<ix-icon-button
+                  ghost
+                  size="16"
+                  icon="trashcan"
+                  title=${localize(MSG.markers.remove)}
+                  @click=${() => this.emitMarkers(this.markers.filter((_, j) => j !== i))}
+                ></ix-icon-button>`}
+          </div>`
+        )}
+        ${ro
+          ? ''
+          : html`<ix-button class="add" variant="secondary" @click=${this.addMarker}>
+              <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.markers.add)}
+            </ix-button>`}
+      </section>
+    `;
+  }
+
+  private patchMarker(index: number, patch: Partial<PlacementMarker>): void {
+    this.emitMarkers(this.markers.map((k, i) => (i === index ? { ...k, ...patch } : k)));
+  }
+
+  /** A new marker at the centre of the floor; moved by hand in edit mode or by its X / Z. */
+  private readonly addMarker = (): void => {
+    const label = `${localize(MSG.markers.newLabel)} ${this.markers.length + 1}`;
+    this.emitMarkers([...this.markers, { id: `mk-${Date.now()}`, label, x: 0, z: 0 }]);
+  };
+
+  private emitMarkers(markers: PlacementMarker[]): void {
+    this.dispatchEvent(new CustomEvent('wui:markers', { detail: { markers }, bubbles: true, composed: true }));
   }
 
   private filteredMachines(): MachineDef[] {
@@ -322,6 +389,22 @@ function panelStyles() {
     }
     .add {
       margin-top: 0.5rem;
+    }
+    .markers {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      flex-shrink: 0;
+    }
+    .hint {
+      font-size: 0.75rem;
+      color: var(--theme-color-soft-text);
+    }
+    .marker-row {
+      display: grid;
+      grid-template-columns: 1fr 4.5rem 4.5rem auto;
+      gap: 0.4rem;
+      align-items: end;
     }
   `;
 }

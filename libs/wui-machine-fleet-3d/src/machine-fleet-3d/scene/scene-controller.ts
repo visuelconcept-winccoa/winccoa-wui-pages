@@ -144,6 +144,7 @@ export class SceneController {
   private cfg: BuildingConfig = { ...DEFAULT_BUILDING };
   private resourceResolver: ((ref: string) => Promise<string | undefined>) | null = null;
   private onMachineMove: ((id: string, x: number, z: number) => void) | null = null;
+  private onMarkerMove: ((id: string, x: number, z: number) => void) | null = null;
 
   private raf = 0;
   private running = false;
@@ -153,6 +154,8 @@ export class SceneController {
   // --- edit-mode dragging ----------------------------------------------------
   private editMode = false;
   private dragging: Machine | null = null;
+  /** A placement marker being dragged in edit mode (its group: post and label). */
+  private draggingMarker: Object3D | null = null;
   private dragMoved = false;
   private readonly dragPlane = new Plane(new Vector3(0, 1, 0), 0);
   private readonly dragPoint = new Vector3();
@@ -219,7 +222,10 @@ export class SceneController {
     });
   }
 
-  /** Draw the atelier's placement markers: a thin post topped by its label. */
+  /**
+   * Draw the atelier's placement markers: a thin post topped by its label, one group per marker
+   * (`userData.markerId`), dragged as a whole in edit mode.
+   */
   setMarkers(markers: readonly PlacementMarker[]): void {
     clearOverlay(this.markersGroup);
     for (const k of markers) {
@@ -227,11 +233,15 @@ export class SceneController {
         new CylinderGeometry(MARKER_RADIUS, MARKER_RADIUS, MARKER_HEIGHT, 12),
         new MeshStandardMaterial({ color: MARKER_COLOR })
       );
-      post.position.set(k.x, MARKER_HEIGHT / 2, k.z);
+      post.position.set(0, MARKER_HEIGHT / 2, 0);
       const label = new Sprite(new SpriteMaterial({ map: markerLabel(k.label), depthTest: false }));
       label.scale.set(MARKER_LABEL_W, MARKER_LABEL_W / 4, 1);
-      label.position.set(k.x, MARKER_HEIGHT + 1, k.z);
-      this.markersGroup.add(post, label);
+      label.position.set(0, MARKER_HEIGHT + 1, 0);
+      const marker = new Group();
+      marker.userData['markerId'] = k.id;
+      marker.position.set(k.x, 0, k.z);
+      marker.add(post, label);
+      this.markersGroup.add(marker);
     }
   }
 
@@ -395,6 +405,11 @@ export class SceneController {
   /** Callback invoked when a machine is dropped at a new (x, z) in edit mode. */
   setOnMachineMove(fn: (id: string, x: number, z: number) => void): void {
     this.onMachineMove = fn;
+  }
+
+  /** Callback invoked when a placement marker is dropped at a new (x, z) in edit mode. */
+  setOnMarkerMove(fn: (id: string, x: number, z: number) => void): void {
+    this.onMarkerMove = fn;
   }
 
   /** Push live datapoint-driven updates (state / KPI / production info) onto a machine. */
@@ -722,6 +737,18 @@ export class SceneController {
     return undefined;
   }
 
+  /** The placement marker (its group) under the pointer: its post or its label. */
+  private markerAt(e: MouseEvent): Object3D | undefined {
+    this.setPointer(e);
+    this.raycaster.setFromCamera(this.pointer, this.activeCamera());
+    for (const hit of this.raycaster.intersectObjects(this.markersGroup.children, true)) {
+      let obj: Object3D | null = hit.object;
+      while (obj && obj.userData['markerId'] == null) obj = obj.parent;
+      if (obj) return obj;
+    }
+    return undefined;
+  }
+
   /** The camera used for rendering / projection (orthographic in 2D mode). */
   private activeCamera(): PerspectiveCamera | OrthographicCamera {
     return this.cameraMode === '2d' ? this.orthoCamera : this.camera;
@@ -778,10 +805,13 @@ export class SceneController {
   private readonly onEditDown = (e: PointerEvent): void => {
     if (!this.editMode || e.button !== 0) return;
     const m = this.machineAt(e);
-    if (!m) return;
-    this.dragging = m;
+    // No machine under the pointer: a placement marker, moved the same way.
+    const marker = m ? undefined : this.markerAt(e);
+    if (!m && !marker) return;
+    this.dragging = m ?? null;
+    this.draggingMarker = marker ?? null;
     this.dragMoved = false;
-    this.dragPlane.constant = -m.mesh.position.y; // floor plane at the machine's height
+    this.dragPlane.constant = m ? -m.mesh.position.y : 0; // floor plane at the machine's height
     e.stopImmediatePropagation();
     e.preventDefault();
     window.addEventListener('pointermove', this.onEditMove);
@@ -790,10 +820,17 @@ export class SceneController {
 
   private readonly onEditMove = (e: PointerEvent): void => {
     const m = this.dragging;
-    if (!m) return;
+    const marker = this.draggingMarker;
+    if (!m && !marker) return;
     this.setPointer(e);
     this.raycaster.setFromCamera(this.pointer, this.activeCamera());
-    if (this.raycaster.ray.intersectPlane(this.dragPlane, this.dragPoint)) {
+    if (marker && this.raycaster.ray.intersectPlane(this.dragPlane, this.dragPoint)) {
+      marker.position.x = this.dragPoint.x;
+      marker.position.z = this.dragPoint.z;
+      this.dragMoved = true;
+      return;
+    }
+    if (m && this.raycaster.ray.intersectPlane(this.dragPlane, this.dragPoint)) {
       m.mesh.position.x = this.dragPoint.x;
       m.mesh.position.z = this.dragPoint.z;
       m.x = this.dragPoint.x;
@@ -804,9 +841,14 @@ export class SceneController {
 
   private readonly onEditUp = (): void => {
     const m = this.dragging;
+    const marker = this.draggingMarker;
     this.dragging = null;
+    this.draggingMarker = null;
     window.removeEventListener('pointermove', this.onEditMove);
     window.removeEventListener('pointerup', this.onEditUp);
+    if (marker && this.dragMoved) {
+      this.onMarkerMove?.(String(marker.userData['markerId']), marker.position.x, marker.position.z);
+    }
     if (m && this.dragMoved) {
       this.drawGroups();
       this.onMachineMove?.(m.id, m.mesh.position.x, m.mesh.position.z);

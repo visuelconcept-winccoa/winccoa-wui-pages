@@ -84,7 +84,6 @@ import {
 } from '@visuelconcept-winccoa/wui-fleet-core/filters.js';
 import './mf-ai-prompt.js';
 import './mf-building-dialog.js';
-import './mf-markers-dialog.js';
 import './mf-config-panel.js';
 import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
 import './mf-graphics-catalog.js';
@@ -185,7 +184,6 @@ export class MfAtelierView extends LitElement {
   @state() private markers: PlacementMarker[] = [];
   /** The plant's machines an integration offers to add (MachineFleet3D_Catalog). */
   @state() private catalog: MachineDef[] = [];
-  @state() private markersOpen = false;
   @state() private thresholdsOpen = false;
   /** Right machine-list drawer — hidden by default; shown on demand. */
   @state() private panelOpen = false;
@@ -323,6 +321,7 @@ export class MfAtelierView extends LitElement {
     void this.loadCatalog();
     void this.loadAliAssets();
     this.scene.setOnMachineMove((id, x, z) => this.onMachineMove(id, x, z));
+    this.scene.setOnMarkerMove((id, x, z) => this.onMarkerMove(id, x, z));
     this.scene.setOnRotate(this.onCameraRotate);
     this.scene.setBuilding(this.building);
     this.scene.setMarkers(this.markers);
@@ -358,7 +357,7 @@ export class MfAtelierView extends LitElement {
         <ix-icon-button icon="screenshot" ghost title=${localize(MSG.view.viewpoints)} variant=${this.viewpointsOpen ? 'primary' : 'secondary'} @click=${() => { this.viewpointsOpen = !this.viewpointsOpen; this.bubblesOpen = false; }}></ix-icon-button>
         <ix-icon-button icon="box-open" ghost title=${localize(MSG.view.graphicsCatalogGlb)} @click=${() => (this.resourcesOpen = true)}></ix-icon-button>
         <ix-icon-button icon="building1" ghost title=${localize(MSG.view.configureBuilding)} @click=${() => (this.buildingOpen = true)}></ix-icon-button>
-        <ix-icon-button icon="location" ghost title=${localize(MSG.markers.title)} @click=${() => (this.markersOpen = true)}></ix-icon-button>
+        <ix-icon-button icon="location" ghost title=${localize(MSG.markers.title)} @click=${() => (this.panelOpen = true)}></ix-icon-button>
         <ix-icon-button icon="configuration" ghost title=${localize(MSG.view.stateMappings)} @click=${() => (this.mappingOpen = true)}></ix-icon-button>
         ${this.canEdit
           ? html`<ix-icon-button icon="upload" ghost title=${localize(MSG.view.importAtelier)} @click=${this.triggerImport}></ix-icon-button>`
@@ -625,6 +624,8 @@ export class MfAtelierView extends LitElement {
           .states=${atelierStates(this.mappings.length ? this.mappings : DEFAULT_STATE_MAPPINGS)}
           .canEdit=${this.canEdit}
           .available=${this.catalog.filter((c) => !this.machines.some((m) => m.id === c.id))}
+          .markers=${this.markers}
+          @wui:markers=${(e: CustomEvent<{ markers: PlacementMarker[] }>) => this.onMarkers(e.detail.markers)}
           @wui:addfrom=${(e: CustomEvent<{ id: string }>) => this.onAddFrom(e.detail.id)}
           @wui:focus=${(e: CustomEvent<{ id: string }>) => this.onFocus(e.detail.id)}
           @wui:edit=${(e: CustomEvent<{ id: string }>) => this.onEdit(e.detail.id)}
@@ -788,14 +789,6 @@ export class MfAtelierView extends LitElement {
             @wui:apply=${(e: CustomEvent<{ building: BuildingConfig }>) => this.onBuilding(e.detail.building)}
             @wui:close=${() => (this.buildingOpen = false)}
           ></mf-building-dialog>`
-        : ''}
-      ${this.markersOpen
-        ? html`<mf-markers-dialog
-            .markers=${this.markers}
-            .canEdit=${this.canEdit}
-            @wui:apply=${(e: CustomEvent<{ markers: PlacementMarker[] }>) => this.onMarkers(e.detail.markers)}
-            @wui:close=${() => (this.markersOpen = false)}
-          ></mf-markers-dialog>`
         : ''}
       ${this.editing
         ? html`<mf-machine-dialog
@@ -1070,6 +1063,8 @@ export class MfAtelierView extends LitElement {
     this.machines = [...this.machines, def];
     this.editing = def;
     this.rebuildMachines();
+    // No marker by default: at the centre of the floor, shown at once.
+    this.onFocus(def.id);
   }
 
   /** Add a machine of the plant's catalogue: its bindings as the integration gives them, to be placed. */
@@ -1077,8 +1072,10 @@ export class MfAtelierView extends LitElement {
     const entry = this.catalog.find((c) => c.id === id);
     if (!entry || this.machines.some((m) => m.id === id)) return;
     const def: MachineDef = { ...structuredClone(entry), x: 0, z: 0, toPlace: true };
+    delete def.markerId;
     this.machines = [...this.machines, def];
     this.rebuildMachines();
+    this.onFocus(def.id);
   }
 
   private onEdit(id: string): void {
@@ -1111,13 +1108,19 @@ export class MfAtelierView extends LitElement {
     this.scheduleSave();
   }
 
-  /** New markers: the machines bound to a moved marker follow it (SDS 2.2 SL-IMP-02). */
+  /**
+   * New markers, edited in the drawer or dragged in edit mode: the machines bound to a moved
+   * marker follow it (SDS 2.2 SL-IMP-02).
+   */
   private onMarkers(markers: PlacementMarker[]): void {
     this.machines = followMarkers(this.machines, this.markers, markers);
     this.markers = markers;
-    this.markersOpen = false;
     this.scene?.setMarkers(markers);
     this.rebuildMachines();
+  }
+
+  private onMarkerMove(id: string, x: number, z: number): void {
+    this.onMarkers(this.markers.map((k) => (k.id === id ? { ...k, x, z } : k)));
   }
 
   private onThresholds(thresholds: TrsThresholds[]): void {
