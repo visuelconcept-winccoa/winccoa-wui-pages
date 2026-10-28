@@ -31,6 +31,7 @@ import { normDp } from '../data/dp-utils.js';
 import {
   KPI_TYPE_INFO,
   TRS_WINDOW_LABELS,
+  formatParamValue,
   formatStopCause,
   isRunningState,
   mappingStates as statesOf,
@@ -176,6 +177,8 @@ interface ParamCard {
   color?: string;
   /** Small muted footer (e.g. the KPI's sliding window). */
   hint?: string;
+  /** Configured decimals of a process parameter (unset = the shared default rule). */
+  decimals?: number;
 }
 
 @customElement('mf-machine-dashboard')
@@ -654,7 +657,7 @@ export class MfMachineDashboard extends LitElement {
       // Prefer the live dpConnect value; fall back to the last known value.
       const live = k.dp ? extractScalar(this.liveValues[normDp(k.dp)]) : undefined;
       // Where the value comes from (automatic, manual…), when the integration tells it.
-      return { key: `param:${k.key}`, label: k.label || k.key, value: live ?? k.value, unit: k.unit ?? '', hint: k.source };
+      return { key: `param:${k.key}`, label: k.label || k.key, value: live ?? k.value, unit: k.unit ?? '', hint: k.source, decimals: k.decimals };
     });
     for (const kpi of m.kpiCalcs ?? []) {
       const info = KPI_TYPE_INFO[kpi.type];
@@ -704,7 +707,7 @@ export class MfMachineDashboard extends LitElement {
     const pct = Math.min(Math.max(ratio, 0), 1) * PERCENT_MAX;
     const color = card.color ?? 'var(--theme-color-primary)';
     return html`
-      <svg class="gauge-svg" viewBox="0 0 100 64" role="img" aria-label=${`${card.label} ${formatValue(value)} ${card.unit}`}>
+      <svg class="gauge-svg" viewBox="0 0 100 64" role="img" aria-label=${`${card.label} ${formatCardValue(value, card.decimals)} ${card.unit}`}>
         <path class="gauge-track" d=${GAUGE_ARC} pathLength=${GAUGE_PATH_LENGTH}></path>
         <path
           class="gauge-fill"
@@ -713,7 +716,7 @@ export class MfMachineDashboard extends LitElement {
           stroke=${color}
           stroke-dasharray=${`${pct.toFixed(1)} ${GAUGE_PATH_LENGTH}`}
         ></path>
-        <text class="gauge-value" x="50" y="46" text-anchor="middle">${formatValue(value)}</text>
+        <text class="gauge-value" x="50" y="46" text-anchor="middle">${formatCardValue(value, card.decimals)}</text>
         ${card.unit ? svg`<text class="gauge-unit" x="50" y="58" text-anchor="middle">${card.unit}</text>` : ''}
         <text class="gauge-bound" x="8" y="62">${formatValue(min)}</text>
         <text class="gauge-bound" x="92" y="62" text-anchor="end">${formatValue(max)}</text>
@@ -1288,6 +1291,11 @@ function stopClassLabel(c: RawStop['classification']): string {
   if (c === 'planned') return localize(MSG.machineDash.classPlanned);
   if (c === 'production') return localize(MSG.machineDash.classProduction);
   return localize(MSG.machineDash.classUnplanned);
+}
+
+/** A card's value: the parameter's own decimals when it sets them, else {@link formatValue}. */
+function formatCardValue(v: number, decimals?: number): string {
+  return decimals != null ? formatParamValue(v, decimals) : formatValue(v);
 }
 
 /** Format a gauge/card value: two decimals, dropped for large magnitudes. */
