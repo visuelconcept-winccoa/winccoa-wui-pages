@@ -155,6 +155,7 @@ export const MSG = {
       'Werkstatt exportieren (JSON)'
     ),
     machines: ml('Machines', 'Machines', 'Maschinen'),
+    machinesAndMarkers: ml('Machines and markers', 'Machines et repères', 'Maschinen und Marken'),
     tiltUp: ml('Tilt up', 'Incliner vers le haut', 'Nach oben neigen'),
     tiltDown: ml('Tilt down', 'Incliner vers le bas', 'Nach unten neigen'),
     rotateLeft: ml('Rotate left', 'Pivoter à gauche', 'Nach links drehen'),

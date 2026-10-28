@@ -358,13 +358,12 @@ export class MfAtelierView extends LitElement {
         <ix-icon-button icon="screenshot" ghost title=${localize(MSG.view.viewpoints)} variant=${this.viewpointsOpen ? 'primary' : 'secondary'} @click=${() => { this.viewpointsOpen = !this.viewpointsOpen; this.bubblesOpen = false; }}></ix-icon-button>
         <ix-icon-button icon="box-open" ghost title=${localize(MSG.view.graphicsCatalogGlb)} @click=${() => (this.resourcesOpen = true)}></ix-icon-button>
         <ix-icon-button icon="building1" ghost title=${localize(MSG.view.configureBuilding)} @click=${() => (this.buildingOpen = true)}></ix-icon-button>
-        <ix-icon-button icon="location" ghost title=${localize(MSG.markers.title)} @click=${() => (this.panelOpen = true)}></ix-icon-button>
         <ix-icon-button icon="configuration" ghost title=${localize(MSG.view.stateMappings)} @click=${() => (this.mappingOpen = true)}></ix-icon-button>
         ${this.canEdit
           ? html`<ix-icon-button icon="upload" ghost title=${localize(MSG.view.importAtelier)} @click=${this.triggerImport}></ix-icon-button>`
           : ''}
         <ix-icon-button icon="download" ghost title=${localize(MSG.view.exportAtelier)} @click=${this.exportAtelier}></ix-icon-button>
-        <ix-icon-button icon="app-menu" ghost title=${localize(MSG.view.machines)} variant=${this.panelOpen ? 'primary' : 'secondary'} @click=${() => (this.panelOpen = !this.panelOpen)}></ix-icon-button>
+        <ix-icon-button icon="app-menu" ghost title=${localize(MSG.view.machinesAndMarkers)} variant=${this.panelOpen ? 'primary' : 'secondary'} @click=${() => (this.panelOpen = !this.panelOpen)}></ix-icon-button>
       </div>
       <input
         type="file"
