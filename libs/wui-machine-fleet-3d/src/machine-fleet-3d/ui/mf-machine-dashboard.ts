@@ -921,7 +921,7 @@ export class MfMachineDashboard extends LitElement {
     downloadCsv(`arrets_${this.machine.id}.csv`, rows);
   };
 
-  /** Pareto of stop causes (planned/unplanned): bars (downtime or frequency) + cumulative curve. */
+  /** Pareto of stop causes (planned/unplanned): bars of downtime or frequency, highest first. */
   private renderPareto(): TemplateResult {
     const sorted = this.paretoRows();
     const rows = this.paretoTop > 0 ? sorted.slice(0, this.paretoTop) : sorted;
@@ -980,11 +980,14 @@ export class MfMachineDashboard extends LitElement {
         : localize(MSG.machineDash.classUnplanned);
       return html`${head}<div class="muted small">${noStopOfClassMsg(label)}</div>`;
     }
-    return html`${head}${this.renderParetoChart(rows, sorted)}`;
+    return html`${head}${this.renderParetoChart(rows)}`;
   }
 
-  /** A true Pareto chart (SVG): descending bars + cumulative-% line and axes. */
-  private renderParetoChart(rows: CauseRow[], allSorted: CauseRow[]): TemplateResult {
+  /**
+   * Pareto chart (SVG): descending bars and axes. No cumulative-% curve: a stop with several causes
+   * gives each of them its whole duration, so a running total of the bars means nothing.
+   */
+  private renderParetoChart(rows: CauseRow[]): TemplateResult {
     const W = 760;
     const H = 300;
     const padL = 46;
@@ -999,26 +1002,14 @@ export class MfMachineDashboard extends LitElement {
     const step = (x1 - x0) / rows.length;
     const barW = Math.min(step * 0.62, 64);
     const maxVal = Math.max(...rows.map((r) => this.metricVal(r)), 1);
-    const totalAll = allSorted.reduce((s, r) => s + this.metricVal(r), 0) || 1;
     const metric = this.paretoMetric;
     const fmt = (v: number): string => formatMetric(metric, v);
     const axisColor = 'var(--theme-color-soft-bdr)';
     const textColor = 'var(--theme-color-soft-text)';
-    let cum = 0;
-    const pts = rows.map((r, i) => {
-      cum += this.metricVal(r);
-      return { cx: x0 + (i + 0.5) * step, y: y1 - (cum / totalAll) * plotH, pct: (cum / totalAll) * 100 };
-    });
-    const polyline = pts.map((p) => `${p.cx.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
     return html`
       <svg class="pareto-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
         <line x1=${x0} y1=${y0} x2=${x0} y2=${y1} stroke=${axisColor}></line>
-        <line x1=${x1} y1=${y0} x2=${x1} y2=${y1} stroke=${axisColor}></line>
         <line x1=${x0} y1=${y1} x2=${x1} y2=${y1} stroke=${axisColor}></line>
-        ${[0, 50, 100].map((p) => {
-          const y = y1 - (p / 100) * plotH;
-          return svg`<text x=${x1 + 6} y=${y + 3} fill=${textColor} font-size="11">${p}%</text>`;
-        })}
         <text x=${x0 - 6} y=${y0 + 8} text-anchor="end" fill=${textColor} font-size="11">${fmt(maxVal)}</text>
         ${rows.map((r, i) => {
           const h = (this.metricVal(r) / maxVal) * plotH;
@@ -1028,10 +1019,6 @@ export class MfMachineDashboard extends LitElement {
             <text x=${x0 + (i + 0.5) * step} y=${y1 - h - 4} text-anchor="middle" fill=${textColor} font-size="10">${fmt(this.metricVal(r))}</text>
             <text x=${x0 + (i + 0.5) * step} y=${y1 + 12} transform="rotate(35 ${x0 + (i + 0.5) * step} ${y1 + 12})" fill=${textColor} font-size="10">${truncate(r.label, 22)}</text>`;
         })}
-        <polyline points=${polyline} fill="none" stroke="var(--theme-color-primary)" stroke-width="2"></polyline>
-        ${pts.map(
-          (p) => svg`<circle cx=${p.cx} cy=${p.y} r="3" fill="var(--theme-color-primary)"><title>${p.pct.toFixed(1)} %</title></circle>`
-        )}
       </svg>
     `;
   }

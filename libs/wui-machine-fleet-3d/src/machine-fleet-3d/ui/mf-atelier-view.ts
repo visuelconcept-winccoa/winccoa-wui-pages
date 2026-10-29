@@ -448,7 +448,7 @@ export class MfAtelierView extends LitElement {
     if (dims.length === 0 && states.length === 0) return html``;
     const stateDim = localize(MSG.view.filterState);
     const filter: FleetFilter = { ...pruneFilter(this.filter, dims) };
-    const stateSelected = states.filter((s) => this.stateFilter.includes(s.key)).map((s) => s.label);
+    const stateSelected = states.filter((s) => s.keys.some((k) => this.stateFilter.includes(k))).map((s) => s.label);
     if (stateSelected.length > 0) filter[stateDim] = stateSelected;
     return html`<mf-filter-bar
       class="filters"
@@ -466,16 +466,22 @@ export class MfAtelierView extends LitElement {
     saveFleetFilter(tags);
     this.stateFilter = this.stateValues()
       .filter((s) => stateLabels.includes(s.label))
-      .map((s) => s.key);
+      .flatMap((s) => s.keys);
     saveStateFilter(this.stateFilter);
   }
 
-  /** The states the machines of this atelier can take (their mappings'), keyed and labelled. */
-  private stateValues(): { key: string; label: string }[] {
-    const out: { key: string; label: string }[] = [];
+  /**
+   * The states the machines of this atelier can take (their mappings'), one per label: two mappings
+   * may name a state alike under different keys (« Production » of the built-in states and of a
+   * mapping with its own), and the filter shows it once for all of them.
+   */
+  private stateValues(): { label: string; keys: string[] }[] {
+    const out: { label: string; keys: string[] }[] = [];
     for (const m of this.machines) {
       for (const s of mappingStates(this.mappingFor(m))) {
-        if (!out.some((o) => o.key === s.key)) out.push({ key: s.key, label: s.label });
+        const same = out.find((o) => o.label === s.label);
+        if (!same) out.push({ label: s.label, keys: [s.key] });
+        else if (!same.keys.includes(s.key)) same.keys.push(s.key);
       }
     }
     return out;
