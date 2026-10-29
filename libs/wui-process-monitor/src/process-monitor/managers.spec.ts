@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/** The managers table helpers (issue 33): uptime, start mode flag, sorting. */
+/** The managers table helpers (issue 33): uptime, start mode flag, sorting; edit / delete (issue 40). */
 import { describe, expect, it } from 'vitest';
-import { formatUptime, liveStartMode, sortManagers, startModeDiffers } from './managers.js';
+import { boundedInt, configChanges, configOf, deletePlan, formatUptime, isConfigurable, liveStartMode, sortManagers, startModeDiffers } from './managers.js';
 import type { ManagerInfo } from './types.js';
 
 function mgr(index: number, name: string, over: Partial<ManagerInfo> = {}): ManagerInfo {
@@ -70,5 +70,53 @@ describe('sortManagers', () => {
   it('does not reorder the list it is given', () => {
     sortManagers(list, 'name', 'desc');
     expect(list.map((m) => m.index)).toEqual([0, 1, 2, 3, 4]);
+  });
+});
+
+describe('edit (issue 40)', () => {
+  it('pre-fills the configuration of an entry; an unknown start mode falls back to always', () => {
+    expect(configOf(mgr(4, 'WCCOActrl', { startModeCfg: 'Once', options: '-num 1' }))).toEqual({ startMode: 'once', secKill: 30, restartCount: 3, resetMin: 1, options: '-num 1' });
+    expect(configOf(mgr(4, 'WCCOActrl', { startModeCfg: '' })).startMode).toBe('always');
+  });
+
+  it('bounds the restart settings like the backend', () => {
+    expect(boundedInt('secKill', '60')).toBe(60);
+    expect(boundedInt('secKill', '0')).toBeNull();
+    expect(boundedInt('secKill', '3601')).toBeNull();
+    expect(boundedInt('restartCount', '1.5')).toBeNull();
+    expect(boundedInt('resetMin', ' 1440 ')).toBe(1440);
+    expect(boundedInt('resetMin', '')).toBeNull();
+  });
+
+  it('lists the changed fields, before → after (blanks in the options do not count)', () => {
+    const before = configOf(mgr(4, 'WCCOActrl', { startModeCfg: 'once', options: '-num 1  -f a.lst' }));
+    expect(configChanges(before, { ...before, options: '-num 1 -f a.lst' })).toEqual([]);
+    expect(configChanges(before, { ...before, startMode: 'manual', secKill: 60, options: '-num 1 -f b.lst' })).toEqual([
+      'startMode: once → manual',
+      'secKill: 30 → 60',
+      'options: "-num 1  -f a.lst" → "-num 1 -f b.lst"'
+    ]);
+  });
+
+  it('pmon itself is neither editable nor deletable', () => {
+    expect(isConfigurable(mgr(0, 'WCCILpmon'))).toBe(false);
+    expect(isConfigurable(mgr(1, 'WCCILdata'))).toBe(true);
+  });
+});
+
+describe('deletePlan (issue 40)', () => {
+  const both = { editManagers: true, control: true };
+
+  it('a stopped manager is deleted, a running one is stopped first', () => {
+    expect(deletePlan(mgr(3, 'x', { state: 0 }), both)).toEqual({ allowed: true, stopFirst: false });
+    expect(deletePlan(mgr(3, 'x', { state: 2 }), both)).toEqual({ allowed: true, stopFirst: true });
+    expect(deletePlan(mgr(3, 'x', { state: 1 }), both)).toEqual({ allowed: true, stopFirst: true });
+  });
+
+  it('a missing role refuses with its reason; control is needed only for a running manager', () => {
+    expect(deletePlan(mgr(3, 'x', { state: 2 }), { editManagers: true, control: false })).toEqual({ allowed: false, reason: 'needs-control' });
+    expect(deletePlan(mgr(3, 'x', { state: 0 }), { editManagers: true, control: false })).toEqual({ allowed: true, stopFirst: false });
+    expect(deletePlan(mgr(3, 'x', { state: 0 }), { editManagers: false, control: true })).toEqual({ allowed: false, reason: 'needs-edit' });
+    expect(deletePlan(mgr(0, 'WCCILpmon', { state: 0 }), both)).toEqual({ allowed: false, reason: 'pmon' });
   });
 });

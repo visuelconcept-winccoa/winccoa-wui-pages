@@ -13,7 +13,7 @@
 import { Router, json } from 'ultimate-express';
 
 import { requireRole } from './appSecurityGuard';
-import { ProcessMonitorController } from './processMonitorController';
+import { ProcessMonitorController, whenBodyFlag } from './processMonitorController';
 
 /**
  * Route definitions for the Process Monitor API.
@@ -22,10 +22,19 @@ import { ProcessMonitorController } from './processMonitorController';
  *   GET  /health                           -> { ok, vrpc, serviceName, serviceAvailable, serviceStatus, error? }
  *                                             (probes the manager: `serviceAvailable: false`
  *                                              means it is stopped or needs a restart)
- *   GET  /managers                        -> { ok, managers }
+ *   GET  /managers                        -> { ok, instances: [{system, hostname, updated, managers, dp, local, status}], managers }
+ *                                             status = { state, checkedAt, version, startedAt, error? }, state one of
+ *                                             connected | pmon-unreachable | agent-too-old | agent-unreachable | not-checkable
+ *                                             (every node pinged over vRPC in this one request — issue 39)
+ *   POST /instance/delete { node }         -> { ok, dp, system, hostname, lastSeen, state, code?, error? }
+ *                                             (role manage-instances; refused for the local node and for an agent that answers)
  *   POST /manager   { action, index }      -> { ok, action, index }
  *   POST /manager/add    { name, startMode?, options?, index?, node? } -> { ok }
- *   POST /manager/remove { index, node? }  -> { ok }   (index ≥ 1, manager stopped)
+ *   POST /manager/remove { index, node?, name?, stopFirst? } -> { ok, warning? }   (index ≥ 1; role edit-managers,
+ *                                             + control with stopFirst: stop the running manager, then delete it)
+ *   POST /manager/update { index, node?, name?, startMode, secKill, restartCount, resetMin, options?, restart? }
+ *                                          -> { ok, warning?, detail: {before, after, restarted} }
+ *                                             (SINGLE_MGR:PROP_PUT — role edit-managers, + control with restart)
  *   POST /restart                          -> { ok }   (restart all)
  *   POST /upload/init     { fileName }     -> { ok, uploadId }
  *   POST /upload/chunk    { uploadId, data(base64) }
@@ -51,8 +60,24 @@ export class ProcessMonitorRoute {
     // Editing the pmon configuration (add/remove entries in config/progs) is a
     // separate, more sensitive capability than start/stop → its own role.
     router.post('/manager/add', requireRole(MODULE_ID, 'edit-managers'), controller.managerAdd);
-    router.post('/manager/remove', requireRole(MODULE_ID, 'edit-managers'), controller.managerRemove);
+    // Stopping a running manager before deleting it, or restarting it after an edit, is
+    // manager control: it also needs the `control` role (issue 40).
+    router.post(
+      '/manager/remove',
+      requireRole(MODULE_ID, 'edit-managers'),
+      whenBodyFlag('stopFirst', requireRole(MODULE_ID, 'control')),
+      controller.managerRemove
+    );
+    router.post(
+      '/manager/update',
+      requireRole(MODULE_ID, 'edit-managers'),
+      whenBodyFlag('restart', requireRole(MODULE_ID, 'control')),
+      controller.managerUpdate
+    );
     router.post('/restart', requireRole(MODULE_ID, 'control'), controller.restartAll);
+    // Deleting a host instance (its node DP and history) is its own role, separate from
+    // manager control (issue 39).
+    router.post('/instance/delete', requireRole(MODULE_ID, 'manage-instances'), controller.instanceDelete);
     router.post('/upload/init', requireRole(MODULE_ID, 'deploy'), controller.uploadInit);
     router.post('/upload/chunk', requireRole(MODULE_ID, 'deploy'), controller.uploadChunk);
     router.post('/upload/finalize', requireRole(MODULE_ID, 'deploy'), controller.uploadFinalize);

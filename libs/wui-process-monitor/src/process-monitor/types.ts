@@ -47,6 +47,36 @@ export interface ManagerSpec {
   options: string;
   /** Insert position in the pmon list (0 is pmon itself); omit to append. */
   index?: number;
+  /** Restart settings; the backend defaults them (30 s, 3, 1 min) when omitted. */
+  secKill?: number;
+  restartCount?: number;
+  resetMin?: number;
+}
+
+/** The editable configuration of a pmon entry (issue 40) — the executable name is not part of it. */
+export interface ManagerConfig {
+  startMode: ManagerStartMode;
+  secKill: number;
+  restartCount: number;
+  resetMin: number;
+  options: string;
+}
+
+/** A configuration change asked from the edit dialog (`wui:update`). */
+export interface ManagerUpdateIntent {
+  index: number;
+  name: string;
+  before: ManagerConfig;
+  config: ManagerConfig;
+  /** Restart the (running) manager after saving — default off. */
+  restart: boolean;
+}
+
+/** Reply of `POST /manager/update`. */
+export interface ManagerUpdateResult {
+  ok: boolean;
+  warning?: string;
+  detail?: { before: (ManagerConfig & { name: string }) | null; after: (ManagerConfig & { name: string }) | null; restarted: boolean };
 }
 
 /** One connected server/system and its live manager list (one tab per instance). */
@@ -61,6 +91,37 @@ export interface Instance {
   managers: ManagerInfo[];
   /** Full node DP name backing this instance. */
   dp: string;
+  /** The aggregator's own node (never deletable). Absent from an aggregator older than 0.3.0. */
+  local?: boolean;
+  /** Real state, checked over vRPC in the same `ListManagers` call (issue 39). Absent before 0.3.0. */
+  status?: InstanceStatus;
+}
+
+/** State of a host instance, from the aggregator's `Ping` of its agent (issue 39). */
+export type InstanceState = 'connected' | 'pmon-unreachable' | 'agent-too-old' | 'agent-unreachable' | 'not-checkable';
+
+export interface InstanceStatus {
+  state: InstanceState;
+  /** ISO time of the check. */
+  checkedAt: string;
+  /** Module version of the agent ('' when it did not answer, or is older than 0.3.0). */
+  version: string;
+  /** ISO start time of the agent ('' when unknown). */
+  startedAt: string;
+  /** Why the check failed, when it did. */
+  error?: string;
+}
+
+/** Reply of `POST /instance/delete`. */
+export interface InstanceDeleteResult {
+  ok: boolean;
+  dp: string;
+  system: string;
+  hostname: string;
+  lastSeen: string;
+  state?: InstanceState;
+  code?: string;
+  error?: string;
 }
 
 /** Project folders whose contents may be purged before a deploy. */
@@ -102,7 +163,7 @@ export interface HistoryEntry {
   /** ISO timestamp. */
   time: string;
   /** Operation kind. */
-  action: 'deploy' | 'restart-all' | 'manager' | 'logs-export';
+  action: 'deploy' | 'restart-all' | 'manager' | 'manager-config' | 'logs-export' | 'delete-instance';
   /** Human-readable detail (file name, manager name, …). */
   detail: string;
   /** 'success' | 'failed'. */

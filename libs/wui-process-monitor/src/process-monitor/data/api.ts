@@ -6,7 +6,7 @@
  * MSA vRPC to the processMonitor manager). Manager list/control + chunked ZIP
  * upload & deploy. DPL import is handled by another module, not here.
  */
-import type { DeployResult, Instance, LogFileInfo, LogReadFile, ManagerSpec } from '../types.js';
+import type { DeployResult, Instance, InstanceDeleteResult, LogFileInfo, LogReadFile, ManagerConfig, ManagerSpec, ManagerUpdateResult } from '../types.js';
 
 const BASE = '/api/process-monitor';
 /** Raw bytes per upload chunk (base64-expanded ~1.33× on the wire). */
@@ -66,6 +66,15 @@ export async function listInstances(): Promise<Instance[]> {
   return data.instances ?? [];
 }
 
+/**
+ * Delete the node DP of a host instance whose agent no longer answers (role
+ * `manage-instances`). The aggregator pings it again first and refuses when it answers, or
+ * when it is its own node — the refusal comes back as an `ApiError` with its reason.
+ */
+export function deleteInstance(node: string): Promise<InstanceDeleteResult> {
+  return postJson(`${BASE}/instance/delete`, { node });
+}
+
 /** `node` is the target node DP name (one per computer); '' / 'all' for the local/only one. */
 export function controlManager(node: string, action: 'start' | 'stop' | 'restart', index: number): Promise<{ ok: boolean }> {
   return postJson(`${BASE}/manager`, { node, action, index });
@@ -81,9 +90,25 @@ export function addManager(node: string, spec: ManagerSpec): Promise<{ ok: boole
   return postJson(`${BASE}/manager/add`, { node, ...spec });
 }
 
-/** Remove a STOPPED manager from the target node's pmon configuration (index ≥ 1). */
-export function removeManager(node: string, index: number): Promise<{ ok: boolean; warning?: string }> {
-  return postJson(`${BASE}/manager/remove`, { node, index });
+/**
+ * Remove a manager from the target node's pmon configuration (index ≥ 1). `name` must still be
+ * the entry at `index`. `stopFirst` (needs the `control` role too): stop a running manager,
+ * wait for it to stop, then delete it — pmon refuses to delete a running manager.
+ */
+export function removeManager(
+  node: string,
+  index: number,
+  opts: { name?: string; stopFirst?: boolean } = {}
+): Promise<{ ok: boolean; warning?: string }> {
+  return postJson(`${BASE}/manager/remove`, { node, index, ...opts });
+}
+
+/**
+ * Change the configuration of one pmon entry (issue 40): start mode, restart settings, options.
+ * `restart` (needs the `control` role too) restarts a running manager afterwards.
+ */
+export function updateManager(node: string, index: number, name: string, config: ManagerConfig, restart: boolean): Promise<ManagerUpdateResult> {
+  return postJson(`${BASE}/manager/update`, { node, index, name, ...config, restart });
 }
 
 /** The log files of one node (`node` = its node DP; '' for the local one). */

@@ -7,8 +7,10 @@
  * Operator features, modelled on the `winccoa_projectmanager` HTML app
  * (`proj.html`) but rebuilt natively (Lit + iX):
  *  - **Console**: live pmon manager list with start/stop/restart + restart-all,
- *    plus add/remove of pmon configuration entries (config/progs, role
- *    'edit-managers'), with **one tab per connected server**
+ *    plus add / edit (start mode, restart settings, options — issue 40) / delete of
+ *    pmon configuration entries (config/progs, role 'edit-managers'; deleting a
+ *    running manager stops it first and also needs 'control'), with **one tab per
+ *    connected server**
  *    (distributed/redundant systems) — sourced from the per-system
  *    `ProcessMonitor_Node` datapoints.
  *  - **Project upload**: deploy a ZIP into the project across ALL connected
@@ -17,6 +19,13 @@
  *  - **Logs**: the WinCC OA log files of each host (`<project>/log`, read by that
  *    host's agent), filtered, coloured, live tail / pause, .bak merge, export —
  *    role 'logs-read' (logs can hold user names and addresses).
+ *  - **Instances** (issue 39): the real state of each host instance, checked over
+ *    vRPC by the aggregator in the same `/managers` request (badge + colour on each
+ *    tab, a compact list with last seen and agent version, "invalid only" filter);
+ *    the last snapshot of an instance that is not connected is shown greyed with
+ *    its age. "Delete instance" (role 'manage-instances') removes the node DP of an
+ *    instance whose agent no longer answers — never the local node, re-checked by
+ *    the server right before the delete.
  * Plus a **History** tab. Every project import and manager restart is traced to a
  * GxP `_AuditTrail` datapoint (`AuditTrail_ProcessMonitor`, with the session user)
  * and an operations-log datapoint, both ensured at page init.
@@ -37,18 +46,26 @@ import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import {
   MSG,
+  STATE_HINTS,
+  STATE_LABELS,
+  agoLabel,
   confirmControlMsg,
+  confirmDeleteInstanceMsg,
   confirmDialogLabels,
   confirmRemoveMsg,
+  dateLabel,
   localize,
   localizeDir,
   serverLabel,
   type ConfirmIntent
 } from './process-monitor/i18n.js';
-import { addManager, controlManager, isBridgeError, listInstances, removeManager, restartAll } from './process-monitor/data/api.js';
+import { addManager, controlManager, deleteInstance, isBridgeError, listInstances, removeManager, restartAll, updateManager } from './process-monitor/data/api.js';
+import { instanceState, isLive, lastSeenAgeMs, stateTone } from './process-monitor/instances.js';
+import { configChanges, deletePlan, formatUptime } from './process-monitor/managers.js';
 import { ensureStores, loadHistory, traceOperation } from './process-monitor/data/stores.js';
-import type { DeployResult, HistoryEntry, Instance, ManagerSpec } from './process-monitor/types.js';
+import type { DeployResult, HistoryEntry, Instance, ManagerInfo, ManagerSpec, ManagerUpdateIntent } from './process-monitor/types.js';
 import './process-monitor/ui/pm-console.js';
+import './process-monitor/ui/pm-instances.js';
 import './process-monitor/ui/pm-manager-dialog.js';
 import './process-monitor/ui/pm-upload.js';
 import './process-monitor/ui/pm-history.js';
@@ -60,7 +77,7 @@ type Tab = 'console' | 'upload' | 'logs' | 'history';
 /** Application-Security module id of this page. */
 const MODULE_ID = 'process-monitor';
 type ControlIntent = { action: 'start' | 'stop' | 'restart'; index: number; name: string };
-type RemoveIntent = { index: number; name: string };
+type RemoveIntent = { index: number; name: string; options: string; stopFirst: boolean };
 const REFRESH_MS = 5000;
 
 export class WuiProcessMonitor extends LitElement {
@@ -85,10 +102,15 @@ export class WuiProcessMonitor extends LitElement {
   @state() private roleDeploy = true;
   @state() private roleEditManagers = true;
   @state() private roleLogs = true;
+  @state() private roleManageInstances = true;
+  /** Instance whose deletion waits for confirmation (issue 39). */
+  @state() private deletePending: Instance | null = null;
   @state() private restartAllPending = false;
   @state() private controlPending: ControlIntent | null = null;
   @state() private addDialogOpen = false;
   @state() private removePending: RemoveIntent | null = null;
+  /** Manager whose configuration is being edited (issue 40). */
+  @state() private editPending: ManagerInfo | null = null;
 
   private permSub = new Subscription();
   private timer: ReturnType<typeof globalThis.setInterval> | undefined;
@@ -107,6 +129,7 @@ export class WuiProcessMonitor extends LitElement {
     this.permSub.add(hasRole$(MODULE_ID, 'control').subscribe((granted) => (this.roleControl = granted)));
     this.permSub.add(hasRole$(MODULE_ID, 'edit-managers').subscribe((granted) => (this.roleEditManagers = granted)));
     this.permSub.add(hasRole$(MODULE_ID, 'deploy').subscribe((granted) => (this.roleDeploy = granted)));
+    this.permSub.add(hasRole$(MODULE_ID, 'manage-instances').subscribe((granted) => (this.roleManageInstances = granted)));
     this.permSub.add(
       hasRole$(MODULE_ID, 'logs-read').subscribe((granted) => {
         this.roleLogs = granted;
@@ -196,18 +219,31 @@ export class WuiProcessMonitor extends LitElement {
 
   private renderConsole(): TemplateResult {
     const active = this.active;
+    const live = !active || isLive(active);
+    // Nobody reads the `.cmd` of an instance whose agent does not answer: no control there.
+    const controllable = !active || instanceState(active) !== 'agent-unreachable';
     return html`
+      ${this.instances.length > 0
+        ? html`<pm-instances
+            .instances=${this.instances}
+            .canDelete=${this.canEdit && this.roleManageInstances}
+            @wui:deleteinstance=${(e: CustomEvent<Instance>) => (this.deletePending = e.detail)}
+          ></pm-instances>`
+        : nothing}
       ${this.instances.length > 1 ? this.renderServerTabs() : nothing}
+      ${live || !active ? nothing : this.renderStaleBar(active)}
       <pm-console
+        class=${live ? '' : 'stale'}
         .managers=${active?.managers ?? []}
-        .canEdit=${this.canEdit && this.roleControl}
-        .canConfig=${this.canEdit && this.roleEditManagers}
-        .lastUpdate=${this.lastUpdate}
+        .canEdit=${this.canEdit && this.roleControl && controllable}
+        .canConfig=${this.canEdit && this.roleEditManagers && controllable}
+        .lastUpdate=${live ? this.lastUpdate : ''}
         @wui:refresh=${() => void this.refreshInstances()}
         @wui:restartall=${() => (this.restartAllPending = true)}
         @wui:control=${(e: CustomEvent<ControlIntent>) => (this.controlPending = e.detail)}
         @wui:addmanager=${() => (this.addDialogOpen = true)}
         @wui:removemanager=${(e: CustomEvent<RemoveIntent>) => (this.removePending = e.detail)}
+        @wui:editmanager=${(e: CustomEvent<ManagerInfo>) => (this.editPending = e.detail)}
       ></pm-console>
     `;
   }
@@ -220,11 +256,23 @@ export class WuiProcessMonitor extends LitElement {
           class="server-tab ${i.dp === current ? 'active' : ''}"
           @click=${() => (this.activeDp = i.dp)}
         >
+          <span class="dot tone-${stateTone(instanceState(i))}" title=${localize(STATE_LABELS[instanceState(i)])}></span>
           <ix-icon name="network-device" size="16"></ix-icon>${serverLabel(i)}
           <span class="count">${i.managers.length}</span>
         </button>`
       )}
     </div>`;
+  }
+
+  /** The active instance is not connected: its state, and the age of the snapshot shown greyed. */
+  private renderStaleBar(i: Instance): TemplateResult {
+    const st = instanceState(i);
+    const age = lastSeenAgeMs(i, Date.now());
+    const seen = `${dateLabel(i.updated)}${age === null ? '' : ` (${agoLabel(formatUptime(age, localize(MSG.console.dayUnit)))})`}`;
+    return html`<ix-message-bar class="error-bar" type=${st === 'agent-unreachable' ? 'alarm' : 'warning'} persistent>
+      <strong>${localizeDir(STATE_LABELS[st])}</strong> — ${localizeDir(STATE_HINTS[st])}
+      <div class="error-hint">${localizeDir(MSG.instances.staleSnapshot)} ${localizeDir(MSG.instances.colLastSeen)}: ${seen}</div>
+    </ix-message-bar>`;
   }
 
   /**
@@ -255,12 +303,30 @@ export class WuiProcessMonitor extends LitElement {
             @wui:cancel=${() => (this.addDialogOpen = false)}
           ></pm-manager-dialog>`
         : nothing}
+      ${this.editPending
+        ? html`<pm-manager-dialog
+            .manager=${this.editPending}
+            .canRestart=${this.canEdit && this.roleControl}
+            .canDelete=${this.canEdit && this.roleEditManagers}
+            @wui:update=${(e: CustomEvent<ManagerUpdateIntent>) => void this.onUpdateManager(e.detail)}
+            @wui:delete=${(e: CustomEvent<ManagerInfo>) => this.onDeleteFromDialog(e.detail)}
+            @wui:cancel=${() => (this.editPending = null)}
+          ></pm-manager-dialog>`
+        : nothing}
       ${this.removePending
         ? this.confirmDialog(
             'remove',
-            confirmRemoveMsg(this.removePending.name, this.removePending.index),
+            confirmRemoveMsg(this.removePending.name, this.removePending.index, this.removePending.options, this.removePending.stopFirst),
             () => void this.onRemoveConfirm(),
             () => (this.removePending = null)
+          )
+        : nothing}
+      ${this.deletePending
+        ? this.confirmDialog(
+            'delete-instance',
+            confirmDeleteInstanceMsg(serverLabel(this.deletePending), this.deletePending.system, dateLabel(this.deletePending.updated)),
+            () => void this.onDeleteInstanceConfirm(),
+            () => (this.deletePending = null)
           )
         : nothing}
     `;
@@ -400,23 +466,80 @@ export class WuiProcessMonitor extends LitElement {
     const label = nodeLabel(target);
     let ok = false;
     try {
-      const res = await removeManager(target?.dp ?? '', d.index);
+      const res = await removeManager(target?.dp ?? '', d.index, { name: d.name, stopFirst: d.stopFirst });
       ok = res.ok !== false;
       this.clearError();
       this.warningDetail = res.warning ?? '';
     } catch (error) {
       this.reportError(MSG.errors.action, error);
     }
+    const stop = d.stopFirst ? ' — stopped first' : '';
     await traceOperation(
       {
         time: new Date().toISOString(),
         action: 'manager',
-        detail: `${d.name} — remove (#${d.index})${ok && this.warningDetail ? ' — config/progs not updated' : ''}`,
+        detail: `${d.name} — remove (#${d.index})${stop}${ok && this.warningDetail ? ' — config/progs not updated' : ''}`,
         status: ok ? 'success' : 'failed',
         host: hostName(),
         system: label
       },
-      { action: 'REMOVE', item: d.name, oldval: `#${d.index}`, reason: label }
+      { action: 'REMOVE', item: d.name, oldval: JSON.stringify({ index: d.index, options: d.options, stopFirst: d.stopFirst }), reason: label }
+    );
+    await this.refreshInstances();
+    void this.refreshHistory();
+  }
+
+  /** The labelled "Delete manager" of the edit dialog: the same plan and confirmation as the trashcan. */
+  private onDeleteFromDialog(m: ManagerInfo): void {
+    this.editPending = null;
+    const plan = deletePlan(m, { editManagers: this.canEdit && this.roleEditManagers, control: this.canEdit && this.roleControl });
+    if (!plan.allowed) {
+      this.reportError(MSG.errors.action, localize(MSG.console.removeNeedsControl));
+      return;
+    }
+    this.removePending = { index: m.index, name: m.name, options: m.options, stopFirst: plan.stopFirst };
+  }
+
+  /**
+   * Save a configuration change (issue 40) — traced with its before / after values to the audit
+   * trail and the History tab, whether pmon applied it or not.
+   */
+  private async onUpdateManager(d: ManagerUpdateIntent): Promise<void> {
+    this.editPending = null;
+    this.warningDetail = '';
+    const target = this.active;
+    const label = nodeLabel(target);
+    let ok = false;
+    let restarted = false;
+    let after = d.config;
+    try {
+      const res = await updateManager(target?.dp ?? '', d.index, d.name, d.config, d.restart);
+      ok = res.ok !== false;
+      restarted = res.detail?.restarted === true;
+      if (res.detail?.after) after = { ...d.config, ...res.detail.after };
+      this.clearError();
+      this.warningDetail = res.warning ?? '';
+    } catch (error) {
+      this.reportError(MSG.errors.action, error);
+    }
+    const changes = configChanges(d.before, d.config);
+    const notes = [restarted ? 'restarted' : '', ok && this.warningDetail ? 'config/progs not updated' : ''].filter(Boolean);
+    await traceOperation(
+      {
+        time: new Date().toISOString(),
+        action: 'manager-config',
+        detail: `${d.name} (#${d.index}) — edit: ${changes.join(', ') || 'no change'}${notes.length > 0 ? ` — ${notes.join(', ')}` : ''}`,
+        status: ok ? 'success' : 'failed',
+        host: hostName(),
+        system: label
+      },
+      {
+        action: 'EDIT',
+        item: d.name,
+        oldval: JSON.stringify({ index: d.index, ...d.before }),
+        newval: JSON.stringify({ index: d.index, ...after, restart: d.restart }),
+        reason: label
+      }
     );
     await this.refreshInstances();
     void this.refreshHistory();
@@ -445,6 +568,47 @@ export class WuiProcessMonitor extends LitElement {
       },
       { action: 'RESTART_ALL', item: 'project', reason: label }
     );
+    await this.refreshInstances();
+    void this.refreshHistory();
+  }
+
+  /**
+   * Delete an instance whose agent no longer answers (issue 39). The server pings it again and
+   * refuses when it answers or when it is its own node; either way the attempt is traced with
+   * who (the writer), the host, the system and the last-seen date.
+   */
+  private async onDeleteInstanceConfirm(): Promise<void> {
+    const target = this.deletePending;
+    this.deletePending = null;
+    if (!target) return;
+    const host = serverLabel(target);
+    let ok = false;
+    let reason = '';
+    try {
+      const res = await deleteInstance(target.dp);
+      ok = res.ok !== false;
+      this.clearError();
+    } catch (error) {
+      reason = error instanceof Error ? error.message : String(error);
+      this.reportError(MSG.errors.action, error);
+    }
+    await traceOperation(
+      {
+        time: new Date().toISOString(),
+        action: 'delete-instance',
+        detail: `${host} — ${target.dp} — last seen ${target.updated || '?'}${reason ? ` — refused: ${reason}` : ''}`,
+        status: ok ? 'success' : 'failed',
+        host: hostName(),
+        system: cleanSystem(target.system)
+      },
+      {
+        action: 'DELETE_INSTANCE',
+        item: host,
+        oldval: JSON.stringify({ dp: target.dp, system: target.system, hostname: target.hostname, lastSeen: target.updated, state: target.status?.state ?? '' }),
+        reason: cleanSystem(target.system) || host
+      }
+    );
+    if (ok && this.activeDp === target.dp) this.activeDp = '';
     await this.refreshInstances();
     void this.refreshHistory();
   }
@@ -571,6 +735,29 @@ function pageStyles(): ReturnType<typeof css> {
       background: var(--theme-color-primary, #00b3b3);
       border-color: var(--theme-color-primary, #00b3b3);
       color: var(--theme-color-primary-contrast, #fff);
+    }
+    .server-tab .dot {
+      width: 0.6rem;
+      height: 0.6rem;
+      border-radius: 50%;
+      flex: none;
+      box-shadow: 0 0 0 1px var(--theme-color-1);
+    }
+    .tone-ok {
+      background: var(--theme-color-success);
+    }
+    .tone-alarm {
+      background: var(--theme-color-alarm);
+    }
+    .tone-warning {
+      background: var(--theme-color-warning);
+    }
+    .tone-neutral {
+      background: var(--theme-color-neutral);
+    }
+    pm-console.stale {
+      opacity: 0.55;
+      filter: grayscale(1);
     }
     .server-tab .count {
       font-size: 0.72rem;

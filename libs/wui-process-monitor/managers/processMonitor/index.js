@@ -38,7 +38,10 @@
  * computer, so the manager can run on every pmon node at the same time.
  *
  * vRPC methods (each: Variant<string JSON> -> Variant<string JSON>):
- *   ListManagers()                          -> { ok, instances: [{system,hostname,updated,managers,dp}] }
+ *   ListManagers()                          -> { ok, instances: [{system,hostname,updated,managers,dp,local,status}] }
+ *     status (issue 39, instance-state.js): { state, checkedAt, version, startedAt, error? } — every
+ *     node is pinged in parallel (short timeout) in THIS call; state is connected | pmon-unreachable |
+ *     agent-too-old | agent-unreachable | not-checkable. `local` marks the aggregator's own node.
  *     managers[]: { index, name, options, startModeCfg, secKill, restartCount, resetMin,   (MGRLIST:LIST)
  *                   state, stateLabel, pid, startMode, startTime, manNum }               (MGRLIST:STATI)
  *     startTime is ISO 8601 (pmon's local time, read on pmon's own host), pmon's raw text
@@ -46,9 +49,27 @@
  *   ControlManager({systemName,action,index}) -> { ok, action, index, system, error? }
  *   AddManager({node,manager:{name,startMode,secKill,restartCount,resetMin,options},index?})
  *                                           -> { ok, system, error? }   (INS into config/progs; append when index omitted)
- *   RemoveManager({node,index})             -> { ok, index, system, error? }   (DEL a stopped manager, index ≥ 1)
+ *   RemoveManager({node,index,name?,stopFirst?}) -> { ok, index, system, warning?, detail?, error? }
+ *                                           (DEL, index ≥ 1; stopFirst: stop a running manager, wait for "stopped"
+ *                                            (10 s), then DEL — a manager pmon restarts in between is reported,
+ *                                            not retried; `name` must still be the entry at index)
+ *   UpdateManager({node,index,name?,manager:{startMode,secKill,restartCount,resetMin,options},restart?})
+ *                                           -> { ok, index, system, warning?, detail: {before, after, restarted}, error? }
+ *                                           (issue 40: SINGLE_MGR:PROP_PUT, checked against MGRLIST:LIST then
+ *                                            config/progs; restart: restart a running manager afterwards)
  *   RestartAll({systemName})                -> { ok, system, error? }
  *   Deploy({zipPath,clearFolders,restart,target}) -> { ok, results:[{system,hostname,ok,cleared,skipped,error}] }
+ *
+ * Instance state and deletion (issue 39, instance-state.js has the contract):
+ *   Ping()                 -> { ok, hostname, system, node, version, startedAt, pmon: 'reachable'|'unreachable' }
+ *                             (answered by THIS agent; pmon = a quick MGRLIST:LIST, short timeout)
+ *   DeleteInstance({node}) -> { ok, dp, system, hostname, lastSeen, state, code?, error? }
+ *                             refuses the local node, pings the node again and refuses unless its
+ *                             agent is still unreachable, then dpDelete of its node DP. An agent that
+ *                             starts again recreates its DP (ensureNodeDp). Route: POST
+ *                             /instance/delete, role process-monitor/manage-instances.
+ *   The agent's version and start time come from Ping only: they are NOT published in the node
+ *   DP (ensureNodeType never changes an existing type, so new elements would be missing there).
  *
  * Logs of each host (issue 37, log-files.js has the contract), routed like the deploy: the
  * aggregator answers for its own node and calls the TARGET node's service for the others
@@ -77,6 +98,7 @@ const { execFile } = require('node:child_process');
 const { PmonClient, parseProgs, progsMatches } = require('./pmon-client.js');
 const { DEFAULT_CHUNK_BYTES, TransferReceiver, deployToNodes, sendZip, tooOldMessage } = require('./deploy-transfer.js');
 const { listLogFiles, readLogFiles } = require('./log-files.js');
+const { PING_TIMEOUT_MS, deleteInstance, pingNode } = require('./instance-state.js');
 
 const winccoa = new WinccoaManager();
 
@@ -98,6 +120,12 @@ const LEGACY_NODE_DP = 'ProcessMonitor_Node';
 /** THIS node's DP — `ProcessMonitor_Node_<hostname>`, set at startup from the host. */
 let NODE_DP = '';
 const PUBLISH_MS = 3000;
+/** Module version this agent ships with (package.json of wui-process-monitor; checked by a unit test). */
+const AGENT_VERSION = '0.3.0';
+/** When this agent started (Ping). */
+const STARTED_AT = new Date().toISOString();
+/** pmon check of Ping: one MGRLIST:LIST, well under the aggregator's ping timeout. */
+const PMON_PING_TIMEOUT_MS = 1500;
 
 // <PROJ>/javascript/processMonitor/index.js -> project root is two levels up.
 const PROJ_PATH = path.resolve(__dirname, '..', '..');
@@ -161,6 +189,8 @@ function readPmonPort() {
 
 const PMON_PORT = readPmonPort();
 const pmonClient = new PmonClient({ port: PMON_PORT });
+/** Same pmon, short timeout: only for the reachability check of Ping. */
+const pmonPingClient = new PmonClient({ port: PMON_PORT, timeout: PMON_PING_TIMEOUT_MS });
 
 function parseReq(request) {
   if (!request.isString() || request.isNull()) return {};
@@ -388,17 +418,31 @@ function normalizeManagerSpec(spec) {
   const s = spec && typeof spec === 'object' ? spec : {};
   const name = String(s.name || '').trim().replace(/\.exe$/i, '');
   if (!/^[A-Za-z0-9_.-]+$/.test(name)) throw new Error(`nom de manager invalide : "${name}"`);
-  const startMode = ['manual', 'once', 'always'].includes(s.startMode) ? s.startMode : 'always';
-  const num = (v, def, min, max) => {
+  return { name, ...normalizeManagerConfig(s) };
+}
+
+/**
+ * The configuration part of a manager spec (start mode, restart settings, options), with the
+ * bounds of an add — shared by AddManager and UpdateManager (the name is not editable). An add
+ * falls back to the defaults; `strict` (an update) refuses a missing or out-of-bounds value
+ * instead, so an edit never silently changes a setting.
+ */
+function normalizeManagerConfig(spec, { strict = false } = {}) {
+  const s = spec && typeof spec === 'object' ? spec : {};
+  const modes = ['manual', 'once', 'always'];
+  if (strict && !modes.includes(s.startMode)) throw new Error(`mode de démarrage invalide : "${s.startMode}"`);
+  const startMode = modes.includes(s.startMode) ? s.startMode : 'always';
+  const num = (v, def, min, max, label) => {
     const n = Number.parseInt(v, 10);
-    return Number.isInteger(n) && n >= min && n <= max ? n : def;
+    if (Number.isInteger(n) && n >= min && n <= max) return n;
+    if (strict) throw new Error(`${label} invalide : ${v} (${min}–${max})`);
+    return def;
   };
   return {
-    name,
     startMode,
-    secKill: num(s.secKill, 30, 1, 3600),
-    restartCount: num(s.restartCount, 3, 1, 100),
-    resetMin: num(s.resetMin, 1, 1, 1440),
+    secKill: num(s.secKill, 30, 1, 3600, 'secKill'),
+    restartCount: num(s.restartCount, 3, 1, 100, 'restartCount'),
+    resetMin: num(s.resetMin, 1, 1, 1440, 'resetMin'),
     options: String(s.options || '').replace(/[\r\n]+/g, ' ').trim()
   };
 }
@@ -411,7 +455,7 @@ const PROGS_CHECK_DELAYS_MS = [300, 700, 1500];
  * change written to `<project>/config/progs`, i.e. kept at the next project restart? Returns a
  * warning text when it is not (or when the file cannot be read), '' otherwise (issue 35).
  */
-async function progsWarning() {
+async function progsWarning({ strict = false } = {}) {
   const file = path.join(PROJ_PATH, 'config', 'progs');
   let list = [];
   let progs = [];
@@ -423,7 +467,7 @@ async function progsWarning() {
     } catch (e) {
       return `config/progs illisible (${e.message}) : l'enregistrement du changement n'a pas pu être vérifié.`;
     }
-    if (progsMatches(progs, list)) return '';
+    if (progsMatches(progs, list, { strict })) return '';
   }
   log(`config/progs (${progs.length} entrées) ne reflète pas pmon (${list.length} entrées) après INS/DEL`);
   return "Appliqué dans pmon, mais pas écrit dans config/progs : le changement sera perdu au prochain redémarrage du projet.";
@@ -450,10 +494,42 @@ async function execPmonCmd(cmd) {
   }
   if (cmd.action === 'remove') {
     if (!Number.isInteger(cmd.index) || cmd.index < 1) throw new Error('index invalide (≥ 1 requis — 0 est pmon)');
+    const expectName = typeof cmd.name === 'string' && cmd.name ? cmd.name : undefined;
+    if (cmd.stopFirst === true) {
+      const r = await pmonClient.stopThenRemove(cmd.index, { expectName });
+      return { warning: await progsWarning(), detail: { stopped: r.stopped } };
+    }
+    if (expectName) {
+      const at = (await pmonClient.listManagers())[cmd.index];
+      if (!at || at.name !== expectName) throw new Error(`l'entrée ${cmd.index} n'est plus ${expectName} : la liste a changé, rechargez-la`);
+    }
     await pmonClient.removeManager(cmd.index);
     return { warning: await progsWarning() };
   }
+  if (cmd.action === 'update') {
+    if (!Number.isInteger(cmd.index) || cmd.index < 1) throw new Error('index invalide (≥ 1 requis — pmon lui-même ne se modifie pas)');
+    const config = normalizeManagerConfig(cmd.manager, { strict: true });
+    const expectName = typeof cmd.name === 'string' && cmd.name ? cmd.name : undefined;
+    const r = await pmonClient.updateManager({ index: cmd.index, ...config, expectName });
+    let restarted = false;
+    let restartError = '';
+    if (cmd.restart === true && r.before.state !== 0) {
+      try {
+        await pmonClient.restartManager(cmd.index);
+        restarted = true;
+      } catch (e) {
+        restartError = e.message;
+      }
+    }
+    const warnings = [await progsWarning({ strict: true }), restartError ? `modification enregistrée, mais le redémarrage a échoué : ${restartError}` : ''];
+    return { warning: warnings.filter(Boolean).join(' — '), detail: { before: configOf(r.before), after: configOf(r.after), restarted } };
+  }
   throw new Error(`action invalide: ${cmd.action}`);
+}
+
+/** The configuration fields of a pmon entry (audit trail before / after). */
+function configOf(m) {
+  return m ? { name: m.name, startMode: m.startModeCfg, secKill: m.secKill, restartCount: m.restartCount, resetMin: m.resetMin, options: m.options } : null;
 }
 
 /** Track the last handled command id so reconnect / repeat values are ignored. */
@@ -465,13 +541,16 @@ async function onCmd(cmd) {
   let ok = false;
   let error = '';
   let warning = '';
+  let detail;
   try {
-    warning = (await execPmonCmd(cmd))?.warning || '';
+    const r = await execPmonCmd(cmd);
+    warning = r?.warning || '';
+    detail = r?.detail;
     ok = true;
   } catch (e) {
     error = e.message;
   }
-  await winccoa.dpSet(`${NODE_DP}.cmdResult`, JSON.stringify({ reqId: cmd.reqId, ok, error, warning, ts: new Date().toISOString() }));
+  await winccoa.dpSet(`${NODE_DP}.cmdResult`, JSON.stringify({ reqId: cmd.reqId, ok, error, warning, ...(detail ? { detail } : {}), ts: new Date().toISOString() }));
   await publishOnce();
 }
 
@@ -613,10 +692,84 @@ async function callStub(stub, method, request) {
   try {
     resp = await stub.callFunction(method, Vrpc.Variant.createString(JSON.stringify(request)), new Vrpc.ClientContext());
   } catch (e) {
-    throw new Error(`${method}: ${vrpcErrorText(e)}`);
+    // The status code travels with the error: Ping tells an older agent (Unimplemented) apart.
+    throw Object.assign(new Error(`${method}: ${vrpcErrorText(e)}`), { statusCode: e?.status?.statusCode });
   }
-  if (resp.status.statusCode !== Vrpc.StatusCode.OK) throw new Error(`${method}: ${String(resp.status.text ?? resp.status.statusCode)}`);
+  if (resp.status.statusCode !== Vrpc.StatusCode.OK) {
+    throw Object.assign(new Error(`${method}: ${String(resp.status.text ?? resp.status.statusCode)}`), { statusCode: resp.status.statusCode });
+  }
   return JSON.parse(String(resp.response.value ?? '{}'));
+}
+
+// ---- real state of each instance (issue 39) --------------------------------
+
+/** This agent's answer to Ping: who it is, its version, and whether its pmon answers. */
+async function localPing() {
+  let pmon = 'reachable';
+  let pmonError = '';
+  try {
+    await pmonPingClient.sendCommand('MGRLIST:LIST');
+  } catch (e) {
+    pmon = 'unreachable';
+    pmonError = e.message;
+  }
+  return { ok: true, hostname: HOSTNAME, system: OWN_SYSTEM, node: NODE_DP, version: AGENT_VERSION, startedAt: STARTED_AT, pmon, ...(pmonError ? { pmonError } : {}) };
+}
+
+/** Ping another node's service. A failure (or a stub still connecting) drops its cached stub. */
+async function remotePing(node) {
+  const name = nodeServiceName(node);
+  try {
+    const call = await nodeCaller(node);
+    return await call('Ping', {});
+  } catch (e) {
+    nodeStubs.delete(name);
+    throw e;
+  }
+}
+
+/** A node of another system than this aggregator (distributed project). */
+function isForeign(node) {
+  return Boolean(OWN_SYSTEM && node.system && node.system !== OWN_SYSTEM);
+}
+
+const pingOptions = () => ({
+  isLocal,
+  isForeign,
+  localPing,
+  remotePing: (node) => {
+    const p = remotePing(node);
+    // A ping that times out keeps running: its late failure must not surface as unhandled.
+    p.catch(() => undefined);
+    return p;
+  },
+  timeoutMs: PING_TIMEOUT_MS,
+  unimplementedCode: Vrpc.StatusCode?.Unimplemented
+});
+
+/**
+ * Pings in flight or just answered, by node DP: several pages polling at once share one ping
+ * per node. A deletion never uses it (it pings again).
+ */
+const recentPings = new Map();
+const PING_REUSE_MS = 2000;
+
+function cachedPing(node) {
+  const hit = recentPings.get(node.dp);
+  if (hit && Date.now() - hit.at < PING_REUSE_MS) return hit.promise;
+  const promise = pingNode(node, pingOptions());
+  recentPings.set(node.dp, { at: Date.now(), promise });
+  return promise;
+}
+
+/** Ping every instance in parallel and attach `local` and `status` (one ListManagers call). */
+async function annotateInstances(instances) {
+  const statuses = await Promise.all(instances.map((inst) => cachedPing(inst)));
+  instances.forEach((inst, i) => {
+    inst.local = isLocal(inst);
+    inst.status = statuses[i];
+  });
+  return instances;
 }
 
 // ---- logs of each host (issue 37) -----------------------------------------
@@ -674,6 +827,7 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
     this.registerFunction('ControlManager', (ctx, req) => this.controlManager(ctx, req));
     this.registerFunction('AddManager', (ctx, req) => this.addManager(ctx, req));
     this.registerFunction('RemoveManager', (ctx, req) => this.removeManager(ctx, req));
+    this.registerFunction('UpdateManager', (ctx, req) => this.updateManager(ctx, req));
     this.registerFunction('RestartAll', (ctx, req) => this.restartAll(ctx, req));
     this.registerFunction('Deploy', (ctx, req) => this.deploy(ctx, req));
     this.registerFunction('ReceiveBegin', jsonHandler((r) => receiver.begin(r)));
@@ -681,6 +835,8 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
     this.registerFunction('ReceiveCommit', jsonHandler((r) => receiver.commit(r)));
     this.registerFunction('DeployStatus', jsonHandler((r) => receiver.status(r)));
     this.registerFunction('ReceiveAbort', jsonHandler((r) => receiver.abort(r)));
+    this.registerFunction('Ping', jsonHandler(() => localPing()));
+    this.registerFunction('DeleteInstance', jsonHandler((r) => this.deleteInstance(r)));
     this.registerFunction('ListLogs', jsonHandler((r) => routeLogs('ListLogs', r, localListLogs)));
     this.registerFunction('ReadLog', jsonHandler((r) => routeLogs('ReadLog', r, () => readLogFiles(LOG_DIR, r))));
     // Raw export: the whole files (capped from their end), .bak merged or not.
@@ -712,11 +868,32 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
       // compatibility: a still-cached pre-multi-server page bundle reads `managers`,
       // the current one reads `instances` — returning both avoids an empty list
       // until the service worker serves the new bundle.
+      await annotateInstances(instances);
       const localInst = instances.find(isLocal) ?? instances.find((i) => i.system === OWN_SYSTEM) ?? instances[0];
       return reply({ ok: true, instances, managers: localInst?.managers ?? [] });
     } catch (e) {
       return reply({ ok: false, error: e.message, instances: [], managers: [] });
     }
+  }
+
+  /**
+   * Delete the node DP of an instance whose agent no longer answers (issue 39). The target is
+   * matched by its node DP only — never "all", never a hostname guess.
+   */
+  async deleteInstance(req) {
+    const target = typeof req.node === 'string' ? req.node.trim() : '';
+    if (!target || target === 'all') return { ok: false, code: 'unknown', error: 'node (instance DP) required' };
+    const node = (await discoverNodes()).find((n) => n.dp === target || (bareDp(n.dp) === bareDp(target) && sysPrefix(n.dp) === sysPrefix(target)));
+    if (!node) return { ok: false, code: 'unknown', error: `unknown instance: ${target}` };
+    const res = await deleteInstance(node, {
+      isLocal,
+      ping: (n) => pingNode(n, pingOptions()),
+      readUpdated: async (n) => asStr((await winccoa.dpGet([`${n.dp}.updated`]))[0]),
+      dpDelete: (dp) => winccoa.dpDelete(dp)
+    });
+    recentPings.delete(node.dp);
+    log(res.ok ? `Instance supprimée : ${node.dp} (vue la dernière fois ${res.lastSeen || '?'})` : `Suppression de ${node.dp} refusée : ${res.error}`);
+    return res;
   }
 
   async controlManager(ctx, request) {
@@ -736,12 +913,29 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
     return reply(await this.routeCommand(node ?? systemName ?? '', { action: 'add', index: at, manager }));
   }
 
-  /** Remove a (stopped) manager from a target node's pmon configuration. */
+  /** Remove a manager from a target node's pmon configuration (stopFirst: stop it, then DEL). */
   async removeManager(ctx, request) {
     ctx.cancelSignal.throwIfAborted();
-    const { node, systemName, index } = parseReq(request);
+    const { node, systemName, index, name, stopFirst } = parseReq(request);
     if (!Number.isInteger(index) || index < 1) throw vrpcError('InvalidArgument', 'index (pmon, ≥ 1) requis — 0 est pmon');
-    return reply(await this.routeCommand(node ?? systemName ?? '', { action: 'remove', index }));
+    const cmd = { action: 'remove', index, ...(typeof name === 'string' && name ? { name } : {}), ...(stopFirst === true ? { stopFirst: true } : {}) };
+    return reply(await this.routeCommand(node ?? systemName ?? '', cmd));
+  }
+
+  /** Change the configuration of one entry of a target node's pmon (issue 40). */
+  async updateManager(ctx, request) {
+    ctx.cancelSignal.throwIfAborted();
+    const { node, systemName, index, name, manager, restart } = parseReq(request);
+    if (!Number.isInteger(index) || index < 1) return reply({ ok: false, action: 'update', index, error: 'index (pmon, ≥ 1) requis — pmon lui-même ne se modifie pas' });
+    let config;
+    try {
+      config = normalizeManagerConfig(manager, { strict: true });
+    } catch (e) {
+      // A refusal, not a bridge failure: answered OK with ok:false (the page shows the reason).
+      return reply({ ok: false, action: 'update', index, error: e.message });
+    }
+    const cmd = { action: 'update', index, manager: config, ...(typeof name === 'string' && name ? { name } : {}), ...(restart === true ? { restart: true } : {}) };
+    return reply(await this.routeCommand(node ?? systemName ?? '', cmd));
   }
 
   async restartAll(ctx, request) {
@@ -754,7 +948,7 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
   async localPmon(cmd, system) {
     try {
       const r = await execPmonCmd(cmd);
-      return { ok: true, ...cmd, system: system || OWN_SYSTEM, warning: r?.warning || '' };
+      return { ok: true, ...cmd, system: system || OWN_SYSTEM, warning: r?.warning || '', ...(r?.detail ? { detail: r.detail } : {}) };
     } catch (e) {
       return { ok: false, error: e.message, ...cmd, system: system || OWN_SYSTEM };
     }
@@ -776,8 +970,10 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
     if (isLocal(node)) return this.localPmon(cmd, node.system);
     const reqId = crypto.randomUUID();
     await winccoa.dpSetWait(`${node.dp}.cmd`, JSON.stringify({ reqId, ...cmd }));
-    const res = await pollResult(`${node.dp}.cmdResult`, reqId, 12000);
-    return { ok: res.ok === true, error: res.error || '', warning: res.warning || '', ...cmd, system: node.system };
+    // Stop-then-delete waits for the stop (10 s) and an update may restart the manager.
+    const timeoutMs = cmd.stopFirst === true || cmd.restart === true ? 30000 : 12000;
+    const res = await pollResult(`${node.dp}.cmdResult`, reqId, timeoutMs);
+    return { ok: res.ok === true, error: res.error || '', warning: res.warning || '', ...(res.detail ? { detail: res.detail } : {}), ...cmd, system: node.system };
   }
 
   async deploy(ctx, request) {

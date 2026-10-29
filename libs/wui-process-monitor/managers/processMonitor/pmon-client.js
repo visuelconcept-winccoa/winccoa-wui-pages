@@ -5,8 +5,15 @@
  * Pmon TCP client (ported from the WinCC OA MCP server's PmonClient) — talks to
  * the local Process Monitor over TCP (default localhost:4999) to list managers,
  * start / stop / restart them, add / remove entries in the pmon configuration
- * (SINGLE_MGR:INS / SINGLE_MGR:DEL, persisted to config/progs by pmon), plus
- * restart the whole project.
+ * (SINGLE_MGR:INS / SINGLE_MGR:DEL, persisted to config/progs by pmon), change the
+ * configuration of an entry (SINGLE_MGR:PROP_PUT, issue 40), stop-then-delete a running
+ * manager, plus restart the whole project.
+ *
+ * SINGLE_MGR:PROP_PUT <index> <startMode> <secKill> <restartCount> <resetMin> <options> is
+ * sent in the argument order of SINGLE_MGR:INS without the name. That syntax is NOT verified
+ * against a real pmon: the change is accepted only when MGRLIST:LIST, re-read afterwards,
+ * carries the new values at that index (`checkUpdated`), so an ignored or misread command
+ * fails instead of reading as a success.
  */
 'use strict';
 const net = require('node:net');
@@ -155,6 +162,70 @@ class PmonClient {
     if (failure) throw new Error(`${failure}${text ? ` (pmon : ${text.slice(0, 120)})` : ''}`);
     return text;
   }
+  /**
+   * Change the configuration of entry `index` (≥ 1): start mode, secKill, restart count, reset
+   * minutes, options — the executable stays (another name is another manager). `expectName`,
+   * when given, must still be the name at that index (the list may have moved since the page
+   * read it). Resolves `{ text, before, after }` (the entry before and after, as listManagers
+   * gives it); rejects when pmon refuses or when the re-read list does not carry the values.
+   */
+  async updateManager({ index, startMode, secKill, restartCount, resetMin, options = '', expectName }) {
+    const before = await this.listManagers();
+    const current = before[index];
+    if (!Number.isInteger(index) || index < 1 || !current) throw new Error(`entrée pmon ${index} introuvable`);
+    if (expectName && current.name !== expectName) {
+      throw new Error(`l'entrée ${index} est ${current.name}, pas ${expectName} : la liste a changé, rechargez-la`);
+    }
+    const wanted = { startModeCfg: startMode, secKill, restartCount, resetMin, options };
+    const text = interpretConfig(
+      await this.sendControl(`SINGLE_MGR:PROP_PUT ${index} ${startMode} ${secKill} ${restartCount} ${resetMin} ${options}`.trimEnd())
+    );
+    const after = await this.listManagers();
+    const failure = checkUpdated(before, after, index, wanted);
+    if (failure) throw new Error(`${failure}${text ? ` (pmon : ${text.slice(0, 120)})` : ''}`);
+    return { text, before: current, after: after[index] };
+  }
+
+  /**
+   * Stop a running manager, wait for pmon to report it stopped, then delete its entry — one
+   * operation (issue 40). pmon refuses to delete a running manager, and may start an "always"
+   * manager again between the stop and the delete: that is reported, never retried in a loop.
+   * A manager already stopped is simply deleted. Resolves `{ text, stopped }`.
+   */
+  async stopThenRemove(index, { expectName, waitMs = 10000, pollMs = 500 } = {}) {
+    const list = await this.listManagers();
+    const m = list[index];
+    if (!Number.isInteger(index) || index < 1 || !m) throw new Error(`entrée pmon ${index} introuvable`);
+    if (expectName && m.name !== expectName) {
+      throw new Error(`l'entrée ${index} est ${m.name}, pas ${expectName} : la liste a changé, rechargez-la`);
+    }
+    let stopped = false;
+    if (m.state !== 0) {
+      await this.stopManager(index);
+      const deadline = Date.now() + waitMs;
+      for (;;) {
+        const now = (await this.listManagers())[index];
+        if (!now || now.name !== m.name) throw new Error(`l'entrée ${index} a changé pendant l'arrêt de ${m.name}`);
+        if (now.state === 0) break;
+        if (Date.now() >= deadline) throw new Error(`${m.name} (#${index}) ne s'est pas arrêté en ${Math.round(waitMs / 1000)} s : non supprimé`);
+        await delay(pollMs);
+      }
+      stopped = true;
+    }
+    try {
+      return { text: await this.removeManager(index), stopped };
+    } catch (e) {
+      const again = (await this.listManagers().catch(() => []))[index];
+      if (stopped && again && again.name === m.name && again.state !== 0) {
+        throw new Error(
+          `pmon a redémarré ${m.name} (#${index}, mode ${again.startModeCfg || m.startModeCfg || '?'}) entre l'arrêt et la suppression : non supprimé. ` +
+            'Passez-le en mode manual (Modifier), arrêtez-le, puis supprimez-le.'
+        );
+      }
+      throw e;
+    }
+  }
+
   /** Remove a (stopped) manager from the pmon configuration (index ≥ 1). */
   async removeManager(index) {
     const before = await this.listManagers();
@@ -220,6 +291,26 @@ function checkRemoved(before, after, index) {
 }
 
 /**
+ * Check a `SINGLE_MGR:PROP_PUT` the same way: same list length, same manager at `index`, and
+ * that entry carries every wanted value (start mode, secKill, restart count, reset minutes,
+ * options). Returns the failure text, or ''.
+ */
+function checkUpdated(before, after, index, wanted) {
+  const was = before[index];
+  const at = after[index];
+  if (!was || !at || after.length !== before.length || at.name !== was.name) {
+    return `pmon n'a pas conservé l'entrée ${index}${was ? ` (${was.name})` : ''} (liste : ${before.length} → ${after.length} entrées)`;
+  }
+  const wrong = [];
+  if (String(at.startModeCfg) !== String(wanted.startModeCfg)) wrong.push(`mode ${at.startModeCfg} ≠ ${wanted.startModeCfg}`);
+  for (const key of ['secKill', 'restartCount', 'resetMin']) {
+    if (Number(at[key]) !== Number(wanted[key])) wrong.push(`${key} ${at[key]} ≠ ${wanted[key]}`);
+  }
+  if (!sameOptions(at.options, wanted.options)) wrong.push(`options « ${at.options} » ≠ « ${wanted.options} »`);
+  return wrong.length > 0 ? `pmon n'a pas appliqué la modification de ${was.name} (#${index}) : ${wrong.join(', ')}` : '';
+}
+
+/**
  * Manager lines of a `config/progs` file (`manager | start | secKill | restart# | resetMin | options`),
  * pmon itself first — the same order and index space as `MGRLIST:LIST`. Comments (`#`), the
  * header and the `auth` / `version` lines are skipped.
@@ -236,9 +327,23 @@ function parseProgs(text) {
   return out;
 }
 
-/** True when `config/progs` holds exactly the pmon list: same names and options, same order. */
-function progsMatches(progs, list) {
-  return progs.length === list.length && list.every((m, i) => progs[i].name === m.name && sameOptions(progs[i].options, m.options));
+/**
+ * True when `config/progs` holds exactly the pmon list: same names and options, same order.
+ * `strict` also compares the start mode and the restart settings (after a PROP_PUT).
+ */
+function progsMatches(progs, list, { strict = false } = {}) {
+  if (progs.length !== list.length) return false;
+  return list.every((m, i) => {
+    const p = progs[i];
+    if (p.name !== m.name || !sameOptions(p.options, m.options)) return false;
+    if (!strict) return true;
+    return (
+      startModeWord(p.startMode) === String(m.startModeCfg) &&
+      Number(p.secKill) === Number(m.secKill) &&
+      Number(p.restartCount) === Number(m.restartCount) &&
+      Number(p.resetMin) === Number(m.resetMin)
+    );
+  });
 }
 
 /** pmon state codes → label. */
@@ -368,4 +473,4 @@ function mergeManagers(list, stat) {
   });
 }
 
-module.exports = { PmonClient, checkInserted, checkRemoved, mergeManagers, parseList, parsePmonTime, parseProgs, parseStati, progsMatches };
+module.exports = { PmonClient, checkInserted, checkRemoved, checkUpdated, mergeManagers, parseList, parsePmonTime, parseProgs, parseStati, progsMatches };

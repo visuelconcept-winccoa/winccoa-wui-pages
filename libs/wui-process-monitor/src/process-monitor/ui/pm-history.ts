@@ -64,6 +64,8 @@ function actionLabel(action: HistoryEntry['action']): MultiLangString {
   if (action === 'deploy') return MSG.history.actionDeploy;
   if (action === 'restart-all') return MSG.history.actionRestartAll;
   if (action === 'logs-export') return MSG.history.actionLogsExport;
+  if (action === 'delete-instance') return MSG.history.actionDeleteInstance;
+  if (action === 'manager-config') return MSG.history.actionManagerConfig;
   return MSG.history.actionManager;
 }
 

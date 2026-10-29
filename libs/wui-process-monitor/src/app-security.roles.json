@@ -38,6 +38,15 @@
         "fr.utf8": "Lire et exporter les fichiers journaux WinCC OA de chaque hôte — ils peuvent contenir des noms d'utilisateurs et des adresses (contrôlé côté serveur).",
         "de.utf8": "WinCC OA-Logdateien jedes Hosts lesen und exportieren — sie können Benutzernamen und Adressen enthalten (serverseitig erzwungen)."
       }
+    },
+    {
+      "id": "manage-instances",
+      "label": { "en_US.utf8": "Manage host instances", "fr.utf8": "Gérer les instances d'hôtes", "de.utf8": "Host-Instanzen verwalten" },
+      "description": {
+        "en_US.utf8": "Delete the instance of a host whose processMonitor agent no longer answers — its datapoint and history (enforced server-side).",
+        "fr.utf8": "Supprimer l'instance d'un hôte dont l'agent processMonitor ne répond plus — son point de données et son historique (contrôlé côté serveur).",
+        "de.utf8": "Die Instanz eines Hosts löschen, dessen processMonitor-Agent nicht mehr antwortet — Datenpunkt und Verlauf (serverseitig erzwungen)."
+      }
     }
   ]
 }
