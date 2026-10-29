@@ -474,7 +474,8 @@ export const DEFAULT_BUILDING: BuildingConfig = {
   bays: 4,
   roofType: 'shed',
   colStep: 20,
-  floorType: 'concrete',
+  // Light by default: the dark industrial concrete made machines and bubbles hard to read.
+  floorType: 'concrete-white',
   navCorner: 'bottom-right'
 };
 

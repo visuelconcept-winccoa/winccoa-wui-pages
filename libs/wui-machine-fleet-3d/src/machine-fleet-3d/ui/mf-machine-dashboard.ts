@@ -848,8 +848,13 @@ export class MfMachineDashboard extends LitElement {
     return all.filter((s) => present.has(s));
   }
 
+  /**
+   * Downtime of a cause: the time it was the active cause of a stop (assigned time), so a stop
+   * shared by several causes is split between them and counted once; a single cause takes the
+   * whole stop (it is back-filled to the stop's start).
+   */
   private metricVal(r: CauseRow): number {
-    return this.paretoMetric === 'downtime' ? r.downtimeMs : r.occurrences;
+    return this.paretoMetric === 'downtime' ? r.assignedMs : r.occurrences;
   }
 
   /** List of the stops of the period, by cause (SL-TDB-04). */
@@ -983,10 +988,7 @@ export class MfMachineDashboard extends LitElement {
     return html`${head}${this.renderParetoChart(rows)}`;
   }
 
-  /**
-   * Pareto chart (SVG): descending bars and axes. No cumulative-% curve: a stop with several causes
-   * gives each of them its whole duration, so a running total of the bars means nothing.
-   */
+  /** Pareto chart (SVG): descending bars and axes, without a cumulative-% curve. */
   private renderParetoChart(rows: CauseRow[]): TemplateResult {
     const W = 760;
     const H = 300;
@@ -1052,8 +1054,8 @@ export class MfMachineDashboard extends LitElement {
       rows.push([
         r.label,
         r.classification ?? '',
-        String(Math.round(r.downtimeMs / 1000)),
-        formatDuration(r.downtimeMs),
+        String(Math.round(r.assignedMs / 1000)),
+        formatDuration(r.assignedMs),
         String(r.occurrences),
         ((cum / totalAll) * 100).toFixed(1)
       ]);
@@ -1261,7 +1263,7 @@ export class MfMachineDashboard extends LitElement {
   /** Pareto rows for the current class, sorted by the current metric. */
   private paretoRows(): CauseRow[] {
     const inClass = this.pareto.filter((r) => r.classification === this.paretoClass);
-    return sortRows(inClass, this.paretoMetric === 'downtime' ? 'downtime' : 'occurrences');
+    return sortRows(inClass, this.paretoMetric === 'downtime' ? 'assigned' : 'occurrences');
   }
 
   private readonly close = (): void => {
