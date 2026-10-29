@@ -76,12 +76,13 @@ export function restartAll(node: string): Promise<{ ok: boolean }> {
 }
 
 /** Add a manager to the target node's pmon configuration (appended when `spec.index` is omitted). */
-export function addManager(node: string, spec: ManagerSpec): Promise<{ ok: boolean }> {
+/** `warning`: applied by pmon but not written to config/progs (lost at the next project restart). */
+export function addManager(node: string, spec: ManagerSpec): Promise<{ ok: boolean; warning?: string }> {
   return postJson(`${BASE}/manager/add`, { node, ...spec });
 }
 
 /** Remove a STOPPED manager from the target node's pmon configuration (index ≥ 1). */
-export function removeManager(node: string, index: number): Promise<{ ok: boolean }> {
+export function removeManager(node: string, index: number): Promise<{ ok: boolean; warning?: string }> {
   return postJson(`${BASE}/manager/remove`, { node, index });
 }
 

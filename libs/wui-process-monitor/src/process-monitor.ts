@@ -61,6 +61,8 @@ export class WuiProcessMonitor extends LitElement {
   /** Last backend failure (null = none), kept as a message + detail so it follows the UI language. */
   @state() private errorMsg: MultiLangString | null = null;
   @state() private errorDetail = '';
+  /** Add / remove applied by pmon but not written to config/progs (issue 35): kept until closed. */
+  @state() private warningDetail = '';
   /** True when that failure is the vRPC bridge (502/503) → the manager needs a restart. */
   @state() private bridgeDown = false;
   @state() private canEdit = canEditFleet();
@@ -125,7 +127,7 @@ export class WuiProcessMonitor extends LitElement {
             ${this.tabBtn('history', MSG.tabs.history)}
           </div>
 
-          ${this.renderError()}
+          ${this.renderError()}${this.renderWarning()}
           ${this.tab === 'console' ? this.renderConsole() : nothing}
           ${this.tab === 'upload'
             ? html`<pm-upload
@@ -154,6 +156,13 @@ export class WuiProcessMonitor extends LitElement {
     return html`<ix-message-bar class="error-bar" type="alarm" persistent>
       ${localizeDir(this.errorMsg)}${this.errorDetail ? ` — ${this.errorDetail}` : ''}
       ${this.bridgeDown ? html`<div class="error-hint">${localizeDir(MSG.errors.bridge)}</div>` : nothing}
+    </ix-message-bar>`;
+  }
+
+  private renderWarning(): TemplateResult | typeof nothing {
+    if (!this.warningDetail) return nothing;
+    return html`<ix-message-bar class="error-bar" type="warning" persistent @closedChange=${() => (this.warningDetail = '')}>
+      ${localizeDir(MSG.errors.notPersisted)} — ${this.warningDetail}
     </ix-message-bar>`;
   }
 
@@ -306,6 +315,7 @@ export class WuiProcessMonitor extends LitElement {
 
   private async onAddManager(spec: ManagerSpec): Promise<void> {
     this.addDialogOpen = false;
+    this.warningDetail = '';
     const target = this.active;
     const label = nodeLabel(target);
     let ok = false;
@@ -313,11 +323,13 @@ export class WuiProcessMonitor extends LitElement {
       const res = await addManager(target?.dp ?? '', spec);
       ok = res.ok !== false;
       this.clearError();
+      this.warningDetail = res.warning ?? '';
     } catch (error) {
       this.reportError(MSG.errors.action, error);
     }
     const parts = [spec.startMode, spec.options, spec.index === undefined ? '' : `#${spec.index}`].filter(Boolean);
-    const detail = `${spec.name} — add (${parts.join(', ')})`;
+    const unsaved = ok && this.warningDetail ? ' — config/progs not updated' : '';
+    const detail = `${spec.name} — add (${parts.join(', ')})${unsaved}`;
     await traceOperation(
       {
         time: new Date().toISOString(),
@@ -337,6 +349,7 @@ export class WuiProcessMonitor extends LitElement {
     const d = this.removePending;
     this.removePending = null;
     if (!d) return;
+    this.warningDetail = '';
     const target = this.active;
     const label = nodeLabel(target);
     let ok = false;
@@ -344,6 +357,7 @@ export class WuiProcessMonitor extends LitElement {
       const res = await removeManager(target?.dp ?? '', d.index);
       ok = res.ok !== false;
       this.clearError();
+      this.warningDetail = res.warning ?? '';
     } catch (error) {
       this.reportError(MSG.errors.action, error);
     }
@@ -351,7 +365,7 @@ export class WuiProcessMonitor extends LitElement {
       {
         time: new Date().toISOString(),
         action: 'manager',
-        detail: `${d.name} — remove (#${d.index})`,
+        detail: `${d.name} — remove (#${d.index})${ok && this.warningDetail ? ' — config/progs not updated' : ''}`,
         status: ok ? 'success' : 'failed',
         host: hostName(),
         system: label

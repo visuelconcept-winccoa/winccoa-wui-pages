@@ -53,7 +53,7 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { execFile } = require('node:child_process');
-const { PmonClient } = require('./pmon-client.js');
+const { PmonClient, parseProgs, progsMatches } = require('./pmon-client.js');
 
 const winccoa = new WinccoaManager();
 
@@ -359,9 +359,36 @@ function normalizeManagerSpec(spec) {
   };
 }
 
+/** pmon writes `config/progs` after acknowledging an INS / DEL: wait for it, a few times. */
+const PROGS_CHECK_DELAYS_MS = [300, 700, 1500];
+
+/**
+ * After an INS / DEL that pmon applied (checked by pmon-client against MGRLIST:LIST): is the
+ * change written to `<project>/config/progs`, i.e. kept at the next project restart? Returns a
+ * warning text when it is not (or when the file cannot be read), '' otherwise (issue 35).
+ */
+async function progsWarning() {
+  const file = path.join(PROJ_PATH, 'config', 'progs');
+  let list = [];
+  let progs = [];
+  for (const wait of PROGS_CHECK_DELAYS_MS) {
+    await new Promise((r) => setTimeout(r, wait));
+    try {
+      list = await pmonClient.listManagers();
+      progs = parseProgs(await fsp.readFile(file, 'utf8'));
+    } catch (e) {
+      return `config/progs illisible (${e.message}) : l'enregistrement du changement n'a pas pu être vérifié.`;
+    }
+    if (progsMatches(progs, list)) return '';
+  }
+  log(`config/progs (${progs.length} entrées) ne reflète pas pmon (${list.length} entrées) après INS/DEL`);
+  return "Appliqué dans pmon, mais pas écrit dans config/progs : le changement sera perdu au prochain redémarrage du projet.";
+}
+
 /**
  * Execute one control / config action against the LOCAL pmon (shared by the
- * agent's `.cmd` handler and the aggregator's own-node shortcut).
+ * agent's `.cmd` handler and the aggregator's own-node shortcut). Resolves with
+ * `{ warning }` for an INS / DEL not persisted to config/progs.
  */
 async function execPmonCmd(cmd) {
   if (cmd.action === 'start') return pmonClient.startManager(cmd.index);
@@ -374,11 +401,13 @@ async function execPmonCmd(cmd) {
     // list — always a legal INS slot (index 0 is pmon itself).
     const list = await pmonClient.listManagers();
     const index = Number.isInteger(cmd.index) && cmd.index >= 1 && cmd.index <= list.length ? cmd.index : list.length;
-    return pmonClient.addManager({ index, ...spec });
+    await pmonClient.addManager({ index, ...spec });
+    return { warning: await progsWarning() };
   }
   if (cmd.action === 'remove') {
     if (!Number.isInteger(cmd.index) || cmd.index < 1) throw new Error('index invalide (≥ 1 requis — 0 est pmon)');
-    return pmonClient.removeManager(cmd.index);
+    await pmonClient.removeManager(cmd.index);
+    return { warning: await progsWarning() };
   }
   throw new Error(`action invalide: ${cmd.action}`);
 }
@@ -392,13 +421,14 @@ async function onCmd(cmd) {
   lastCmdId = cmd.reqId;
   let ok = false;
   let error = '';
+  let warning = '';
   try {
-    await execPmonCmd(cmd);
+    warning = (await execPmonCmd(cmd))?.warning || '';
     ok = true;
   } catch (e) {
     error = e.message;
   }
-  await winccoa.dpSet(`${NODE_DP}.cmdResult`, JSON.stringify({ reqId: cmd.reqId, ok, error, ts: new Date().toISOString() }));
+  await winccoa.dpSet(`${NODE_DP}.cmdResult`, JSON.stringify({ reqId: cmd.reqId, ok, error, warning, ts: new Date().toISOString() }));
   await publishOnce();
 }
 
@@ -582,8 +612,8 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
   /** Execute a control command on the LOCAL pmon (this computer). */
   async localPmon(cmd, system) {
     try {
-      await execPmonCmd(cmd);
-      return { ok: true, ...cmd, system: system || OWN_SYSTEM };
+      const r = await execPmonCmd(cmd);
+      return { ok: true, ...cmd, system: system || OWN_SYSTEM, warning: r?.warning || '' };
     } catch (e) {
       return { ok: false, error: e.message, ...cmd, system: system || OWN_SYSTEM };
     }
@@ -606,7 +636,7 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
     const reqId = crypto.randomUUID();
     await winccoa.dpSetWait(`${node.dp}.cmd`, JSON.stringify({ reqId, ...cmd }));
     const res = await pollResult(`${node.dp}.cmdResult`, reqId, 12000);
-    return { ok: res.ok === true, error: res.error || '', ...cmd, system: node.system };
+    return { ok: res.ok === true, error: res.error || '', warning: res.warning || '', ...cmd, system: node.system };
   }
 
   async deploy(ctx, request) {

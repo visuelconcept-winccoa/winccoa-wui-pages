@@ -146,6 +146,12 @@ export const MSG = {
       'Die Managerliste kann nicht gelesen werden'
     ),
     action: ml('The action failed', 'L’action a échoué', 'Die Aktion ist fehlgeschlagen'),
+    /** Add / remove applied by pmon, not found in config/progs afterwards (issue 35). */
+    notPersisted: ml(
+      'pmon configuration not saved',
+      'Configuration pmon non enregistrée',
+      'pmon-Konfiguration nicht gespeichert'
+    ),
     /** Shown for a 502/503: the fault is on the manager side, and only a restart fixes it. */
     bridge: ml(
       'The "processMonitor" manager is not answering. Restart it in pmon: after a backend deployment a manager left running keeps executing its previous code, even though pmon shows it alive.',

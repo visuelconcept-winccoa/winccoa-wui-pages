@@ -152,13 +152,23 @@ class PmonClient {
    * `index === list length` appends). pmon persists the change to config/progs.
    */
   async addManager({ index, name, startMode = 'always', secKill = 30, restartCount = 3, resetMin = 1, options = '' }) {
-    return interpretConfig(
+    const before = await this.listManagers();
+    const text = interpretConfig(
       await this.sendControl(`SINGLE_MGR:INS ${index} ${name} ${startMode} ${secKill} ${restartCount} ${resetMin} ${options}`.trimEnd())
     );
+    // pmon often acknowledges with NOTHING: an ignored insert would read as a success.
+    // The list is re-read and must hold the new entry at its index (issue 35).
+    const failure = checkInserted(before, await this.listManagers(), { index, name, options });
+    if (failure) throw new Error(`${failure}${text ? ` (pmon : ${text.slice(0, 120)})` : ''}`);
+    return text;
   }
   /** Remove a (stopped) manager from the pmon configuration (index ≥ 1). */
   async removeManager(index) {
-    return interpretConfig(await this.sendControl(`SINGLE_MGR:DEL ${index}`));
+    const before = await this.listManagers();
+    const text = interpretConfig(await this.sendControl(`SINGLE_MGR:DEL ${index}`));
+    const failure = checkRemoved(before, await this.listManagers(), index);
+    if (failure) throw new Error(`${failure}${text ? ` (pmon : ${text.slice(0, 120)})` : ''}`);
+    return text;
   }
 }
 
@@ -187,6 +197,55 @@ function interpretConfig(raw) {
     throw new Error(text.slice(0, 200));
   }
   return text;
+}
+
+const sameOptions = (a, b) => String(a || '').replace(/\s+/g, ' ').trim() === String(b || '').replace(/\s+/g, ' ').trim();
+
+/**
+ * Check a `SINGLE_MGR:INS` against the pmon list read before and after it: one entry more,
+ * the new one at `index` with the same name and options. Returns the failure text, or ''.
+ */
+function checkInserted(before, after, { index, name, options }) {
+  const at = after[index];
+  if (after.length !== before.length + 1 || !at || at.name !== name || !sameOptions(at.options, options)) {
+    return `pmon n'a pas ajouté ${name} en position ${index} (liste : ${before.length} → ${after.length} entrées)`;
+  }
+  return '';
+}
+
+/**
+ * Check a `SINGLE_MGR:DEL` the same way: one entry less, and the removed entry no longer at
+ * its index. Returns the failure text, or ''.
+ */
+function checkRemoved(before, after, index) {
+  const gone = before[index];
+  const stillThere = gone && after[index] && after[index].name === gone.name && sameOptions(after[index].options, gone.options) && after.length === before.length;
+  if (after.length !== before.length - 1 || stillThere) {
+    return `pmon n'a pas supprimé l'entrée ${index}${gone ? ` (${gone.name})` : ''} (liste : ${before.length} → ${after.length} entrées)`;
+  }
+  return '';
+}
+
+/**
+ * Manager lines of a `config/progs` file (`manager | start | secKill | restart# | resetMin | options`),
+ * pmon itself first — the same order and index space as `MGRLIST:LIST`. Comments (`#`), the
+ * header and the `auth` / `version` lines are skipped.
+ */
+function parseProgs(text) {
+  const out = [];
+  for (const raw of String(text || '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#') || !line.includes('|')) continue;
+    const p = line.split('|').map((c) => c.trim());
+    if (p.length < 6 || !p[0]) continue;
+    out.push({ name: p[0], startMode: p[1], secKill: p[2], restartCount: p[3], resetMin: p[4], options: p.slice(5).join('|') });
+  }
+  return out;
+}
+
+/** True when `config/progs` holds exactly the pmon list: same names and options, same order. */
+function progsMatches(progs, list) {
+  return progs.length === list.length && list.every((m, i) => progs[i].name === m.name && sameOptions(progs[i].options, m.options));
 }
 
 /** pmon state codes → label. */
@@ -235,4 +294,4 @@ function parseStati(response) {
   return out;
 }
 
-module.exports = { PmonClient };
+module.exports = { PmonClient, checkInserted, checkRemoved, parseProgs, progsMatches };
