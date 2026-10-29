@@ -32,7 +32,16 @@ import appSecurityRoles from './app-security.roles.json';
 import { canEditFleet, canEditFleet$ } from '@visuelconcept-winccoa/wui-kit/data/permissions.js';
 import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
-import { MSG, confirmControlMsg, confirmRemoveMsg, localize, localizeDir, serverLabel } from './process-monitor/i18n.js';
+import {
+  MSG,
+  confirmControlMsg,
+  confirmDialogLabels,
+  confirmRemoveMsg,
+  localize,
+  localizeDir,
+  serverLabel,
+  type ConfirmIntent
+} from './process-monitor/i18n.js';
 import { addManager, controlManager, isBridgeError, listInstances, removeManager, restartAll } from './process-monitor/data/api.js';
 import { ensureStores, loadHistory, traceOperation } from './process-monitor/data/stores.js';
 import type { DeployResult, HistoryEntry, Instance, ManagerSpec } from './process-monitor/types.js';
@@ -199,21 +208,27 @@ export class WuiProcessMonitor extends LitElement {
     </div>`;
   }
 
+  /**
+   * Every confirmation passes its own heading and button (issue 34): without them,
+   * `<wui-confirm-dialog>` reads "Confirm deletion" / "Delete" — even for a stop.
+   */
   private renderDialogs(): TemplateResult {
     return html`
       ${this.restartAllPending
-        ? html`<wui-confirm-dialog
-            message=${localize(MSG.console.confirmRestartAll)}
-            @wui:confirm=${() => void this.onRestartAll()}
-            @wui:cancel=${() => (this.restartAllPending = false)}
-          ></wui-confirm-dialog>`
+        ? this.confirmDialog(
+            'restart-all',
+            localize(MSG.console.confirmRestartAll),
+            () => void this.onRestartAll(),
+            () => (this.restartAllPending = false)
+          )
         : nothing}
       ${this.controlPending
-        ? html`<wui-confirm-dialog
-            message=${confirmControlMsg(this.controlPending.action, this.controlPending.name)}
-            @wui:confirm=${() => void this.onControlConfirm()}
-            @wui:cancel=${() => (this.controlPending = null)}
-          ></wui-confirm-dialog>`
+        ? this.confirmDialog(
+            this.controlPending.action,
+            confirmControlMsg(this.controlPending.action, this.controlPending.name),
+            () => void this.onControlConfirm(),
+            () => (this.controlPending = null)
+          )
         : nothing}
       ${this.addDialogOpen
         ? html`<pm-manager-dialog
@@ -222,13 +237,25 @@ export class WuiProcessMonitor extends LitElement {
           ></pm-manager-dialog>`
         : nothing}
       ${this.removePending
-        ? html`<wui-confirm-dialog
-            message=${confirmRemoveMsg(this.removePending.name, this.removePending.index)}
-            @wui:confirm=${() => void this.onRemoveConfirm()}
-            @wui:cancel=${() => (this.removePending = null)}
-          ></wui-confirm-dialog>`
+        ? this.confirmDialog(
+            'remove',
+            confirmRemoveMsg(this.removePending.name, this.removePending.index),
+            () => void this.onRemoveConfirm(),
+            () => (this.removePending = null)
+          )
         : nothing}
     `;
+  }
+
+  private confirmDialog(intent: ConfirmIntent, message: string, onConfirm: () => void, onCancel: () => void): TemplateResult {
+    const { heading, confirmLabel } = confirmDialogLabels(intent);
+    return html`<wui-confirm-dialog
+      .heading=${heading}
+      .confirmLabel=${confirmLabel}
+      message=${message}
+      @wui:confirm=${onConfirm}
+      @wui:cancel=${onCancel}
+    ></wui-confirm-dialog>`;
   }
 
   private tabBtn(tab: Tab, label: typeof MSG.tabs.console): TemplateResult {

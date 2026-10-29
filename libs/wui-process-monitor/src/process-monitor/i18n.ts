@@ -178,6 +178,43 @@ export function confirmRemoveMsg(name: string, index: number): string {
   );
 }
 
+/** What a confirmation dialog of the Console tab confirms (issue 34). */
+export type ConfirmIntent = 'start' | 'stop' | 'restart' | 'restart-all' | 'remove';
+
+/**
+ * Heading and button of each Console confirmation. `<wui-confirm-dialog>` defaults to a
+ * DELETION dialog ("Confirm deletion" / "Delete") when they are not given, so every dialog
+ * of this page passes its own: stopping a manager must never read as deleting it.
+ */
+export const CONFIRM_TEXTS: Record<ConfirmIntent, { heading: MultiLangString; confirm: MultiLangString }> = {
+  start: {
+    heading: ml('Start the manager', 'Démarrer le manager', 'Manager starten'),
+    confirm: ml('Start', 'Démarrer', 'Starten')
+  },
+  stop: {
+    heading: ml('Stop the manager', 'Arrêter le manager', 'Manager stoppen'),
+    confirm: ml('Stop', 'Arrêter', 'Stoppen')
+  },
+  restart: {
+    heading: ml('Restart the manager', 'Redémarrer le manager', 'Manager neu starten'),
+    confirm: ml('Restart', 'Redémarrer', 'Neu starten')
+  },
+  'restart-all': {
+    heading: ml('Restart all managers', 'Redémarrer tous les managers', 'Alle Manager neu starten'),
+    confirm: ml('Restart all', 'Tout redémarrer', 'Alle neu starten')
+  },
+  remove: {
+    heading: ml('Remove from the configuration', 'Supprimer de la configuration', 'Aus der Konfiguration entfernen'),
+    confirm: ml('Remove', 'Supprimer', 'Entfernen')
+  }
+};
+
+/** `heading` / `confirmLabel` of `<wui-confirm-dialog>` for one intent, in the active language. */
+export function confirmDialogLabels(intent: ConfirmIntent): { heading: string; confirmLabel: string } {
+  const texts = CONFIRM_TEXTS[intent];
+  return { heading: localize(texts.heading), confirmLabel: localize(texts.confirm) };
+}
+
 /** Confirm prompt for a start/stop/restart action on one manager. */
 export function confirmControlMsg(action: 'start' | 'stop' | 'restart', name: string): string {
   if (action === 'start') {
