@@ -3,18 +3,35 @@
 
 /** Domain types for the Process Monitor page. */
 
-/** One pmon-managed manager (from the backend `ListManagers`). */
+/**
+ * One pmon-managed manager (from the backend `ListManagers`): its `config/progs` entry
+ * (`MGRLIST:LIST`) merged with its live status (`MGRLIST:STATI`).
+ */
 export interface ManagerInfo {
   /** pmon index (0-based). */
   index: number;
   name: string;
   options: string;
+  /** Configured start mode (`config/progs`): 'manual' | 'once' | 'always' ('' when unknown). */
+  startModeCfg: string;
+  /** Seconds pmon waits before killing the manager on stop. */
+  secKill: number;
+  /** Restarts allowed within `resetMin` minutes. */
+  restartCount: number;
+  /** Minutes after which the restart counter is reset. */
+  resetMin: number;
   /** Live state code (0 stopped, 1 init, 2 running, 3 blocked). */
   state: number;
   stateLabel: string;
   pid: number;
+  /** Live start mode code (0 manual, 1 once, 2 always). */
   startMode: number;
+  /**
+   * Start time: ISO 8601 when the manager could read pmon's text, pmon's raw text
+   * otherwise, '' when pmon gives none (stopped / never started).
+   */
   startTime: string;
+  /** Manager number (`-num`) the manager runs with. */
   manNum: number;
 }
 

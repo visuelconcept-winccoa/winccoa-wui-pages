@@ -39,6 +39,16 @@ export const MSG = {
     colPid: ml('PID', 'PID', 'PID'),
     colStart: ml('Start', 'Démarrage', 'Start'),
     colOptions: ml('Options', 'Options', 'Optionen'),
+    colManNum: ml('Mgr #', 'N° mgr', 'Mgr-Nr.'),
+    colManNumTitle: ml(
+      'Manager number (-num): finds its log file, tells two instances of one executable apart',
+      'Numéro de manager (-num) : retrouve son fichier log, distingue deux instances d’un même exécutable',
+      'Managernummer (-num): findet seine Logdatei, unterscheidet zwei Instanzen derselben Datei'
+    ),
+    colStarted: ml('Started', 'Démarré', 'Gestartet'),
+    colStartMode: ml('Start mode', 'Mode de démarrage', 'Startmodus'),
+    sortBy: ml('Sort by this column', 'Trier selon cette colonne', 'Nach dieser Spalte sortieren'),
+    dayUnit: ml('d', 'j', 'T'),
     start: ml('Start', 'Démarrer', 'Starten'),
     stop: ml('Stop', 'Arrêter', 'Stoppen'),
     restart: ml('Restart', 'Redémarrer', 'Neu starten'),
@@ -160,6 +170,35 @@ export const MSG = {
     )
   }
 } as const;
+
+/** Format an ISO timestamp as a short date + hour:minute in the active UI language (raw text kept). */
+export function shortDateLabel(iso: string): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString(getLanguage(), { dateStyle: 'short', timeStyle: 'short' });
+}
+
+/** Tooltip of a manager's restart settings (`config/progs`: secKill, restart count, reset minutes). */
+export function restartSettingsTitle(m: { secKill: number; restartCount: number; resetMin: number }): string {
+  return localize(
+    ml(
+      `Kill after ${m.secKill} s · ${m.restartCount} restarts allowed · counter reset after ${m.resetMin} min`,
+      `Arrêt forcé après ${m.secKill} s · ${m.restartCount} redémarrages autorisés · compteur remis à zéro après ${m.resetMin} min`,
+      `Kill nach ${m.secKill} s · ${m.restartCount} Neustarts erlaubt · Zähler-Reset nach ${m.resetMin} min`
+    )
+  );
+}
+
+/** Tooltip of a start mode that pmon runs differently from `config/progs`. */
+export function startModeDiffersTitle(configured: string, live: string): string {
+  return localize(
+    ml(
+      `pmon runs it as "${live}", config/progs says "${configured}"`,
+      `pmon l’exécute en « ${live} », config/progs indique « ${configured} »`,
+      `pmon führt ihn als „${live}" aus, config/progs sagt „${configured}"`
+    )
+  );
+}
 
 /** Display label for a server/instance tab: hostname, else system name, else "local". */
 export function serverLabel(instance: { hostname?: string; system?: string }): string {

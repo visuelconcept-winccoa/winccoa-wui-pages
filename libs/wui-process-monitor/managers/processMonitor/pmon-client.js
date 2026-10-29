@@ -106,26 +106,19 @@ class PmonClient {
     });
   }
 
-  /** Managers with config (name/startMode) merged with live status (state/pid/manNum). */
+  /**
+   * Managers with their configuration (`MGRLIST:LIST`: start mode, secKill, restart count,
+   * reset minutes, options) merged with their live status (`MGRLIST:STATI`: state, pid, live
+   * start mode, start time, manager number). `startTime` is ISO 8601 when pmon's text could
+   * be read (pmon and this manager share the host, so its local time is ours), pmon's raw
+   * text otherwise, and '' when pmon gives none.
+   */
   async listManagers() {
     const [listRaw, statRaw] = await Promise.all([
       this.sendCommand('MGRLIST:LIST'),
       this.sendCommand('MGRLIST:STATI')
     ]);
-    const list = parseList(listRaw);
-    const stat = parseStati(statRaw);
-    return list.map((m, i) => ({
-      index: m.index,
-      name: m.manager,
-      options: m.commandlineOptions,
-      startModeCfg: m.startMode,
-      state: stat[i]?.state ?? 0,
-      stateLabel: STATE_LABELS[stat[i]?.state ?? 0] || 'unknown',
-      pid: stat[i]?.pid ?? -1,
-      startMode: stat[i]?.startMode ?? 0,
-      startTime: stat[i]?.startTime ?? '',
-      manNum: stat[i]?.manNum ?? 0
-    }));
+    return mergeManagers(parseList(listRaw), parseStati(statRaw));
   }
 
   async startManager(index) {
@@ -255,8 +248,29 @@ function delay(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/** Integer of a pmon column, or `def` when the column is empty / not a number. */
+function intOr(text, def) {
+  const n = Number.parseInt(String(text ?? '').trim(), 10);
+  return Number.isInteger(n) ? n : def;
+}
+
+/** pmon start modes: the numeric codes some replies carry → the words of `config/progs`. */
+const START_MODE_WORDS = { 0: 'manual', 1: 'once', 2: 'always' };
+
+/** A start mode column as `manual` / `once` / `always` — pmon may send the code or the word. */
+function startModeWord(text) {
+  const t = String(text ?? '').trim().toLowerCase();
+  if (/^\d+$/.test(t)) return START_MODE_WORDS[Number(t)] || t;
+  return t;
+}
+
+/**
+ * `MGRLIST:LIST` reply → configured entries. One line per manager after the `LIST:<n>`
+ * header: `manager;startMode;secKill;restartCount;resetMin;options` (the options may hold
+ * `;` themselves, so everything after column 5 is joined back).
+ */
 function parseList(response) {
-  const lines = response.trim().split('\n');
+  const lines = String(response || '').trim().split('\n');
   const out = [];
   for (let i = 1; i < lines.length; i++) {
     const line = (lines[i] || '').trim();
@@ -266,7 +280,10 @@ function parseList(response) {
       out.push({
         index: i - 1,
         manager: p[0] || '',
-        startMode: p[1] || '',
+        startMode: startModeWord(p[1]),
+        secKill: intOr(p[2], 0),
+        restartCount: intOr(p[3], 0),
+        resetMin: intOr(p[4], 0),
         commandlineOptions: p.slice(5).join(';')
       });
     }
@@ -274,8 +291,12 @@ function parseList(response) {
   return out;
 }
 
+/**
+ * `MGRLIST:STATI` reply → live status per manager: `state;pid;startMode;startTime;manNum`.
+ * The closing line pmon appends (the project's mode, ending with `;`) is skipped.
+ */
 function parseStati(response) {
-  const lines = response.trim().split('\n');
+  const lines = String(response || '').trim().split('\n');
   const out = [];
   for (let i = 1; i < lines.length; i++) {
     const line = (lines[i] || '').trim();
@@ -283,15 +304,68 @@ function parseStati(response) {
     const p = line.split(';');
     if (p.length >= 5) {
       out.push({
-        state: Number.parseInt(p[0] || '0', 10),
-        pid: Number.parseInt(p[1] || '0', 10),
-        startMode: Number.parseInt(p[2] || '0', 10),
-        startTime: p[3] || '',
-        manNum: Number.parseInt(p[4] || '0', 10)
+        state: intOr(p[0], 0),
+        pid: intOr(p[1], 0),
+        startMode: intOr(p[2], 0),
+        startTime: (p[3] || '').trim(),
+        manNum: intOr(p[4], 0)
       });
     }
   }
   return out;
 }
 
-module.exports = { PmonClient, checkInserted, checkRemoved, parseProgs, progsMatches };
+/**
+ * pmon's start time (text, in the host's local time) → ISO 8601. pmon writes
+ * `2026.10.29 10:12:33.123`; `-` or `/` separators, a `T`, no seconds / milliseconds and a
+ * day-first date (`29.10.2026 10:12:33`) are accepted too. Returns '' for no time — empty,
+ * or the 1970 epoch pmon shows for a manager that never ran — and the raw text when it
+ * cannot be read, so the page can still show it.
+ */
+function parsePmonTime(text) {
+  const raw = String(text ?? '').trim();
+  if (!raw) return '';
+  const time = '[ T]+(\\d{1,2}):(\\d{2})(?::(\\d{2})(?:[.,](\\d{1,6}))?)?';
+  let y;
+  let mo;
+  let d;
+  let rest;
+  let m = raw.match(new RegExp(`^(\\d{4})[./-](\\d{1,2})[./-](\\d{1,2})${time}`));
+  if (m) [, y, mo, d, ...rest] = m;
+  else {
+    m = raw.match(new RegExp(`^(\\d{1,2})[./-](\\d{1,2})[./-](\\d{4})${time}`));
+    if (!m) return raw;
+    [, d, mo, y, ...rest] = m;
+  }
+  const [h, mi, sec = '0', frac = '0'] = rest;
+  const ms = Number.parseInt(String(frac).padEnd(3, '0').slice(0, 3), 10);
+  const date = new Date(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(sec), ms);
+  if (Number.isNaN(date.getTime()) || date.getMonth() !== Number(mo) - 1) return raw;
+  if (date.getFullYear() <= 1970) return '';
+  return date.toISOString();
+}
+
+/** Configuration (`parseList`) + live status (`parseStati`), by position → the `ManagerInfo` shape. */
+function mergeManagers(list, stat) {
+  return list.map((m, i) => {
+    const s = stat[i];
+    const state = s?.state ?? 0;
+    return {
+      index: m.index,
+      name: m.manager,
+      options: m.commandlineOptions,
+      startModeCfg: m.startMode,
+      secKill: m.secKill,
+      restartCount: m.restartCount,
+      resetMin: m.resetMin,
+      state,
+      stateLabel: STATE_LABELS[state] || 'unknown',
+      pid: s?.pid ?? -1,
+      startMode: s?.startMode ?? 0,
+      startTime: parsePmonTime(s?.startTime),
+      manNum: s?.manNum ?? 0
+    };
+  });
+}
+
+module.exports = { PmonClient, checkInserted, checkRemoved, mergeManagers, parseList, parsePmonTime, parseProgs, parseStati, progsMatches };

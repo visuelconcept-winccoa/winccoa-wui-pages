@@ -37,6 +37,10 @@
  *
  * vRPC methods (each: Variant<string JSON> -> Variant<string JSON>):
  *   ListManagers()                          -> { ok, instances: [{system,hostname,updated,managers,dp}] }
+ *     managers[]: { index, name, options, startModeCfg, secKill, restartCount, resetMin,   (MGRLIST:LIST)
+ *                   state, stateLabel, pid, startMode, startTime, manNum }               (MGRLIST:STATI)
+ *     startTime is ISO 8601 (pmon's local time, read on pmon's own host), pmon's raw text
+ *     when it cannot be read, '' when pmon gives none (pmon-client.js parsePmonTime).
  *   ControlManager({systemName,action,index}) -> { ok, action, index, system, error? }
  *   AddManager({node,manager:{name,startMode,secKill,restartCount,resetMin,options},index?})
  *                                           -> { ok, system, error? }   (INS into config/progs; append when index omitted)

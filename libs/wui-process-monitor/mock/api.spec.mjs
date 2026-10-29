@@ -29,6 +29,18 @@ describe('the /api/process-monitor mock', () => {
     for (const manager of stopped) expect(manager).toMatchObject({ pid: -1, stateLabel: 'stopped', startTime: '' });
   });
 
+  test('every manager carries the pmon fields of the table: start time, number, start mode, restart settings', async () => {
+    const { body } = await call('GET /api/process-monitor/managers');
+    const all = body.instances.flatMap((instance) => instance.managers);
+    for (const manager of all) {
+      expect(manager).toEqual(expect.objectContaining({ startModeCfg: expect.any(String), secKill: expect.any(Number), restartCount: expect.any(Number), resetMin: expect.any(Number), manNum: expect.any(Number) }));
+      if (manager.state !== 0) expect(Number.isNaN(Date.parse(manager.startTime))).toBe(false);
+    }
+    // One manager restarted a few minutes ago, the rest days earlier.
+    const recent = all.filter((manager) => manager.state !== 0 && Date.now() - Date.parse(manager.startTime) < 10 * 60_000);
+    expect(recent.map((manager) => manager.name)).toContain('WCCOAopcua');
+  });
+
   test('the bridge reports itself healthy', async () => {
     expect((await call('GET /api/process-monitor/health')).body).toMatchObject({ ok: true, serviceAvailable: true });
   });
