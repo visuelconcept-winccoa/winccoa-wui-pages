@@ -3,18 +3,35 @@
 
 /** Domain types for the Process Monitor page. */
 
-/** One pmon-managed manager (from the backend `ListManagers`). */
+/**
+ * One pmon-managed manager (from the backend `ListManagers`): its `config/progs` entry
+ * (`MGRLIST:LIST`) merged with its live status (`MGRLIST:STATI`).
+ */
 export interface ManagerInfo {
   /** pmon index (0-based). */
   index: number;
   name: string;
   options: string;
+  /** Configured start mode (`config/progs`): 'manual' | 'once' | 'always' ('' when unknown). */
+  startModeCfg: string;
+  /** Seconds pmon waits before killing the manager on stop. */
+  secKill: number;
+  /** Restarts allowed within `resetMin` minutes. */
+  restartCount: number;
+  /** Minutes after which the restart counter is reset. */
+  resetMin: number;
   /** Live state code (0 stopped, 1 init, 2 running, 3 blocked). */
   state: number;
   stateLabel: string;
   pid: number;
+  /** Live start mode code (0 manual, 1 once, 2 always). */
   startMode: number;
+  /**
+   * Start time: ISO 8601 when the manager could read pmon's text, pmon's raw text
+   * otherwise, '' when pmon gives none (stopped / never started).
+   */
   startTime: string;
+  /** Manager number (`-num`) the manager runs with. */
   manNum: number;
 }
 
@@ -85,7 +102,7 @@ export interface HistoryEntry {
   /** ISO timestamp. */
   time: string;
   /** Operation kind. */
-  action: 'deploy' | 'restart-all' | 'manager';
+  action: 'deploy' | 'restart-all' | 'manager' | 'logs-export';
   /** Human-readable detail (file name, manager name, …). */
   detail: string;
   /** 'success' | 'failed'. */
@@ -96,4 +113,34 @@ export interface HistoryEntry {
   user?: string;
   /** Target system name (multi-server); empty/undefined for the local system. */
   system?: string;
+}
+
+/** One log file of a host's `<project>/log` (backend `ListLogs`). */
+export interface LogFileInfo {
+  name: string;
+  size: number;
+  /** ISO last-modified date. */
+  mtime: string;
+  /** Its previous rotation (`.bak`) in the folder, '' when none. */
+  bak: string;
+  /** For a `.bak`: the current log it rotates, '' otherwise. */
+  bakOf: string;
+  /** The manager it belongs to, deduced from its name (+ pmon index), null for a shared log. */
+  manager: { name: string; manNum: number | null; index: number | null } | null;
+}
+
+/** One file of a `ReadLog` / `ExportLog` reply. */
+export interface LogReadFile {
+  name: string;
+  /** Complete lines read (a line being written waits for the next read). */
+  text: string;
+  /** Byte offset the next incremental read starts at. */
+  offset: number;
+  size: number;
+  /** Older content was left out (tail, or the whole-read cap). */
+  truncated: boolean;
+  /** The text replaces what was read before (first read, or the file was rotated). */
+  reset: boolean;
+  /** The previous rotation, sent with a fresh read when asked (`mergeBak`). */
+  bak?: { name: string; text: string; truncated: boolean };
 }

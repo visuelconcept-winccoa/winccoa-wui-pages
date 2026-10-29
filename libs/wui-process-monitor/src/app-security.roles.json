@@ -29,6 +29,15 @@
         "fr.utf8": "Téléverser et déployer des ZIP projet (contrôlé côté serveur).",
         "de.utf8": "Projekt-ZIPs hochladen und deployen (serverseitig erzwungen)."
       }
+    },
+    {
+      "id": "logs-read",
+      "label": { "en_US.utf8": "Read logs", "fr.utf8": "Lire les journaux", "de.utf8": "Logs lesen" },
+      "description": {
+        "en_US.utf8": "Read and export the WinCC OA log files of each host — they can hold user names and addresses (enforced server-side).",
+        "fr.utf8": "Lire et exporter les fichiers journaux WinCC OA de chaque hôte — ils peuvent contenir des noms d'utilisateurs et des adresses (contrôlé côté serveur).",
+        "de.utf8": "WinCC OA-Logdateien jedes Hosts lesen und exportieren — sie können Benutzernamen und Adressen enthalten (serverseitig erzwungen)."
+      }
     }
   ]
 }

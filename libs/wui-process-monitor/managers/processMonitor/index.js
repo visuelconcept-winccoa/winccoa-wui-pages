@@ -15,14 +15,16 @@
  *   - AGENT (every computer): on startup it creates/maintains its OWN node
  *     datapoint named after the host — `ProcessMonitor_Node_<hostname>` — and
  *     periodically publishes its LOCAL pmon snapshot into `.pmon`, reacting to
- *     control (`.cmd`) and deploy (`.deployCmd`/`.deployData`) commands targeted
- *     at it by executing them against its local pmon / project.
+ *     control commands (`.cmd`) targeted at it by executing them against its local
+ *     pmon. It also receives deploy ZIPs streamed to its own vRPC service
+ *     (ReceiveBegin/Chunk/Commit, DeployStatus — see deploy-transfer.js).
  *
  *   - AGGREGATOR (the computer serving the customer-webserver): the vRPC methods
  *     read every node DP via `dpNames("*", ProcessMonitor_Node)` → one instance
  *     per computer → the page renders one tab per computer. Control / restart-all
  *     are routed to a target NODE's `.cmd` (the agent on that computer runs it);
- *     project deploy can be propagated to ALL nodes (file shipped via `.deployData`).
+ *     project deploy can be propagated to ALL nodes: the ZIP is streamed in chunks
+ *     to each node's own `ProcessMonitor_<hostname>` service over vRPC (issue 32).
  *
  * Project deployment: optionally purge selected folders (allow-list), extract an
  * uploaded ZIP (7-Zip) into the project — NEVER into protected folders
@@ -37,12 +39,31 @@
  *
  * vRPC methods (each: Variant<string JSON> -> Variant<string JSON>):
  *   ListManagers()                          -> { ok, instances: [{system,hostname,updated,managers,dp}] }
+ *     managers[]: { index, name, options, startModeCfg, secKill, restartCount, resetMin,   (MGRLIST:LIST)
+ *                   state, stateLabel, pid, startMode, startTime, manNum }               (MGRLIST:STATI)
+ *     startTime is ISO 8601 (pmon's local time, read on pmon's own host), pmon's raw text
+ *     when it cannot be read, '' when pmon gives none (pmon-client.js parsePmonTime).
  *   ControlManager({systemName,action,index}) -> { ok, action, index, system, error? }
  *   AddManager({node,manager:{name,startMode,secKill,restartCount,resetMin,options},index?})
  *                                           -> { ok, system, error? }   (INS into config/progs; append when index omitted)
  *   RemoveManager({node,index})             -> { ok, index, system, error? }   (DEL a stopped manager, index ≥ 1)
  *   RestartAll({systemName})                -> { ok, system, error? }
  *   Deploy({zipPath,clearFolders,restart,target}) -> { ok, results:[{system,hostname,ok,cleared,skipped,error}] }
+ *
+ * Logs of each host (issue 37, log-files.js has the contract), routed like the deploy: the
+ * aggregator answers for its own node and calls the TARGET node's service for the others
+ * (`local: true` marks a forwarded call). Reads are limited to `<project>/log`, by name.
+ *   ListLogs({node})                                      -> { ok, host, files: [{name,size,mtime,bak,bakOf,manager}] }
+ *   ReadLog({node, files, fromOffset, maxLines, mergeBak}) -> { ok, host, files: [{name,text,offset,size,truncated,reset,bak?}] }
+ *   ExportLog({node, files, mergeBak})                     -> same as ReadLog, whole files (raw export)
+ *
+ * Node-to-node deploy transfer (called by the aggregator on the TARGET node's service;
+ * deploy-transfer.js has the contract): ReceiveBegin, ReceiveChunk, ReceiveCommit,
+ * DeployStatus, ReceiveAbort. A node whose agent predates them (Unimplemented / not
+ * found) or whose service cannot be reached fails with "agent too old or not reachable
+ * over vRPC — update/restart the processMonitor manager on <host>"; there is no DPE
+ * fallback. Reaching the service of a node of ANOTHER system of a distributed project
+ * depends on the MSA addressing and is not verified.
  *
  * After editing this file, restart the processMonitor manager.
  */
@@ -53,7 +74,9 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { execFile } = require('node:child_process');
-const { PmonClient } = require('./pmon-client.js');
+const { PmonClient, parseProgs, progsMatches } = require('./pmon-client.js');
+const { DEFAULT_CHUNK_BYTES, TransferReceiver, deployToNodes, sendZip, tooOldMessage } = require('./deploy-transfer.js');
+const { listLogFiles, readLogFiles } = require('./log-files.js');
 
 const winccoa = new WinccoaManager();
 
@@ -92,6 +115,8 @@ const DENY_EXTRACT_FOLDERS = new Set(['logs', 'log', 'db', 'config', 'images', '
 // path — whereas the service account always has write access to its own project
 // tree. `temp` is neither a protected nor a purgeable folder.
 const TEMP_DIR = path.join(PROJ_PATH, 'temp');
+// The ONLY folder the Logs tab reads (by file name, checked against its listing).
+const LOG_DIR = path.join(PROJ_PATH, 'log');
 function ensureTempDir() {
   fs.mkdirSync(TEMP_DIR, { recursive: true });
   return TEMP_DIR;
@@ -259,8 +284,12 @@ function runConfigEnv() {
   return run(bat, [], PROJ_PATH);
 }
 
-/** Deploy a ZIP into the LOCAL project (purge → extract → config.env → restart). */
-async function doLocalDeploy({ zipPath, clearFolders, restart }) {
+/**
+ * Deploy a ZIP into the LOCAL project (purge → extract → config.env → restart).
+ * `restartDelayMs` delays the restart for a deploy received from the aggregator, so
+ * its `DeployStatus` poll sees "done" before this manager is recycled.
+ */
+async function doLocalDeploy({ zipPath, clearFolders, restart, restartDelayMs = 0 }) {
   if (!zipPath || !fs.existsSync(zipPath)) return { ok: false, error: `ZIP introuvable : ${zipPath}` };
   const cleared = [];
   try {
@@ -278,7 +307,9 @@ async function doLocalDeploy({ zipPath, clearFolders, restart }) {
   if (restart) {
     // Fire the restart, then return — pmon RESTART_ALL recycles managers (incl.
     // the webserver) shortly after this reply is sent.
-    pmonClient.restartAll().catch((e) => log(`restartAll after deploy failed: ${e.message}`));
+    const fire = () => pmonClient.restartAll().catch((e) => log(`restartAll after deploy failed: ${e.message}`));
+    if (restartDelayMs > 0) setTimeout(fire, restartDelayMs);
+    else fire();
   }
   return { ok: true, cleared, skipped: ex.skipped, extracted: true, restarted: restart };
 }
@@ -292,10 +323,7 @@ async function ensureNodeType() {
     new WinccoaDpTypeNode('pmon', ELEM.String),
     new WinccoaDpTypeNode('updated', ELEM.String),
     new WinccoaDpTypeNode('cmd', ELEM.String),
-    new WinccoaDpTypeNode('cmdResult', ELEM.String),
-    new WinccoaDpTypeNode('deployCmd', ELEM.String),
-    new WinccoaDpTypeNode('deployData', ELEM.String),
-    new WinccoaDpTypeNode('deployResult', ELEM.String)
+    new WinccoaDpTypeNode('cmdResult', ELEM.String)
   ]);
   try {
     await winccoa.dpTypeCreate(root);
@@ -312,6 +340,22 @@ async function ensureNodeDp() {
     log(`DP node créé : ${NODE_DP}`);
   }
   await winccoa.dpSetWait([`${NODE_DP}.hostname`, `${NODE_DP}.system`], [HOSTNAME, OWN_SYSTEM]);
+}
+
+/**
+ * Up to 0.1.x the ZIP was shipped base64 in `.deployData` and stayed there. A node DP
+ * created by such a version still has the element (the type is not changed on an
+ * existing project): empty it, so no old ZIP is kept. Absent element → nothing to do.
+ */
+async function clearLegacyDeployData() {
+  const dpe = `${NODE_DP}.deployData`;
+  try {
+    if (!winccoa.dpExists(dpe)) return;
+    await winccoa.dpSetWait(dpe, '');
+    log(`${dpe} vidé (ancien transfert de ZIP par DPE)`);
+  } catch (e) {
+    log(`could not clear ${dpe}: ${e.message}`);
+  }
 }
 
 /** Remove the legacy single-node DP (`ProcessMonitor_Node`, no host suffix). */
@@ -359,9 +403,36 @@ function normalizeManagerSpec(spec) {
   };
 }
 
+/** pmon writes `config/progs` after acknowledging an INS / DEL: wait for it, a few times. */
+const PROGS_CHECK_DELAYS_MS = [300, 700, 1500];
+
+/**
+ * After an INS / DEL that pmon applied (checked by pmon-client against MGRLIST:LIST): is the
+ * change written to `<project>/config/progs`, i.e. kept at the next project restart? Returns a
+ * warning text when it is not (or when the file cannot be read), '' otherwise (issue 35).
+ */
+async function progsWarning() {
+  const file = path.join(PROJ_PATH, 'config', 'progs');
+  let list = [];
+  let progs = [];
+  for (const wait of PROGS_CHECK_DELAYS_MS) {
+    await new Promise((r) => setTimeout(r, wait));
+    try {
+      list = await pmonClient.listManagers();
+      progs = parseProgs(await fsp.readFile(file, 'utf8'));
+    } catch (e) {
+      return `config/progs illisible (${e.message}) : l'enregistrement du changement n'a pas pu être vérifié.`;
+    }
+    if (progsMatches(progs, list)) return '';
+  }
+  log(`config/progs (${progs.length} entrées) ne reflète pas pmon (${list.length} entrées) après INS/DEL`);
+  return "Appliqué dans pmon, mais pas écrit dans config/progs : le changement sera perdu au prochain redémarrage du projet.";
+}
+
 /**
  * Execute one control / config action against the LOCAL pmon (shared by the
- * agent's `.cmd` handler and the aggregator's own-node shortcut).
+ * agent's `.cmd` handler and the aggregator's own-node shortcut). Resolves with
+ * `{ warning }` for an INS / DEL not persisted to config/progs.
  */
 async function execPmonCmd(cmd) {
   if (cmd.action === 'start') return pmonClient.startManager(cmd.index);
@@ -374,49 +445,34 @@ async function execPmonCmd(cmd) {
     // list — always a legal INS slot (index 0 is pmon itself).
     const list = await pmonClient.listManagers();
     const index = Number.isInteger(cmd.index) && cmd.index >= 1 && cmd.index <= list.length ? cmd.index : list.length;
-    return pmonClient.addManager({ index, ...spec });
+    await pmonClient.addManager({ index, ...spec });
+    return { warning: await progsWarning() };
   }
   if (cmd.action === 'remove') {
     if (!Number.isInteger(cmd.index) || cmd.index < 1) throw new Error('index invalide (≥ 1 requis — 0 est pmon)');
-    return pmonClient.removeManager(cmd.index);
+    await pmonClient.removeManager(cmd.index);
+    return { warning: await progsWarning() };
   }
   throw new Error(`action invalide: ${cmd.action}`);
 }
 
-/** Track last handled command ids so reconnect / repeat values are ignored. */
+/** Track the last handled command id so reconnect / repeat values are ignored. */
 let lastCmdId = '';
-let lastDeployId = '';
 
 async function onCmd(cmd) {
   if (!cmd || !cmd.reqId || cmd.reqId === lastCmdId) return;
   lastCmdId = cmd.reqId;
   let ok = false;
   let error = '';
+  let warning = '';
   try {
-    await execPmonCmd(cmd);
+    warning = (await execPmonCmd(cmd))?.warning || '';
     ok = true;
   } catch (e) {
     error = e.message;
   }
-  await winccoa.dpSet(`${NODE_DP}.cmdResult`, JSON.stringify({ reqId: cmd.reqId, ok, error, ts: new Date().toISOString() }));
+  await winccoa.dpSet(`${NODE_DP}.cmdResult`, JSON.stringify({ reqId: cmd.reqId, ok, error, warning, ts: new Date().toISOString() }));
   await publishOnce();
-}
-
-async function onDeployCmd(cmd) {
-  if (!cmd || !cmd.reqId || cmd.reqId === lastDeployId) return;
-  lastDeployId = cmd.reqId;
-  const tmp = path.join(ensureTempDir(), `pm-deploy-${cmd.reqId}.zip`);
-  let result;
-  try {
-    const b64 = asStr((await winccoa.dpGet([`${NODE_DP}.deployData`]))[0]);
-    fs.writeFileSync(tmp, Buffer.from(b64 || '', 'base64'));
-    result = await doLocalDeploy({ zipPath: tmp, clearFolders: cmd.clearFolders || [], restart: cmd.restart === true });
-  } catch (e) {
-    result = { ok: false, error: e.message };
-  } finally {
-    await fsp.rm(tmp, { force: true }).catch(() => undefined);
-  }
-  await winccoa.dpSet(`${NODE_DP}.deployResult`, JSON.stringify({ reqId: cmd.reqId, ...result, ts: new Date().toISOString() }));
 }
 
 function startAgent() {
@@ -431,18 +487,6 @@ function startAgent() {
       }
     },
     [`${NODE_DP}.cmd`],
-    false
-  );
-  winccoa.dpConnect(
-    (_names, values) => {
-      try {
-        const v = asStr(values[0]);
-        if (v) void onDeployCmd(JSON.parse(v));
-      } catch (e) {
-        log(`deployCmd parse error: ${e.message}`);
-      }
-    },
-    [`${NODE_DP}.deployCmd`],
     false
   );
   void publishOnce();
@@ -473,7 +517,7 @@ async function discoverNodes() {
   return out;
 }
 
-/** Poll a result DPE until a record with `reqId` appears (or timeout). */
+/** Poll a result DPE until a record with `reqId` appears (or timeout) — control commands only. */
 async function pollResult(dpeName, reqId, timeoutMs, stepMs = 300) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -505,6 +549,124 @@ async function resolveTargets(target) {
   return nodes.filter((n) => bareDp(n.dp) === `${NODE_DP_PREFIX}_${dpHost(t)}` || n.hostname === t);
 }
 
+// ---- node-to-node deploy transfer over vRPC (issue 32) ---------------------
+
+/** Agent side: deploy ZIPs streamed by the aggregator into `<project>/temp`. */
+const receiver = new TransferReceiver({
+  dir: TEMP_DIR,
+  // Restart deferred: the aggregator's DeployStatus poll must see "done" first.
+  deploy: (req) => doLocalDeploy({ ...req, restartDelayMs: 5000 }),
+  log
+});
+
+/** Raw bytes per transfer chunk (a ~1 MiB base64 string); `PM_DEPLOY_CHUNK_BYTES` overrides it. */
+const CHUNK_BYTES = (() => {
+  const n = Number.parseInt(process.env.PM_DEPLOY_CHUNK_BYTES || '', 10);
+  return Number.isInteger(n) && n >= 16 * 1024 ? n : DEFAULT_CHUNK_BYTES;
+})();
+
+/** The vRPC service name of a node: `ProcessMonitor_<hostname>`, from its node DP name. */
+function nodeServiceName(node) {
+  const bare = bareDp(node.dp);
+  const prefix = `${NODE_DP_PREFIX}_`;
+  return `ProcessMonitor_${bare.startsWith(prefix) ? bare.slice(prefix.length) : dpHost(node.hostname)}`;
+}
+
+/** Human-readable reason from an MSA error (its status text) or a plain error. */
+function vrpcErrorText(error) {
+  const status = error && error.status;
+  return (status && (status.text || status.message)) || (error instanceof Error ? error.message : String(error));
+}
+
+/** Stubs to the other nodes' services, by service name — dropped on any failure. */
+const nodeStubs = new Map();
+
+/**
+ * `call(method, request)` on another node's service — the same `Vrpc.Stub` client the
+ * webserver bridge uses for this manager. Rejects when the stub cannot be created (no
+ * such service) or the call does not answer OK (e.g. Unimplemented on an older agent).
+ * The stub is cached (the Logs tab polls); a failure drops it so the next call reconnects.
+ */
+async function nodeCaller(node) {
+  const name = nodeServiceName(node);
+  if (!nodeStubs.has(name)) nodeStubs.set(name, Vrpc.Stub.createAndInitialize(name, new Vrpc.StubOptions()));
+  let stub;
+  try {
+    stub = await nodeStubs.get(name);
+  } catch (e) {
+    nodeStubs.delete(name);
+    throw e;
+  }
+  return async (method, request) => {
+    try {
+      return await callStub(stub, method, request);
+    } catch (e) {
+      nodeStubs.delete(name);
+      throw e;
+    }
+  };
+}
+
+/** One JSON call on a stub; rejects with the method and the MSA status text. */
+async function callStub(stub, method, request) {
+  let resp;
+  try {
+    resp = await stub.callFunction(method, Vrpc.Variant.createString(JSON.stringify(request)), new Vrpc.ClientContext());
+  } catch (e) {
+    throw new Error(`${method}: ${vrpcErrorText(e)}`);
+  }
+  if (resp.status.statusCode !== Vrpc.StatusCode.OK) throw new Error(`${method}: ${String(resp.status.text ?? resp.status.statusCode)}`);
+  return JSON.parse(String(resp.response.value ?? '{}'));
+}
+
+// ---- logs of each host (issue 37) -----------------------------------------
+
+/** This node's log files, with the manager of each (pmon list when pmon answers). */
+async function localListLogs() {
+  let managers = [];
+  try {
+    managers = await pmonClient.listManagers();
+  } catch {
+    managers = []; // pmon down: files listed without their pmon index
+  }
+  return { ok: true, host: HOSTNAME, files: await listLogFiles(LOG_DIR, managers) };
+}
+
+/**
+ * Answer a log request for its target node: here for this node (or a forwarded call),
+ * else on the target node's own service — a host only ever reads its own files.
+ */
+async function routeLogs(method, req, local) {
+  const targets = req.local === true ? [] : await resolveTargets(req.node || '');
+  const node = targets[0];
+  if (!node || isLocal(node)) {
+    try {
+      return { host: HOSTNAME, ...(await local()) };
+    } catch (e) {
+      return { ok: false, host: HOSTNAME, error: e.message };
+    }
+  }
+  const host = node.hostname || bareDp(node.dp);
+  try {
+    const call = await nodeCaller(node);
+    return await call(method, { ...req, node: '', local: true });
+  } catch (e) {
+    return { ok: false, host, error: tooOldMessage(host, vrpcErrorText(e)) };
+  }
+}
+
+/** Wrap a receiver method as a vRPC handler (JSON in, JSON out). */
+function jsonHandler(fn) {
+  return async (ctx, request) => {
+    ctx.cancelSignal.throwIfAborted();
+    try {
+      return reply(await fn(parseReq(request)));
+    } catch (e) {
+      return reply({ ok: false, error: e.message });
+    }
+  };
+}
+
 class ProcessMonitorService extends Vrpc.ServiceBase {
   constructor() {
     super(SERVICE_NAME);
@@ -514,6 +676,15 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
     this.registerFunction('RemoveManager', (ctx, req) => this.removeManager(ctx, req));
     this.registerFunction('RestartAll', (ctx, req) => this.restartAll(ctx, req));
     this.registerFunction('Deploy', (ctx, req) => this.deploy(ctx, req));
+    this.registerFunction('ReceiveBegin', jsonHandler((r) => receiver.begin(r)));
+    this.registerFunction('ReceiveChunk', jsonHandler((r) => receiver.chunk(r)));
+    this.registerFunction('ReceiveCommit', jsonHandler((r) => receiver.commit(r)));
+    this.registerFunction('DeployStatus', jsonHandler((r) => receiver.status(r)));
+    this.registerFunction('ReceiveAbort', jsonHandler((r) => receiver.abort(r)));
+    this.registerFunction('ListLogs', jsonHandler((r) => routeLogs('ListLogs', r, localListLogs)));
+    this.registerFunction('ReadLog', jsonHandler((r) => routeLogs('ReadLog', r, () => readLogFiles(LOG_DIR, r))));
+    // Raw export: the whole files (capped from their end), .bak merged or not.
+    this.registerFunction('ExportLog', jsonHandler((r) => routeLogs('ExportLog', r, () => readLogFiles(LOG_DIR, { files: r.files, mergeBak: r.mergeBak === true, maxLines: 0 }))));
   }
 
   async listManagers(ctx) {
@@ -582,8 +753,8 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
   /** Execute a control command on the LOCAL pmon (this computer). */
   async localPmon(cmd, system) {
     try {
-      await execPmonCmd(cmd);
-      return { ok: true, ...cmd, system: system || OWN_SYSTEM };
+      const r = await execPmonCmd(cmd);
+      return { ok: true, ...cmd, system: system || OWN_SYSTEM, warning: r?.warning || '' };
     } catch (e) {
       return { ok: false, error: e.message, ...cmd, system: system || OWN_SYSTEM };
     }
@@ -606,7 +777,7 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
     const reqId = crypto.randomUUID();
     await winccoa.dpSetWait(`${node.dp}.cmd`, JSON.stringify({ reqId, ...cmd }));
     const res = await pollResult(`${node.dp}.cmdResult`, reqId, 12000);
-    return { ok: res.ok === true, error: res.error || '', ...cmd, system: node.system };
+    return { ok: res.ok === true, error: res.error || '', warning: res.warning || '', ...cmd, system: node.system };
   }
 
   async deploy(ctx, request) {
@@ -624,42 +795,28 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
       return reply({ ok: r.ok, results: [{ system: OWN_SYSTEM, hostname: HOSTNAME, ...r }] });
     }
 
-    let b64 = null; // ZIP base64, read once, only when a remote target needs it
-    const results = [];
-    // Deploy to the LOCAL system last: a `restart` recycles this manager/webserver,
-    // which would otherwise abort the remaining (remote) deployments and the reply.
-    const ordered = [...targets].sort((a, b) => Number(isLocal(a)) - Number(isLocal(b)));
-    for (const node of ordered) {
-      if (isLocal(node)) {
-        const r = await doLocalDeploy({ zipPath, clearFolders, restart });
-        results.push({ system: node.system, hostname: node.hostname || HOSTNAME, ...r });
-      } else {
-        if (b64 === null) b64 = fs.readFileSync(zipPath).toString('base64');
-        results.push(await this.remoteDeploy(node, { b64, clearFolders, restart, fileName: path.basename(zipPath) }));
-      }
-    }
+    const results = await deployToNodes(targets, {
+      isLocal,
+      localDeploy: async (node) => ({ system: node.system, hostname: node.hostname || HOSTNAME, ...(await doLocalDeploy({ zipPath, clearFolders, restart })) }),
+      remoteDeploy: (node) => this.remoteDeploy(node, { zipPath, clearFolders, restart })
+    });
     const ok = results.length > 0 && results.every((r) => r.ok);
     return reply({ ok, results });
   }
 
-  /** Ship a ZIP to a remote system's node DP and await its deploy result. */
-  async remoteDeploy(node, { b64, clearFolders, restart, fileName }) {
-    const reqId = crypto.randomUUID();
+  /** Stream the ZIP to a remote node's own service and await its deploy (issue 32). */
+  async remoteDeploy(node, { zipPath, clearFolders, restart }) {
+    const host = node.hostname || bareDp(node.dp);
+    const head = { system: node.system, hostname: node.hostname };
+    let call;
     try {
-      await winccoa.dpSetWait(`${node.dp}.deployData`, b64);
-      await winccoa.dpSetWait(`${node.dp}.deployCmd`, JSON.stringify({ reqId, fileName, clearFolders, restart }));
+      call = await nodeCaller(node);
     } catch (e) {
-      return { system: node.system, hostname: node.hostname, ok: false, error: `dispatch failed: ${e.message}` };
+      return { ...head, ok: false, cleared: [], skipped: [], error: tooOldMessage(host, vrpcErrorText(e)) };
     }
-    const res = await pollResult(`${node.dp}.deployResult`, reqId, 120000);
-    return {
-      system: node.system,
-      hostname: node.hostname,
-      ok: res.ok === true,
-      cleared: res.cleared || [],
-      skipped: res.skipped || [],
-      error: res.error || ''
-    };
+    const r = await sendZip(call, { zipPath, clearFolders, restart, host, chunkBytes: CHUNK_BYTES });
+    if (!r.ok) log(`Deploy on ${host} failed: ${r.error}`);
+    return { ...head, ok: r.ok, cleared: r.cleared, skipped: r.skipped, error: r.error };
   }
 }
 
@@ -683,11 +840,15 @@ async function run_() {
   log(`System: ${OWN_SYSTEM || '(standalone)'} · host: ${HOSTNAME} · node DP: ${NODE_DP}`);
   try {
     await ensureNodeDp();
+    await clearLegacyDeployData();
     await cleanupLegacyDp();
     startAgent();
   } catch (e) {
     log(`Agent init failed (continuing as aggregator only): ${e.message}`);
   }
+  // Transfers a previous run left in <project>/temp (manager restarted mid-transfer).
+  await receiver.cleanupStale({ all: true }).catch((e) => log(`transfer cleanup failed: ${e.message}`));
+  setInterval(() => void receiver.cleanupStale().catch(() => undefined), 5 * 60 * 1000);
   const container = new Vrpc.ServiceContainer();
   container.registerService(new ProcessMonitorService(), new Vrpc.ServiceOptions());
   try {

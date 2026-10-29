@@ -9,11 +9,26 @@
  * intent events (`wui:refresh`, `wui:restartall`, `wui:control
  * {action,index,name}`, `wui:addmanager`, `wui:removemanager {index,name}`);
  * the page performs the API call + tracing.
+ *
+ * Columns (issue 33): pmon index, name, state, PID, manager number (`-num`), start
+ * time + uptime ("—" when stopped), configured start mode (flagged when pmon runs it
+ * with another one; restart settings in its tooltip) and options. Name, state and start
+ * time sort on a header click (asc → desc → pmon order).
  */
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
-import { MSG, localize, localizeDir } from '../i18n.js';
+import { customElement, property, state } from 'lit/decorators.js';
+import { MSG, localize, localizeDir, restartSettingsTitle, shortDateLabel, startModeDiffersTitle } from '../i18n.js';
+import {
+  formatUptime,
+  hasStartTime,
+  liveStartMode,
+  sortManagers,
+  startModeDiffers,
+  startTimeMs,
+  type ManagerSortKey,
+  type SortDir
+} from '../managers.js';
 import type { ManagerInfo } from '../types.js';
 
 const STATE_COLORS: Record<number, string> = { 0: '#94a3b8', 1: '#f59e0b', 2: '#10b981', 3: '#ef4444' };
@@ -27,6 +42,9 @@ export class PmConsole extends LitElement {
   /** Application-Security 'edit-managers' grant: add/remove pmon config entries. */
   @property({ type: Boolean }) canConfig = false;
   @property({ type: String }) lastUpdate = '';
+  /** Sorted column ('index' = pmon order) and direction. */
+  @state() private sortKey: ManagerSortKey = 'index';
+  @state() private sortDir: SortDir = 'asc';
 
   override render(): TemplateResult {
     return html`
@@ -66,21 +84,61 @@ export class PmConsole extends LitElement {
         <thead>
           <tr>
             <th>${localizeDir(MSG.console.colIndex)}</th>
-            <th>${localizeDir(MSG.console.colName)}</th>
-            <th>${localizeDir(MSG.console.colState)}</th>
+            ${this.sortableTh('name', MSG.console.colName)} ${this.sortableTh('state', MSG.console.colState)}
             <th>${localizeDir(MSG.console.colPid)}</th>
+            <th title=${localize(MSG.console.colManNumTitle)}>${localizeDir(MSG.console.colManNum)}</th>
+            ${this.sortableTh('startTime', MSG.console.colStarted)}
+            <th>${localizeDir(MSG.console.colStartMode)}</th>
             <th>${localizeDir(MSG.console.colOptions)}</th>
             <th class="actions-col"></th>
           </tr>
         </thead>
         <tbody>
-          ${this.managers.map((m) => this.renderRow(m))}
+          ${sortManagers(this.managers, this.sortKey, this.sortDir).map((m) => this.renderRow(m, Date.now()))}
         </tbody>
       </table>
     `;
   }
 
-  private renderRow(m: ManagerInfo): TemplateResult {
+  private sortableTh(key: ManagerSortKey, label: typeof MSG.console.colName): TemplateResult {
+    const active = this.sortKey === key;
+    const arrow = active ? (this.sortDir === 'asc' ? '▲' : '▼') : '';
+    return html`<th class="sortable ${active ? 'sorted' : ''}" title=${localize(MSG.console.sortBy)} @click=${() => this.toggleSort(key)}>
+      ${localizeDir(label)}<span class="arrow">${arrow}</span>
+    </th>`;
+  }
+
+  /** asc → desc → back to the pmon order; the start time starts with the most recent. */
+  private toggleSort(key: ManagerSortKey): void {
+    const first: SortDir = key === 'startTime' ? 'desc' : 'asc';
+    if (this.sortKey !== key) {
+      this.sortKey = key;
+      this.sortDir = first;
+    } else if (this.sortDir === first) {
+      this.sortDir = first === 'asc' ? 'desc' : 'asc';
+    } else {
+      this.sortKey = 'index';
+      this.sortDir = 'asc';
+    }
+  }
+
+  private renderStarted(m: ManagerInfo, now: number): TemplateResult | string {
+    if (!hasStartTime(m)) return '—';
+    const t = startTimeMs(m);
+    // pmon's text the manager could not read is shown as is, without an uptime.
+    if (t === null) return m.startTime;
+    return html`${shortDateLabel(m.startTime)} <span class="muted">· ${formatUptime(now - t, localize(MSG.console.dayUnit))}</span>`;
+  }
+
+  private renderStartMode(m: ManagerInfo): TemplateResult {
+    const live = liveStartMode(m);
+    const differs = startModeDiffers(m);
+    return html`<span title=${restartSettingsTitle(m)}>${m.startModeCfg || live || '—'}</span>${differs
+        ? html`<ix-icon class="differs" name="warning" size="12" title=${startModeDiffersTitle(m.startModeCfg, live)}></ix-icon>`
+        : nothing}`;
+  }
+
+  private renderRow(m: ManagerInfo, now: number): TemplateResult {
     const running = m.state === 2;
     return html`
       <tr>
@@ -90,6 +148,9 @@ export class PmConsole extends LitElement {
           <span class="state" style="--c:${STATE_COLORS[m.state] ?? '#94a3b8'}">${m.stateLabel}</span>
         </td>
         <td class="mono">${m.pid > 0 ? m.pid : '—'}</td>
+        <td class="mono">${m.manNum > 0 ? m.manNum : '—'}</td>
+        <td class="nowrap">${this.renderStarted(m, now)}</td>
+        <td class="nowrap">${this.renderStartMode(m)}</td>
         <td class="mono opt" title=${m.options}>${m.options}</td>
         <td class="actions-col">
           ${this.canEdit
@@ -233,6 +294,25 @@ function consoleStyles(): ReturnType<typeof css> {
     .actions-col {
       white-space: nowrap;
       width: 1%;
+    }
+    .nowrap {
+      white-space: nowrap;
+    }
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+    }
+    th.sorted {
+      color: var(--theme-color-std-text);
+    }
+    th .arrow {
+      padding-left: 0.25rem;
+      font-size: 0.7rem;
+    }
+    .differs {
+      margin-left: 0.3rem;
+      color: var(--theme-color-warning);
+      vertical-align: middle;
     }
   `;
 }

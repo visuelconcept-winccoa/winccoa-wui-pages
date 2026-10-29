@@ -27,7 +27,8 @@ export const MSG = {
   tabs: {
     console: ml('Console', 'Console', 'Konsole'),
     upload: ml('Project upload', 'Upload projet', 'Projekt-Upload'),
-    history: ml('History', 'Historique', 'Verlauf')
+    history: ml('History', 'Historique', 'Verlauf'),
+    logs: ml('Logs', 'Journaux', 'Logs')
   },
   console: {
     title: ml('Managers', 'Managers', 'Manager'),
@@ -39,6 +40,16 @@ export const MSG = {
     colPid: ml('PID', 'PID', 'PID'),
     colStart: ml('Start', 'Démarrage', 'Start'),
     colOptions: ml('Options', 'Options', 'Optionen'),
+    colManNum: ml('Mgr #', 'N° mgr', 'Mgr-Nr.'),
+    colManNumTitle: ml(
+      'Manager number (-num): finds its log file, tells two instances of one executable apart',
+      'Numéro de manager (-num) : retrouve son fichier log, distingue deux instances d’un même exécutable',
+      'Managernummer (-num): findet seine Logdatei, unterscheidet zwei Instanzen derselben Datei'
+    ),
+    colStarted: ml('Started', 'Démarré', 'Gestartet'),
+    colStartMode: ml('Start mode', 'Mode de démarrage', 'Startmodus'),
+    sortBy: ml('Sort by this column', 'Trier selon cette colonne', 'Nach dieser Spalte sortieren'),
+    dayUnit: ml('d', 'j', 'T'),
     start: ml('Start', 'Démarrer', 'Starten'),
     stop: ml('Stop', 'Arrêter', 'Stoppen'),
     restart: ml('Restart', 'Redémarrer', 'Neu starten'),
@@ -120,6 +131,47 @@ export const MSG = {
     deployed: ml('Deployment successful.', 'Déploiement réussi.', 'Bereitstellung erfolgreich.'),
     failed: ml('Deployment failed.', 'Déploiement échoué.', 'Bereitstellung fehlgeschlagen.')
   },
+  logs: {
+    host: ml('Host', 'Hôte', 'Host'),
+    files: ml('Log files', 'Fichiers journaux', 'Logdateien'),
+    fileFilter: ml('Filter by name or manager', 'Filtrer par nom ou manager', 'Nach Name oder Manager filtern'),
+    refreshFiles: ml('Refresh the list', 'Rafraîchir la liste', 'Liste aktualisieren'),
+    noFiles: ml('No log file found.', 'Aucun fichier journal trouvé.', 'Keine Logdatei gefunden.'),
+    selectHint: ml('Select one or more log files.', 'Sélectionnez un ou plusieurs fichiers journaux.', 'Eine oder mehrere Logdateien auswählen.'),
+    mergeBak: ml('Merge with .bak (previous rotation)', 'Fusionner avec le .bak (rotation précédente)', 'Mit .bak zusammenführen (vorherige Rotation)'),
+    live: ml('Live', 'Direct', 'Live'),
+    pause: ml('Pause', 'Pause', 'Pause'),
+    resume: ml('Resume live', 'Reprendre le direct', 'Live fortsetzen'),
+    paused: ml(
+      'Paused: the whole file is shown, the display no longer updates.',
+      'En pause : le fichier entier est affiché, l’affichage n’est plus mis à jour.',
+      'Pausiert: die ganze Datei wird angezeigt, die Anzeige wird nicht mehr aktualisiert.'
+    ),
+    interval: ml('Refresh every', 'Rafraîchir toutes les', 'Aktualisieren alle'),
+    lastLines: ml('Last lines', 'Dernières lignes', 'Letzte Zeilen'),
+    categories: ml('Categories', 'Catégories', 'Kategorien'),
+    allCategories: ml('all', 'toutes', 'alle'),
+    minSeverity: ml('Minimum severity', 'Sévérité minimale', 'Mindestschweregrad'),
+    allSeverities: ml('all', 'toutes', 'alle'),
+    search: ml('Search (case-insensitive)', 'Rechercher (sans casse)', 'Suchen (ohne Groß-/Kleinschreibung)'),
+    regex: ml('Regular expression', 'Expression régulière', 'Regulärer Ausdruck'),
+    badRegex: ml('Invalid regular expression', 'Expression régulière invalide', 'Ungültiger regulärer Ausdruck'),
+    exportLog: ml('Export displayed (.log)', 'Exporter l’affichage (.log)', 'Anzeige exportieren (.log)'),
+    exportCsv: ml('Export displayed (CSV)', 'Exporter l’affichage (CSV)', 'Anzeige exportieren (CSV)'),
+    exportRaw: ml('Export raw files', 'Exporter les fichiers bruts', 'Rohdateien exportieren'),
+    shown: ml('entries shown', 'entrées affichées', 'Einträge angezeigt'),
+    truncated: ml(
+      'Older lines are not loaded (file too large, or live tail).',
+      'Les lignes plus anciennes ne sont pas chargées (fichier trop gros, ou direct).',
+      'Ältere Zeilen sind nicht geladen (Datei zu groß oder Live-Ansicht).'
+    ),
+    renderCap: ml(
+      'Only the most recent entries are drawn — refine the filters, or export to see them all.',
+      'Seules les entrées les plus récentes sont dessinées — affinez les filtres, ou exportez pour tout voir.',
+      'Nur die neuesten Einträge werden gezeichnet — Filter verfeinern oder exportieren, um alle zu sehen.'
+    ),
+    loadError: ml('Cannot read the logs', 'Impossible de lire les journaux', 'Die Logs können nicht gelesen werden')
+  },
   history: {
     title: ml('Operations history', 'Historique des opérations', 'Vorgangsverlauf'),
     refresh: ml('Refresh', 'Rafraîchir', 'Aktualisieren'),
@@ -132,7 +184,8 @@ export const MSG = {
     empty: ml('No operations recorded yet.', 'Aucune opération enregistrée.', 'Noch keine Vorgänge erfasst.'),
     actionDeploy: ml('Project import', 'Import projet', 'Projektimport'),
     actionRestartAll: ml('Restart all', 'Redémarrage global', 'Alle neu gestartet'),
-    actionManager: ml('Manager control', 'Contrôle manager', 'Manager-Steuerung')
+    actionManager: ml('Manager control', 'Contrôle manager', 'Manager-Steuerung'),
+    actionLogsExport: ml('Logs export', 'Export de journaux', 'Log-Export')
   },
   common: {
     success: ml('Success', 'Succès', 'Erfolg'),
@@ -146,6 +199,12 @@ export const MSG = {
       'Die Managerliste kann nicht gelesen werden'
     ),
     action: ml('The action failed', 'L’action a échoué', 'Die Aktion ist fehlgeschlagen'),
+    /** Add / remove applied by pmon, not found in config/progs afterwards (issue 35). */
+    notPersisted: ml(
+      'pmon configuration not saved',
+      'Configuration pmon non enregistrée',
+      'pmon-Konfiguration nicht gespeichert'
+    ),
     /** Shown for a 502/503: the fault is on the manager side, and only a restart fixes it. */
     bridge: ml(
       'The "processMonitor" manager is not answering. Restart it in pmon: after a backend deployment a manager left running keeps executing its previous code, even though pmon shows it alive.',
@@ -154,6 +213,35 @@ export const MSG = {
     )
   }
 } as const;
+
+/** Format an ISO timestamp as a short date + hour:minute in the active UI language (raw text kept). */
+export function shortDateLabel(iso: string): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString(getLanguage(), { dateStyle: 'short', timeStyle: 'short' });
+}
+
+/** Tooltip of a manager's restart settings (`config/progs`: secKill, restart count, reset minutes). */
+export function restartSettingsTitle(m: { secKill: number; restartCount: number; resetMin: number }): string {
+  return localize(
+    ml(
+      `Kill after ${m.secKill} s · ${m.restartCount} restarts allowed · counter reset after ${m.resetMin} min`,
+      `Arrêt forcé après ${m.secKill} s · ${m.restartCount} redémarrages autorisés · compteur remis à zéro après ${m.resetMin} min`,
+      `Kill nach ${m.secKill} s · ${m.restartCount} Neustarts erlaubt · Zähler-Reset nach ${m.resetMin} min`
+    )
+  );
+}
+
+/** Tooltip of a start mode that pmon runs differently from `config/progs`. */
+export function startModeDiffersTitle(configured: string, live: string): string {
+  return localize(
+    ml(
+      `pmon runs it as "${live}", config/progs says "${configured}"`,
+      `pmon l’exécute en « ${live} », config/progs indique « ${configured} »`,
+      `pmon führt ihn als „${live}" aus, config/progs sagt „${configured}"`
+    )
+  );
+}
 
 /** Display label for a server/instance tab: hostname, else system name, else "local". */
 export function serverLabel(instance: { hostname?: string; system?: string }): string {
@@ -170,6 +258,43 @@ export function confirmRemoveMsg(name: string, index: number): string {
       `Manager „${name}" (#${index}) aus der pmon-Konfiguration entfernen? Der config/progs-Eintrag wird gelöscht.`
     )
   );
+}
+
+/** What a confirmation dialog of the Console tab confirms (issue 34). */
+export type ConfirmIntent = 'start' | 'stop' | 'restart' | 'restart-all' | 'remove';
+
+/**
+ * Heading and button of each Console confirmation. `<wui-confirm-dialog>` defaults to a
+ * DELETION dialog ("Confirm deletion" / "Delete") when they are not given, so every dialog
+ * of this page passes its own: stopping a manager must never read as deleting it.
+ */
+export const CONFIRM_TEXTS: Record<ConfirmIntent, { heading: MultiLangString; confirm: MultiLangString }> = {
+  start: {
+    heading: ml('Start the manager', 'Démarrer le manager', 'Manager starten'),
+    confirm: ml('Start', 'Démarrer', 'Starten')
+  },
+  stop: {
+    heading: ml('Stop the manager', 'Arrêter le manager', 'Manager stoppen'),
+    confirm: ml('Stop', 'Arrêter', 'Stoppen')
+  },
+  restart: {
+    heading: ml('Restart the manager', 'Redémarrer le manager', 'Manager neu starten'),
+    confirm: ml('Restart', 'Redémarrer', 'Neu starten')
+  },
+  'restart-all': {
+    heading: ml('Restart all managers', 'Redémarrer tous les managers', 'Alle Manager neu starten'),
+    confirm: ml('Restart all', 'Tout redémarrer', 'Alle neu starten')
+  },
+  remove: {
+    heading: ml('Remove from the configuration', 'Supprimer de la configuration', 'Aus der Konfiguration entfernen'),
+    confirm: ml('Remove', 'Supprimer', 'Entfernen')
+  }
+};
+
+/** `heading` / `confirmLabel` of `<wui-confirm-dialog>` for one intent, in the active language. */
+export function confirmDialogLabels(intent: ConfirmIntent): { heading: string; confirmLabel: string } {
+  const texts = CONFIRM_TEXTS[intent];
+  return { heading: localize(texts.heading), confirmLabel: localize(texts.confirm) };
 }
 
 /** Confirm prompt for a start/stop/restart action on one manager. */

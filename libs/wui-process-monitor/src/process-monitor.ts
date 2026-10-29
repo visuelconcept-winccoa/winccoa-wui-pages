@@ -14,6 +14,9 @@
  *  - **Project upload**: deploy a ZIP into the project across ALL connected
  *    servers (optional folder purge, 7-Zip extraction into non-protected folders,
  *    config.env, optional restart) — DPL import is NOT here.
+ *  - **Logs**: the WinCC OA log files of each host (`<project>/log`, read by that
+ *    host's agent), filtered, coloured, live tail / pause, .bak merge, export —
+ *    role 'logs-read' (logs can hold user names and addresses).
  * Plus a **History** tab. Every project import and manager restart is traced to a
  * GxP `_AuditTrail` datapoint (`AuditTrail_ProcessMonitor`, with the session user)
  * and an operations-log datapoint, both ensured at page init.
@@ -32,7 +35,16 @@ import appSecurityRoles from './app-security.roles.json';
 import { canEditFleet, canEditFleet$ } from '@visuelconcept-winccoa/wui-kit/data/permissions.js';
 import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
-import { MSG, confirmControlMsg, confirmRemoveMsg, localize, localizeDir, serverLabel } from './process-monitor/i18n.js';
+import {
+  MSG,
+  confirmControlMsg,
+  confirmDialogLabels,
+  confirmRemoveMsg,
+  localize,
+  localizeDir,
+  serverLabel,
+  type ConfirmIntent
+} from './process-monitor/i18n.js';
 import { addManager, controlManager, isBridgeError, listInstances, removeManager, restartAll } from './process-monitor/data/api.js';
 import { ensureStores, loadHistory, traceOperation } from './process-monitor/data/stores.js';
 import type { DeployResult, HistoryEntry, Instance, ManagerSpec } from './process-monitor/types.js';
@@ -40,8 +52,10 @@ import './process-monitor/ui/pm-console.js';
 import './process-monitor/ui/pm-manager-dialog.js';
 import './process-monitor/ui/pm-upload.js';
 import './process-monitor/ui/pm-history.js';
+import './process-monitor/ui/pm-logs.js';
+import type { LogsExportDetail } from './process-monitor/ui/pm-logs.js';
 
-type Tab = 'console' | 'upload' | 'history';
+type Tab = 'console' | 'upload' | 'logs' | 'history';
 
 /** Application-Security module id of this page. */
 const MODULE_ID = 'process-monitor';
@@ -61,6 +75,8 @@ export class WuiProcessMonitor extends LitElement {
   /** Last backend failure (null = none), kept as a message + detail so it follows the UI language. */
   @state() private errorMsg: MultiLangString | null = null;
   @state() private errorDetail = '';
+  /** Add / remove applied by pmon but not written to config/progs (issue 35): kept until closed. */
+  @state() private warningDetail = '';
   /** True when that failure is the vRPC bridge (502/503) → the manager needs a restart. */
   @state() private bridgeDown = false;
   @state() private canEdit = canEditFleet();
@@ -68,6 +84,7 @@ export class WuiProcessMonitor extends LitElement {
   @state() private roleControl = true;
   @state() private roleDeploy = true;
   @state() private roleEditManagers = true;
+  @state() private roleLogs = true;
   @state() private restartAllPending = false;
   @state() private controlPending: ControlIntent | null = null;
   @state() private addDialogOpen = false;
@@ -90,6 +107,12 @@ export class WuiProcessMonitor extends LitElement {
     this.permSub.add(hasRole$(MODULE_ID, 'control').subscribe((granted) => (this.roleControl = granted)));
     this.permSub.add(hasRole$(MODULE_ID, 'edit-managers').subscribe((granted) => (this.roleEditManagers = granted)));
     this.permSub.add(hasRole$(MODULE_ID, 'deploy').subscribe((granted) => (this.roleDeploy = granted)));
+    this.permSub.add(
+      hasRole$(MODULE_ID, 'logs-read').subscribe((granted) => {
+        this.roleLogs = granted;
+        if (!granted && this.tab === 'logs') this.tab = 'console';
+      })
+    );
     void ensureStores();
     void this.refreshInstances();
     void this.refreshHistory();
@@ -122,10 +145,11 @@ export class WuiProcessMonitor extends LitElement {
           <div class="tabs">
             ${this.tabBtn('console', MSG.tabs.console)}
             ${this.tabBtn('upload', MSG.tabs.upload)}
+            ${this.roleLogs ? this.tabBtn('logs', MSG.tabs.logs) : nothing}
             ${this.tabBtn('history', MSG.tabs.history)}
           </div>
 
-          ${this.renderError()}
+          ${this.renderError()}${this.renderWarning()}
           ${this.tab === 'console' ? this.renderConsole() : nothing}
           ${this.tab === 'upload'
             ? html`<pm-upload
@@ -133,6 +157,12 @@ export class WuiProcessMonitor extends LitElement {
                 .servers=${this.instances.map((i) => ({ system: i.system, hostname: i.hostname }))}
                 @wui:deployed=${(e: CustomEvent<DeployDetail>) => void this.onDeployed(e.detail)}
               ></pm-upload>`
+            : nothing}
+          ${this.tab === 'logs' && this.roleLogs
+            ? html`<pm-logs
+                .nodes=${this.instances.map((i) => ({ dp: i.dp, system: i.system, hostname: i.hostname }))}
+                @wui:logsexported=${(e: CustomEvent<LogsExportDetail>) => void this.onLogsExported(e.detail)}
+              ></pm-logs>`
             : nothing}
           ${this.tab === 'history'
             ? html`<pm-history .entries=${this.history} @wui:refreshhistory=${() => void this.refreshHistory()}></pm-history>`
@@ -154,6 +184,13 @@ export class WuiProcessMonitor extends LitElement {
     return html`<ix-message-bar class="error-bar" type="alarm" persistent>
       ${localizeDir(this.errorMsg)}${this.errorDetail ? ` — ${this.errorDetail}` : ''}
       ${this.bridgeDown ? html`<div class="error-hint">${localizeDir(MSG.errors.bridge)}</div>` : nothing}
+    </ix-message-bar>`;
+  }
+
+  private renderWarning(): TemplateResult | typeof nothing {
+    if (!this.warningDetail) return nothing;
+    return html`<ix-message-bar class="error-bar" type="warning" persistent @closedChange=${() => (this.warningDetail = '')}>
+      ${localizeDir(MSG.errors.notPersisted)} — ${this.warningDetail}
     </ix-message-bar>`;
   }
 
@@ -190,21 +227,27 @@ export class WuiProcessMonitor extends LitElement {
     </div>`;
   }
 
+  /**
+   * Every confirmation passes its own heading and button (issue 34): without them,
+   * `<wui-confirm-dialog>` reads "Confirm deletion" / "Delete" — even for a stop.
+   */
   private renderDialogs(): TemplateResult {
     return html`
       ${this.restartAllPending
-        ? html`<wui-confirm-dialog
-            message=${localize(MSG.console.confirmRestartAll)}
-            @wui:confirm=${() => void this.onRestartAll()}
-            @wui:cancel=${() => (this.restartAllPending = false)}
-          ></wui-confirm-dialog>`
+        ? this.confirmDialog(
+            'restart-all',
+            localize(MSG.console.confirmRestartAll),
+            () => void this.onRestartAll(),
+            () => (this.restartAllPending = false)
+          )
         : nothing}
       ${this.controlPending
-        ? html`<wui-confirm-dialog
-            message=${confirmControlMsg(this.controlPending.action, this.controlPending.name)}
-            @wui:confirm=${() => void this.onControlConfirm()}
-            @wui:cancel=${() => (this.controlPending = null)}
-          ></wui-confirm-dialog>`
+        ? this.confirmDialog(
+            this.controlPending.action,
+            confirmControlMsg(this.controlPending.action, this.controlPending.name),
+            () => void this.onControlConfirm(),
+            () => (this.controlPending = null)
+          )
         : nothing}
       ${this.addDialogOpen
         ? html`<pm-manager-dialog
@@ -213,13 +256,25 @@ export class WuiProcessMonitor extends LitElement {
           ></pm-manager-dialog>`
         : nothing}
       ${this.removePending
-        ? html`<wui-confirm-dialog
-            message=${confirmRemoveMsg(this.removePending.name, this.removePending.index)}
-            @wui:confirm=${() => void this.onRemoveConfirm()}
-            @wui:cancel=${() => (this.removePending = null)}
-          ></wui-confirm-dialog>`
+        ? this.confirmDialog(
+            'remove',
+            confirmRemoveMsg(this.removePending.name, this.removePending.index),
+            () => void this.onRemoveConfirm(),
+            () => (this.removePending = null)
+          )
         : nothing}
     `;
+  }
+
+  private confirmDialog(intent: ConfirmIntent, message: string, onConfirm: () => void, onCancel: () => void): TemplateResult {
+    const { heading, confirmLabel } = confirmDialogLabels(intent);
+    return html`<wui-confirm-dialog
+      .heading=${heading}
+      .confirmLabel=${confirmLabel}
+      message=${message}
+      @wui:confirm=${onConfirm}
+      @wui:cancel=${onCancel}
+    ></wui-confirm-dialog>`;
   }
 
   private tabBtn(tab: Tab, label: typeof MSG.tabs.console): TemplateResult {
@@ -306,6 +361,7 @@ export class WuiProcessMonitor extends LitElement {
 
   private async onAddManager(spec: ManagerSpec): Promise<void> {
     this.addDialogOpen = false;
+    this.warningDetail = '';
     const target = this.active;
     const label = nodeLabel(target);
     let ok = false;
@@ -313,11 +369,13 @@ export class WuiProcessMonitor extends LitElement {
       const res = await addManager(target?.dp ?? '', spec);
       ok = res.ok !== false;
       this.clearError();
+      this.warningDetail = res.warning ?? '';
     } catch (error) {
       this.reportError(MSG.errors.action, error);
     }
     const parts = [spec.startMode, spec.options, spec.index === undefined ? '' : `#${spec.index}`].filter(Boolean);
-    const detail = `${spec.name} — add (${parts.join(', ')})`;
+    const unsaved = ok && this.warningDetail ? ' — config/progs not updated' : '';
+    const detail = `${spec.name} — add (${parts.join(', ')})${unsaved}`;
     await traceOperation(
       {
         time: new Date().toISOString(),
@@ -337,6 +395,7 @@ export class WuiProcessMonitor extends LitElement {
     const d = this.removePending;
     this.removePending = null;
     if (!d) return;
+    this.warningDetail = '';
     const target = this.active;
     const label = nodeLabel(target);
     let ok = false;
@@ -344,6 +403,7 @@ export class WuiProcessMonitor extends LitElement {
       const res = await removeManager(target?.dp ?? '', d.index);
       ok = res.ok !== false;
       this.clearError();
+      this.warningDetail = res.warning ?? '';
     } catch (error) {
       this.reportError(MSG.errors.action, error);
     }
@@ -351,7 +411,7 @@ export class WuiProcessMonitor extends LitElement {
       {
         time: new Date().toISOString(),
         action: 'manager',
-        detail: `${d.name} — remove (#${d.index})`,
+        detail: `${d.name} — remove (#${d.index})${ok && this.warningDetail ? ' — config/progs not updated' : ''}`,
         status: ok ? 'success' : 'failed',
         host: hostName(),
         system: label
@@ -386,6 +446,24 @@ export class WuiProcessMonitor extends LitElement {
       { action: 'RESTART_ALL', item: 'project', reason: label }
     );
     await this.refreshInstances();
+    void this.refreshHistory();
+  }
+
+  /** A logs export is traced like the other actions: who (the writer), which host, which files. */
+  private async onLogsExported(d: LogsExportDetail): Promise<void> {
+    const what = d.kind === 'raw' ? 'raw files' : `displayed entries (${d.format})`;
+    const bak = d.mergeBak ? ' [.bak merged]' : '';
+    await traceOperation(
+      {
+        time: new Date().toISOString(),
+        action: 'logs-export',
+        detail: `${d.files.join(', ')} — ${what}${bak}`,
+        status: 'success',
+        host: hostName(),
+        system: d.host
+      },
+      { action: 'EXPORT_LOGS', item: d.files.join(', '), newval: JSON.stringify({ kind: d.kind, format: d.format, mergeBak: d.mergeBak }), reason: d.host }
+    );
     void this.refreshHistory();
   }
 

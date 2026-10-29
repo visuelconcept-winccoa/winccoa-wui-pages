@@ -106,26 +106,19 @@ class PmonClient {
     });
   }
 
-  /** Managers with config (name/startMode) merged with live status (state/pid/manNum). */
+  /**
+   * Managers with their configuration (`MGRLIST:LIST`: start mode, secKill, restart count,
+   * reset minutes, options) merged with their live status (`MGRLIST:STATI`: state, pid, live
+   * start mode, start time, manager number). `startTime` is ISO 8601 when pmon's text could
+   * be read (pmon and this manager share the host, so its local time is ours), pmon's raw
+   * text otherwise, and '' when pmon gives none.
+   */
   async listManagers() {
     const [listRaw, statRaw] = await Promise.all([
       this.sendCommand('MGRLIST:LIST'),
       this.sendCommand('MGRLIST:STATI')
     ]);
-    const list = parseList(listRaw);
-    const stat = parseStati(statRaw);
-    return list.map((m, i) => ({
-      index: m.index,
-      name: m.manager,
-      options: m.commandlineOptions,
-      startModeCfg: m.startMode,
-      state: stat[i]?.state ?? 0,
-      stateLabel: STATE_LABELS[stat[i]?.state ?? 0] || 'unknown',
-      pid: stat[i]?.pid ?? -1,
-      startMode: stat[i]?.startMode ?? 0,
-      startTime: stat[i]?.startTime ?? '',
-      manNum: stat[i]?.manNum ?? 0
-    }));
+    return mergeManagers(parseList(listRaw), parseStati(statRaw));
   }
 
   async startManager(index) {
@@ -152,13 +145,23 @@ class PmonClient {
    * `index === list length` appends). pmon persists the change to config/progs.
    */
   async addManager({ index, name, startMode = 'always', secKill = 30, restartCount = 3, resetMin = 1, options = '' }) {
-    return interpretConfig(
+    const before = await this.listManagers();
+    const text = interpretConfig(
       await this.sendControl(`SINGLE_MGR:INS ${index} ${name} ${startMode} ${secKill} ${restartCount} ${resetMin} ${options}`.trimEnd())
     );
+    // pmon often acknowledges with NOTHING: an ignored insert would read as a success.
+    // The list is re-read and must hold the new entry at its index (issue 35).
+    const failure = checkInserted(before, await this.listManagers(), { index, name, options });
+    if (failure) throw new Error(`${failure}${text ? ` (pmon : ${text.slice(0, 120)})` : ''}`);
+    return text;
   }
   /** Remove a (stopped) manager from the pmon configuration (index ≥ 1). */
   async removeManager(index) {
-    return interpretConfig(await this.sendControl(`SINGLE_MGR:DEL ${index}`));
+    const before = await this.listManagers();
+    const text = interpretConfig(await this.sendControl(`SINGLE_MGR:DEL ${index}`));
+    const failure = checkRemoved(before, await this.listManagers(), index);
+    if (failure) throw new Error(`${failure}${text ? ` (pmon : ${text.slice(0, 120)})` : ''}`);
+    return text;
   }
 }
 
@@ -189,6 +192,55 @@ function interpretConfig(raw) {
   return text;
 }
 
+const sameOptions = (a, b) => String(a || '').replace(/\s+/g, ' ').trim() === String(b || '').replace(/\s+/g, ' ').trim();
+
+/**
+ * Check a `SINGLE_MGR:INS` against the pmon list read before and after it: one entry more,
+ * the new one at `index` with the same name and options. Returns the failure text, or ''.
+ */
+function checkInserted(before, after, { index, name, options }) {
+  const at = after[index];
+  if (after.length !== before.length + 1 || !at || at.name !== name || !sameOptions(at.options, options)) {
+    return `pmon n'a pas ajouté ${name} en position ${index} (liste : ${before.length} → ${after.length} entrées)`;
+  }
+  return '';
+}
+
+/**
+ * Check a `SINGLE_MGR:DEL` the same way: one entry less, and the removed entry no longer at
+ * its index. Returns the failure text, or ''.
+ */
+function checkRemoved(before, after, index) {
+  const gone = before[index];
+  const stillThere = gone && after[index] && after[index].name === gone.name && sameOptions(after[index].options, gone.options) && after.length === before.length;
+  if (after.length !== before.length - 1 || stillThere) {
+    return `pmon n'a pas supprimé l'entrée ${index}${gone ? ` (${gone.name})` : ''} (liste : ${before.length} → ${after.length} entrées)`;
+  }
+  return '';
+}
+
+/**
+ * Manager lines of a `config/progs` file (`manager | start | secKill | restart# | resetMin | options`),
+ * pmon itself first — the same order and index space as `MGRLIST:LIST`. Comments (`#`), the
+ * header and the `auth` / `version` lines are skipped.
+ */
+function parseProgs(text) {
+  const out = [];
+  for (const raw of String(text || '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#') || !line.includes('|')) continue;
+    const p = line.split('|').map((c) => c.trim());
+    if (p.length < 6 || !p[0]) continue;
+    out.push({ name: p[0], startMode: p[1], secKill: p[2], restartCount: p[3], resetMin: p[4], options: p.slice(5).join('|') });
+  }
+  return out;
+}
+
+/** True when `config/progs` holds exactly the pmon list: same names and options, same order. */
+function progsMatches(progs, list) {
+  return progs.length === list.length && list.every((m, i) => progs[i].name === m.name && sameOptions(progs[i].options, m.options));
+}
+
 /** pmon state codes → label. */
 const STATE_LABELS = { 0: 'stopped', 1: 'init', 2: 'running', 3: 'blocked' };
 
@@ -196,8 +248,29 @@ function delay(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/** Integer of a pmon column, or `def` when the column is empty / not a number. */
+function intOr(text, def) {
+  const n = Number.parseInt(String(text ?? '').trim(), 10);
+  return Number.isInteger(n) ? n : def;
+}
+
+/** pmon start modes: the numeric codes some replies carry → the words of `config/progs`. */
+const START_MODE_WORDS = { 0: 'manual', 1: 'once', 2: 'always' };
+
+/** A start mode column as `manual` / `once` / `always` — pmon may send the code or the word. */
+function startModeWord(text) {
+  const t = String(text ?? '').trim().toLowerCase();
+  if (/^\d+$/.test(t)) return START_MODE_WORDS[Number(t)] || t;
+  return t;
+}
+
+/**
+ * `MGRLIST:LIST` reply → configured entries. One line per manager after the `LIST:<n>`
+ * header: `manager;startMode;secKill;restartCount;resetMin;options` (the options may hold
+ * `;` themselves, so everything after column 5 is joined back).
+ */
 function parseList(response) {
-  const lines = response.trim().split('\n');
+  const lines = String(response || '').trim().split('\n');
   const out = [];
   for (let i = 1; i < lines.length; i++) {
     const line = (lines[i] || '').trim();
@@ -207,7 +280,10 @@ function parseList(response) {
       out.push({
         index: i - 1,
         manager: p[0] || '',
-        startMode: p[1] || '',
+        startMode: startModeWord(p[1]),
+        secKill: intOr(p[2], 0),
+        restartCount: intOr(p[3], 0),
+        resetMin: intOr(p[4], 0),
         commandlineOptions: p.slice(5).join(';')
       });
     }
@@ -215,8 +291,12 @@ function parseList(response) {
   return out;
 }
 
+/**
+ * `MGRLIST:STATI` reply → live status per manager: `state;pid;startMode;startTime;manNum`.
+ * The closing line pmon appends (the project's mode, ending with `;`) is skipped.
+ */
 function parseStati(response) {
-  const lines = response.trim().split('\n');
+  const lines = String(response || '').trim().split('\n');
   const out = [];
   for (let i = 1; i < lines.length; i++) {
     const line = (lines[i] || '').trim();
@@ -224,15 +304,68 @@ function parseStati(response) {
     const p = line.split(';');
     if (p.length >= 5) {
       out.push({
-        state: Number.parseInt(p[0] || '0', 10),
-        pid: Number.parseInt(p[1] || '0', 10),
-        startMode: Number.parseInt(p[2] || '0', 10),
-        startTime: p[3] || '',
-        manNum: Number.parseInt(p[4] || '0', 10)
+        state: intOr(p[0], 0),
+        pid: intOr(p[1], 0),
+        startMode: intOr(p[2], 0),
+        startTime: (p[3] || '').trim(),
+        manNum: intOr(p[4], 0)
       });
     }
   }
   return out;
 }
 
-module.exports = { PmonClient };
+/**
+ * pmon's start time (text, in the host's local time) → ISO 8601. pmon writes
+ * `2026.10.29 10:12:33.123`; `-` or `/` separators, a `T`, no seconds / milliseconds and a
+ * day-first date (`29.10.2026 10:12:33`) are accepted too. Returns '' for no time — empty,
+ * or the 1970 epoch pmon shows for a manager that never ran — and the raw text when it
+ * cannot be read, so the page can still show it.
+ */
+function parsePmonTime(text) {
+  const raw = String(text ?? '').trim();
+  if (!raw) return '';
+  const time = '[ T]+(\\d{1,2}):(\\d{2})(?::(\\d{2})(?:[.,](\\d{1,6}))?)?';
+  let y;
+  let mo;
+  let d;
+  let rest;
+  let m = raw.match(new RegExp(`^(\\d{4})[./-](\\d{1,2})[./-](\\d{1,2})${time}`));
+  if (m) [, y, mo, d, ...rest] = m;
+  else {
+    m = raw.match(new RegExp(`^(\\d{1,2})[./-](\\d{1,2})[./-](\\d{4})${time}`));
+    if (!m) return raw;
+    [, d, mo, y, ...rest] = m;
+  }
+  const [h, mi, sec = '0', frac = '0'] = rest;
+  const ms = Number.parseInt(String(frac).padEnd(3, '0').slice(0, 3), 10);
+  const date = new Date(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(sec), ms);
+  if (Number.isNaN(date.getTime()) || date.getMonth() !== Number(mo) - 1) return raw;
+  if (date.getFullYear() <= 1970) return '';
+  return date.toISOString();
+}
+
+/** Configuration (`parseList`) + live status (`parseStati`), by position → the `ManagerInfo` shape. */
+function mergeManagers(list, stat) {
+  return list.map((m, i) => {
+    const s = stat[i];
+    const state = s?.state ?? 0;
+    return {
+      index: m.index,
+      name: m.manager,
+      options: m.commandlineOptions,
+      startModeCfg: m.startMode,
+      secKill: m.secKill,
+      restartCount: m.restartCount,
+      resetMin: m.resetMin,
+      state,
+      stateLabel: STATE_LABELS[state] || 'unknown',
+      pid: s?.pid ?? -1,
+      startMode: s?.startMode ?? 0,
+      startTime: parsePmonTime(s?.startTime),
+      manNum: s?.manNum ?? 0
+    };
+  });
+}
+
+module.exports = { PmonClient, checkInserted, checkRemoved, mergeManagers, parseList, parsePmonTime, parseProgs, parseStati, progsMatches };

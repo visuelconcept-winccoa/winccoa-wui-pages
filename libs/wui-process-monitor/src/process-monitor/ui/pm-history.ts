@@ -63,6 +63,7 @@ export class PmHistory extends LitElement {
 function actionLabel(action: HistoryEntry['action']): MultiLangString {
   if (action === 'deploy') return MSG.history.actionDeploy;
   if (action === 'restart-all') return MSG.history.actionRestartAll;
+  if (action === 'logs-export') return MSG.history.actionLogsExport;
   return MSG.history.actionManager;
 }
 
