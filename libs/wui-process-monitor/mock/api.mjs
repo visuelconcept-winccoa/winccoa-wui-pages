@@ -4,6 +4,10 @@
 // the ZIP upload/deploy are accepted and change nothing. The Logs tab reads a few log files per
 // host (log-files.js shape: tail, incremental read by offset, .bak merge); `WCCOActrl1.log` of
 // SRV-SCADA-01 grows by one entry every 3 s to show the live tail.
+// Instance states (issue 39): SRV-SCADA-01 is the aggregator's own node, connected; SRV-SCADA-02
+// runs an agent older than 0.3.0 (no Ping); SRV-SCADA-03 was decommissioned: its agent does not
+// answer and its last snapshot is nine days old. Only that one can be deleted (POST
+// /instance/delete), and the deletion lasts until the dev server restarts.
 
 const MINUTE = 60_000;
 
@@ -33,7 +37,20 @@ const manager = (
   manNum
 });
 
-/** The two nodes, built per request so the start times (and the uptimes) move with the clock. */
+/** Instances deleted through the mock (until the dev server restarts). */
+const deleted = new Set();
+const MOCK_STARTED_AT = new Date().toISOString();
+
+/** The `status` the manager attaches to each instance after pinging it (instance-state.js). */
+const status = (state, { version = '', error } = {}) => ({
+  state,
+  checkedAt: new Date().toISOString(),
+  version,
+  startedAt: version ? MOCK_STARTED_AT : '',
+  ...(error ? { error } : {})
+});
+
+/** The nodes, built per request so the start times (and the uptimes) move with the clock. */
 const instances = () => {
   const updated = new Date().toISOString();
   return [
@@ -42,6 +59,8 @@ const instances = () => {
       hostname: 'SRV-SCADA-01',
       updated,
       dp: 'System1:ProcessMonitor_Node_SRV_SCADA_01',
+      local: true,
+      status: status('connected', { version: '0.3.0' }),
       managers: [
         manager(0, 'WCCILpmon', '', { pid: 4120, startModeCfg: 'manual' }),
         manager(1, 'WCCILdata', '', { pid: 4188 }),
@@ -61,6 +80,8 @@ const instances = () => {
       hostname: 'SRV-SCADA-02',
       updated,
       dp: 'System1:ProcessMonitor_Node_SRV_SCADA_02',
+      local: false,
+      status: status('agent-too-old', { error: 'Ping: Unimplemented' }),
       managers: [
         manager(0, 'WCCILpmon', '', { pid: 2860, startModeCfg: 'manual', startedAgo: 26 * 60 }),
         manager(1, 'WCCOAui', '-m gedi', { state: 0, startModeCfg: 'manual' }),
@@ -68,8 +89,21 @@ const instances = () => {
         // Configured "once", run by pmon as "always": the console flags the difference.
         manager(3, 'WCCOAmod', '-num 6', { state: 1, pid: 2971, manNum: 6, startModeCfg: 'once', liveMode: 'always', startedAgo: 0.5 })
       ]
+    },
+    {
+      // Decommissioned: the agent no longer answers, the snapshot is nine days old.
+      system: 'System1:',
+      hostname: 'SRV-SCADA-03',
+      updated: new Date(Date.now() - 9 * 24 * 60 * MINUTE).toISOString(),
+      dp: 'System1:ProcessMonitor_Node_SRV_SCADA_03',
+      local: false,
+      status: status('agent-unreachable', { error: 'Ping: no answer within 2500 ms' }),
+      managers: [
+        manager(0, 'WCCILpmon', '', { pid: 1980, startModeCfg: 'manual', startedAgo: 30 * 24 * 60 }),
+        manager(1, 'WCCOAjavascript', '-num 5 processMonitor/index.js', { pid: 2010, manNum: 5, startedAgo: 30 * 24 * 60 })
+      ]
     }
-  ];
+  ].filter((i) => !deleted.has(i.dp));
 };
 
 const ok = { ok: true, mock: true };
@@ -237,6 +271,27 @@ export default {
     const cleared = Array.isArray(body?.clearFolders) ? body.clearFolders : [];
     const all = instances();
     const targets = body?.target && body.target !== 'all' ? all.filter((i) => i.dp === body.target) : all;
-    return { ok: true, results: targets.map(({ system, hostname }) => ({ system, hostname, ok: true, cleared, skipped: [] })) };
+    // A node whose agent does not answer fails on its own, like deploy-transfer.js reports it.
+    const results = targets.map(({ system, hostname, status: st }) =>
+      st.state === 'agent-unreachable'
+        ? { system, hostname, ok: false, cleared: [], skipped: [], error: `agent too old or not reachable over vRPC — update/restart the processMonitor manager on ${hostname}` }
+        : { system, hostname, ok: true, cleared, skipped: [] }
+    );
+    return { ok: results.every((r) => r.ok), results };
+  },
+
+  // Issue 39: the manager refuses its own node and any instance whose agent answers.
+  'POST /api/process-monitor/instance/delete': ({ body }) => {
+    const node = typeof body?.node === 'string' ? body.node.trim() : '';
+    if (!node || node === 'all') throw httpError(400, 'node (instance DP) required');
+    const target = instances().find((i) => i.dp === node);
+    if (!target) return { ok: false, code: 'unknown', error: `unknown instance: ${node}` };
+    const head = { dp: target.dp, system: target.system, hostname: target.hostname, lastSeen: target.updated, state: target.status.state };
+    if (target.local) return { ok: false, ...head, code: 'local', error: "the aggregator's own node cannot be deleted" };
+    if (target.status.state !== 'agent-unreachable') {
+      return { ok: false, ...head, code: 'answers', error: 'the agent answers over vRPC: a running agent recreates its DP at once' };
+    }
+    deleted.add(target.dp);
+    return { ok: true, ...head };
   }
 };

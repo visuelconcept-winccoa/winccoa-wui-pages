@@ -22,7 +22,12 @@ import { ProcessMonitorController } from './processMonitorController';
  *   GET  /health                           -> { ok, vrpc, serviceName, serviceAvailable, serviceStatus, error? }
  *                                             (probes the manager: `serviceAvailable: false`
  *                                              means it is stopped or needs a restart)
- *   GET  /managers                        -> { ok, managers }
+ *   GET  /managers                        -> { ok, instances: [{system, hostname, updated, managers, dp, local, status}], managers }
+ *                                             status = { state, checkedAt, version, startedAt, error? }, state one of
+ *                                             connected | pmon-unreachable | agent-too-old | agent-unreachable | not-checkable
+ *                                             (every node pinged over vRPC in this one request — issue 39)
+ *   POST /instance/delete { node }         -> { ok, dp, system, hostname, lastSeen, state, code?, error? }
+ *                                             (role manage-instances; refused for the local node and for an agent that answers)
  *   POST /manager   { action, index }      -> { ok, action, index }
  *   POST /manager/add    { name, startMode?, options?, index?, node? } -> { ok }
  *   POST /manager/remove { index, node? }  -> { ok }   (index ≥ 1, manager stopped)
@@ -53,6 +58,9 @@ export class ProcessMonitorRoute {
     router.post('/manager/add', requireRole(MODULE_ID, 'edit-managers'), controller.managerAdd);
     router.post('/manager/remove', requireRole(MODULE_ID, 'edit-managers'), controller.managerRemove);
     router.post('/restart', requireRole(MODULE_ID, 'control'), controller.restartAll);
+    // Deleting a host instance (its node DP and history) is its own role, separate from
+    // manager control (issue 39).
+    router.post('/instance/delete', requireRole(MODULE_ID, 'manage-instances'), controller.instanceDelete);
     router.post('/upload/init', requireRole(MODULE_ID, 'deploy'), controller.uploadInit);
     router.post('/upload/chunk', requireRole(MODULE_ID, 'deploy'), controller.uploadChunk);
     router.post('/upload/finalize', requireRole(MODULE_ID, 'deploy'), controller.uploadFinalize);

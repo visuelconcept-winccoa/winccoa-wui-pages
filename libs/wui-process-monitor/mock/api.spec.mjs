@@ -14,7 +14,7 @@ describe('the /api/process-monitor mock', () => {
     const { status, body } = await call('GET /api/process-monitor/managers');
     expect(status).toBe(200);
     expect(body.ok).toBe(true);
-    expect(body.instances.map((instance) => instance.hostname)).toEqual(['SRV-SCADA-01', 'SRV-SCADA-02']);
+    expect(body.instances.map((instance) => instance.hostname)).toEqual(['SRV-SCADA-01', 'SRV-SCADA-02', 'SRV-SCADA-03']);
     for (const instance of body.instances) {
       expect(instance.dp).toMatch(/ProcessMonitor_Node_/);
       expect(instance.managers[0]).toMatchObject({ index: 0, name: 'WCCILpmon', state: 2, stateLabel: 'running' });
@@ -78,9 +78,33 @@ describe('the /api/process-monitor mock', () => {
     expect((await call('POST /api/process-monitor/manager', { body: { node: '', action: 'stop', index: 4 } })).body.ok).toBe(true);
     expect((await call('POST /api/process-monitor/upload/init', { body: { fileName: 'projet.zip' } })).body).toEqual({ ok: true, uploadId: 'mock-upload' });
     const deploy = await call('POST /api/process-monitor/upload/finalize', { body: { uploadId: 'mock-upload', clearFolders: ['panels'], restart: false, target: 'all' } });
-    expect(deploy.body.ok).toBe(true);
-    expect(deploy.body.results).toHaveLength(2);
+    // The decommissioned node fails on its own, the others are deployed.
+    expect(deploy.body.ok).toBe(false);
+    expect(deploy.body.results).toHaveLength(3);
     expect(deploy.body.results[0]).toMatchObject({ ok: true, cleared: ['panels'] });
+    expect(deploy.body.results[2]).toMatchObject({ hostname: 'SRV-SCADA-03', ok: false });
     expect((await call('GET /api/process-monitor/managers')).body.instances[0].managers[4].state).toBe(2);
+  });
+
+  test('instance states: one connected (local), one with an old agent, one whose agent does not answer', async () => {
+    const { body } = await call('GET /api/process-monitor/managers');
+    const byHost = Object.fromEntries(body.instances.map((instance) => [instance.hostname, instance]));
+    expect(byHost['SRV-SCADA-01']).toMatchObject({ local: true, status: { state: 'connected', version: '0.3.0' } });
+    expect(byHost['SRV-SCADA-02']).toMatchObject({ local: false, status: { state: 'agent-too-old', version: '' } });
+    expect(byHost['SRV-SCADA-03']).toMatchObject({ local: false, status: { state: 'agent-unreachable' } });
+    expect(Date.now() - Date.parse(byHost['SRV-SCADA-03'].updated)).toBeGreaterThan(7 * 24 * 3_600_000);
+  });
+
+  test('instance delete: refused for the local node and an answering agent, accepted for an unreachable one', async () => {
+    const del = (node) => call('POST /api/process-monitor/instance/delete', { body: { node } });
+    expect((await del('')).status).toBe(400);
+    expect((await del('all')).status).toBe(400);
+    expect((await del('System1:ProcessMonitor_Node_SRV_SCADA_01')).body).toMatchObject({ ok: false, code: 'local' });
+    expect((await del('System1:ProcessMonitor_Node_SRV_SCADA_02')).body).toMatchObject({ ok: false, code: 'answers' });
+    const done = (await del('System1:ProcessMonitor_Node_SRV_SCADA_03')).body;
+    expect(done).toMatchObject({ ok: true, hostname: 'SRV-SCADA-03', system: 'System1:', state: 'agent-unreachable' });
+    expect(done.lastSeen).toBeTruthy();
+    const after = (await call('GET /api/process-monitor/managers')).body.instances.map((instance) => instance.hostname);
+    expect(after).toEqual(['SRV-SCADA-01', 'SRV-SCADA-02']);
   });
 });

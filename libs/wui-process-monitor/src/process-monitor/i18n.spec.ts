@@ -35,4 +35,10 @@ describe('Console confirmation dialogs', () => {
       for (const text of [...Object.values(heading), ...Object.values(confirm)]) expect(text).toBeTruthy();
     }
   });
+
+  it('the instance deletion says "Delete instance" in its heading and on its button (issue 39)', () => {
+    const { heading, confirm } = CONFIRM_TEXTS['delete-instance'];
+    expect(heading).toEqual(confirm);
+    expect(confirm).toEqual({ 'en_US.utf8': 'Delete instance', 'fr.utf8': 'Supprimer l’instance', 'de.utf8': 'Instanz löschen' });
+  });
 });

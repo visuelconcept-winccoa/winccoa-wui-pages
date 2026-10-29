@@ -6,7 +6,7 @@
  * MSA vRPC to the processMonitor manager). Manager list/control + chunked ZIP
  * upload & deploy. DPL import is handled by another module, not here.
  */
-import type { DeployResult, Instance, LogFileInfo, LogReadFile, ManagerSpec } from '../types.js';
+import type { DeployResult, Instance, InstanceDeleteResult, LogFileInfo, LogReadFile, ManagerSpec } from '../types.js';
 
 const BASE = '/api/process-monitor';
 /** Raw bytes per upload chunk (base64-expanded ~1.33× on the wire). */
@@ -64,6 +64,15 @@ function postJson<T>(url: string, body: object): Promise<T> {
 export async function listInstances(): Promise<Instance[]> {
   const data = await getJson<{ instances: Instance[] }>(`${BASE}/managers`);
   return data.instances ?? [];
+}
+
+/**
+ * Delete the node DP of a host instance whose agent no longer answers (role
+ * `manage-instances`). The aggregator pings it again first and refuses when it answers, or
+ * when it is its own node — the refusal comes back as an `ApiError` with its reason.
+ */
+export function deleteInstance(node: string): Promise<InstanceDeleteResult> {
+  return postJson(`${BASE}/instance/delete`, { node });
 }
 
 /** `node` is the target node DP name (one per computer); '' / 'all' for the local/only one. */

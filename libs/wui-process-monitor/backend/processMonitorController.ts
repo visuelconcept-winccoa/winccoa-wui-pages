@@ -11,8 +11,10 @@
 // upload assembled to a temp file, then handed to the manager which purges
 // selected folders, extracts via 7-Zip, runs config.env and optionally restarts
 // all), and read the WinCC OA log files of each host (`<project>/log`, Logs tab —
-// served by the agent of the host that owns the files). DPL import is intentionally
-// NOT handled here.
+// served by the agent of the host that owns the files), and delete the node DP of a
+// host instance whose agent no longer answers (issue 39 — `/managers` carries the
+// real state of each instance, pinged by the manager in the same call). DPL import
+// is intentionally NOT handled here.
 //
 // winccoa-manager (the MSA `Vrpc` namespace) is supplied by the WinCC OA node
 // bootstrap at runtime; loaded via a guarded require so only /api/process-monitor
@@ -156,6 +158,18 @@ function projectTempDir(): string {
   return tmp;
 }
 
+/**
+ * The node DP named by a `POST /instance/delete` body, or null: a non-empty DP name, never
+ * "all" (the manager also refuses anything that is not exactly one known node DP).
+ */
+export function instanceDeleteTarget(body: unknown): string | null {
+  const node = (body as { node?: unknown } | null | undefined)?.node;
+  if (typeof node !== 'string') return null;
+  const name = node.trim();
+  if (name === '' || name.toLowerCase() === 'all' || !/ProcessMonitor_Node_/.test(name)) return null;
+  return name;
+}
+
 export class ProcessMonitorController {
   /**
    * GET /health -> liveness AND reachability of the hosting manager.
@@ -246,6 +260,20 @@ export class ProcessMonitorController {
   public restartAll = async (req: Request, res: Response): Promise<void> => {
     const { node, systemName } = (req.body ?? {}) as { node?: string; systemName?: string };
     await this.call('RestartAll', { node: node ?? systemName ?? '' }, res);
+  };
+
+  /**
+   * POST /instance/delete { node } -> { ok, dp, system, hostname, lastSeen, state, code?, error? }
+   * (role `manage-instances`, issue 39). Deletes the node DP of an instance whose agent no longer
+   * answers. The manager refuses the local node, pings the node again and refuses when it answers.
+   */
+  public instanceDelete = async (req: Request, res: Response): Promise<void> => {
+    const node = instanceDeleteTarget(req.body);
+    if (!node) {
+      res.status(400).json({ ok: false, error: 'node (instance DP) required' });
+      return;
+    }
+    await this.call('DeleteInstance', { node }, res);
   };
 
   /** GET /logs?node= -> { ok, host, files } — the log files of one node (`<project>/log`). */

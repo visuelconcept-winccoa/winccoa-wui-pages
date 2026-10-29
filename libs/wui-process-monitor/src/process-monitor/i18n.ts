@@ -67,6 +67,26 @@ export const MSG = {
       'Manager vor dem Entfernen stoppen'
     )
   },
+  instances: {
+    title: ml('Instances', 'Instances', 'Instanzen'),
+    invalidOnly: ml('Invalid instances only', 'Instances invalides uniquement', 'Nur ungültige Instanzen'),
+    colHost: ml('Host', 'Hôte', 'Host'),
+    colSystem: ml('System', 'Système', 'System'),
+    colState: ml('State', 'État', 'Status'),
+    colLastSeen: ml('Last seen', 'Vue la dernière fois', 'Zuletzt gesehen'),
+    colVersion: ml('Agent version', 'Version de l’agent', 'Agent-Version'),
+    local: ml('this server', 'ce serveur', 'dieser Server'),
+    none: ml('No invalid instance.', 'Aucune instance invalide.', 'Keine ungültige Instanz.'),
+    olderAgent: ml('< 0.3.0', '< 0.3.0', '< 0.3.0'),
+    deleteInstance: ml('Delete instance', 'Supprimer l’instance', 'Instanz löschen'),
+    longUnseen: ml('Not seen for more than 7 days', 'Non vue depuis plus de 7 jours', 'Seit mehr als 7 Tagen nicht gesehen'),
+    staleSnapshot: ml(
+      'Last snapshot published by this host — it is not up to date.',
+      'Dernier instantané publié par cet hôte — il n’est pas à jour.',
+      'Letzter von diesem Host veröffentlichter Stand — er ist nicht aktuell.'
+    ),
+    deleted: ml('Instance deleted.', 'Instance supprimée.', 'Instanz gelöscht.')
+  },
   managerDialog: {
     title: ml('Add a manager', 'Ajouter un manager', 'Manager hinzufügen'),
     fName: ml('Manager (without .exe)', 'Manager (sans .exe)', 'Manager (ohne .exe)'),
@@ -185,7 +205,8 @@ export const MSG = {
     actionDeploy: ml('Project import', 'Import projet', 'Projektimport'),
     actionRestartAll: ml('Restart all', 'Redémarrage global', 'Alle neu gestartet'),
     actionManager: ml('Manager control', 'Contrôle manager', 'Manager-Steuerung'),
-    actionLogsExport: ml('Logs export', 'Export de journaux', 'Log-Export')
+    actionLogsExport: ml('Logs export', 'Export de journaux', 'Log-Export'),
+    actionDeleteInstance: ml('Instance deleted', 'Suppression d’instance', 'Instanz gelöscht')
   },
   common: {
     success: ml('Success', 'Succès', 'Erfolg'),
@@ -261,7 +282,7 @@ export function confirmRemoveMsg(name: string, index: number): string {
 }
 
 /** What a confirmation dialog of the Console tab confirms (issue 34). */
-export type ConfirmIntent = 'start' | 'stop' | 'restart' | 'restart-all' | 'remove';
+export type ConfirmIntent = 'start' | 'stop' | 'restart' | 'restart-all' | 'remove' | 'delete-instance';
 
 /**
  * Heading and button of each Console confirmation. `<wui-confirm-dialog>` defaults to a
@@ -288,6 +309,10 @@ export const CONFIRM_TEXTS: Record<ConfirmIntent, { heading: MultiLangString; co
   remove: {
     heading: ml('Remove from the configuration', 'Supprimer de la configuration', 'Aus der Konfiguration entfernen'),
     confirm: ml('Remove', 'Supprimer', 'Entfernen')
+  },
+  'delete-instance': {
+    heading: ml('Delete instance', 'Supprimer l’instance', 'Instanz löschen'),
+    confirm: ml('Delete instance', 'Supprimer l’instance', 'Instanz löschen')
   }
 };
 
@@ -306,4 +331,53 @@ export function confirmControlMsg(action: 'start' | 'stop' | 'restart', name: st
     return localize(ml(`Stop manager "${name}"?`, `Arrêter le manager « ${name} » ?`, `Manager „${name}" stoppen?`));
   }
   return localize(ml(`Restart manager "${name}"?`, `Redémarrer le manager « ${name} » ?`, `Manager „${name}" neu starten?`));
+}
+
+/** Label of an instance state (issue 39). */
+export const STATE_LABELS: Record<string, MultiLangString> = {
+  connected: ml('Connected', 'Connectée', 'Verbunden'),
+  'pmon-unreachable': ml('pmon not reachable', 'pmon injoignable', 'pmon nicht erreichbar'),
+  'agent-too-old': ml('Agent too old', 'Agent trop ancien', 'Agent zu alt'),
+  'agent-unreachable': ml('Agent not reachable', 'Agent injoignable', 'Agent nicht erreichbar'),
+  'not-checkable': ml('Not checkable over vRPC', 'Non vérifiable par vRPC', 'Per vRPC nicht prüfbar'),
+  unknown: ml('Not checked', 'Non vérifiée', 'Nicht geprüft')
+};
+
+/** What each state means, for the badge tooltip. */
+export const STATE_HINTS: Record<string, MultiLangString> = {
+  connected: ml('The processMonitor agent of this host answers and reaches its pmon.', 'L’agent processMonitor de cet hôte répond et joint son pmon.', 'Der processMonitor-Agent dieses Hosts antwortet und erreicht seinen pmon.'),
+  'pmon-unreachable': ml('The agent answers but cannot reach its local pmon.', 'L’agent répond mais ne joint pas son pmon local.', 'Der Agent antwortet, erreicht aber seinen lokalen pmon nicht.'),
+  'agent-too-old': ml(
+    'The agent answers but predates 0.3.0: update and restart its processMonitor manager.',
+    'L’agent répond mais est antérieur à 0.3.0 : mettez à jour et redémarrez son manager processMonitor.',
+    'Der Agent antwortet, ist aber älter als 0.3.0: processMonitor-Manager aktualisieren und neu starten.'
+  ),
+  'agent-unreachable': ml(
+    'The agent does not answer: processMonitor manager stopped, host down, network failure, or a host renamed or decommissioned.',
+    'L’agent ne répond pas : manager processMonitor arrêté, hôte arrêté, panne réseau, ou hôte renommé ou retiré.',
+    'Der Agent antwortet nicht: processMonitor-Manager gestoppt, Host aus, Netzwerkfehler oder Host umbenannt oder stillgelegt.'
+  ),
+  'not-checkable': ml(
+    'A host of another system: its agent cannot be reached by name over vRPC, so its state is unknown (it is not reported as disconnected).',
+    'Un hôte d’un autre système : son agent n’est pas joignable par son nom en vRPC, son état est donc inconnu (il n’est pas signalé déconnecté).',
+    'Ein Host eines anderen Systems: sein Agent ist per vRPC nicht über den Namen erreichbar, sein Zustand ist daher unbekannt (nicht als getrennt gemeldet).'
+  ),
+  unknown: ml('The server does not report the state (processMonitor older than 0.3.0).', 'Le serveur ne remonte pas l’état (processMonitor antérieur à 0.3.0).', 'Der Server meldet den Zustand nicht (processMonitor älter als 0.3.0).')
+};
+
+/** "seen 3 h 05 ago" — the age is already formatted. */
+export function agoLabel(age: string): string {
+  return localize(ml(`${age} ago`, `il y a ${age}`, `vor ${age}`));
+}
+
+/** Confirm prompt for deleting a host instance (issue 39). */
+export function confirmDeleteInstanceMsg(host: string, system: string, lastSeen: string): string {
+  const sys = system.replace(/:$/, '') || '—';
+  return localize(
+    ml(
+      `Delete the instance of host "${host}" (system ${sys}, last seen ${lastSeen})? Its datapoint and its history are deleted. The server checks again that its agent does not answer; an agent that starts again recreates its instance.`,
+      `Supprimer l’instance de l’hôte « ${host} » (système ${sys}, vue la dernière fois ${lastSeen}) ? Son point de données et son historique sont supprimés. Le serveur vérifie à nouveau que son agent ne répond pas ; un agent qui redémarre recrée son instance.`,
+      `Instanz des Hosts „${host}" (System ${sys}, zuletzt gesehen ${lastSeen}) löschen? Ihr Datenpunkt und ihr Verlauf werden gelöscht. Der Server prüft erneut, dass ihr Agent nicht antwortet; ein neu startender Agent legt seine Instanz wieder an.`
+    )
+  );
 }

@@ -92,20 +92,75 @@ resuming reloads the tail and follows the end again. Exports — the displayed e
 header per log) — are named `logs_<host>_<date>.<ext>` and traced to the audit trail and the History
 tab (`EXPORT_LOGS`: user, host, files).
 
+## Host instances — real state checked over vRPC (issue 39)
+
+Each pmon host has its node DP `ProcessMonitor_Node_<hostname>`, created by its agent. The page used
+to show its last snapshot whatever its age. Since 0.3.0 every agent answers `Ping()` on its
+`ProcessMonitor_<hostname>` service (`managers/processMonitor/instance-state.js`):
+
+`Ping() → {ok, hostname, system, node, version, startedAt, pmon: reachable | unreachable}` — `version`
+is the module version (`AGENT_VERSION` in `index.js`, kept equal to `package.json` by a unit test),
+`pmon` the result of one `MGRLIST:LIST` with a 1.5 s timeout.
+
+`ListManagers` pings every node DP **in parallel, in the same call** (never one HTTP request per
+instance: the browser opens 6 HTTP/1.1 connections per server), 2.5 s timeout per node, the local
+node in-process (no stub); pings in flight or under 2 s old are shared by concurrent calls. Each
+instance gets `local` (the aggregator's own node) and `status: {state, checkedAt, version, startedAt,
+error?}`:
+
+| State | Meaning |
+|---|---|
+| `connected` | the agent answers and reaches its pmon |
+| `pmon-unreachable` | the agent answers, its MGRLIST query fails |
+| `agent-too-old` | the service answers `Unimplemented` (status code, or an "unimplemented / unknown function" text) for `Ping`: agent older than 0.3.0 |
+| `agent-unreachable` | no answer in time, or no such service: manager stopped, host down, network, host renamed or decommissioned |
+| `not-checkable` | a node of ANOTHER system that does not answer: reaching a service of another system by name is not verified (issue 32), so it is never reported as disconnected |
+
+A ping that fails drops the cached stub of that node, so the next refresh reconnects. The agent's
+version and start time come from `Ping` only; they are not published in the node DP, because
+`ensureNodeType` never changes an existing `ProcessMonitor_Node` type (new elements would be missing
+on existing projects).
+
+The page shows a coloured dot on each instance tab, a compact **Instances** list (state, last seen
+from `.updated` with its age, agent version, a hint past 7 days, "invalid instances only" filter;
+open by itself while an instance is invalid) and, for an instance that is not connected, its last
+snapshot greyed with a banner giving the state and the snapshot's age. Start/stop/restart and the
+configuration edits are hidden for an `agent-unreachable` instance (nobody reads its `.cmd`).
+
+**Delete instance** — role `process-monitor/manage-instances` (separate from manager control; open
+until the admin assigns groups): offered only for an `agent-unreachable` instance, never for the local
+node. The confirmation ("Delete instance") names the host, the system and the last-seen date, and
+says that the DP and its history are deleted. `POST /instance/delete {node}` (behind `requireRole`)
+→ `DeleteInstance` on the aggregator, which matches exactly one node DP (never "all", never a host
+guess), refuses the local node, **pings the node again** and refuses unless the agent is still
+unreachable (`code: local | answers | not-checkable`), then `dpDelete`s the node DP. The page traces
+the attempt to the audit trail and the History tab (`DELETE_INSTANCE`: who, host, system, DP, last
+seen). An agent that starts again recreates its DP (`ensureNodeDp`), so deleting a valid instance by
+mistake is recoverable.
+
+Not verified on a real system: the MSA status of a call to a function an older agent does not
+register (mapped to `agent-too-old` by status code `Unimplemented` or by its text), and how a node of
+another system answers (always `not-checkable` when it fails).
+
 ## `wui dev` mock — `mock/api.mjs`
 
 The package ships a mock of `/api/process-monitor`, merged by wui-toolkit into any site that selects
 the module (`wui dev`, screenshots; wui-toolkit ≥ 0.20).
 
-- `managers` answers two pmon nodes of one system (`SRV-SCADA-01`, ten managers, the S7Plus driver
-  stopped; `SRV-SCADA-02`, four managers) in the manager's `ListManagers` shape — `instances` plus the
+- `managers` answers three pmon nodes of one system (`SRV-SCADA-01`, the local node, connected, ten
+  managers, the S7Plus driver stopped; `SRV-SCADA-02`, four managers, an agent older than 0.3.0;
+  `SRV-SCADA-03`, decommissioned: agent unreachable, snapshot nine days old) in the manager's
+  `ListManagers` shape — `instances` plus the
   first node's flat `managers` list; `health` reports the vRPC service ready. Every manager carries the
   fields of the managers table: start time (built per request, so the uptimes move; none for a
   stopped manager), manager number, configured and live start mode, restart settings. `WCCOAopcua`
   restarted four minutes ago (a start-time sort brings it up) and `WCCOAmod` on `SRV-SCADA-02` runs
   as `always` while `config/progs` says `once` (the console flags it).
 - Start/stop/restart, restart-all, adding/removing a pmon entry and the ZIP upload/deploy are accepted
-  and change nothing; a deploy reports success on every targeted node with the folders it would clear.
+  and change nothing; a deploy reports success on every targeted node with the folders it would clear,
+  except `SRV-SCADA-03`, which fails with the "agent too old or not reachable" message.
+- `instance/delete` refuses the local node (`code: local`) and the old agent (`code: answers`) and
+  deletes `SRV-SCADA-03` until the dev server restarts.
 - Logs: `SRV-SCADA-01` has `PVSS_II.log` (+ `.log.bak`), `WCCILpmon.log`, `WCCOActrl1.log` (+ `.bak`,
   multi-line CTRL errors) and `node_5.log` (lines without a header); `SRV-SCADA-02` has `PVSS_II.log`
   and `WCCOAmod6.log` (+ `.bak`). `WCCOActrl1.log` grows by one entry every 3 s since the mock started,

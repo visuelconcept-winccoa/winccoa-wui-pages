@@ -38,7 +38,10 @@
  * computer, so the manager can run on every pmon node at the same time.
  *
  * vRPC methods (each: Variant<string JSON> -> Variant<string JSON>):
- *   ListManagers()                          -> { ok, instances: [{system,hostname,updated,managers,dp}] }
+ *   ListManagers()                          -> { ok, instances: [{system,hostname,updated,managers,dp,local,status}] }
+ *     status (issue 39, instance-state.js): { state, checkedAt, version, startedAt, error? } — every
+ *     node is pinged in parallel (short timeout) in THIS call; state is connected | pmon-unreachable |
+ *     agent-too-old | agent-unreachable | not-checkable. `local` marks the aggregator's own node.
  *     managers[]: { index, name, options, startModeCfg, secKill, restartCount, resetMin,   (MGRLIST:LIST)
  *                   state, stateLabel, pid, startMode, startTime, manNum }               (MGRLIST:STATI)
  *     startTime is ISO 8601 (pmon's local time, read on pmon's own host), pmon's raw text
@@ -49,6 +52,17 @@
  *   RemoveManager({node,index})             -> { ok, index, system, error? }   (DEL a stopped manager, index ≥ 1)
  *   RestartAll({systemName})                -> { ok, system, error? }
  *   Deploy({zipPath,clearFolders,restart,target}) -> { ok, results:[{system,hostname,ok,cleared,skipped,error}] }
+ *
+ * Instance state and deletion (issue 39, instance-state.js has the contract):
+ *   Ping()                 -> { ok, hostname, system, node, version, startedAt, pmon: 'reachable'|'unreachable' }
+ *                             (answered by THIS agent; pmon = a quick MGRLIST:LIST, short timeout)
+ *   DeleteInstance({node}) -> { ok, dp, system, hostname, lastSeen, state, code?, error? }
+ *                             refuses the local node, pings the node again and refuses unless its
+ *                             agent is still unreachable, then dpDelete of its node DP. An agent that
+ *                             starts again recreates its DP (ensureNodeDp). Route: POST
+ *                             /instance/delete, role process-monitor/manage-instances.
+ *   The agent's version and start time come from Ping only: they are NOT published in the node
+ *   DP (ensureNodeType never changes an existing type, so new elements would be missing there).
  *
  * Logs of each host (issue 37, log-files.js has the contract), routed like the deploy: the
  * aggregator answers for its own node and calls the TARGET node's service for the others
@@ -77,6 +91,7 @@ const { execFile } = require('node:child_process');
 const { PmonClient, parseProgs, progsMatches } = require('./pmon-client.js');
 const { DEFAULT_CHUNK_BYTES, TransferReceiver, deployToNodes, sendZip, tooOldMessage } = require('./deploy-transfer.js');
 const { listLogFiles, readLogFiles } = require('./log-files.js');
+const { PING_TIMEOUT_MS, deleteInstance, pingNode } = require('./instance-state.js');
 
 const winccoa = new WinccoaManager();
 
@@ -98,6 +113,12 @@ const LEGACY_NODE_DP = 'ProcessMonitor_Node';
 /** THIS node's DP — `ProcessMonitor_Node_<hostname>`, set at startup from the host. */
 let NODE_DP = '';
 const PUBLISH_MS = 3000;
+/** Module version this agent ships with (package.json of wui-process-monitor; checked by a unit test). */
+const AGENT_VERSION = '0.3.0';
+/** When this agent started (Ping). */
+const STARTED_AT = new Date().toISOString();
+/** pmon check of Ping: one MGRLIST:LIST, well under the aggregator's ping timeout. */
+const PMON_PING_TIMEOUT_MS = 1500;
 
 // <PROJ>/javascript/processMonitor/index.js -> project root is two levels up.
 const PROJ_PATH = path.resolve(__dirname, '..', '..');
@@ -161,6 +182,8 @@ function readPmonPort() {
 
 const PMON_PORT = readPmonPort();
 const pmonClient = new PmonClient({ port: PMON_PORT });
+/** Same pmon, short timeout: only for the reachability check of Ping. */
+const pmonPingClient = new PmonClient({ port: PMON_PORT, timeout: PMON_PING_TIMEOUT_MS });
 
 function parseReq(request) {
   if (!request.isString() || request.isNull()) return {};
@@ -613,10 +636,84 @@ async function callStub(stub, method, request) {
   try {
     resp = await stub.callFunction(method, Vrpc.Variant.createString(JSON.stringify(request)), new Vrpc.ClientContext());
   } catch (e) {
-    throw new Error(`${method}: ${vrpcErrorText(e)}`);
+    // The status code travels with the error: Ping tells an older agent (Unimplemented) apart.
+    throw Object.assign(new Error(`${method}: ${vrpcErrorText(e)}`), { statusCode: e?.status?.statusCode });
   }
-  if (resp.status.statusCode !== Vrpc.StatusCode.OK) throw new Error(`${method}: ${String(resp.status.text ?? resp.status.statusCode)}`);
+  if (resp.status.statusCode !== Vrpc.StatusCode.OK) {
+    throw Object.assign(new Error(`${method}: ${String(resp.status.text ?? resp.status.statusCode)}`), { statusCode: resp.status.statusCode });
+  }
   return JSON.parse(String(resp.response.value ?? '{}'));
+}
+
+// ---- real state of each instance (issue 39) --------------------------------
+
+/** This agent's answer to Ping: who it is, its version, and whether its pmon answers. */
+async function localPing() {
+  let pmon = 'reachable';
+  let pmonError = '';
+  try {
+    await pmonPingClient.sendCommand('MGRLIST:LIST');
+  } catch (e) {
+    pmon = 'unreachable';
+    pmonError = e.message;
+  }
+  return { ok: true, hostname: HOSTNAME, system: OWN_SYSTEM, node: NODE_DP, version: AGENT_VERSION, startedAt: STARTED_AT, pmon, ...(pmonError ? { pmonError } : {}) };
+}
+
+/** Ping another node's service. A failure (or a stub still connecting) drops its cached stub. */
+async function remotePing(node) {
+  const name = nodeServiceName(node);
+  try {
+    const call = await nodeCaller(node);
+    return await call('Ping', {});
+  } catch (e) {
+    nodeStubs.delete(name);
+    throw e;
+  }
+}
+
+/** A node of another system than this aggregator (distributed project). */
+function isForeign(node) {
+  return Boolean(OWN_SYSTEM && node.system && node.system !== OWN_SYSTEM);
+}
+
+const pingOptions = () => ({
+  isLocal,
+  isForeign,
+  localPing,
+  remotePing: (node) => {
+    const p = remotePing(node);
+    // A ping that times out keeps running: its late failure must not surface as unhandled.
+    p.catch(() => undefined);
+    return p;
+  },
+  timeoutMs: PING_TIMEOUT_MS,
+  unimplementedCode: Vrpc.StatusCode?.Unimplemented
+});
+
+/**
+ * Pings in flight or just answered, by node DP: several pages polling at once share one ping
+ * per node. A deletion never uses it (it pings again).
+ */
+const recentPings = new Map();
+const PING_REUSE_MS = 2000;
+
+function cachedPing(node) {
+  const hit = recentPings.get(node.dp);
+  if (hit && Date.now() - hit.at < PING_REUSE_MS) return hit.promise;
+  const promise = pingNode(node, pingOptions());
+  recentPings.set(node.dp, { at: Date.now(), promise });
+  return promise;
+}
+
+/** Ping every instance in parallel and attach `local` and `status` (one ListManagers call). */
+async function annotateInstances(instances) {
+  const statuses = await Promise.all(instances.map((inst) => cachedPing(inst)));
+  instances.forEach((inst, i) => {
+    inst.local = isLocal(inst);
+    inst.status = statuses[i];
+  });
+  return instances;
 }
 
 // ---- logs of each host (issue 37) -----------------------------------------
@@ -681,6 +778,8 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
     this.registerFunction('ReceiveCommit', jsonHandler((r) => receiver.commit(r)));
     this.registerFunction('DeployStatus', jsonHandler((r) => receiver.status(r)));
     this.registerFunction('ReceiveAbort', jsonHandler((r) => receiver.abort(r)));
+    this.registerFunction('Ping', jsonHandler(() => localPing()));
+    this.registerFunction('DeleteInstance', jsonHandler((r) => this.deleteInstance(r)));
     this.registerFunction('ListLogs', jsonHandler((r) => routeLogs('ListLogs', r, localListLogs)));
     this.registerFunction('ReadLog', jsonHandler((r) => routeLogs('ReadLog', r, () => readLogFiles(LOG_DIR, r))));
     // Raw export: the whole files (capped from their end), .bak merged or not.
@@ -712,11 +811,32 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
       // compatibility: a still-cached pre-multi-server page bundle reads `managers`,
       // the current one reads `instances` — returning both avoids an empty list
       // until the service worker serves the new bundle.
+      await annotateInstances(instances);
       const localInst = instances.find(isLocal) ?? instances.find((i) => i.system === OWN_SYSTEM) ?? instances[0];
       return reply({ ok: true, instances, managers: localInst?.managers ?? [] });
     } catch (e) {
       return reply({ ok: false, error: e.message, instances: [], managers: [] });
     }
+  }
+
+  /**
+   * Delete the node DP of an instance whose agent no longer answers (issue 39). The target is
+   * matched by its node DP only — never "all", never a hostname guess.
+   */
+  async deleteInstance(req) {
+    const target = typeof req.node === 'string' ? req.node.trim() : '';
+    if (!target || target === 'all') return { ok: false, code: 'unknown', error: 'node (instance DP) required' };
+    const node = (await discoverNodes()).find((n) => n.dp === target || (bareDp(n.dp) === bareDp(target) && sysPrefix(n.dp) === sysPrefix(target)));
+    if (!node) return { ok: false, code: 'unknown', error: `unknown instance: ${target}` };
+    const res = await deleteInstance(node, {
+      isLocal,
+      ping: (n) => pingNode(n, pingOptions()),
+      readUpdated: async (n) => asStr((await winccoa.dpGet([`${n.dp}.updated`]))[0]),
+      dpDelete: (dp) => winccoa.dpDelete(dp)
+    });
+    recentPings.delete(node.dp);
+    log(res.ok ? `Instance supprimée : ${node.dp} (vue la dernière fois ${res.lastSeen || '?'})` : `Suppression de ${node.dp} refusée : ${res.error}`);
+    return res;
   }
 
   async controlManager(ctx, request) {
