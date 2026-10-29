@@ -57,6 +57,41 @@ Not verified on a real system: reaching the service of a node that belongs to AN
 distributed project (the stub is created by name only, like the webserver bridge does), and the MSA
 message size limit (the chunk size is kept at about 1 MiB of text for that reason).
 
+## Logs tab — the log files of each host
+
+The Logs tab (role `process-monitor/logs-read`, separate from manager control: logs can hold user
+names and addresses) reads the WinCC OA log files of one host, `<project>/log` only. The page asks the
+aggregator (`GET /logs?node=`, `POST /logs/read`, `POST /logs/export`, all behind `requireRole`), which
+answers for its own node and calls the `ListLogs` / `ReadLog` / `ExportLog` vRPC methods of the TARGET
+node's own `ProcessMonitor_<hostname>` service for the others, like the deploy transfer; an agent
+without them fails with the same "agent too old or not reachable" message
+(`managers/processMonitor/log-files.js`):
+
+- a requested name must be in the folder's listing (`.log`, `.bak`, `.log.bak`, no sub-folder) — never
+  a path;
+- `maxLines > 0`: the last lines, read from the end in 64 KiB blocks; `fromOffset[name]`: only what was
+  written since (a line still being written waits for the next read), `reset: true` when the file was
+  rotated; `maxLines` 0 (pause, raw export): the whole file, capped at its last 8 MiB (`truncated`);
+- `mergeBak`: the previous rotation comes along on a fresh read, whole or for the lines the current
+  file lacks;
+- the text is UTF-8, or Latin-1 when it is not valid UTF-8.
+
+In the browser (`src/process-monitor/logs.ts`, unit-tested on WinCC OA samples) a header line
+`<manager> (<num>), <date time>, <category>, <severity>, <code>, <text>` starts an entry; other lines
+are attached to the entry before them (before the first header, each is its own entry), so a filter
+never cuts a multi-line entry. Several files are interleaved by time; the `.bak` comes before its file
+with a rotation marker. Filters: categories, minimum severity, free text (case-insensitive, optional
+regular expression, matches highlighted). Severities and categories are coloured with theme variables.
+
+**Live** shows the last N lines (100 / 500 / 1000 / 5000) and polls every 2 / 5 / 10 / 30 s with ONE
+request for all the selected files, skipped while the previous one runs — never one request or stream
+per file (the webserver is HTTP/1.1, a browser opens 6 connections per server). **Pause** stops the
+polling and loads the whole files (at most the newest 10 000 entries are drawn; export has them all);
+resuming reloads the tail and follows the end again. Exports — the displayed entries as `.log` or CSV
+(`time;manager;category;severity;text`), or the raw files (`.bak` merged or not, one file with a
+header per log) — are named `logs_<host>_<date>.<ext>` and traced to the audit trail and the History
+tab (`EXPORT_LOGS`: user, host, files).
+
 ## `wui dev` mock — `mock/api.mjs`
 
 The package ships a mock of `/api/process-monitor`, merged by wui-toolkit into any site that selects
@@ -71,5 +106,9 @@ the module (`wui dev`, screenshots; wui-toolkit ≥ 0.20).
   as `always` while `config/progs` says `once` (the console flags it).
 - Start/stop/restart, restart-all, adding/removing a pmon entry and the ZIP upload/deploy are accepted
   and change nothing; a deploy reports success on every targeted node with the folders it would clear.
+- Logs: `SRV-SCADA-01` has `PVSS_II.log` (+ `.log.bak`), `WCCILpmon.log`, `WCCOActrl1.log` (+ `.bak`,
+  multi-line CTRL errors) and `node_5.log` (lines without a header); `SRV-SCADA-02` has `PVSS_II.log`
+  and `WCCOAmod6.log` (+ `.bak`). `WCCOActrl1.log` grows by one entry every 3 s since the mock started,
+  for the live tail; reads follow the manager's tail / offset / `.bak` rules.
 - The History tab and the audit trail go through `/api/para` (`ProcessMonitor_History`,
   `AuditTrail_ProcessMonitor`), not this mock.

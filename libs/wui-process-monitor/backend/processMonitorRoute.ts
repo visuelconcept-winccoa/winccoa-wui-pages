@@ -30,6 +30,10 @@ import { ProcessMonitorController } from './processMonitorController';
  *   POST /upload/init     { fileName }     -> { ok, uploadId }
  *   POST /upload/chunk    { uploadId, data(base64) }
  *   POST /upload/finalize { uploadId, clearFolders[], restart } -> deploy result
+ *   GET  /logs?node=                       -> { ok, host, files }        (role logs-read)
+ *   POST /logs/read   { node, files[], fromOffset?, maxLines?, mergeBak? }
+ *                                          -> { ok, host, files: [{name, text, offset, size, truncated, reset, bak?}] }
+ *   POST /logs/export { node, files[], mergeBak? } -> the whole files (role logs-read)
  */
 export class ProcessMonitorRoute {
   static routes(): Router {
@@ -52,6 +56,11 @@ export class ProcessMonitorRoute {
     router.post('/upload/init', requireRole(MODULE_ID, 'deploy'), controller.uploadInit);
     router.post('/upload/chunk', requireRole(MODULE_ID, 'deploy'), controller.uploadChunk);
     router.post('/upload/finalize', requireRole(MODULE_ID, 'deploy'), controller.uploadFinalize);
+    // Logs can hold sensitive data (user names, addresses): their own role, separate
+    // from manager control.
+    router.get('/logs', requireRole(MODULE_ID, 'logs-read'), controller.logs);
+    router.post('/logs/read', requireRole(MODULE_ID, 'logs-read'), controller.logsRead);
+    router.post('/logs/export', requireRole(MODULE_ID, 'logs-read'), controller.logsExport);
 
     return router;
   }

@@ -27,7 +27,8 @@ export const MSG = {
   tabs: {
     console: ml('Console', 'Console', 'Konsole'),
     upload: ml('Project upload', 'Upload projet', 'Projekt-Upload'),
-    history: ml('History', 'Historique', 'Verlauf')
+    history: ml('History', 'Historique', 'Verlauf'),
+    logs: ml('Logs', 'Journaux', 'Logs')
   },
   console: {
     title: ml('Managers', 'Managers', 'Manager'),
@@ -130,6 +131,47 @@ export const MSG = {
     deployed: ml('Deployment successful.', 'Déploiement réussi.', 'Bereitstellung erfolgreich.'),
     failed: ml('Deployment failed.', 'Déploiement échoué.', 'Bereitstellung fehlgeschlagen.')
   },
+  logs: {
+    host: ml('Host', 'Hôte', 'Host'),
+    files: ml('Log files', 'Fichiers journaux', 'Logdateien'),
+    fileFilter: ml('Filter by name or manager', 'Filtrer par nom ou manager', 'Nach Name oder Manager filtern'),
+    refreshFiles: ml('Refresh the list', 'Rafraîchir la liste', 'Liste aktualisieren'),
+    noFiles: ml('No log file found.', 'Aucun fichier journal trouvé.', 'Keine Logdatei gefunden.'),
+    selectHint: ml('Select one or more log files.', 'Sélectionnez un ou plusieurs fichiers journaux.', 'Eine oder mehrere Logdateien auswählen.'),
+    mergeBak: ml('Merge with .bak (previous rotation)', 'Fusionner avec le .bak (rotation précédente)', 'Mit .bak zusammenführen (vorherige Rotation)'),
+    live: ml('Live', 'Direct', 'Live'),
+    pause: ml('Pause', 'Pause', 'Pause'),
+    resume: ml('Resume live', 'Reprendre le direct', 'Live fortsetzen'),
+    paused: ml(
+      'Paused: the whole file is shown, the display no longer updates.',
+      'En pause : le fichier entier est affiché, l’affichage n’est plus mis à jour.',
+      'Pausiert: die ganze Datei wird angezeigt, die Anzeige wird nicht mehr aktualisiert.'
+    ),
+    interval: ml('Refresh every', 'Rafraîchir toutes les', 'Aktualisieren alle'),
+    lastLines: ml('Last lines', 'Dernières lignes', 'Letzte Zeilen'),
+    categories: ml('Categories', 'Catégories', 'Kategorien'),
+    allCategories: ml('all', 'toutes', 'alle'),
+    minSeverity: ml('Minimum severity', 'Sévérité minimale', 'Mindestschweregrad'),
+    allSeverities: ml('all', 'toutes', 'alle'),
+    search: ml('Search (case-insensitive)', 'Rechercher (sans casse)', 'Suchen (ohne Groß-/Kleinschreibung)'),
+    regex: ml('Regular expression', 'Expression régulière', 'Regulärer Ausdruck'),
+    badRegex: ml('Invalid regular expression', 'Expression régulière invalide', 'Ungültiger regulärer Ausdruck'),
+    exportLog: ml('Export displayed (.log)', 'Exporter l’affichage (.log)', 'Anzeige exportieren (.log)'),
+    exportCsv: ml('Export displayed (CSV)', 'Exporter l’affichage (CSV)', 'Anzeige exportieren (CSV)'),
+    exportRaw: ml('Export raw files', 'Exporter les fichiers bruts', 'Rohdateien exportieren'),
+    shown: ml('entries shown', 'entrées affichées', 'Einträge angezeigt'),
+    truncated: ml(
+      'Older lines are not loaded (file too large, or live tail).',
+      'Les lignes plus anciennes ne sont pas chargées (fichier trop gros, ou direct).',
+      'Ältere Zeilen sind nicht geladen (Datei zu groß oder Live-Ansicht).'
+    ),
+    renderCap: ml(
+      'Only the most recent entries are drawn — refine the filters, or export to see them all.',
+      'Seules les entrées les plus récentes sont dessinées — affinez les filtres, ou exportez pour tout voir.',
+      'Nur die neuesten Einträge werden gezeichnet — Filter verfeinern oder exportieren, um alle zu sehen.'
+    ),
+    loadError: ml('Cannot read the logs', 'Impossible de lire les journaux', 'Die Logs können nicht gelesen werden')
+  },
   history: {
     title: ml('Operations history', 'Historique des opérations', 'Vorgangsverlauf'),
     refresh: ml('Refresh', 'Rafraîchir', 'Aktualisieren'),
@@ -142,7 +184,8 @@ export const MSG = {
     empty: ml('No operations recorded yet.', 'Aucune opération enregistrée.', 'Noch keine Vorgänge erfasst.'),
     actionDeploy: ml('Project import', 'Import projet', 'Projektimport'),
     actionRestartAll: ml('Restart all', 'Redémarrage global', 'Alle neu gestartet'),
-    actionManager: ml('Manager control', 'Contrôle manager', 'Manager-Steuerung')
+    actionManager: ml('Manager control', 'Contrôle manager', 'Manager-Steuerung'),
+    actionLogsExport: ml('Logs export', 'Export de journaux', 'Log-Export')
   },
   common: {
     success: ml('Success', 'Succès', 'Erfolg'),

@@ -102,7 +102,7 @@ export interface HistoryEntry {
   /** ISO timestamp. */
   time: string;
   /** Operation kind. */
-  action: 'deploy' | 'restart-all' | 'manager';
+  action: 'deploy' | 'restart-all' | 'manager' | 'logs-export';
   /** Human-readable detail (file name, manager name, …). */
   detail: string;
   /** 'success' | 'failed'. */
@@ -113,4 +113,34 @@ export interface HistoryEntry {
   user?: string;
   /** Target system name (multi-server); empty/undefined for the local system. */
   system?: string;
+}
+
+/** One log file of a host's `<project>/log` (backend `ListLogs`). */
+export interface LogFileInfo {
+  name: string;
+  size: number;
+  /** ISO last-modified date. */
+  mtime: string;
+  /** Its previous rotation (`.bak`) in the folder, '' when none. */
+  bak: string;
+  /** For a `.bak`: the current log it rotates, '' otherwise. */
+  bakOf: string;
+  /** The manager it belongs to, deduced from its name (+ pmon index), null for a shared log. */
+  manager: { name: string; manNum: number | null; index: number | null } | null;
+}
+
+/** One file of a `ReadLog` / `ExportLog` reply. */
+export interface LogReadFile {
+  name: string;
+  /** Complete lines read (a line being written waits for the next read). */
+  text: string;
+  /** Byte offset the next incremental read starts at. */
+  offset: number;
+  size: number;
+  /** Older content was left out (tail, or the whole-read cap). */
+  truncated: boolean;
+  /** The text replaces what was read before (first read, or the file was rotated). */
+  reset: boolean;
+  /** The previous rotation, sent with a fresh read when asked (`mergeBak`). */
+  bak?: { name: string; text: string; truncated: boolean };
 }

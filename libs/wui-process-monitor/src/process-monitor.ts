@@ -14,6 +14,9 @@
  *  - **Project upload**: deploy a ZIP into the project across ALL connected
  *    servers (optional folder purge, 7-Zip extraction into non-protected folders,
  *    config.env, optional restart) — DPL import is NOT here.
+ *  - **Logs**: the WinCC OA log files of each host (`<project>/log`, read by that
+ *    host's agent), filtered, coloured, live tail / pause, .bak merge, export —
+ *    role 'logs-read' (logs can hold user names and addresses).
  * Plus a **History** tab. Every project import and manager restart is traced to a
  * GxP `_AuditTrail` datapoint (`AuditTrail_ProcessMonitor`, with the session user)
  * and an operations-log datapoint, both ensured at page init.
@@ -49,8 +52,10 @@ import './process-monitor/ui/pm-console.js';
 import './process-monitor/ui/pm-manager-dialog.js';
 import './process-monitor/ui/pm-upload.js';
 import './process-monitor/ui/pm-history.js';
+import './process-monitor/ui/pm-logs.js';
+import type { LogsExportDetail } from './process-monitor/ui/pm-logs.js';
 
-type Tab = 'console' | 'upload' | 'history';
+type Tab = 'console' | 'upload' | 'logs' | 'history';
 
 /** Application-Security module id of this page. */
 const MODULE_ID = 'process-monitor';
@@ -79,6 +84,7 @@ export class WuiProcessMonitor extends LitElement {
   @state() private roleControl = true;
   @state() private roleDeploy = true;
   @state() private roleEditManagers = true;
+  @state() private roleLogs = true;
   @state() private restartAllPending = false;
   @state() private controlPending: ControlIntent | null = null;
   @state() private addDialogOpen = false;
@@ -101,6 +107,12 @@ export class WuiProcessMonitor extends LitElement {
     this.permSub.add(hasRole$(MODULE_ID, 'control').subscribe((granted) => (this.roleControl = granted)));
     this.permSub.add(hasRole$(MODULE_ID, 'edit-managers').subscribe((granted) => (this.roleEditManagers = granted)));
     this.permSub.add(hasRole$(MODULE_ID, 'deploy').subscribe((granted) => (this.roleDeploy = granted)));
+    this.permSub.add(
+      hasRole$(MODULE_ID, 'logs-read').subscribe((granted) => {
+        this.roleLogs = granted;
+        if (!granted && this.tab === 'logs') this.tab = 'console';
+      })
+    );
     void ensureStores();
     void this.refreshInstances();
     void this.refreshHistory();
@@ -133,6 +145,7 @@ export class WuiProcessMonitor extends LitElement {
           <div class="tabs">
             ${this.tabBtn('console', MSG.tabs.console)}
             ${this.tabBtn('upload', MSG.tabs.upload)}
+            ${this.roleLogs ? this.tabBtn('logs', MSG.tabs.logs) : nothing}
             ${this.tabBtn('history', MSG.tabs.history)}
           </div>
 
@@ -144,6 +157,12 @@ export class WuiProcessMonitor extends LitElement {
                 .servers=${this.instances.map((i) => ({ system: i.system, hostname: i.hostname }))}
                 @wui:deployed=${(e: CustomEvent<DeployDetail>) => void this.onDeployed(e.detail)}
               ></pm-upload>`
+            : nothing}
+          ${this.tab === 'logs' && this.roleLogs
+            ? html`<pm-logs
+                .nodes=${this.instances.map((i) => ({ dp: i.dp, system: i.system, hostname: i.hostname }))}
+                @wui:logsexported=${(e: CustomEvent<LogsExportDetail>) => void this.onLogsExported(e.detail)}
+              ></pm-logs>`
             : nothing}
           ${this.tab === 'history'
             ? html`<pm-history .entries=${this.history} @wui:refreshhistory=${() => void this.refreshHistory()}></pm-history>`
@@ -427,6 +446,24 @@ export class WuiProcessMonitor extends LitElement {
       { action: 'RESTART_ALL', item: 'project', reason: label }
     );
     await this.refreshInstances();
+    void this.refreshHistory();
+  }
+
+  /** A logs export is traced like the other actions: who (the writer), which host, which files. */
+  private async onLogsExported(d: LogsExportDetail): Promise<void> {
+    const what = d.kind === 'raw' ? 'raw files' : `displayed entries (${d.format})`;
+    const bak = d.mergeBak ? ' [.bak merged]' : '';
+    await traceOperation(
+      {
+        time: new Date().toISOString(),
+        action: 'logs-export',
+        detail: `${d.files.join(', ')} — ${what}${bak}`,
+        status: 'success',
+        host: hostName(),
+        system: d.host
+      },
+      { action: 'EXPORT_LOGS', item: d.files.join(', '), newval: JSON.stringify({ kind: d.kind, format: d.format, mergeBak: d.mergeBak }), reason: d.host }
+    );
     void this.refreshHistory();
   }
 

@@ -50,6 +50,13 @@
  *   RestartAll({systemName})                -> { ok, system, error? }
  *   Deploy({zipPath,clearFolders,restart,target}) -> { ok, results:[{system,hostname,ok,cleared,skipped,error}] }
  *
+ * Logs of each host (issue 37, log-files.js has the contract), routed like the deploy: the
+ * aggregator answers for its own node and calls the TARGET node's service for the others
+ * (`local: true` marks a forwarded call). Reads are limited to `<project>/log`, by name.
+ *   ListLogs({node})                                      -> { ok, host, files: [{name,size,mtime,bak,bakOf,manager}] }
+ *   ReadLog({node, files, fromOffset, maxLines, mergeBak}) -> { ok, host, files: [{name,text,offset,size,truncated,reset,bak?}] }
+ *   ExportLog({node, files, mergeBak})                     -> same as ReadLog, whole files (raw export)
+ *
  * Node-to-node deploy transfer (called by the aggregator on the TARGET node's service;
  * deploy-transfer.js has the contract): ReceiveBegin, ReceiveChunk, ReceiveCommit,
  * DeployStatus, ReceiveAbort. A node whose agent predates them (Unimplemented / not
@@ -69,6 +76,7 @@ const crypto = require('node:crypto');
 const { execFile } = require('node:child_process');
 const { PmonClient, parseProgs, progsMatches } = require('./pmon-client.js');
 const { DEFAULT_CHUNK_BYTES, TransferReceiver, deployToNodes, sendZip, tooOldMessage } = require('./deploy-transfer.js');
+const { listLogFiles, readLogFiles } = require('./log-files.js');
 
 const winccoa = new WinccoaManager();
 
@@ -107,6 +115,8 @@ const DENY_EXTRACT_FOLDERS = new Set(['logs', 'log', 'db', 'config', 'images', '
 // path — whereas the service account always has write access to its own project
 // tree. `temp` is neither a protected nor a purgeable folder.
 const TEMP_DIR = path.join(PROJ_PATH, 'temp');
+// The ONLY folder the Logs tab reads (by file name, checked against its listing).
+const LOG_DIR = path.join(PROJ_PATH, 'log');
 function ensureTempDir() {
   fs.mkdirSync(TEMP_DIR, { recursive: true });
   return TEMP_DIR;
@@ -568,23 +578,81 @@ function vrpcErrorText(error) {
   return (status && (status.text || status.message)) || (error instanceof Error ? error.message : String(error));
 }
 
+/** Stubs to the other nodes' services, by service name — dropped on any failure. */
+const nodeStubs = new Map();
+
 /**
  * `call(method, request)` on another node's service — the same `Vrpc.Stub` client the
  * webserver bridge uses for this manager. Rejects when the stub cannot be created (no
  * such service) or the call does not answer OK (e.g. Unimplemented on an older agent).
+ * The stub is cached (the Logs tab polls); a failure drops it so the next call reconnects.
  */
 async function nodeCaller(node) {
-  const stub = await Vrpc.Stub.createAndInitialize(nodeServiceName(node), new Vrpc.StubOptions());
+  const name = nodeServiceName(node);
+  if (!nodeStubs.has(name)) nodeStubs.set(name, Vrpc.Stub.createAndInitialize(name, new Vrpc.StubOptions()));
+  let stub;
+  try {
+    stub = await nodeStubs.get(name);
+  } catch (e) {
+    nodeStubs.delete(name);
+    throw e;
+  }
   return async (method, request) => {
-    let resp;
     try {
-      resp = await stub.callFunction(method, Vrpc.Variant.createString(JSON.stringify(request)), new Vrpc.ClientContext());
+      return await callStub(stub, method, request);
     } catch (e) {
-      throw new Error(`${method}: ${vrpcErrorText(e)}`);
+      nodeStubs.delete(name);
+      throw e;
     }
-    if (resp.status.statusCode !== Vrpc.StatusCode.OK) throw new Error(`${method}: ${String(resp.status.text ?? resp.status.statusCode)}`);
-    return JSON.parse(String(resp.response.value ?? '{}'));
   };
+}
+
+/** One JSON call on a stub; rejects with the method and the MSA status text. */
+async function callStub(stub, method, request) {
+  let resp;
+  try {
+    resp = await stub.callFunction(method, Vrpc.Variant.createString(JSON.stringify(request)), new Vrpc.ClientContext());
+  } catch (e) {
+    throw new Error(`${method}: ${vrpcErrorText(e)}`);
+  }
+  if (resp.status.statusCode !== Vrpc.StatusCode.OK) throw new Error(`${method}: ${String(resp.status.text ?? resp.status.statusCode)}`);
+  return JSON.parse(String(resp.response.value ?? '{}'));
+}
+
+// ---- logs of each host (issue 37) -----------------------------------------
+
+/** This node's log files, with the manager of each (pmon list when pmon answers). */
+async function localListLogs() {
+  let managers = [];
+  try {
+    managers = await pmonClient.listManagers();
+  } catch {
+    managers = []; // pmon down: files listed without their pmon index
+  }
+  return { ok: true, host: HOSTNAME, files: await listLogFiles(LOG_DIR, managers) };
+}
+
+/**
+ * Answer a log request for its target node: here for this node (or a forwarded call),
+ * else on the target node's own service — a host only ever reads its own files.
+ */
+async function routeLogs(method, req, local) {
+  const targets = req.local === true ? [] : await resolveTargets(req.node || '');
+  const node = targets[0];
+  if (!node || isLocal(node)) {
+    try {
+      return { host: HOSTNAME, ...(await local()) };
+    } catch (e) {
+      return { ok: false, host: HOSTNAME, error: e.message };
+    }
+  }
+  const host = node.hostname || bareDp(node.dp);
+  try {
+    const call = await nodeCaller(node);
+    return await call(method, { ...req, node: '', local: true });
+  } catch (e) {
+    return { ok: false, host, error: tooOldMessage(host, vrpcErrorText(e)) };
+  }
 }
 
 /** Wrap a receiver method as a vRPC handler (JSON in, JSON out). */
@@ -613,6 +681,10 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
     this.registerFunction('ReceiveCommit', jsonHandler((r) => receiver.commit(r)));
     this.registerFunction('DeployStatus', jsonHandler((r) => receiver.status(r)));
     this.registerFunction('ReceiveAbort', jsonHandler((r) => receiver.abort(r)));
+    this.registerFunction('ListLogs', jsonHandler((r) => routeLogs('ListLogs', r, localListLogs)));
+    this.registerFunction('ReadLog', jsonHandler((r) => routeLogs('ReadLog', r, () => readLogFiles(LOG_DIR, r))));
+    // Raw export: the whole files (capped from their end), .bak merged or not.
+    this.registerFunction('ExportLog', jsonHandler((r) => routeLogs('ExportLog', r, () => readLogFiles(LOG_DIR, { files: r.files, mergeBak: r.mergeBak === true, maxLines: 0 }))));
   }
 
   async listManagers(ctx) {

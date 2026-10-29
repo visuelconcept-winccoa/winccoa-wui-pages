@@ -6,7 +6,7 @@
  * MSA vRPC to the processMonitor manager). Manager list/control + chunked ZIP
  * upload & deploy. DPL import is handled by another module, not here.
  */
-import type { DeployResult, Instance, ManagerSpec } from '../types.js';
+import type { DeployResult, Instance, LogFileInfo, LogReadFile, ManagerSpec } from '../types.js';
 
 const BASE = '/api/process-monitor';
 /** Raw bytes per upload chunk (base64-expanded ~1.33× on the wire). */
@@ -84,6 +84,31 @@ export function addManager(node: string, spec: ManagerSpec): Promise<{ ok: boole
 /** Remove a STOPPED manager from the target node's pmon configuration (index ≥ 1). */
 export function removeManager(node: string, index: number): Promise<{ ok: boolean; warning?: string }> {
   return postJson(`${BASE}/manager/remove`, { node, index });
+}
+
+/** The log files of one node (`node` = its node DP; '' for the local one). */
+export async function listLogs(node: string): Promise<LogFileInfo[]> {
+  const data = await getJson<{ files: LogFileInfo[] }>(`${BASE}/logs?node=${encodeURIComponent(node)}`);
+  return data.files ?? [];
+}
+
+/**
+ * Read some log files of one node in ONE request (the live tail polls this, never one
+ * request per file: the webserver is HTTP/1.1, a browser opens 6 connections per server).
+ * `fromOffset[name]` continues a file where the last read ended; `maxLines` 0 = whole file.
+ */
+export async function readLogs(
+  node: string,
+  req: { files: string[]; fromOffset?: Record<string, number>; maxLines: number; mergeBak: boolean }
+): Promise<LogReadFile[]> {
+  const data = await postJson<{ files: LogReadFile[] }>(`${BASE}/logs/read`, { node, ...req });
+  return data.files ?? [];
+}
+
+/** The whole files (raw export), `.bak` merged or not. */
+export async function exportLogs(node: string, files: string[], mergeBak: boolean): Promise<LogReadFile[]> {
+  const data = await postJson<{ files: LogReadFile[] }>(`${BASE}/logs/export`, { node, files, mergeBak });
+  return data.files ?? [];
 }
 
 /** Sub-batch size for stack-safe base64 (each byte 0–255 maps 1:1 to a code point). */

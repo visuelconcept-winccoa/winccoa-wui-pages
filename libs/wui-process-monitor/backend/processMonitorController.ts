@@ -10,7 +10,9 @@
 // configuration entries, restart-all, and deploy an uploaded project ZIP (chunked
 // upload assembled to a temp file, then handed to the manager which purges
 // selected folders, extracts via 7-Zip, runs config.env and optionally restarts
-// all). DPL import is intentionally NOT handled here.
+// all), and read the WinCC OA log files of each host (`<project>/log`, Logs tab —
+// served by the agent of the host that owns the files). DPL import is intentionally
+// NOT handled here.
 //
 // winccoa-manager (the MSA `Vrpc` namespace) is supplied by the WinCC OA node
 // bootstrap at runtime; loaded via a guarded require so only /api/process-monitor
@@ -245,6 +247,48 @@ export class ProcessMonitorController {
     const { node, systemName } = (req.body ?? {}) as { node?: string; systemName?: string };
     await this.call('RestartAll', { node: node ?? systemName ?? '' }, res);
   };
+
+  /** GET /logs?node= -> { ok, host, files } — the log files of one node (`<project>/log`). */
+  public logs = async (req: Request, res: Response): Promise<void> => {
+    const node = typeof req.query?.node === 'string' ? req.query.node : '';
+    await this.call('ListLogs', { node }, res);
+  };
+
+  /**
+   * POST /logs/read { node, files[], fromOffset?{file: offset}, maxLines?, mergeBak? }
+   * -> { ok, host, files: [{name, text, offset, size, truncated, reset, bak?}] }.
+   * The names are checked by the agent against its listing (never a path).
+   */
+  public logsRead = async (req: Request, res: Response): Promise<void> => {
+    const body = this.logRequest(req, res);
+    if (!body) return;
+    const { fromOffset, maxLines } = (req.body ?? {}) as { fromOffset?: unknown; maxLines?: unknown };
+    const offsets: Record<string, number> = {};
+    if (fromOffset && typeof fromOffset === 'object') {
+      for (const [name, value] of Object.entries(fromOffset as Record<string, unknown>)) {
+        if (typeof value === 'number' && Number.isInteger(value) && value >= 0) offsets[name] = value;
+      }
+    }
+    await this.call('ReadLog', { ...body, fromOffset: offsets, maxLines: typeof maxLines === 'number' ? Math.max(0, Math.floor(maxLines)) : 0 }, res);
+  };
+
+  /** POST /logs/export { node, files[], mergeBak? } -> the whole files (raw export). */
+  public logsExport = async (req: Request, res: Response): Promise<void> => {
+    const body = this.logRequest(req, res);
+    if (!body) return;
+    await this.call('ExportLog', body, res);
+  };
+
+  /** `{node, files, mergeBak}` of a log request, or null after a 400 (no file name). */
+  private logRequest(req: Request, res: Response): { node: string; files: string[]; mergeBak: boolean } | null {
+    const { node, files, mergeBak } = (req.body ?? {}) as { node?: unknown; files?: unknown; mergeBak?: unknown };
+    const names = Array.isArray(files) ? files.filter((f): f is string => typeof f === 'string' && f !== '') : [];
+    if (names.length === 0) {
+      res.status(400).json({ ok: false, error: 'files (log file names) required' });
+      return null;
+    }
+    return { node: typeof node === 'string' ? node : '', files: names, mergeBak: mergeBak === true };
+  }
 
   /** POST /upload/init { fileName } -> { ok, uploadId } */
   public uploadInit = (req: Request, res: Response): void => {
