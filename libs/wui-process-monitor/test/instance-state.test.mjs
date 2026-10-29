@@ -160,3 +160,11 @@ describe('deleteInstance (server side)', () => {
     expect(await deleteInstance(node('PC2'), d)).toMatchObject({ ok: false, code: 'dp-delete', error: 'dpDelete failed: DP locked' });
   });
 });
+
+describe('agent version', () => {
+  it('the version the agent reports is the version of the module', () => {
+    const pkg = JSON.parse(fs.readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'));
+    const index = fs.readFileSync(fileURLToPath(new URL('../managers/processMonitor/index.js', import.meta.url)), 'utf8');
+    expect(index).toMatch(new RegExp(`const AGENT_VERSION = '${pkg.version.replaceAll('.', '\\.')}';`));
+  });
+});
