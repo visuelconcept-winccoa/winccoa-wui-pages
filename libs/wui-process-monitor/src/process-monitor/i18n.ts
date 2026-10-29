@@ -60,12 +60,18 @@ export const MSG = {
       'ALLE Manager neu starten? Dies kann die Produktion unterbrechen.'
     ),
     addManager: ml('Add manager', 'Ajouter un manager', 'Manager hinzufügen'),
-    remove: ml('Remove from configuration', 'Supprimer de la configuration', 'Aus der Konfiguration entfernen'),
-    removeStopFirst: ml(
-      'Stop the manager before removing it',
-      'Arrêtez le manager avant de le supprimer',
-      'Manager vor dem Entfernen stoppen'
-    )
+    remove: ml('Delete from the configuration', 'Supprimer de la configuration', 'Aus der Konfiguration löschen'),
+    removeRunning: ml(
+      'Delete: the running manager is stopped first',
+      'Supprimer : le manager en cours est d’abord arrêté',
+      'Löschen: der laufende Manager wird zuerst gestoppt'
+    ),
+    removeNeedsControl: ml(
+      'The manager is running: stopping it before the delete needs the "Control managers" role',
+      'Le manager est en cours : l’arrêter avant la suppression demande le rôle « Piloter les managers »',
+      'Der Manager läuft: ihn vor dem Löschen zu stoppen erfordert die Rolle „Manager steuern"'
+    ),
+    edit: ml('Edit configuration', 'Modifier la configuration', 'Konfiguration bearbeiten')
   },
   instances: {
     title: ml('Instances', 'Instances', 'Instanzen'),
@@ -89,6 +95,29 @@ export const MSG = {
   },
   managerDialog: {
     title: ml('Add a manager', 'Ajouter un manager', 'Manager hinzufügen'),
+    editTitle: ml('Edit the manager', 'Modifier le manager', 'Manager bearbeiten'),
+    fSecKill: ml('Kill after (s)', 'Arrêt forcé après (s)', 'Kill nach (s)'),
+    fRestartCount: ml('Restarts allowed', 'Redémarrages autorisés', 'Erlaubte Neustarts'),
+    fResetMin: ml('Counter reset (min)', 'Remise à zéro du compteur (min)', 'Zähler-Reset (min)'),
+    nameReadOnly: ml(
+      'The executable cannot be changed: another executable is another manager (delete it and add a new one).',
+      'L’exécutable ne se modifie pas : un autre exécutable est un autre manager (supprimez-le et ajoutez-en un nouveau).',
+      'Die ausführbare Datei ist nicht änderbar: eine andere Datei ist ein anderer Manager (löschen und neu hinzufügen).'
+    ),
+    runningNote: ml(
+      'The manager is running: a new start mode or new options only take effect at its next start.',
+      'Le manager est en cours : un nouveau mode de démarrage ou de nouvelles options ne prennent effet qu’à son prochain démarrage.',
+      'Der Manager läuft: ein neuer Startmodus oder neue Optionen wirken erst beim nächsten Start.'
+    ),
+    saveAndRestart: ml('Save and restart the manager', 'Enregistrer et redémarrer le manager', 'Speichern und Manager neu starten'),
+    editHint: ml(
+      'The change is applied by pmon and written to config/progs of the selected server, then checked.',
+      'La modification est appliquée par pmon et écrite dans config/progs du serveur sélectionné, puis vérifiée.',
+      'Die Änderung wird von pmon übernommen, in config/progs des ausgewählten Servers geschrieben und dann geprüft.'
+    ),
+    noChange: ml('Nothing changed.', 'Aucune modification.', 'Keine Änderung.'),
+    save: ml('Save', 'Enregistrer', 'Speichern'),
+    delete: ml('Delete manager', 'Supprimer le manager', 'Manager löschen'),
     fName: ml('Manager (without .exe)', 'Manager (sans .exe)', 'Manager (ohne .exe)'),
     fStartMode: ml('Start mode', 'Mode de démarrage', 'Startmodus'),
     modeAlways: ml('always — auto-start & restart', 'always — démarrage/redémarrage auto', 'always — Auto-Start & Neustart'),
@@ -205,6 +234,7 @@ export const MSG = {
     actionDeploy: ml('Project import', 'Import projet', 'Projektimport'),
     actionRestartAll: ml('Restart all', 'Redémarrage global', 'Alle neu gestartet'),
     actionManager: ml('Manager control', 'Contrôle manager', 'Manager-Steuerung'),
+    actionManagerConfig: ml('Manager configuration', 'Configuration manager', 'Manager-Konfiguration'),
     actionLogsExport: ml('Logs export', 'Export de journaux', 'Log-Export'),
     actionDeleteInstance: ml('Instance deleted', 'Suppression d’instance', 'Instanz gelöscht')
   },
@@ -270,15 +300,27 @@ export function serverLabel(instance: { hostname?: string; system?: string }): s
   return instance.hostname || sys || localize(ml('local', 'local', 'lokal'));
 }
 
-/** Confirm prompt for removing one manager from the pmon configuration. */
-export function confirmRemoveMsg(name: string, index: number): string {
-  return localize(
+/**
+ * Confirm prompt for deleting one manager from the pmon configuration (issue 40): name, index,
+ * options, and — for a running manager — that it is stopped first.
+ */
+export function confirmRemoveMsg(name: string, index: number, options = '', stopFirst = false): string {
+  const opts = options.trim() ? ` [${options.trim()}]` : '';
+  const base = localize(
     ml(
-      `Remove manager "${name}" (#${index}) from the pmon configuration? The config/progs entry is deleted.`,
-      `Supprimer le manager « ${name} » (#${index}) de la configuration pmon ? L'entrée config/progs est supprimée.`,
-      `Manager „${name}" (#${index}) aus der pmon-Konfiguration entfernen? Der config/progs-Eintrag wird gelöscht.`
+      `Delete manager "${name}" (#${index})${opts} from the pmon configuration? Its entry is removed from config/progs.`,
+      `Supprimer le manager « ${name} » (#${index})${opts} de la configuration pmon ? Son entrée est retirée de config/progs.`,
+      `Manager „${name}" (#${index})${opts} aus der pmon-Konfiguration löschen? Sein Eintrag wird aus config/progs entfernt.`
     )
   );
+  if (!stopFirst) return base;
+  return `${base} ${localize(
+    ml(
+      'It is running: it is stopped first, then deleted once pmon reports it stopped. A manager in "always" mode that pmon restarts in between is not deleted.',
+      'Il est en cours : il est d’abord arrêté, puis supprimé dès que pmon le signale arrêté. Un manager en mode « always » que pmon redémarre entre-temps n’est pas supprimé.',
+      'Er läuft: er wird zuerst gestoppt und gelöscht, sobald pmon ihn als gestoppt meldet. Ein Manager im Modus „always", den pmon zwischendurch neu startet, wird nicht gelöscht.'
+    )
+  )}`;
 }
 
 /** What a confirmation dialog of the Console tab confirms (issue 34). */
@@ -307,8 +349,8 @@ export const CONFIRM_TEXTS: Record<ConfirmIntent, { heading: MultiLangString; co
     confirm: ml('Restart all', 'Tout redémarrer', 'Alle neu starten')
   },
   remove: {
-    heading: ml('Remove from the configuration', 'Supprimer de la configuration', 'Aus der Konfiguration entfernen'),
-    confirm: ml('Remove', 'Supprimer', 'Entfernen')
+    heading: ml('Delete manager', 'Supprimer le manager', 'Manager löschen'),
+    confirm: ml('Delete manager', 'Supprimer le manager', 'Manager löschen')
   },
   'delete-instance': {
     heading: ml('Delete instance', 'Supprimer l’instance', 'Instanz löschen'),

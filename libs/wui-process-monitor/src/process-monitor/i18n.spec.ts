@@ -41,4 +41,10 @@ describe('Console confirmation dialogs', () => {
     expect(heading).toEqual(confirm);
     expect(confirm).toEqual({ 'en_US.utf8': 'Delete instance', 'fr.utf8': 'Supprimer l’instance', 'de.utf8': 'Instanz löschen' });
   });
+
+  it('the manager deletion says "Delete manager" in its heading and on its button (issue 40)', () => {
+    const { heading, confirm } = CONFIRM_TEXTS.remove;
+    expect(heading).toEqual(confirm);
+    expect(confirm).toEqual({ 'en_US.utf8': 'Delete manager', 'fr.utf8': 'Supprimer le manager', 'de.utf8': 'Manager löschen' });
+  });
 });

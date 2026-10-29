@@ -7,8 +7,10 @@
  * Operator features, modelled on the `winccoa_projectmanager` HTML app
  * (`proj.html`) but rebuilt natively (Lit + iX):
  *  - **Console**: live pmon manager list with start/stop/restart + restart-all,
- *    plus add/remove of pmon configuration entries (config/progs, role
- *    'edit-managers'), with **one tab per connected server**
+ *    plus add / edit (start mode, restart settings, options — issue 40) / delete of
+ *    pmon configuration entries (config/progs, role 'edit-managers'; deleting a
+ *    running manager stops it first and also needs 'control'), with **one tab per
+ *    connected server**
  *    (distributed/redundant systems) — sourced from the per-system
  *    `ProcessMonitor_Node` datapoints.
  *  - **Project upload**: deploy a ZIP into the project across ALL connected
@@ -57,11 +59,11 @@ import {
   serverLabel,
   type ConfirmIntent
 } from './process-monitor/i18n.js';
-import { addManager, controlManager, deleteInstance, isBridgeError, listInstances, removeManager, restartAll } from './process-monitor/data/api.js';
+import { addManager, controlManager, deleteInstance, isBridgeError, listInstances, removeManager, restartAll, updateManager } from './process-monitor/data/api.js';
 import { instanceState, isLive, lastSeenAgeMs, stateTone } from './process-monitor/instances.js';
-import { formatUptime } from './process-monitor/managers.js';
+import { configChanges, deletePlan, formatUptime } from './process-monitor/managers.js';
 import { ensureStores, loadHistory, traceOperation } from './process-monitor/data/stores.js';
-import type { DeployResult, HistoryEntry, Instance, ManagerSpec } from './process-monitor/types.js';
+import type { DeployResult, HistoryEntry, Instance, ManagerInfo, ManagerSpec, ManagerUpdateIntent } from './process-monitor/types.js';
 import './process-monitor/ui/pm-console.js';
 import './process-monitor/ui/pm-instances.js';
 import './process-monitor/ui/pm-manager-dialog.js';
@@ -75,7 +77,7 @@ type Tab = 'console' | 'upload' | 'logs' | 'history';
 /** Application-Security module id of this page. */
 const MODULE_ID = 'process-monitor';
 type ControlIntent = { action: 'start' | 'stop' | 'restart'; index: number; name: string };
-type RemoveIntent = { index: number; name: string };
+type RemoveIntent = { index: number; name: string; options: string; stopFirst: boolean };
 const REFRESH_MS = 5000;
 
 export class WuiProcessMonitor extends LitElement {
@@ -107,6 +109,8 @@ export class WuiProcessMonitor extends LitElement {
   @state() private controlPending: ControlIntent | null = null;
   @state() private addDialogOpen = false;
   @state() private removePending: RemoveIntent | null = null;
+  /** Manager whose configuration is being edited (issue 40). */
+  @state() private editPending: ManagerInfo | null = null;
 
   private permSub = new Subscription();
   private timer: ReturnType<typeof globalThis.setInterval> | undefined;
@@ -239,6 +243,7 @@ export class WuiProcessMonitor extends LitElement {
         @wui:control=${(e: CustomEvent<ControlIntent>) => (this.controlPending = e.detail)}
         @wui:addmanager=${() => (this.addDialogOpen = true)}
         @wui:removemanager=${(e: CustomEvent<RemoveIntent>) => (this.removePending = e.detail)}
+        @wui:editmanager=${(e: CustomEvent<ManagerInfo>) => (this.editPending = e.detail)}
       ></pm-console>
     `;
   }
@@ -298,10 +303,20 @@ export class WuiProcessMonitor extends LitElement {
             @wui:cancel=${() => (this.addDialogOpen = false)}
           ></pm-manager-dialog>`
         : nothing}
+      ${this.editPending
+        ? html`<pm-manager-dialog
+            .manager=${this.editPending}
+            .canRestart=${this.canEdit && this.roleControl}
+            .canDelete=${this.canEdit && this.roleEditManagers}
+            @wui:update=${(e: CustomEvent<ManagerUpdateIntent>) => void this.onUpdateManager(e.detail)}
+            @wui:delete=${(e: CustomEvent<ManagerInfo>) => this.onDeleteFromDialog(e.detail)}
+            @wui:cancel=${() => (this.editPending = null)}
+          ></pm-manager-dialog>`
+        : nothing}
       ${this.removePending
         ? this.confirmDialog(
             'remove',
-            confirmRemoveMsg(this.removePending.name, this.removePending.index),
+            confirmRemoveMsg(this.removePending.name, this.removePending.index, this.removePending.options, this.removePending.stopFirst),
             () => void this.onRemoveConfirm(),
             () => (this.removePending = null)
           )
@@ -451,23 +466,80 @@ export class WuiProcessMonitor extends LitElement {
     const label = nodeLabel(target);
     let ok = false;
     try {
-      const res = await removeManager(target?.dp ?? '', d.index);
+      const res = await removeManager(target?.dp ?? '', d.index, { name: d.name, stopFirst: d.stopFirst });
       ok = res.ok !== false;
       this.clearError();
       this.warningDetail = res.warning ?? '';
     } catch (error) {
       this.reportError(MSG.errors.action, error);
     }
+    const stop = d.stopFirst ? ' — stopped first' : '';
     await traceOperation(
       {
         time: new Date().toISOString(),
         action: 'manager',
-        detail: `${d.name} — remove (#${d.index})${ok && this.warningDetail ? ' — config/progs not updated' : ''}`,
+        detail: `${d.name} — remove (#${d.index})${stop}${ok && this.warningDetail ? ' — config/progs not updated' : ''}`,
         status: ok ? 'success' : 'failed',
         host: hostName(),
         system: label
       },
-      { action: 'REMOVE', item: d.name, oldval: `#${d.index}`, reason: label }
+      { action: 'REMOVE', item: d.name, oldval: JSON.stringify({ index: d.index, options: d.options, stopFirst: d.stopFirst }), reason: label }
+    );
+    await this.refreshInstances();
+    void this.refreshHistory();
+  }
+
+  /** The labelled "Delete manager" of the edit dialog: the same plan and confirmation as the trashcan. */
+  private onDeleteFromDialog(m: ManagerInfo): void {
+    this.editPending = null;
+    const plan = deletePlan(m, { editManagers: this.canEdit && this.roleEditManagers, control: this.canEdit && this.roleControl });
+    if (!plan.allowed) {
+      this.reportError(MSG.errors.action, localize(MSG.console.removeNeedsControl));
+      return;
+    }
+    this.removePending = { index: m.index, name: m.name, options: m.options, stopFirst: plan.stopFirst };
+  }
+
+  /**
+   * Save a configuration change (issue 40) — traced with its before / after values to the audit
+   * trail and the History tab, whether pmon applied it or not.
+   */
+  private async onUpdateManager(d: ManagerUpdateIntent): Promise<void> {
+    this.editPending = null;
+    this.warningDetail = '';
+    const target = this.active;
+    const label = nodeLabel(target);
+    let ok = false;
+    let restarted = false;
+    let after = d.config;
+    try {
+      const res = await updateManager(target?.dp ?? '', d.index, d.name, d.config, d.restart);
+      ok = res.ok !== false;
+      restarted = res.detail?.restarted === true;
+      if (res.detail?.after) after = { ...d.config, ...res.detail.after };
+      this.clearError();
+      this.warningDetail = res.warning ?? '';
+    } catch (error) {
+      this.reportError(MSG.errors.action, error);
+    }
+    const changes = configChanges(d.before, d.config);
+    const notes = [restarted ? 'restarted' : '', ok && this.warningDetail ? 'config/progs not updated' : ''].filter(Boolean);
+    await traceOperation(
+      {
+        time: new Date().toISOString(),
+        action: 'manager-config',
+        detail: `${d.name} (#${d.index}) — edit: ${changes.join(', ') || 'no change'}${notes.length > 0 ? ` — ${notes.join(', ')}` : ''}`,
+        status: ok ? 'success' : 'failed',
+        host: hostName(),
+        system: label
+      },
+      {
+        action: 'EDIT',
+        item: d.name,
+        oldval: JSON.stringify({ index: d.index, ...d.before }),
+        newval: JSON.stringify({ index: d.index, ...after, restart: d.restart }),
+        reason: label
+      }
     );
     await this.refreshInstances();
     void this.refreshHistory();

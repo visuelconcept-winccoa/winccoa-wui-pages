@@ -49,7 +49,14 @@
  *   ControlManager({systemName,action,index}) -> { ok, action, index, system, error? }
  *   AddManager({node,manager:{name,startMode,secKill,restartCount,resetMin,options},index?})
  *                                           -> { ok, system, error? }   (INS into config/progs; append when index omitted)
- *   RemoveManager({node,index})             -> { ok, index, system, error? }   (DEL a stopped manager, index ≥ 1)
+ *   RemoveManager({node,index,name?,stopFirst?}) -> { ok, index, system, warning?, detail?, error? }
+ *                                           (DEL, index ≥ 1; stopFirst: stop a running manager, wait for "stopped"
+ *                                            (10 s), then DEL — a manager pmon restarts in between is reported,
+ *                                            not retried; `name` must still be the entry at index)
+ *   UpdateManager({node,index,name?,manager:{startMode,secKill,restartCount,resetMin,options},restart?})
+ *                                           -> { ok, index, system, warning?, detail: {before, after, restarted}, error? }
+ *                                           (issue 40: SINGLE_MGR:PROP_PUT, checked against MGRLIST:LIST then
+ *                                            config/progs; restart: restart a running manager afterwards)
  *   RestartAll({systemName})                -> { ok, system, error? }
  *   Deploy({zipPath,clearFolders,restart,target}) -> { ok, results:[{system,hostname,ok,cleared,skipped,error}] }
  *
@@ -411,17 +418,31 @@ function normalizeManagerSpec(spec) {
   const s = spec && typeof spec === 'object' ? spec : {};
   const name = String(s.name || '').trim().replace(/\.exe$/i, '');
   if (!/^[A-Za-z0-9_.-]+$/.test(name)) throw new Error(`nom de manager invalide : "${name}"`);
-  const startMode = ['manual', 'once', 'always'].includes(s.startMode) ? s.startMode : 'always';
-  const num = (v, def, min, max) => {
+  return { name, ...normalizeManagerConfig(s) };
+}
+
+/**
+ * The configuration part of a manager spec (start mode, restart settings, options), with the
+ * bounds of an add — shared by AddManager and UpdateManager (the name is not editable). An add
+ * falls back to the defaults; `strict` (an update) refuses a missing or out-of-bounds value
+ * instead, so an edit never silently changes a setting.
+ */
+function normalizeManagerConfig(spec, { strict = false } = {}) {
+  const s = spec && typeof spec === 'object' ? spec : {};
+  const modes = ['manual', 'once', 'always'];
+  if (strict && !modes.includes(s.startMode)) throw new Error(`mode de démarrage invalide : "${s.startMode}"`);
+  const startMode = modes.includes(s.startMode) ? s.startMode : 'always';
+  const num = (v, def, min, max, label) => {
     const n = Number.parseInt(v, 10);
-    return Number.isInteger(n) && n >= min && n <= max ? n : def;
+    if (Number.isInteger(n) && n >= min && n <= max) return n;
+    if (strict) throw new Error(`${label} invalide : ${v} (${min}–${max})`);
+    return def;
   };
   return {
-    name,
     startMode,
-    secKill: num(s.secKill, 30, 1, 3600),
-    restartCount: num(s.restartCount, 3, 1, 100),
-    resetMin: num(s.resetMin, 1, 1, 1440),
+    secKill: num(s.secKill, 30, 1, 3600, 'secKill'),
+    restartCount: num(s.restartCount, 3, 1, 100, 'restartCount'),
+    resetMin: num(s.resetMin, 1, 1, 1440, 'resetMin'),
     options: String(s.options || '').replace(/[\r\n]+/g, ' ').trim()
   };
 }
@@ -434,7 +455,7 @@ const PROGS_CHECK_DELAYS_MS = [300, 700, 1500];
  * change written to `<project>/config/progs`, i.e. kept at the next project restart? Returns a
  * warning text when it is not (or when the file cannot be read), '' otherwise (issue 35).
  */
-async function progsWarning() {
+async function progsWarning({ strict = false } = {}) {
   const file = path.join(PROJ_PATH, 'config', 'progs');
   let list = [];
   let progs = [];
@@ -446,7 +467,7 @@ async function progsWarning() {
     } catch (e) {
       return `config/progs illisible (${e.message}) : l'enregistrement du changement n'a pas pu être vérifié.`;
     }
-    if (progsMatches(progs, list)) return '';
+    if (progsMatches(progs, list, { strict })) return '';
   }
   log(`config/progs (${progs.length} entrées) ne reflète pas pmon (${list.length} entrées) après INS/DEL`);
   return "Appliqué dans pmon, mais pas écrit dans config/progs : le changement sera perdu au prochain redémarrage du projet.";
@@ -473,10 +494,42 @@ async function execPmonCmd(cmd) {
   }
   if (cmd.action === 'remove') {
     if (!Number.isInteger(cmd.index) || cmd.index < 1) throw new Error('index invalide (≥ 1 requis — 0 est pmon)');
+    const expectName = typeof cmd.name === 'string' && cmd.name ? cmd.name : undefined;
+    if (cmd.stopFirst === true) {
+      const r = await pmonClient.stopThenRemove(cmd.index, { expectName });
+      return { warning: await progsWarning(), detail: { stopped: r.stopped } };
+    }
+    if (expectName) {
+      const at = (await pmonClient.listManagers())[cmd.index];
+      if (!at || at.name !== expectName) throw new Error(`l'entrée ${cmd.index} n'est plus ${expectName} : la liste a changé, rechargez-la`);
+    }
     await pmonClient.removeManager(cmd.index);
     return { warning: await progsWarning() };
   }
+  if (cmd.action === 'update') {
+    if (!Number.isInteger(cmd.index) || cmd.index < 1) throw new Error('index invalide (≥ 1 requis — pmon lui-même ne se modifie pas)');
+    const config = normalizeManagerConfig(cmd.manager, { strict: true });
+    const expectName = typeof cmd.name === 'string' && cmd.name ? cmd.name : undefined;
+    const r = await pmonClient.updateManager({ index: cmd.index, ...config, expectName });
+    let restarted = false;
+    let restartError = '';
+    if (cmd.restart === true && r.before.state !== 0) {
+      try {
+        await pmonClient.restartManager(cmd.index);
+        restarted = true;
+      } catch (e) {
+        restartError = e.message;
+      }
+    }
+    const warnings = [await progsWarning({ strict: true }), restartError ? `modification enregistrée, mais le redémarrage a échoué : ${restartError}` : ''];
+    return { warning: warnings.filter(Boolean).join(' — '), detail: { before: configOf(r.before), after: configOf(r.after), restarted } };
+  }
   throw new Error(`action invalide: ${cmd.action}`);
+}
+
+/** The configuration fields of a pmon entry (audit trail before / after). */
+function configOf(m) {
+  return m ? { name: m.name, startMode: m.startModeCfg, secKill: m.secKill, restartCount: m.restartCount, resetMin: m.resetMin, options: m.options } : null;
 }
 
 /** Track the last handled command id so reconnect / repeat values are ignored. */
@@ -488,13 +541,16 @@ async function onCmd(cmd) {
   let ok = false;
   let error = '';
   let warning = '';
+  let detail;
   try {
-    warning = (await execPmonCmd(cmd))?.warning || '';
+    const r = await execPmonCmd(cmd);
+    warning = r?.warning || '';
+    detail = r?.detail;
     ok = true;
   } catch (e) {
     error = e.message;
   }
-  await winccoa.dpSet(`${NODE_DP}.cmdResult`, JSON.stringify({ reqId: cmd.reqId, ok, error, warning, ts: new Date().toISOString() }));
+  await winccoa.dpSet(`${NODE_DP}.cmdResult`, JSON.stringify({ reqId: cmd.reqId, ok, error, warning, ...(detail ? { detail } : {}), ts: new Date().toISOString() }));
   await publishOnce();
 }
 
@@ -771,6 +827,7 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
     this.registerFunction('ControlManager', (ctx, req) => this.controlManager(ctx, req));
     this.registerFunction('AddManager', (ctx, req) => this.addManager(ctx, req));
     this.registerFunction('RemoveManager', (ctx, req) => this.removeManager(ctx, req));
+    this.registerFunction('UpdateManager', (ctx, req) => this.updateManager(ctx, req));
     this.registerFunction('RestartAll', (ctx, req) => this.restartAll(ctx, req));
     this.registerFunction('Deploy', (ctx, req) => this.deploy(ctx, req));
     this.registerFunction('ReceiveBegin', jsonHandler((r) => receiver.begin(r)));
@@ -856,12 +913,29 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
     return reply(await this.routeCommand(node ?? systemName ?? '', { action: 'add', index: at, manager }));
   }
 
-  /** Remove a (stopped) manager from a target node's pmon configuration. */
+  /** Remove a manager from a target node's pmon configuration (stopFirst: stop it, then DEL). */
   async removeManager(ctx, request) {
     ctx.cancelSignal.throwIfAborted();
-    const { node, systemName, index } = parseReq(request);
+    const { node, systemName, index, name, stopFirst } = parseReq(request);
     if (!Number.isInteger(index) || index < 1) throw vrpcError('InvalidArgument', 'index (pmon, ≥ 1) requis — 0 est pmon');
-    return reply(await this.routeCommand(node ?? systemName ?? '', { action: 'remove', index }));
+    const cmd = { action: 'remove', index, ...(typeof name === 'string' && name ? { name } : {}), ...(stopFirst === true ? { stopFirst: true } : {}) };
+    return reply(await this.routeCommand(node ?? systemName ?? '', cmd));
+  }
+
+  /** Change the configuration of one entry of a target node's pmon (issue 40). */
+  async updateManager(ctx, request) {
+    ctx.cancelSignal.throwIfAborted();
+    const { node, systemName, index, name, manager, restart } = parseReq(request);
+    if (!Number.isInteger(index) || index < 1) return reply({ ok: false, action: 'update', index, error: 'index (pmon, ≥ 1) requis — pmon lui-même ne se modifie pas' });
+    let config;
+    try {
+      config = normalizeManagerConfig(manager, { strict: true });
+    } catch (e) {
+      // A refusal, not a bridge failure: answered OK with ok:false (the page shows the reason).
+      return reply({ ok: false, action: 'update', index, error: e.message });
+    }
+    const cmd = { action: 'update', index, manager: config, ...(typeof name === 'string' && name ? { name } : {}), ...(restart === true ? { restart: true } : {}) };
+    return reply(await this.routeCommand(node ?? systemName ?? '', cmd));
   }
 
   async restartAll(ctx, request) {
@@ -874,7 +948,7 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
   async localPmon(cmd, system) {
     try {
       const r = await execPmonCmd(cmd);
-      return { ok: true, ...cmd, system: system || OWN_SYSTEM, warning: r?.warning || '' };
+      return { ok: true, ...cmd, system: system || OWN_SYSTEM, warning: r?.warning || '', ...(r?.detail ? { detail: r.detail } : {}) };
     } catch (e) {
       return { ok: false, error: e.message, ...cmd, system: system || OWN_SYSTEM };
     }
@@ -896,8 +970,10 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
     if (isLocal(node)) return this.localPmon(cmd, node.system);
     const reqId = crypto.randomUUID();
     await winccoa.dpSetWait(`${node.dp}.cmd`, JSON.stringify({ reqId, ...cmd }));
-    const res = await pollResult(`${node.dp}.cmdResult`, reqId, 12000);
-    return { ok: res.ok === true, error: res.error || '', warning: res.warning || '', ...cmd, system: node.system };
+    // Stop-then-delete waits for the stop (10 s) and an update may restart the manager.
+    const timeoutMs = cmd.stopFirst === true || cmd.restart === true ? 30000 : 12000;
+    const res = await pollResult(`${node.dp}.cmdResult`, reqId, timeoutMs);
+    return { ok: res.ok === true, error: res.error || '', warning: res.warning || '', ...(res.detail ? { detail: res.detail } : {}), ...cmd, system: node.system };
   }
 
   async deploy(ctx, request) {

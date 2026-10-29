@@ -107,4 +107,22 @@ describe('the /api/process-monitor mock', () => {
     const after = (await call('GET /api/process-monitor/managers')).body.instances.map((instance) => instance.hostname);
     expect(after).toEqual(['SRV-SCADA-01', 'SRV-SCADA-02']);
   });
+
+  test('manager update: the new values come back with the old ones, out-of-bound values are refused', async () => {
+    const node = 'System1:ProcessMonitor_Node_SRV_SCADA_01';
+    const res = await call('POST /api/process-monitor/manager/update', {
+      body: { node, index: 4, name: 'WCCOActrl', startMode: 'manual', secKill: 60, restartCount: 5, resetMin: 10, options: '-num 1 -f other.lst', restart: true }
+    });
+    expect(res.body).toMatchObject({ ok: true, detail: { before: { startMode: 'once', secKill: 30 }, after: { startMode: 'manual', secKill: 60, options: '-num 1 -f other.lst' }, restarted: true } });
+    expect((await call('POST /api/process-monitor/manager/update', { body: { node, index: 0, startMode: 'manual', secKill: 30, restartCount: 3, resetMin: 1 } })).status).toBe(400);
+    expect((await call('POST /api/process-monitor/manager/update', { body: { node, index: 4, startMode: 'manual', secKill: 0, restartCount: 3, resetMin: 1 } })).status).toBe(400);
+  });
+
+  test('manager delete: a running manager is refused unless it is stopped first', async () => {
+    const node = 'System1:ProcessMonitor_Node_SRV_SCADA_01';
+    expect((await call('POST /api/process-monitor/manager/remove', { body: { node, index: 6, name: 'WCCOAopcua' } })).body).toMatchObject({ ok: false });
+    expect((await call('POST /api/process-monitor/manager/remove', { body: { node, index: 6, name: 'WCCOAopcua', stopFirst: true } })).body).toMatchObject({ ok: true, detail: { stopped: true } });
+    expect((await call('POST /api/process-monitor/manager/remove', { body: { node, index: 9, name: 'WCCOAs7plus' } })).body).toMatchObject({ ok: true });
+    expect((await call('POST /api/process-monitor/manager/remove', { body: { node, index: 0 } })).status).toBe(400);
+  });
 });

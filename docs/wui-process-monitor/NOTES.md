@@ -19,6 +19,42 @@ as date + uptime ("—" when stopped), the manager number (to find its log file)
 mode with a flag when pmon runs it with another one, and the restart settings in that cell's tooltip;
 name, state and start time sort on a header click.
 
+## Edit and delete a manager (issue 40)
+
+Each row from index 1 (pmon itself is not editable) has an **Edit** action (role
+`process-monitor/edit-managers`) opening `pm-manager-dialog` pre-filled: start mode, secKill, restart
+count, reset minutes (the bounds of an add: 1–3600 s, 1–100, 1–1440 min) and options; the executable
+name is read-only (another executable is another manager). For a running manager the dialog says
+that a new start mode or new options take effect at its next start, and offers **Save and restart**
+(default off, shown only with the `control` role, which the route also requires for it).
+
+`POST /manager/update {node, index, name, startMode, secKill, restartCount, resetMin, options,
+restart?}` → `UpdateManager` (routed to the target node like the other commands, `.cmd` for another
+node) → `pmon-client.js updateManager`: `SINGLE_MGR:PROP_PUT <index> <startMode> <secKill>
+<restartCount> <resetMin> <options>` — the argument order of `SINGLE_MGR:INS` without the name.
+**That syntax is not verified against a real pmon**: the change counts only when `MGRLIST:LIST`,
+re-read afterwards, carries every new value at that index (`checkUpdated`), so a command pmon ignores
+or reads differently fails with the values that differ. Then `config/progs` is checked like an add or
+a remove (#35), start mode and restart settings included, with the same "not saved" warning. Nothing
+is defaulted on an edit: a missing or out-of-bounds value is refused (controller and agent). The
+change is traced to the audit trail (`EDIT`, before / after values) and to the History tab
+("Manager configuration", the changed fields).
+
+**Delete**: the trashcan stays, and the edit dialog has a labelled **Delete manager** button. Both
+open the confirmation "Delete manager", which recalls the name, the index and the options and says
+that the entry is removed from `config/progs`. A running manager is **stopped first, then deleted**
+in the same confirmed operation (`POST /manager/remove {…, stopFirst: true}` → `stopThenRemove`):
+stop, poll `MGRLIST:STATI` until it reads stopped (10 s at most), then `DEL` with the #35 checks. If
+pmon starts an `always` manager again between the stop and the delete, the delete is refused with
+an explicit message (set it to `manual` first) — never retried in a loop. Stopping needs the
+`control` role on top of `edit-managers`: without it the trashcan of a running manager is disabled
+with the reason, and the route refuses `stopFirst` (`requireRole` applied only when the flag is set).
+Both requests carry the name the operator confirmed; the agent refuses when the entry at that index
+is no longer that manager (the list moved since the page read it).
+
+An agent older than 0.3.0 does not know `update` (the command fails with "action invalide") and
+ignores `stopFirst` (pmon then refuses to delete the running manager).
+
 ## Deploy to the other nodes — vRPC transfer
 
 The page uploads the ZIP in chunks to `<project>/temp` of the webserver's host, then calls `Deploy`
@@ -159,6 +195,8 @@ the module (`wui dev`, screenshots; wui-toolkit ≥ 0.20).
 - Start/stop/restart, restart-all, adding/removing a pmon entry and the ZIP upload/deploy are accepted
   and change nothing; a deploy reports success on every targeted node with the folders it would clear,
   except `SRV-SCADA-03`, which fails with the "agent too old or not reachable" message.
+- `manager/update` checks the bounds and echoes the entry before / after; `manager/remove` refuses a
+  running manager unless `stopFirst` is set (e.g. `WCCOAopcua`), and accepts a stopped one.
 - `instance/delete` refuses the local node (`code: local`) and the old agent (`code: answers`) and
   deletes `SRV-SCADA-03` until the dev server restarts.
 - Logs: `SRV-SCADA-01` has `PVSS_II.log` (+ `.log.bak`), `WCCILpmon.log`, `WCCOActrl1.log` (+ `.bak`,

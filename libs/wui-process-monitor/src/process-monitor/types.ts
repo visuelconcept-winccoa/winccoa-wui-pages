@@ -47,6 +47,36 @@ export interface ManagerSpec {
   options: string;
   /** Insert position in the pmon list (0 is pmon itself); omit to append. */
   index?: number;
+  /** Restart settings; the backend defaults them (30 s, 3, 1 min) when omitted. */
+  secKill?: number;
+  restartCount?: number;
+  resetMin?: number;
+}
+
+/** The editable configuration of a pmon entry (issue 40) — the executable name is not part of it. */
+export interface ManagerConfig {
+  startMode: ManagerStartMode;
+  secKill: number;
+  restartCount: number;
+  resetMin: number;
+  options: string;
+}
+
+/** A configuration change asked from the edit dialog (`wui:update`). */
+export interface ManagerUpdateIntent {
+  index: number;
+  name: string;
+  before: ManagerConfig;
+  config: ManagerConfig;
+  /** Restart the (running) manager after saving — default off. */
+  restart: boolean;
+}
+
+/** Reply of `POST /manager/update`. */
+export interface ManagerUpdateResult {
+  ok: boolean;
+  warning?: string;
+  detail?: { before: (ManagerConfig & { name: string }) | null; after: (ManagerConfig & { name: string }) | null; restarted: boolean };
 }
 
 /** One connected server/system and its live manager list (one tab per instance). */
@@ -133,7 +163,7 @@ export interface HistoryEntry {
   /** ISO timestamp. */
   time: string;
   /** Operation kind. */
-  action: 'deploy' | 'restart-all' | 'manager' | 'logs-export' | 'delete-instance';
+  action: 'deploy' | 'restart-all' | 'manager' | 'manager-config' | 'logs-export' | 'delete-instance';
   /** Human-readable detail (file name, manager name, …). */
   detail: string;
   /** 'success' | 'failed'. */

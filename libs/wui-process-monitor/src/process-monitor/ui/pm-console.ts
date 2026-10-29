@@ -4,11 +4,15 @@
 /**
  * Console panel: live pmon manager list with per-manager start/stop/restart, a
  * restart-all action, and — with the `edit-managers` grant (`canConfig`) — an
- * add-manager entry point plus per-row removal from the pmon configuration.
+ * add-manager entry point plus, per row (index ≥ 1), an Edit action (issue 40:
+ * start mode, restart settings, options) and the delete trashcan. A running
+ * manager can be deleted only with the `control` grant too (`canEdit`): the
+ * delete stops it first; without it the trashcan is disabled with the reason.
  * Presentational — it renders the `managers` passed by the page and emits
  * intent events (`wui:refresh`, `wui:restartall`, `wui:control
- * {action,index,name}`, `wui:addmanager`, `wui:removemanager {index,name}`);
- * the page performs the API call + tracing.
+ * {action,index,name}`, `wui:addmanager`, `wui:editmanager ManagerInfo`,
+ * `wui:removemanager {index,name,options,stopFirst}`); the page performs the API
+ * call + tracing.
  *
  * Columns (issue 33): pmon index, name, state, PID, manager number (`-num`), start
  * time + uptime ("—" when stopped), configured start mode (flagged when pmon runs it
@@ -20,8 +24,10 @@ import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { MSG, localize, localizeDir, restartSettingsTitle, shortDateLabel, startModeDiffersTitle } from '../i18n.js';
 import {
+  deletePlan,
   formatUptime,
   hasStartTime,
+  isConfigurable,
   liveStartMode,
   sortManagers,
   startModeDiffers,
@@ -180,20 +186,25 @@ export class PmConsole extends LitElement {
                 ></ix-icon-button>
               `
             : nothing}
-          ${this.canConfig && m.index >= 1
-            ? html`
-                <ix-icon-button
-                  ghost
-                  size="16"
-                  icon="trashcan"
-                  title=${localize(running ? MSG.console.removeStopFirst : MSG.console.remove)}
-                  ?disabled=${running}
-                  @click=${() => this.requestRemove(m)}
-                ></ix-icon-button>
-              `
-            : nothing}
+          ${this.canConfig && isConfigurable(m) ? this.renderConfigActions(m) : nothing}
         </td>
       </tr>
+    `;
+  }
+
+  /** Edit + delete of one pmon entry (issue 40). */
+  private renderConfigActions(m: ManagerInfo): TemplateResult {
+    const plan = deletePlan(m, { editManagers: this.canConfig, control: this.canEdit });
+    const title = !plan.allowed ? MSG.console.removeNeedsControl : plan.stopFirst ? MSG.console.removeRunning : MSG.console.remove;
+    return html`
+      <ix-icon-button
+        ghost
+        size="16"
+        icon="pen"
+        title=${localize(MSG.console.edit)}
+        @click=${() => this.dispatchEvent(new CustomEvent<ManagerInfo>('wui:editmanager', { detail: m, bubbles: true, composed: true }))}
+      ></ix-icon-button>
+      <ix-icon-button ghost size="16" icon="trashcan" title=${localize(title)} ?disabled=${!plan.allowed} @click=${() => this.requestRemove(m)}></ix-icon-button>
     `;
   }
 
@@ -213,9 +224,11 @@ export class PmConsole extends LitElement {
    * switching to the Upload tab) — crashing on `m.index`.
    */
   private requestRemove(m: ManagerInfo): void {
+    const plan = deletePlan(m, { editManagers: this.canConfig, control: this.canEdit });
+    if (!plan.allowed) return;
     this.dispatchEvent(
       new CustomEvent('wui:removemanager', {
-        detail: { index: m.index, name: m.name },
+        detail: { index: m.index, name: m.name, options: m.options, stopFirst: plan.stopFirst },
         bubbles: true,
         composed: true
       })

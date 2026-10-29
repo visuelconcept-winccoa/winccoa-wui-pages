@@ -170,6 +170,50 @@ export function instanceDeleteTarget(body: unknown): string | null {
   return name;
 }
 
+type Middleware = (req: Request, res: Response, next: () => void) => unknown;
+
+/**
+ * Apply `guard` only when the JSON body sets `flag` to true — e.g. the `control` role for a
+ * delete that stops the manager first, or an edit that restarts it (issue 40); otherwise go
+ * straight on. Used by the route file (kept here: the route file imports the guard and
+ * ultimate-express, which only exist once deployed).
+ */
+export function whenBodyFlag(flag: string, guard: Middleware): Middleware {
+  return (req, res, next) => ((req.body as Record<string, unknown> | undefined)?.[flag] === true ? guard(req, res, next) : next());
+}
+
+/** Bounds of the pmon restart settings — the same as an add (manager `normalizeManagerConfig`). */
+const CONFIG_BOUNDS = { secKill: [1, 3600], restartCount: [1, 100], resetMin: [1, 1440] } as const;
+
+/**
+ * The `UpdateManager` payload of a `POST /manager/update` body, or `{ error }`: index ≥ 1, a
+ * start mode, the three restart settings within their bounds (none of them is defaulted: an
+ * edit never changes a value it was not given), options without line breaks.
+ */
+export function managerUpdateRequest(body: unknown):
+  | { node: string; index: number; name?: string; restart?: true; manager: { startMode: string; secKill: number; restartCount: number; resetMin: number; options: string } }
+  | { error: string } {
+  const b = (body ?? {}) as Record<string, unknown>;
+  const index = b.index;
+  if (typeof index !== 'number' || !Number.isInteger(index) || index < 1) return { error: 'index (number ≥ 1) requis — pmon lui-même ne se modifie pas' };
+  if (typeof b.startMode !== 'string' || !['manual', 'once', 'always'].includes(b.startMode)) return { error: 'startMode (manual|once|always) requis' };
+  const values: Record<string, number> = {};
+  for (const [key, [min, max]] of Object.entries(CONFIG_BOUNDS)) {
+    const v = b[key];
+    if (typeof v !== 'number' || !Number.isInteger(v) || v < min || v > max) return { error: `${key} (${min}–${max}) requis` };
+    values[key] = v;
+  }
+  const options = typeof b.options === 'string' ? b.options.replaceAll(/[\r\n]+/g, ' ').trim() : '';
+  const node = typeof b.node === 'string' ? b.node : typeof b.systemName === 'string' ? b.systemName : '';
+  return {
+    node,
+    index,
+    ...(typeof b.name === 'string' && b.name ? { name: b.name } : {}),
+    ...(b.restart === true ? { restart: true as const } : {}),
+    manager: { startMode: b.startMode, secKill: values.secKill, restartCount: values.restartCount, resetMin: values.resetMin, options }
+  };
+}
+
 export class ProcessMonitorController {
   /**
    * GET /health -> liveness AND reachability of the hosting manager.
@@ -246,14 +290,42 @@ export class ProcessMonitorController {
     );
   };
 
-  /** POST /manager/remove { index, node? } — index ≥ 1 (0 is pmon itself) */
+  /**
+   * POST /manager/remove { index, node?, name?, stopFirst? } — index ≥ 1 (0 is pmon itself).
+   * `stopFirst` (issue 40): stop a running manager, wait for it to stop, then delete it — the
+   * route also requires the `control` role for it. `name` must still be the entry at `index`.
+   */
   public managerRemove = async (req: Request, res: Response): Promise<void> => {
-    const { index, node, systemName } = (req.body ?? {}) as { index?: number; node?: string; systemName?: string };
-    if (typeof index !== 'number' || index < 1) {
+    const { index, node, systemName, name, stopFirst } = (req.body ?? {}) as {
+      index?: number;
+      node?: string;
+      systemName?: string;
+      name?: unknown;
+      stopFirst?: unknown;
+    };
+    if (typeof index !== 'number' || !Number.isInteger(index) || index < 1) {
       res.status(400).json({ ok: false, error: 'index (number ≥ 1) requis — 0 est pmon' });
       return;
     }
-    await this.call('RemoveManager', { node: node ?? systemName ?? '', index }, res);
+    await this.call(
+      'RemoveManager',
+      { node: node ?? systemName ?? '', index, ...(typeof name === 'string' && name ? { name } : {}), ...(stopFirst === true ? { stopFirst: true } : {}) },
+      res
+    );
+  };
+
+  /**
+   * POST /manager/update { index, node?, name?, startMode, secKill, restartCount, resetMin, options?, restart? }
+   * -> { ok, warning?, detail: {before, after, restarted} } (issue 40, role `edit-managers`;
+   * `restart` also requires `control`). The executable name is not editable.
+   */
+  public managerUpdate = async (req: Request, res: Response): Promise<void> => {
+    const parsed = managerUpdateRequest(req.body);
+    if ('error' in parsed) {
+      res.status(400).json({ ok: false, error: parsed.error });
+      return;
+    }
+    await this.call('UpdateManager', parsed, res);
   };
 
   /** POST /restart { node? } -> restart all managers of one node (computer), or local */

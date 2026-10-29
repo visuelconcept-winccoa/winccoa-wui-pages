@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Pure helpers of the managers table (issue 33): uptime, start mode, sorting.
+ * Pure helpers of the managers table (issue 33): uptime, start mode, sorting; and of the edit /
+ * delete actions (issue 40): bounds, changes, and whether a delete must stop the manager first.
  * No DOM, no i18n import — unit-tested in `managers.spec.ts`.
  */
-import type { ManagerInfo } from './types.js';
+import type { ManagerConfig, ManagerInfo, ManagerStartMode } from './types.js';
 
 /** Live start-mode codes of `MGRLIST:STATI` → the words of `config/progs`. */
 const LIVE_START_MODES: Record<number, string> = { 0: 'manual', 1: 'once', 2: 'always' };
@@ -71,4 +72,64 @@ export function sortManagers(list: readonly ManagerInfo[], key: ManagerSortKey, 
     return sign * byIndex(a, b);
   };
   return [...list].sort(compare);
+}
+
+/** Bounds of the restart settings — the same as the backend applies to an add and an edit. */
+export const CONFIG_BOUNDS = { secKill: [1, 3600], restartCount: [1, 100], resetMin: [1, 1440] } as const;
+export type BoundedKey = keyof typeof CONFIG_BOUNDS;
+
+const START_MODES: readonly ManagerStartMode[] = ['manual', 'once', 'always'];
+
+/** The editable configuration of a manager as the table shows it. */
+export function configOf(m: Pick<ManagerInfo, 'startModeCfg' | 'secKill' | 'restartCount' | 'resetMin' | 'options'>): ManagerConfig {
+  const mode = m.startModeCfg.toLowerCase() as ManagerStartMode;
+  return {
+    startMode: START_MODES.includes(mode) ? mode : 'always',
+    secKill: m.secKill,
+    restartCount: m.restartCount,
+    resetMin: m.resetMin,
+    options: m.options
+  };
+}
+
+/** A typed restart setting as an integer within its bounds, or null. */
+export function boundedInt(key: BoundedKey, raw: string | number): number | null {
+  const text = String(raw).trim();
+  if (!/^\d+$/.test(text)) return null;
+  const n = Number.parseInt(text, 10);
+  const [min, max] = CONFIG_BOUNDS[key];
+  return n >= min && n <= max ? n : null;
+}
+
+/** The fields an edit changes, as `field: before → after` (options compared without extra blanks). */
+export function configChanges(before: ManagerConfig, after: ManagerConfig): string[] {
+  const norm = (v: string): string => v.replace(/\s+/g, ' ').trim();
+  const out: string[] = [];
+  if (before.startMode !== after.startMode) out.push(`startMode: ${before.startMode} → ${after.startMode}`);
+  for (const key of ['secKill', 'restartCount', 'resetMin'] as const) {
+    if (before[key] !== after[key]) out.push(`${key}: ${before[key]} → ${after[key]}`);
+  }
+  if (norm(before.options) !== norm(after.options)) out.push(`options: "${before.options}" → "${after.options}"`);
+  return out;
+}
+
+/** Can a manager entry be edited or deleted at all? Not pmon itself (index 0). */
+export function isConfigurable(m: Pick<ManagerInfo, 'index'>): boolean {
+  return m.index >= 1;
+}
+
+/**
+ * How a delete goes for this manager: a stopped one is deleted; a running (or starting) one is
+ * stopped first, which also needs the `control` role — without it the delete is refused, with
+ * the reason (`needs-control`).
+ */
+export function deletePlan(
+  m: Pick<ManagerInfo, 'index' | 'state'>,
+  roles: { editManagers: boolean; control: boolean }
+): { allowed: true; stopFirst: boolean } | { allowed: false; reason: 'pmon' | 'needs-edit' | 'needs-control' } {
+  if (!isConfigurable(m)) return { allowed: false, reason: 'pmon' };
+  if (!roles.editManagers) return { allowed: false, reason: 'needs-edit' };
+  const running = m.state !== 0;
+  if (running && !roles.control) return { allowed: false, reason: 'needs-control' };
+  return { allowed: true, stopFirst: running };
 }

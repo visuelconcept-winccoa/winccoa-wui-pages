@@ -186,6 +186,13 @@ const MANAGER_OF = {
 
 const httpError = (status, message) => Object.assign(new Error(message), { status });
 
+/** The pmon entry a manager request targets (node DP + index ≥ 1), or undefined. */
+const entryOf = (body) => {
+  const all = instances();
+  const inst = all.find((i) => i.dp === body?.node) ?? all[0];
+  return Number.isInteger(body?.index) && body.index >= 1 ? inst.managers[body.index] : undefined;
+};
+
 const nodeLogs = (node) => LOGS[node] ?? LOGS[instances()[0].dp];
 
 /** Last `n` lines of a text (0 = all), and whether older lines were left out. */
@@ -246,7 +253,28 @@ export default {
 
   'POST /api/process-monitor/manager': () => ok,
   'POST /api/process-monitor/manager/add': () => ok,
-  'POST /api/process-monitor/manager/remove': () => ok,
+  // Issue 40: pmon refuses to delete a running manager; `stopFirst` stops it, then deletes it.
+  'POST /api/process-monitor/manager/remove': ({ body }) => {
+    const m = entryOf(body);
+    if (!m) throw httpError(400, 'index (number ≥ 1) requis — 0 est pmon');
+    if (m.state !== 0 && body?.stopFirst !== true) {
+      return { ok: false, error: `ERROR SINGLE_MGR:DEL ${m.index} not possible (${m.name} is running)` };
+    }
+    return { ...ok, index: m.index, ...(m.state !== 0 ? { detail: { stopped: true } } : {}) };
+  },
+  // Issue 40: SINGLE_MGR:PROP_PUT, checked by the manager — the mock echoes before / after.
+  'POST /api/process-monitor/manager/update': ({ body }) => {
+    const m = entryOf(body);
+    if (!m) throw httpError(400, 'index (number ≥ 1) requis — pmon lui-même ne se modifie pas');
+    if (!['manual', 'once', 'always'].includes(body?.startMode)) throw httpError(400, 'startMode (manual|once|always) requis');
+    for (const [key, [min, max]] of Object.entries({ secKill: [1, 3600], restartCount: [1, 100], resetMin: [1, 1440] })) {
+      const v = body?.[key];
+      if (!Number.isInteger(v) || v < min || v > max) throw httpError(400, `${key} (${min}–${max}) requis`);
+    }
+    const before = { name: m.name, startMode: m.startModeCfg, secKill: m.secKill, restartCount: m.restartCount, resetMin: m.resetMin, options: m.options };
+    const after = { name: m.name, startMode: body.startMode, secKill: body.secKill, restartCount: body.restartCount, resetMin: body.resetMin, options: String(body.options ?? '').trim() };
+    return { ...ok, index: m.index, warning: '', detail: { before, after, restarted: body.restart === true && m.state !== 0 } };
+  },
   'POST /api/process-monitor/restart': () => ok,
 
   'GET /api/process-monitor/logs': ({ query }) => {
