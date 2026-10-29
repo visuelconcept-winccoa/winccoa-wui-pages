@@ -15,14 +15,16 @@
  *   - AGENT (every computer): on startup it creates/maintains its OWN node
  *     datapoint named after the host — `ProcessMonitor_Node_<hostname>` — and
  *     periodically publishes its LOCAL pmon snapshot into `.pmon`, reacting to
- *     control (`.cmd`) and deploy (`.deployCmd`/`.deployData`) commands targeted
- *     at it by executing them against its local pmon / project.
+ *     control commands (`.cmd`) targeted at it by executing them against its local
+ *     pmon. It also receives deploy ZIPs streamed to its own vRPC service
+ *     (ReceiveBegin/Chunk/Commit, DeployStatus — see deploy-transfer.js).
  *
  *   - AGGREGATOR (the computer serving the customer-webserver): the vRPC methods
  *     read every node DP via `dpNames("*", ProcessMonitor_Node)` → one instance
  *     per computer → the page renders one tab per computer. Control / restart-all
  *     are routed to a target NODE's `.cmd` (the agent on that computer runs it);
- *     project deploy can be propagated to ALL nodes (file shipped via `.deployData`).
+ *     project deploy can be propagated to ALL nodes: the ZIP is streamed in chunks
+ *     to each node's own `ProcessMonitor_<hostname>` service over vRPC (issue 32).
  *
  * Project deployment: optionally purge selected folders (allow-list), extract an
  * uploaded ZIP (7-Zip) into the project — NEVER into protected folders
@@ -48,6 +50,14 @@
  *   RestartAll({systemName})                -> { ok, system, error? }
  *   Deploy({zipPath,clearFolders,restart,target}) -> { ok, results:[{system,hostname,ok,cleared,skipped,error}] }
  *
+ * Node-to-node deploy transfer (called by the aggregator on the TARGET node's service;
+ * deploy-transfer.js has the contract): ReceiveBegin, ReceiveChunk, ReceiveCommit,
+ * DeployStatus, ReceiveAbort. A node whose agent predates them (Unimplemented / not
+ * found) or whose service cannot be reached fails with "agent too old or not reachable
+ * over vRPC — update/restart the processMonitor manager on <host>"; there is no DPE
+ * fallback. Reaching the service of a node of ANOTHER system of a distributed project
+ * depends on the MSA addressing and is not verified.
+ *
  * After editing this file, restart the processMonitor manager.
  */
 const { WinccoaManager, WinccoaDpTypeNode, Vrpc } = require('winccoa-manager');
@@ -58,6 +68,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { execFile } = require('node:child_process');
 const { PmonClient, parseProgs, progsMatches } = require('./pmon-client.js');
+const { DEFAULT_CHUNK_BYTES, TransferReceiver, deployToNodes, sendZip, tooOldMessage } = require('./deploy-transfer.js');
 
 const winccoa = new WinccoaManager();
 
@@ -263,8 +274,12 @@ function runConfigEnv() {
   return run(bat, [], PROJ_PATH);
 }
 
-/** Deploy a ZIP into the LOCAL project (purge → extract → config.env → restart). */
-async function doLocalDeploy({ zipPath, clearFolders, restart }) {
+/**
+ * Deploy a ZIP into the LOCAL project (purge → extract → config.env → restart).
+ * `restartDelayMs` delays the restart for a deploy received from the aggregator, so
+ * its `DeployStatus` poll sees "done" before this manager is recycled.
+ */
+async function doLocalDeploy({ zipPath, clearFolders, restart, restartDelayMs = 0 }) {
   if (!zipPath || !fs.existsSync(zipPath)) return { ok: false, error: `ZIP introuvable : ${zipPath}` };
   const cleared = [];
   try {
@@ -282,7 +297,9 @@ async function doLocalDeploy({ zipPath, clearFolders, restart }) {
   if (restart) {
     // Fire the restart, then return — pmon RESTART_ALL recycles managers (incl.
     // the webserver) shortly after this reply is sent.
-    pmonClient.restartAll().catch((e) => log(`restartAll after deploy failed: ${e.message}`));
+    const fire = () => pmonClient.restartAll().catch((e) => log(`restartAll after deploy failed: ${e.message}`));
+    if (restartDelayMs > 0) setTimeout(fire, restartDelayMs);
+    else fire();
   }
   return { ok: true, cleared, skipped: ex.skipped, extracted: true, restarted: restart };
 }
@@ -296,10 +313,7 @@ async function ensureNodeType() {
     new WinccoaDpTypeNode('pmon', ELEM.String),
     new WinccoaDpTypeNode('updated', ELEM.String),
     new WinccoaDpTypeNode('cmd', ELEM.String),
-    new WinccoaDpTypeNode('cmdResult', ELEM.String),
-    new WinccoaDpTypeNode('deployCmd', ELEM.String),
-    new WinccoaDpTypeNode('deployData', ELEM.String),
-    new WinccoaDpTypeNode('deployResult', ELEM.String)
+    new WinccoaDpTypeNode('cmdResult', ELEM.String)
   ]);
   try {
     await winccoa.dpTypeCreate(root);
@@ -316,6 +330,22 @@ async function ensureNodeDp() {
     log(`DP node créé : ${NODE_DP}`);
   }
   await winccoa.dpSetWait([`${NODE_DP}.hostname`, `${NODE_DP}.system`], [HOSTNAME, OWN_SYSTEM]);
+}
+
+/**
+ * Up to 0.1.x the ZIP was shipped base64 in `.deployData` and stayed there. A node DP
+ * created by such a version still has the element (the type is not changed on an
+ * existing project): empty it, so no old ZIP is kept. Absent element → nothing to do.
+ */
+async function clearLegacyDeployData() {
+  const dpe = `${NODE_DP}.deployData`;
+  try {
+    if (!winccoa.dpExists(dpe)) return;
+    await winccoa.dpSetWait(dpe, '');
+    log(`${dpe} vidé (ancien transfert de ZIP par DPE)`);
+  } catch (e) {
+    log(`could not clear ${dpe}: ${e.message}`);
+  }
 }
 
 /** Remove the legacy single-node DP (`ProcessMonitor_Node`, no host suffix). */
@@ -416,9 +446,8 @@ async function execPmonCmd(cmd) {
   throw new Error(`action invalide: ${cmd.action}`);
 }
 
-/** Track last handled command ids so reconnect / repeat values are ignored. */
+/** Track the last handled command id so reconnect / repeat values are ignored. */
 let lastCmdId = '';
-let lastDeployId = '';
 
 async function onCmd(cmd) {
   if (!cmd || !cmd.reqId || cmd.reqId === lastCmdId) return;
@@ -436,23 +465,6 @@ async function onCmd(cmd) {
   await publishOnce();
 }
 
-async function onDeployCmd(cmd) {
-  if (!cmd || !cmd.reqId || cmd.reqId === lastDeployId) return;
-  lastDeployId = cmd.reqId;
-  const tmp = path.join(ensureTempDir(), `pm-deploy-${cmd.reqId}.zip`);
-  let result;
-  try {
-    const b64 = asStr((await winccoa.dpGet([`${NODE_DP}.deployData`]))[0]);
-    fs.writeFileSync(tmp, Buffer.from(b64 || '', 'base64'));
-    result = await doLocalDeploy({ zipPath: tmp, clearFolders: cmd.clearFolders || [], restart: cmd.restart === true });
-  } catch (e) {
-    result = { ok: false, error: e.message };
-  } finally {
-    await fsp.rm(tmp, { force: true }).catch(() => undefined);
-  }
-  await winccoa.dpSet(`${NODE_DP}.deployResult`, JSON.stringify({ reqId: cmd.reqId, ...result, ts: new Date().toISOString() }));
-}
-
 function startAgent() {
   // React to commands targeted at THIS computer's node (answer=false → skip initial).
   winccoa.dpConnect(
@@ -465,18 +477,6 @@ function startAgent() {
       }
     },
     [`${NODE_DP}.cmd`],
-    false
-  );
-  winccoa.dpConnect(
-    (_names, values) => {
-      try {
-        const v = asStr(values[0]);
-        if (v) void onDeployCmd(JSON.parse(v));
-      } catch (e) {
-        log(`deployCmd parse error: ${e.message}`);
-      }
-    },
-    [`${NODE_DP}.deployCmd`],
     false
   );
   void publishOnce();
@@ -507,7 +507,7 @@ async function discoverNodes() {
   return out;
 }
 
-/** Poll a result DPE until a record with `reqId` appears (or timeout). */
+/** Poll a result DPE until a record with `reqId` appears (or timeout) — control commands only. */
 async function pollResult(dpeName, reqId, timeoutMs, stepMs = 300) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -539,6 +539,66 @@ async function resolveTargets(target) {
   return nodes.filter((n) => bareDp(n.dp) === `${NODE_DP_PREFIX}_${dpHost(t)}` || n.hostname === t);
 }
 
+// ---- node-to-node deploy transfer over vRPC (issue 32) ---------------------
+
+/** Agent side: deploy ZIPs streamed by the aggregator into `<project>/temp`. */
+const receiver = new TransferReceiver({
+  dir: TEMP_DIR,
+  // Restart deferred: the aggregator's DeployStatus poll must see "done" first.
+  deploy: (req) => doLocalDeploy({ ...req, restartDelayMs: 5000 }),
+  log
+});
+
+/** Raw bytes per transfer chunk (a ~1 MiB base64 string); `PM_DEPLOY_CHUNK_BYTES` overrides it. */
+const CHUNK_BYTES = (() => {
+  const n = Number.parseInt(process.env.PM_DEPLOY_CHUNK_BYTES || '', 10);
+  return Number.isInteger(n) && n >= 16 * 1024 ? n : DEFAULT_CHUNK_BYTES;
+})();
+
+/** The vRPC service name of a node: `ProcessMonitor_<hostname>`, from its node DP name. */
+function nodeServiceName(node) {
+  const bare = bareDp(node.dp);
+  const prefix = `${NODE_DP_PREFIX}_`;
+  return `ProcessMonitor_${bare.startsWith(prefix) ? bare.slice(prefix.length) : dpHost(node.hostname)}`;
+}
+
+/** Human-readable reason from an MSA error (its status text) or a plain error. */
+function vrpcErrorText(error) {
+  const status = error && error.status;
+  return (status && (status.text || status.message)) || (error instanceof Error ? error.message : String(error));
+}
+
+/**
+ * `call(method, request)` on another node's service — the same `Vrpc.Stub` client the
+ * webserver bridge uses for this manager. Rejects when the stub cannot be created (no
+ * such service) or the call does not answer OK (e.g. Unimplemented on an older agent).
+ */
+async function nodeCaller(node) {
+  const stub = await Vrpc.Stub.createAndInitialize(nodeServiceName(node), new Vrpc.StubOptions());
+  return async (method, request) => {
+    let resp;
+    try {
+      resp = await stub.callFunction(method, Vrpc.Variant.createString(JSON.stringify(request)), new Vrpc.ClientContext());
+    } catch (e) {
+      throw new Error(`${method}: ${vrpcErrorText(e)}`);
+    }
+    if (resp.status.statusCode !== Vrpc.StatusCode.OK) throw new Error(`${method}: ${String(resp.status.text ?? resp.status.statusCode)}`);
+    return JSON.parse(String(resp.response.value ?? '{}'));
+  };
+}
+
+/** Wrap a receiver method as a vRPC handler (JSON in, JSON out). */
+function jsonHandler(fn) {
+  return async (ctx, request) => {
+    ctx.cancelSignal.throwIfAborted();
+    try {
+      return reply(await fn(parseReq(request)));
+    } catch (e) {
+      return reply({ ok: false, error: e.message });
+    }
+  };
+}
+
 class ProcessMonitorService extends Vrpc.ServiceBase {
   constructor() {
     super(SERVICE_NAME);
@@ -548,6 +608,11 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
     this.registerFunction('RemoveManager', (ctx, req) => this.removeManager(ctx, req));
     this.registerFunction('RestartAll', (ctx, req) => this.restartAll(ctx, req));
     this.registerFunction('Deploy', (ctx, req) => this.deploy(ctx, req));
+    this.registerFunction('ReceiveBegin', jsonHandler((r) => receiver.begin(r)));
+    this.registerFunction('ReceiveChunk', jsonHandler((r) => receiver.chunk(r)));
+    this.registerFunction('ReceiveCommit', jsonHandler((r) => receiver.commit(r)));
+    this.registerFunction('DeployStatus', jsonHandler((r) => receiver.status(r)));
+    this.registerFunction('ReceiveAbort', jsonHandler((r) => receiver.abort(r)));
   }
 
   async listManagers(ctx) {
@@ -658,42 +723,28 @@ class ProcessMonitorService extends Vrpc.ServiceBase {
       return reply({ ok: r.ok, results: [{ system: OWN_SYSTEM, hostname: HOSTNAME, ...r }] });
     }
 
-    let b64 = null; // ZIP base64, read once, only when a remote target needs it
-    const results = [];
-    // Deploy to the LOCAL system last: a `restart` recycles this manager/webserver,
-    // which would otherwise abort the remaining (remote) deployments and the reply.
-    const ordered = [...targets].sort((a, b) => Number(isLocal(a)) - Number(isLocal(b)));
-    for (const node of ordered) {
-      if (isLocal(node)) {
-        const r = await doLocalDeploy({ zipPath, clearFolders, restart });
-        results.push({ system: node.system, hostname: node.hostname || HOSTNAME, ...r });
-      } else {
-        if (b64 === null) b64 = fs.readFileSync(zipPath).toString('base64');
-        results.push(await this.remoteDeploy(node, { b64, clearFolders, restart, fileName: path.basename(zipPath) }));
-      }
-    }
+    const results = await deployToNodes(targets, {
+      isLocal,
+      localDeploy: async (node) => ({ system: node.system, hostname: node.hostname || HOSTNAME, ...(await doLocalDeploy({ zipPath, clearFolders, restart })) }),
+      remoteDeploy: (node) => this.remoteDeploy(node, { zipPath, clearFolders, restart })
+    });
     const ok = results.length > 0 && results.every((r) => r.ok);
     return reply({ ok, results });
   }
 
-  /** Ship a ZIP to a remote system's node DP and await its deploy result. */
-  async remoteDeploy(node, { b64, clearFolders, restart, fileName }) {
-    const reqId = crypto.randomUUID();
+  /** Stream the ZIP to a remote node's own service and await its deploy (issue 32). */
+  async remoteDeploy(node, { zipPath, clearFolders, restart }) {
+    const host = node.hostname || bareDp(node.dp);
+    const head = { system: node.system, hostname: node.hostname };
+    let call;
     try {
-      await winccoa.dpSetWait(`${node.dp}.deployData`, b64);
-      await winccoa.dpSetWait(`${node.dp}.deployCmd`, JSON.stringify({ reqId, fileName, clearFolders, restart }));
+      call = await nodeCaller(node);
     } catch (e) {
-      return { system: node.system, hostname: node.hostname, ok: false, error: `dispatch failed: ${e.message}` };
+      return { ...head, ok: false, cleared: [], skipped: [], error: tooOldMessage(host, vrpcErrorText(e)) };
     }
-    const res = await pollResult(`${node.dp}.deployResult`, reqId, 120000);
-    return {
-      system: node.system,
-      hostname: node.hostname,
-      ok: res.ok === true,
-      cleared: res.cleared || [],
-      skipped: res.skipped || [],
-      error: res.error || ''
-    };
+    const r = await sendZip(call, { zipPath, clearFolders, restart, host, chunkBytes: CHUNK_BYTES });
+    if (!r.ok) log(`Deploy on ${host} failed: ${r.error}`);
+    return { ...head, ok: r.ok, cleared: r.cleared, skipped: r.skipped, error: r.error };
   }
 }
 
@@ -717,11 +768,15 @@ async function run_() {
   log(`System: ${OWN_SYSTEM || '(standalone)'} · host: ${HOSTNAME} · node DP: ${NODE_DP}`);
   try {
     await ensureNodeDp();
+    await clearLegacyDeployData();
     await cleanupLegacyDp();
     startAgent();
   } catch (e) {
     log(`Agent init failed (continuing as aggregator only): ${e.message}`);
   }
+  // Transfers a previous run left in <project>/temp (manager restarted mid-transfer).
+  await receiver.cleanupStale({ all: true }).catch((e) => log(`transfer cleanup failed: ${e.message}`));
+  setInterval(() => void receiver.cleanupStale().catch(() => undefined), 5 * 60 * 1000);
   const container = new Vrpc.ServiceContainer();
   container.registerService(new ProcessMonitorService(), new Vrpc.ServiceOptions());
   try {

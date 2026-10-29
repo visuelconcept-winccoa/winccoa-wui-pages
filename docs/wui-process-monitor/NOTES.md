@@ -19,6 +19,44 @@ as date + uptime ("—" when stopped), the manager number (to find its log file)
 mode with a flag when pmon runs it with another one, and the restart settings in that cell's tooltip;
 name, state and start time sort on a header click.
 
+## Deploy to the other nodes — vRPC transfer
+
+The page uploads the ZIP in chunks to `<project>/temp` of the webserver's host, then calls `Deploy`
+on the `ProcessMonitor_<hostname>` service of that host (the aggregator). Since 0.2.0 the aggregator
+ships the ZIP to every OTHER targeted node by calling that node's own `ProcessMonitor_<hostname>`
+service (the name is derived from its node DP `ProcessMonitor_Node_<hostname>`), with no datapoint in
+between (`managers/processMonitor/deploy-transfer.js`, issue 32):
+
+- `ReceiveBegin {fileName, size, sha256}` → `{ok, transferId}`: the agent opens
+  `temp/pm-deploy-<transferId>.zip`;
+- `ReceiveChunk {transferId, offset, data, chunkSha256}` → `{ok, received}`: `data` is ONE chunk as a
+  base64 string (768 KiB raw, about 1 MiB on the wire; `PM_DEPLOY_CHUNK_BYTES` overrides the raw
+  size), read with `fs.createReadStream` — the ZIP is never held whole in memory. The bytes are
+  written at `offset`, so a retried chunk is idempotent; a chunk whose hash does not match, a gap or a
+  chunk past the announced size is refused. Each chunk is retried up to three times;
+- `ReceiveCommit {transferId, sha256, clearFolders, restart}` → `{ok, deployId}`: size and SHA-256 of
+  the whole file checked, then `doLocalDeploy` runs asynchronously;
+- `DeployStatus {deployId}` → `{state: running | done | failed, cleared, skipped, error}`: polled every
+  second with no fixed cap (an agent that answers is alive; ten failed polls in a row fail the node).
+  A remote agent fires its `restart` 5 s after reporting the result, so the poll sees "done" first;
+- `ReceiveAbort {transferId}`: deletes the temp file. Transfers idle for 30 min are aborted, and the
+  `pm-deploy-*.zip` files of a previous run are deleted at startup.
+
+The local node is still deployed last (its `restart` recycles the aggregator and the webserver), and
+the `Deploy` reply keeps its shape (`results: [{system, hostname, ok, cleared, skipped, error}]`).
+
+There is no DPE fallback. A node whose agent predates these methods (`Unimplemented`) or whose service
+cannot be reached fails on its own with "agent too old or not reachable over vRPC — update/restart the
+processMonitor manager on <host>"; the other nodes are deployed. Update and restart the
+`processMonitor` manager on every node together. The `.deployCmd` / `.deployData` / `.deployResult`
+elements are gone from the `ProcessMonitor_Node` type of a new project; on an existing one the type is
+not changed, and the agent empties a leftover `.deployData` at startup so no old ZIP stays in the DP.
+Start / stop / restart and the pmon configuration edits still go through `.cmd` / `.cmdResult`.
+
+Not verified on a real system: reaching the service of a node that belongs to ANOTHER system of a
+distributed project (the stub is created by name only, like the webserver bridge does), and the MSA
+message size limit (the chunk size is kept at about 1 MiB of text for that reason).
+
 ## `wui dev` mock — `mock/api.mjs`
 
 The package ships a mock of `/api/process-monitor`, merged by wui-toolkit into any site that selects

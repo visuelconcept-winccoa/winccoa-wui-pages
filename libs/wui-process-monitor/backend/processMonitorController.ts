@@ -57,7 +57,8 @@ function hostFragment(host: string | undefined): string {
  * would fail. This bridge targets the manager of its OWN computer: the deploy ZIP
  * is assembled in THIS host's `<project>/temp` and handed over as a plain path, so
  * only a co-located manager can read it — and that manager is also the aggregator
- * (it reads every node DP and routes control/deploy to the other nodes' agents).
+ * (it reads every node DP and routes control/deploy to the other nodes' agents; the
+ * ZIP itself is streamed to their own `ProcessMonitor_<hostname>` services over vRPC).
  *
  * The bare legacy name stays as a fallback so a webserver deployed ahead of the
  * manager (or next to a manager pinned to the old build) still finds the service.
