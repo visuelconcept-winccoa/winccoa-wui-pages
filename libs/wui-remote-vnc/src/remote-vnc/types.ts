@@ -12,10 +12,11 @@
  * `VncProxy` MSA manager owns the allow-list) and proxies the raw TCP stream
  * (websockify-style). See {@link ./data/connection-store.ts}.
  *
- * The VNC password (when stored) stays an end-to-end secret between noVNC and
- * the VNC server (RFB auth is done by the client, the relay is a dumb byte
- * pipe), but it IS persisted in clear text in the datapoint — see the security
- * notice in the dialog.
+ * The VNC password (when stored) never reaches the browser since 0.2: the
+ * backend answers connections without it (`hasPassword` instead) and the relay
+ * answers the VNC server's authentication itself (backend/rfbBroker.ts). It IS
+ * still persisted in clear text in the datapoint — see the security notice in
+ * the dialog and docs/wui-remote-vnc/NOTES.md.
  */
 
 /** A single remote VNC connection definition. */
@@ -31,8 +32,13 @@ export interface VncConnection {
   host: string;
   /** Target TCP port (VNC default 5900). */
   port: number;
-  /** VNC password (stored in clear text in the DP when set; may be empty). */
-  password: string;
+  /**
+   * VNC password — WRITE ONLY: sent when creating / changing it (empty string =
+   * remove it), absent to keep the stored one. The backend never sends it back.
+   */
+  password?: string;
+  /** Whether a password is stored (answered by the backend; read only). */
+  hasPassword?: boolean;
   /** Free-text description / notes. */
   description: string;
   /** Optional group / category label (purely for display ordering). */
@@ -96,6 +102,6 @@ export function blankConnection(): VncConnection {
 }
 
 /** `host:port` endpoint label. */
-export function endpoint(c: VncConnection): string {
+export function endpoint(c: Pick<VncConnection, 'host' | 'port'>): string {
   return `${c.host || '—'}:${c.port || DEFAULT_VNC_PORT}`;
 }

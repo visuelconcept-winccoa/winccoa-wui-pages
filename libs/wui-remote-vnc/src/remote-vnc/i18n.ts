@@ -48,6 +48,12 @@ export const MSG = {
       'Offline-Modus: Änderungen werden nicht in den Datenpunkten gespeichert (Backend nicht verfügbar oder fehlende Schreibrechte).'
     ),
     importFailed: ml('Import failed.', 'Import échoué.', 'Import fehlgeschlagen.'),
+    writeForbidden: ml(
+      'Refused by the server: your groups do not hold the "edit" role of this page.',
+      'Refusé par le serveur : vos groupes ne possèdent pas le rôle « éditer » de cette page.',
+      'Vom Server abgelehnt: Ihre Gruppen besitzen die Rolle „Bearbeiten" dieser Seite nicht.'
+    ),
+    writeFailed: ml('Saving failed', "Échec de l'enregistrement", 'Speichern fehlgeschlagen'),
     roleForbidden: ml(
       'Your groups do not hold the "view" role of this page.',
       'Vos groupes ne possèdent pas le rôle « consulter » de cette page.',
@@ -99,10 +105,22 @@ export const MSG = {
     show: ml('Show', 'Afficher', 'Anzeigen'),
     hide: ml('Hide', 'Masquer', 'Ausblenden'),
     passwordWarning: ml(
-      'The password is stored in clear text in the datapoint. Reserve this for a trusted environment.',
-      'Le mot de passe est enregistré en clair dans le datapoint. À réserver à un environnement de confiance.',
-      'Das Passwort wird im Klartext im Datenpunkt gespeichert. Nur für eine vertrauenswürdige Umgebung verwenden.'
+      'The password is never sent back to a browser: the relay authenticates to the VNC server itself. It is still stored in clear text in the datapoint: restrict read access to the RemoteVnc_ datapoints.',
+      "Le mot de passe n'est jamais renvoyé à un navigateur : le relais s'authentifie lui-même auprès du serveur VNC. Il reste enregistré en clair dans le datapoint : restreignez la lecture des datapoints RemoteVnc_.",
+      'Das Passwort wird nie an einen Browser zurückgesendet: Das Relay authentifiziert sich selbst beim VNC-Server. Es bleibt im Klartext im Datenpunkt gespeichert: Lesezugriff auf die RemoteVnc_-Datenpunkte einschränken.'
     ),
+    passwordKept: ml(
+      'A password is stored — leave empty to keep it',
+      'Un mot de passe est enregistré — laisser vide pour le conserver',
+      'Ein Passwort ist gespeichert — leer lassen, um es zu behalten'
+    ),
+    passwordRemove: ml('Remove the stored password', 'Supprimer le mot de passe enregistré', 'Gespeichertes Passwort entfernen'),
+    passwordRemoved: ml(
+      'The stored password will be removed on save.',
+      "Le mot de passe enregistré sera supprimé à l'enregistrement.",
+      'Das gespeicherte Passwort wird beim Speichern entfernt.'
+    ),
+    undo: ml('Undo', 'Annuler', 'Rückgängig'),
     fDescription: ml('Description', 'Description', 'Beschreibung'),
     secSession: ml('Session options', 'Options de session', 'Sitzungsoptionen'),
     viewOnly: ml(
@@ -143,7 +161,25 @@ export const MSG = {
     noHost: ml('Host not provided.', 'Hôte non renseigné.', 'Host nicht angegeben.'),
     connectFailed: ml('Connection failed', 'Échec de la connexion', 'Verbindung fehlgeschlagen'),
     connectionLost: ml('Connection lost', 'Connexion interrompue', 'Verbindung unterbrochen'),
-    connectTimeout: ml('Connection timed out', 'Délai de connexion dépassé', 'Verbindungszeitlimit überschritten')
+    connectTimeout: ml('Connection timed out', 'Délai de connexion dépassé', 'Verbindungszeitlimit überschritten'),
+    statusChecking: ml('Loading the connection…', 'Chargement de la connexion…', 'Verbindung wird geladen…'),
+    stateForbidden: ml(
+      'Your groups do not hold the "open sessions" role of Remote VNC.',
+      'Vos groupes ne possèdent pas le rôle « ouvrir des sessions » de VNC distant.',
+      'Ihre Gruppen besitzen die Rolle „Sitzungen öffnen" von Remote-VNC nicht.'
+    ),
+    stateNotFound: ml(
+      'This VNC connection does not exist (any more).',
+      "Cette connexion VNC n'existe pas (ou plus).",
+      'Diese VNC-Verbindung existiert nicht (mehr).'
+    ),
+    stateUnavailable: ml(
+      'The VNC relay is unavailable (remote-vnc backend not deployed or webserver not restarted).',
+      "Le relais VNC est indisponible (backend remote-vnc non déployé ou serveur web non redémarré).",
+      'Das VNC-Relay ist nicht verfügbar (remote-vnc-Backend nicht bereitgestellt oder Webserver nicht neu gestartet).'
+    ),
+    noConnectionId: ml('No VNC connection selected.', 'Aucune connexion VNC sélectionnée.', 'Keine VNC-Verbindung ausgewählt.'),
+    retry: ml('Retry', 'Réessayer', 'Erneut versuchen')
   }
 } as const;
 

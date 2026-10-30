@@ -8,8 +8,14 @@
  * connection of type `RemoteVnc_Connection`, with optional stored password and a
  * last-connected timestamp) and opens a session **in the browser** with the
  * bundled noVNC client. noVNC connects over a WebSocket to the same-origin relay
- * `/api/vnc/ws?id=<id>` (served by the customer webserver), which resolves the
- * id → host:port via the `VncProxy` MSA manager and proxies the raw TCP stream.
+ * `/api/vnc/ws?id=<id>&ticket=<one-shot ticket>` (served by the customer
+ * webserver), which resolves the id → host:port via the `VncProxy` MSA manager,
+ * authenticates to the VNC server itself and proxies the raw TCP stream.
+ *
+ * Since 0.2 the connections are read and written through this module's own
+ * routes (`/api/vnc/connections`, `/api/vnc/connection[/:id]`), which enforce
+ * the roles server-side and never answer the password; the viewer is the public
+ * `<wui-vnc-viewer>` element (src/vnc-viewer.ts) that other modules embed too.
  *
  * The page is a master/detail: a sortable CRUD table, and the noVNC viewer when
  * a connection is opened. Built as a separate entry point (auto-discovered by
@@ -25,7 +31,8 @@ import { property, query, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import appSecurityRoles from './app-security.roles.json';
-import { ConnectionStore } from './remote-vnc/data/connection-store.js';
+import { authHeaders } from './remote-vnc/data/api.js';
+import { ConnectionStore, StoreRefusal } from './remote-vnc/data/connection-store.js';
 import { DEMO_CONNECTIONS } from './remote-vnc/data/demo-connections.js';
 import { exportConnection, exportJson, parseConnections } from './remote-vnc/data/io.js';
 import { MSG, confirmDeleteMsg, localize, localizeDir } from './remote-vnc/i18n.js';
@@ -33,23 +40,12 @@ import type { VncConnection, VncStatus } from './remote-vnc/types.js';
 import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
 import './remote-vnc/ui/rv-connection-dialog.js';
 import './remote-vnc/ui/rv-connection-table.js';
-import './remote-vnc/ui/rv-viewer.js';
+import './vnc-viewer.js';
 
-const PAD_LEN = 2;
 /** How often to refresh the per-connection TCP reachability indicators. */
 const STATUS_POLL_MS = 5000;
 /** Application-Security module id (the specs/menuconfig page id). */
 const MODULE_ID = 'remote-vnc';
-
-function pad(n: number): string {
-  return String(n).padStart(PAD_LEN, '0');
-}
-
-/** Local-datetime string (`YYYY-MM-DDTHH:mm`) for "now". */
-function nowLocal(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 export class WuiRemoteVnc extends LitElement {
   static override readonly styles = [IXCoreStyles, pageStyles()];
@@ -63,7 +59,10 @@ export class WuiRemoteVnc extends LitElement {
   /** Editor target: an existing connection, `null` for "new", or undefined = closed. */
   @state() private editing: VncConnection | null | undefined = undefined;
   @state() private deletingId: string | null = null;
-  @state() private importError = '';
+  /** Import error or a write the server refused. */
+  @state() private errorMsg = '';
+  /** The server refused the list (no `view` / `connect` role). */
+  @state() private listForbidden = false;
   /** Live TCP reachability per connection id (polled from /api/vnc/status). */
   @state() private statusById: Record<string, VncStatus> = {};
 
@@ -99,10 +98,10 @@ export class WuiRemoteVnc extends LitElement {
         </wui-context-generator>
 
         <div class="body">
-          ${this.canView
+          ${this.canView && !this.listForbidden
             ? html`
-                ${this.importError
-                  ? html`<div class="notice error"><ix-icon name="warning"></ix-icon>${this.importError}</div>`
+                ${this.errorMsg
+                  ? html`<div class="notice error"><ix-icon name="warning"></ix-icon>${this.errorMsg}</div>`
                   : nothing}
                 ${this.offline
                   ? html`<div class="notice">
@@ -165,6 +164,11 @@ export class WuiRemoteVnc extends LitElement {
     void this.refresh();
   }
 
+  protected override updated(changed: PropertyValues): void {
+    // Back to the list from a session: reload it (the relay stamped lastConnectedAt).
+    if (changed.has('connectionId') && changed.get('connectionId') && !this.connectionId) void this.refresh();
+  }
+
   /** Muted centered notice shown in place of role-gated content. */
   private renderForbidden(message: MultiLangString): TemplateResult {
     return html`<div class="center empty">
@@ -173,17 +177,19 @@ export class WuiRemoteVnc extends LitElement {
   }
 
   private renderBody(): TemplateResult {
-    if (this.loading) return html`<div class="center"><ix-spinner></ix-spinner></div>`;
-    const selected = this.selectedConnection();
-    if (selected) {
+    if (this.connectionId) {
       // 'connect' role: deep-linking to /remote-vnc/:id without the grant shows
-      // the forbidden notice instead of opening a session.
+      // the forbidden notice instead of opening a session. The element checks
+      // it again (and the server, on every request), and shows "not found".
       if (!this.canConnect) return this.renderForbidden(MSG.page.connectForbidden);
-      return html`<rv-viewer
-        .connection=${selected}
+      return html`<wui-vnc-viewer
+        connection-id=${this.connectionId}
+        back
+        fill
         @wui:back=${this.goToList}
-      ></rv-viewer>`;
+      ></wui-vnc-viewer>`;
     }
+    if (this.loading) return html`<div class="center"><ix-spinner></ix-spinner></div>`;
     return html`
       <div class="toolbar">
         <span class="count">${localizeDir(MSG.page.connectionsCount(this.connections.length))}</span>
@@ -248,17 +254,16 @@ export class WuiRemoteVnc extends LitElement {
   private async refresh(): Promise<void> {
     this.loading = true;
     this.connections = await this.store.listConnections();
+    this.listForbidden = this.store.forbidden;
     this.offline = this.store.offline;
     this.loading = false;
-    // Deep-link: arriving directly on /remote-vnc/<id> records the connection
-    // (only when the 'connect' role grants opening a session).
-    if (this.connectionId && this.canConnect) void this.stamp(this.connectionId);
   }
 
   /** Poll the cyclic server-side TCP reachability test (independent of sessions). */
   private async refreshStatus(): Promise<void> {
+    if (this.connectionId) return; // the viewer is shown: no table to update
     try {
-      const res = await fetch('/api/vnc/status');
+      const res = await fetch('/api/vnc/status', { headers: authHeaders() });
       if (!res.ok) return;
       this.statusById = (await res.json()) as Record<string, VncStatus>;
     } catch {
@@ -266,15 +271,10 @@ export class WuiRemoteVnc extends LitElement {
     }
   }
 
-  private selectedConnection(): VncConnection | undefined {
-    return this.connectionId ? this.connections.find((c) => c.id === this.connectionId) : undefined;
-  }
-
-  /** Open a connection → navigate to its own route `/remote-vnc/<id>`. */
+  /** Open a connection → navigate to its own route `/remote-vnc/<id>` (the relay stamps it). */
   private onOpen(id: string): void {
     if (!this.canConnect) return;
     this.navigate(id);
-    void this.stamp(id);
   }
 
   private navigate(id: string): void {
@@ -285,14 +285,18 @@ export class WuiRemoteVnc extends LitElement {
     this.dispatchEvent(new RouterEvent('/remote-vnc'));
   }
 
-  /** Record the last-connected timestamp on a connection (best-effort). */
-  private async stamp(id: string): Promise<void> {
-    const conn = this.connections.find((c) => c.id === id);
-    if (!conn) return;
-    const stamped: VncConnection = { ...conn, lastConnectedAt: nowLocal() };
-    this.connections = this.connections.map((c) => (c.id === id ? stamped : c));
-    await this.store.saveConnection(stamped);
-    this.offline = this.store.offline;
+  /** Run a write; a refusal (role, input) or a failure is shown, never thrown. */
+  private async write<T>(op: () => Promise<T>): Promise<T | undefined> {
+    this.errorMsg = '';
+    try {
+      return await op();
+    } catch (error) {
+      if (error instanceof StoreRefusal && error.kind === 'forbidden') this.errorMsg = localize(MSG.page.writeForbidden);
+      else this.errorMsg = `${localize(MSG.page.writeFailed)}: ${error instanceof Error ? error.message : String(error)}`;
+      return undefined;
+    } finally {
+      this.offline = this.store.offline;
+    }
   }
 
   private openCreate(): void {
@@ -309,41 +313,39 @@ export class WuiRemoteVnc extends LitElement {
 
   private async onSave(event: CustomEvent<VncConnection>): Promise<void> {
     const conn = event.detail;
-    if (this.editing) {
-      await this.store.saveConnection(conn);
-      this.connections = this.connections.map((c) => (c.id === conn.id ? conn : c));
-    } else {
-      const created = await this.store.createConnection(conn);
-      this.connections = [...this.connections, created];
-    }
+    const editing = this.editing;
+    const saved = await this.write(() => (editing ? this.store.saveConnection(conn) : this.store.createConnection(conn)));
+    if (!saved) return; // refused: the dialog stays open, the notice says why
+    this.connections = editing
+      ? this.connections.map((c) => (c.id === saved.id ? saved : c))
+      : [...this.connections, saved];
     this.editing = undefined;
-    this.offline = this.store.offline;
   }
 
   private async onToggleFav(id: string): Promise<void> {
     const conn = this.connections.find((c) => c.id === id);
     if (!conn) return;
-    const next: VncConnection = { ...conn, favorite: !conn.favorite };
-    this.connections = this.connections.map((c) => (c.id === id ? next : c));
-    await this.store.saveConnection(next);
-    this.offline = this.store.offline;
+    const saved = await this.write(() => this.store.setFavorite(id, !conn.favorite));
+    if (saved) this.connections = this.connections.map((c) => (c.id === id ? saved : c));
   }
 
   private async onDeleteConfirm(): Promise<void> {
     const id = this.deletingId;
     if (!id) return;
-    await this.store.deleteConnection(id);
-    this.connections = this.connections.filter((c) => c.id !== id);
     this.deletingId = null;
-    this.offline = this.store.offline;
+    const done = await this.write(async () => {
+      await this.store.deleteConnection(id);
+      return true;
+    });
+    if (!done) return;
+    this.connections = this.connections.filter((c) => c.id !== id);
     if (this.connectionId === id) this.goToList();
   }
 
   private async generateDemo(): Promise<void> {
     this.loading = true;
-    const created = await this.store.importDemo(DEMO_CONNECTIONS);
-    this.connections = this.offline ? await this.store.listConnections() : [...this.connections, ...created];
-    this.offline = this.store.offline;
+    await this.write(() => this.store.importDemo(DEMO_CONNECTIONS));
+    this.connections = await this.store.listConnections();
     this.loading = false;
   }
 
@@ -359,7 +361,7 @@ export class WuiRemoteVnc extends LitElement {
   }
 
   private triggerImport(): void {
-    this.importError = '';
+    this.errorMsg = '';
     this.importInput.value = '';
     this.importInput.click();
   }
@@ -373,22 +375,19 @@ export class WuiRemoteVnc extends LitElement {
     try {
       parsed = parseConnections(await file.text());
     } catch (error) {
-      this.importError = error instanceof Error ? error.message : localize(MSG.page.importFailed);
+      this.errorMsg = error instanceof Error ? error.message : localize(MSG.page.importFailed);
       return;
     }
-    this.importError = '';
-    const byId = new Map(this.connections.map((c) => [c.id, c]));
-    for (const incoming of parsed) {
-      if (incoming.id && byId.has(incoming.id)) {
-        await this.store.saveConnection(incoming);
-        byId.set(incoming.id, incoming);
-      } else {
-        const created = await this.store.createConnection(incoming);
-        byId.set(created.id, created);
+    const known = new Set(this.connections.map((c) => c.id));
+    await this.write(async () => {
+      for (const incoming of parsed) {
+        // A file without a password keeps the stored one (io.ts leaves it out).
+        if (incoming.id && known.has(incoming.id)) await this.store.saveConnection(incoming);
+        else await this.store.createConnection(incoming);
       }
-    }
-    this.connections = [...byId.values()];
-    this.offline = this.store.offline;
+      return true;
+    });
+    this.connections = await this.store.listConnections();
   }
 
   private connName(id: string): string {
@@ -439,7 +438,7 @@ function pageStyles(): ReturnType<typeof css> {
       flex: 1;
       min-height: 0;
     }
-    rv-viewer {
+    wui-vnc-viewer {
       flex: 1;
       min-height: 0;
     }

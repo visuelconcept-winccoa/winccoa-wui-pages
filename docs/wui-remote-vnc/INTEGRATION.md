@@ -37,9 +37,15 @@ npx wui check prod
 ## Verify
 1. Logged in → **"Connexions VNC distantes"** (remote VNC connections) entry, `/remote-vnc` loads the list.
 2. `GET https://<dashboard>/api/vnc/health` → `{ ok, service:"vnc", … }`.
-3. Add a connection (creates `RemoteVnc_<id>`, type `RemoteVnc_Connection`), open it → noVNC connects via `/api/vnc/ws?id=<id>` (the relay opens the TCP to the `host:port` resolved by `vncProxy`).
+3. Add a connection (creates `RemoteVnc_<id>`, type `RemoteVnc_Connection`, through `POST /api/vnc/connection`), open it → the viewer gets a ticket (`POST /api/vnc/session`) and noVNC connects via `/api/vnc/ws?id=<id>&ticket=…` (the relay opens the TCP to the `host:port` resolved by `vncProxy` and answers the VNC authentication itself).
+4. `GET /api/vnc/connections` lists the connections **without** any `password` field.
 
 ## Notes / security
 - The browser names only a **known id**; `vncProxy` holds the id → `host:port` mapping (no raw URL/socket on the client side → no SSRF / open proxy).
+- **Roles enforced server-side** (0.2): `view` (list, status, favourite), `connect` (one connection, session ticket, relay upgrade), `edit` (create / update / delete, audited in `AuditTrail_RemoteVnc`). Open until an admin assigns groups in `/app-security`. The caller is identified by the WebUI token the page sends (`Authorization: Bearer`), else the webserver session; without either, an assigned role is refused.
+- **Password**: never served by a route, never sent to the browser — the relay authenticates to the VNC server (None or VNC password; other security types are refused with a reason). It is still stored **in clear text** in `RemoteVnc_<id>.json`: restrict read access to the `RemoteVnc_*` DPs where needed.
 - The module mounts `/api/vnc/*` as `fullAccess` (demo) → restrict the `acl` in `<project>/javascript/customer-webserver/src/modules/remote-vnc/index.ts` before production (written once by `wui build`: a hand-tightened acl survives redeploys).
 - `winccoa-manager` is provided by the WinCC OA runtime (not in the manager's `package.json`).
+
+## Upgrading from 0.1
+`npx wui build prod`, then restart the webserver (the `vncProxy` manager is unchanged). No data migration. Behaviour changes — writes through the module's routes, roles enforced, password no longer exported nor sent to the browser, `lastConnectedAt` stamped by the relay: see the migration note in [NOTES.md](NOTES.md#migration-01--02). Embedding in another module: [EMBEDDING.md](EMBEDDING.md).

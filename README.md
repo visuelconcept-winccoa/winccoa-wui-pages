@@ -47,7 +47,7 @@ source header and their `wuiPage` manifest in `libs/wui-<page>/package.json`
 | `wui-para` | `/para` | Datapoint-parametrization page | `/api/para` |
 | `wui-process-monitor` | `/process-monitor` | pmon manager console, one tab per connected server: status, start/stop/restart, pmon configuration entries, project ZIP upload and deploy across servers | `/api/process-monitor` + `processMonitor` mgr |
 | `wui-production-orders` | `/production-orders` | Production orders CRUD + status workflow + ECharts Gantt + server-side KPI | `productionOrdersKpi` mgr |
-| `wui-remote-vnc` | `/remote-vnc` | Manage VNC connections and open them in-browser via bundled noVNC over a WebSocket relay | `/api/vnc` + `vncProxy` mgr |
+| `wui-remote-vnc` | `/remote-vnc` | Manage VNC connections and open them in-browser via bundled noVNC over a WebSocket relay that authenticates to the VNC server itself; `<wui-vnc-viewer>` embeds a session in other modules | `/api/vnc` + `vncProxy` mgr |
 | `wui-report-builder` | `/report-builder` | Build report instances from templates (data filling, archive aggregations, multi-level signing, print) | — |
 | `wui-report-templates` | `/report-templates` | Author report templates (parameterised sections, multi-level signature workflow) | — |
 | `wui-tag-importer` | `/tag-importer` | Import device tags into DP types + datapoints from an OPC UA NodeSet2 file or a live server browse (repeated instances of one ObjectType mutualised into a single DP type) | `/api/tag-importer` |
