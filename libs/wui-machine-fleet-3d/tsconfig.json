@@ -37,9 +37,6 @@
       "@visuelconcept-winccoa/wui-fleet-core/*": [
         "../wui-fleet-core/src/*"
       ],
-      "@visuelconcept-winccoa/wui-fleet-kpi-analysis/*": [
-        "../wui-fleet-kpi-analysis/src/*"
-      ],
       "@visuelconcept-winccoa/wui-kit/*": [
         "../wui-kit/src/*"
       ],

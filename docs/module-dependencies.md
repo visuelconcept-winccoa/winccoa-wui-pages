@@ -36,7 +36,7 @@ a role that an admin assigned is denied (fail closed).
 
 | Route | Called from | Pages that require the module |
 | --- | --- | --- |
-| `/api/para` (`para`) | `wui-kit/src/data/{dp-json-store,dp-single-json-store,app-security,audit-trail}.ts`, `wui-ai-kit/src/data/ai-store.ts`, `wui-fleet-core/src/data/fleet-store.ts`, `wui-audit-trail/src/audit-trail/dp-admin.ts`, `wui-production-orders/src/production-orders/data/fleet-link.ts` | alarms, ampere, app-security, audit-trail, auth-badge, camera-streams, fleet-closures, fleet-kpi-analysis, fleet-stop-analysis, gis, gis-plants, machine-fleet-3d, mosaic, process-monitor, production-orders, remote-vnc, report-builder, report-templates, tag-importer, thermal-reports, users |
+| `/api/para` (`para`) | `wui-kit/src/data/{dp-json-store,dp-single-json-store,app-security,audit-trail}.ts`, `wui-ai-kit/src/data/ai-store.ts`, `wui-fleet-core/src/data/fleet-store.ts`, `wui-audit-trail/src/audit-trail/dp-admin.ts`, `wui-production-orders/src/production-orders/data/fleet-link.ts` | alarms, ampere, app-security, audit-trail, auth-badge, camera-streams, fleet-closures, fleet-kpi-analysis, fleet-stop-analysis, gis, gis-plants, machine-fleet-3d, machine-sim, mosaic, process-monitor, production-orders, remote-vnc, report-builder, report-templates, tag-importer, thermal-reports, users |
 | `/api/app-security` (`app-security`) | `wui-kit/src/data/app-security.ts` | the same pages, app-security excepted, plus para |
 
 No requirement: agv-fleet, diagnosis, dp-watch, eng-studio.
@@ -46,6 +46,7 @@ No requirement: agv-fleet, diagnosis, dp-watch, eng-studio.
 | Route | Called from | Pages | Without it |
 | --- | --- | --- | --- |
 | `/api/ai` (`machine-fleet-3d`) | `wui-ai-kit/src/data/ai-store.ts` | ampere, gis, para | the AI assistant hides itself |
+| `/api/ai/fleet` (`machine-fleet-3d`) | `wui-machine-fleet-3d/src/machine-fleet-3d/data/fleet-api.ts` (`<wui-fleet-3d-view>`, `listAteliers`) | none in this repository — a site module that embeds one atelier's 3D view ([EMBEDDING.md](wui-machine-fleet-3d/EMBEDDING.md)) | the element shows "data unavailable" |
 | `/api/vnc` (`remote-vnc`) | `wui-remote-vnc/src/vnc-viewer.ts` (`<wui-vnc-viewer>`) | none in this repository — a site module that embeds a VNC session ([EMBEDDING.md](wui-remote-vnc/EMBEDDING.md)) | the element shows "relay unavailable" |
 
 "Frontend-only" / "no backend module" in a module's README means it **owns** no

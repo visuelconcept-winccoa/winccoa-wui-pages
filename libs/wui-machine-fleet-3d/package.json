@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-machine-fleet-3d",
   "type": "module",
-  "version": "0.1.7",
+  "version": "0.3.0",
   "description": "Machine Fleet 3D — standalone WinCC OA WebUI page: multi-atelier 3D digital twin (Three.js) with live DP-bound machine state/KPIs, config UI, GLB/billboard library and dashboard export. The per-machine dashboard embeds the shared alarm view (standing alarms or the archived ones over the dashboard's period, scoped to the machine's datapoints). Hub page; depends on the fleet-core + ai-kit + alarms-core domain kits.",
   "author": {
     "name": "Visuel Concept"
@@ -18,7 +18,6 @@
     "@visuelconcept-winccoa/wui-ai-kit": "^0.1.0",
     "@visuelconcept-winccoa/wui-alarms-core": "^0.3.0",
     "@visuelconcept-winccoa/wui-fleet-core": "^0.1.0",
-    "@visuelconcept-winccoa/wui-fleet-kpi-analysis": "^0.1.0",
     "@visuelconcept-winccoa/wui-kit": "^0.1.0",
     "three": "^0.169.0",
     "@visuelconcept-winccoa/wui-para": "^0.1.0",
@@ -35,7 +34,8 @@
     "@wincc-oa/wui-ix-wrappers": "*",
     "@wincc-oa/wui-models": "*",
     "@wincc-oa/wui-oarxjs-context": "*",
-    "@wincc-oa/wui-shared": "*"
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-iam-data": "*"
   },
   "exports": {
     "./*": {
@@ -65,19 +65,29 @@
       "mount": "/api/ai",
       "routeClass": "AiRoute",
       "routeFile": "aiRoute",
+      "files": [
+        "aiRoute.ts",
+        "fleetAteliers.ts",
+        "fleetGuard.ts"
+      ],
       "shared": [
         "@visuelconcept-winccoa/wui-ai-kit/aiController.ts",
-        "@visuelconcept-winccoa/wui-ai-kit/aiRoute.ts"
+        "@visuelconcept-winccoa/wui-app-security/appSecurityGuard.ts"
       ],
       "managers": [
-        "machineSim",
-        "kpiCalc",
         "aiAssistant"
       ],
+      "progs": [
+        {
+          "options": "aiAssistant/index.js",
+          "start": "manual"
+        }
+      ],
       "notes": [
-        "/api/ai/chat (optional, AI assistant via wui-ai-kit)",
-        "machineSim (optional, simulation)",
-        "kpiCalc (optional, real-time TRS/MTBF/MTTR)"
+        "/api/ai/chat (optional, AI assistant via wui-ai-kit's aiController; needs the aiAssistant manager, registered in config/progs as manual — start it when the assistant is enabled)",
+        "/api/ai/fleet/workshops[/:id] (read only, role view: the ateliers for hosts that embed <wui-fleet-3d-view> — see docs/wui-machine-fleet-3d/EMBEDDING.md)",
+        "Live KPIs (TRS/MTBF/MTTR in the bubbles): the kpiCalc manager of wui-fleet-kpi-analysis — select that module",
+        "Simulated production: the machineSim manager of wui-machine-sim — select that module (demo/commissioning only)"
       ]
     },
     "showcase": {
@@ -173,14 +183,19 @@
     },
     "@wincc-oa/wui-shared": {
       "optional": true
+    },
+    "@wincc-oa/wui-iam-data": {
+      "optional": true
     }
   },
   "files": [
     "src",
-    "managers",
+    "backend",
     "oa-data",
     "menu.fragment.jsonc",
+    "mock",
     "!**/*.spec.ts",
+    "!**/*.spec.mjs",
     "!**/*.test.ts"
   ],
   "repository": {

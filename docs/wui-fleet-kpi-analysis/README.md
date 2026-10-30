@@ -3,7 +3,8 @@
 **Fleet KPI Analysis** page (`/fleet-kpi`) for the WinCC OA WebUI dashboard:
 **availability / TRS per machine** computed over opening time minus closures,
 charted with echarts. Live per-machine TRS is produced by the **`kpiCalc`
-manager**; the page reads and visualises it.
+manager**; the page reads and visualises it. This module is the one that deploys `kpiCalc`, also
+for the live KPIs of the Machine Fleet 3D bubbles (`machine-fleet-3d` ≥ 0.3.0 no longer does).
 
 npm package, deployed with **wui-toolkit** (the `wui` CLI): the shared kit /
 fleet-core come as its npm dependencies, and the page is built against the
