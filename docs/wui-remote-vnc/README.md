@@ -11,7 +11,8 @@ the backend (0.2).
 
 Other modules can embed a session by connection id with the public
 `<wui-vnc-viewer connection-id="…">` element
-(`@visuelconcept-winccoa/wui-remote-vnc/vnc-viewer.js`) — see
+(`@visuelconcept-winccoa/wui-remote-vnc/vnc-viewer.js`); since 0.3 an optional
+`label` names the remote screen with an overlay in full screen — see
 [EMBEDDING.md](EMBEDDING.md). Upgrading from 0.1: see the migration note in
 [NOTES.md](NOTES.md#migration-01--02).
 

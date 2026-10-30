@@ -12,7 +12,7 @@ In the host module's `package.json`:
 
 ```jsonc
 "dependencies": {
-  "@visuelconcept-winccoa/wui-remote-vnc": "^0.2.0"
+  "@visuelconcept-winccoa/wui-remote-vnc": "^0.3.0" // ^0.2.0 without `label`
 },
 "wuiPage": {
   // remote-vnc's backend (/api/vnc + relay + vncProxy) is used when deployed,
@@ -47,6 +47,7 @@ host share one implementation.
 ```ts
 html`<wui-vnc-viewer
   connection-id=${tab.vncConnectionId}
+  label=${`${workcenter.name} · ${tab.name}`}
   fill
   @ended=${(e: CustomEvent<VncViewerEndedDetail>) => this.onVncEnded(e.detail)}
 ></wui-vnc-viewer>`
@@ -58,6 +59,8 @@ html`<wui-vnc-viewer
 | `fill` | off | Take the whole width **and** height of the container (give the container a size; in a flex column, `flex: 1; min-height: 0`). Without it the element is `height: var(--wui-vnc-viewer-height, 100%)`. |
 | `scale` | `fit` | `fit`: scale the remote screen to the element (noVNC `scaleViewport`); `none`: native resolution with scrollbars. |
 | `back` | off | Show a "Back" button that emits `wui:back` (the Remote VNC page uses it; a host normally does not). |
+| `label` | — | Since 0.3.0. Plain text naming the remote screen (e.g. `WC_SOUDAGE_1 · Écran poste`), set by the host and not interpreted by the element. Shown as an overlay on the remote screen (see below) and used as the screen's accessible name. Without it, nothing changes. Also a property (`.label`). |
+| `label-mode` | `fullscreen` | Since 0.3.0. `fullscreen`: the overlay shows only while the viewer is full screen (out of full screen the host page shows its own context); `always`: the overlay shows all the time. |
 
 Event **`ended`** (bubbles, composed), `detail: { connectionId, reason, message }`, when
 a session ends or cannot start — `reason` is one of:
@@ -74,6 +77,18 @@ a session ends or cannot start — `reason` is one of:
 
 It is **not** fired when the host removes the element. Types:
 `import type { VncViewerEndedDetail, VncEndReason } from '@visuelconcept-winccoa/wui-remote-vnc/vnc-viewer.js'`.
+
+**Label overlay.** When the viewer goes full screen (its own full-screen button), the host
+page's title bar and tabs are hidden and several sessions can look alike: with a `label`,
+the element then draws it in the top-left corner of the remote screen — small, on a
+semi-transparent background from the theme (`--theme-color-1`, `--theme-color-std-text`),
+inside the element that goes full screen. It never takes input (`pointer-events: none`:
+clicks, keys and the noVNC cursor go through), and it dims after about 3 s, back to full
+opacity on mouse move or touch over the screen. The element follows `fullscreenchange`:
+it counts as full screen when `document.fullscreenElement` is the viewer or one of its
+ancestors (a host that puts its own container full screen gets the overlay too). The
+label is the screen's `aria-label` (role `group`); the overlay itself is `aria-hidden`,
+so screen readers announce it once.
 
 The element shows its states itself, without opening a session: no `connect` role,
 connection not found, relay unavailable (with a Retry button), then connecting /
