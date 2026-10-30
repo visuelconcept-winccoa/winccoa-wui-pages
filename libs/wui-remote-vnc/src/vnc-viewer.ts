@@ -28,7 +28,10 @@
  *                  no overlay, no change;
  *   label-mode     `fullscreen` (default: the overlay shows only while the
  *                  viewer is full screen, when the host page's own context is
- *                  hidden) or `always`.
+ *                  hidden) or `always`;
+ *   hide-endpoint  do not show the connection's host:port (toolbar, connecting
+ *                  card): for a host page whose operators need not see network
+ *                  addresses (e.g. a workcenter tab). The module's page shows it.
  * Events (bubbling, composed):
  *   ended          `{ connectionId, reason, message }` when the session ends or
  *                  cannot start: reason `manual` | `clean` | `lost` | `auth` |
@@ -47,8 +50,11 @@
  * cursor go through), uses theme variables only, and dims after
  * LABEL_DIM_DELAY_MS — back to full opacity on pointer move / touch over the
  * stage. Full-screen state follows `fullscreenchange` on the document: the
- * viewer is full screen when `document.fullscreenElement` is this element (the
- * stage, retargeted out of the shadow root), inside it, or one of its ancestors.
+ * viewer is full screen when its stage (or anything in its shadow root) is, or
+ * when one of its composed ancestors is. The viewer is often nested in several
+ * shadow roots (a host page inside the shell), where `document.fullscreenElement`
+ * is retargeted to the outermost host: each root's own `fullscreenElement` is
+ * read instead, walking up from the viewer (`fullscreenCovers`).
  * The overlay is `aria-hidden`; the stage carries the label as `aria-label`
  * (role `group`), so the name is announced once.
  *
@@ -157,6 +163,8 @@ export class WuiVncViewer extends LitElement {
   @property() label = '';
   /** `fullscreen`: overlay only while full screen; `always`: overlay all the time. */
   @property({ attribute: 'label-mode' }) labelMode: 'fullscreen' | 'always' = 'fullscreen';
+  /** Hide the host:port of the connection (toolbar, connecting card). */
+  @property({ type: Boolean, attribute: 'hide-endpoint' }) hideEndpoint = false;
 
   @state() private state: VncViewerState = 'idle';
   @state() private message = '';
@@ -200,7 +208,7 @@ export class WuiVncViewer extends LitElement {
           ? html`<ix-button variant="secondary" @click=${this.goBack}>${localizeDir(MSG.viewer.back)}</ix-button>`
           : nothing}
         <span class="title">${meta?.name ?? this.connectionId}</span>
-        ${meta ? html`<span class="endpoint mono">${endpoint(meta)}</span>` : nothing}
+        ${meta && !this.hideEndpoint ? html`<span class="endpoint mono">${endpoint(meta)}</span>` : nothing}
         <span class="status" style="--c:${STATE_COLORS[this.state]}">
           <span class="dot"></span>${localizeDir(STATE_LABELS[this.state])}${meta?.viewOnly
             ? localizeDir(MSG.viewer.viewOnlySuffix)
@@ -240,7 +248,7 @@ export class WuiVncViewer extends LitElement {
               <div class="connecting">
                 <ix-spinner></ix-spinner>
                 <div class="c-status">${localizeDir(STATE_LABELS[this.state])}</div>
-                ${meta ? html`<div class="c-target">${meta.name} · <span class="mono">${endpoint(meta)}</span></div>` : nothing}
+                ${meta ? html`<div class="c-target">${meta.name}${this.hideEndpoint ? nothing : html` · <span class="mono">${endpoint(meta)}</span>`}</div>` : nothing}
                 ${this.message ? html`<div class="c-hint">${this.message}</div>` : nothing}
               </div>
             </div>`
@@ -295,11 +303,8 @@ export class WuiVncViewer extends LitElement {
 
   // --- label overlay ------------------------------------------------------------
 
-  /** Full screen when the full-screen element is this viewer (its stage), inside it, or an ancestor. */
   private inFullscreen(): boolean {
-    const fs = document.fullscreenElement;
-    if (!fs) return false;
-    return fs === this || fs.contains(this) || this.contains(fs) || this.renderRoot.contains(fs);
+    return fullscreenCovers(this);
   }
 
   private wakeLabel(): void {
@@ -608,6 +613,30 @@ export class WuiVncViewer extends LitElement {
     this.stopAll();
     this.dispatchEvent(new CustomEvent('wui:back', { bubbles: true, composed: true }));
   }
+}
+
+/** The full-screen element of a document or shadow root, retargeted to it (null when outside it). */
+function fullscreenOf(root: Node): Element | null {
+  return (root as Document | ShadowRoot).fullscreenElement ?? null;
+}
+
+/**
+ * Is `el` shown in full screen: its own shadow tree (the stage) or a composed ancestor of `el` is the
+ * full-screen element? Each root's `fullscreenElement` is retargeted to that root, so walking up from
+ * `el`, the first root that reports one decides: it is an ancestor of the chain (or the chain element
+ * itself), or something unrelated (another element in full screen). Works whatever the nesting of
+ * shadow roots, where `document.fullscreenElement` only gives the outermost host.
+ */
+export function fullscreenCovers(el: Element): boolean {
+  if (el.shadowRoot && fullscreenOf(el.shadowRoot)) return true;
+  let node: Element | null = el;
+  while (node) {
+    const root = node.getRootNode();
+    const fs = fullscreenOf(root);
+    if (fs) return fs === node || fs.contains(node);
+    node = root instanceof ShadowRoot ? root.host : null;
+  }
+  return false;
 }
 
 // Guarded: the page bundle and a host module's bundle may both import this file.
