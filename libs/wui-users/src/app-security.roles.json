@@ -1,0 +1,42 @@
+{
+  "module": "users",
+  "title": { "en_US.utf8": "Users", "fr.utf8": "Utilisateurs", "de.utf8": "Benutzer" },
+  "roles": [
+    {
+      "id": "view",
+      "label": { "en_US.utf8": "View", "fr.utf8": "Consulter", "de.utf8": "Anzeigen" },
+      "description": {
+        "en_US.utf8": "Open the Users page: users, groups, domains and their permissions, the automatic AD import's report, the config/config entries and the user settings (read-only, sensitive contents masked).",
+        "fr.utf8": "Ouvrir la page Utilisateurs : utilisateurs, groupes, domaines et leurs droits, rapport de l'import AD automatique, entrées de config/config et paramètres utilisateur (lecture seule, contenus sensibles masqués).",
+        "de.utf8": "Die Seite Benutzer öffnen: Benutzer, Gruppen, Domänen und ihre Rechte, Bericht des automatischen AD-Imports, Einträge der config/config und Benutzereinstellungen (nur lesen, sensible Inhalte verborgen)."
+      }
+    },
+    {
+      "id": "manage-users",
+      "label": { "en_US.utf8": "Manage users", "fr.utf8": "Gérer les utilisateurs", "de.utf8": "Benutzer verwalten" },
+      "description": {
+        "en_US.utf8": "Create, edit, enable or disable and delete WinCC OA users, set a local user's password, assign their groups; import users from the Active Directory.",
+        "fr.utf8": "Créer, modifier, activer ou désactiver et supprimer des utilisateurs WinCC OA, définir le mot de passe d'un utilisateur local, affecter ses groupes ; importer des utilisateurs depuis l'Active Directory.",
+        "de.utf8": "WinCC OA-Benutzer anlegen, bearbeiten, aktivieren oder deaktivieren und löschen, das Kennwort eines lokalen Benutzers setzen, seine Gruppen zuweisen; Benutzer aus dem Active Directory importieren."
+      }
+    },
+    {
+      "id": "manage-groups",
+      "label": { "en_US.utf8": "Manage groups and permissions", "fr.utf8": "Gérer les groupes et les droits", "de.utf8": "Gruppen und Rechte verwalten" },
+      "description": {
+        "en_US.utf8": "Create, edit and delete groups and domains, set their permission bits and members, rename the permission bits; import groups from the Active Directory.",
+        "fr.utf8": "Créer, modifier et supprimer des groupes et des domaines, régler leurs bits de droits et leurs membres, renommer les bits de droits ; importer des groupes depuis l'Active Directory.",
+        "de.utf8": "Gruppen und Domänen anlegen, bearbeiten und löschen, ihre Rechtebits und Mitglieder setzen, die Rechtebits benennen; Gruppen aus dem Active Directory importieren."
+      }
+    },
+    {
+      "id": "configure",
+      "label": { "en_US.utf8": "Configure authentication", "fr.utf8": "Configurer l'authentification", "de.utf8": "Authentifizierung konfigurieren" },
+      "description": {
+        "en_US.utf8": "Switch the project's authentication between WinCC OA and Active Directory, configure the automatic AD import (on/off, interval, groups) and start it now.",
+        "fr.utf8": "Basculer l'authentification du projet entre WinCC OA et Active Directory, configurer l'import AD automatique (activation, intervalle, groupes) et le lancer immédiatement.",
+        "de.utf8": "Die Authentifizierung des Projekts zwischen WinCC OA und Active Directory umschalten, den automatischen AD-Import konfigurieren (an/aus, Intervall, Gruppen) und sofort starten."
+      }
+    }
+  ]
+}
