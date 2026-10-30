@@ -52,7 +52,7 @@ wui-toolkit does not write that file.
 3. The KPI bubbles update (`machineSim` + `kpiCalc` managers active); the AI assistant responds via `aiAssistant` (MCP tools require the optional external MCP server).
 
 ## Notes / security
-- **Embedding** one atelier in another module (`<wui-fleet-3d-view>`, `GET /api/ai/fleet/workshops`): [EMBEDDING.md](EMBEDDING.md). The atelier routes need the module's `view` role (`requireRole`, enforced when the webserver authenticates HTTP requests).
+- **Embedding** one atelier in another module (`<wui-fleet-3d-view>`, `GET /api/ai/fleet/workshops`): [EMBEDDING.md](EMBEDDING.md). The atelier routes need the module's `view` role, checked against the caller's verified WebUI token (`backend/fleetGuard.ts`).
 - The module mounts `/api/ai/*` as **`fullAccess`** (demo) → restrict the `acl` in `<project>/javascript/customer-webserver/src/modules/machine-fleet-3d/index.ts` before production (written once by `wui build`: a hand-tightened acl survives redeploys).
 - The **3 managers** need `winccoa-manager`, **provided by the WinCC OA runtime** (not in the manager's `package.json`).
 - **AI tokens**: provider tokens are read from the **`AI_Assistant_Config`** DP (or an environment variable) — **none are shipped**. Fill them in before the assistant will work.

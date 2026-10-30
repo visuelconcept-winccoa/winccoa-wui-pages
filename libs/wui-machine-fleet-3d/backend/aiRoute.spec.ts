@@ -3,8 +3,8 @@
 
 // The /api/ai routes of machine-fleet-3d against an in-memory WinCC OA: the
 // MachineFleet3D_* DPs (in place of @winccoa/backend), the role guard (in place
-// of the appSecurityGuard.ts copied at deploy time: a scripted requireRole that
-// records what it guards), the AI controller (in place of wui-ai-kit's, copied
+// of fleetGuard.ts, which needs the CTRL token check: a scripted requireFleetRole
+// that records what it guards), the AI controller (in place of wui-ai-kit's, copied
 // at deploy time). Each route is called through the middleware chain
 // aiRoute.ts builds, as ultimate-express would.
 
@@ -44,8 +44,9 @@ vi.mock('@winccoa/backend', () => ({
 
 type Handler = (req: Request, res: Response, next: () => void) => unknown;
 
-vi.mock('./appSecurityGuard', () => ({
-  requireRole: (module: string, role: string): Handler => {
+vi.mock('./fleetGuard', () => ({
+  requireFleetRole: (role: string): Handler => {
+    const module = 'machine-fleet-3d';
     oa.guarded.push([module, role]);
     return (_req, res, next) => {
       if (oa.denied.has(`${module}/${role}`)) res.status(403).json({ ok: false, error: `forbidden: role '${role}' of '${module}' required` });

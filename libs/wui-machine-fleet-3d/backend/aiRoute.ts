@@ -16,17 +16,17 @@
 // it once only — mounts the fleet routes too, with nothing to edit.
 //
 // Application Security (module `machine-fleet-3d`, src/app-security.roles.json):
-// the fleet routes need the `view` role (requireRole, appSecurityGuard.ts copied
-// from wui-app-security at deploy time) — open until an admin assigns groups.
+// the fleet routes need the `view` role, checked by fleetGuard.ts against the
+// caller's verified WebUI token (appSecurityGuard.ts, copied from
+// wui-app-security at deploy time, gives the assignments) — open until an admin
+// assigns groups, refused to an unknown caller once assigned.
 // -----------------------------------------------------------------------------
 
 import { Router, json } from 'ultimate-express';
 
 import { AiController } from './aiController';
-import { requireRole } from './appSecurityGuard';
 import { FleetController } from './fleetAteliers';
-
-export const MODULE_ID = 'machine-fleet-3d';
+import { requireFleetRole } from './fleetGuard';
 
 /**
  * Endpoints (relative to the "/api/ai" mount point), with their role:
@@ -46,8 +46,8 @@ export class AiRoute {
     router.get('/health', ai.health);
     router.post('/chat', ai.chat);
 
-    router.get('/fleet/workshops', requireRole(MODULE_ID, 'view'), fleet.list);
-    router.get('/fleet/workshops/:id', requireRole(MODULE_ID, 'view'), fleet.get);
+    router.get('/fleet/workshops', requireFleetRole('view'), fleet.list);
+    router.get('/fleet/workshops/:id', requireFleetRole('view'), fleet.get);
 
     return router;
   }

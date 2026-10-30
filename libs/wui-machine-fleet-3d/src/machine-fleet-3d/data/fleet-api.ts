@@ -6,14 +6,20 @@
  * (`/api/ai/fleet/…`, backend/aiRoute.ts + backend/fleetAteliers.ts), used by
  * the embeddable `<wui-fleet-3d-view>` and by host modules that let their user
  * pick an atelier. The webserver reads the `MachineFleet3D_Config` datapoints
- * and checks the module's `view` role (requireRole): the browser never reads
- * those datapoints for this.
+ * and checks the module's `view` role: the browser never reads those datapoints
+ * for this. Every request carries the logged-in user's WebUI token
+ * (`Authorization: Bearer`), which the backend verifies to know who calls
+ * (backend/fleetGuard.ts); without a shell (`wui dev`, tests) none is sent and
+ * the mock answers anyway.
  *
  * Why under `/api/ai`: a wui-toolkit module has ONE backend mount, and this
  * module's has been `/api/ai` (the AI assistant bridge other modules call) since
  * its first release — the fleet routes live under it, in their own `/fleet`
  * segment.
  */
+import { TokenService } from '@wincc-oa/wui-iam-data/token-service.js';
+import { container } from 'tsyringe';
+
 import type { Atelier, StopCause } from '../types.js';
 
 export const FLEET_API = '/api/ai/fleet';
@@ -41,6 +47,15 @@ export type FleetOutcome<T> =
   /** No usable answer: backend not deployed / not restarted, network down, 5xx. */
   | { kind: 'unavailable'; message: string };
 
+function authHeaders(): Record<string, string> {
+  try {
+    const token = container.resolve(TokenService).getStoredToken();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+}
+
 async function jsonOf(res: Response): Promise<Record<string, unknown> | null> {
   try {
     const body: unknown = await res.json();
@@ -54,7 +69,7 @@ async function jsonOf(res: Response): Promise<Record<string, unknown> | null> {
 export async function fleetCall<T>(path: string, signal?: AbortSignal): Promise<FleetOutcome<T>> {
   let res: Response;
   try {
-    res = await fetch(`${FLEET_API}${path}`, { cache: 'no-store', signal });
+    res = await fetch(`${FLEET_API}${path}`, { cache: 'no-store', headers: authHeaders(), signal });
   } catch (error) {
     return { kind: 'unavailable', message: error instanceof Error ? error.message : String(error) };
   }

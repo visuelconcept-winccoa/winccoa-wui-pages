@@ -218,7 +218,7 @@ of the machine), stacked vertically, with a leader from the dot to the inner edg
   wui-ai-kit (`/health`, `/chat`, its `aiController.ts` copied in at deploy time — keep the wiring
   in step with `libs/wui-ai-kit/backend/aiRoute.ts`) plus, since 0.2.0, the read-only atelier
   routes `GET /fleet/workshops` (`{ id, name, machineCount }[]`) and `GET /fleet/workshops/:id`
-  (`{ atelier, stopCauses }`), behind `requireRole('machine-fleet-3d', 'view')`
+  (`{ atelier, stopCauses }`), behind the `view` role (`backend/fleetGuard.ts`, the WebUI token verified as in remote-vnc's `vncGuard.ts`)
   (`backend/fleetAteliers.ts`: `dpNames('MachineFleet3D_*', 'MachineFleet3D_Config')` — the type
   filter keeps out the `_StopCauses`, `_Kpi_*`, `_Glb_*`… DPs of the same prefix —, ids checked
   against `^[A-Za-z0-9_-]{1,128}$`, nothing created when the type is absent). The class and file

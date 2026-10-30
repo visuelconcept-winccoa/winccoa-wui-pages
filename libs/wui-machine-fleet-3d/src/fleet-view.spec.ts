@@ -52,6 +52,7 @@ vi.mock('@wincc-oa/wui-i18n-shared/localize-multilang.js', () => {
   const localize = (s: string | Record<string, string>): string => (typeof s === 'string' ? s : (s['en_US.utf8'] ?? ''));
   return { localize, localizeDir: localize };
 });
+vi.mock('@wincc-oa/wui-iam-data/token-service.js', () => ({ TokenService: class {} }));
 vi.mock('@etm-professional-control/oa-rx-js-api', () => ({ OaRxJsApi: class {} }));
 vi.mock('@wincc-oa/wui-dashboard-data/services/dashboard/dashboard.service.js', () => ({ DashboardService: class {} }));
 vi.mock('@wincc-oa/wui-models/events/router-event.js', () => ({ RouterEvent: class extends Event {} }));

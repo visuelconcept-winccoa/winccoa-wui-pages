@@ -111,8 +111,8 @@ one: `idle`, `loading`, `forbidden`, `not-found`, `unavailable`, `ready`):
 ## 5. Roles and listing
 
 The atelier routes enforce Machine Fleet's Application Security `view` role (module
-`machine-fleet-3d`) **server-side** (`requireRole`); the role is open until an admin assigns
-groups in `/app-security`:
+`machine-fleet-3d`) **server-side** (`backend/fleetGuard.ts`); the role is open until an admin
+assigns groups in `/app-security`:
 
 | Route | Role | Answer |
 | --- | --- | --- |
@@ -134,10 +134,12 @@ Why `/api/ai`: a wui-toolkit module has one backend mount, and Machine Fleet's h
 (the AI assistant bridge para, ampere and gis call) since its first release; the atelier routes
 live there in their own `/fleet` segment.
 
-`requireRole` identifies the caller by the webserver's session (passport / basic auth). On a
-webserver without HTTP authentication — the dashboard usually authenticates on its WebSocket only
-— it cannot attribute a request and lets it through (logged): the client-side `view` grant then
-does the gating in the element. Enable the webserver's authentication for a server-side refusal.
+The guard identifies the caller by the WebUI token the element sends (`Authorization: Bearer`,
+verified by the webserver's key store), else by the webserver's session (passport / basic auth) —
+never by a name the client declares. Once the `view` role is assigned, a request without a valid
+identity is refused (403), so the role holds even on a webserver that authenticates on its
+WebSocket only. A failure of the check itself (directory or token check unreadable) is logged and
+lets the request through. Same guard as remote-vnc's `vncGuard.ts`.
 
 ## 6. `wui dev`
 
