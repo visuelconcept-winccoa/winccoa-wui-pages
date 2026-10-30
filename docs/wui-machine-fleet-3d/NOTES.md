@@ -24,7 +24,7 @@ Tier: **hub** (central fleet page, default entry point at login). `three`
   mode, no management, no machine dialog, no AI prompt, no back / dashboard / links. In that mode
   the view skips the editing loads (graphics library, WinCC OA dashboards, catalog through the
   store) and takes the stop-cause catalog from the element (`stopCauseCatalog`), which reads the
-  atelier from `GET /api/ai/fleet/ateliers/:id` (role `view`) — no `MachineFleet3D_*` read nor
+  atelier from `GET /api/ai/fleet/workshops/:id` (role `view`) — no `MachineFleet3D_*` read nor
   `/api/para` type creation from the browser. States: no id / not found (404), forbidden
   (`hasRole$` view, live, or a 403), unavailable (no JSON answer, 5xx; Retry). The element follows
   full screen with its OWN root's `fullscreenElement` (nested shadow roots retarget
@@ -217,7 +217,7 @@ of the machine), stacked vertically, with a leader from the dot to the inner edg
 - **Own backend `/api/ai`** (`backend/aiRoute.ts`, class `AiRoute`): the AI bridge routes of
   wui-ai-kit (`/health`, `/chat`, its `aiController.ts` copied in at deploy time — keep the wiring
   in step with `libs/wui-ai-kit/backend/aiRoute.ts`) plus, since 0.2.0, the read-only atelier
-  routes `GET /fleet/ateliers` (`{ id, name, machineCount }[]`) and `GET /fleet/ateliers/:id`
+  routes `GET /fleet/workshops` (`{ id, name, machineCount }[]`) and `GET /fleet/workshops/:id`
   (`{ atelier, stopCauses }`), behind `requireRole('machine-fleet-3d', 'view')`
   (`backend/fleetAteliers.ts`: `dpNames('MachineFleet3D_*', 'MachineFleet3D_Config')` — the type
   filter keeps out the `_StopCauses`, `_Kpi_*`, `_Glb_*`… DPs of the same prefix —, ids checked

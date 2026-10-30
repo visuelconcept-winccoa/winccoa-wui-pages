@@ -137,7 +137,7 @@ function unavailable(res: Response, error: unknown): void {
 
 /** The read-only atelier routes (see aiRoute.ts for their mount and role). */
 export class FleetController {
-  /** GET /fleet/ateliers -> { ok, ateliers: [{ id, name, machineCount }] } */
+  /** GET /fleet/workshops -> { ok, ateliers: [{ id, name, machineCount }] } */
   public list = async (_req: Request, res: Response): Promise<void> => {
     try {
       res.json({ ok: true, ateliers: await listAtelierSummaries() });
@@ -146,7 +146,7 @@ export class FleetController {
     }
   };
 
-  /** GET /fleet/ateliers/:id -> { ok, atelier, stopCauses } | 404 */
+  /** GET /fleet/workshops/:id -> { ok, atelier, stopCauses } | 404 */
   public get = async (req: Request, res: Response): Promise<void> => {
     const id = String(req.params?.['id'] ?? '');
     try {

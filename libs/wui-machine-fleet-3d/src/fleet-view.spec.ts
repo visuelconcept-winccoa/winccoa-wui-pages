@@ -133,9 +133,9 @@ beforeEach(() => {
   live.connects.length = 0;
   observers.active = 0;
   replies = {
-    '/api/ai/fleet/ateliers/usinage': { status: 200, body: { ok: true, atelier: ATELIER, stopCauses: [] } },
-    '/api/ai/fleet/ateliers/gone': { status: 404, body: { ok: false, error: 'not-found' } },
-    '/api/ai/fleet/ateliers/secret': { status: 403, body: { ok: false, error: "forbidden: role 'view' of 'machine-fleet-3d' required" } }
+    '/api/ai/fleet/workshops/usinage': { status: 200, body: { ok: true, atelier: ATELIER, stopCauses: [] } },
+    '/api/ai/fleet/workshops/gone': { status: 404, body: { ok: false, error: 'not-found' } },
+    '/api/ai/fleet/workshops/secret': { status: 403, body: { ok: false, error: "forbidden: role 'view' of 'machine-fleet-3d' required" } }
   };
   vi.stubGlobal('ResizeObserver', FakeObserver);
   vi.stubGlobal('IntersectionObserver', FakeObserver);
@@ -190,7 +190,7 @@ describe('<wui-fleet-3d-view>', () => {
     expect(notice(unmounted)).toBe('unavailable');
     expect(scenes).toHaveLength(0);
 
-    replies['/api/ai/fleet/ateliers/elsewhere'] = { status: 200, body: { ok: true, atelier: { ...ATELIER, id: 'elsewhere' }, stopCauses: [] } };
+    replies['/api/ai/fleet/workshops/elsewhere'] = { status: 200, body: { ok: true, atelier: { ...ATELIER, id: 'elsewhere' }, stopCauses: [] } };
     (unmounted.shadowRoot?.querySelector('.notice ix-button') as HTMLElement).click();
     await tick();
     expect(unmounted.viewState).toBe('ready');
@@ -201,7 +201,7 @@ describe('<wui-fleet-3d-view>', () => {
     const el = mount();
     await tick();
     expect(el.viewState).toBe('ready');
-    expect(calls).toEqual(['/api/ai/fleet/ateliers/usinage']);
+    expect(calls).toEqual(['/api/ai/fleet/workshops/usinage']);
     const inner = view(el);
     expect(inner?.hasAttribute('display-only')).toBe(true);
     expect(scenes).toHaveLength(1);
@@ -298,7 +298,7 @@ describe('<wui-fleet-3d-view>', () => {
   });
 
   it('changing the atelier releases the scene and loads the new one', async () => {
-    replies['/api/ai/fleet/ateliers/soudage'] = { status: 200, body: { ok: true, atelier: { ...ATELIER, id: 'soudage', name: 'Soudage' }, stopCauses: [] } };
+    replies['/api/ai/fleet/workshops/soudage'] = { status: 200, body: { ok: true, atelier: { ...ATELIER, id: 'soudage', name: 'Soudage' }, stopCauses: [] } };
     const el = mount();
     await tick();
     el.setAttribute('atelier', 'soudage');

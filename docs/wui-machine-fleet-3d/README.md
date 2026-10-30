@@ -12,7 +12,7 @@ ISC) — installed separately, **not shipped** here.
 Since 0.2, other modules can embed **one atelier's 3D view**, display only, with the public
 `<wui-fleet-3d-view atelier="…">` element
 (`@visuelconcept-winccoa/wui-machine-fleet-3d/fleet-view.js`), and list the ateliers for a picker
-through `GET /api/ai/fleet/ateliers` (role `view`) — see [EMBEDDING.md](EMBEDDING.md).
+through `GET /api/ai/fleet/workshops` (role `view`) — see [EMBEDDING.md](EMBEDDING.md).
 
 npm package, deployed with **wui-toolkit** (the `wui` CLI): the shared kits
 (`wui-kit`, `wui-fleet-core`, `wui-ai-kit`, `wui-alarms-core`) come as its npm
@@ -51,7 +51,7 @@ wui-toolkit does not write that file.
 package.json                                                       npm package; wuiPage.backend (mount /api/ai, own aiRoute + fleetAteliers, shared aiController + appSecurityGuard, 3 managers)
 src/machine-fleet-3d.ts + src/machine-fleet-3d/                    (page source)
 src/fleet-view.ts                                                  <wui-fleet-3d-view>, public: one atelier's 3D view for other modules (EMBEDDING.md)
-backend/aiRoute.ts + backend/fleetAteliers.ts                      /api/ai: the AI bridge (wui-ai-kit's controller) + the read-only atelier routes /fleet/ateliers[/:id]
+backend/aiRoute.ts + backend/fleetAteliers.ts                      /api/ai: the AI bridge (wui-ai-kit's controller) + the read-only atelier routes /fleet/workshops[/:id]
 mock/api.mjs + mock/demo-ateliers.json                             wui dev: the atelier routes (mock data's ateliers, else the demo one)
 menu.fragment.jsonc                                                (2 entries: /fleet-3d list + /fleet-3d/:atelier detail)
 managers/machineSim/                                               Node manager (simulation)

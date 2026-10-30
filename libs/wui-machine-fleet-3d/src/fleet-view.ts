@@ -33,7 +33,7 @@
  * States shown IN the element, without building a scene: no atelier id, no
  * `view` role (client grant via hasRole$, live; and the 403 of the server-side
  * check where the atelier is read), atelier not found, data unavailable (with a
- * Retry button). The atelier comes from `GET /api/ai/fleet/ateliers/:id` (this
+ * Retry button). The atelier comes from `GET /api/ai/fleet/workshops/:id` (this
  * module's backend, `view` role) — the element reads no configuration
  * datapoint; the live values come over the shell's existing WebSocket
  * (one `dpConnect` block per view, see the view).

@@ -55,14 +55,14 @@ const summary = (atelier) => ({
 });
 
 export default {
-  'GET /api/ai/fleet/ateliers': ({ fixtures }) => ({
+  'GET /api/ai/fleet/workshops': ({ fixtures }) => ({
     ok: true,
     ateliers: ateliers(fixtures)
       .map(summary)
       .sort((a, b) => a.name.localeCompare(b.name))
   }),
 
-  'GET /api/ai/fleet/ateliers/:id': ({ params, fixtures }) => {
+  'GET /api/ai/fleet/workshops/:id': ({ params, fixtures }) => {
     const atelier = ateliers(fixtures).find((a) => a.id === params.id);
     if (!atelier) throw notFound(params.id);
     const causes = parse(fixtures?.values?.[`System1:${STOPCAUSE_DP}.json`], '[');

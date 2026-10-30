@@ -32,8 +32,8 @@ export const MODULE_ID = 'machine-fleet-3d';
  * Endpoints (relative to the "/api/ai" mount point), with their role:
  *   GET  /health                -> liveness of the AI bridge                         (open)
  *   POST /chat                  body { prompt, … } -> { text, provider, model }      (open, as in wui-ai-kit)
- *   GET  /fleet/ateliers        -> { ok, ateliers: [{ id, name, machineCount }] }    view
- *   GET  /fleet/ateliers/:id    -> { ok, atelier, stopCauses } | 404                  view
+ *   GET  /fleet/workshops        -> { ok, ateliers: [{ id, name, machineCount }] }    view
+ *   GET  /fleet/workshops/:id    -> { ok, atelier, stopCauses } | 404                  view
  */
 export class AiRoute {
   static routes(): Router {
@@ -46,8 +46,8 @@ export class AiRoute {
     router.get('/health', ai.health);
     router.post('/chat', ai.chat);
 
-    router.get('/fleet/ateliers', requireRole(MODULE_ID, 'view'), fleet.list);
-    router.get('/fleet/ateliers/:id', requireRole(MODULE_ID, 'view'), fleet.get);
+    router.get('/fleet/workshops', requireRole(MODULE_ID, 'view'), fleet.list);
+    router.get('/fleet/workshops/:id', requireRole(MODULE_ID, 'view'), fleet.get);
 
     return router;
   }

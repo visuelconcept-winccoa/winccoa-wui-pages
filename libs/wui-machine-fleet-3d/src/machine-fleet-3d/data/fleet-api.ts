@@ -25,7 +25,7 @@ export interface AtelierSummary {
   machineCount: number;
 }
 
-/** What `GET /api/ai/fleet/ateliers/:id` answers: the atelier and the stop-cause catalog. */
+/** What `GET /api/ai/fleet/workshops/:id` answers: the atelier and the stop-cause catalog. */
 export interface AtelierPayload {
   atelier: Atelier;
   stopCauses: StopCause[];
@@ -70,10 +70,10 @@ export async function fleetCall<T>(path: string, signal?: AbortSignal): Promise<
 
 /** The ateliers (id, name, machine count), sorted by name — for a host's picker. */
 export function listAteliers(signal?: AbortSignal): Promise<FleetOutcome<{ ateliers: AtelierSummary[] }>> {
-  return fleetCall<{ ateliers: AtelierSummary[] }>('/ateliers', signal);
+  return fleetCall<{ ateliers: AtelierSummary[] }>('/workshops', signal);
 }
 
 /** One atelier, in full, with the stop-cause catalog its machines' causes resolve against. */
 export function fetchAtelier(id: string, signal?: AbortSignal): Promise<FleetOutcome<AtelierPayload>> {
-  return fleetCall<AtelierPayload>(`/ateliers/${encodeURIComponent(id)}`, signal);
+  return fleetCall<AtelierPayload>(`/workshops/${encodeURIComponent(id)}`, signal);
 }

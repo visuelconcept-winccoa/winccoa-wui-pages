@@ -99,7 +99,7 @@ one: `idle`, `loading`, `forbidden`, `not-found`, `unavailable`, `ready`):
   while it is on screen (the view stops drawing when it scrolls out of sight). Browsers cap the
   number of live WebGL contexts (about 16 in Chromium, the oldest one is then lost), and a GPU-less
   machine (SwiftShader) draws a large atelier at a few frames per second.
-- **Its own streams**: one `GET /api/ai/fleet/ateliers/:id` when it loads (a plain request, closed
+- **Its own streams**: one `GET /api/ai/fleet/workshops/:id` when it loads (a plain request, closed
   at once), then live values over the dashboard's **existing** WebSocket (the shell's
   `OaRxJsApi`): one `dpGet` per bound datapoint to seed and validate them, then **one**
   `dpConnect` block for the whole atelier (state, stop cause, work order, operation, comm,
@@ -116,8 +116,8 @@ groups in `/app-security`:
 
 | Route | Role | Answer |
 | --- | --- | --- |
-| `GET /api/ai/fleet/ateliers` | `view` | `{ ok, ateliers: [{ id, name, machineCount }] }`, sorted by name |
-| `GET /api/ai/fleet/ateliers/:id` | `view` | `{ ok, atelier, stopCauses }`, or 404 `{ ok: false, error: 'not-found' }` — what the element shows |
+| `GET /api/ai/fleet/workshops` | `view` | `{ ok, ateliers: [{ id, name, machineCount }] }`, sorted by name |
+| `GET /api/ai/fleet/workshops/:id` | `view` | `{ ok, atelier, stopCauses }`, or 404 `{ ok: false, error: 'not-found' }` — what the element shows |
 
 A host that lets its user pick an atelier (e.g. when configuring a tab) calls the listing — never
 the `MachineFleet3D_Config` datapoints:

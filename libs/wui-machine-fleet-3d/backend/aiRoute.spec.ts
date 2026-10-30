@@ -127,15 +127,15 @@ describe('/api/ai — the routes of machine-fleet-3d', () => {
       ['machine-fleet-3d', 'view'],
       ['machine-fleet-3d', 'view']
     ]);
-    expect(routes.get('GET /fleet/ateliers')).toHaveLength(2);
-    expect(routes.get('GET /fleet/ateliers/:id')).toHaveLength(2);
+    expect(routes.get('GET /fleet/workshops')).toHaveLength(2);
+    expect(routes.get('GET /fleet/workshops/:id')).toHaveLength(2);
     // The AI bridge stays as in wui-ai-kit.
     expect(routes.get('GET /health')).toHaveLength(1);
     expect(routes.get('POST /chat')).toHaveLength(1);
   });
 
   it('lists the ateliers server-side: id from the DP, name, machine count — sorted, nothing else', async () => {
-    const { status, body } = await call('GET /fleet/ateliers');
+    const { status, body } = await call('GET /fleet/workshops');
     expect(status).toBe(200);
     expect(body).toEqual({
       ok: true,
@@ -148,11 +148,11 @@ describe('/api/ai — the routes of machine-fleet-3d', () => {
 
   it('answers an empty list when the config type does not exist (nothing created)', async () => {
     for (const [dp, rec] of oa.dps) if (rec.type === 'MachineFleet3D_Config') oa.dps.delete(dp);
-    expect((await call('GET /fleet/ateliers')).body).toEqual({ ok: true, ateliers: [] });
+    expect((await call('GET /fleet/workshops')).body).toEqual({ ok: true, ateliers: [] });
   });
 
   it('serves one atelier in full with the stop-cause catalog', async () => {
-    const { status, body } = await call('GET /fleet/ateliers/:id', { id: 'usinage' });
+    const { status, body } = await call('GET /fleet/workshops/:id', { id: 'usinage' });
     expect(status).toBe(200);
     expect(body.atelier).toMatchObject({ id: 'usinage', dp: 'MachineFleet3D_usinage', name: 'Usinage', building: { length: 100 } });
     expect((body.atelier as { machines: unknown[] }).machines).toHaveLength(3);
@@ -161,7 +161,7 @@ describe('/api/ai — the routes of machine-fleet-3d', () => {
 
   it('404 for an unknown id, a wildcard, an empty atelier, or a DP of another type', async () => {
     for (const id of ['nope', '*', 'usin*', 'vide', 'StopCauses', 'Kpi_m0_trs']) {
-      const { status, body, reached } = await call('GET /fleet/ateliers/:id', { id });
+      const { status, body, reached } = await call('GET /fleet/workshops/:id', { id });
       expect(reached).toBe(true);
       expect(status, id).toBe(404);
       expect(body).toMatchObject({ ok: false, error: 'not-found' });
@@ -171,8 +171,8 @@ describe('/api/ai — the routes of machine-fleet-3d', () => {
   it('403 without the view role: the reads are never reached', async () => {
     oa.denied.add('machine-fleet-3d/view');
     for (const [route, params] of [
-      ['GET /fleet/ateliers', {}],
-      ['GET /fleet/ateliers/:id', { id: 'usinage' }]
+      ['GET /fleet/workshops', {}],
+      ['GET /fleet/workshops/:id', { id: 'usinage' }]
     ] as const) {
       const { status, body, reached } = await call(route, params);
       expect(status).toBe(403);
@@ -183,7 +183,7 @@ describe('/api/ai — the routes of machine-fleet-3d', () => {
 
   it('503 { ok: false } when WinCC OA cannot be read', async () => {
     oa.fail = true;
-    const { status, body } = await call('GET /fleet/ateliers');
+    const { status, body } = await call('GET /fleet/workshops');
     expect(status).toBe(503);
     expect(body).toMatchObject({ ok: false, error: 'unavailable', message: 'event manager gone' });
   });

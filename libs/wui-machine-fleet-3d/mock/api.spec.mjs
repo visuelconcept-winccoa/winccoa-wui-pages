@@ -30,28 +30,28 @@ describe('the /api/ai/fleet mock', () => {
   });
 
   test('without mock data, the listing serves the demonstration atelier: id, name, machine count only', async () => {
-    const { status, body } = await call('GET /api/ai/fleet/ateliers');
+    const { status, body } = await call('GET /api/ai/fleet/workshops');
     expect(status).toBe(200);
     expect(body).toEqual({ ok: true, ateliers: [{ id: 'demo', name: DEMO_ATELIER.name, machineCount: DEMO_ATELIER.machines.length }] });
   });
 
   test('one atelier in full, with its dp and an empty catalog; 404 for an unknown id', async () => {
-    const one = await call('GET /api/ai/fleet/ateliers/:id', { params: { id: 'demo' } });
+    const one = await call('GET /api/ai/fleet/workshops/:id', { params: { id: 'demo' } });
     expect(one.body.ok).toBe(true);
     expect(one.body.atelier).toMatchObject({ id: 'demo', dp: 'MachineFleet3D_demo', name: DEMO_ATELIER.name });
     expect(one.body.atelier.machines).toHaveLength(DEMO_ATELIER.machines.length);
     expect(one.body.stopCauses).toEqual([]);
-    const missing = await call('GET /api/ai/fleet/ateliers/:id', { params: { id: 'nope' } });
+    const missing = await call('GET /api/ai/fleet/workshops/:id', { params: { id: 'nope' } });
     expect(missing.status).toBe(404);
     expect(missing.body).toMatchObject({ ok: false, error: 'not-found' });
   });
 
   test('mock data that declares the type wins: its ateliers (id from the dp), its catalog', async () => {
-    const list = await call('GET /api/ai/fleet/ateliers', { fixtures: FIXTURES });
+    const list = await call('GET /api/ai/fleet/workshops', { fixtures: FIXTURES });
     expect(list.body.ateliers).toEqual([{ id: 'usinage', name: 'Usinage', machineCount: 2 }]);
-    const one = await call('GET /api/ai/fleet/ateliers/:id', { params: { id: 'usinage' }, fixtures: FIXTURES });
+    const one = await call('GET /api/ai/fleet/workshops/:id', { params: { id: 'usinage' }, fixtures: FIXTURES });
     expect(one.body.atelier).toMatchObject({ id: 'usinage', dp: 'MachineFleet3D_usinage', name: 'Usinage' });
     expect(one.body.stopCauses).toEqual([expect.objectContaining({ code: 'NC' })]);
-    expect((await call('GET /api/ai/fleet/ateliers/:id', { params: { id: 'demo' }, fixtures: FIXTURES })).status).toBe(404);
+    expect((await call('GET /api/ai/fleet/workshops/:id', { params: { id: 'demo' }, fixtures: FIXTURES })).status).toBe(404);
   });
 });

@@ -80,7 +80,7 @@
       ],
       "notes": [
         "/api/ai/chat (optional, AI assistant via wui-ai-kit's aiController)",
-        "/api/ai/fleet/ateliers[/:id] (read only, role view: the ateliers for hosts that embed <wui-fleet-3d-view> — see docs/wui-machine-fleet-3d/EMBEDDING.md)",
+        "/api/ai/fleet/workshops[/:id] (read only, role view: the ateliers for hosts that embed <wui-fleet-3d-view> — see docs/wui-machine-fleet-3d/EMBEDDING.md)",
         "machineSim (optional, simulation)",
         "kpiCalc (optional, real-time TRS/MTBF/MTTR)"
       ]
