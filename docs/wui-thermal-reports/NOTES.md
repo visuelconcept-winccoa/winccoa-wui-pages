@@ -33,7 +33,7 @@ Core in `engine.ts`:
 
 - **Data source = furnace archives** (explicit choice). The report reads the **actual temperature curve** from the furnace's archived DPE over `[startTime, endTime]`:
   `readActualCurve` = `api.dpGetPeriod(start, end, 0, tempDp + ':_original.._value')` (same mechanism as the audit-trail page / the fleet engine).
-- **Default temperature DPE** auto-filled in the dialog from the selected furnace = **`MachineSim_<sanitize(machineId)>.temperature`** (the machineSim manager simulates the furnace temperature under `MachineSim_<id>.temperature`).
+- **Default temperature DPE** auto-filled in the dialog from the selected furnace = **`MachineSim_<sanitize(machineId)>.temperature`** (the `machineSim` manager of the optional [`machine-sim`](../wui-machine-sim/README.md) module simulates the furnace temperature under `MachineSim_<id>.temperature`; on a real project, pick the furnace's own temperature DPE).
 - `synthesizeActual`: when no archived data is found (offline / non-archived DPE), it builds a plausible **deterministic** curve (first-order lag toward the setpoint staircase + sinusoidal oscillation, **no RNG**); the detail then shows "simulated curve".
 - `buildProfile`: setpoint staircase + tolerance band (2 points/step, `step:'end'`).
 - `evaluateCycle`: → `inBandPct` / `maxDeviation` / min-max.

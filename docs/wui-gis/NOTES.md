@@ -785,7 +785,7 @@ into an exported site (same catalogue, so the two cannot drift). An asset left u
 still simulated — only nothing on the map reads it yet, and the manager names such bindings
 in its log.
 
-The alternative — the `AUTO_MAP` that `machineSim` performs on its ateliers — would have the
+The alternative — the `AUTO_MAP` that `machineSim` ([`machine-sim`](../wui-machine-sim/README.md)) performs on its ateliers when started with `--auto-map` — would have the
 manager rewrite the `GIS_Site` datapoint behind the page's back, bypassing its audit trail
 and racing an open edit session. Import a bound file instead; the round-trip is a reviewed
 one.

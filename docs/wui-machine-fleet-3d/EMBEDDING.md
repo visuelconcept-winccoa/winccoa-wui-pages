@@ -26,7 +26,11 @@ In the host module's `package.json`:
 
 Use `requires: ["machine-fleet-3d"]` instead of `optional` if the host page is useless without
 the 3D view: wui-toolkit then deploys machine-fleet-3d **headless** (its `/api/ai` backend and its
-managers, no page, no menu entry) when the site does not select its page. See
+`aiAssistant` manager, registered `manual`; no page, no menu entry) when the site does not select
+its page. Since 0.3.0 neither selecting nor requiring machine-fleet-3d deploys the simulator
+(`machineSim`, now the optional [`machine-sim`](../wui-machine-sim/README.md) module) or the KPI
+computation (`kpiCalc`, [`fleet-kpi-analysis`](../wui-fleet-kpi-analysis/README.md)): a production
+site embedding the view gets neither. See
 [module-dependencies.md](../module-dependencies.md). `npm test` (`wui test`) checks these
 declarations: it follows the element's imports, kits included. After changing the
 dependencies, run `npx wui tsconfig` in the repository that holds the host module.
