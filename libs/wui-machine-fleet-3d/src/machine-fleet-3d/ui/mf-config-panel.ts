@@ -49,6 +49,11 @@ export class MfConfigPanel extends LitElement {
   @property({ attribute: false }) machines: MachineDef[] = [];
   /** When false, edit/delete/add are hidden and the row action becomes view-only. */
   @property({ type: Boolean }) canEdit = true;
+  /**
+   * List only (the embeddable view): rows focus their machine, nothing else — no
+   * view/edit/delete action per row, no Add. Overrides `canEdit`.
+   */
+  @property({ type: Boolean, attribute: 'list-only' }) listOnly = false;
 
   @state() private query = '';
   @state() private confirmId: string | null = null;
@@ -87,7 +92,7 @@ export class MfConfigPanel extends LitElement {
           <ix-icon name="search" slot="input-start"></ix-icon>
         </ix-input>
         <div class="list">${filtered.map((m) => this.renderRow(m))}</div>
-        ${this.canEdit
+        ${this.canEdit && !this.listOnly
           ? html`<ix-button class="add" variant="secondary" @click=${this.emitAdd}>
               <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.configPanel.addMachine)}
             </ix-button>`
@@ -114,23 +119,29 @@ export class MfConfigPanel extends LitElement {
           <span class="row-sub">${m.type}${m.loc ? ` · ${m.loc}` : ''}</span>
         </span>
         <span class="badge" style="--c:${color}">${label}</span>
-        <ix-icon-button
-          ghost
-          size="16"
-          icon=${this.canEdit ? 'pen' : 'eye'}
-          title=${this.canEdit ? localize(MSG.configPanel.edit) : localize(MSG.configPanel.viewOnly)}
-          @click=${(e: Event) => this.onEdit(e, m.id)}
-        ></ix-icon-button>
-        ${this.canEdit
-          ? html`<ix-icon-button
-              ghost
-              size="16"
-              icon="trashcan"
-              title=${localize(MSG.configPanel.delete)}
-              @click=${(e: Event) => this.onDelete(e, m.id)}
-            ></ix-icon-button>`
-          : ''}
+        ${this.listOnly ? '' : this.renderRowActions(m)}
       </div>
+    `;
+  }
+
+  private renderRowActions(m: MachineDef): TemplateResult {
+    return html`
+      <ix-icon-button
+        ghost
+        size="16"
+        icon=${this.canEdit ? 'pen' : 'eye'}
+        title=${this.canEdit ? localize(MSG.configPanel.edit) : localize(MSG.configPanel.viewOnly)}
+        @click=${(e: Event) => this.onEdit(e, m.id)}
+      ></ix-icon-button>
+      ${this.canEdit
+        ? html`<ix-icon-button
+            ghost
+            size="16"
+            icon="trashcan"
+            title=${localize(MSG.configPanel.delete)}
+            @click=${(e: Event) => this.onDelete(e, m.id)}
+          ></ix-icon-button>`
+        : ''}
     `;
   }
 

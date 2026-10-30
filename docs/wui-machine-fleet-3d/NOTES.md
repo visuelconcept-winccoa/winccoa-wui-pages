@@ -17,6 +17,23 @@ Tier: **hub** (central fleet page, default entry point at login). `three`
   - The route param `:atelier` arrives as the `atelier` **attribute**; navigation via
     `RouterEvent` (`@wincc-oa/wui-models/events/router-event.js`, accepts a string;
     event is `bubbles`+`composed` so it escapes the shadow DOM of the overlays).
+- **Embeddable view (added 2026-10, 0.2.0)**: `<wui-fleet-3d-view atelier fill hide-toolbar
+  hide-nav>` (`src/fleet-view.ts`, public, guarded define) renders the SAME `mf-atelier-view` with
+  `display-only`: camera, live states, labels, selection + detail card, machine list
+  (`mf-config-panel list-only`), viewpoints, display toggles (never saved), full screen; no edit
+  mode, no management, no machine dialog, no AI prompt, no back / dashboard / links. In that mode
+  the view skips the editing loads (graphics library, WinCC OA dashboards, catalog through the
+  store) and takes the stop-cause catalog from the element (`stopCauseCatalog`), which reads the
+  atelier from `GET /api/ai/fleet/ateliers/:id` (role `view`) — no `MachineFleet3D_*` read nor
+  `/api/para` type creation from the browser. States: no id / not found (404), forbidden
+  (`hasRole$` view, live, or a 403), unavailable (no JSON answer, 5xx; Retry). The element follows
+  full screen with its OWN root's `fullscreenElement` (nested shadow roots retarget
+  `document.fullscreenElement` to the outermost host). Lifecycle: the view builds its scene in
+  `updated` once it has a canvas and releases it on disconnect (`releaseScene`: save timer,
+  observers, `subGen` bump so an in-flight dpGet validation opens no dpConnect, the dpConnect,
+  `SceneController.dispose` → renderer disposed + `forceContextLoss`); connected again, it rebuilds
+  on a fresh canvas (a lost context cannot be reused). The element itself drops the view on
+  disconnect and reloads on connect. Guide: [EMBEDDING.md](EMBEDDING.md).
 - **Landing page at login**: redirect `/` → `/fleet-3d` (post-login landing forced
   onto the fleet view unless there is an explicit deep-link).
 - **Machine model**:
@@ -196,6 +213,18 @@ of the machine), stacked vertically, with a leader from the dot to the inner edg
 ## Backend / manager
 
 **Tier hub** page: backend module `backend/modules/machine-fleet-3d` + **4 managers**.
+
+- **Own backend `/api/ai`** (`backend/aiRoute.ts`, class `AiRoute`): the AI bridge routes of
+  wui-ai-kit (`/health`, `/chat`, its `aiController.ts` copied in at deploy time — keep the wiring
+  in step with `libs/wui-ai-kit/backend/aiRoute.ts`) plus, since 0.2.0, the read-only atelier
+  routes `GET /fleet/ateliers` (`{ id, name, machineCount }[]`) and `GET /fleet/ateliers/:id`
+  (`{ atelier, stopCauses }`), behind `requireRole('machine-fleet-3d', 'view')`
+  (`backend/fleetAteliers.ts`: `dpNames('MachineFleet3D_*', 'MachineFleet3D_Config')` — the type
+  filter keeps out the `_StopCauses`, `_Kpi_*`, `_Glb_*`… DPs of the same prefix —, ids checked
+  against `^[A-Za-z0-9_-]{1,128}$`, nothing created when the type is absent). The class and file
+  keep the names the toolkit's descriptor `index.ts` imports (written ONCE per target), so an
+  existing target mounts the new routes on redeploy without editing it. One mount per module in
+  wui-toolkit: hence `/api/ai/fleet` rather than `/api/fleet`.
 
 - **Backend module `/api/para`** (REST PARA): the only way to **create DP/type** and to **write
   values** (`POST /api/para/dptype/create`, `/api/para/dp/create`, `/api/para/dp/set`,

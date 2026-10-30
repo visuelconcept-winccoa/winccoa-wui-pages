@@ -65,9 +65,13 @@
       "mount": "/api/ai",
       "routeClass": "AiRoute",
       "routeFile": "aiRoute",
+      "files": [
+        "aiRoute.ts",
+        "fleetAteliers.ts"
+      ],
       "shared": [
         "@visuelconcept-winccoa/wui-ai-kit/aiController.ts",
-        "@visuelconcept-winccoa/wui-ai-kit/aiRoute.ts"
+        "@visuelconcept-winccoa/wui-app-security/appSecurityGuard.ts"
       ],
       "managers": [
         "machineSim",
@@ -75,7 +79,8 @@
         "aiAssistant"
       ],
       "notes": [
-        "/api/ai/chat (optional, AI assistant via wui-ai-kit)",
+        "/api/ai/chat (optional, AI assistant via wui-ai-kit's aiController)",
+        "/api/ai/fleet/ateliers[/:id] (read only, role view: the ateliers for hosts that embed <wui-fleet-3d-view> — see docs/wui-machine-fleet-3d/EMBEDDING.md)",
         "machineSim (optional, simulation)",
         "kpiCalc (optional, real-time TRS/MTBF/MTTR)"
       ]
@@ -177,10 +182,13 @@
   },
   "files": [
     "src",
+    "backend",
     "managers",
     "oa-data",
     "menu.fragment.jsonc",
+    "mock",
     "!**/*.spec.ts",
+    "!**/*.spec.mjs",
     "!**/*.test.ts"
   ],
   "repository": {
