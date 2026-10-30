@@ -16,6 +16,8 @@
  * routes (`/api/vnc/connections`, `/api/vnc/connection[/:id]`), which enforce
  * the roles server-side and never answer the password; the viewer is the public
  * `<wui-vnc-viewer>` element (src/vnc-viewer.ts) that other modules embed too.
+ * Since 0.3 the page gives the viewer the connection name as its `label` (the
+ * overlay shown in full screen).
  *
  * The page is a master/detail: a sortable CRUD table, and the noVNC viewer when
  * a connection is opened. Built as a separate entry point (auto-discovered by
@@ -184,6 +186,7 @@ export class WuiRemoteVnc extends LitElement {
       if (!this.canConnect) return this.renderForbidden(MSG.page.connectForbidden);
       return html`<wui-vnc-viewer
         connection-id=${this.connectionId}
+        label=${this.connections.find((c) => c.id === this.connectionId)?.name ?? ''}
         back
         fill
         @wui:back=${this.goToList}

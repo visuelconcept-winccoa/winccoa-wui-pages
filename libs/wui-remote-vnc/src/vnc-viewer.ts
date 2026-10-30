@@ -20,7 +20,15 @@
  *   scale          `fit` (default: scale the remote screen to the element) or
  *                  `none` (native resolution, scrollbars);
  *   back           show a "Back" button (emits `wui:back`) — the page sets it,
- *                  an embedding host normally does not.
+ *                  an embedding host normally does not;
+ *   label          optional plain text naming the remote screen (e.g.
+ *                  `WC_SOUDAGE_1 · Écran poste`), set by the host and not
+ *                  interpreted: shown as a small overlay in the stage's top-left
+ *                  corner and used as the stage's accessible name. No label →
+ *                  no overlay, no change;
+ *   label-mode     `fullscreen` (default: the overlay shows only while the
+ *                  viewer is full screen, when the host page's own context is
+ *                  hidden) or `always`.
  * Events (bubbling, composed):
  *   ended          `{ connectionId, reason, message }` when the session ends or
  *                  cannot start: reason `manual` | `clean` | `lost` | `auth` |
@@ -33,6 +41,16 @@
  * found, relay unavailable (backend not deployed / not restarted, relay not
  * mounted). Then connecting / connected / reconnecting, with the connection's
  * own timeout and reconnect policy.
+ *
+ * Label overlay: it lives INSIDE the stage (the element that goes full screen),
+ * never takes input (`pointer-events: none`, so clicks, keys and the noVNC
+ * cursor go through), uses theme variables only, and dims after
+ * LABEL_DIM_DELAY_MS — back to full opacity on pointer move / touch over the
+ * stage. Full-screen state follows `fullscreenchange` on the document: the
+ * viewer is full screen when `document.fullscreenElement` is this element (the
+ * stage, retargeted out of the shadow root), inside it, or one of its ancestors.
+ * The overlay is `aria-hidden`; the stage carries the label as `aria-label`
+ * (role `group`), so the name is announced once.
  *
  * Lifecycle: the session opens on connectedCallback and closes on
  * disconnectedCallback. Keep the element mounted only while it is visible —
@@ -65,6 +83,8 @@ import {
 export const VNC_VIEWER_TAG = 'wui-vnc-viewer';
 const MODULE_ID = 'remote-vnc';
 const SEC_MS = 1000;
+/** The label overlay dims after this long without pointer activity over the stage. */
+export const LABEL_DIM_DELAY_MS = 3000;
 
 /** What the element shows. */
 export type VncViewerState =
@@ -133,10 +153,16 @@ export class WuiVncViewer extends LitElement {
   @property() scale: 'fit' | 'none' = 'fit';
   /** Show a Back button (`wui:back`). */
   @property({ type: Boolean }) back = false;
+  /** Plain text naming the remote screen: overlay + accessible name of the stage. */
+  @property() label = '';
+  /** `fullscreen`: overlay only while full screen; `always`: overlay all the time. */
+  @property({ attribute: 'label-mode' }) labelMode: 'fullscreen' | 'always' = 'fullscreen';
 
   @state() private state: VncViewerState = 'idle';
   @state() private message = '';
   @state() private meta: VncConnection | null = null;
+  @state() private isFullscreen = false;
+  @state() private labelDim = false;
 
   @query('.screen') private screen!: HTMLElement;
 
@@ -150,6 +176,14 @@ export class WuiVncViewer extends LitElement {
   private abort: AbortController | null = null;
   private canConnect = true;
   private roleSub = new Subscription();
+  /** Whether the label overlay is currently rendered (drives the dim timer). */
+  private labelShown = false;
+  private dimTimer = 0;
+  private readonly onFullscreenChange = (): void => {
+    this.isFullscreen = this.inFullscreen();
+  };
+  /** Pointer move / touch over the stage, in the capture phase (noVNC stops its own events). */
+  private readonly wakeListener = { handleEvent: (): void => this.wakeLabel(), capture: true, passive: true };
 
   /** The current state (for hosts and tests). */
   get viewerState(): VncViewerState {
@@ -192,7 +226,13 @@ export class WuiVncViewer extends LitElement {
           </div>`
         : nothing}
 
-      <div class="stage">
+      <div
+        class="stage"
+        role=${this.label ? 'group' : nothing}
+        aria-label=${this.label || nothing}
+        @pointermove=${this.wakeListener}
+        @touchstart=${this.wakeListener}
+      >
         <div class="screen"></div>
         ${blocked ? this.renderBlocked(blocked) : nothing}
         ${this.state === 'checking' || this.state === 'connecting' || this.state === 'reconnecting'
@@ -205,12 +245,17 @@ export class WuiVncViewer extends LitElement {
               </div>
             </div>`
           : nothing}
+        ${this.labelShown
+          ? html`<div class="label ${this.labelDim ? 'dim' : ''}" aria-hidden="true">${this.label}</div>`
+          : nothing}
       </div>
     `;
   }
 
   override connectedCallback(): void {
     super.connectedCallback();
+    document.addEventListener('fullscreenchange', this.onFullscreenChange);
+    this.isFullscreen = this.inFullscreen();
     this.roleSub = hasRole$(MODULE_ID, 'connect').subscribe((granted) => this.onRole(granted));
     void this.updateComplete.then(() => {
       if (this.isConnected) void this.start();
@@ -220,8 +265,24 @@ export class WuiVncViewer extends LitElement {
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.roleSub.unsubscribe();
+    document.removeEventListener('fullscreenchange', this.onFullscreenChange);
+    this.clearDimTimer();
+    this.isFullscreen = false;
     this.stopAll();
     this.state = 'idle';
+  }
+
+  protected override willUpdate(_changed: PropertyValues): void {
+    // Show / hide the label overlay; (re)arm the dim timer when it appears.
+    const show = Boolean(this.label) && (this.labelMode === 'always' || this.isFullscreen);
+    if (show === this.labelShown) return;
+    this.labelShown = show;
+    if (show) {
+      this.labelDim = false;
+      this.armDimTimer();
+    } else {
+      this.clearDimTimer();
+    }
   }
 
   protected override updated(changed: PropertyValues): void {
@@ -230,6 +291,36 @@ export class WuiVncViewer extends LitElement {
       void this.updateComplete.then(() => this.start());
     }
     if (changed.has('scale') && this.rfb) this.rfb.scaleViewport = this.scale !== 'none';
+  }
+
+  // --- label overlay ------------------------------------------------------------
+
+  /** Full screen when the full-screen element is this viewer (its stage), inside it, or an ancestor. */
+  private inFullscreen(): boolean {
+    const fs = document.fullscreenElement;
+    if (!fs) return false;
+    return fs === this || fs.contains(this) || this.contains(fs) || this.renderRoot.contains(fs);
+  }
+
+  private wakeLabel(): void {
+    if (!this.labelShown) return;
+    this.labelDim = false;
+    this.armDimTimer();
+  }
+
+  private armDimTimer(): void {
+    this.clearDimTimer();
+    this.dimTimer = window.setTimeout(() => {
+      this.dimTimer = 0;
+      this.labelDim = true;
+    }, LABEL_DIM_DELAY_MS);
+  }
+
+  private clearDimTimer(): void {
+    if (this.dimTimer) {
+      window.clearTimeout(this.dimTimer);
+      this.dimTimer = 0;
+    }
   }
 
   // --- states without a session ----------------------------------------------
@@ -646,6 +737,28 @@ function viewerStyles(): ReturnType<typeof css> {
     .c-target {
       font-size: 0.85rem;
       opacity: 0.85;
+    }
+    .label {
+      position: absolute;
+      top: 0.5rem;
+      left: 0.5rem;
+      z-index: 1;
+      max-width: calc(100% - 1rem);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding: 0.2rem 0.5rem;
+      font-size: 0.8rem;
+      color: var(--theme-color-std-text);
+      background: color-mix(in srgb, var(--theme-color-1) 70%, transparent);
+      border-radius: var(--theme-default-border-radius);
+      pointer-events: none;
+      user-select: none;
+      opacity: 1;
+      transition: opacity 0.6s ease;
+    }
+    .label.dim {
+      opacity: 0.35;
     }
     .c-hint {
       font-size: 0.8rem;

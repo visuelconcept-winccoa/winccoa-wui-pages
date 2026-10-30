@@ -4,7 +4,8 @@
 
 // <wui-vnc-viewer> with noVNC's RFB stubbed, the role stream and the backend
 // (fetch) scripted: its states without a session, a session opened with a
-// ticket and no password, and closed when the element leaves the DOM.
+// ticket and no password, and closed when the element leaves the DOM; the
+// optional label overlay (full screen by default, or always).
 
 import { BehaviorSubject } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -221,5 +222,131 @@ describe('<wui-vnc-viewer>', () => {
     expect(rfbs[0].disconnected).toBe(true);
     expect(rfbs).toHaveLength(2);
     expect(rfbs[1].url).toContain('id=panel');
+  });
+
+  describe('label overlay', () => {
+    const labelOf = (el: HTMLElement): HTMLElement | null => el.shadowRoot?.querySelector<HTMLElement>('.label') ?? null;
+    const stageOf = (el: HTMLElement): HTMLElement => el.shadowRoot!.querySelector<HTMLElement>('.stage')!;
+    const update = async (el: HTMLElement): Promise<void> => {
+      await (el as HTMLElement & { updateComplete: Promise<unknown> }).updateComplete;
+    };
+    let fullscreenElement: Element | null = null;
+
+    function setFullscreen(target: Element | null): void {
+      fullscreenElement = target;
+      document.dispatchEvent(new Event('fullscreenchange'));
+    }
+
+    beforeEach(() => {
+      fullscreenElement = null;
+      Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => fullscreenElement });
+    });
+
+    afterEach(() => {
+      Reflect.deleteProperty(document, 'fullscreenElement');
+      vi.useRealTimers();
+    });
+
+    it('shows the label only in full screen by default, as plain text', async () => {
+      const el = mount();
+      el.setAttribute('label', 'WC_SOUDAGE_1 · Écran poste');
+      await tick();
+      expect(labelOf(el)).toBeNull();
+
+      // The stage goes full screen: document.fullscreenElement is the host (retargeted).
+      setFullscreen(el);
+      await update(el);
+      expect(labelOf(el)?.textContent).toBe('WC_SOUDAGE_1 · Écran poste');
+      expect(labelOf(el)?.getAttribute('aria-hidden')).toBe('true');
+      expect(labelOf(el)?.parentElement).toBe(stageOf(el));
+
+      setFullscreen(null);
+      await update(el);
+      expect(labelOf(el)).toBeNull();
+    });
+
+    it('ignores another element going full screen', async () => {
+      const el = mount();
+      el.setAttribute('label', 'HMI');
+      const other = document.createElement('div');
+      document.body.append(other);
+      setFullscreen(other);
+      await update(el);
+      expect(labelOf(el)).toBeNull();
+      // An ancestor of the viewer going full screen shows it.
+      setFullscreen(document.body);
+      await update(el);
+      expect(labelOf(el)?.textContent).toBe('HMI');
+    });
+
+    it('shows the label all the time with label-mode="always"', async () => {
+      const el = mount();
+      el.setAttribute('label', 'HMI line 1');
+      el.setAttribute('label-mode', 'always');
+      await update(el);
+      expect(labelOf(el)?.textContent).toBe('HMI line 1');
+    });
+
+    it('never takes input (pointer-events: none)', async () => {
+      const el = mount();
+      el.setAttribute('label', 'HMI');
+      el.setAttribute('label-mode', 'always');
+      await update(el);
+      // jsdom does not cascade shadow-root styles: parse the element's own stylesheet.
+      const styles = (customElements.get('wui-vnc-viewer') as unknown as { elementStyles: { cssText: string }[] }).elementStyles;
+      const style = document.createElement('style');
+      style.textContent = styles.map((s) => s.cssText).join('\n');
+      document.head.append(style);
+      const rules = [...style.sheet!.cssRules].filter((r): r is CSSStyleRule => 'selectorText' in r);
+      style.remove();
+      const rule = rules.find((r) => r.selectorText === '.label');
+      expect(labelOf(el)!.matches(rule!.selectorText)).toBe(true);
+      expect(rule!.style.getPropertyValue('pointer-events')).toBe('none');
+    });
+
+    it('names the stage with the label, and changes nothing without a label', async () => {
+      const el = mount();
+      el.setAttribute('label-mode', 'always');
+      setFullscreen(el);
+      await update(el);
+      expect(labelOf(el)).toBeNull();
+      expect(stageOf(el).hasAttribute('aria-label')).toBe(false);
+      expect(stageOf(el).hasAttribute('role')).toBe(false);
+
+      el.setAttribute('label', 'HMI');
+      await update(el);
+      expect(stageOf(el).getAttribute('aria-label')).toBe('HMI');
+      expect(stageOf(el).getAttribute('role')).toBe('group');
+    });
+
+    it('dims after a few seconds and comes back on pointer move over the stage', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      const el = mount();
+      el.setAttribute('label', 'HMI');
+      el.setAttribute('label-mode', 'always');
+      await update(el);
+      expect(labelOf(el)?.classList.contains('dim')).toBe(false);
+      vi.advanceTimersByTime(3000);
+      await update(el);
+      expect(labelOf(el)?.classList.contains('dim')).toBe(true);
+      stageOf(el).querySelector('.screen')!.dispatchEvent(new Event('pointermove', { bubbles: true }));
+      await update(el);
+      expect(labelOf(el)?.classList.contains('dim')).toBe(false);
+      el.remove();
+    });
+
+    it('removes its fullscreenchange listener when it leaves the DOM', async () => {
+      const add = vi.spyOn(document, 'addEventListener');
+      const remove = vi.spyOn(document, 'removeEventListener');
+      const el = mount();
+      el.setAttribute('label', 'HMI');
+      await update(el);
+      const listener = add.mock.calls.find(([type]) => type === 'fullscreenchange')?.[1];
+      expect(listener).toBeTypeOf('function');
+      el.remove();
+      expect(remove).toHaveBeenCalledWith('fullscreenchange', listener);
+      add.mockRestore();
+      remove.mockRestore();
+    });
   });
 });
