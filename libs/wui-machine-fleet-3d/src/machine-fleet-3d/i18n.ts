@@ -66,7 +66,30 @@ export const MSG = {
       'Demo-Werkstatt'
     )
   },
+  /** The embeddable `<wui-fleet-3d-view>` (src/fleet-view.ts): its states without a scene. */
+  embed: {
+    loading: ml('Loading the atelier…', 'Chargement de l’atelier…', 'Werkstatt wird geladen…'),
+    noAtelier: ml('No atelier selected.', 'Aucun atelier sélectionné.', 'Keine Werkstatt ausgewählt.'),
+    notFound: ml(
+      'This atelier no longer exists in Machine Fleet.',
+      'Cet atelier n’existe plus dans le parc machine.',
+      'Diese Werkstatt existiert im Maschinenpark nicht mehr.'
+    ),
+    forbidden: ml(
+      'Your groups do not hold the "view" role of Machine Fleet.',
+      'Vos groupes ne possèdent pas le rôle « consulter » du parc machine.',
+      'Ihre Gruppen besitzen die Rolle „Ansehen" des Maschinenparks nicht.'
+    ),
+    unavailable: ml(
+      'The atelier data is unavailable (Machine Fleet backend not deployed or not answering).',
+      'Les données de l’atelier sont indisponibles (backend du parc machine non déployé ou sans réponse).',
+      'Die Werkstattdaten sind nicht verfügbar (Backend des Maschinenparks nicht bereitgestellt oder ohne Antwort).'
+    ),
+    retry: ml('Retry', 'Réessayer', 'Erneut versuchen')
+  },
   view: {
+    fullscreen: ml('Full screen', 'Plein écran', 'Vollbild'),
+    exitFullscreen: ml('Exit full screen', 'Quitter le plein écran', 'Vollbild beenden'),
     backToAteliers: ml('Back to ateliers', 'Retour aux ateliers', 'Zurück zu den Werkstätten'),
     confirm: ml('Confirm', 'Valider', 'Bestätigen'),
     atelier: ml('Atelier', 'Atelier', 'Werkstatt'),

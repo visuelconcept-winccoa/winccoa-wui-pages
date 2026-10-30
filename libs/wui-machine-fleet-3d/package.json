@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-machine-fleet-3d",
   "type": "module",
-  "version": "0.1.7",
+  "version": "0.2.0",
   "description": "Machine Fleet 3D — standalone WinCC OA WebUI page: multi-atelier 3D digital twin (Three.js) with live DP-bound machine state/KPIs, config UI, GLB/billboard library and dashboard export. The per-machine dashboard embeds the shared alarm view (standing alarms or the archived ones over the dashboard's period, scoped to the machine's datapoints). Hub page; depends on the fleet-core + ai-kit + alarms-core domain kits.",
   "author": {
     "name": "Visuel Concept"
@@ -35,7 +35,8 @@
     "@wincc-oa/wui-ix-wrappers": "*",
     "@wincc-oa/wui-models": "*",
     "@wincc-oa/wui-oarxjs-context": "*",
-    "@wincc-oa/wui-shared": "*"
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-iam-data": "*"
   },
   "exports": {
     "./*": {
@@ -65,9 +66,14 @@
       "mount": "/api/ai",
       "routeClass": "AiRoute",
       "routeFile": "aiRoute",
+      "files": [
+        "aiRoute.ts",
+        "fleetAteliers.ts",
+        "fleetGuard.ts"
+      ],
       "shared": [
         "@visuelconcept-winccoa/wui-ai-kit/aiController.ts",
-        "@visuelconcept-winccoa/wui-ai-kit/aiRoute.ts"
+        "@visuelconcept-winccoa/wui-app-security/appSecurityGuard.ts"
       ],
       "managers": [
         "machineSim",
@@ -75,7 +81,8 @@
         "aiAssistant"
       ],
       "notes": [
-        "/api/ai/chat (optional, AI assistant via wui-ai-kit)",
+        "/api/ai/chat (optional, AI assistant via wui-ai-kit's aiController)",
+        "/api/ai/fleet/workshops[/:id] (read only, role view: the ateliers for hosts that embed <wui-fleet-3d-view> — see docs/wui-machine-fleet-3d/EMBEDDING.md)",
         "machineSim (optional, simulation)",
         "kpiCalc (optional, real-time TRS/MTBF/MTTR)"
       ]
@@ -173,14 +180,20 @@
     },
     "@wincc-oa/wui-shared": {
       "optional": true
+    },
+    "@wincc-oa/wui-iam-data": {
+      "optional": true
     }
   },
   "files": [
     "src",
+    "backend",
     "managers",
     "oa-data",
     "menu.fragment.jsonc",
+    "mock",
     "!**/*.spec.ts",
+    "!**/*.spec.mjs",
     "!**/*.test.ts"
   ],
   "repository": {

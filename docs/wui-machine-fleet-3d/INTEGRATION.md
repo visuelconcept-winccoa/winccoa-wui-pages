@@ -29,7 +29,7 @@ npx wui check prod
 `wui build`:
 1. compiles the page (`three` bundled) → `<project>/data/dashboard-wc/pages/`;
 2. upserts the **2 menu entries** into `menuconfig.json` (idempotent: `/fleet-3d` + `/fleet-3d/:atelier`);
-3. deploys the **backend module** `/api/ai` (the `wui-ai-kit` route files) → `<project>/javascript/customer-webserver/src/modules/machine-fleet-3d/` and rebuilds the webserver;
+3. deploys the **backend module** `/api/ai` (the module's `aiRoute.ts` + `fleetAteliers.ts`, `wui-ai-kit`'s `aiController.ts`, `wui-app-security`'s `appSecurityGuard.ts`) → `<project>/javascript/customer-webserver/src/modules/machine-fleet-3d/` and rebuilds the webserver;
 4. deploys the **3 managers** → `<project>/javascript/{machineSim,kpiCalc,aiAssistant}/` + `npm install`, and appends their lines to `config/progs` when missing.
 
 Managers are resolved **by name** across the installed modules: `kpiCalc` lives in
@@ -48,10 +48,11 @@ wui-toolkit does not write that file.
 
 ## Verify
 1. Logged in → **"Parc machines 3D"** (3D machine fleet) entry, `/fleet-3d` loads the 3D view (per-machine status/KPI bubbles).
-2. `GET https://<dashboard>/api/ai/health` → `ok` response (the AI bridge is mounted).
+2. `GET https://<dashboard>/api/ai/health` → `ok` response (the AI bridge is mounted); `GET https://<dashboard>/api/ai/fleet/workshops` → `{ ok: true, ateliers: [...] }` (the atelier listing for embedding hosts, role `view`).
 3. The KPI bubbles update (`machineSim` + `kpiCalc` managers active); the AI assistant responds via `aiAssistant` (MCP tools require the optional external MCP server).
 
 ## Notes / security
+- **Embedding** one atelier in another module (`<wui-fleet-3d-view>`, `GET /api/ai/fleet/workshops`): [EMBEDDING.md](EMBEDDING.md). The atelier routes need the module's `view` role, checked against the caller's verified WebUI token (`backend/fleetGuard.ts`).
 - The module mounts `/api/ai/*` as **`fullAccess`** (demo) → restrict the `acl` in `<project>/javascript/customer-webserver/src/modules/machine-fleet-3d/index.ts` before production (written once by `wui build`: a hand-tightened acl survives redeploys).
 - The **3 managers** need `winccoa-manager`, **provided by the WinCC OA runtime** (not in the manager's `package.json`).
 - **AI tokens**: provider tokens are read from the **`AI_Assistant_Config`** DP (or an environment variable) — **none are shipped**. Fill them in before the assistant will work.

@@ -46,6 +46,7 @@ No requirement: agv-fleet, diagnosis, dp-watch, eng-studio.
 | Route | Called from | Pages | Without it |
 | --- | --- | --- | --- |
 | `/api/ai` (`machine-fleet-3d`) | `wui-ai-kit/src/data/ai-store.ts` | ampere, gis, para | the AI assistant hides itself |
+| `/api/ai/fleet` (`machine-fleet-3d`) | `wui-machine-fleet-3d/src/machine-fleet-3d/data/fleet-api.ts` (`<wui-fleet-3d-view>`, `listAteliers`) | none in this repository — a site module that embeds one atelier's 3D view ([EMBEDDING.md](wui-machine-fleet-3d/EMBEDDING.md)) | the element shows "data unavailable" |
 | `/api/vnc` (`remote-vnc`) | `wui-remote-vnc/src/vnc-viewer.ts` (`<wui-vnc-viewer>`) | none in this repository — a site module that embeds a VNC session ([EMBEDDING.md](wui-remote-vnc/EMBEDDING.md)) | the element shows "relay unavailable" |
 
 "Frontend-only" / "no backend module" in a module's README means it **owns** no

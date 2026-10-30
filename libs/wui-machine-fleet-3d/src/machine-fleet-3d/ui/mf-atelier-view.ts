@@ -9,12 +9,30 @@
  * Driven by an `Atelier` object passed in by the page shell. Edits update local
  * working copies and emit a debounced `wui:save` carrying the full atelier; a
  * back button emits `wui:back`. The Three.js scene modules are reused as-is.
+ *
+ * Display-only mode (`display-only`, set by the public `<wui-fleet-3d-view>`
+ * of src/fleet-view.ts — the SAME view, no second scene implementation): camera
+ * navigation, live machine states, labels, machine selection and its detail
+ * card, the machine list; no edit, no atelier management (rename / delete /
+ * import / export / building / mappings / graphics catalog), no AI prompt, no
+ * navigation away (no back button, no dashboard or custom links), never a
+ * `wui:save` (the display toggles stay local). The stop-cause catalog then comes
+ * from the host (`stopCauseCatalog`) instead of the store, so the view reads no
+ * configuration datapoint itself. `hide-toolbar` / `hide-nav` hide the top bar
+ * and the navigation pad + viewpoint bar (both modes); `fullscreen-button` adds
+ * a full-screen toggle that emits `wui:fullscreen` (the embedding element
+ * does the request), `fullscreenActive` picks its icon.
+ *
+ * Lifecycle: the WebGL scene, the resize / visibility observers and the live
+ * `dpConnect` are created when the view is first rendered and released on
+ * disconnect (`SceneController.dispose` → scene/dispose.ts, renderer disposed
+ * and its context lost); a view connected again rebuilds them on a fresh canvas.
  */
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { DashboardService } from '@wincc-oa/wui-dashboard-data/services/dashboard/dashboard.service.js';
 import { RouterEvent } from '@wincc-oa/wui-models/events/router-event.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
-import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
+import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { Subscription, firstValueFrom } from 'rxjs';
 import { container } from 'tsyringe';
@@ -137,6 +155,18 @@ export class MfAtelierView extends LitElement {
   @property({ type: Boolean }) canEdit = true;
   /** Application-Security 'ai' grant — gates the AI-assistant affordance. */
   @property({ type: Boolean }) roleAi = true;
+  /** Display only (the embeddable view): no edit, no management, no navigation away, no save. */
+  @property({ type: Boolean, attribute: 'display-only' }) displayOnly = false;
+  /** Hide the top bar (title + toolbar). */
+  @property({ type: Boolean, attribute: 'hide-toolbar' }) hideToolbar = false;
+  /** Hide the navigation pad and the saved-viewpoint bar (mouse / touch navigation stays). */
+  @property({ type: Boolean, attribute: 'hide-nav' }) hideNav = false;
+  /** Show a full-screen toggle in the toolbar (emits `wui:fullscreen`). */
+  @property({ type: Boolean, attribute: 'fullscreen-button' }) fullscreenButton = false;
+  /** Whether the embedding element is full screen (icon of the toggle). */
+  @property({ type: Boolean }) fullscreenActive = false;
+  /** Display only: the stop-cause catalog, given by the host (null = read through the store). */
+  @property({ attribute: false }) stopCauseCatalog: StopCause[] | null = null;
 
   @query('canvas') private canvasEl!: HTMLCanvasElement;
   @query('.overlay-layer') private overlayEl!: HTMLElement;
@@ -189,48 +219,33 @@ export class MfAtelierView extends LitElement {
   private subGen = 0;
   private saveTimer = 0;
   private loaded = false;
+  /** The canvas's WebGL context was released (forceContextLoss): a new scene needs a new canvas. */
+  private contextReleased = false;
+  /** The scene was built once (by `updated`); later ones come from a reconnect. */
+  private sceneBuilt = false;
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    // Connected again after a disconnect (moved in the DOM): rebuild what disconnect released.
+    if (this.sceneBuilt && !this.scene) this.setupScene();
+  }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
-    clearTimeout(this.saveTimer);
-    this.resizeObserver?.disconnect();
-    this.visibility?.disconnect();
-    this.dpSubscription.unsubscribe();
-    this.scene?.dispose();
-    this.scene = null;
+    this.releaseScene();
   }
 
   override render(): TemplateResult {
     if (!this.building || !this.display) return html``;
     return html`
       <div class="page">
-        <div class="topbar">
-          <ix-icon-button ghost icon="arrow-left" title=${localize(MSG.view.backToAteliers)} @click=${this.back}></ix-icon-button>
-          ${this.renaming
-            ? html`<ix-input
-                  class="title-input"
-                  .value=${this.atelierName}
-                  @valueChange=${(e: CustomEvent<string>) => (this.atelierName = String(e.detail))}
-                  @keydown=${this.onRenameKey}
-                ></ix-input>
-                <ix-icon-button ghost icon="check" title=${localize(MSG.view.confirm)} @click=${this.commitRename}></ix-icon-button>`
-            : html`<ix-typography class="title" format="h3">${this.atelierName || localize(MSG.view.atelier)}</ix-typography>
-                ${this.canEdit
-                  ? html`<ix-icon-button ghost icon="pen" title=${localize(MSG.view.renameAtelier)} @click=${this.startRename}></ix-icon-button>`
-                  : ''}`}
-          <span class="topbar-spacer"></span>
-          ${this.renderToolbar()}
-          ${this.canEdit
-            ? html`<ix-icon-button ghost icon="trashcan" title=${localize(MSG.view.deleteAtelier)} @click=${() => (this.confirmDeleteOpen = true)}></ix-icon-button>`
-            : ''}
-          ${this.roleAi ? html`<mf-ai-prompt></mf-ai-prompt>` : ''}
-        </div>
+        ${this.renderTopbar()}
         <div class="stage">
           <div class="viewport">
             <canvas></canvas>
             <div class="overlay-layer"></div>
-            ${this.renderViewpoints()} ${this.renderDetail()} ${this.renderNav()}
-            ${this.renderViewBar()}
+            ${this.renderViewpoints()} ${this.renderDetail()}
+            ${this.hideNav ? nothing : html`${this.renderNav()} ${this.renderViewBar()}`}
           </div>
           ${this.renderPanel()}
         </div>
@@ -241,9 +256,13 @@ export class MfAtelierView extends LitElement {
 
   protected override willUpdate(changed: PropertyValues): void {
     // Edit grant revoked live (role assignment / canPublish) → drop out of edit mode.
-    if (changed.has('canEdit') && !this.canEdit && this.editMode) this.toggleEditMode();
+    if ((changed.has('canEdit') || changed.has('displayOnly')) && !this.editable && this.editMode) {
+      this.toggleEditMode();
+    }
     if (changed.has('atelier') && this.atelier && !this.loaded) {
       this.loaded = true;
+      // Display only: the catalog is the host's, known before the first live value.
+      if (this.displayOnly) this.stopCauses = this.stopCauseCatalog ?? [];
       this.atelierName = this.atelier.name;
       this.building = structuredClone(this.atelier.building);
       this.display = structuredClone(this.atelier.display);
@@ -255,7 +274,32 @@ export class MfAtelierView extends LitElement {
     }
   }
 
-  protected override firstUpdated(_changed: PropertyValues): void {
+  protected override updated(_changed: PropertyValues): void {
+    // The first render that has the canvas (an atelier) builds the scene once.
+    if (this.scene || !this.building || !this.isConnected || this.sceneBuilt) return;
+    this.sceneBuilt = true;
+    this.setupScene();
+    if (!this.displayOnly) {
+      // Editing data: graphics library, WinCC OA dashboards, the catalog through the store.
+      void this.loadResources();
+      void this.loadDashboards();
+      void this.loadStopCauses();
+    }
+    void this.loadAliAssets();
+  }
+
+  /** Edit affordances: the combined grant, never in display-only mode. */
+  private get editable(): boolean {
+    return this.canEdit && !this.displayOnly;
+  }
+
+  /** Create the WebGL scene, its observers and the live datapoint subscription. */
+  private setupScene(): void {
+    if (this.contextReleased) {
+      // A released canvas keeps its lost WebGL context: draw on a fresh one.
+      this.canvasEl.replaceWith(document.createElement('canvas'));
+      this.contextReleased = false;
+    }
     this.scene = new SceneController(
       this.canvasEl,
       this.overlayEl,
@@ -263,13 +307,7 @@ export class MfAtelierView extends LitElement {
       (id) => this.onSelect(id)
     );
     const store = this.store;
-    if (store) {
-      this.scene.setResourceResolver((ref) => store.readResourceDataUrl(ref));
-      void this.loadResources();
-    }
-    void this.loadDashboards();
-    void this.loadStopCauses();
-    void this.loadAliAssets();
+    if (store) this.scene.setResourceResolver((ref) => store.readResourceDataUrl(ref));
     this.scene.setOnMachineMove((id, x, z) => this.onMachineMove(id, x, z));
     this.scene.setOnRotate(this.onCameraRotate);
     this.scene.setBuilding(this.building);
@@ -290,25 +328,113 @@ export class MfAtelierView extends LitElement {
     this.visibility.observe(this.viewportEl);
   }
 
+  /** Release everything setupScene created: timers, observers, live data, WebGL. */
+  private releaseScene(): void {
+    clearTimeout(this.saveTimer);
+    this.saveTimer = 0;
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    this.visibility?.disconnect();
+    this.visibility = null;
+    // A dpGet validation still in flight must not open a dpConnect after this.
+    this.subGen += 1;
+    this.dpSubscription.unsubscribe();
+    this.dpTargets = new Map();
+    if (this.scene) {
+      this.scene.dispose();
+      this.scene = null;
+      this.contextReleased = true;
+    }
+  }
+
+  private renderTopbar(): TemplateResult | typeof nothing {
+    if (this.hideToolbar) return nothing;
+    if (this.displayOnly) {
+      return html`
+        <div class="topbar">
+          <ix-typography class="title" format="h3">${this.atelierName || localize(MSG.view.atelier)}</ix-typography>
+          <span class="topbar-spacer"></span>
+          ${this.renderDisplayToolbar()}
+        </div>
+      `;
+    }
+    return html`
+      <div class="topbar">
+        <ix-icon-button ghost icon="arrow-left" title=${localize(MSG.view.backToAteliers)} @click=${this.back}></ix-icon-button>
+        ${this.renaming
+          ? html`<ix-input
+                class="title-input"
+                .value=${this.atelierName}
+                @valueChange=${(e: CustomEvent<string>) => (this.atelierName = String(e.detail))}
+                @keydown=${this.onRenameKey}
+              ></ix-input>
+              <ix-icon-button ghost icon="check" title=${localize(MSG.view.confirm)} @click=${this.commitRename}></ix-icon-button>`
+          : html`<ix-typography class="title" format="h3">${this.atelierName || localize(MSG.view.atelier)}</ix-typography>
+              ${this.editable
+                ? html`<ix-icon-button ghost icon="pen" title=${localize(MSG.view.renameAtelier)} @click=${this.startRename}></ix-icon-button>`
+                : ''}`}
+        <span class="topbar-spacer"></span>
+        ${this.renderToolbar()}
+        ${this.editable
+          ? html`<ix-icon-button ghost icon="trashcan" title=${localize(MSG.view.deleteAtelier)} @click=${() => (this.confirmDeleteOpen = true)}></ix-icon-button>`
+          : ''}
+        ${this.roleAi ? html`<mf-ai-prompt></mf-ai-prompt>` : ''}
+      </div>
+    `;
+  }
+
+  /** Display-only toolbar: what changes the view, never the atelier. */
+  private renderDisplayToolbar(): TemplateResult {
+    return html`
+      <div class="toolbar">
+        <ix-icon-button icon="undo" ghost title=${localize(MSG.view.resetView)} @click=${() => this.scene?.resetView()}></ix-icon-button>
+        ${this.renderDisplayToggles()}
+        <ix-icon-button icon="screenshot" ghost title=${localize(MSG.view.viewpoints)} variant=${this.viewpointsOpen ? 'primary' : 'secondary'} @click=${() => (this.viewpointsOpen = !this.viewpointsOpen)}></ix-icon-button>
+        <ix-icon-button icon="app-menu" ghost title=${localize(MSG.view.machines)} variant=${this.panelOpen ? 'primary' : 'secondary'} @click=${() => (this.panelOpen = !this.panelOpen)}></ix-icon-button>
+        ${this.renderFullscreenButton()}
+      </div>
+    `;
+  }
+
+  /** Roof / labels / alerts-only toggles (saved with the atelier, except in display-only mode). */
+  private renderDisplayToggles(): TemplateResult {
+    return html`
+      <ix-icon-button icon="home" ghost title=${localize(MSG.view.roof)} variant=${this.display.roof ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, roof: !this.display.roof })}></ix-icon-button>
+      <ix-icon-button icon="label" ghost title=${localize(MSG.view.labels)} variant=${this.display.labels ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, labels: !this.display.labels })}></ix-icon-button>
+      <ix-icon-button icon="warning" ghost title=${localize(MSG.view.alertsOnly)} variant=${this.display.alertOnly ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, alertOnly: !this.display.alertOnly })}></ix-icon-button>
+    `;
+  }
+
+  private renderFullscreenButton(): TemplateResult | typeof nothing {
+    if (!this.fullscreenButton) return nothing;
+    const title = this.fullscreenActive ? MSG.view.exitFullscreen : MSG.view.fullscreen;
+    return html`<ix-icon-button
+      class="fullscreen-btn"
+      icon=${this.fullscreenActive ? 'minimize' : 'maximize'}
+      ghost
+      title=${localize(title)}
+      @click=${() => this.dispatchEvent(new CustomEvent('wui:fullscreen'))}
+    ></ix-icon-button>`;
+  }
+
   private renderToolbar(): TemplateResult {
     return html`
       <div class="toolbar">
         <ix-icon-button icon="undo" ghost title=${localize(MSG.view.resetView)} @click=${() => this.scene?.resetView()}></ix-icon-button>
-        ${this.canEdit
+        ${this.editable
           ? html`<ix-icon-button icon="move" ghost title=${localize(MSG.view.editMode)} variant=${this.editMode ? 'primary' : 'secondary'} @click=${this.toggleEditMode}></ix-icon-button>`
           : ''}
-        <ix-icon-button icon="home" ghost title=${localize(MSG.view.roof)} variant=${this.display.roof ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, roof: !this.display.roof })}></ix-icon-button>
-        <ix-icon-button icon="label" ghost title=${localize(MSG.view.labels)} variant=${this.display.labels ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, labels: !this.display.labels })}></ix-icon-button>
-        <ix-icon-button icon="warning" ghost title=${localize(MSG.view.alertsOnly)} variant=${this.display.alertOnly ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, alertOnly: !this.display.alertOnly })}></ix-icon-button>
+        ${this.renderDisplayToggles()}
         <ix-icon-button icon="screenshot" ghost title=${localize(MSG.view.viewpoints)} variant=${this.viewpointsOpen ? 'primary' : 'secondary'} @click=${() => (this.viewpointsOpen = !this.viewpointsOpen)}></ix-icon-button>
         <ix-icon-button icon="box-open" ghost title=${localize(MSG.view.graphicsCatalogGlb)} @click=${() => (this.resourcesOpen = true)}></ix-icon-button>
         <ix-icon-button icon="building1" ghost title=${localize(MSG.view.configureBuilding)} @click=${() => (this.buildingOpen = true)}></ix-icon-button>
         <ix-icon-button icon="configuration" ghost title=${localize(MSG.view.stateMappings)} @click=${() => (this.mappingOpen = true)}></ix-icon-button>
-        ${this.canEdit
+        ${this.editable
           ? html`<ix-icon-button icon="upload" ghost title=${localize(MSG.view.importAtelier)} @click=${this.triggerImport}></ix-icon-button>`
           : ''}
         <ix-icon-button icon="download" ghost title=${localize(MSG.view.exportAtelier)} @click=${this.exportAtelier}></ix-icon-button>
         <ix-icon-button icon="app-menu" ghost title=${localize(MSG.view.machines)} variant=${this.panelOpen ? 'primary' : 'secondary'} @click=${() => (this.panelOpen = !this.panelOpen)}></ix-icon-button>
+        ${this.renderFullscreenButton()}
       </div>
       <input
         type="file"
@@ -409,7 +535,7 @@ export class MfAtelierView extends LitElement {
       <div class="viewpoints">
         <div class="vp-head">
           <span>${localizeDir(MSG.view.viewpoints)}</span>
-          ${this.canEdit
+          ${this.editable
             ? html`<ix-button variant="secondary" @click=${this.saveViewpoint}>
                 <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.view.saveView)}
               </ix-button>`
@@ -441,7 +567,7 @@ export class MfAtelierView extends LitElement {
       <span class="vp-name" title=${localize(MSG.view.goToView)} @click=${() => this.applyViewpoint(vp)}>
         ${vp.name}${isDefault ? html`<ix-icon class="vp-default-badge" name="star-filled" size="12"></ix-icon>` : ''}
       </span>
-      ${this.canEdit
+      ${this.editable
         ? html`<ix-icon-button
               ghost
               size="16"
@@ -465,7 +591,8 @@ export class MfAtelierView extends LitElement {
       <div class="drawer">
         <mf-config-panel
           .machines=${this.machines}
-          .canEdit=${this.canEdit}
+          .canEdit=${this.editable}
+          ?list-only=${this.displayOnly}
           @wui:focus=${(e: CustomEvent<{ id: string }>) => this.onFocus(e.detail.id)}
           @wui:edit=${(e: CustomEvent<{ id: string }>) => this.onEdit(e.detail.id)}
           @wui:delete=${(e: CustomEvent<{ id: string }>) => this.onDelete(e.detail.id)}
@@ -488,13 +615,15 @@ export class MfAtelierView extends LitElement {
           <span class="dot" style="background:${headColor}"></span>
           <ix-typography class="name" format="h3" title=${m.name}>${m.name}</ix-typography>
           <ix-chip outline>${m.loc ?? m.type}</ix-chip>
-          <ix-icon-button ghost icon=${this.canEdit ? 'pen' : 'eye'} title=${this.canEdit ? localize(MSG.view.edit) : localize(MSG.view.viewOnly)} @click=${() => this.onEdit(m.id)}></ix-icon-button>
+          ${this.displayOnly
+            ? nothing
+            : html`<ix-icon-button ghost icon=${this.editable ? 'pen' : 'eye'} title=${this.editable ? localize(MSG.view.edit) : localize(MSG.view.viewOnly)} @click=${() => this.onEdit(m.id)}></ix-icon-button>`}
           <ix-icon-button ghost icon="close" title=${localize(MSG.view.close)} @click=${() => (this.selectedId = null)}></ix-icon-button>
         </div>
         ${offline
           ? html`<div class="detail__offline" style="--c:${stateColor(mapping, 'disconnected')}">${DISCONNECTED_LABEL}</div>`
           : this.renderInfoRows(m)}
-        ${this.renderDashboardLink(m)}
+        ${this.displayOnly ? nothing : this.renderDashboardLink(m)}
       </div>
     `;
   }
@@ -607,7 +736,7 @@ export class MfAtelierView extends LitElement {
       ${this.buildingOpen
         ? html`<mf-building-dialog
             .building=${this.building}
-            .canEdit=${this.canEdit}
+            .canEdit=${this.editable}
             @wui:apply=${(e: CustomEvent<{ building: BuildingConfig }>) => this.onBuilding(e.detail.building)}
             @wui:close=${() => (this.buildingOpen = false)}
           ></mf-building-dialog>`
@@ -622,7 +751,7 @@ export class MfAtelierView extends LitElement {
             .billboardResources=${this.billboardResources}
             .dashboards=${this.dashboards}
             .aliAssets=${this.aliAssets}
-            .canEdit=${this.canEdit}
+            .canEdit=${this.editable}
             @wui:apply=${(e: CustomEvent<{ machine: MachineDef }>) => this.onMachineApply(e.detail.machine)}
             @wui:mapping=${() => (this.mappingOpen = true)}
             @wui:thresholds=${() => (this.thresholdsOpen = true)}
@@ -635,7 +764,7 @@ export class MfAtelierView extends LitElement {
       ${this.mappingOpen
         ? html`<mf-state-mapping-dialog
             .mappings=${this.mappings}
-            .canEdit=${this.canEdit}
+            .canEdit=${this.editable}
             @wui:apply=${(e: CustomEvent<{ mappings: StateMapping[] }>) => this.onMappings(e.detail.mappings)}
             @wui:close=${() => (this.mappingOpen = false)}
           ></mf-state-mapping-dialog>`
@@ -643,7 +772,7 @@ export class MfAtelierView extends LitElement {
       ${this.thresholdsOpen
         ? html`<mf-trs-thresholds-dialog
             .thresholds=${this.thresholds}
-            .canEdit=${this.canEdit}
+            .canEdit=${this.editable}
             @wui:apply=${(e: CustomEvent<{ thresholds: TrsThresholds[] }>) => this.onThresholds(e.detail.thresholds)}
             @wui:close=${() => (this.thresholdsOpen = false)}
           ></mf-trs-thresholds-dialog>`
@@ -659,7 +788,7 @@ export class MfAtelierView extends LitElement {
       ${this.resourcesOpen
         ? html`<mf-graphics-catalog
             .store=${this.store}
-            .canEdit=${this.canEdit}
+            .canEdit=${this.editable}
             @wui:change=${() => this.loadResources()}
             @wui:close=${() => (this.resourcesOpen = false)}
           ></mf-graphics-catalog>`
@@ -750,6 +879,7 @@ export class MfAtelierView extends LitElement {
   /** Open the machine's dashboard: a specific WinCC OA one (mode 'oa' + id) or
    * the built-in contextualised machine dashboard (overlay). */
   private openMachineDashboard(m: Machine): void {
+    if (this.displayOnly) return;
     if (resolveDashboardMode(m) === 'oa' && m.dashboardId != null) {
       this.dispatchEvent(new RouterEvent(`/dashboard/${m.dashboardId}`));
       return;
@@ -858,6 +988,7 @@ export class MfAtelierView extends LitElement {
   }
 
   private onAdd(): void {
+    if (!this.editable) return;
     const def: MachineDef = {
       id: `machine-${Date.now()}`,
       name: localize(MSG.view.newMachineName),
@@ -873,6 +1004,7 @@ export class MfAtelierView extends LitElement {
   }
 
   private onEdit(id: string): void {
+    if (this.displayOnly) return;
     const m = this.machines.find((x) => x.id === id);
     if (m) this.editing = { ...m, kpis: (m.kpis ?? []).map((k) => ({ ...k })) };
   }
@@ -884,6 +1016,7 @@ export class MfAtelierView extends LitElement {
   }
 
   private onDelete(id: string): void {
+    if (!this.editable) return;
     this.machines = this.machines.filter((m) => m.id !== id);
     if (this.selectedId === id) this.selectedId = null;
     this.rebuildMachines();
@@ -1042,6 +1175,8 @@ export class MfAtelierView extends LitElement {
   }
 
   private scheduleSave(): void {
+    // Display only: the view never writes the atelier (its display toggles stay local).
+    if (this.displayOnly) return;
     clearTimeout(this.saveTimer);
     this.saveTimer = window.setTimeout(() => {
       this.dispatchEvent(

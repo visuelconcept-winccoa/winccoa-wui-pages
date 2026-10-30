@@ -1,0 +1,314 @@
+[
+  {
+    "id": "demo",
+    "name": "Atelier de démonstration",
+    "building": {
+      "length": 240,
+      "width": 160,
+      "height": 18,
+      "bays": 4,
+      "roofType": "shed",
+      "colStep": 20,
+      "floorType": "concrete-white",
+      "navCorner": "bottom-right"
+    },
+    "display": {
+      "roof": true,
+      "labels": true,
+      "alertOnly": false
+    },
+    "machines": [
+      {
+        "id": "four-600",
+        "name": "FOUR 600T",
+        "type": "four",
+        "variant": 600,
+        "x": -78,
+        "z": 36,
+        "state": "ok",
+        "loc": "C2",
+        "kpis": [
+          {
+            "key": "temp",
+            "label": "Température",
+            "value": 852,
+            "unit": "°C",
+            "showInBubble": true
+          },
+          {
+            "key": "cycle",
+            "label": "Cycle",
+            "value": 14,
+            "unit": "min",
+            "cardOrder": 1
+          }
+        ]
+      },
+      {
+        "id": "four-300",
+        "name": "FOUR 300T",
+        "type": "four",
+        "variant": 300,
+        "x": -78,
+        "z": -28,
+        "state": "warn",
+        "loc": "A2",
+        "kpis": [
+          {
+            "key": "temp",
+            "label": "Température",
+            "value": 610,
+            "unit": "°C",
+            "showInBubble": true
+          }
+        ]
+      },
+      {
+        "id": "robot-mag-1",
+        "name": "ROBOT MAG 1",
+        "type": "robot",
+        "process": "soudage",
+        "x": -30,
+        "z": 58,
+        "state": "ok",
+        "loc": "D3",
+        "kpis": [
+          {
+            "key": "tension",
+            "label": "Tension",
+            "value": 24.5,
+            "unit": "V",
+            "showInBubble": true
+          },
+          {
+            "key": "intensite",
+            "label": "Intensité",
+            "value": 182,
+            "unit": "A"
+          },
+          {
+            "key": "vitesseSoudage",
+            "label": "Vitesse de soudage",
+            "value": 38,
+            "unit": "cm/min"
+          }
+        ]
+      },
+      {
+        "id": "positionneur-1",
+        "name": "POSITIONNEUR 1",
+        "type": "positionneur",
+        "process": "soudage",
+        "x": -30,
+        "z": 8,
+        "state": "ok",
+        "loc": "B3",
+        "kpis": [
+          {
+            "key": "tension",
+            "label": "Tension",
+            "value": 23.1,
+            "unit": "V",
+            "showInBubble": true
+          },
+          {
+            "key": "intensite",
+            "label": "Intensité",
+            "value": 165,
+            "unit": "A"
+          },
+          {
+            "key": "vitesseSoudage",
+            "label": "Vitesse de soudage",
+            "value": 32,
+            "unit": "cm/min"
+          }
+        ]
+      },
+      {
+        "id": "tour-1",
+        "name": "TOUR CN L",
+        "type": "tour",
+        "variant": "L",
+        "x": 28,
+        "z": -50,
+        "state": "ok",
+        "loc": "A6",
+        "kpis": [
+          {
+            "key": "programme",
+            "label": "# Programme",
+            "value": "O1042"
+          },
+          {
+            "key": "outil",
+            "label": "# Outil",
+            "value": "T05"
+          },
+          {
+            "key": "vitesseBroche",
+            "label": "Vitesse broche",
+            "value": 1450,
+            "unit": "tr/min",
+            "showInBubble": true
+          },
+          {
+            "key": "vitesseAvance",
+            "label": "Vitesse d'avance",
+            "value": 850,
+            "unit": "mm/min"
+          }
+        ]
+      },
+      {
+        "id": "fraiseuse-1",
+        "name": "FRAISEUSE",
+        "type": "fraiseuse",
+        "x": 28,
+        "z": 6,
+        "state": "maint",
+        "loc": "B6",
+        "kpis": [
+          {
+            "key": "programme",
+            "label": "# Programme",
+            "value": "O2310"
+          },
+          {
+            "key": "outil",
+            "label": "# Outil",
+            "value": "T12"
+          },
+          {
+            "key": "vitesseBroche",
+            "label": "Vitesse broche",
+            "value": 0,
+            "unit": "tr/min",
+            "showInBubble": true
+          },
+          {
+            "key": "vitesseAvance",
+            "label": "Vitesse d'avance",
+            "value": 0,
+            "unit": "mm/min"
+          }
+        ]
+      },
+      {
+        "id": "scie-1",
+        "name": "SCIE",
+        "type": "scie",
+        "x": 78,
+        "z": 54,
+        "state": "ok",
+        "loc": "D9",
+        "kpis": [
+          {
+            "key": "programme",
+            "label": "# Programme",
+            "value": "O0087"
+          },
+          {
+            "key": "outil",
+            "label": "# Outil",
+            "value": "T01"
+          },
+          {
+            "key": "vitesseBroche",
+            "label": "Vitesse broche",
+            "value": 320,
+            "unit": "tr/min",
+            "showInBubble": true
+          },
+          {
+            "key": "vitesseAvance",
+            "label": "Vitesse d'avance",
+            "value": 140,
+            "unit": "mm/min"
+          }
+        ]
+      },
+      {
+        "id": "brocheuse-1",
+        "name": "BROCHEUSE",
+        "type": "brocheuse",
+        "x": 78,
+        "z": 8,
+        "state": "stop",
+        "loc": "B9",
+        "kpis": [
+          {
+            "key": "programme",
+            "label": "# Programme",
+            "value": "O3001"
+          },
+          {
+            "key": "outil",
+            "label": "# Outil",
+            "value": "T08"
+          },
+          {
+            "key": "vitesseBroche",
+            "label": "Vitesse broche",
+            "value": 0,
+            "unit": "tr/min",
+            "showInBubble": true
+          },
+          {
+            "key": "vitesseAvance",
+            "label": "Vitesse d'avance",
+            "value": 0,
+            "unit": "mm/min"
+          }
+        ]
+      },
+      {
+        "id": "ressuage-1",
+        "name": "TABLE RESSUAGE",
+        "type": "ressuage",
+        "x": 70,
+        "z": -48,
+        "state": "ok",
+        "loc": "A9",
+        "kpis": [
+          {
+            "key": "parts",
+            "label": "Pièces",
+            "value": 56,
+            "unit": "",
+            "showInBubble": true
+          }
+        ]
+      }
+    ],
+    "mappings": [
+      {
+        "id": "default",
+        "name": "Standard (0=arrêt, 1=ok, 2=défaut, 3=maint)",
+        "fallback": "stop",
+        "rules": [
+          {
+            "state": "stop",
+            "min": 0,
+            "max": 0
+          },
+          {
+            "state": "ok",
+            "min": 1,
+            "max": 1
+          },
+          {
+            "state": "warn",
+            "min": 2,
+            "max": 2
+          },
+          {
+            "state": "maint",
+            "min": 3,
+            "max": 3
+          }
+        ]
+      }
+    ]
+  }
+]
