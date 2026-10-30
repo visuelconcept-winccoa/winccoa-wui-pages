@@ -52,6 +52,7 @@ source header and their `wuiPage` manifest in `libs/wui-<page>/package.json`
 | `wui-report-templates` | `/report-templates` | Author report templates (parameterised sections, multi-level signature workflow) | — |
 | `wui-tag-importer` | `/tag-importer` | Import device tags into DP types + datapoints from an OPC UA NodeSet2 file or a live server browse (repeated instances of one ObjectType mutualised into a single DP type) | `/api/tag-importer` |
 | `wui-thermal-reports` | `/thermal-reports` | Per-charge heat-treatment reports (recipe stages, furnace curves vs. tolerance bands) | — |
+| `wui-users` | `/users` | The project's user administration, as the WinCC OA panel does it: users (local password, groups, active), groups and their 32 permission bits, domains, permission names, authentication method (WinCC OA / Active Directory), import of AD groups and users — manual, or the new AD users imported cyclically (existing users left to `WCCOAupdateUserGroups`); config and user settings read-only. Every write through WinCC OA's `UserManagement` classes, never a dpSet on `_Users` | `/api/users` + `usersService` mgr |
 | `wui-diagnosis` | `/status` | Read-only system health: time, licences, OA version, API heartbeat, browser, service worker, memory and disk | — |
 
 The table is ordered alphabetically; `wui-diagnosis` sits last because its route
