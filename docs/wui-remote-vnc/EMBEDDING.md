@@ -12,7 +12,7 @@ In the host module's `package.json`:
 
 ```jsonc
 "dependencies": {
-  "@visuelconcept-winccoa/wui-remote-vnc": "^0.3.0" // ^0.2.0 without `label`
+  "@visuelconcept-winccoa/wui-remote-vnc": "^0.3.1" // ^0.2.0 without `label`, ^0.3.0 without `hide-endpoint`
 },
 "wuiPage": {
   // remote-vnc's backend (/api/vnc + relay + vncProxy) is used when deployed,
@@ -61,6 +61,7 @@ html`<wui-vnc-viewer
 | `back` | off | Show a "Back" button that emits `wui:back` (the Remote VNC page uses it; a host normally does not). |
 | `label` | — | Since 0.3.0. Plain text naming the remote screen (e.g. `WC_SOUDAGE_1 · Écran poste`), set by the host and not interpreted by the element. Shown as an overlay on the remote screen (see below) and used as the screen's accessible name. Without it, nothing changes. Also a property (`.label`). |
 | `label-mode` | `fullscreen` | Since 0.3.0. `fullscreen`: the overlay shows only while the viewer is full screen (out of full screen the host page shows its own context); `always`: the overlay shows all the time. |
+| `hide-endpoint` | off | Since 0.3.1. Hide the connection's `host:port` (toolbar and connecting card) — for a host that names the screen itself and does not want to show the address to operators. The name, states and controls stay. |
 
 Event **`ended`** (bubbles, composed), `detail: { connectionId, reason, message }`, when
 a session ends or cannot start — `reason` is one of:
@@ -85,8 +86,11 @@ semi-transparent background from the theme (`--theme-color-1`, `--theme-color-st
 inside the element that goes full screen. It never takes input (`pointer-events: none`:
 clicks, keys and the noVNC cursor go through), and it dims after about 3 s, back to full
 opacity on mouse move or touch over the screen. The element follows `fullscreenchange`:
-it counts as full screen when `document.fullscreenElement` is the viewer or one of its
-ancestors (a host that puts its own container full screen gets the overlay too). The
+it counts as full screen when the full-screen element is the viewer or one of its
+ancestors (a host that puts its own container full screen gets the overlay too). Since
+0.3.1 this also holds when the viewer sits inside other components' shadow roots (a tab
+of a page module): `document.fullscreenElement` only names the outermost host there, so
+the element checks each enclosing root's `fullscreenElement`, walking up the hosts. The
 label is the screen's `aria-label` (role `group`); the overlay itself is `aria-hidden`,
 so screen readers announce it once.
 

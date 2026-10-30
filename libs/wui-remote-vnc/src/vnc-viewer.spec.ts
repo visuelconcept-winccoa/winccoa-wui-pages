@@ -224,6 +224,17 @@ describe('<wui-vnc-viewer>', () => {
     expect(rfbs[1].url).toContain('id=panel');
   });
 
+  it('hides the host:port with hide-endpoint, shows it otherwise', async () => {
+    const shown = mount();
+    await tick();
+    expect(shown.shadowRoot!.textContent).toContain('10.0.3.21');
+    const hidden = mount();
+    hidden.setAttribute('hide-endpoint', '');
+    await tick();
+    expect(hidden.shadowRoot!.textContent).not.toContain('10.0.3.21');
+    expect(hidden.shadowRoot!.textContent).toContain('HMI line 1');
+  });
+
   describe('label overlay', () => {
     const labelOf = (el: HTMLElement): HTMLElement | null => el.shadowRoot?.querySelector<HTMLElement>('.label') ?? null;
     const stageOf = (el: HTMLElement): HTMLElement => el.shadowRoot!.querySelector<HTMLElement>('.stage')!;
@@ -277,6 +288,41 @@ describe('<wui-vnc-viewer>', () => {
       setFullscreen(document.body);
       await update(el);
       expect(labelOf(el)?.textContent).toBe('HMI');
+    });
+
+    it('shows the label when nested in shadow roots (host page inside the shell)', async () => {
+      // Shell > page > tab, each with a shadow root; the viewer is in the innermost one.
+      const shellHost = document.createElement('div');
+      document.body.append(shellHost);
+      const shellRoot = shellHost.attachShadow({ mode: 'open' });
+      const tabHost = document.createElement('div');
+      shellRoot.append(tabHost);
+      const tabRoot = tabHost.attachShadow({ mode: 'open' });
+      const el = document.createElement('wui-vnc-viewer') as HTMLElement;
+      el.setAttribute('connection-id', 'c1');
+      el.setAttribute('label', 'WC_SOUDAGE_1 · Écran poste');
+      tabRoot.append(el);
+      await update(el);
+      // The viewer's stage goes full screen: the document only sees the outermost host; each root
+      // reports its own retargeted element.
+      const fsOf = (root: object, value: Element | null): void => {
+        Object.defineProperty(root, 'fullscreenElement', { configurable: true, get: () => value });
+      };
+      fsOf(el.shadowRoot!, stageOf(el));
+      fsOf(tabRoot, el);
+      fsOf(shellRoot, tabHost);
+      setFullscreen(shellHost);
+      await update(el);
+      expect(labelOf(el)?.textContent).toBe('WC_SOUDAGE_1 · Écran poste');
+      // Another element of the tab goes full screen instead: no overlay.
+      const other = document.createElement('div');
+      tabRoot.append(other);
+      fsOf(el.shadowRoot!, null);
+      fsOf(tabRoot, other);
+      setFullscreen(shellHost);
+      await update(el);
+      expect(labelOf(el)).toBeNull();
+      shellHost.remove();
     });
 
     it('shows the label all the time with label-mode="always"', async () => {
