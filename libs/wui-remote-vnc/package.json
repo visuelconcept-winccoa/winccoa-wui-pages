@@ -23,11 +23,13 @@
   "peerDependencies": {
     "lit": "*",
     "rxjs": "*",
+    "tsyringe": "*",
     "@wincc-oa/wui-i18n-shared": "*",
     "@wincc-oa/wui-ix-wrappers": "*",
     "@wincc-oa/wui-models": "*",
     "@wincc-oa/wui-oarxjs-context": "*",
-    "@wincc-oa/wui-shared": "*"
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-iam-data": "*"
   },
   "exports": {
     "./*": {
@@ -62,13 +64,21 @@
       "files": [
         "vncController.ts",
         "vncRoute.ts",
-        "vncRelay.ts"
+        "vncRelay.ts",
+        "vncGuard.ts",
+        "vncStore.ts",
+        "vncTickets.ts",
+        "rfbBroker.ts",
+        "vncAuth.ts"
+      ],
+      "shared": [
+        "@visuelconcept-winccoa/wui-app-security/appSecurityGuard.ts"
       ],
       "managers": [
         "vncProxy"
       ],
       "notes": [
-        "/api/vnc/* + the /api/vnc/ws raw ws<->TCP relay (websockify-style)",
+        "/api/vnc/* (connections without password, writes audited, one-shot session tickets; roles view/connect/edit enforced server-side) + the /api/vnc/ws raw ws<->TCP relay (websockify-style, ticket + connect role checked, VNC authentication done by the relay)",
         "vncProxy (MSA vRPC: resolves connection id -> host:port from RemoteVnc_ DPs)"
       ]
     }
@@ -93,6 +103,12 @@
       "optional": true
     },
     "@wincc-oa/wui-shared": {
+      "optional": true
+    },
+    "tsyringe": {
+      "optional": true
+    },
+    "@wincc-oa/wui-iam-data": {
       "optional": true
     }
   },
