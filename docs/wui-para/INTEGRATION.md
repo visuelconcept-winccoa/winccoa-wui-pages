@@ -11,7 +11,7 @@ pre-built `.js` from another version won't work).
 1. The project has a **wui-toolkit site** (`<project>/web`) whose `prod` target was equipped once with `npx wui init target prod` (WebUI shell + dashboard webserver).
 2. The **dashboard webserver** installed by `npx wui init target prod` (provides `/api/para` via backend module auto-discovery).
 3. For **DPL import/export**: the **`dplAscii`** JS manager (`libs/wui-para/managers/dplAscii/index.js`) deployed to the project's `javascript/` and registered in `config/progs` (both done by `wui build`), plus `WCCOAasciiSQLite` on PATH (standard install).
-4. For the **AI assistant** (`dependsOn`): the `/api/ai` bridge + the **`aiAssistant`** manager (as used by the Machine-Fleet pages — select `machine-fleet-3d`, which mounts `/api/ai`). The assistant is proposal-only: it uses the configured MCP servers in **read-only** mode (mutating tools filtered out in the manager).
+4. For the **AI assistant** (`dependsOn`): the `/api/ai` bridge + the **`aiAssistant`** manager (as used by the Machine-Fleet pages — select `machine-fleet-3d`, which mounts `/api/ai` and deploys `aiAssistant`, registered `manual` since 0.3.0: start it in the console). The assistant is proposal-only: it uses the configured MCP servers in **read-only** mode (mutating tools filtered out in the manager).
 
 ## Install
 In the project's site (`<project>/web`):

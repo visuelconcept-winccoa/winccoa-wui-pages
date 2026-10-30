@@ -357,9 +357,9 @@ export const MSG = {
     fieldName: ml('Name', 'Nom', 'Name'),
     fieldType: ml('Type', 'Type', 'Typ'),
     processLabel: ml(
-      'Process (simulated parameters)',
-      'Métier (paramètres simulés)',
-      'Gewerk (simulierte Parameter)'
+      'Process (parameter set of the machine simulator)',
+      'Métier (jeu de paramètres du simulateur machines)',
+      'Gewerk (Parametersatz des Maschinensimulators)'
     ),
     fieldLoc: ml('Marker (e.g. C7)', 'Repère (ex. C7)', 'Kennzeichen (z. B. C7)'),
     fieldHeight: ml('Height', 'Hauteur', 'Höhe'),

@@ -64,7 +64,7 @@ DP and type provisioning/CRUD via the backend's **PARA REST API** (see Backend),
 | `MachineFleet3D_Billboard` | Struct (`name` String, `data` String base64) | 1 imported billboard image. Ref `dp:<dpName>`. |
 | `MachineFleet3D_Closures` | 1 JSON DP | Non-working days / closures (consumed by kpiCalc). |
 | `MachineFleet3D_Kpi` | See kpiCalc | One DP per computed KPI (1 per machine×KPI). |
-| `MachineSim` (1 per machine) | See machineSim | Simulation DPs (state + cause + parameters). |
+| `MachineSim` (1 per machine) | See [wui-machine-sim](../wui-machine-sim/NOTES.md) | Simulation DPs (state + cause + parameters) — only with the optional `machine-sim` module. |
 | `AI_Assistant_Config` | Struct String (`provider`, `model`, `token`, `mcpServers` JSON, `webSearch` `'true'`/`'false'`, `effort` `low…max`, `maxTokens`, `maxToolRounds`) | AI assistant config (token stored here, never shipped). The last four are opt-out: an empty element means web search ON, effort `medium`, budget 32768, 12 tool rounds. |
 
 - **Workshop persistence**: **debounced** save (`wui:save`) from the 3D view. DP value
@@ -158,7 +158,7 @@ pushed into the 3D bubble. `KpiType = 'TRS'|'MTBF'|'MTTR'` (TRS in `%`, MTBF/MTT
   the archived history, so the Gantt AND the Pareto follow a transition and a cause
   assignment (which re-classifies the whole stop, hence the Pareto). Only a real change
   counts (`liveText` vs `lastState`/`lastCause`, both seeded at open): the opening
-  `dpConnect` answer repeats the current values and machineSim rewrites state+cause
+  `dpConnect` answer repeats the current values and the optional simulator (machineSim) rewrites state+cause
   every 30 s whether they moved or not — neither deserves a pair of archive queries.
   The candidate DPs are `dpGet`-validated before the subscription (that call is also
   the seed): `dpConnect` fails as a **block**, so one stale binding used to take the
@@ -212,7 +212,13 @@ of the machine), stacked vertically, with a leader from the dot to the inner edg
 
 ## Backend / manager
 
-**Tier hub** page: backend module `backend/modules/machine-fleet-3d` + **4 managers**.
+**Tier hub** page: backend module `backend/modules/machine-fleet-3d` + the `aiAssistant`
+manager (`wui-ai-kit`, registered `manual` via `wuiPage.backend.progs`). Since 0.3.0 it no longer
+deploys `machineSim` (now the optional [`machine-sim`](../wui-machine-sim/README.md) module) nor
+`kpiCalc` (owned by [`fleet-kpi-analysis`](../wui-fleet-kpi-analysis/NOTES.md)): selecting the 3D
+page — e.g. only to embed `<wui-fleet-3d-view>` on a production site — starts no simulation and
+no KPI computation. The page degrades by itself without them: a binding or a KPI datapoint that
+does not exist is dropped by the `dpGet` validation before the `dpConnect`.
 
 - **Own backend `/api/ai`** (`backend/aiRoute.ts`, class `AiRoute`): the AI bridge routes of
   wui-ai-kit (`/health`, `/chat`, its `aiController.ts` copied in at deploy time — keep the wiring
@@ -231,24 +237,19 @@ of the machine), stacked vertically, with a leader from the dot to the inner edg
   `DELETE /api/para/dp/:name?dpType=`). The `/api/para/dp/set` route must accept large
   bodies (base64 GLB/billboard objects): `json({limit:'8mb'})` — the default limit ~100 KB
   would break the import. Reading goes through `OaRxJsApi.dpGet/dpNames` and `dpConnect`.
-- **machineSim** (WCCOAjavascript manager, `always`): fleet simulator. Creates the
-  `MachineSim` DPs, does the **non-destructive AUTO_MAP** (only maps machines without `stateDp`,
-  never overwrites a user config) and writes state/cause/parameters at intervals.
-  - `cause` is a **String** (not Int) so any catalog code can be emitted; it
-    **reloads the catalog before each state tick**; `pickCause()` emits a valid code
-    ~90% of the time and an **out-of-catalog (erroneous) code** ~10% (`ERRONEOUS_CAUSE_PROB`).
-  - `PARAM_SETS` per family: generic `[cadence,temperature,vitesse,charge]`, usinage
-    `[programme,outil,broche,avance]`, soudage `[tension,intensite,vitesseSoudage]`; **every**
-    machine simulates `ALL_PARAMS` (union) so that a KPI binding always resolves. Discrete
-    (`programme`/`outil`) = String, analog = Float. `avance = broche × feedPerRev`.
-    `basculeur.angle` = triangle 0→90° in 30 s, its `vitesse` KPI = angular velocity °/s.
-- **kpiCalc** (manager, `always`): creates the `MachineFleet3D_Kpi` type (`value` Float
+- **machineSim** — moved to the optional [`machine-sim`](../wui-machine-sim/NOTES.md) module
+  (0.3.0): creates and drives `MachineSim_<machine>` DPs; its AUTO_MAP (wiring unbound machines to
+  them, saving the atelier) is opt-in (`--auto-map`). The page does not call it and has no
+  simulator-specific feature; the machine dialog's process family only chooses which parameter
+  set AUTO_MAP binds.
+- **kpiCalc** (manager of `fleet-kpi-analysis`, not deployed by this module since 0.3.0): creates the `MachineFleet3D_Kpi` type (`value` Float
   **archived** + Strings `kpiType,machineId,machineName,window,unit,updatedAt`); one DP per KPI
   named `MachineFleet3D_Kpi_<sanitize(machineId)>_<sanitize(kpiId)>` (sanitize:
   `[^A-Za-z0-9_]→_`). Per-KPI NGA archiving driven by `MachineKpi.archive`/`archiveGroup`
   (`disableArchived` / `ensureArchived`). Re-reads config+closures+KPIs every 60 s,
   base tick 15 s. 3D bubble subscribed to `…_<kpiId>.value` via `DpTarget` kind `kpiCalc`.
-- **aiAssistant** (manager, `always`): hosts the **vRPC service `AiAssistant`** (`Chat`
+- **aiAssistant** (manager of `wui-ai-kit`, deployed by this module, `manual` since 0.3.0 — the
+  assistant is off until `dashboard-features.json` enables it): hosts the **vRPC service `AiAssistant`** (`Chat`
   function). 3-tier architecture: WebUI `mf-ai-prompt` → `POST /api/ai/chat` (webserver,
   same origin) → vRPC stub → `AiAssistant` service → provider via `fetch`. The WebUI runtime
   has no MSA/vRPC client, hence the mandatory HTTP bridge. Raw fetch providers (Anthropic
@@ -314,17 +315,15 @@ All writes are best-effort (never throw into the edit), no-op when the store is 
   the runtime singleton is resolved; `canPublish` is **async** → subscribe to the Observable). In
   view-only: edit button → eye, all mutations (rename/delete/move/import/
   save-view/GLB) hidden.
-- **Archiving**: `MachineSim.state` **and** `.cause` are both NGA-archived on the demo
-  project (re-verified 2026-08-12 — `.cause` had lost its config after the
-  `dpTypeChange` Int→String and has since been re-enabled). Without `.cause` archiving
-  there is no cause history at all: no cause on the Gantt segments, and a Pareto with
-  nothing but the fallback bucket.
+- **Archiving**: the machines' state **and** cause datapoints must be NGA-archived for the Gantt
+  and the Pareto (for the simulator's `MachineSim_*` DPs, see
+  [wui-machine-sim NOTES](../wui-machine-sim/NOTES.md#pitfalls)). Without `.cause` archiving
+  there is no cause history at all: no cause on the Gantt segments, and a Pareto with nothing
+  but the fallback bucket.
   `FleetStore.listArchiveGroups()` only returns the **active** `_NGA_Group` groups
   (`.active === true`).
-- **Legacy "0–5" causes**: old data from the Int era (codes 1–5 + ''→0) may
-  remain; the current simulator no longer emits fictitious numeric codes (`causeCodes` starts
-  **empty** → emits `''` if the catalog does not load; `isDefault` entries are **excluded**
-  from the emittable set — the default is a fallback bucket, not an active cause).
+- **Legacy "0–5" causes**: old data from the simulator's Int era (codes 1–5 + ''→0) may remain
+  in the history; they fall back to the default cause.
 - **Dynamic iX icons in a button**: an `<ix-icon slot="icon" name=${dynamique}>`
   **does not render** (the deployed ix-icons read `name` only once). Use
   the **`icon=${x}`** attribute/property on `ix-button`/`ix-icon-button`. Static slotted
@@ -342,7 +341,7 @@ All writes are best-effort (never throw into the edit), no-op when the store is 
   `CustomEvent` names = string literals `^wui:[a-z]{3,}$` (no hyphen); avoid
   a method named `flat` (collision `no-magic-array-flat-depth`).
   `no-magic-numbers` = warning only (OK for the 3D code).
-- **Manager restart**: after editing a manager (machineSim / kpiCalc / aiAssistant)
+- **Manager restart**: after editing a manager (aiAssistant here; machineSim / kpiCalc in their modules)
   or the webserver backend, **restart the affected manager** to apply (mode
   `always` → pmon relaunches it; a manual `start-manager` right after a stop often returns
   "START not possible" but pmon brings it back in ~1 s). No KPI is configured by default →
