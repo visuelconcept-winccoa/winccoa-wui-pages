@@ -26,12 +26,15 @@
  *    its age. "Delete instance" (role 'manage-instances') removes the node DP of an
  *    instance whose agent no longer answers — never the local node, re-checked by
  *    the server right before the delete.
- * Plus a **History** tab. Every project import and manager restart is traced to a
- * GxP `_AuditTrail` datapoint (`AuditTrail_ProcessMonitor`, with the session user)
- * and an operations-log datapoint, both ensured at page init.
+ * Plus a **History** tab. Every operation is traced by the manager that runs it (issue 53)
+ * to a GxP `_AuditTrail` datapoint (`AuditTrail_ProcessMonitor`) and the operations
+ * history (`GET /history`), with the user the webserver forwards (its session's, else the
+ * one this page declares).
  *
  * Backend: `/api/process-monitor` (customer-webserver) → MSA vRPC → the
- * `processMonitor` JS manager (per-system agent + aggregator) → pmon.
+ * `processMonitor` JS manager (per-system agent + aggregator) → each host's agent over
+ * vRPC (`Control`, `ListLocal`) → pmon. The lists are read from the hosts at each refresh
+ * (issue 52); "Add" offers the manager types in a list (issue 51).
  */
 import '@wincc-oa/wui-ix-wrappers/wui-content-header/wui-content-header.js';
 import '@wincc-oa/wui-oarxjs-context/components/wui-context-generator/wui-context-generator.js';
@@ -59,11 +62,11 @@ import {
   serverLabel,
   type ConfirmIntent
 } from './process-monitor/i18n.js';
-import { addManager, controlManager, deleteInstance, isBridgeError, listInstances, removeManager, restartAll, updateManager } from './process-monitor/data/api.js';
+import { addManager, controlManager, deleteInstance, isBridgeError, listInstances, loadHistory, logsExported, removeManager, restartAll, updateManager } from './process-monitor/data/api.js';
 import { instanceState, isLive, lastSeenAgeMs, stateTone } from './process-monitor/instances.js';
-import { configChanges, deletePlan, formatUptime } from './process-monitor/managers.js';
-import { ensureStores, loadHistory, traceOperation } from './process-monitor/data/stores.js';
-import type { DeployResult, HistoryEntry, Instance, ManagerInfo, ManagerSpec, ManagerUpdateIntent } from './process-monitor/types.js';
+import { deletePlan, formatUptime } from './process-monitor/managers.js';
+import { ensureAuditDp } from './process-monitor/data/stores.js';
+import type { HistoryEntry, Instance, ManagerInfo, ManagerSpec, ManagerUpdateIntent } from './process-monitor/types.js';
 import './process-monitor/ui/pm-console.js';
 import './process-monitor/ui/pm-instances.js';
 import './process-monitor/ui/pm-manager-dialog.js';
@@ -94,6 +97,8 @@ export class WuiProcessMonitor extends LitElement {
   @state() private errorDetail = '';
   /** Add / remove applied by pmon but not written to config/progs (issue 35): kept until closed. */
   @state() private warningDetail = '';
+  /** An information that is not a failure (the processMonitor agent restarting itself). */
+  @state() private infoMsg: MultiLangString | null = null;
   /** True when that failure is the vRPC bridge (502/503) → the manager needs a restart. */
   @state() private bridgeDown = false;
   @state() private canEdit = canEditFleet();
@@ -136,7 +141,7 @@ export class WuiProcessMonitor extends LitElement {
         if (!granted && this.tab === 'logs') this.tab = 'console';
       })
     );
-    void ensureStores();
+    void ensureAuditDp();
     void this.refreshInstances();
     void this.refreshHistory();
     this.timer = globalThis.setInterval(() => {
@@ -172,13 +177,13 @@ export class WuiProcessMonitor extends LitElement {
             ${this.tabBtn('history', MSG.tabs.history)}
           </div>
 
-          ${this.renderError()}${this.renderWarning()}
+          ${this.renderError()}${this.renderWarning()}${this.renderInfo()}
           ${this.tab === 'console' ? this.renderConsole() : nothing}
           ${this.tab === 'upload'
             ? html`<pm-upload
                 .canEdit=${this.canEdit && this.roleDeploy}
                 .servers=${this.instances.map((i) => ({ system: i.system, hostname: i.hostname }))}
-                @wui:deployed=${(e: CustomEvent<DeployDetail>) => void this.onDeployed(e.detail)}
+                @wui:deployed=${() => void this.onDeployed()}
               ></pm-upload>`
             : nothing}
           ${this.tab === 'logs' && this.roleLogs
@@ -208,6 +213,11 @@ export class WuiProcessMonitor extends LitElement {
       ${localizeDir(this.errorMsg)}${this.errorDetail ? ` — ${this.errorDetail}` : ''}
       ${this.bridgeDown ? html`<div class="error-hint">${localizeDir(MSG.errors.bridge)}</div>` : nothing}
     </ix-message-bar>`;
+  }
+
+  private renderInfo(): TemplateResult | typeof nothing {
+    if (this.infoMsg === null) return nothing;
+    return html`<ix-message-bar class="error-bar" type="info" persistent @closedChange=${() => (this.infoMsg = null)}>${localizeDir(this.infoMsg)}</ix-message-bar>`;
   }
 
   private renderWarning(): TemplateResult | typeof nothing {
@@ -299,6 +309,7 @@ export class WuiProcessMonitor extends LitElement {
         : nothing}
       ${this.addDialogOpen
         ? html`<pm-manager-dialog
+            .runningExes=${(this.active?.managers ?? []).map((m) => m.name)}
             @wui:save=${(e: CustomEvent<ManagerSpec>) => void this.onAddManager(e.detail)}
             @wui:cancel=${() => (this.addDialogOpen = false)}
           ></pm-manager-dialog>`
@@ -399,62 +410,35 @@ export class WuiProcessMonitor extends LitElement {
     if (d) await this.onControl(d);
   }
 
+  /**
+   * Every operation is traced by the manager (audit line + History entry, issue 53): the page
+   * runs it, shows the outcome and reloads the list — read now from the host (issue 52).
+   */
   private async onControl(d: ControlIntent): Promise<void> {
-    const target = this.active;
-    const label = nodeLabel(target);
-    let ok = false;
+    this.warningDetail = '';
+    this.infoMsg = null;
     try {
-      const res = await controlManager(target?.dp ?? '', d.action, d.index);
-      ok = res.ok !== false;
+      const res = await controlManager(this.active?.dp ?? '', d.action, d.index, d.name);
       this.clearError();
+      // The processMonitor agent restarting itself answers first, then exits: pmon starts it again.
+      if (res.selfRestart) this.infoMsg = MSG.console.selfRestart;
     } catch (error) {
       this.reportError(MSG.errors.action, error);
     }
-    await traceOperation(
-      {
-        time: new Date().toISOString(),
-        action: 'manager',
-        detail: `${d.name} — ${d.action}`,
-        status: ok ? 'success' : 'failed',
-        host: hostName(),
-        system: label
-      },
-      { action: d.action.toUpperCase(), item: d.name, newval: d.action, reason: label }
-    );
-    await this.refreshInstances();
-    void this.refreshHistory();
+    await this.afterOperation();
   }
 
   private async onAddManager(spec: ManagerSpec): Promise<void> {
     this.addDialogOpen = false;
     this.warningDetail = '';
-    const target = this.active;
-    const label = nodeLabel(target);
-    let ok = false;
     try {
-      const res = await addManager(target?.dp ?? '', spec);
-      ok = res.ok !== false;
+      const res = await addManager(this.active?.dp ?? '', spec);
       this.clearError();
       this.warningDetail = res.warning ?? '';
     } catch (error) {
       this.reportError(MSG.errors.action, error);
     }
-    const parts = [spec.startMode, spec.options, spec.index === undefined ? '' : `#${spec.index}`].filter(Boolean);
-    const unsaved = ok && this.warningDetail ? ' — config/progs not updated' : '';
-    const detail = `${spec.name} — add (${parts.join(', ')})${unsaved}`;
-    await traceOperation(
-      {
-        time: new Date().toISOString(),
-        action: 'manager',
-        detail,
-        status: ok ? 'success' : 'failed',
-        host: hostName(),
-        system: label
-      },
-      { action: 'ADD', item: spec.name, newval: JSON.stringify(spec), reason: label }
-    );
-    await this.refreshInstances();
-    void this.refreshHistory();
+    await this.afterOperation();
   }
 
   private async onRemoveConfirm(): Promise<void> {
@@ -462,31 +446,14 @@ export class WuiProcessMonitor extends LitElement {
     this.removePending = null;
     if (!d) return;
     this.warningDetail = '';
-    const target = this.active;
-    const label = nodeLabel(target);
-    let ok = false;
     try {
-      const res = await removeManager(target?.dp ?? '', d.index, { name: d.name, stopFirst: d.stopFirst });
-      ok = res.ok !== false;
+      const res = await removeManager(this.active?.dp ?? '', d.index, { name: d.name, stopFirst: d.stopFirst, options: d.options });
       this.clearError();
       this.warningDetail = res.warning ?? '';
     } catch (error) {
       this.reportError(MSG.errors.action, error);
     }
-    const stop = d.stopFirst ? ' — stopped first' : '';
-    await traceOperation(
-      {
-        time: new Date().toISOString(),
-        action: 'manager',
-        detail: `${d.name} — remove (#${d.index})${stop}${ok && this.warningDetail ? ' — config/progs not updated' : ''}`,
-        status: ok ? 'success' : 'failed',
-        host: hostName(),
-        system: label
-      },
-      { action: 'REMOVE', item: d.name, oldval: JSON.stringify({ index: d.index, options: d.options, stopFirst: d.stopFirst }), reason: label }
-    );
-    await this.refreshInstances();
-    void this.refreshHistory();
+    await this.afterOperation();
   }
 
   /** The labelled "Delete manager" of the edit dialog: the same plan and confirmation as the trashcan. */
@@ -500,183 +467,68 @@ export class WuiProcessMonitor extends LitElement {
     this.removePending = { index: m.index, name: m.name, options: m.options, stopFirst: plan.stopFirst };
   }
 
-  /**
-   * Save a configuration change (issue 40) — traced with its before / after values to the audit
-   * trail and the History tab, whether pmon applied it or not.
-   */
+  /** Save a configuration change (issue 40); the manager traces its before / after values. */
   private async onUpdateManager(d: ManagerUpdateIntent): Promise<void> {
     this.editPending = null;
     this.warningDetail = '';
-    const target = this.active;
-    const label = nodeLabel(target);
-    let ok = false;
-    let restarted = false;
-    let after = d.config;
     try {
-      const res = await updateManager(target?.dp ?? '', d.index, d.name, d.config, d.restart);
-      ok = res.ok !== false;
-      restarted = res.detail?.restarted === true;
-      if (res.detail?.after) after = { ...d.config, ...res.detail.after };
+      const res = await updateManager(this.active?.dp ?? '', d.index, d.name, d.config, d.restart);
       this.clearError();
       this.warningDetail = res.warning ?? '';
     } catch (error) {
       this.reportError(MSG.errors.action, error);
     }
-    const changes = configChanges(d.before, d.config);
-    const notes = [restarted ? 'restarted' : '', ok && this.warningDetail ? 'config/progs not updated' : ''].filter(Boolean);
-    await traceOperation(
-      {
-        time: new Date().toISOString(),
-        action: 'manager-config',
-        detail: `${d.name} (#${d.index}) — edit: ${changes.join(', ') || 'no change'}${notes.length > 0 ? ` — ${notes.join(', ')}` : ''}`,
-        status: ok ? 'success' : 'failed',
-        host: hostName(),
-        system: label
-      },
-      {
-        action: 'EDIT',
-        item: d.name,
-        oldval: JSON.stringify({ index: d.index, ...d.before }),
-        newval: JSON.stringify({ index: d.index, ...after, restart: d.restart }),
-        reason: label
-      }
-    );
-    await this.refreshInstances();
-    void this.refreshHistory();
+    await this.afterOperation();
   }
 
   private async onRestartAll(): Promise<void> {
     this.restartAllPending = false;
-    const target = this.active;
-    const label = nodeLabel(target);
-    let ok = false;
     try {
-      const res = await restartAll(target?.dp ?? '');
-      ok = res.ok !== false;
+      await restartAll(this.active?.dp ?? '');
       this.clearError();
     } catch (error) {
       this.reportError(MSG.errors.action, error);
     }
-    await traceOperation(
-      {
-        time: new Date().toISOString(),
-        action: 'restart-all',
-        detail: 'all managers',
-        status: ok ? 'success' : 'failed',
-        host: hostName(),
-        system: label
-      },
-      { action: 'RESTART_ALL', item: 'project', reason: label }
-    );
-    await this.refreshInstances();
-    void this.refreshHistory();
+    await this.afterOperation();
   }
 
   /**
    * Delete an instance whose agent no longer answers (issue 39). The server pings it again and
-   * refuses when it answers or when it is its own node; either way the attempt is traced with
-   * who (the writer), the host, the system and the last-seen date.
+   * refuses when it answers or when it is its own node; the manager traces the attempt either way.
    */
   private async onDeleteInstanceConfirm(): Promise<void> {
     const target = this.deletePending;
     this.deletePending = null;
     if (!target) return;
-    const host = serverLabel(target);
-    let ok = false;
-    let reason = '';
     try {
-      const res = await deleteInstance(target.dp);
-      ok = res.ok !== false;
+      await deleteInstance(target.dp);
       this.clearError();
+      if (this.activeDp === target.dp) this.activeDp = '';
     } catch (error) {
-      reason = error instanceof Error ? error.message : String(error);
       this.reportError(MSG.errors.action, error);
     }
-    await traceOperation(
-      {
-        time: new Date().toISOString(),
-        action: 'delete-instance',
-        detail: `${host} — ${target.dp} — last seen ${target.updated || '?'}${reason ? ` — refused: ${reason}` : ''}`,
-        status: ok ? 'success' : 'failed',
-        host: hostName(),
-        system: cleanSystem(target.system)
-      },
-      {
-        action: 'DELETE_INSTANCE',
-        item: host,
-        oldval: JSON.stringify({ dp: target.dp, system: target.system, hostname: target.hostname, lastSeen: target.updated, state: target.status?.state ?? '' }),
-        reason: cleanSystem(target.system) || host
-      }
-    );
-    if (ok && this.activeDp === target.dp) this.activeDp = '';
-    await this.refreshInstances();
-    void this.refreshHistory();
+    await this.afterOperation();
   }
 
-  /** A logs export is traced like the other actions: who (the writer), which host, which files. */
+  /** An export of log files, made here from what the page read: the manager traces it. */
   private async onLogsExported(d: LogsExportDetail): Promise<void> {
-    const what = d.kind === 'raw' ? 'raw files' : `displayed entries (${d.format})`;
-    const bak = d.mergeBak ? ' [.bak merged]' : '';
-    await traceOperation(
-      {
-        time: new Date().toISOString(),
-        action: 'logs-export',
-        detail: `${d.files.join(', ')} — ${what}${bak}`,
-        status: 'success',
-        host: hostName(),
-        system: d.host
-      },
-      { action: 'EXPORT_LOGS', item: d.files.join(', '), newval: JSON.stringify({ kind: d.kind, format: d.format, mergeBak: d.mergeBak }), reason: d.host }
-    );
+    try {
+      await logsExported({ host: d.host, files: d.files, kind: d.kind, format: d.format, mergeBak: d.mergeBak });
+    } catch {
+      // the export is done; a lost trace is logged by the webserver
+    }
     void this.refreshHistory();
   }
 
-  private async onDeployed(d: DeployDetail): Promise<void> {
-    const cleared = d.clearFolders.length > 0 ? ` [cleared: ${d.clearFolders.join(', ')}]` : '';
-    const servers = (d.result.results ?? []).map((r) => `${r.hostname || r.system || 'local'}${r.ok ? '' : ' (FAILED)'}`).join(', ');
-    const skipped = [...new Set((d.result.results ?? []).flatMap((r) => r.skipped ?? []))];
-    const skippedNote = skipped.length > 0 ? ` [skipped: ${skipped.join(', ')}]` : '';
-    const restartNote = d.restart ? ' [restart]' : '';
-    const serversNote = servers ? ` → ${servers}` : '';
-    await traceOperation(
-      {
-        time: new Date().toISOString(),
-        action: 'deploy',
-        detail: `${d.fileName}${cleared}${skippedNote}${restartNote}${serversNote}`,
-        status: d.result.ok ? 'success' : 'failed',
-        host: hostName(),
-        system: servers
-      },
-      {
-        action: 'IMPORT',
-        item: d.fileName,
-        newval: JSON.stringify({ clearFolders: d.clearFolders, restart: d.restart, ok: d.result.ok, results: d.result.results })
-      }
-    );
+  /** The deploy is traced by the manager (file, folders cleared, servers and their outcome). */
+  private async onDeployed(): Promise<void> {
+    await this.afterOperation();
+  }
+
+  private async afterOperation(): Promise<void> {
     await this.refreshInstances();
     void this.refreshHistory();
   }
-}
-
-interface DeployDetail {
-  fileName: string;
-  clearFolders: string[];
-  restart: boolean;
-  result: DeployResult;
-}
-
-function hostName(): string {
-  return globalThis.location?.hostname ?? '';
-}
-
-/** Strip the trailing ':' from a WinCC OA system name for display/logging. */
-function cleanSystem(system: string): string {
-  return system.endsWith(':') ? system.slice(0, -1) : system;
-}
-
-/** Human label of a node (computer) for tracing — hostname, else system, else 'local'. */
-function nodeLabel(instance?: Instance): string {
-  return instance?.hostname || cleanSystem(instance?.system ?? '') || 'local';
 }
 
 // eslint-disable-next-line max-lines-per-function -- single stylesheet literal

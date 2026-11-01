@@ -4,7 +4,8 @@
 /**
  * Modal dialog for one entry of the pmon configuration of the active server.
  *
- * - **Add** (no `manager`): executable name (without .exe), start mode, restart settings
+ * - **Add** (no `manager`): the manager type from a list (issue 51: the usual executables and
+ *   those the host already runs, "Other…" for a free name, without .exe), start mode, restart settings
  *   (secKill, restart count, reset minutes), command line options and an optional insert
  *   position (appended at the end when empty). Emits `wui:save` with a {@link ManagerSpec}.
  * - **Edit** (issue 40, `manager` set, index ≥ 1): pre-filled with that entry; the executable
@@ -21,6 +22,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { dialogCore } from '@visuelconcept-winccoa/wui-kit/ui/dialog-styles.js';
 import { MSG, localize, localizeDir } from '../i18n.js';
 import { CONFIG_BOUNDS, boundedInt, configChanges, configOf, type BoundedKey } from '../managers.js';
+import { managerTypes, optionsHintOf, type ManagerType } from '../manager-types.js';
 import type { ManagerConfig, ManagerInfo, ManagerSpec, ManagerStartMode, ManagerUpdateIntent } from '../types.js';
 
 interface IxValueEvent {
@@ -28,6 +30,8 @@ interface IxValueEvent {
 }
 
 const START_MODES: ManagerStartMode[] = ['always', 'once', 'manual'];
+const OTHER = '__other__';
+const DEFAULT_TYPE = 'WCCOActrl';
 
 @customElement('pm-manager-dialog')
 export class PmManagerDialog extends LitElement {
@@ -39,6 +43,11 @@ export class PmManagerDialog extends LitElement {
   @property({ type: Boolean }) canRestart = false;
   /** `edit-managers` grant: the labelled delete button (the page checks `control` for a running one). */
   @property({ type: Boolean }) canDelete = false;
+  /** The executables the host's pmon runs (add): offered with the usual types. */
+  @property({ attribute: false }) runningExes: string[] = [];
+
+  /** Add: the type chosen in the list; OTHER shows the free name field. */
+  @state() private typeChoice = DEFAULT_TYPE;
 
   @state() private name = '';
   @state() private startMode: ManagerStartMode = 'always';
@@ -86,7 +95,7 @@ export class PmManagerDialog extends LitElement {
               ${this.editing
                 ? html`<ix-input .value=${`${this.name} (#${this.manager?.index ?? ''})`} readonly></ix-input>
                     <div class="hint">${localizeDir(t.nameReadOnly)}</div>`
-                : html`<ix-input placeholder="WCCOActrl" .value=${this.name} @valueChange=${(e: IxValueEvent) => (this.name = String(e.detail))}></ix-input>`}
+                : this.renderType()}
             </div>
 
             <div class="grid2">
@@ -119,7 +128,7 @@ export class PmManagerDialog extends LitElement {
             <div class="field">
               <label>${localizeDir(t.fOptions)}</label>
               <ix-input
-                placeholder="-f script.ctl -num 2"
+                placeholder=${this.editing ? '-f script.ctl -num 2' : optionsHintOf(this.exe, this.types) || '-f script.ctl -num 2'}
                 .value=${this.options}
                 @valueChange=${(e: IxValueEvent) => (this.options = String(e.detail))}
               ></ix-input>
@@ -151,6 +160,40 @@ export class PmManagerDialog extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  private get types(): ManagerType[] {
+    return managerTypes(this.runningExes);
+  }
+
+  /** The executable to add: the chosen type, or the free name under "Other…". */
+  private get exe(): string {
+    return this.typeChoice === OTHER ? this.name.trim() : this.typeChoice;
+  }
+
+  /** Add: the type list, then the free name field when "Other…" is chosen. */
+  private renderType(): TemplateResult {
+    const t = MSG.managerDialog;
+    const types = this.types;
+    const values = [...types.map((x) => x.exe), OTHER];
+    const index = Math.max(0, values.indexOf(this.typeChoice));
+    return html`<ix-select .selectedIndices=${[index]} @valueChange=${(e: CustomEvent<string | string[]>) => this.readType(e.detail)}>
+        ${types.map(
+          (x) => html`<ix-select-item
+            value=${x.exe}
+            label=${`${localize(x.label)} — ${x.exe}${x.inUse ? ` (${localize(t.typeInUse)})` : ''}`}
+          ></ix-select-item>`
+        )}
+        <ix-select-item value=${OTHER} label=${localize(t.typeOther)}></ix-select-item>
+      </ix-select>
+      ${this.typeChoice === OTHER
+        ? html`<ix-input placeholder="WCCOAmyTool" .value=${this.name} @valueChange=${(e: IxValueEvent) => (this.name = String(e.detail))}></ix-input>`
+        : nothing}`;
+  }
+
+  private readType(detail: string | string[]): void {
+    const value = Array.isArray(detail) ? detail[0] : detail;
+    this.typeChoice = typeof value === 'string' && value !== '' ? value : DEFAULT_TYPE;
   }
 
   private numberField(key: BoundedKey, label: typeof MSG.managerDialog.fSecKill, value: string, set: (v: string) => void): TemplateResult {
@@ -193,7 +236,7 @@ export class PmManagerDialog extends LitElement {
   private isValid(): boolean {
     if (this.config() === null) return false;
     if (this.editing) return this.hasChanges() || this.restart;
-    return /^[A-Za-z0-9_.-]+$/.test(this.name.trim().replace(/\.exe$/i, '')) && this.parsePosition() !== 0;
+    return /^[A-Za-z0-9_.-]+$/.test(this.exe.replace(/\.exe$/i, '')) && this.parsePosition() !== 0;
   }
 
   /** The typed position as a number, `undefined` to append, 0 when invalid/pmon. */
@@ -219,7 +262,7 @@ export class PmManagerDialog extends LitElement {
       return;
     }
     const spec: ManagerSpec = {
-      name: this.name.trim().replace(/\.exe$/i, ''),
+      name: this.exe.replace(/\.exe$/i, ''),
       startMode: config.startMode,
       options: config.options,
       index: this.parsePosition(),

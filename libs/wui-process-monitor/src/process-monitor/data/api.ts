@@ -6,7 +6,8 @@
  * MSA vRPC to the processMonitor manager). Manager list/control + chunked ZIP
  * upload & deploy. DPL import is handled by another module, not here.
  */
-import type { DeployResult, Instance, InstanceDeleteResult, LogFileInfo, LogReadFile, ManagerConfig, ManagerSpec, ManagerUpdateResult } from '../types.js';
+import type { DeployResult, HistoryEntry, Instance, InstanceDeleteResult, LogFileInfo, LogReadFile, ManagerConfig, ManagerSpec, ManagerUpdateResult } from '../types.js';
+import { clientUser } from './stores.js';
 
 const BASE = '/api/process-monitor';
 /** Raw bytes per upload chunk (base64-expanded ~1.33× on the wire). */
@@ -52,11 +53,12 @@ function getJson<T>(url: string): Promise<T> {
   return request<T>(url);
 }
 
-function postJson<T>(url: string, body: object): Promise<T> {
+/** A POST, with the connected user (`clientUser`): the manager traces every write with it. */
+async function postJson<T>(url: string, body: object): Promise<T> {
   return request<T>(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    body: JSON.stringify({ ...body, clientUser: await clientUser() })
   });
 }
 
@@ -76,8 +78,9 @@ export function deleteInstance(node: string): Promise<InstanceDeleteResult> {
 }
 
 /** `node` is the target node DP name (one per computer); '' / 'all' for the local/only one. */
-export function controlManager(node: string, action: 'start' | 'stop' | 'restart', index: number): Promise<{ ok: boolean }> {
-  return postJson(`${BASE}/manager`, { node, action, index });
+/** `name`: the manager's executable, for the trace. A restart of the processMonitor agent itself answers `selfRestart`. */
+export function controlManager(node: string, action: 'start' | 'stop' | 'restart', index: number, name = ''): Promise<{ ok: boolean; selfRestart?: boolean }> {
+  return postJson(`${BASE}/manager`, { node, action, index, name });
 }
 
 export function restartAll(node: string): Promise<{ ok: boolean }> {
@@ -98,7 +101,7 @@ export function addManager(node: string, spec: ManagerSpec): Promise<{ ok: boole
 export function removeManager(
   node: string,
   index: number,
-  opts: { name?: string; stopFirst?: boolean } = {}
+  opts: { name?: string; stopFirst?: boolean; options?: string } = {}
 ): Promise<{ ok: boolean; warning?: string }> {
   return postJson(`${BASE}/manager/remove`, { node, index, ...opts });
 }
@@ -109,6 +112,16 @@ export function removeManager(
  */
 export function updateManager(node: string, index: number, name: string, config: ManagerConfig, restart: boolean): Promise<ManagerUpdateResult> {
   return postJson(`${BASE}/manager/update`, { node, index, name, ...config, restart });
+}
+
+/** The History tab: the operations traced by the manager, newest first. */
+export async function loadHistory(): Promise<HistoryEntry[]> {
+  return (await getJson<{ entries: HistoryEntry[] }>(`${BASE}/history`)).entries ?? [];
+}
+
+/** An export of log files the page made: traced by the manager. */
+export function logsExported(detail: { host: string; files: string[]; kind: string; format: string; mergeBak: boolean }): Promise<{ ok: boolean }> {
+  return postJson(`${BASE}/logs/exported`, detail);
 }
 
 /** The log files of one node (`node` = its node DP; '' for the local one). */

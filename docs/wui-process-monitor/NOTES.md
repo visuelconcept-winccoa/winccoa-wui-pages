@@ -161,7 +161,7 @@ The page shows a coloured dot on each instance tab, a compact **Instances** list
 from `.updated` with its age, agent version, a hint past 7 days, "invalid instances only" filter;
 open by itself while an instance is invalid) and, for an instance that is not connected, its last
 snapshot greyed with a banner giving the state and the snapshot's age. Start/stop/restart and the
-configuration edits are hidden for an `agent-unreachable` instance (nobody reads its `.cmd`).
+configuration edits are hidden for an `agent-unreachable` instance (nobody answers its `Control`).
 
 **Delete instance** — role `process-monitor/manage-instances` (separate from manager control; open
 until the admin assigns groups): offered only for an `agent-unreachable` instance, never for the local
@@ -169,7 +169,7 @@ node. The confirmation ("Delete instance") names the host, the system and the la
 says that the DP and its history are deleted. `POST /instance/delete {node}` (behind `requireRole`)
 → `DeleteInstance` on the aggregator, which matches exactly one node DP (never "all", never a host
 guess), refuses the local node, **pings the node again** and refuses unless the agent is still
-unreachable (`code: local | answers | not-checkable`), then `dpDelete`s the node DP. The page traces
+unreachable (`code: local | answers | not-checkable`), then `dpDelete`s the node DP. The manager traces
 the attempt to the audit trail and the History tab (`DELETE_INSTANCE`: who, host, system, DP, last
 seen). An agent that starts again recreates its DP (`ensureNodeDp`), so deleting a valid instance by
 mistake is recoverable.
@@ -177,6 +177,44 @@ mistake is recoverable.
 Not verified on a real system: the MSA status of a call to a function an older agent does not
 register (mapped to `agent-too-old` by status code `Unimplemented` or by its text), and how a node of
 another system answers (always `not-checkable` when it fails).
+
+## Commands, lists and trace over vRPC — no datapoint as a transport (0.4.0, issues 51–53)
+
+Up to 0.3.0 three things went through datapoints. The aggregator wrote a command into the target
+host's `ProcessMonitor_Node_<host>.cmd` and polled `.cmdResult` every 300 ms. Every agent published
+its pmon list into `.pmon` every 3 s, and `ListManagers` read those snapshots. The **browser** wrote
+the History list (`ProcessMonitor_History`, read-modify-write through `/api/para`) and the audit
+line, after the operation. Since 0.4.0:
+
+| What | How |
+|---|---|
+| A command for a host (start, stop, restart, restart-all, add, remove, edit) | `Control({cmd})` on the host's `ProcessMonitor_<host>` service, answered when pmon is done (`node-commands.js` `routeCommand`); the local pmon for the aggregator's own host |
+| The managers of each host | read **now** in `ListManagers`: `ListLocal()` on each host's service, in parallel with the pings (4 s timeout), the local pmon for the aggregator's host (`collectManagers`). Fixes issue 52: the list right after an add is the real one |
+| A host that does not answer | its last list read by the aggregator, with its age — kept in the aggregator's **memory**: after a restart of the aggregator, an unreachable host shows no managers, only its "last seen" |
+| Audit line + History entry | written by the **manager** that runs the operation and knows its outcome (`history.js` `traceOf`), one at a time (no lost History entry with two pages open); same DPs and formats as before (`AuditTrail_ProcessMonitor`, `ProcessMonitor_History.json`, 200 entries). The History tab reads `GET /history` |
+| Who | the webserver forwards `actor` with every write: its session user when it has one, else the user the page declares (`clientUser` — the WebUI authenticates on its websocket, not on HTTP), and the host the page was served from |
+
+What stays in the node DP: `.hostname`, `.system` (written at the agent's start) and `.updated`, a
+**heartbeat every 60 s**. It is the registry the aggregator finds the hosts in (vRPC has no
+discovery), the "last seen" of a host, and the refresh trigger. `DeleteInstance` deletes it.
+
+**Restart of the agent itself** (`Control` restart of the manager whose pid is this process): the
+agent answers `{selfRestart: true}` first, then exits, and pmon starts it again. This is allowed
+only in start mode `always`; in any other mode it is refused, because pmon would not start it
+again. A stop of itself is refused. The page says the list comes back in a few seconds.
+
+**Transition (this version only).** An agent older than 0.4.0 answers `Unimplemented` to `Control`
+/ `ListLocal`. For it, the aggregator falls back to its `.cmd` / `.cmdResult` and to the `.pmon` it
+still publishes (`legacyCommand`, `legacySnapshot`, logged). Conversely, a 0.4.0 agent still
+listens on its own `.cmd` for an aggregator older than 0.4.0, but no longer publishes `.pmon`:
+**update the aggregator (the host of the webserver) first**. The fallbacks, the `.pmon` / `.cmd` /
+`.cmdResult` elements, `clearLegacyDeployData` and `cleanupLegacyDp` go with the next version.
+
+**Add a manager — type list (issue 51).** The dialog offers the usual executables (`manager-types.ts`:
+CTRL, `WCCOAjavascript` — the name pmon reports for a JavaScript manager —, UI, data, event,
+dist, redu, proxy, sim, NGA, ASCII and the usual drivers), plus the executables the host's pmon
+already runs, marked "on this host". "Other…" keeps the free name field. The options field shows a
+hint for the chosen type. Check the list against `<WinCC_OA>/bin` of the installed version.
 
 ## `wui dev` mock — `mock/api.mjs`
 
@@ -203,5 +241,5 @@ the module (`wui dev`, screenshots; wui-toolkit ≥ 0.20).
   multi-line CTRL errors) and `node_5.log` (lines without a header); `SRV-SCADA-02` has `PVSS_II.log`
   and `WCCOAmod6.log` (+ `.bak`). `WCCOActrl1.log` grows by one entry every 3 s since the mock started,
   for the live tail; reads follow the manager's tail / offset / `.bak` rules.
-- The History tab and the audit trail go through `/api/para` (`ProcessMonitor_History`,
-  `AuditTrail_ProcessMonitor`), not this mock.
+- `history` answers the operations the mock answered since it started (one entry per write, the
+  user the page declares), `logs/exported` is accepted and traced.

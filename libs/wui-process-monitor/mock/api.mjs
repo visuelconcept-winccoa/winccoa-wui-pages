@@ -234,7 +234,35 @@ const readLogs = (body, whole = false) => {
   };
 };
 
-export default {
+/**
+ * The History tab (issue 53): the manager traces every operation; the mock records one entry per
+ * write it answers, newest first, until the dev server restarts.
+ */
+const history = [];
+const TRACED = {
+  'POST /api/process-monitor/manager': (b) => ['manager', `${b?.name || `#${b?.index}`} — ${b?.action}`],
+  'POST /api/process-monitor/manager/add': (b) => ['manager', `${b?.name} — add (${[b?.startMode, b?.options].filter(Boolean).join(', ')})`],
+  'POST /api/process-monitor/manager/remove': (b) => ['manager', `${b?.name || '?'} — remove (#${b?.index})${b?.stopFirst ? ' — stopped first' : ''}`],
+  'POST /api/process-monitor/manager/update': (b) => ['manager-config', `${b?.name || '?'} (#${b?.index}) — edit`],
+  'POST /api/process-monitor/restart': () => ['restart-all', 'all managers'],
+  'POST /api/process-monitor/upload/finalize': () => ['deploy', 'mock-upload.zip'],
+  'POST /api/process-monitor/instance/delete': (b) => ['delete-instance', String(b?.node ?? '')],
+  'POST /api/process-monitor/logs/exported': (b) => ['logs-export', `${(b?.files ?? []).join(', ')} — ${b?.kind === 'raw' ? 'raw files' : `displayed entries (${b?.format})`}`]
+};
+
+function traced(route, handler) {
+  return (ctx) => {
+    const res = handler(ctx);
+    const [action, detail] = TRACED[route](ctx.body);
+    history.unshift({ time: new Date().toISOString(), action, detail, status: res?.ok === false ? 'failed' : 'success', host: 'localhost', user: ctx.body?.clientUser?.name || 'dev', system: 'SRV-SCADA-01' });
+    history.splice(200);
+    return res;
+  };
+}
+
+const routes = {
+  'GET /api/process-monitor/history': () => ({ ok: true, entries: history }),
+  'POST /api/process-monitor/logs/exported': () => ok,
   'GET /api/process-monitor/health': () => ({
     ok: true,
     service: 'process-monitor',
@@ -323,3 +351,5 @@ export default {
     return { ok: true, ...head };
   }
 };
+
+export default Object.fromEntries(Object.entries(routes).map(([route, handler]) => [route, TRACED[route] ? traced(route, handler) : handler]));

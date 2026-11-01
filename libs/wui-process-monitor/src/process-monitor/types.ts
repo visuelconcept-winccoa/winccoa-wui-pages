@@ -170,7 +170,7 @@ export interface HistoryEntry {
   status: 'success' | 'failed';
   /** Host that served the request. */
   host: string;
-  /** Connected user that performed the operation (filled by `traceOperation`). */
+  /** User who asked: the webserver session's, else the one the page declared (written by the manager). */
   user?: string;
   /** Target system name (multi-server); empty/undefined for the local system. */
   system?: string;
