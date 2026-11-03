@@ -41,8 +41,11 @@ interface StateInfo {
   running(key: string): boolean;
 }
 
-/** Beyond this distance only the dot is shown (no bubble / leader). */
+/** Beyond this distance only the dot is shown (no bubble / leader), or beyond
+ * BUBBLE_DIST_PER_SPAN times the building's longest side for a larger building, so
+ * that its whole view still shows the bubbles. */
 const BUBBLE_MAX_DIST = 280;
+const BUBBLE_DIST_PER_SPAN = 2;
 /** Gap (px) the dot sits above the bubble's bottom edge, and between bubbles. */
 const LEADER_LEN = 16;
 const DECLUTTER_GAP = 6;
@@ -52,6 +55,9 @@ const DEFAULT_BUBBLE_H = 40;
 /** Horizontal gap (px) kept between the building silhouette and the bubbles. */
 const BUILDING_MARGIN = 24;
 const EDGE_PAD = 2;
+/** Extra gap (px), added to BUILDING_MARGIN, between a group of machines and its bubbles
+ * in a close-in view (placeAroundAnchors). */
+const ANCHOR_MARGIN = 56;
 /** Minimum gutter (px) above/below the building needed to seat a row of bubbles. */
 const MIN_ROW_GUTTER = BUILDING_MARGIN + DEFAULT_BUBBLE_H;
 const HIDDEN = 'none';
@@ -399,7 +405,7 @@ export class LabelManager {
     dotEl.style.display = 'block';
     dotEl.style.transform = `translate(-50%, -50%) translate(${ax}px, ${ay}px)`;
 
-    if (dist > BUBBLE_MAX_DIST) {
+    if (dist > this.bubbleMaxDist()) {
       el.style.display = HIDDEN;
       leaderEl.style.display = HIDDEN;
       return null;
@@ -415,6 +421,13 @@ export class LabelManager {
     if (machine.toPlace) lines.unshift({ text: localize(MSG.toPlace.label), cls: TO_PLACE_CLS });
     this.renderLines(entry.linesEl, lines);
     return { entry, ax, ay };
+  }
+
+  /** Camera distance beyond which only the dots are shown, by the building's size. */
+  private bubbleMaxDist(): number {
+    const b = this.buildingBounds;
+    if (!b) return BUBBLE_MAX_DIST;
+    return Math.max(BUBBLE_MAX_DIST, BUBBLE_DIST_PER_SPAN * Math.max(b.x2 - b.x1, b.z2 - b.z1));
   }
 
   /** Mark (or unmark) the dot of a machine "à placer": ring, tooltip and accessible name. */
@@ -477,14 +490,17 @@ export class LabelManager {
   }
 
   /**
-   * Lay bubbles out as callouts around the building's projected silhouette.
+   * Lay bubbles out as callouts, by how far the view is from the atelier.
    *
-   * Primary placement is a vertical column in the left and right gutters (chosen
-   * by which side of the building centre the machine sits). When a column cannot
-   * hold all of its bubbles, the overflow is re-routed into horizontal rows in
-   * the gutters above and below the building — so bubbles stay aligned in rows
-   * or columns and never sit over the 3D scene. Falls back to the above-anchor
-   * layout when no building bounds are known.
+   * Seen from afar (room on screen for a column on each side of the building,
+   * whether or not its far end is cut off at the top or bottom), they sit outside its projected silhouette: a vertical column in the
+   * left and right gutters (chosen by which side of the building centre the
+   * machine sits); when a column cannot hold all of its bubbles, the overflow is
+   * re-routed into horizontal rows in the gutters above and below the building —
+   * so bubbles stay aligned in rows or columns and never sit over the 3D scene.
+   * Closer in, a side gutter is off-screen:
+   * the columns are set beside the machines instead (see placeAroundAnchors).
+   * Falls back to the above-anchor layout when no building bounds are known.
    */
   private placeBubbles(
     placeable: Placeable[],
@@ -494,6 +510,12 @@ export class LabelManager {
   ): void {
     if (!building) {
       this.placeBubblesAbove(placeable, width, height);
+      return;
+    }
+    const roomLeft = building.x - BUILDING_MARGIN - DEFAULT_BUBBLE_W >= EDGE_PAD;
+    const roomRight = building.x + building.w + BUILDING_MARGIN + DEFAULT_BUBBLE_W <= width - EDGE_PAD;
+    if (!(roomLeft && roomRight)) {
+      this.placeAroundAnchors(placeable, width, height);
       return;
     }
     const centreX = building.x + building.w / 2;
@@ -517,6 +539,36 @@ export class LabelManager {
     // spreader compresses it as a last resort.
     this.placeRow([...bottomFit.kept, ...bottomFit.rest], building, false, width, height);
     this.placeRow(topFit.kept, building, true, width, height);
+  }
+
+  /**
+   * Close-in view: the same callout columns, set beside the group of visible
+   * machines (left and right of its anchors' extent) at a fixed distance — far
+   * enough to leave the machines in sight, near enough to read which bubble is
+   * whose — rather than against the screen edge. What a column cannot hold goes
+   * above its machine.
+   */
+  private placeAroundAnchors(items: Placeable[], width: number, height: number): void {
+    if (items.length === 0) return;
+    const xs = items.map((it) => it.ax);
+    const ys = items.map((it) => it.ay);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    const group: Rect = {
+      x: minX - ANCHOR_MARGIN,
+      y: minY,
+      w: Math.max(...xs) - minX + 2 * ANCHOR_MARGIN,
+      h: Math.max(...ys) - minY
+    };
+    const centreX = group.x + group.w / 2;
+    const left = items.filter((it) => it.ax < centreX).sort((a, b) => a.ay - b.ay);
+    const right = items.filter((it) => it.ax >= centreX).sort((a, b) => a.ay - b.ay);
+    const leftFit = fitColumn(left, height);
+    const rightFit = fitColumn(right, height);
+    this.placeColumn(leftFit.kept, group, true, width, height);
+    this.placeColumn(rightFit.kept, group, false, width, height);
+    const rest = [...leftFit.overflow, ...rightFit.overflow];
+    if (rest.length > 0) this.placeBubblesAbove(rest, width, height);
   }
 
   /** Lay a side's bubbles out as a non-overlapping vertical column just beyond
