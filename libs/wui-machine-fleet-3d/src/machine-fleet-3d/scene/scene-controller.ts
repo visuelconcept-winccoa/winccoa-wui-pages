@@ -136,8 +136,15 @@ export class SceneController {
   private machinesGroup = new Group();
   /** Placement markers: a post with its label each. */
   private markersGroup = new Group();
-  /** Machine groups (MachineDef.group): a floor outline and the group's name each. */
+  /** Machine groups (MachineDef.group): a floor outline and the group's name each. Not shown at rest
+   * (it read as a selection): the hovered machine's group only, or all of them while a machine is
+   * being moved in edit mode (a guide to place it). */
   private groupsGroup = new Group();
+  /** Group of the machine under the pointer (no button pressed), or null. */
+  private hoveredGroup: string | null = null;
+  private hoverPending = false;
+  /** The pointer is over a machine's bubble or dot (its group is shown, whatever the canvas pick). */
+  private bubbleHover = false;
   private machines: Machine[] = [];
   /** Machines left out by the filter bar (kept across setMachines). */
   private filteredOut: ReadonlySet<string> = new Set();
@@ -184,17 +191,24 @@ export class SceneController {
     this.addLights();
     this.scene.add(this.machinesGroup);
     this.scene.add(this.markersGroup);
+    this.groupsGroup.visible = false;
     this.scene.add(this.groupsGroup);
     // Support gltfpack/meshopt-compressed GLBs (as the prototype did).
     this.gltfLoader.setMeshoptDecoder(MeshoptDecoder);
 
     this.orbit = new OrbitController(this.camera, canvas);
     this.labels = new LabelManager(overlay, onSelect);
+    this.labels.onHover = (id) => {
+      this.bubbleHover = id !== null;
+      this.setHoveredGroup(id === null ? null : (this.machines.find((m) => m.id === id)?.group ?? null));
+    };
 
     canvas.addEventListener('pointerdown', this.onCanvasDown);
     canvas.addEventListener('click', this.onCanvasClick);
     // Capture phase so a machine drag in edit mode pre-empts the orbit camera.
     canvas.addEventListener('pointerdown', this.onEditDown, { capture: true });
+    canvas.addEventListener('pointermove', this.onHoverMove);
+    canvas.addEventListener('pointerleave', this.onHoverLeave);
 
     this.resize();
   }
@@ -256,14 +270,19 @@ export class SceneController {
   }
 
   /**
-   * Outline the machines of each group (MachineDef.group) on the floor, with the group's name;
-   * only the machines shown count (hidden and filtered-out ones are left out).
+   * Outline the machines of a group (MachineDef.group) on the floor, with the group's name: every
+   * group while a machine is dragged, else the hovered machine's group only, else none. Only the
+   * machines shown count (hidden and filtered-out ones are left out).
    */
   private drawGroups(): void {
     clearOverlay(this.groupsGroup);
+    const only = this.dragging ? null : this.hoveredGroup;
+    this.groupsGroup.visible = this.dragging !== null || only !== null;
+    if (!this.groupsGroup.visible) return;
     const bounds = new Map<string, { x1: number; x2: number; z1: number; z2: number }>();
     for (const m of this.machines) {
       if (!m.group || m.hidden || this.filteredOut.has(m.id)) continue;
+      if (only !== null && m.group !== only) continue;
       const b = bounds.get(m.group) ?? { x1: Infinity, x2: -Infinity, z1: Infinity, z2: -Infinity };
       b.x1 = Math.min(b.x1, m.x - m.w / 2);
       b.x2 = Math.max(b.x2, m.x + m.w / 2);
@@ -483,6 +502,8 @@ export class SceneController {
     this.canvas.removeEventListener('pointerdown', this.onCanvasDown);
     this.canvas.removeEventListener('click', this.onCanvasClick);
     this.canvas.removeEventListener('pointerdown', this.onEditDown, { capture: true });
+    this.canvas.removeEventListener('pointermove', this.onHoverMove);
+    this.canvas.removeEventListener('pointerleave', this.onHoverLeave);
     window.removeEventListener('pointermove', this.onEditMove);
     window.removeEventListener('pointerup', this.onEditUp);
     this.orbit.dispose();
@@ -802,6 +823,24 @@ export class SceneController {
 
   private readonly onCanvasClick = (e: MouseEvent): void => this.handleCanvasClick(e);
 
+  /** The group outline of the machine under the pointer, picked once per frame at most. */
+  private readonly onHoverMove = (e: PointerEvent): void => {
+    if (e.buttons !== 0 || this.dragging || this.hoverPending) return;
+    this.hoverPending = true;
+    requestAnimationFrame(() => {
+      this.hoverPending = false;
+      if (!this.bubbleHover) this.setHoveredGroup(this.machineAt(e)?.group ?? null);
+    });
+  };
+
+  private readonly onHoverLeave = (): void => this.setHoveredGroup(null);
+
+  private setHoveredGroup(group: string | null): void {
+    if (group === this.hoveredGroup) return;
+    this.hoveredGroup = group;
+    this.drawGroups();
+  }
+
   private readonly onEditDown = (e: PointerEvent): void => {
     if (!this.editMode || e.button !== 0) return;
     const m = this.machineAt(e);
@@ -836,6 +875,8 @@ export class SceneController {
       m.x = this.dragPoint.x;
       m.z = this.dragPoint.z;
       this.dragMoved = true;
+      // The group outlines follow the machine while it moves.
+      this.drawGroups();
     }
   };
 
@@ -849,8 +890,8 @@ export class SceneController {
     if (marker && this.dragMoved) {
       this.onMarkerMove?.(String(marker.userData['markerId']), marker.position.x, marker.position.z);
     }
+    if (m) this.drawGroups();
     if (m && this.dragMoved) {
-      this.drawGroups();
       this.onMachineMove?.(m.id, m.mesh.position.x, m.mesh.position.z);
     }
   };

@@ -270,6 +270,9 @@ export class LabelManager {
     running: (key) => this.stateDefs.find((s) => s.key === key)?.running ?? key === 'ok'
   };
 
+  /** Fired when the pointer enters a machine's bubble or dot (its id), and leaves it (null). */
+  onHover: ((id: string | null) => void) | null = null;
+
   constructor(
     private readonly overlay: HTMLElement,
     private readonly onSelect: (id: string) => void
@@ -343,8 +346,14 @@ export class LabelManager {
     leaderEl.className = 'mf-leader';
     // Emphasise the leader line while the cursor is over this machine's dot or
     // bubble, so the dot↔bubble association is unambiguous when bubbles stack.
-    const onEnter = (): void => leaderEl.classList.add('mf-leader--hover');
-    const onLeave = (): void => leaderEl.classList.remove('mf-leader--hover');
+    const onEnter = (): void => {
+      leaderEl.classList.add('mf-leader--hover');
+      this.onHover?.(machine.id);
+    };
+    const onLeave = (): void => {
+      leaderEl.classList.remove('mf-leader--hover');
+      this.onHover?.(null);
+    };
     const dotEl = document.createElement('div');
     dotEl.className = 'mf-dot';
     dotEl.addEventListener('pointerdown', onPick);
