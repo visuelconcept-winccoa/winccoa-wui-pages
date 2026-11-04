@@ -318,6 +318,8 @@ export class SceneController {
   /** Switch the scene camera type: '3d' = perspective, '2d' = orthographic. */
   setCameraMode(mode: '3d' | '2d'): void {
     this.cameraMode = mode;
+    // 2D is a plan: zoom and pan only, the angle stays straight down (#57).
+    this.orbit.setPlanLock(mode === '2d');
   }
 
   /** Notified when the user rotates the camera (left-drag or nav arrows). */

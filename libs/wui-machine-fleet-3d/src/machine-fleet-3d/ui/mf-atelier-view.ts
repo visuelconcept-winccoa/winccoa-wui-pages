@@ -590,7 +590,7 @@ export class MfAtelierView extends LitElement {
     else this.goHome();
   }
 
-  /** User rotated the camera: leave 2D (plan) mode automatically, keeping angle. */
+  /** User rotated the camera — only possible in 3D (in 2D rotate inputs pan, #57). */
   private readonly onCameraRotate = (): void => {
     if (this.cameraMode === '2d') this.switchCamera('3d');
   };
@@ -1390,6 +1390,9 @@ export class MfAtelierView extends LitElement {
   }
 
   private applyViewpoint(vp: Viewpoint): void {
+    // A viewpoint seen at an angle cannot be shown in the plan: it returns to 3D (#57).
+    const topDown = Math.hypot(vp.pos[0] - vp.target[0], vp.pos[2] - vp.target[2]) < 0.1 * Math.abs(vp.pos[1] - vp.target[1]);
+    if (this.cameraMode === '2d' && !topDown) this.switchCamera('3d');
     this.scene?.applyView(vp.pos, vp.target);
   }
 
@@ -1748,6 +1751,9 @@ function viewStyles() {
       min-width: 0;
       overflow: hidden;
       border-radius: var(--theme-default-border-radius);
+    }
+    canvas:focus:not(:focus-visible) {
+      outline: none;
     }
     canvas {
       position: absolute;

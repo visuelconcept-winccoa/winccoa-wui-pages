@@ -29,6 +29,16 @@ const ZOOM_STEP = 0.0009;
 /** Glide durations (ms): a whole new viewpoint, then a single button step. */
 const GLIDE_VIEW = 900;
 const GLIDE_STEP = 320;
+/** Plan (2D) mode: the camera looks straight down, north up. */
+const PLAN_THETA = Math.PI / 2;
+const PLAN_PHI = MIN_PHI + 0.02;
+/** Screen pixels panned per radian of a rotate input (pad arrows) in plan mode. */
+const PLAN_PAN_PX = 300;
+/** Pixels panned / zoom factors of one key press. */
+const KEY_PAN_PX = 60;
+const KEY_ORBIT = 0.12;
+const KEY_ZOOM_IN = 0.85;
+const KEY_ZOOM_OUT = 1.18;
 
 const easeInOut = (t: number): number => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 /** The shortest way round from one azimuth to another. */
@@ -47,8 +57,8 @@ interface Glide {
 }
 
 export class OrbitController {
-  /** Fired when the user ROTATES the camera (left-drag or `orbitBy`) — not on
-   * pan/zoom. Used to leave the 2D (plan) mode automatically. */
+  /** Fired when the user ROTATES the camera (left-drag, `orbitBy`, arrow keys) — not on
+   * pan/zoom, and never in plan (2D) mode, where rotate inputs pan. */
   onRotate: (() => void) | null = null;
 
   private readonly target = new Vector3(0, 4, 0);
@@ -60,6 +70,8 @@ export class OrbitController {
   private readonly shownTarget = this.target.clone();
   private glide: Glide | null = null;
 
+  /** Plan (2D) mode: the angle is locked straight down; rotate inputs pan instead (#57). */
+  private planLock = false;
   private dragButton = -1;
   private lastX = 0;
   private lastY = 0;
@@ -73,6 +85,8 @@ export class OrbitController {
     el.addEventListener('pointerdown', this.onPointerDown);
     el.addEventListener('wheel', this.onWheel, { passive: false });
     el.addEventListener('contextmenu', this.onContext);
+    el.addEventListener('keydown', this.onKey);
+    if (el.tabIndex < 0) el.tabIndex = 0;
     this.apply();
   }
 
@@ -92,6 +106,18 @@ export class OrbitController {
   reset(): void {
     Object.assign(this.state, this.home);
     this.target.copy(this.homeTarget);
+    this.clamp();
+    this.glideTo(GLIDE_VIEW);
+  }
+
+  /**
+   * Plan (2D) mode: the camera looks straight down and stays so — wheel, drag, pad arrows and
+   * keys zoom and pan in the plan, never tilt or rotate it (#57).
+   */
+  setPlanLock(on: boolean): void {
+    this.planLock = on;
+    if (!on) return;
+    this.clamp();
     this.glideTo(GLIDE_VIEW);
   }
 
@@ -105,6 +131,11 @@ export class OrbitController {
 
   /** Rotate the camera (azimuth / polar deltas in radians). */
   orbitBy(dTheta: number, dPhi: number): void {
+    if (this.planLock) {
+      // In the plan a pad arrow moves the view that way (left arrow: see further left).
+      this.panBy(-dTheta * PLAN_PAN_PX, -dPhi * PLAN_PAN_PX);
+      return;
+    }
     this.state.theta += dTheta;
     this.state.phi += dPhi;
     this.clamp();
@@ -157,8 +188,22 @@ export class OrbitController {
     this.el.removeEventListener('pointerdown', this.onPointerDown);
     this.el.removeEventListener('wheel', this.onWheel);
     this.el.removeEventListener('contextmenu', this.onContext);
+    this.el.removeEventListener('keydown', this.onKey);
     window.removeEventListener('pointermove', this.onPointerMove);
     window.removeEventListener('pointerup', this.onPointerUp);
+  }
+
+  /** Keyboard (the canvas focused): arrows rotate in 3D and pan in the plan; + / - zoom. */
+  private handleKey(e: KeyboardEvent): void {
+    const arrows: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    const dir = arrows[e.key];
+    if (dir) {
+      if (this.planLock || e.shiftKey) this.panBy(-dir[0] * KEY_PAN_PX, -dir[1] * KEY_PAN_PX);
+      else this.orbitBy(dir[0] * KEY_ORBIT, dir[1] * KEY_ORBIT);
+    } else if (e.key === '+' || e.key === '=') this.zoomBy(KEY_ZOOM_IN);
+    else if (e.key === '-') this.zoomBy(KEY_ZOOM_OUT);
+    else return;
+    e.preventDefault();
   }
 
   private handleDown(e: PointerEvent): void {
@@ -175,7 +220,7 @@ export class OrbitController {
     const dy = e.clientY - this.lastY;
     this.lastX = e.clientX;
     this.lastY = e.clientY;
-    if (this.dragButton === 0) {
+    if (this.dragButton === 0 && !this.planLock) {
       this.state.theta -= dx * ORBIT_SPEED;
       this.state.phi -= dy * ORBIT_SPEED;
       if (dx !== 0 || dy !== 0) this.onRotate?.();
@@ -210,6 +255,10 @@ export class OrbitController {
   }
 
   private clamp(): void {
+    if (this.planLock) {
+      this.state.theta = PLAN_THETA;
+      this.state.phi = PLAN_PHI;
+    }
     this.state.phi = Math.min(MAX_PHI, Math.max(MIN_PHI, this.state.phi));
     this.state.radius = Math.min(MAX_RADIUS, Math.max(MIN_RADIUS, this.state.radius));
   }
@@ -258,6 +307,8 @@ export class OrbitController {
     this.stopGlide();
     Object.assign(this.state, this.shown);
     this.target.copy(this.shownTarget);
+    // Taken mid-way into the plan (a wheel during the glide to 2D): still straight down.
+    this.clamp();
   }
 
   private place(): void {
@@ -276,4 +327,5 @@ export class OrbitController {
   private readonly onPointerUp = (e: PointerEvent): void => this.handleUp(e);
   private readonly onWheel = (e: WheelEvent): void => this.handleWheel(e);
   private readonly onContext = (e: Event): void => e.preventDefault();
+  private readonly onKey = (e: KeyboardEvent): void => this.handleKey(e);
 }
