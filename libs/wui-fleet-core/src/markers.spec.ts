@@ -6,7 +6,7 @@
  * when it moves.
  */
 import { describe, expect, it } from 'vitest';
-import { followMarkers, placeFromMarker, type MachineDef, type PlacementMarker } from './types.js';
+import { followMarkers, nextMarkerNumber, placeFromMarker, type MachineDef, type PlacementMarker } from './types.js';
 
 const POST: PlacementMarker = { id: 'p7', label: 'C7', x: 20, z: -10 };
 const BASE: MachineDef = { id: 'M1', name: 'Four', type: 'cabinet', x: 0, z: 0, state: 'ok' };
@@ -30,5 +30,14 @@ describe('placement markers', () => {
     const [after] = followMarkers([m], [POST], []);
     expect('markerId' in after).toBe(false);
     expect([after.x, after.z]).toEqual([21, -9]);
+  });
+});
+
+describe('a new marker', () => {
+  it('is numbered one above the highest number already used', () => {
+    expect(nextMarkerNumber([])).toBe(1);
+    const at = (label: string): PlacementMarker => ({ id: label, label, x: 0, z: 0 });
+    expect(nextMarkerNumber([at('Repère 1'), at('Poteau 7'), at('Entrée')])).toBe(8);
+    expect(nextMarkerNumber([at('A'), at('B')])).toBe(3);
   });
 });

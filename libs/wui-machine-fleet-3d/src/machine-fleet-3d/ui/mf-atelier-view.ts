@@ -60,6 +60,7 @@ import {
   MAX_DASHBOARD_LINKS,
   appLinkHref,
   followMarkers,
+  nextMarkerNumber,
   isDisconnected,
   placeMachine,
   resolveConnected,
@@ -232,6 +233,10 @@ export class MfAtelierView extends LitElement {
   @state() private defaultViewpointId = '';
   @state() private viewpointsOpen = false;
   @state() private renamingVpId: string | null = null;
+  /** A new placement pin follows the pointer until a click on the floor drops it (#63). */
+  @state() private placingPin = false;
+  /** The pin being renamed / deleted, and where its editor opens (viewport px). */
+  @state() private pinEdit: { id: string; x: number; y: number; label: string } | null = null;
   @state() private vpRenameValue = '';
   @state() private glbResources: GlbResource[] = [];
   @state() private billboardResources: GlbResource[] = [];
@@ -294,7 +299,7 @@ export class MfAtelierView extends LitElement {
           <div class="viewport">
             <canvas></canvas>
             <div class="overlay-layer"></div>
-            ${this.renderViewpoints()} ${this.renderDetail()}
+            ${this.renderViewpoints()} ${this.renderPinEdit()} ${this.renderDetail()}
             ${this.hideNav ? nothing : html`${this.renderNav()} ${this.renderViewBar()}`}
           </div>
           ${this.renderPanel()}
@@ -371,6 +376,8 @@ export class MfAtelierView extends LitElement {
     if (store) this.scene.setResourceResolver((ref) => store.readResourceDataUrl(ref));
     this.scene.setOnMachineMove((id, x, z) => this.onMachineMove(id, x, z));
     this.scene.setOnMarkerMove((id, x, z) => this.onMarkerMove(id, x, z));
+    this.scene.setOnMarkerPick((id, sx, sy) => this.openPinEdit(id, sx, sy));
+    this.scene.setEditMode(this.editMode);
     this.scene.setOnRotate(this.onCameraRotate);
     this.scene.setBuilding(this.building);
     this.scene.setMarkers(this.markers);
@@ -485,7 +492,8 @@ export class MfAtelierView extends LitElement {
       <div class="toolbar">
         <ix-icon-button icon="undo" ghost title=${localize(MSG.view.resetView)} @click=${() => this.scene?.resetView()}></ix-icon-button>
         ${this.editable
-          ? html`<ix-icon-button icon="move" ghost title=${localize(MSG.view.editMode)} variant=${this.editMode ? 'primary' : 'secondary'} @click=${this.toggleEditMode}></ix-icon-button>`
+          ? html`<ix-icon-button icon="move" ghost title=${localize(MSG.view.editMode)} variant=${this.editMode ? 'primary' : 'secondary'} @click=${this.toggleEditMode}></ix-icon-button>
+              <ix-icon-button icon="location" ghost title=${localize(MSG.markers.place)} variant=${this.placingPin ? 'primary' : 'secondary'} @click=${this.placePin}></ix-icon-button>`
           : ''}
         ${this.renderDisplayToggles()}
         <ix-icon-button icon="screenshot" ghost title=${localize(MSG.view.viewpoints)} variant=${this.viewpointsOpen ? 'primary' : 'secondary'} @click=${() => (this.viewpointsOpen = !this.viewpointsOpen)}></ix-icon-button>
@@ -496,7 +504,7 @@ export class MfAtelierView extends LitElement {
           ? html`<ix-icon-button icon="upload" ghost title=${localize(MSG.view.importAtelier)} @click=${this.triggerImport}></ix-icon-button>`
           : ''}
         <ix-icon-button icon="download" ghost title=${localize(MSG.view.exportAtelier)} @click=${this.exportAtelier}></ix-icon-button>
-        <ix-icon-button icon="app-menu" ghost title=${localize(MSG.view.machinesAndMarkers)} variant=${this.panelOpen ? 'primary' : 'secondary'} @click=${() => (this.panelOpen = !this.panelOpen)}></ix-icon-button>
+        <ix-icon-button icon="app-menu" ghost title=${localize(MSG.view.machines)} variant=${this.panelOpen ? 'primary' : 'secondary'} @click=${() => (this.panelOpen = !this.panelOpen)}></ix-icon-button>
         ${this.renderFullscreenButton()}
       </div>
       <input
@@ -717,8 +725,6 @@ export class MfAtelierView extends LitElement {
           .canEdit=${this.editable}
           ?list-only=${this.displayOnly}
           .available=${this.displayOnly ? [] : this.catalog.filter((c) => !this.machines.some((m) => m.id === c.id))}
-          .markers=${this.markers}
-          @wui:markers=${(e: CustomEvent<{ markers: PlacementMarker[] }>) => this.onMarkers(e.detail.markers)}
           @wui:addfrom=${(e: CustomEvent<{ id: string }>) => this.onAddFrom(e.detail.id)}
           @wui:focus=${(e: CustomEvent<{ id: string }>) => this.onFocus(e.detail.id)}
           @wui:edit=${(e: CustomEvent<{ id: string }>) => this.onEdit(e.detail.id)}
@@ -1119,6 +1125,67 @@ export class MfAtelierView extends LitElement {
   private toggleEditMode(): void {
     this.editMode = !this.editMode;
     this.scene?.setEditMode(this.editMode);
+    if (!this.editMode) {
+      this.placingPin = false;
+      this.pinEdit = null;
+    }
+  }
+
+  /** Toolbar pin button: a new marker dropped by a click on the floor, then named (#63). */
+  private placePin(): void {
+    if (!this.scene) return;
+    if (this.placingPin) {
+      this.scene.cancelMarkerPlacement();
+      this.placingPin = false;
+      return;
+    }
+    if (!this.editMode) this.toggleEditMode();
+    this.pinEdit = null;
+    this.placingPin = true;
+    this.scene.startMarkerPlacement((x, z) => {
+      this.placingPin = false;
+      const label = `${localize(MSG.markers.newLabel)} ${nextMarkerNumber(this.markers)}`;
+      const marker = { id: `mk-${Date.now()}`, label, x, z };
+      this.onMarkers([...this.markers, marker]);
+    });
+  }
+
+  /** A pin clicked in edit mode: its editor (name, delete) opens beside it. */
+  private openPinEdit(id: string, clientX: number, clientY: number): void {
+    const marker = this.markers.find((k) => k.id === id);
+    if (!marker) return;
+    const rect = this.viewportEl.getBoundingClientRect();
+    this.pinEdit = { id, x: clientX - rect.left, y: clientY - rect.top, label: marker.label };
+  }
+
+  private renderPinEdit(): TemplateResult {
+    const edit = this.pinEdit;
+    if (!edit) return html``;
+    const commit = (): void => {
+      const label = edit.label.trim();
+      if (label) this.onMarkers(this.markers.map((k) => (k.id === edit.id ? { ...k, label } : k)));
+      this.pinEdit = null;
+    };
+    const remove = (): void => {
+      this.onMarkers(this.markers.filter((k) => k.id !== edit.id));
+      this.pinEdit = null;
+    };
+    return html`
+      <div class="pin-edit" style="left: ${edit.x + 12}px; top: ${edit.y + 12}px">
+        <ix-input
+          label=${localize(MSG.markers.label)}
+          .value=${edit.label}
+          @valueChange=${(e: CustomEvent<string>) => (this.pinEdit = { ...edit, label: String(e.detail) })}
+          @keydown=${(e: KeyboardEvent) => {
+            if (e.key === 'Enter') commit();
+            else if (e.key === 'Escape') this.pinEdit = null;
+          }}
+        ></ix-input>
+        <ix-icon-button ghost size="16" icon="check" title=${localize(MSG.view.confirm)} @click=${commit}></ix-icon-button>
+        <ix-icon-button ghost size="16" icon="trashcan" title=${localize(MSG.markers.remove)} @click=${remove}></ix-icon-button>
+        <ix-icon-button ghost size="16" icon="close" title=${localize(MSG.markers.close)} @click=${() => (this.pinEdit = null)}></ix-icon-button>
+      </div>
+    `;
   }
 
   private onMachineMove(id: string, x: number, z: number): void {
@@ -1223,8 +1290,8 @@ export class MfAtelierView extends LitElement {
   }
 
   /**
-   * New markers, edited in the drawer or dragged in edit mode: the machines bound to a moved
-   * marker follow it (SDS 2.2 SL-IMP-02).
+   * New markers, placed, renamed, deleted or dragged as pins in edit mode: the machines bound to a
+   * moved marker follow it (SDS 2.2 SL-IMP-02).
    */
   private onMarkers(markers: PlacementMarker[]): void {
     this.machines = followMarkers(this.machines, this.markers, markers);
@@ -1788,6 +1855,51 @@ function viewStyles() {
     .mode-btn--on {
       background: var(--theme-color-primary);
       color: var(--theme-color-primary-contrast, #fff);
+    }
+    .pin-edit {
+      position: absolute;
+      z-index: 10;
+      display: flex;
+      align-items: flex-end;
+      gap: 0.25rem;
+      background: var(--theme-color-2);
+      border: 1px solid var(--theme-color-soft-bdr);
+      border-radius: var(--theme-default-border-radius);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      padding: 0.5rem;
+    }
+    .mf-pin {
+      position: absolute;
+      top: 0;
+      left: 0;
+      display: flex;
+      align-items: flex-end;
+      gap: 0.2rem;
+      /* The icon's tip on the anchor: shifted up by its height, left by half its width. */
+      margin: -2rem 0 0 -1rem;
+      pointer-events: auto;
+      cursor: grab;
+      z-index: 7;
+      user-select: none;
+    }
+    .mf-pin__icon {
+      color: var(--theme-color-alarm);
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+    }
+    .mf-pin__name {
+      margin-bottom: 1.2rem;
+      padding: 0.05rem 0.35rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      white-space: nowrap;
+      color: var(--theme-color-std-text);
+      background: var(--theme-color-2);
+      border: 1px solid var(--theme-color-soft-bdr);
+      border-radius: var(--theme-default-border-radius);
+    }
+    .mf-pin--ghost {
+      opacity: 0.7;
+      pointer-events: none;
     }
     .viewpoints {
       position: absolute;

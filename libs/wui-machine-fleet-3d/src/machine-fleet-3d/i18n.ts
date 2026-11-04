@@ -39,15 +39,21 @@ export const MSG = {
   markers: {
     title: ml('Placement markers', "Repères d'implantation", 'Platzierungsmarken'),
     hint: ml(
-      'Posts or other landmarks of this view, moved in edit mode like the machines; a machine placed from one follows it',
-      "Poteaux ou autres repères de cette vue, déplacés en mode édition comme les machines ; une machine placée à partir d'un repère le suit",
-      'Pfosten oder andere Marken dieser Ansicht, im Bearbeitungsmodus wie die Maschinen verschoben; eine davon platzierte Maschine folgt ihr'
+      'Placement markers of this view (axis, workstation, landmark…), placed with the pin button and moved in edit mode; a machine placed from one follows it',
+      "Repères d'implantation de cette vue (axe, poste, borne…), posés avec le bouton repère et déplacés en mode édition ; une machine placée à partir d'un repère le suit",
+      'Platzierungsmarken dieser Ansicht (Achse, Arbeitsplatz, Orientierungspunkt…), mit der Marken-Schaltfläche gesetzt und im Bearbeitungsmodus verschoben; eine davon platzierte Maschine folgt ihr'
     ),
     label: ml('Marker', 'Repère', 'Marke'),
     add: ml('Add a marker', 'Ajouter un repère', 'Marke hinzufügen'),
     none: ml('No marker yet.', 'Aucun repère.', 'Noch keine Marke.'),
     remove: ml('Delete this marker', 'Supprimer ce repère', 'Diese Marke löschen'),
-    newLabel: ml('Post', 'Poteau', 'Pfosten'),
+    newLabel: ml('Marker', 'Repère', 'Marke'),
+    place: ml(
+      'Place a marker: click on the floor (Esc to cancel)',
+      'Poser un repère : cliquer sur le sol (Échap pour annuler)',
+      'Marke setzen: auf den Boden klicken (Esc zum Abbrechen)'
+    ),
+    close: ml('Close', 'Fermer', 'Schließen'),
     placeFrom: ml('Placed from marker', 'Placée à partir du repère', 'Platziert von Marke'),
     noMarker: ml('— free position —', '— position libre —', '— freie Position —'),
     offsetX: ml('Offset X (m)', 'Décalage X (m)', 'Versatz X (m)'),
@@ -167,7 +173,6 @@ export const MSG = {
       'Werkstatt exportieren (JSON)'
     ),
     machines: ml('Machines', 'Machines', 'Maschinen'),
-    machinesAndMarkers: ml('Machines and markers', 'Machines et repères', 'Maschinen und Marken'),
     tiltUp: ml('Tilt up', 'Incliner vers le haut', 'Nach oben neigen'),
     tiltDown: ml('Tilt down', 'Incliner vers le bas', 'Nach unten neigen'),
     rotateLeft: ml('Rotate left', 'Pivoter à gauche', 'Nach links drehen'),

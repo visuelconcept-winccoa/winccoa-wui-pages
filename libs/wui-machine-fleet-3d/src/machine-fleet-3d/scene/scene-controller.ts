@@ -16,7 +16,6 @@ import {
   BufferGeometry,
   CanvasTexture,
   Color,
-  CylinderGeometry,
   DirectionalLight,
   Fog,
   Group,
@@ -58,16 +57,14 @@ import {
 import { BuildingBuilder } from './building-builder.js';
 import { disposeObject } from './dispose.js';
 import { LabelManager } from './label-manager.js';
+import { MarkerPins } from './marker-pins.js';
 import { MachineMaterials } from './machine-materials.js';
 import { BILLBOARD_CHILD, applyBillboardTexture, buildMachine } from './machine-factory.js';
 import { OrbitController } from './orbit-controller.js';
 
 const ACCENT_POOL_SIZE = 6;
-/** Placement marker post: radius and height (m), colour; label width (m). */
-const MARKER_RADIUS = 0.25;
-const MARKER_HEIGHT = 4;
-const MARKER_COLOR = 0xF5_9E_0B;
-const MARKER_LABEL_W = 6;
+/** Width (m) of a group's name plate. */
+const GROUP_LABEL_W = 6;
 
 /** Machine group outline: margin around its machines and height (m), colour; label height. */
 const GROUP_MARGIN = 1.5;
@@ -75,7 +72,7 @@ const GROUP_Y = 0.05;
 const GROUP_COLOR = 0x00_66_CC;
 const GROUP_LABEL_Y = 1.2;
 
-/** Free an overlay group (outlines, posts and label sprites), then empty it. */
+/** Free an overlay group (outlines and label sprites), then empty it. */
 function clearOverlay(group: Group): void {
   group.traverse((obj) => {
     if (obj instanceof Sprite) {
@@ -89,8 +86,8 @@ function clearOverlay(group: Group): void {
   disposeObject(group);
 }
 
-/** A label texture for a placement marker or a group (text on a light plate). */
-function markerLabel(text: string): CanvasTexture {
+/** A label texture for a group (text on a light plate). */
+function groupLabel(text: string): CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = 256;
   canvas.height = 64;
@@ -133,24 +130,17 @@ export class SceneController {
   private buildingGroup: Group | null = null;
   private roofGroup: Group | null = null;
   private machinesGroup = new Group();
-  /** Placement markers: a post with its label each. */
-  private markersGroup = new Group();
-  /** Machine groups (MachineDef.group): a floor outline and the group's name each. Not shown at rest
-   * (it read as a selection): the hovered machine's group only, or all of them while a machine is
-   * being moved in edit mode (a guide to place it). */
+  /** Placement markers: location pins (HTML overlay), shown in edit mode. */
+  private readonly pins: MarkerPins;
+  /** Machine groups (MachineDef.group): a floor outline and the group's name each, shown only
+   * while a machine is dragged in edit mode, as a placement guide (#58). */
   private groupsGroup = new Group();
-  /** Group of the machine under the pointer (no button pressed), or null. */
-  private hoveredGroup: string | null = null;
-  private hoverPending = false;
-  /** The pointer is over a machine's bubble or dot (its group is shown, whatever the canvas pick). */
-  private bubbleHover = false;
   private machines: Machine[] = [];
   /** Machines left out by the filter bar (kept across setMachines). */
   private filteredOut: ReadonlySet<string> = new Set();
   private cfg: BuildingConfig = { ...DEFAULT_BUILDING };
   private resourceResolver: ((ref: string) => Promise<string | undefined>) | null = null;
   private onMachineMove: ((id: string, x: number, z: number) => void) | null = null;
-  private onMarkerMove: ((id: string, x: number, z: number) => void) | null = null;
 
   private raf = 0;
   private running = false;
@@ -160,8 +150,6 @@ export class SceneController {
   // --- edit-mode dragging ----------------------------------------------------
   private editMode = false;
   private dragging: Machine | null = null;
-  /** A placement marker being dragged in edit mode (its group: post and label). */
-  private draggingMarker: Object3D | null = null;
   private dragMoved = false;
   private readonly dragPlane = new Plane(new Vector3(0, 1, 0), 0);
   private readonly dragPoint = new Vector3();
@@ -189,7 +177,6 @@ export class SceneController {
 
     this.addLights();
     this.scene.add(this.machinesGroup);
-    this.scene.add(this.markersGroup);
     this.groupsGroup.visible = false;
     this.scene.add(this.groupsGroup);
     // Support gltfpack/meshopt-compressed GLBs (as the prototype did).
@@ -197,17 +184,12 @@ export class SceneController {
 
     this.orbit = new OrbitController(this.camera, canvas);
     this.labels = new LabelManager(overlay, onSelect);
-    this.labels.onHover = (id) => {
-      this.bubbleHover = id !== null;
-      this.setHoveredGroup(id === null ? null : (this.machines.find((m) => m.id === id)?.group ?? null));
-    };
+    this.pins = new MarkerPins(overlay, { camera: () => this.activeCamera(), canvas: () => this.canvas });
 
     canvas.addEventListener('pointerdown', this.onCanvasDown);
     canvas.addEventListener('click', this.onCanvasClick);
     // Capture phase so a machine drag in edit mode pre-empts the orbit camera.
     canvas.addEventListener('pointerdown', this.onEditDown, { capture: true });
-    canvas.addEventListener('pointermove', this.onHoverMove);
-    canvas.addEventListener('pointerleave', this.onHoverLeave);
 
     this.resize();
   }
@@ -235,27 +217,23 @@ export class SceneController {
     });
   }
 
-  /**
-   * Draw the atelier's placement markers: a thin post topped by its label, one group per marker
-   * (`userData.markerId`), dragged as a whole in edit mode.
-   */
+  /** The atelier's placement markers, drawn as location pins (shown in edit mode). */
   setMarkers(markers: readonly PlacementMarker[]): void {
-    clearOverlay(this.markersGroup);
-    for (const k of markers) {
-      const post = new Mesh(
-        new CylinderGeometry(MARKER_RADIUS, MARKER_RADIUS, MARKER_HEIGHT, 12),
-        new MeshStandardMaterial({ color: MARKER_COLOR })
-      );
-      post.position.set(0, MARKER_HEIGHT / 2, 0);
-      const label = new Sprite(new SpriteMaterial({ map: markerLabel(k.label), depthTest: false }));
-      label.scale.set(MARKER_LABEL_W, MARKER_LABEL_W / 4, 1);
-      label.position.set(0, MARKER_HEIGHT + 1, 0);
-      const marker = new Group();
-      marker.userData['markerId'] = k.id;
-      marker.position.set(k.x, 0, k.z);
-      marker.add(post, label);
-      this.markersGroup.add(marker);
-    }
+    this.pins.setMarkers(markers);
+  }
+
+  /** Place a new marker: a ghost pin follows the pointer until a click on the floor drops it. */
+  startMarkerPlacement(done: (x: number, z: number) => void): void {
+    this.pins.startPlacement(done);
+  }
+
+  cancelMarkerPlacement(): void {
+    this.pins.cancelPlacement();
+  }
+
+  /** Callback invoked when a pin is clicked (not dragged) in edit mode, to rename / delete it. */
+  setOnMarkerPick(fn: (id: string, screenX: number, screenY: number) => void): void {
+    this.pins.onPick = fn;
   }
 
   setMachines(defs: MachineDef[]): void {
@@ -270,18 +248,16 @@ export class SceneController {
 
   /**
    * Outline the machines of a group (MachineDef.group) on the floor, with the group's name: every
-   * group while a machine is dragged, else the hovered machine's group only, else none. Only the
+   * group while a machine is dragged, none otherwise. Only the
    * machines shown count (hidden and filtered-out ones are left out).
    */
   private drawGroups(): void {
     clearOverlay(this.groupsGroup);
-    const only = this.dragging ? null : this.hoveredGroup;
-    this.groupsGroup.visible = this.dragging !== null || only !== null;
+    this.groupsGroup.visible = this.dragging !== null;
     if (!this.groupsGroup.visible) return;
     const bounds = new Map<string, { x1: number; x2: number; z1: number; z2: number }>();
     for (const m of this.machines) {
       if (!m.group || m.hidden || this.filteredOut.has(m.id)) continue;
-      if (only !== null && m.group !== only) continue;
       const b = bounds.get(m.group) ?? { x1: Infinity, x2: -Infinity, z1: Infinity, z2: -Infinity };
       b.x1 = Math.min(b.x1, m.x - m.w / 2);
       b.x2 = Math.max(b.x2, m.x + m.w / 2);
@@ -303,8 +279,8 @@ export class SceneController {
         ]),
         new LineBasicMaterial({ color: GROUP_COLOR })
       );
-      const label = new Sprite(new SpriteMaterial({ map: markerLabel(name), depthTest: false }));
-      label.scale.set(MARKER_LABEL_W, MARKER_LABEL_W / 4, 1);
+      const label = new Sprite(new SpriteMaterial({ map: groupLabel(name), depthTest: false }));
+      label.scale.set(GROUP_LABEL_W, GROUP_LABEL_W / 4, 1);
       label.position.set((x1 + x2) / 2, GROUP_LABEL_Y, z1);
       this.groupsGroup.add(outline, label);
     }
@@ -413,6 +389,7 @@ export class SceneController {
   setEditMode(on: boolean): void {
     this.editMode = on;
     this.canvas.style.cursor = on ? 'move' : '';
+    this.pins.setVisible(on);
   }
 
   /** Callback invoked when a machine is dropped at a new (x, z) in edit mode. */
@@ -422,7 +399,7 @@ export class SceneController {
 
   /** Callback invoked when a placement marker is dropped at a new (x, z) in edit mode. */
   setOnMarkerMove(fn: (id: string, x: number, z: number) => void): void {
-    this.onMarkerMove = fn;
+    this.pins.onMove = fn;
   }
 
   /** Push live datapoint-driven updates (state / KPI / production info) onto a machine. */
@@ -499,12 +476,11 @@ export class SceneController {
     this.canvas.removeEventListener('pointerdown', this.onCanvasDown);
     this.canvas.removeEventListener('click', this.onCanvasClick);
     this.canvas.removeEventListener('pointerdown', this.onEditDown, { capture: true });
-    this.canvas.removeEventListener('pointermove', this.onHoverMove);
-    this.canvas.removeEventListener('pointerleave', this.onHoverLeave);
     window.removeEventListener('pointermove', this.onEditMove);
     window.removeEventListener('pointerup', this.onEditUp);
     this.orbit.dispose();
     this.labels.dispose();
+    this.pins.dispose();
     if (this.buildingGroup) disposeObject(this.buildingGroup);
     disposeObject(this.machinesGroup);
     this.materials.dispose();
@@ -755,18 +731,6 @@ export class SceneController {
     return undefined;
   }
 
-  /** The placement marker (its group) under the pointer: its post or its label. */
-  private markerAt(e: MouseEvent): Object3D | undefined {
-    this.setPointer(e);
-    this.raycaster.setFromCamera(this.pointer, this.activeCamera());
-    for (const hit of this.raycaster.intersectObjects(this.markersGroup.children, true)) {
-      let obj: Object3D | null = hit.object;
-      while (obj && obj.userData['markerId'] == null) obj = obj.parent;
-      if (obj) return obj;
-    }
-    return undefined;
-  }
-
   /** The camera used for rendering / projection (orthographic in 2D mode). */
   private activeCamera(): PerspectiveCamera | OrthographicCamera {
     return this.cameraMode === '2d' ? this.orthoCamera : this.camera;
@@ -797,6 +761,7 @@ export class SceneController {
     const cam = this.activeCamera();
     this.faceBillboards();
     this.labels.update(cam, this.host.clientWidth, this.host.clientHeight);
+    this.pins.update(cam, this.host.clientWidth, this.host.clientHeight);
     this.renderer.render(this.scene, cam);
   }
 
@@ -820,34 +785,13 @@ export class SceneController {
 
   private readonly onCanvasClick = (e: MouseEvent): void => this.handleCanvasClick(e);
 
-  /** The group outline of the machine under the pointer, picked once per frame at most. */
-  private readonly onHoverMove = (e: PointerEvent): void => {
-    if (e.buttons !== 0 || this.dragging || this.hoverPending) return;
-    this.hoverPending = true;
-    requestAnimationFrame(() => {
-      this.hoverPending = false;
-      if (!this.bubbleHover) this.setHoveredGroup(this.machineAt(e)?.group ?? null);
-    });
-  };
-
-  private readonly onHoverLeave = (): void => this.setHoveredGroup(null);
-
-  private setHoveredGroup(group: string | null): void {
-    if (group === this.hoveredGroup) return;
-    this.hoveredGroup = group;
-    this.drawGroups();
-  }
-
   private readonly onEditDown = (e: PointerEvent): void => {
     if (!this.editMode || e.button !== 0) return;
     const m = this.machineAt(e);
-    // No machine under the pointer: a placement marker, moved the same way.
-    const marker = m ? undefined : this.markerAt(e);
-    if (!m && !marker) return;
-    this.dragging = m ?? null;
-    this.draggingMarker = marker ?? null;
+    if (!m) return;
+    this.dragging = m;
     this.dragMoved = false;
-    this.dragPlane.constant = m ? -m.mesh.position.y : 0; // floor plane at the machine's height
+    this.dragPlane.constant = -m.mesh.position.y; // floor plane at the machine's height
     e.stopImmediatePropagation();
     e.preventDefault();
     window.addEventListener('pointermove', this.onEditMove);
@@ -856,17 +800,10 @@ export class SceneController {
 
   private readonly onEditMove = (e: PointerEvent): void => {
     const m = this.dragging;
-    const marker = this.draggingMarker;
-    if (!m && !marker) return;
+    if (!m) return;
     this.setPointer(e);
     this.raycaster.setFromCamera(this.pointer, this.activeCamera());
-    if (marker && this.raycaster.ray.intersectPlane(this.dragPlane, this.dragPoint)) {
-      marker.position.x = this.dragPoint.x;
-      marker.position.z = this.dragPoint.z;
-      this.dragMoved = true;
-      return;
-    }
-    if (m && this.raycaster.ray.intersectPlane(this.dragPlane, this.dragPoint)) {
+    if (this.raycaster.ray.intersectPlane(this.dragPlane, this.dragPoint)) {
       m.mesh.position.x = this.dragPoint.x;
       m.mesh.position.z = this.dragPoint.z;
       m.x = this.dragPoint.x;
@@ -879,14 +816,9 @@ export class SceneController {
 
   private readonly onEditUp = (): void => {
     const m = this.dragging;
-    const marker = this.draggingMarker;
     this.dragging = null;
-    this.draggingMarker = null;
     window.removeEventListener('pointermove', this.onEditMove);
     window.removeEventListener('pointerup', this.onEditUp);
-    if (marker && this.dragMoved) {
-      this.onMarkerMove?.(String(marker.userData['markerId']), marker.position.x, marker.position.z);
-    }
     if (m) this.drawGroups();
     if (m && this.dragMoved) {
       this.onMachineMove?.(m.id, m.mesh.position.x, m.mesh.position.z);

@@ -982,3 +982,13 @@ export function followMarkers<T extends MachineDef>(
     return { ...m, x: m.x + now.x - old.x, z: m.z + now.z - old.z };
   });
 }
+
+/** Number of a new marker's default name ("Repère N"): one above the highest N already used. */
+export function nextMarkerNumber(markers: readonly PlacementMarker[]): number {
+  let max = markers.length;
+  for (const k of markers) {
+    const n = /(\d+)\s*$/.exec(k.label);
+    if (n) max = Math.max(max, Number(n[1]));
+  }
+  return max + 1;
+}

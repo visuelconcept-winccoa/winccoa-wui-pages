@@ -81,6 +81,14 @@ DP and type provisioning/CRUD via the backend's **PARA REST API** (see Backend),
   operation | param:<key> | kpi:<id>`. `resolveDisplaySlots(m)` builds the ordered
   catalog; items missing from `display` are auto-added (new params/KPIs
   appear on their own). The old scattered visibility toggles have been removed.
+- **Placement markers** (`Atelier.markers`, `MachineDef.markerId`, SDS 2.2 SL-IMP-02) are
+  **location pins** (`scene/marker-pins.ts`): HTML overlay elements projected from their floor
+  point, the same size on screen at any zoom — no 3D post. They show in **edit mode only**. The
+  toolbar's pin button (role `edit`) places one: a ghost pin follows the pointer, a click on the
+  floor drops it ("Repère N"); in edit mode a pin is dragged, and a click on it opens its editor
+  (name, delete). A machine is bound to a marker in the machine dialog (marker + offset X / Z) and
+  follows it. The work-centre outlines (`MachineDef.group`) show only while a machine is dragged
+  (#58, #63).
 - **Each user's own choices** (added 2026-11): the tag and state filters, the display toggles (roof,
   labels, alerts only — outside edit mode they are the viewer's own, over the atelier's; in edit
   mode they change the atelier's), the machine dashboard filter, and the selections of the stop
