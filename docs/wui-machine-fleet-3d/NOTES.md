@@ -81,6 +81,14 @@ DP and type provisioning/CRUD via the backend's **PARA REST API** (see Backend),
   operation | param:<key> | kpi:<id>`. `resolveDisplaySlots(m)` builds the ordered
   catalog; items missing from `display` are auto-added (new params/KPIs
   appear on their own). The old scattered visibility toggles have been removed.
+- **Bubbles** (`scene/label-manager.ts`): each sits right above its machine (#55), decluttered
+  every frame — the cheapest free spot around its own (up first, then sideways, below last; the
+  other machines' dots kept clear), a leader only for a bubble moved away. A third larger than the
+  first ones, every size in `em`, so `MachineDef.bubbleScale` (0.6–2.5) scales the whole bubble;
+  in edit mode a bubble is dragged to a spot of its own (`MachineDef.bubbleOffset`, px from the
+  dot, kept at any zoom) and resized by its corner, ↺ back to automatic (#59).
+  `DisplayConfig.bubblesOnHover` (edit toolbar, eye — the atelier's, for everyone): a bubble shows
+  only while the pointer is over the machine's on-screen box + 16 px, or its dot / bubble (#56).
 - **Placement markers** (`Atelier.markers`, `MachineDef.markerId`, SDS 2.2 SL-IMP-02) are
   **location pins** (`scene/marker-pins.ts`): HTML overlay elements projected from their floor
   point, the same size on screen at any zoom — no 3D post. They show in **edit mode only**. The

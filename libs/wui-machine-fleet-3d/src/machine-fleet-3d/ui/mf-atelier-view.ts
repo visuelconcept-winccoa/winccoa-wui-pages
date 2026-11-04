@@ -378,6 +378,7 @@ export class MfAtelierView extends LitElement {
     this.scene.setOnMachineMove((id, x, z) => this.onMachineMove(id, x, z));
     this.scene.setOnMarkerMove((id, x, z) => this.onMarkerMove(id, x, z));
     this.scene.setOnMarkerPick((id, sx, sy) => this.openPinEdit(id, sx, sy));
+    this.scene.setOnBubbleEdit((id, patch) => this.onBubbleEdit(id, patch));
     this.scene.setEditMode(this.editMode);
     this.scene.setOnRotate(this.onCameraRotate);
     this.scene.setBuilding(this.building);
@@ -511,6 +512,7 @@ export class MfAtelierView extends LitElement {
         <ix-icon-button icon="undo" ghost title=${localize(MSG.view.resetView)} @click=${() => this.scene?.resetView()}></ix-icon-button>
         ${this.editable
           ? html`<ix-icon-button icon="move" ghost title=${localize(MSG.view.editMode)} variant=${this.editMode ? 'primary' : 'secondary'} @click=${this.toggleEditMode}></ix-icon-button>
+              <ix-icon-button icon="eye" ghost title=${localize(MSG.bubble.hoverMode)} variant=${this.display.bubblesOnHover ? 'primary' : 'secondary'} @click=${this.toggleBubblesOnHover}></ix-icon-button>
               <ix-icon-button icon="location" ghost title=${localize(MSG.markers.place)} variant=${this.placingPin ? 'primary' : 'secondary'} @click=${this.placePin}></ix-icon-button>`
           : ''}
         ${this.renderDisplayToggles()}
@@ -1333,6 +1335,29 @@ export class MfAtelierView extends LitElement {
     this.scene?.setRoofVisible(shown.roof);
     this.scene?.setLabelsEnabled(shown.labels);
     this.scene?.setAlertOnly(shown.alertOnly);
+    // The atelier's own setting, never a viewer's (#56).
+    this.scene?.setBubblesOnHover(this.display.bubblesOnHover === true);
+  }
+
+  /** A bubble moved / resized by hand in edit mode, or back to automatic (null): saved (#59). */
+  private onBubbleEdit(id: string, patch: { bubbleScale?: number | null; bubbleOffset?: [number, number] | null }): void {
+    this.machines = this.machines.map((m) => {
+      if (m.id !== id) return m;
+      const next = { ...m };
+      if (patch.bubbleScale === null) delete next.bubbleScale;
+      else if (patch.bubbleScale !== undefined) next.bubbleScale = patch.bubbleScale;
+      if (patch.bubbleOffset === null) delete next.bubbleOffset;
+      else if (patch.bubbleOffset !== undefined) next.bubbleOffset = patch.bubbleOffset;
+      return next;
+    });
+    this.scheduleSave();
+  }
+
+  /** Edit toolbar: bubbles always shown, or on hover only — for this atelier and everyone (#56). */
+  private toggleBubblesOnHover(): void {
+    this.display = { ...this.display, bubblesOnHover: !this.display.bubblesOnHover };
+    this.applyDisplay();
+    this.scheduleSave();
   }
 
   private rebuildMachines(): void {
@@ -1916,6 +1941,41 @@ function viewStyles() {
     .stat--offline {
       --c: var(--theme-color-neutral);
     }
+    .mf-label__resize,
+    .mf-label__reset {
+      display: none;
+    }
+    .mf-label--editable {
+      cursor: move;
+      overflow: visible;
+    }
+    .mf-label--editable .mf-label__resize {
+      display: block;
+      position: absolute;
+      right: -0.3rem;
+      bottom: -0.3rem;
+      width: 0.8rem;
+      height: 0.8rem;
+      cursor: nwse-resize;
+      background: var(--theme-color-primary);
+      border-radius: 2px;
+    }
+    .mf-label--editable.mf-label--manual .mf-label__reset {
+      display: block;
+      position: absolute;
+      top: -0.6rem;
+      right: -0.6rem;
+      width: 1.2rem;
+      height: 1.2rem;
+      padding: 0;
+      font-size: 0.8rem;
+      line-height: 1;
+      cursor: pointer;
+      color: var(--theme-color-std-text);
+      background: var(--theme-color-2);
+      border: 1px solid var(--theme-color-soft-bdr);
+      border-radius: 50%;
+    }
     .pin-edit {
       position: absolute;
       z-index: 10;
@@ -2152,7 +2212,7 @@ function viewStyles() {
       top: 0;
       left: 0;
       box-sizing: border-box;
-      width: 9.5rem;
+      width: 13.194em;
       pointer-events: auto;
       cursor: pointer;
       z-index: 7;
@@ -2160,15 +2220,17 @@ function viewStyles() {
       border: 1px solid var(--mf-state, var(--theme-color-primary));
       border-left: 3px solid var(--mf-state, var(--theme-color-primary));
       border-radius: var(--theme-default-border-radius);
-      padding: 0.45rem 0.55rem;
-      font-size: 0.72rem;
+      padding: 0.625em 0.764em;
+      /* One third larger than the first 0.72rem (#59); every size inside is in em, so a
+       * machine's own bubble scale (--mf-bubble-scale) enlarges the whole bubble. */
+      font-size: calc(0.96rem * var(--mf-bubble-scale, 1));
       line-height: 1.35;
       overflow: hidden;
       color: var(--theme-color-std-text);
       box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
       display: flex;
       flex-direction: column;
-      gap: 0.3rem;
+      gap: 0.417em;
     }
     .mf-label__name {
       font-weight: 600;
@@ -2180,14 +2242,14 @@ function viewStyles() {
       display: flex;
       flex-direction: column;
       align-items: flex-start;
-      gap: 0.3rem;
+      gap: 0.417em;
       width: 100%;
     }
     .mf-label__badge:not(:empty) {
       align-self: flex-start;
-      padding: 0.1rem 0.45rem;
-      border-radius: 0.7rem;
-      font-size: 0.68rem;
+      padding: 0.139em 0.625em;
+      border-radius: 0.972em;
+      font-size: 0.944em;
       font-weight: 600;
       color: var(--mf-state, var(--theme-color-primary));
       border: 1px solid var(--mf-state, var(--theme-color-primary));
@@ -2195,9 +2257,9 @@ function viewStyles() {
     }
     .mf-label__to-place {
       align-self: flex-start;
-      padding: 0.1rem 0.45rem;
-      border-radius: 0.3rem;
-      font-size: 0.68rem;
+      padding: 0.139em 0.625em;
+      border-radius: 0.417em;
+      font-size: 0.944em;
       font-weight: 700;
       color: var(--theme-color-std-text);
       border: 1px dashed var(--theme-color-warning);
@@ -2208,7 +2270,7 @@ function viewStyles() {
       outline-offset: 2px;
     }
     .mf-label__cause:not(:empty) {
-      font-size: 0.66rem;
+      font-size: 0.917em;
       font-weight: 600;
       color: var(--mf-state, var(--theme-color-std-text));
       max-width: 100%;
@@ -2226,9 +2288,9 @@ function viewStyles() {
     }
     .mf-label__trs:not(:empty) {
       align-self: flex-start;
-      padding: 0.1rem 0.45rem;
-      border-radius: 0.3rem;
-      font-size: 0.72rem;
+      padding: 0.139em 0.625em;
+      border-radius: 0.417em;
+      font-size: 1em;
       font-weight: 700;
       letter-spacing: 0.02em;
       color: var(--theme-color-std-text);
@@ -2237,9 +2299,9 @@ function viewStyles() {
     }
     .mf-label__prod-line {
       align-self: stretch;
-      padding: 0.2rem 0.4rem;
+      padding: 0.278em 0.556em;
       border-left: 2px solid var(--theme-color-primary);
-      border-radius: 0.2rem;
+      border-radius: 0.278em;
       background: color-mix(in srgb, var(--theme-color-primary) 14%, transparent);
       font-weight: 600;
       font-variant-numeric: tabular-nums;

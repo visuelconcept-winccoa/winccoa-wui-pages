@@ -539,7 +539,16 @@ export interface DisplayConfig {
   roof: boolean;
   labels: boolean;
   alertOnly: boolean;
+  /**
+   * A machine's bubble shows only while the pointer is over the machine (or its dot or bubble),
+   * not always (#56). Set per atelier, by the role `edit`; never a viewer's own choice.
+   */
+  bubblesOnHover?: boolean;
 }
+
+/** Bounds of a machine's bubble scale (#59). */
+export const BUBBLE_SCALE_MIN = 0.6;
+export const BUBBLE_SCALE_MAX = 2.5;
 
 export const DEFAULT_DISPLAY: DisplayConfig = {
   roof: true,
@@ -634,6 +643,13 @@ export interface MachineDef {
    * the machine list; cleared as soon as the user moves it ({@link placeMachine}).
    */
   toPlace?: boolean;
+  /** The machine's bubble size, as a factor of the default one (#59). Absent = 1. */
+  bubbleScale?: number;
+  /**
+   * The machine's bubble placed by hand (#59): screen offset (px) from the machine's dot to the
+   * bubble's bottom centre, kept at any zoom. Absent = laid out automatically above the machine.
+   */
+  bubbleOffset?: [number, number];
   /** Rotation about the scene's vertical axis, in degrees (multiple of 45). */
   rotationY?: number;
   /** Custom paint colour applied to the model's principal parts (`#RRGGBB`). */

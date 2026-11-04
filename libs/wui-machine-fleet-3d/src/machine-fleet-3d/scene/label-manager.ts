@@ -9,8 +9,11 @@
  *  - a **bubble** card (name / state badge / stop cause / KPIs); and
  *  - a thin **leader line** connecting the dot to its bubble.
  *
- * Bubbles are decluttered every frame (greedy vertical stacking) so they don't
- * overlap. Far machines collapse to the dot only.
+ * Each bubble sits right above its machine (#55); bubbles are decluttered every frame (a
+ * greedy search of the nearest free spot, upward first, then sideways) so they never overlap,
+ * and a leader is drawn only for a bubble moved away from its machine. Far machines collapse to
+ * the dot only. In edit mode a bubble can be dragged to a spot of its own and resized (#59);
+ * in hover mode a bubble shows only while the pointer is over its machine (#56).
  */
 import { Vector3, type Camera } from 'three';
 import {
@@ -19,6 +22,8 @@ import {
   BUILTIN_STATES,
   KPI_TYPE_INFO,
   UNKNOWN_STATE_COLOR,
+  BUBBLE_SCALE_MAX,
+  BUBBLE_SCALE_MIN,
   formatParamValue,
   isDisconnected,
   resolveDisplaySlots,
@@ -41,20 +46,28 @@ interface StateInfo {
  * that its whole view still shows the bubbles. */
 const BUBBLE_MAX_DIST = 280;
 const BUBBLE_DIST_PER_SPAN = 2;
-/** Gap (px) the dot sits above the bubble's bottom edge, and between bubbles. */
+/** Gap (px) the dot sits below the bubble's bottom edge, and between bubbles. */
 const LEADER_LEN = 16;
 const DECLUTTER_GAP = 6;
-const DECLUTTER_GUARD = 60;
-const DEFAULT_BUBBLE_W = 152;
-const DEFAULT_BUBBLE_H = 40;
-/** Horizontal gap (px) kept between the building silhouette and the bubbles. */
-const BUILDING_MARGIN = 24;
+/** A third larger than the first 152 × 40 px bubbles (#59). */
+const DEFAULT_BUBBLE_W = 203;
+const DEFAULT_BUBBLE_H = 53;
 const EDGE_PAD = 2;
-/** Extra gap (px), added to BUILDING_MARGIN, between a group of machines and its bubbles
- * in a close-in view (placeAroundAnchors). */
-const ANCHOR_MARGIN = 56;
-/** Minimum gutter (px) above/below the building needed to seat a row of bubbles. */
-const MIN_ROW_GUTTER = BUILDING_MARGIN + DEFAULT_BUBBLE_H;
+/** Half-size (px) of a machine's dot, kept clear of the other bubbles. */
+const DOT_R = 7;
+/** Candidate spots of a bubble around its own (half-width column steps, row steps up; a
+ * negative row is below the machine), cheapest first: up costs less than sideways, below the
+ * machine the most — so bubbles stay above their machine whenever there is room. */
+const SPOTS: [number, number][] = (() => {
+  const out: [number, number][] = [];
+  for (let i = -4; i <= 4; i++) for (let j = -3; j <= 5; j++) out.push([i, j]);
+  const cost = ([i, j]: [number, number]): number => Math.abs(i) * 1.6 + (j >= 0 ? j : 4 - j * 2);
+  return out.sort((a, b) => cost(a) - cost(b));
+})();
+/** Pointer travel (px) under which a press on a bubble in edit mode is a click, not a drag. */
+const CLICK_SLOP_PX = 4;
+/** Delay (ms) before a hover-mode bubble hides once the pointer has left it. */
+const HOVER_HIDE_MS = 300;
 const HIDDEN = 'none';
 const STATE_VAR = '--mf-state';
 /** CSS class for a numeric/value bubble line (parameters, KPIs, obsolescence). */
@@ -80,6 +93,10 @@ interface LabelEntry {
   nameEl: HTMLElement;
   /** Single ordered container for all visible info lines (order = Affichage tab). */
   linesEl: HTMLElement;
+  /** Placed by hand: offset (px) of the bubble's bottom centre from the dot; null = automatic. */
+  offset: [number, number] | null;
+  /** Where the bubble was last drawn (bottom centre) and its dot, for a drag in edit mode. */
+  lastBox?: { cx: number; bottom: number; ax: number; ay: number };
 }
 
 interface Placeable {
@@ -165,6 +182,12 @@ function formatKpi(kpi: Kpi | undefined): string {
   return kpi.unit ? `${num} ${kpi.unit}` : num;
 }
 
+function overlapArea(a: Rect, b: Rect): number {
+  const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+  const h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  return w > 0 && h > 0 ? w * h : 1;
+}
+
 function rectsOverlap(a: Rect, b: Rect, gap: number): boolean {
   return !(
     a.x + a.w + gap < b.x ||
@@ -174,77 +197,6 @@ function rectsOverlap(a: Rect, b: Rect, gap: number): boolean {
   );
 }
 
-/**
- * Resolve overlapping 1-D placements: turn each item's desired centre into a
- * non-overlapping start, kept within `[min, max]`. Two-pass label spreader
- * (push forward, then pull back from the far edge). Items must be pre-sorted by
- * `desired` ascending; `sizes[i]` is item i's extent along the axis.
- */
-// eslint-disable-next-line max-params -- a 1-D spreader needs its bounds + gap
-function spreadAlong(desired: number[], sizes: number[], gap: number, min: number, max: number): number[] {
-  const pos = desired.map((d, i) => d - sizes[i] / 2);
-  let cursor = min;
-  for (let i = 0; i < pos.length; i++) {
-    if (pos[i] < cursor) pos[i] = cursor;
-    cursor = pos[i] + sizes[i] + gap;
-  }
-  cursor = max;
-  for (let i = pos.length - 1; i >= 0; i--) {
-    if (pos[i] + sizes[i] > cursor) pos[i] = cursor - sizes[i];
-    cursor = pos[i] - gap;
-  }
-  for (let i = 0; i < pos.length; i++) if (pos[i] < min) pos[i] = min;
-  return pos;
-}
-
-/** Keep as many bubbles as a vertical gutter column can stack without overlap;
- * the rest spill into `overflow` (to be re-routed to the top/bottom rows). */
-function fitColumn(items: Placeable[], height: number): { kept: Placeable[]; overflow: Placeable[] } {
-  const avail = height - 2 * EDGE_PAD;
-  const kept: Placeable[] = [];
-  const overflow: Placeable[] = [];
-  let used = 0;
-  for (const item of items) {
-    const h = item.entry.el.offsetHeight || DEFAULT_BUBBLE_H;
-    const need = h + (kept.length > 0 ? DECLUTTER_GAP : 0);
-    if (used + need <= avail) {
-      kept.push(item);
-      used += need;
-    } else overflow.push(item);
-  }
-  return { kept, overflow };
-}
-
-/** Keep as many bubbles as a top/bottom row can lay out across the building's
- * width without overlap; `rest` is what does not fit (or all of them when the
- * gutter outside the building is too short to seat a row). */
-// eslint-disable-next-line max-params -- a row fit needs the building rect + bounds
-function fitRow(
-  items: Placeable[],
-  building: Rect,
-  width: number,
-  height: number,
-  isTop: boolean
-): { kept: Placeable[]; rest: Placeable[] } {
-  const gutter = isTop ? building.y - EDGE_PAD : height - EDGE_PAD - (building.y + building.h);
-  if (gutter < MIN_ROW_GUTTER) return { kept: [], rest: items };
-  const minX = Math.max(EDGE_PAD, building.x);
-  const maxX = Math.min(width - EDGE_PAD, building.x + building.w);
-  const avail = maxX - minX;
-  const kept: Placeable[] = [];
-  const rest: Placeable[] = [];
-  let used = 0;
-  for (const item of items) {
-    const w = item.entry.el.offsetWidth || DEFAULT_BUBBLE_W;
-    const need = w + (kept.length > 0 ? DECLUTTER_GAP : 0);
-    if (used + need <= avail) {
-      kept.push(item);
-      used += need;
-    } else rest.push(item);
-  }
-  return { kept, rest };
-}
-
 export class LabelManager {
   private entries: LabelEntry[] = [];
   private enabled = true;
@@ -252,7 +204,6 @@ export class LabelManager {
   /** Machines left out by the filter bar: no bubble, no dot. */
   private filteredOut: ReadonlySet<string> = new Set();
   private readonly anchor = new Vector3();
-  private readonly corner = new Vector3();
   private buildingBounds: BuildingBounds | null = null;
   /** State/overlay colours (from the atelier's mapping), with defaults. */
   private stateColors: Record<StateColorKey, string> = DEFAULT_STATE_COLOR_MAP;
@@ -265,6 +216,18 @@ export class LabelManager {
 
   /** Fired when the pointer enters a machine's bubble or dot (its id), and leaves it (null). */
   onHover: ((id: string | null) => void) | null = null;
+  /** A bubble was moved or resized by hand in edit mode; `null` = back to automatic (#59). */
+  onBubbleEdit: ((id: string, patch: { bubbleScale?: number | null; bubbleOffset?: [number, number] | null }) => void) | null =
+    null;
+
+  private editMode = false;
+  /** Hover mode (#56): a bubble shows only for the machine under the pointer. */
+  private hoverMode = false;
+  /** The machine under the pointer on the canvas (its 3D model and a margin around it). */
+  private hoveredId: string | null = null;
+  /** The machine whose dot or bubble the pointer is over, kept a moment after it leaves. */
+  private overId: string | null = null;
+  private overTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
     private readonly overlay: HTMLElement,
@@ -298,6 +261,21 @@ export class LabelManager {
     this.alertOnly = on;
   }
 
+  /** Edit mode: bubbles can be dragged and resized (#59), and all show in hover mode. */
+  setEditMode(on: boolean): void {
+    this.editMode = on;
+    for (const e of this.entries) e.el.classList.toggle('mf-label--editable', on);
+  }
+
+  setHoverMode(on: boolean): void {
+    this.hoverMode = on;
+  }
+
+  /** The machine under the pointer on the canvas (hover mode), or null. */
+  setHovered(id: string | null): void {
+    this.hoveredId = id;
+  }
+
   setFilteredOut(ids: ReadonlySet<string>): void {
     this.filteredOut = ids;
     for (const entry of this.entries) if (ids.has(entry.machine.id)) this.hideEntry(entry);
@@ -316,12 +294,12 @@ export class LabelManager {
       const place = this.updateAnchor(entry, camera, width, height);
       if (place) placeable.push(place);
     }
-    // Pass 2: push bubbles outside the building silhouette, then draw leaders.
-    const buildingRect = this.projectBuildingRect(camera, width, height);
-    this.placeBubbles(placeable, width, height, buildingRect);
+    // Pass 2: each bubble above its machine, decluttered, then the leaders.
+    this.placeBubbles(placeable, width, height);
   }
 
   dispose(): void {
+    clearTimeout(this.overTimer);
     this.clearEntries();
   }
 
@@ -336,10 +314,17 @@ export class LabelManager {
     // bubble, so the dot↔bubble association is unambiguous when bubbles stack.
     const onEnter = (): void => {
       leaderEl.classList.add('mf-leader--hover');
+      clearTimeout(this.overTimer);
+      this.overId = machine.id;
       this.onHover?.(machine.id);
     };
     const onLeave = (): void => {
       leaderEl.classList.remove('mf-leader--hover');
+      // Hover mode: the bubble stays a moment, so the pointer can go from the machine onto it.
+      clearTimeout(this.overTimer);
+      this.overTimer = setTimeout(() => {
+        if (this.overId === machine.id) this.overId = null;
+      }, HOVER_HIDE_MS);
       this.onHover?.(null);
     };
     const dotEl = document.createElement('div');
@@ -348,8 +333,8 @@ export class LabelManager {
     dotEl.addEventListener('pointerenter', onEnter);
     dotEl.addEventListener('pointerleave', onLeave);
     const el = document.createElement('div');
-    el.className = 'mf-label';
-    el.addEventListener('pointerdown', onPick);
+    el.className = this.editMode ? 'mf-label mf-label--editable' : 'mf-label';
+    el.style.setProperty('--mf-bubble-scale', String(machine.bubbleScale ?? 1));
     el.addEventListener('pointerenter', onEnter);
     el.addEventListener('pointerleave', onLeave);
     const nameEl = document.createElement('div');
@@ -357,9 +342,88 @@ export class LabelManager {
     nameEl.textContent = machine.name;
     const linesEl = document.createElement('div');
     linesEl.className = 'mf-label__lines';
-    el.append(nameEl, linesEl);
+    const resizeEl = document.createElement('div');
+    resizeEl.className = 'mf-label__resize';
+    resizeEl.title = localize(MSG.bubble.resize);
+    const resetEl = document.createElement('button');
+    resetEl.className = 'mf-label__reset';
+    resetEl.textContent = '↺';
+    resetEl.title = localize(MSG.bubble.reset);
+    el.append(nameEl, linesEl, resizeEl, resetEl);
     this.overlay.append(leaderEl, dotEl, el);
-    return { machine, el, dotEl, leaderEl, nameEl, linesEl };
+    const entry: LabelEntry = { machine, el, dotEl, leaderEl, nameEl, linesEl, offset: machine.bubbleOffset ?? null };
+    el.classList.toggle('mf-label--manual', this.isCustom(entry));
+    el.addEventListener('pointerdown', (e) => (this.editMode ? this.dragBubble(entry, e) : onPick(e)));
+    resizeEl.addEventListener('pointerdown', (e) => this.resizeBubble(entry, e));
+    resetEl.addEventListener('pointerdown', (e) => e.stopPropagation());
+    resetEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      entry.offset = null;
+      delete machine.bubbleScale;
+      el.style.setProperty('--mf-bubble-scale', '1');
+      el.classList.remove('mf-label--manual');
+      this.onBubbleEdit?.(machine.id, { bubbleOffset: null, bubbleScale: null });
+    });
+    return entry;
+  }
+
+  private isCustom(entry: LabelEntry): boolean {
+    return entry.offset !== null || (entry.machine.bubbleScale ?? 1) !== 1;
+  }
+
+  /** Edit mode: drag a bubble to a spot of its own (offset from its dot, kept at any zoom). */
+  private dragBubble(entry: LabelEntry, down: PointerEvent): void {
+    if (down.button !== 0) return;
+    down.stopPropagation();
+    down.preventDefault();
+    const start = entry.lastBox;
+    if (!start) return;
+    let moved = false;
+    const move = (e: PointerEvent): void => {
+      const dx = e.clientX - down.clientX;
+      const dy = e.clientY - down.clientY;
+      if (!moved && Math.hypot(dx, dy) < CLICK_SLOP_PX) return;
+      moved = true;
+      // Offset of the bubble's bottom centre from the dot.
+      entry.offset = [Math.round(start.cx + dx - start.ax), Math.round(start.bottom + dy - start.ay)];
+    };
+    const up = (): void => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      if (!moved) {
+        this.onSelect(entry.machine.id);
+        return;
+      }
+      entry.el.classList.add('mf-label--manual');
+      if (entry.offset) this.onBubbleEdit?.(entry.machine.id, { bubbleOffset: entry.offset });
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
+  /** Edit mode: the corner handle scales the whole bubble (text included). */
+  private resizeBubble(entry: LabelEntry, down: PointerEvent): void {
+    if (down.button !== 0) return;
+    down.stopPropagation();
+    down.preventDefault();
+    const startScale = entry.machine.bubbleScale ?? 1;
+    const startW = entry.el.offsetWidth || DEFAULT_BUBBLE_W;
+    let scale = startScale;
+    const move = (e: PointerEvent): void => {
+      scale = Math.min(BUBBLE_SCALE_MAX, Math.max(BUBBLE_SCALE_MIN, (startScale * (startW + e.clientX - down.clientX)) / startW));
+      scale = Math.round(scale * 20) / 20;
+      entry.el.style.setProperty('--mf-bubble-scale', String(scale));
+    };
+    const up = (): void => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      if (scale === startScale) return;
+      entry.machine.bubbleScale = scale;
+      entry.el.classList.add('mf-label--manual');
+      this.onBubbleEdit?.(entry.machine.id, { bubbleScale: scale });
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
   }
 
   /** Project the anchor, place + colour the dot, fill the bubble. Returns a
@@ -401,7 +465,14 @@ export class LabelManager {
     dotEl.style.display = 'block';
     dotEl.style.transform = `translate(-50%, -50%) translate(${ax}px, ${ay}px)`;
 
-    if (dist > this.bubbleMaxDist()) {
+    // Hover mode (outside edit mode): only the machine under the pointer, at any distance.
+    if (this.hoverMode && !this.editMode) {
+      if (machine.id !== this.hoveredId && machine.id !== this.overId) {
+        el.style.display = HIDDEN;
+        leaderEl.style.display = HIDDEN;
+        return null;
+      }
+    } else if (dist > this.bubbleMaxDist()) {
       el.style.display = HIDDEN;
       leaderEl.style.display = HIDDEN;
       return null;
@@ -454,207 +525,80 @@ export class LabelManager {
     }
   }
 
-  /** Project the building's 8 footprint corners → its screen-space AABB. */
-  private projectBuildingRect(
-    camera: Camera,
-    width: number,
-    height: number
-  ): Rect | null {
-    const b = this.buildingBounds;
-    if (!b) return null;
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    let seen = false;
-    for (const x of [b.x1, b.x2]) {
-      for (const y of [0, b.height]) {
-        for (const z of [b.z1, b.z2]) {
-          this.corner.set(x, y, z).project(camera);
-          if (this.corner.z > 1) continue; // corner behind the camera
-          seen = true;
-          const sx = (this.corner.x * 0.5 + 0.5) * width;
-          const sy = (-this.corner.y * 0.5 + 0.5) * height;
-          minX = Math.min(minX, sx);
-          maxX = Math.max(maxX, sx);
-          minY = Math.min(minY, sy);
-          maxY = Math.max(maxY, sy);
-        }
-      }
-    }
-    return seen ? { x: minX, y: minY, w: maxX - minX, h: maxY - minY } : null;
-  }
-
   /**
-   * Lay bubbles out as callouts, by how far the view is from the atelier.
-   *
-   * Seen from afar (room on screen for a column on each side of the building,
-   * whether or not its far end is cut off at the top or bottom), they sit outside its projected silhouette: a vertical column in the
-   * left and right gutters (chosen by which side of the building centre the
-   * machine sits); when a column cannot hold all of its bubbles, the overflow is
-   * re-routed into horizontal rows in the gutters above and below the building —
-   * so bubbles stay aligned in rows or columns and never sit over the 3D scene.
-   * Closer in, a side gutter is off-screen:
-   * the columns are set beside the machines instead (see placeAroundAnchors).
-   * Falls back to the above-anchor layout when no building bounds are known.
+   * Each bubble right above its machine (#55). Bubbles placed by hand go first, at their own
+   * spot; then, nearest machines first (lowest on screen), each takes the cheapest free spot
+   * around its own: straight above, else higher, else sideways (SPOTS). A leader joins the dot
+   * to a bubble moved away from its machine.
    */
-  private placeBubbles(
-    placeable: Placeable[],
-    width: number,
-    height: number,
-    building: Rect | null
-  ): void {
-    if (!building) {
-      this.placeBubblesAbove(placeable, width, height);
-      return;
-    }
-    const roomLeft = building.x - BUILDING_MARGIN - DEFAULT_BUBBLE_W >= EDGE_PAD;
-    const roomRight = building.x + building.w + BUILDING_MARGIN + DEFAULT_BUBBLE_W <= width - EDGE_PAD;
-    if (!(roomLeft && roomRight)) {
-      this.placeAroundAnchors(placeable, width, height);
-      return;
-    }
-    const centreX = building.x + building.w / 2;
-    const left: Placeable[] = [];
-    const right: Placeable[] = [];
-    for (const item of placeable) (item.ax < centreX ? left : right).push(item);
-    left.sort((a, b) => a.ay - b.ay);
-    right.sort((a, b) => a.ay - b.ay);
-
-    const leftFit = fitColumn(left, height);
-    const rightFit = fitColumn(right, height);
-    this.placeColumn(leftFit.kept, building, true, width, height);
-    this.placeColumn(rightFit.kept, building, false, width, height);
-
-    const overflow = [...leftFit.overflow, ...rightFit.overflow];
-    if (overflow.length === 0) return;
-    overflow.sort((a, b) => a.ax - b.ax);
-    const topFit = fitRow(overflow, building, width, height, true);
-    const bottomFit = fitRow(topFit.rest, building, width, height, false);
-    // Anything still left over (both rows full) joins the bottom row, where the
-    // spreader compresses it as a last resort.
-    this.placeRow([...bottomFit.kept, ...bottomFit.rest], building, false, width, height);
-    this.placeRow(topFit.kept, building, true, width, height);
-  }
-
-  /**
-   * Close-in view: the same callout columns, set beside the group of visible
-   * machines (left and right of its anchors' extent) at a fixed distance — far
-   * enough to leave the machines in sight, near enough to read which bubble is
-   * whose — rather than against the screen edge. What a column cannot hold goes
-   * above its machine.
-   */
-  private placeAroundAnchors(items: Placeable[], width: number, height: number): void {
-    if (items.length === 0) return;
-    const xs = items.map((it) => it.ax);
-    const ys = items.map((it) => it.ay);
-    const minX = Math.min(...xs);
-    const minY = Math.min(...ys);
-    const group: Rect = {
-      x: minX - ANCHOR_MARGIN,
-      y: minY,
-      w: Math.max(...xs) - minX + 2 * ANCHOR_MARGIN,
-      h: Math.max(...ys) - minY
-    };
-    const centreX = group.x + group.w / 2;
-    const left = items.filter((it) => it.ax < centreX).sort((a, b) => a.ay - b.ay);
-    const right = items.filter((it) => it.ax >= centreX).sort((a, b) => a.ay - b.ay);
-    const leftFit = fitColumn(left, height);
-    const rightFit = fitColumn(right, height);
-    this.placeColumn(leftFit.kept, group, true, width, height);
-    this.placeColumn(rightFit.kept, group, false, width, height);
-    const rest = [...leftFit.overflow, ...rightFit.overflow];
-    if (rest.length > 0) this.placeBubblesAbove(rest, width, height);
-  }
-
-  /** Lay a side's bubbles out as a non-overlapping vertical column just beyond
-   * the building edge, with a leader from each dot to the bubble's inner edge. */
-  private placeColumn(
-    items: Placeable[],
-    building: Rect,
-    isLeft: boolean,
-    width: number,
-    height: number
-  ): void {
-    if (items.length === 0) return;
-    const sizes = items.map((it) => it.entry.el.offsetHeight || DEFAULT_BUBBLE_H);
-    const ys = spreadAlong(items.map((it) => it.ay), sizes, DECLUTTER_GAP, EDGE_PAD, height - EDGE_PAD);
-    for (const [i, item] of items.entries()) {
-      const el = item.entry.el;
-      const w = el.offsetWidth || DEFAULT_BUBBLE_W;
-      const h = sizes[i];
-      const rawX = isLeft
-        ? building.x - BUILDING_MARGIN - w
-        : building.x + building.w + BUILDING_MARGIN;
-      const bx = Math.max(EDGE_PAD, Math.min(rawX, width - w - EDGE_PAD));
-      const by = ys[i];
-      el.style.transform = `translate(${bx}px, ${by}px)`;
-      const innerX = isLeft ? bx + w : bx;
-      this.drawLeader(item.entry, item.ax, item.ay, innerX, by + h / 2);
-    }
-  }
-
-  /** Lay overflow bubbles out as a non-overlapping horizontal row in the gutter
-   * above (top) or below (bottom) the building, with a leader to the near edge. */
-  private placeRow(
-    items: Placeable[],
-    building: Rect,
-    isTop: boolean,
-    width: number,
-    height: number
-  ): void {
-    if (items.length === 0) return;
-    const sizes = items.map((it) => it.entry.el.offsetWidth || DEFAULT_BUBBLE_W);
-    const minX = Math.max(EDGE_PAD, building.x);
-    const maxX = Math.min(width - EDGE_PAD, building.x + building.w);
-    const xs = spreadAlong(items.map((it) => it.ax), sizes, DECLUTTER_GAP, minX, maxX);
-    for (const [i, item] of items.entries()) {
-      const el = item.entry.el;
-      const w = sizes[i];
-      const h = el.offsetHeight || DEFAULT_BUBBLE_H;
-      const rawY = isTop
-        ? building.y - BUILDING_MARGIN - h
-        : building.y + building.h + BUILDING_MARGIN;
-      const by = Math.max(EDGE_PAD, Math.min(rawY, height - h - EDGE_PAD));
-      const bx = xs[i];
-      el.style.transform = `translate(${bx}px, ${by}px)`;
-      const edgeY = isTop ? by + h : by;
-      this.drawLeader(item.entry, item.ax, item.ay, bx + w / 2, edgeY);
-    }
-  }
-
-  private placeBubblesAbove(placeable: Placeable[], width: number, height: number): void {
-    // Topmost anchors first so bubbles stack upward without cascading.
-    placeable.sort((a, b) => a.ay - b.ay);
-    const placed: Rect[] = [];
+  private placeBubbles(placeable: Placeable[], width: number, height: number): void {
+    // The machines' dots are obstacles too: a bubble does not hide another machine's dot.
+    const dots: Rect[] = placeable.map((p) => ({ x: p.ax - DOT_R, y: p.ay - DOT_R, w: 2 * DOT_R, h: 2 * DOT_R }));
+    const placed: Rect[] = [...dots];
+    const auto: Placeable[] = [];
     for (const item of placeable) {
-      const el = item.entry.el;
-      const w = el.offsetWidth || DEFAULT_BUBBLE_W;
-      const h = el.offsetHeight || DEFAULT_BUBBLE_H;
-      let bx = item.ax - w / 2;
-      let by = item.ay - LEADER_LEN - h;
-      bx = Math.max(2, Math.min(bx, width - w - 2));
-      let guard = 0;
-      let moved = true;
-      while (moved && guard < DECLUTTER_GUARD) {
-        guard += 1;
-        moved = false;
-        for (const r of placed) {
-          if (rectsOverlap({ x: bx, y: by, w, h }, r, DECLUTTER_GAP)) {
-            by = r.y - h - DECLUTTER_GAP;
-            moved = true;
-          }
-        }
-        if (by < 2) {
-          by = 2;
+      const off = item.entry.offset;
+      if (!off) {
+        auto.push(item);
+        continue;
+      }
+      const { w, h } = this.size(item.entry);
+      const r = this.clampRect(item.ax + off[0] - w / 2, item.ay + off[1] - h, w, h, width, height);
+      placed.push(r);
+      this.setBox(item, r, true);
+    }
+    auto.sort((a, b) => b.ay - a.ay);
+    for (const item of auto) {
+      const { w, h } = this.size(item.entry);
+      const x0 = item.ax - w / 2;
+      const y0 = item.ay - LEADER_LEN - h;
+      // The first free spot; none free (a crowded view): the one the others cover the least.
+      let best: Rect | null = null;
+      let bestCover = Infinity;
+      for (const [i, j] of SPOTS) {
+        const r = this.clampRect(x0 + i * (w / 2 + DECLUTTER_GAP), y0 - j * (h + DECLUTTER_GAP), w, h, width, height);
+        let cover = 0;
+        for (const p of placed) if (rectsOverlap(r, p, DECLUTTER_GAP)) cover += overlapArea(r, p);
+        if (cover === 0) {
+          best = r;
           break;
         }
+        if (cover < bestCover) {
+          bestCover = cover;
+          best = r;
+        }
       }
-      by = Math.min(by, height - h - 2);
-      placed.push({ x: bx, y: by, w, h });
-      el.style.transform = `translate(${bx}px, ${by}px)`;
-      this.drawLeader(item.entry, item.ax, item.ay, bx + w / 2, by + h);
+      const r = best ?? this.clampRect(x0, y0, w, h, width, height);
+      placed.push(r);
+      this.setBox(item, r, r.x !== x0 || r.y !== y0);
     }
+  }
+
+  private size(entry: LabelEntry): { w: number; h: number } {
+    const scale = entry.machine.bubbleScale ?? 1;
+    return {
+      w: entry.el.offsetWidth || DEFAULT_BUBBLE_W * scale,
+      h: entry.el.offsetHeight || DEFAULT_BUBBLE_H * scale
+    };
+  }
+
+  // eslint-disable-next-line max-params -- a rect and the viewport it is kept in
+  private clampRect(x: number, y: number, w: number, h: number, width: number, height: number): Rect {
+    return {
+      x: Math.max(EDGE_PAD, Math.min(x, width - w - EDGE_PAD)),
+      y: Math.max(EDGE_PAD, Math.min(y, height - h - EDGE_PAD)),
+      w,
+      h
+    };
+  }
+
+  /** Put the bubble at `r`; a leader from the dot to its bottom centre when `moved` away. */
+  private setBox(item: Placeable, r: Rect, moved: boolean): void {
+    const { entry, ax, ay } = item;
+    entry.el.style.transform = `translate(${r.x}px, ${r.y}px)`;
+    entry.lastBox = { cx: r.x + r.w / 2, bottom: r.y + r.h, ax, ay };
+    if (moved) this.drawLeader(entry, ax, ay, r.x + r.w / 2, r.y + r.h);
+    else entry.leaderEl.style.display = HIDDEN;
   }
 
   private drawLeader(entry: LabelEntry, sx: number, sy: number, ex: number, ey: number): void {

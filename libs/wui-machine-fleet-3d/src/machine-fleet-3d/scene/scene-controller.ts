@@ -106,6 +106,8 @@ function groupLabel(text: string): CanvasTexture {
   return tex;
 }
 const DRAG_THRESHOLD_PX = 5;
+/** Margin (px) around a machine's on-screen box that still shows its bubble in hover mode (#56). */
+const HOVER_MARGIN_PX = 16;
 /** If the longest GLB dimension exceeds this (metres), assume mm → scale by 0.001. */
 const MM_TO_M_THRESHOLD = 100;
 const MM_TO_M_SCALE = 0.001;
@@ -149,6 +151,11 @@ export class SceneController {
 
   // --- edit-mode dragging ----------------------------------------------------
   private editMode = false;
+  /** Bubbles on hover only (#56), and a pick pending for the next frame. */
+  private hoverMode = false;
+  private hoverPending = false;
+  private readonly hoverBox = new Box3();
+  private readonly hoverCorner = new Vector3();
   private dragging: Machine | null = null;
   private dragMoved = false;
   private readonly dragPlane = new Plane(new Vector3(0, 1, 0), 0);
@@ -229,6 +236,29 @@ export class SceneController {
 
   cancelMarkerPlacement(): void {
     this.pins.cancelPlacement();
+  }
+
+  /** A bubble moved or resized by hand in edit mode (`null`: back to automatic, #59). */
+  setOnBubbleEdit(fn: (id: string, patch: { bubbleScale?: number | null; bubbleOffset?: [number, number] | null }) => void): void {
+    this.labels.onBubbleEdit = fn;
+  }
+
+  /**
+   * Hover mode (#56): a machine's bubble shows only while the pointer is over the machine — its
+   * 3D model and a margin around it on screen — or over its dot or bubble.
+   */
+  setBubblesOnHover(on: boolean): void {
+    if (on === this.hoverMode) return;
+    this.hoverMode = on;
+    this.labels.setHoverMode(on);
+    if (on) {
+      this.canvas.addEventListener('pointermove', this.onHoverMove);
+      this.canvas.addEventListener('pointerleave', this.onHoverLeave);
+    } else {
+      this.canvas.removeEventListener('pointermove', this.onHoverMove);
+      this.canvas.removeEventListener('pointerleave', this.onHoverLeave);
+      this.labels.setHovered(null);
+    }
   }
 
   /** Callback invoked when a pin is clicked (not dragged) in edit mode, to rename / delete it. */
@@ -392,6 +422,7 @@ export class SceneController {
     this.editMode = on;
     this.canvas.style.cursor = on ? 'move' : '';
     this.pins.setVisible(on);
+    this.labels.setEditMode(on);
   }
 
   /** Callback invoked when a machine is dropped at a new (x, z) in edit mode. */
@@ -481,6 +512,8 @@ export class SceneController {
     window.removeEventListener('pointermove', this.onEditMove);
     window.removeEventListener('pointerup', this.onEditUp);
     this.orbit.dispose();
+    this.canvas.removeEventListener('pointermove', this.onHoverMove);
+    this.canvas.removeEventListener('pointerleave', this.onHoverLeave);
     this.labels.dispose();
     this.pins.dispose();
     if (this.buildingGroup) disposeObject(this.buildingGroup);
@@ -786,6 +819,63 @@ export class SceneController {
   };
 
   private readonly onCanvasClick = (e: MouseEvent): void => this.handleCanvasClick(e);
+
+  /** Hover mode: the machine under the pointer, picked at most once per frame. */
+  private readonly onHoverMove = (e: PointerEvent): void => {
+    if (this.hoverPending) return;
+    this.hoverPending = true;
+    requestAnimationFrame(() => {
+      this.hoverPending = false;
+      this.labels.setHovered(this.machineNear(e));
+    });
+  };
+
+  private readonly onHoverLeave = (): void => this.labels.setHovered(null);
+
+  /**
+   * The machine whose model, seen on screen, holds the pointer — its projected bounding box,
+   * widened by HOVER_MARGIN_PX, so the whole machine and a little around it count, not only its
+   * dot. The nearest to the camera wins when boxes overlap.
+   */
+  private machineNear(e: PointerEvent): string | null {
+    const rect = this.canvas.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    const cam = this.activeCamera();
+    let best: string | null = null;
+    let bestDist = Infinity;
+    for (const m of this.machines) {
+      if (m.hidden || this.filteredOut.has(m.id)) continue;
+      this.hoverBox.setFromObject(m.mesh);
+      if (this.hoverBox.isEmpty()) continue;
+      let x1 = Infinity;
+      let y1 = Infinity;
+      let x2 = -Infinity;
+      let y2 = -Infinity;
+      const { min, max } = this.hoverBox;
+      for (const x of [min.x, max.x]) {
+        for (const y of [min.y, max.y]) {
+          for (const z of [min.z, max.z]) {
+            this.hoverCorner.set(x, y, z).project(cam);
+            const sx = (this.hoverCorner.x * 0.5 + 0.5) * rect.width;
+            const sy = (-this.hoverCorner.y * 0.5 + 0.5) * rect.height;
+            x1 = Math.min(x1, sx);
+            x2 = Math.max(x2, sx);
+            y1 = Math.min(y1, sy);
+            y2 = Math.max(y2, sy);
+          }
+        }
+      }
+      const inside = px >= x1 - HOVER_MARGIN_PX && px <= x2 + HOVER_MARGIN_PX && py >= y1 - HOVER_MARGIN_PX && py <= y2 + HOVER_MARGIN_PX;
+      if (!inside) continue;
+      const d = cam.position.distanceTo(m.mesh.position);
+      if (d < bestDist) {
+        bestDist = d;
+        best = m.id;
+      }
+    }
+    return best;
+  }
 
   private readonly onEditDown = (e: PointerEvent): void => {
     if (!this.editMode || e.button !== 0) return;

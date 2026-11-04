@@ -59,6 +59,19 @@ export const MSG = {
     offsetX: ml('Offset X (m)', 'Décalage X (m)', 'Versatz X (m)'),
     offsetZ: ml('Offset Z (m)', 'Décalage Z (m)', 'Versatz Z (m)')
   },
+  bubble: {
+    resize: ml('Resize the bubble', "Redimensionner l'encart", 'Infoblase skalieren'),
+    reset: ml(
+      'Bubble back to its automatic place and size',
+      "Remettre l'encart à sa place et à sa taille automatiques",
+      'Infoblase zurück an automatische Position und Größe'
+    ),
+    hoverMode: ml(
+      'Bubbles on hover only (this atelier, for everyone)',
+      'Encarts au survol uniquement (cet atelier, pour tous)',
+      'Infoblasen nur beim Überfahren (diese Werkstatt, für alle)'
+    )
+  },
   toPlace: {
     label: ml('To place', 'À placer', 'Zu platzieren'),
     hint: ml(
