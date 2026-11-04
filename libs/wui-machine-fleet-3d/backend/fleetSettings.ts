@@ -46,7 +46,7 @@ export interface SettingDef {
 /** Setting keys the pages may use. A new screen adds its own here. */
 export const FLEET_SETTINGS: Readonly<Record<string, SettingDef>> = Object.freeze({
   'fleet-filter': { setting: 'WUI_MF_FILTER', fullName: 'Filtres du parc machine (étiquettes et états)' },
-  'fleet-ateliers': { setting: 'WUI_MF_ATELIERS', fullName: 'Encarts et affichage des ateliers' },
+  'fleet-ateliers': { setting: 'WUI_MF_ATELIERS', fullName: 'Affichage des ateliers' },
   'fleet-dashboard': { setting: 'WUI_MF_DASHBOARD', fullName: 'Filtres du dashboard machine' },
   'fleet-stop-analysis': { setting: 'WUI_MF_STOP_ANALYSIS', fullName: "Sélection de l'analyse des arrêts" },
   'fleet-kpi-analysis': { setting: 'WUI_MF_KPI_ANALYSIS', fullName: "Sélection de l'analyse des KPI" },

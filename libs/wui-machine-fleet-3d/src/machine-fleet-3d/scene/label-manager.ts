@@ -29,11 +29,6 @@ import {
   type StateDef
 } from '../types.js';
 import { MSG, localize } from '../i18n.js';
-import {
-  EMPTY_BUBBLE_PREFS,
-  showsInBubble,
-  type BubblePrefs
-} from '@visuelconcept-winccoa/wui-fleet-core/bubble-prefs.js';
 
 /** What the bubbles need to know about the atelier's states. */
 interface StateInfo {
@@ -107,11 +102,11 @@ interface BubbleLine {
   color?: string;
 }
 
-/** Ordered, visible bubble lines for a machine (order = the Affichage tab; the viewer's choice wins). */
-function buildBubbleLines(m: Machine, states: StateInfo, prefs: BubblePrefs): BubbleLine[] {
+/** Ordered, visible bubble lines for a machine (order and visibility = the Affichage tab). */
+function buildBubbleLines(m: Machine, states: StateInfo): BubbleLine[] {
   const lines: BubbleLine[] = [];
   for (const slot of resolveDisplaySlots(m)) {
-    if (!showsInBubble(prefs, slot.ref, slot.inBubble)) continue;
+    if (!slot.inBubble) continue;
     const line = bubbleLineFor(slot, m, states);
     if (line) lines.push(line);
   }
@@ -256,8 +251,6 @@ export class LabelManager {
   private alertOnly = false;
   /** Machines left out by the filter bar: no bubble, no dot. */
   private filteredOut: ReadonlySet<string> = new Set();
-  /** The viewer's own bubble choices (lines shown, machines whose bubble is hidden). */
-  private prefs: BubblePrefs = EMPTY_BUBBLE_PREFS;
   private readonly anchor = new Vector3();
   private readonly corner = new Vector3();
   private buildingBounds: BuildingBounds | null = null;
@@ -303,11 +296,6 @@ export class LabelManager {
 
   setAlertOnly(on: boolean): void {
     this.alertOnly = on;
-  }
-
-  setBubblePrefs(prefs: BubblePrefs): void {
-    this.prefs = prefs;
-    for (const entry of this.entries) if (prefs.hidden.includes(entry.machine.id)) this.hideEntry(entry);
   }
 
   setFilteredOut(ids: ReadonlySet<string>): void {
@@ -385,7 +373,6 @@ export class LabelManager {
     const { machine, el, dotEl, leaderEl } = entry;
     if (
       this.filteredOut.has(machine.id) ||
-      this.prefs.hidden.includes(machine.id) ||
       (this.alertOnly && this.states.running(machine.state))
     ) {
       this.hideEntry(entry);
@@ -425,8 +412,8 @@ export class LabelManager {
     // info lines (state / production / params / KPIs) per the Affichage config.
     const lines = offline
       ? [{ text: DISCONNECTED_LABEL, cls: 'mf-label__badge' }]
-      : buildBubbleLines(machine, this.states, this.prefs);
-    // "À placer" heads the bubble, as text (not only a colour), whatever the viewer's choices.
+      : buildBubbleLines(machine, this.states);
+    // "À placer" heads the bubble, as text (not only a colour), whatever the configuration.
     if (machine.toPlace) lines.unshift({ text: localize(MSG.toPlace.label), cls: TO_PLACE_CLS });
     this.renderLines(entry.linesEl, lines);
     return { entry, ax, ay };

@@ -81,8 +81,7 @@ DP and type provisioning/CRUD via the backend's **PARA REST API** (see Backend),
   operation | param:<key> | kpi:<id>`. `resolveDisplaySlots(m)` builds the ordered
   catalog; items missing from `display` are auto-added (new params/KPIs
   appear on their own). The old scattered visibility toggles have been removed.
-- **Each user's own choices** (added 2026-11): the tag and state filters, the bubble lines and
-  the machines whose bubble is hidden ("My bubbles", per atelier), the display toggles (roof,
+- **Each user's own choices** (added 2026-11): the tag and state filters, the display toggles (roof,
   labels, alerts only — outside edit mode they are the viewer's own, over the atelier's; in edit
   mode they change the atelier's), the machine dashboard filter, and the selections of the stop
   analysis, the KPI analysis and the closures (ateliers, machines, period — a span ending today
@@ -91,7 +90,10 @@ DP and type provisioning/CRUD via the backend's **PARA REST API** (see Backend),
   `WUI_MF_ATELIERS`, `WUI_MF_DASHBOARD`, `WUI_MF_STOP_ANALYSIS`, `WUI_MF_KPI_ANALYSIS`,
   `WUI_MF_CLOSURES`), the base definition `_uss_<setting>` created on first need, `.Content`,
   `.Format`, `.FullName` and `.SettingName` written as WinCC OA's `usr_addNewSetting` does. Each
-  user finds them on any workstation, and again after "Switch user". Page side:
+  user finds them on any workstation, and again after "Switch user". What a bubble shows is
+  not a per-user choice: it is the atelier's configuration ("Affichage" tab), the same for
+  everyone (the "My bubbles" menu was removed, #64; its stored `lines` / `hidden` are ignored and
+  dropped on the next write). Page side:
   `wui-fleet-core` `settings-cache.ts` (synchronous cache, loaded on every login),
   `user-settings.ts` (deferred writes), `fleet-settings-service.ts` (token and user from the
   shell), `page-prefs.ts` (a page's selection). The choices a browser kept before (localStorage
