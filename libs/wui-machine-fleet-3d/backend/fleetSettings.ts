@@ -50,7 +50,8 @@ export const FLEET_SETTINGS: Readonly<Record<string, SettingDef>> = Object.freez
   'fleet-dashboard': { setting: 'WUI_MF_DASHBOARD', fullName: 'Filtres du dashboard machine' },
   'fleet-stop-analysis': { setting: 'WUI_MF_STOP_ANALYSIS', fullName: "Sélection de l'analyse des arrêts" },
   'fleet-kpi-analysis': { setting: 'WUI_MF_KPI_ANALYSIS', fullName: "Sélection de l'analyse des KPI" },
-  'fleet-closures': { setting: 'WUI_MF_CLOSURES', fullName: 'Sélection des fermetures' }
+  'fleet-closures': { setting: 'WUI_MF_CLOSURES', fullName: 'Sélection des fermetures' },
+  'fleet-views': { setting: 'WUI_MF_VIEWS', fullName: 'Points de vue personnels et page par défaut' }
 });
 
 export const SETTINGS_DPT = '_UserDefinedSettings';

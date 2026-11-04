@@ -227,6 +227,10 @@ export const MSG = {
       '3D-Ansicht (Perspektive) / 2D (oben)'
     ),
     saveView: ml('Save the view', 'Enregistrer la vue', 'Ansicht speichern'),
+    publicViews: ml('Public views', 'Vues publiques', 'Öffentliche Ansichten'),
+    myViews: ml('My views', 'Mes vues', 'Meine Ansichten'),
+    myLanding: ml('My default page', 'Ma page par défaut', 'Meine Startseite'),
+    publicLanding: ml('Default page for everyone', 'Page par défaut pour tous', 'Startseite für alle'),
     noViewpoints: ml(
       'No viewpoint saved',
       'Aucun point de vue enregistré',

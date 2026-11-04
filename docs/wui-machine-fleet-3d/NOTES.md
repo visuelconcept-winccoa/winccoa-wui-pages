@@ -96,6 +96,14 @@ DP and type provisioning/CRUD via the backend's **PARA REST API** (see Backend),
   floor drops it ("Repère N"); in edit mode a pin is dragged, and a click on it opens its editor
   (name, delete). A machine is bound to a marker in the machine dialog (marker + offset X / Z) and
   follows it (#58, #63).
+- **Viewpoints and default page** (#60): *public* viewpoints and default viewpoint stay in the
+  atelier (`viewpoints`, `defaultViewpointId`), written by the role `edit`; every user also has
+  *their own* (`wui-fleet-core` `user-views.ts`, user setting `fleet-views` → `WUI_MF_VIEWS`),
+  whose default wins for them. A viewpoint keeps its 2D / 3D mode. Default page: the user's own
+  ("Ma page par défaut", their settings) else the public one (`Atelier.landing`, one atelier at
+  most, role `edit`), opened on arriving at `/fleet-3d` (not when coming back from an atelier).
+  No separate "public views" role: the atelier DP is written through `/api/fleet`, which checks
+  `edit` for the whole DP — a narrower role would need a store of its own.
 - **Symbols** (#67): what an atelier places is called a *symbol* in its configuration (drawer,
   symbol dialog, wizard); the real equipment stays a *machine* (dashboard, states, stops, KPIs).
   Code identifiers (`MachineDef`, `machines`) and stored ateliers are unchanged. One "Ajouter un

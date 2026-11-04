@@ -27,7 +27,8 @@ export type FleetSettingKey =
   | 'fleet-dashboard'
   | 'fleet-stop-analysis'
   | 'fleet-kpi-analysis'
-  | 'fleet-closures';
+  | 'fleet-closures'
+  | 'fleet-views';
 
 /** Where the values come from and go to (the user settings client). */
 export interface SettingsBackend {

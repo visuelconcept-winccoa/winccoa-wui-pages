@@ -987,6 +987,8 @@ export interface Viewpoint {
   name: string;
   pos: [number, number, number];
   target: [number, number, number];
+  /** Camera mode it was saved in (#60); absent = 3D. */
+  mode?: '2d' | '3d';
 }
 
 /** A workshop ("atelier") — one persisted unit (one DP). */
@@ -1006,7 +1008,12 @@ export interface Atelier {
   viewpoints?: Viewpoint[];
   /** Id of the viewpoint applied automatically when the 3D view loads. */
   defaultViewpointId?: string;
-  /** Placement markers of this atelier (posts or other landmarks), machines placed from them. */
+  /**
+   * The public default page (#60): the atelier opened on arriving at the fleet, for every user
+   * who has not chosen their own. At most one atelier; set by the role `edit`.
+   */
+  landing?: boolean;
+  /** Placement markers of this atelier (location pins), machines placed from them. */
   markers?: PlacementMarker[];
 }
 

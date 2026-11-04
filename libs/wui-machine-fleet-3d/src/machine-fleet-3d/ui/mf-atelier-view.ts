@@ -47,6 +47,16 @@ import type { FleetStore } from '../data/fleet-store.js';
 import { MSG, confirmDeleteAtelierMsg, localize, localizeDir } from '../i18n.js';
 import { SceneController } from '../scene/scene-controller.js';
 import type { OtherSymbol } from './mf-symbol-wizard.js';
+import {
+  loadDefaultPage,
+  loadUserViews,
+  saveDefaultPage,
+  saveUserViews,
+  type UserAtelierViews
+} from '@visuelconcept-winccoa/wui-fleet-core/user-views.js';
+
+/** Viewpoints of the atelier, for everyone (role `edit`), or the user's own (#60). */
+type VpScope = 'public' | 'mine';
 import './mf-symbol-wizard.js';
 import {
   DEFAULT_NAV_CORNER,
@@ -237,6 +247,10 @@ export class MfAtelierView extends LitElement {
   @state() private confirmDeleteOpen = false;
   @state() private viewpoints: Viewpoint[] = [];
   @state() private defaultViewpointId = '';
+  /** The user's own viewpoints of this atelier and their default (their user settings, #60). */
+  @state() private myViews: UserAtelierViews = { viewpoints: [] };
+  /** The user's own default page is this atelier. */
+  @state() private myLanding = false;
   @state() private viewpointsOpen = false;
   @state() private renamingVpId: string | null = null;
   /** A new placement pin follows the pointer until a click on the floor drops it (#63). */
@@ -277,7 +291,7 @@ export class MfAtelierView extends LitElement {
     super.connectedCallback();
     // Connected again after a disconnect (moved in the DOM): rebuild what disconnect released.
     if (this.sceneBuilt && !this.scene) this.setupScene();
-    this.settingsSub = settingsCache.watch(['fleet-filter', 'fleet-ateliers'], () => this.restoreSettings());
+    this.settingsSub = settingsCache.watch(['fleet-filter', 'fleet-ateliers', 'fleet-views'], () => this.restoreSettings());
   }
 
   override disconnectedCallback(): void {
@@ -293,6 +307,8 @@ export class MfAtelierView extends LitElement {
     this.stateFilter = loadStateFilter();
     if (!this.atelier) return;
     this.userDisplay = loadDisplayPrefs(this.atelier.id);
+    this.myViews = loadUserViews(this.atelier.id);
+    this.myLanding = loadDefaultPage() === this.atelier.id;
   }
 
   override render(): TemplateResult {
@@ -333,6 +349,8 @@ export class MfAtelierView extends LitElement {
       this.markers = structuredClone(this.atelier.markers ?? []);
       this.viewpoints = structuredClone(this.atelier.viewpoints ?? []);
       this.defaultViewpointId = this.atelier.defaultViewpointId ?? '';
+      this.myViews = loadUserViews(this.atelier.id);
+      this.myLanding = loadDefaultPage() === this.atelier.id;
         this.userDisplay = loadDisplayPrefs(this.atelier.id);
     }
   }
@@ -684,45 +702,67 @@ export class MfAtelierView extends LitElement {
     `;
   }
 
+  /** Public viewpoints (the atelier's, role `edit`) and the user's own (#60), with the default pages. */
   private renderViewpoints(): TemplateResult {
     if (!this.viewpointsOpen) return html``;
     return html`
       <div class="viewpoints">
-        <div class="vp-head">
-          <span>${localizeDir(MSG.view.viewpoints)}</span>
-          ${this.editable
-            ? html`<ix-button variant="secondary" @click=${this.saveViewpoint}>
-                <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.view.saveView)}
-              </ix-button>`
-            : ''}
-        </div>
-        ${this.viewpoints.length === 0
-          ? html`<div class="muted">${localizeDir(MSG.view.noViewpoints)}</div>`
-          : html`<div class="vp-list">
-              ${this.viewpoints.map((vp) => this.renderViewpointRow(vp))}
+        ${this.renderVpGroup('public')} ${this.displayOnly ? '' : this.renderVpGroup('mine')}
+        ${this.displayOnly
+          ? ''
+          : html`<div class="vp-pages">
+              <label>
+                <input type="checkbox" .checked=${this.myLanding} @change=${(e: Event) => this.setMyLanding((e.target as HTMLInputElement).checked)} />
+                ${localizeDir(MSG.view.myLanding)}
+              </label>
+              ${this.editable
+                ? html`<label>
+                    <input type="checkbox" .checked=${this.atelier.landing === true} @change=${(e: Event) => this.setPublicLanding((e.target as HTMLInputElement).checked)} />
+                    ${localizeDir(MSG.view.publicLanding)}
+                  </label>`
+                : ''}
             </div>`}
       </div>
     `;
   }
 
-  private renderViewpointRow(vp: Viewpoint): TemplateResult {
+  private renderVpGroup(scope: VpScope): TemplateResult {
+    const list = this.vpList(scope);
+    const canWrite = scope === 'mine' || this.editable;
+    return html`
+      <div class="vp-head">
+        <span>${localizeDir(scope === 'public' ? MSG.view.publicViews : MSG.view.myViews)}</span>
+        ${canWrite
+          ? html`<ix-button variant="secondary" @click=${() => this.saveViewpoint(scope)}>
+              <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.view.saveView)}
+            </ix-button>`
+          : ''}
+      </div>
+      ${list.length === 0
+        ? html`<div class="muted">${localizeDir(MSG.view.noViewpoints)}</div>`
+        : html`<div class="vp-list">${list.map((vp) => this.renderViewpointRow(vp, scope))}</div>`}
+    `;
+  }
+
+  private renderViewpointRow(vp: Viewpoint, scope: VpScope): TemplateResult {
+    const canWrite = scope === 'mine' || this.editable;
     if (this.renamingVpId === vp.id) {
       return html`<div class="vp-row">
         <ix-input
           class="vp-input"
           .value=${this.vpRenameValue}
           @valueChange=${(e: CustomEvent<string>) => (this.vpRenameValue = String(e.detail))}
-          @keydown=${(e: KeyboardEvent) => this.onVpRenameKey(e, vp)}
+          @keydown=${(e: KeyboardEvent) => this.onVpRenameKey(e, vp, scope)}
         ></ix-input>
-        <ix-icon-button ghost size="16" icon="check" title=${localize(MSG.view.confirm)} @click=${() => this.commitVpRename(vp)}></ix-icon-button>
+        <ix-icon-button ghost size="16" icon="check" title=${localize(MSG.view.confirm)} @click=${() => this.commitVpRename(vp, scope)}></ix-icon-button>
       </div>`;
     }
-    const isDefault = vp.id === this.defaultViewpointId;
+    const isDefault = vp.id === this.vpDefaultId(scope);
     return html`<div class="vp-row">
       <span class="vp-name" title=${localize(MSG.view.goToView)} @click=${() => this.applyViewpoint(vp)}>
-        ${vp.name}${isDefault ? html`<ix-icon class="vp-default-badge" name="star-filled" size="12"></ix-icon>` : ''}
+        ${vp.name}${vp.mode === '2d' ? ' (2D)' : ''}${isDefault ? html`<ix-icon class="vp-default-badge" name="star-filled" size="12"></ix-icon>` : ''}
       </span>
-      ${this.editable
+      ${canWrite
         ? html`<ix-icon-button
               ghost
               size="16"
@@ -731,11 +771,11 @@ export class MfAtelierView extends LitElement {
               title=${isDefault
                 ? localize(MSG.view.defaultViewpointOn)
                 : localize(MSG.view.defaultViewpointOff)}
-              @click=${() => this.setDefaultViewpoint(vp.id)}
+              @click=${() => this.setDefaultViewpoint(vp.id, scope)}
             ></ix-icon-button>
-            <ix-icon-button ghost size="16" icon="refresh" title=${localize(MSG.view.refreshFromCamera)} @click=${() => this.updateViewpoint(vp.id)}></ix-icon-button>
+            <ix-icon-button ghost size="16" icon="refresh" title=${localize(MSG.view.refreshFromCamera)} @click=${() => this.updateViewpoint(vp.id, scope)}></ix-icon-button>
             <ix-icon-button ghost size="16" icon="pen" title=${localize(MSG.view.rename)} @click=${() => this.startVpRename(vp)}></ix-icon-button>
-            <ix-icon-button ghost size="16" icon="trashcan" title=${localize(MSG.view.delete)} @click=${() => this.deleteViewpoint(vp.id)}></ix-icon-button>`
+            <ix-icon-button ghost size="16" icon="trashcan" title=${localize(MSG.view.delete)} @click=${() => this.deleteViewpoint(vp.id, scope)}></ix-icon-button>`
         : ''}
     </div>`;
   }
@@ -1413,46 +1453,74 @@ export class MfAtelierView extends LitElement {
     this.dispatchEvent(new CustomEvent('wui:remove', { bubbles: true, composed: true }));
   }
 
-  private saveViewpoint(): void {
+  private vpList(scope: VpScope): Viewpoint[] {
+    return scope === 'public' ? this.viewpoints : this.myViews.viewpoints;
+  }
+
+  private vpDefaultId(scope: VpScope): string {
+    return scope === 'public' ? this.defaultViewpointId : (this.myViews.defaultViewpointId ?? '');
+  }
+
+  /** New list (and default) of a scope: the atelier's saved with it, the user's in their settings. */
+  private setVps(scope: VpScope, list: Viewpoint[], defaultId: string): void {
+    const def = list.some((v) => v.id === defaultId) ? defaultId : '';
+    if (scope === 'public') {
+      this.viewpoints = list;
+      this.defaultViewpointId = def;
+      this.scheduleSave();
+      return;
+    }
+    this.myViews = def ? { viewpoints: list, defaultViewpointId: def } : { viewpoints: list };
+    saveUserViews(this.atelier.id, this.myViews);
+  }
+
+  /** Save the current camera (and its 2D / 3D mode) as a new viewpoint of the scope. */
+  private saveViewpoint(scope: VpScope): void {
     if (!this.scene) return;
     const pose = this.scene.captureView();
-    this.viewpoints = [
-      ...this.viewpoints,
-      {
-        id: `vp-${Date.now()}`,
-        name: `${localize(MSG.view.viewLabel)} ${this.viewpoints.length + 1}`,
-        pos: pose.pos,
-        target: pose.target
-      }
-    ];
-    this.scheduleSave();
+    const list = this.vpList(scope);
+    const vp: Viewpoint = {
+      id: `vp-${Date.now()}`,
+      name: `${localize(MSG.view.viewLabel)} ${list.length + 1}`,
+      pos: pose.pos,
+      target: pose.target,
+      mode: this.cameraMode
+    };
+    this.setVps(scope, [...list, vp], this.vpDefaultId(scope));
   }
 
   private applyViewpoint(vp: Viewpoint): void {
-    // A viewpoint seen at an angle cannot be shown in the plan: it returns to 3D (#57).
-    const topDown = Math.hypot(vp.pos[0] - vp.target[0], vp.pos[2] - vp.target[2]) < 0.1 * Math.abs(vp.pos[1] - vp.target[1]);
-    if (this.cameraMode === '2d' && !topDown) this.switchCamera('3d');
+    if (vp.mode === '2d') {
+      this.switchCamera('2d');
+    } else {
+      // A viewpoint seen at an angle cannot be shown in the plan: it returns to 3D (#57).
+      const topDown = Math.hypot(vp.pos[0] - vp.target[0], vp.pos[2] - vp.target[2]) < 0.1 * Math.abs(vp.pos[1] - vp.target[1]);
+      if (this.cameraMode === '2d' && (!topDown || vp.mode === '3d')) this.switchCamera('3d');
+    }
     this.scene?.applyView(vp.pos, vp.target);
   }
 
-  /** Overwrite a saved viewpoint's pose with the current camera plane. */
-  private updateViewpoint(id: string): void {
+  /** Overwrite a saved viewpoint's pose (and mode) with the current camera. */
+  private updateViewpoint(id: string, scope: VpScope): void {
     if (!this.scene) return;
     const pose = this.scene.captureView();
-    this.viewpoints = this.viewpoints.map((v) =>
-      v.id === id ? { ...v, pos: pose.pos, target: pose.target } : v
+    const list = this.vpList(scope).map((v) =>
+      v.id === id ? { ...v, pos: pose.pos, target: pose.target, mode: this.cameraMode } : v
     );
-    this.scheduleSave();
+    this.setVps(scope, list, this.vpDefaultId(scope));
   }
 
-  /** The viewpoint configured as default for this atelier, if it still exists. */
+  /** The viewpoint applied on load: the user's own default, else the atelier's. */
   private defaultViewpoint(): Viewpoint | undefined {
+    const mine = this.myViews.defaultViewpointId;
+    const own = mine ? this.myViews.viewpoints.find((v) => v.id === mine) : undefined;
+    if (own) return own;
     return this.defaultViewpointId
       ? this.viewpoints.find((v) => v.id === this.defaultViewpointId)
       : undefined;
   }
 
-  /** Apply the configured default viewpoint, if any, when the view first loads. */
+  /** Apply the default viewpoint, if any, when the view first loads. */
   private applyDefaultViewpoint(): void {
     const vp = this.defaultViewpoint();
     if (vp) this.applyViewpoint(vp);
@@ -1465,16 +1533,13 @@ export class MfAtelierView extends LitElement {
     else this.scene?.resetView();
   }
 
-  /** Toggle a viewpoint as the one applied on load (canPublish-gated in the UI). */
-  private setDefaultViewpoint(id: string): void {
-    this.defaultViewpointId = this.defaultViewpointId === id ? '' : id;
-    this.scheduleSave();
+  /** Toggle a viewpoint as the scope's one applied on load. */
+  private setDefaultViewpoint(id: string, scope: VpScope): void {
+    this.setVps(scope, this.vpList(scope), this.vpDefaultId(scope) === id ? '' : id);
   }
 
-  private deleteViewpoint(id: string): void {
-    this.viewpoints = this.viewpoints.filter((v) => v.id !== id);
-    if (this.defaultViewpointId === id) this.defaultViewpointId = '';
-    this.scheduleSave();
+  private deleteViewpoint(id: string, scope: VpScope): void {
+    this.setVps(scope, this.vpList(scope).filter((v) => v.id !== id), this.vpDefaultId(scope));
   }
 
   private startVpRename(vp: Viewpoint): void {
@@ -1482,16 +1547,27 @@ export class MfAtelierView extends LitElement {
     this.vpRenameValue = vp.name;
   }
 
-  private onVpRenameKey(e: KeyboardEvent, vp: Viewpoint): void {
-    if (e.key === 'Enter') this.commitVpRename(vp);
+  private onVpRenameKey(e: KeyboardEvent, vp: Viewpoint, scope: VpScope): void {
+    if (e.key === 'Enter') this.commitVpRename(vp, scope);
     else if (e.key === 'Escape') this.renamingVpId = null;
   }
 
-  private commitVpRename(vp: Viewpoint): void {
+  private commitVpRename(vp: Viewpoint, scope: VpScope): void {
     const name = this.vpRenameValue.trim();
     this.renamingVpId = null;
     if (name === '' || name === vp.name) return;
-    this.viewpoints = this.viewpoints.map((v) => (v.id === vp.id ? { ...v, name } : v));
+    this.setVps(scope, this.vpList(scope).map((v) => (v.id === vp.id ? { ...v, name } : v)), this.vpDefaultId(scope));
+  }
+
+  /** This atelier as the user's own default page (their settings), or back to the public one. */
+  private setMyLanding(on: boolean): void {
+    this.myLanding = on;
+    saveDefaultPage(on ? this.atelier.id : undefined);
+  }
+
+  /** This atelier as the public default page (role `edit`); the shell clears it on the others. */
+  private setPublicLanding(on: boolean): void {
+    this.atelier = { ...this.atelier, landing: on || undefined };
     this.scheduleSave();
   }
 
@@ -1989,6 +2065,15 @@ function viewStyles() {
       background: var(--theme-color-2);
       border: 1px solid var(--theme-color-soft-bdr);
       border-radius: 50%;
+    }
+    .vp-pages {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      margin-top: 0.5rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid var(--theme-color-soft-bdr);
+      font-size: 0.85rem;
     }
     .pin-edit {
       position: absolute;
