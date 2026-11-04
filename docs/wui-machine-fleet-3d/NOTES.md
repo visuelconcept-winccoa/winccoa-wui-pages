@@ -95,8 +95,10 @@ DP and type provisioning/CRUD via the backend's **PARA REST API** (see Backend),
   toolbar's pin button (role `edit`) places one: a ghost pin follows the pointer, a click on the
   floor drops it ("Repère N"); in edit mode a pin is dragged, and a click on it opens its editor
   (name, delete). A machine is bound to a marker in the machine dialog (marker + offset X / Z) and
-  follows it. The work-centre outlines (`MachineDef.group`) show only while a machine is dragged
-  (#58, #63).
+  follows it (#58, #63).
+- **No work-centre notion** (#66): no group outlines on the floor (`MachineDef.group` is gone, a
+  stored one is ignored), and the tag dimensions "Îlot" / "Workcenter" an integration may still
+  write are neither offered by the filter bar nor filtered on (`isFilterDimension`).
 - **Each user's own choices** (added 2026-11): the tag and state filters, the display toggles (roof,
   labels, alerts only — outside edit mode they are the viewer's own, over the atelier's; in edit
   mode they change the atelier's), the machine dashboard filter, and the selections of the stop

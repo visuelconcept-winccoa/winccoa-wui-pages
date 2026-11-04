@@ -113,7 +113,7 @@ export class MfConfigPanel extends LitElement {
               @valueChange=${(e: { detail: string | string[] }) => this.emitAddFrom(String(e.detail))}
             >
               ${this.available.map(
-                (m) => html`<ix-select-item label=${m.group ? `${m.name} · ${m.group}` : m.name} value=${m.id}></ix-select-item>`
+                (m) => html`<ix-select-item label=${m.name} value=${m.id}></ix-select-item>`
               )}
             </ix-select>`
           : ''}

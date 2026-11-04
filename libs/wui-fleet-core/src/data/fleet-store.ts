@@ -44,8 +44,8 @@ const STOPCAUSE_DP = 'MachineFleet3D_StopCauses';
 /** Shared GxP audit DP for the whole fleet feature (atelier CRUD + the KPI / stop-cause sub-pages). */
 const AUDIT_DP = 'AuditTrail_Fleet';
 /**
- * Catalogue of the plant's machines, written by an integration (e.g. a supervision that knows the
- * work centres) — the machines a user may add to an atelier. Read only here; absent = none.
+ * Catalogue of the plant's machines, written by an integration (e.g. the plant's supervision) —
+ * the machines a user may add to an atelier. Read only here; absent = none.
  */
 const CATALOG_DP = 'MachineFleet3D_Catalog';
 const CLOSURES_TYPE = 'MachineFleet3D_Closures';

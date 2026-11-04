@@ -11,6 +11,7 @@ import {
   FLEET_FILTER_SETTING,
   filterDimensions,
   isFilterActive,
+  isFilterDimension,
   loadFleetFilter,
   loadStateFilter,
   matchesFilter,
@@ -80,5 +81,15 @@ describe('remembered filter', () => {
     expect(filterDimensions([tagged, OVEN]).find((d) => d.key === CARD_TAGS_DIMENSION)).toEqual({ key: CARD_TAGS_DIMENSION, values: ['Zone A'] });
     expect(matchesFilter(tagged, { [CARD_TAGS_DIMENSION]: ['Zone A'], Line: ['L2'] })).toBe(true);
     expect(matchesFilter(OVEN, { [CARD_TAGS_DIMENSION]: ['Zone A'] })).toBe(false);
+  });
+});
+
+describe('work-centre dimensions (#66)', () => {
+  it('are neither offered nor filtered on', () => {
+    const m = { tags: { Îlot: ['I1'], Workcenter: ['WC1'], 'Work-Center': ['x'], Activité: ['Soudure'], UAP: ['U2'] } };
+    expect(filterDimensions([m]).map((d) => d.key)).toEqual(['Activité', 'UAP']);
+    expect(matchesFilter(m, { Îlot: ['other'] })).toBe(true);
+    expect(isFilterDimension('ilot')).toBe(false);
+    expect(isFilterDimension('UAP')).toBe(true);
   });
 });

@@ -13,15 +13,11 @@ import {
   ACESFilmicToneMapping,
   AmbientLight,
   Box3,
-  BufferGeometry,
-  CanvasTexture,
   Color,
   DirectionalLight,
   Fog,
   Group,
   HemisphereLight,
-  LineBasicMaterial,
-  LineLoop,
   Mesh,
   MeshStandardMaterial,
   type Object3D,
@@ -34,8 +30,6 @@ import {
   Raycaster,
   SRGBColorSpace,
   Scene,
-  Sprite,
-  SpriteMaterial,
   Vector2,
   Vector3,
   WebGLRenderer
@@ -63,48 +57,6 @@ import { BILLBOARD_CHILD, applyBillboardTexture, buildMachine } from './machine-
 import { OrbitController } from './orbit-controller.js';
 
 const ACCENT_POOL_SIZE = 6;
-/** Width (m) of a group's name plate. */
-const GROUP_LABEL_W = 6;
-
-/** Machine group outline: margin around its machines and height (m), colour; label height. */
-const GROUP_MARGIN = 1.5;
-const GROUP_Y = 0.05;
-const GROUP_COLOR = 0x00_66_CC;
-const GROUP_LABEL_Y = 1.2;
-
-/** Free an overlay group (outlines and label sprites), then empty it. */
-function clearOverlay(group: Group): void {
-  group.traverse((obj) => {
-    if (obj instanceof Sprite) {
-      obj.material.map?.dispose();
-      obj.material.dispose();
-    } else if (obj instanceof LineLoop) {
-      obj.geometry.dispose();
-      (obj.material as LineBasicMaterial).dispose();
-    }
-  });
-  disposeObject(group);
-}
-
-/** A label texture for a group (text on a light plate). */
-function groupLabel(text: string): CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 64;
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#1f2937';
-    ctx.font = 'bold 36px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text, canvas.width / 2, canvas.height / 2, canvas.width - 12);
-  }
-  const tex = new CanvasTexture(canvas);
-  tex.colorSpace = SRGBColorSpace;
-  return tex;
-}
 const DRAG_THRESHOLD_PX = 5;
 /** Margin (px) around a machine's on-screen box that still shows its bubble in hover mode (#56). */
 const HOVER_MARGIN_PX = 16;
@@ -134,9 +86,6 @@ export class SceneController {
   private machinesGroup = new Group();
   /** Placement markers: location pins (HTML overlay), shown in edit mode. */
   private readonly pins: MarkerPins;
-  /** Machine groups (MachineDef.group): a floor outline and the group's name each, shown only
-   * while a machine is dragged in edit mode, as a placement guide (#58). */
-  private groupsGroup = new Group();
   private machines: Machine[] = [];
   /** Machines left out by the filter bar (kept across setMachines). */
   private filteredOut: ReadonlySet<string> = new Set();
@@ -184,8 +133,6 @@ export class SceneController {
 
     this.addLights();
     this.scene.add(this.machinesGroup);
-    this.groupsGroup.visible = false;
-    this.scene.add(this.groupsGroup);
     // Support gltfpack/meshopt-compressed GLBs (as the prototype did).
     this.gltfLoader.setMeshoptDecoder(MeshoptDecoder);
 
@@ -276,46 +223,6 @@ export class SceneController {
     this.setFilteredOut(this.filteredOut);
   }
 
-  /**
-   * Outline the machines of a group (MachineDef.group) on the floor, with the group's name: every
-   * group while a machine is dragged, none otherwise. Only the
-   * machines shown count (hidden and filtered-out ones are left out).
-   */
-  private drawGroups(): void {
-    clearOverlay(this.groupsGroup);
-    this.groupsGroup.visible = this.dragging !== null;
-    if (!this.groupsGroup.visible) return;
-    const bounds = new Map<string, { x1: number; x2: number; z1: number; z2: number }>();
-    for (const m of this.machines) {
-      if (!m.group || m.hidden || this.filteredOut.has(m.id)) continue;
-      const b = bounds.get(m.group) ?? { x1: Infinity, x2: -Infinity, z1: Infinity, z2: -Infinity };
-      b.x1 = Math.min(b.x1, m.x - m.w / 2);
-      b.x2 = Math.max(b.x2, m.x + m.w / 2);
-      b.z1 = Math.min(b.z1, m.z - m.d / 2);
-      b.z2 = Math.max(b.z2, m.z + m.d / 2);
-      bounds.set(m.group, b);
-    }
-    for (const [name, b] of bounds) {
-      const x1 = b.x1 - GROUP_MARGIN;
-      const x2 = b.x2 + GROUP_MARGIN;
-      const z1 = b.z1 - GROUP_MARGIN;
-      const z2 = b.z2 + GROUP_MARGIN;
-      const outline = new LineLoop(
-        new BufferGeometry().setFromPoints([
-          new Vector3(x1, GROUP_Y, z1),
-          new Vector3(x2, GROUP_Y, z1),
-          new Vector3(x2, GROUP_Y, z2),
-          new Vector3(x1, GROUP_Y, z2)
-        ]),
-        new LineBasicMaterial({ color: GROUP_COLOR })
-      );
-      const label = new Sprite(new SpriteMaterial({ map: groupLabel(name), depthTest: false }));
-      label.scale.set(GROUP_LABEL_W, GROUP_LABEL_W / 4, 1);
-      label.position.set((x1 + x2) / 2, GROUP_LABEL_Y, z1);
-      this.groupsGroup.add(outline, label);
-    }
-  }
-
   setRoofVisible(visible: boolean): void {
     if (this.roofGroup) this.roofGroup.visible = visible;
   }
@@ -333,7 +240,6 @@ export class SceneController {
     this.filteredOut = ids;
     for (const m of this.machines) m.mesh.visible = !m.hidden && !ids.has(m.id);
     this.labels.setFilteredOut(ids);
-    this.drawGroups();
   }
 
   /** Set the atelier's states for the labels (state label, producing states). */
@@ -901,8 +807,6 @@ export class SceneController {
       m.x = this.dragPoint.x;
       m.z = this.dragPoint.z;
       this.dragMoved = true;
-      // The group outlines follow the machine while it moves.
-      this.drawGroups();
     }
   };
 
@@ -911,7 +815,6 @@ export class SceneController {
     this.dragging = null;
     window.removeEventListener('pointermove', this.onEditMove);
     window.removeEventListener('pointerup', this.onEditUp);
-    if (m) this.drawGroups();
     if (m && this.dragMoved) {
       this.onMachineMove?.(m.id, m.mesh.position.x, m.mesh.position.z);
     }

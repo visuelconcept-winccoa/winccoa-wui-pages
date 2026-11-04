@@ -10,6 +10,8 @@
  * the overview and the atelier views.
  * The free tags the user puts on a machine of an atelier ({@link MachineDef.cardTags}) are one
  * more dimension, {@link CARD_TAGS_DIMENSION}.
+ * The work-centre dimensions an integration may still write ("Îlot", "Workcenter") are not
+ * offered nor filtered on: the fleet has no work-centre notion (#66).
  */
 import { settingObject, settingsCache, stringList } from './settings-cache.js';
 import type { MachineDef } from './types.js';
@@ -17,11 +19,28 @@ import type { MachineDef } from './types.js';
 /** Dimension of the free tags put on the machines of an atelier ({@link MachineDef.cardTags}). */
 export const CARD_TAGS_DIMENSION = 'Étiquettes';
 
+/** Tag dimensions left out of the filters (compared without case, accents, spaces or dashes). */
+const EXCLUDED_DIMENSIONS = new Set(['ilot', 'workcenter', 'workcentre']);
+
+const normDimension = (key: string): string =>
+  key
+    .normalize('NFD')
+    .replaceAll(/[\u0300-\u036F]/g, '')
+    .replaceAll(/[\s_-]/g, '')
+    .toLowerCase();
+
+/** Whether a tag dimension is offered by the filter bar (not a work-centre one). */
+export function isFilterDimension(key: string): boolean {
+  return !EXCLUDED_DIMENSIONS.has(normDimension(key));
+}
+
 /** Every tag of a machine, by dimension: its tags, plus its free tags of the atelier. */
 export function machineFilterTags(m: Pick<MachineDef, 'tags' | 'cardTags'>): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const [key, values] of Object.entries(m.tags ?? {})) if (isFilterDimension(key)) out[key] = values;
   const cardTags = (m.cardTags ?? []).filter((t) => t !== '');
-  if (cardTags.length === 0) return m.tags ?? {};
-  return { ...m.tags, [CARD_TAGS_DIMENSION]: [...(m.tags?.[CARD_TAGS_DIMENSION] ?? []), ...cardTags] };
+  if (cardTags.length === 0) return out;
+  return { ...out, [CARD_TAGS_DIMENSION]: [...(out[CARD_TAGS_DIMENSION] ?? []), ...cardTags] };
 }
 
 /** Selected values by dimension; a dimension absent or empty does not filter. */
@@ -58,7 +77,7 @@ export function isFilterActive(filter: FleetFilter): boolean {
 export function matchesFilter(m: Pick<MachineDef, 'tags' | 'cardTags'>, filter: FleetFilter): boolean {
   const tags = machineFilterTags(m);
   for (const [key, selected] of Object.entries(filter)) {
-    if (selected.length === 0) continue;
+    if (selected.length === 0 || !isFilterDimension(key)) continue;
     const values = tags[key] ?? [];
     if (!values.some((v) => selected.includes(v))) return false;
   }
