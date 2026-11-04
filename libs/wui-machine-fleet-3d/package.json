@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-machine-fleet-3d",
   "type": "module",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Machine Fleet 3D — standalone WinCC OA WebUI page: multi-atelier 3D digital twin (Three.js) with live DP-bound machine state/KPIs, config UI, GLB/billboard library and dashboard export. The per-machine dashboard embeds the shared alarm view (standing alarms or the archived ones over the dashboard's period, scoped to the machine's datapoints). Hub page; depends on the fleet-core + ai-kit + alarms-core domain kits.",
   "author": {
     "name": "Visuel Concept"
@@ -17,12 +17,12 @@
   "dependencies": {
     "@visuelconcept-winccoa/wui-ai-kit": "^0.1.0",
     "@visuelconcept-winccoa/wui-alarms-core": "^0.3.0",
-    "@visuelconcept-winccoa/wui-fleet-core": "^0.1.0",
+    "@visuelconcept-winccoa/wui-fleet-core": "^0.2.0",
     "@visuelconcept-winccoa/wui-kit": "^0.1.0",
     "three": "^0.169.0",
     "@visuelconcept-winccoa/wui-para": "^0.1.0",
     "@visuelconcept-winccoa/wui-app-security": "^0.1.0",
-    "@visuelconcept-winccoa/wui-fleet-closures": "^0.1.0"
+    "@visuelconcept-winccoa/wui-fleet-closures": "^0.2.0"
   },
   "peerDependencies": {
     "lit": "*",
@@ -192,6 +192,7 @@
     }
   },
   "files": [
+    "CHANGELOG.md",
     "src",
     "backend",
     "oa-data",
