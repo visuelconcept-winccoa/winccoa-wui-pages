@@ -630,7 +630,15 @@ export const MSG = {
     roofShed: ml('Sheds (sawtooth)', 'Sheds (redents)', 'Sheddach'),
     roofFlat: ml('Flat', 'Plate', 'Flach'),
     roofMonoslope: ml('Monoslope', 'Monopente', 'Pultdach'),
-    roofNone: ml('None', 'Aucune', 'Keine')
+    roofNone: ml('None', 'Aucune', 'Keine'),
+    perimeterColumns: ml('Perimeter columns', 'Poteaux extérieurs', 'Außenstützen'),
+    walls: ml('Transparent outer walls', 'Cloisons extérieures transparentes', 'Transparente Außenwände'),
+    columnColor: ml('Column colour', 'Couleur des poteaux', 'Stützenfarbe'),
+    colSteel: ml('Steel grey', 'Gris acier', 'Stahlgrau'),
+    colWhite: ml('White (RAL 9010)', 'Blanc (RAL 9010)', 'Weiß (RAL 9010)'),
+    colAnthracite: ml('Anthracite', 'Anthracite', 'Anthrazit'),
+    colYellow: ml('Safety yellow', 'Jaune sécurité', 'Sicherheitsgelb'),
+    colPetrol: ml('Petrol', 'Pétrole', 'Petrol')
   },
   configPanel: {
     deleteMachineHeading: ml('Delete the machine', 'Supprimer la machine', 'Maschine löschen'),

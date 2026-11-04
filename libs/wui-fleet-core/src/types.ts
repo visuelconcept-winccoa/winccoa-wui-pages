@@ -39,7 +39,14 @@ export type FloorType =
   | 'asphalt'
   | 'diamond-plate'
   | 'metal-grating'
-  | 'safety-zone';
+  | 'safety-zone'
+  | 'graphite-resin'
+  | 'light-pu-lanes'
+  | 'large-porcelain'
+  | 'raised-access'
+  | 'hex-tiles'
+  | 'micro-terrazzo'
+  | 'microcement-dark';
 
 /** Machine geometry kinds the factory can build. */
 export type MachineType =
@@ -465,7 +472,16 @@ export interface BuildingConfig {
   floorType: FloorType;
   /** Screen corner of the standard navigation controls (default bottom-right). */
   navCorner?: NavCorner;
+  /** Draw the columns on the building's outline (inner columns are always drawn). Default true. */
+  showPerimeterColumns?: boolean;
+  /** Draw the transparent outer walls (long walls and gables). Default true. */
+  showWalls?: boolean;
+  /** Columns' colour (`#rrggbb`); absent = steel grey {@link DEFAULT_COLUMN_COLOR}. */
+  columnColor?: string;
 }
+
+/** Default colour of the building's columns (steel grey). */
+export const DEFAULT_COLUMN_COLOR = '#5b6578';
 
 export const DEFAULT_BUILDING: BuildingConfig = {
   length: 240,
