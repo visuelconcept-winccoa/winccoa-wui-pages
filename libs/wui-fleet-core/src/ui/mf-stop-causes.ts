@@ -17,6 +17,7 @@ import {
 } from '../types.js';
 import { MSG, localize, localizeDir } from '../i18n.js';
 import { dialogStyles } from './dialog-styles.js';
+import { overlayClicked, overlayDown } from './overlay-dismiss.js';
 
 interface IxValueEvent {
   detail: string;
@@ -54,7 +55,7 @@ export class MfStopCauses extends LitElement {
 
   override render(): TemplateResult {
     return html`
-      <div class="overlay" @click=${this.close}>
+      <div class="overlay" @pointerdown=${overlayDown} @click=${(e: Event) => overlayClicked(e) && this.close()}>
         <div class="panel causes" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
             <ix-typography format="h3">${localizeDir(MSG.causes.title)}</ix-typography>

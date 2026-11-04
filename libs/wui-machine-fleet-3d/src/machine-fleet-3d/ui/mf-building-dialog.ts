@@ -20,6 +20,7 @@ import {
 } from '../types.js';
 import { FLOOR_PATTERNS } from '../scene/floor-patterns.js';
 import { dialogStyles } from './dialog-styles.js';
+import { overlayClicked, overlayDown } from '@visuelconcept-winccoa/wui-fleet-core/ui/overlay-dismiss.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { MSG, localize, localizeDir } from '../i18n.js';
 
@@ -75,7 +76,7 @@ export class MfBuildingDialog extends LitElement {
   override render(): TemplateResult {
     const b = this.working;
     return html`
-      <div class="overlay" @click=${this.close}>
+      <div class="overlay" @pointerdown=${overlayDown} @click=${(e: Event) => overlayClicked(e) && this.close()}>
         <div class="panel" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
             <ix-typography format="h3">${localizeDir(MSG.buildingDialog.title)}</ix-typography>

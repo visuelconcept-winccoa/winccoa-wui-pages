@@ -56,6 +56,7 @@ import {
   type ClosureConfig,
   type ClosureRange
 } from '@visuelconcept-winccoa/wui-fleet-core/closures.js';
+import { overlayClicked, overlayDown } from '@visuelconcept-winccoa/wui-fleet-core/ui/overlay-dismiss.js';
 
 /** Application-Security module id of this page. */
 const MODULE_ID = 'fleet-closures';
@@ -417,7 +418,7 @@ export class WuiFleetClosures extends LitElement {
   private renderOverlapDialog(): TemplateResult {
     if (!this.pendingImport) return html``;
     return html`
-      <div class="overlay" @click=${() => (this.pendingImport = null)}>
+      <div class="overlay" @pointerdown=${overlayDown} @click=${(e: Event) => { if (overlayClicked(e)) this.pendingImport = null; }}>
         <div class="panel" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
             <ix-typography format="h3">${localizeDir(MSG.overlap.title)}</ix-typography>

@@ -13,6 +13,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { ATELIER_TEMPLATES } from '../data/atelier-templates.js';
 import { MSG, localize, localizeDir } from '../i18n.js';
 import { dialogStyles } from './dialog-styles.js';
+import { overlayClicked, overlayDown } from '@visuelconcept-winccoa/wui-fleet-core/ui/overlay-dismiss.js';
 
 interface IxValueEvent {
   detail: string;
@@ -46,7 +47,7 @@ export class MfAtelierCreateDialog extends LitElement {
     const taken = this.existingIds.includes(this.atelierId);
     const invalid = this.atelierId === '' || taken;
     return html`
-      <div class="overlay" @click=${this.cancel}>
+      <div class="overlay" @pointerdown=${overlayDown} @click=${(e: Event) => overlayClicked(e) && this.cancel()}>
         <div class="panel create" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
             <ix-typography format="h3">${localizeDir(MSG.create.title)}</ix-typography>

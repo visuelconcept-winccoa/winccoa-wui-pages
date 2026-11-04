@@ -51,6 +51,7 @@ import { SEMIFAB_ICONS } from '../data/semifab-icons.js';
 import type { AliAssetInfo } from '../data/ali-assets.js';
 import type { FleetStore } from '../data/fleet-store.js';
 import { dialogStyles } from './dialog-styles.js';
+import { overlayClicked, overlayDown } from '@visuelconcept-winccoa/wui-fleet-core/ui/overlay-dismiss.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { MSG, localize, localizeDir, linkFallbackMsg, dashboardLinksHintMsg } from '../i18n.js';
 
@@ -144,7 +145,7 @@ export class MfMachineDialog extends LitElement {
   override render(): TemplateResult {
     if (!this.working) return html``;
     return html`
-      <div class="overlay" @click=${this.close}>
+      <div class="overlay" @pointerdown=${overlayDown} @click=${(e: Event) => overlayClicked(e) && this.close()}>
         <div class="panel" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
             <ix-typography format="h3">${localizeDir(MSG.machineDialog.editTitlePrefix)} — ${this.working.name}</ix-typography>
