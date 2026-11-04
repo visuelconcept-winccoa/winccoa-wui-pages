@@ -28,6 +28,9 @@ import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconce
 import appSecurityRoles from './app-security.roles.json';
 import { pageStyles } from '@visuelconcept-winccoa/wui-fleet-core/styles.js';
 import { FleetStore } from '@visuelconcept-winccoa/wui-fleet-core/data/fleet-store.js';
+import '@visuelconcept-winccoa/wui-fleet-core/fleet-settings-service.js';
+import { PagePrefs, oneOf, restorePeriod, storePeriod } from '@visuelconcept-winccoa/wui-fleet-core/page-prefs.js';
+import { stringList } from '@visuelconcept-winccoa/wui-fleet-core/settings-cache.js';
 import {
   DEFAULT_TRS_THRESHOLDS,
   resolveTrsColor,
@@ -57,7 +60,8 @@ const TAB_CHART = 'chart';
 const DEBOUNCE_MS = 300;
 
 /** Sortable columns of the KPI table. */
-type KpiSortCol = 'machine' | 'trs' | 'unplanned' | 'planned';
+const KPI_SORT_COLS = ['machine', 'trs', 'unplanned', 'planned'] as const;
+type KpiSortCol = (typeof KPI_SORT_COLS)[number];
 type SortDir = 'asc' | 'desc';
 const DATE_FORMAT = 'yyyy-MM-dd';
 const END_OF_DAY_MS = 24 * 60 * 60 * 1000 - 1;
@@ -99,6 +103,14 @@ export class WuiFleetKpiAnalysis extends LitElement {
   private debounceId = 0;
   private chart: echarts.ECharts | null = null;
   private resizeObserver: ResizeObserver | null = null;
+  /** The user's selection, kept in their settings (restored at start, after a login). */
+  private readonly prefs = new PagePrefs(
+    'fleet-kpi-analysis',
+    () => this.selection(),
+    (stored) => this.applySelection(stored),
+    () => void this.recompute()
+  );
+  private prefsSub: Subscription | null = null;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -107,11 +119,14 @@ export class WuiFleetKpiAnalysis extends LitElement {
       this.canView = granted;
     });
     this.initDefaultRange();
+    this.prefsSub = this.prefs.watch();
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.roleSub.unsubscribe();
+    this.prefsSub?.unsubscribe();
+    this.prefsSub = null;
     if (this.debounceId) window.clearTimeout(this.debounceId);
     this.resizeObserver?.disconnect();
     this.chart?.dispose();
@@ -144,6 +159,7 @@ export class WuiFleetKpiAnalysis extends LitElement {
 
   protected override updated(_changed: PropertyValues): void {
     if (this.tab === TAB_CHART) this.renderChart();
+    this.prefs.save();
   }
 
   private renderToolbar(): TemplateResult {
@@ -430,7 +446,40 @@ export class WuiFleetKpiAnalysis extends LitElement {
     this.closures = normaliseClosures(await this.store.listClosures());
     this.buildTrsConfigMap();
     this.offline = this.store.offline;
+    await this.prefs.restore();
     await this.recompute();
+  }
+
+  /** What the user's settings keep of the page. */
+  private selection(): Record<string, unknown> {
+    return {
+      ateliers: this.selectedAteliers,
+      machines: this.selectedMachines,
+      period: storePeriod(this.startStr, this.endStr),
+      search: this.machineSearch,
+      sort: { col: this.kpiSortCol, dir: this.kpiSortDir },
+      tab: this.tab
+    };
+  }
+
+  /** A stored selection, what is unknown or gone left at its default. */
+  private applySelection(stored: Record<string, unknown>): void {
+    const atelierIds = new Set(this.ateliers.map((a) => a.id));
+    this.selectedAteliers = stringList(stored['ateliers']).filter((id) => atelierIds.has(id));
+    const offered = new Set(this.machineOptions().map((m) => m.id));
+    this.selectedMachines = stringList(stored['machines']).filter((id) => offered.has(id));
+    const period = restorePeriod(stored['period']);
+    if (period) {
+      this.startStr = period.start;
+      this.endStr = period.end;
+    } else {
+      this.initDefaultRange();
+    }
+    this.machineSearch = typeof stored['search'] === 'string' ? stored['search'] : '';
+    const sort = (stored['sort'] ?? {}) as Record<string, unknown>;
+    this.kpiSortCol = oneOf(sort['col'], KPI_SORT_COLS) ?? 'trs';
+    this.kpiSortDir = oneOf(sort['dir'], ['asc', 'desc'] as const) ?? 'asc';
+    this.tab = oneOf(stored['tab'], [TAB_TABLE, TAB_CHART]) ?? TAB_TABLE;
   }
 
   /** Resolve each machine's TRS threshold config from its atelier. */

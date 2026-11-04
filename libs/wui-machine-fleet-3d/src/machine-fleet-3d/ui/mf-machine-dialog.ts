@@ -23,6 +23,7 @@ import {
   MAX_PARAMS,
   PORTIQUE_SPANS,
   TRS_WINDOW_LABELS,
+  appLinkHref,
   resolveDashboardMode,
   resolveDisplaySlots,
   resolveProcess,
@@ -39,6 +40,8 @@ import {
   type MachineProcess,
   type MachineType,
   type PortiqueSize,
+  placeFromMarker,
+  type PlacementMarker,
   type StateMapping,
   type TrsThresholds,
   type TrsWindow
@@ -48,6 +51,7 @@ import { SEMIFAB_ICONS } from '../data/semifab-icons.js';
 import type { AliAssetInfo } from '../data/ali-assets.js';
 import type { FleetStore } from '../data/fleet-store.js';
 import { dialogStyles } from './dialog-styles.js';
+import { overlayClicked, overlayDown } from '@visuelconcept-winccoa/wui-fleet-core/ui/overlay-dismiss.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { MSG, localize, localizeDir, linkFallbackMsg, dashboardLinksHintMsg } from '../i18n.js';
 
@@ -61,7 +65,7 @@ interface IxCheckedEvent {
 /** The gantry-with-rotary-table machine type (referenced in several places). */
 const PORTIQUE_TABLE: MachineType = 'portique-table';
 
-const MACHINE_TYPES: MachineType[] = [
+export const MACHINE_TYPES: MachineType[] = [
   'four',
   'robot',
   'positionneur',
@@ -112,6 +116,8 @@ export class MfMachineDialog extends LitElement {
   @property({ attribute: false }) machine!: MachineDef;
   @property({ attribute: false }) mappings: StateMapping[] = [];
   @property({ attribute: false }) thresholds: TrsThresholds[] = [];
+  /** Placement markers of the atelier, to place the machine from one (SDS 2.2 SL-IMP-02). */
+  @property({ attribute: false }) markers: PlacementMarker[] = [];
   @property({ attribute: false }) glbResources: GlbResource[] = [];
   @property({ attribute: false }) billboardResources: GlbResource[] = [];
   @property({ attribute: false }) dashboards: DashboardOption[] = [];
@@ -139,7 +145,7 @@ export class MfMachineDialog extends LitElement {
   override render(): TemplateResult {
     if (!this.working) return html``;
     return html`
-      <div class="overlay" @click=${this.close}>
+      <div class="overlay" @pointerdown=${overlayDown} @click=${(e: Event) => overlayClicked(e) && this.close()}>
         <div class="panel" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
             <ix-typography format="h3">${localizeDir(MSG.machineDialog.editTitlePrefix)} — ${this.working.name}</ix-typography>
@@ -245,6 +251,7 @@ export class MfMachineDialog extends LitElement {
       { label: localize(MSG.machineDialog.stopCauseLabel), dp: m.stopCauseDp },
       { label: localize(MSG.machineDialog.workOrderLabel), dp: m.workOrderDp },
       { label: localize(MSG.machineDialog.operationLabel), dp: m.operationDp },
+      { label: localize(MSG.machineDialog.alarmCodeLabel), dp: m.alarmCodeDp },
       { label: localize(MSG.machineDialog.tiltAngleLabel), dp: m.tiltDp },
       ...(m.kpis ?? []).map((k) => ({ label: k.label || k.key, dp: k.dp }))
     ];
@@ -517,6 +524,13 @@ export class MfMachineDialog extends LitElement {
           .value=${m.loc ?? ''}
           @valueChange=${(e: IxValueEvent) => this.patch({ loc: String(e.detail) })}
         ></ix-input>
+        <ix-input
+          label=${localize(MSG.machineDialog.cardTags)}
+          helper-text=${localize(MSG.machineDialog.cardTagsHint)}
+          .value=${(m.cardTags ?? []).join(', ')}
+          @valueChange=${(e: IxValueEvent) => this.patchCardTags(String(e.detail))}
+        ></ix-input>
+        ${this.renderMarker()}
         <div class="grid3">
           <ix-number-input
             label="X"
@@ -536,6 +550,12 @@ export class MfMachineDialog extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  /** Free tags of the machine in this atelier, typed comma-separated (cardTags). */
+  private patchCardTags(raw: string): void {
+    const tags = [...new Set(raw.split(',').map((t) => t.trim()).filter((t) => t !== ''))];
+    this.patch({ cardTags: tags.length > 0 ? tags : undefined });
   }
 
   private renderAppearance(): TemplateResult {
@@ -981,6 +1001,49 @@ export class MfMachineDialog extends LitElement {
     return parts.join(' · ');
   }
 
+  /** Placed from a marker: its choice and the offset, the position following from them. */
+  private renderMarker(): TemplateResult {
+    if (this.markers.length === 0) return html``;
+    const m = this.working;
+    const marker = this.markers.find((k) => k.id === m.markerId);
+    return html`
+      <div class="grid3">
+        <ix-select
+          label=${localize(MSG.markers.placeFrom)}
+          .value=${marker?.id ?? ''}
+          @valueChange=${(e: IxValueEvent) => this.bindMarker(String(e.detail))}
+        >
+          <ix-select-item label=${localize(MSG.markers.noMarker)} value=""></ix-select-item>
+          ${this.markers.map((k) => html`<ix-select-item label=${k.label} value=${k.id}></ix-select-item>`)}
+        </ix-select>
+        ${marker
+          ? html`<ix-number-input
+                label=${localize(MSG.markers.offsetX)}
+                .value=${Math.round((m.x - marker.x) * 10) / 10}
+                @valueChange=${(e: IxValueEvent) => this.patch(placeFromMarker(m, marker, Number(e.detail) || 0, m.z - marker.z))}
+              ></ix-number-input>
+              <ix-number-input
+                label=${localize(MSG.markers.offsetZ)}
+                .value=${Math.round((m.z - marker.z) * 10) / 10}
+                @valueChange=${(e: IxValueEvent) => this.patch(placeFromMarker(m, marker, m.x - marker.x, Number(e.detail) || 0))}
+              ></ix-number-input>`
+          : ''}
+      </div>
+    `;
+  }
+
+  /** Bind the machine to a marker (placed on it, no offset) or free it (position kept). */
+  private bindMarker(id: string): void {
+    const marker = this.markers.find((k) => k.id === id);
+    if (marker) {
+      this.patch(placeFromMarker(this.working, marker, 0, 0));
+    } else {
+      const free = { ...this.working };
+      delete free.markerId;
+      this.working = free;
+    }
+  }
+
   private renderProduction(): TemplateResult {
     const m = this.working;
     return html`
@@ -1001,6 +1064,18 @@ export class MfMachineDialog extends LitElement {
           .value=${m.operationDp ?? ''}
           @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ operationDp: e.detail.value })}
         ></wui-dp-input>
+        <wui-dp-input
+          label=${localize(MSG.machineDialog.alarmCodeDpLabel)}
+          .value=${m.alarmCodeDp ?? ''}
+          @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ alarmCodeDp: e.detail.value })}
+        ></wui-dp-input>
+        <ix-number-input
+          label=${localize(MSG.machineDialog.minStopLabel)}
+          helper-text=${localize(MSG.machineDialog.minStopHint)}
+          min="0"
+          .value=${m.minStopSec ?? 0}
+          @valueChange=${(e: IxValueEvent) => this.patch({ minStopSec: Math.max(0, Number(e.detail) || 0) })}
+        ></ix-number-input>
       </div>
     `;
   }
@@ -1061,10 +1136,12 @@ export class MfMachineDialog extends LitElement {
   /** Configure up to MAX_DASHBOARD_LINKS custom URL buttons (shown in the popup). */
   private renderDashboardLinks(): TemplateResult {
     const links = this.working.dashboardLinks ?? [];
+    // Links that stay within the application (appLinksOnly): addresses of the application only.
+    const inApp = this.working.appLinksOnly === true;
     return html`
-      <div class="subhead">${localizeDir(MSG.machineDialog.externalLinks)}</div>
+      <div class="subhead">${localizeDir(inApp ? MSG.machineDialog.appLinks : MSG.machineDialog.externalLinks)}</div>
       <div class="hint">
-        ${dashboardLinksHintMsg(MAX_DASHBOARD_LINKS)}
+        ${inApp ? localizeDir(MSG.machineDialog.appLinksHint) : dashboardLinksHintMsg(MAX_DASHBOARD_LINKS)}
       </div>
       <div class="kpi-head">
         <span class="spacer"></span>
@@ -1084,6 +1161,7 @@ export class MfMachineDialog extends LitElement {
 
   private renderDashboardLinkRow(link: DashboardLink, i: number): TemplateResult {
     const icon = link.icon || DEFAULT_DASHBOARD_LINK_ICON;
+    const inApp = this.working.appLinksOnly === true;
     return html`
       <div class="kpi-card">
         <div class="kpi-card-head">
@@ -1124,11 +1202,14 @@ export class MfMachineDialog extends LitElement {
           </div>
         </div>
         <ix-input
-          label=${localize(MSG.machineDialog.urlLabel)}
-          placeholder=${localize(MSG.machineDialog.urlPlaceholder)}
+          label=${localize(inApp ? MSG.machineDialog.appUrlLabel : MSG.machineDialog.urlLabel)}
+          placeholder=${localize(inApp ? MSG.machineDialog.appUrlPlaceholder : MSG.machineDialog.urlPlaceholder)}
           .value=${link.url}
           @valueChange=${(e: IxValueEvent) => this.patchDashboardLink(i, { url: String(e.detail) })}
         ></ix-input>
+        ${inApp && link.url.trim() !== '' && appLinkHref(link.url) === undefined
+          ? html`<div class="hint" style="color: var(--theme-color-alarm)">${localizeDir(MSG.machineDialog.appUrlInvalid)}</div>`
+          : ''}
       </div>
     `;
   }

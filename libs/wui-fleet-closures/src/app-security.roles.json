@@ -11,6 +11,15 @@
         "fr.utf8": "Gérer les périodes non travaillées",
         "de.utf8": "Arbeitsfreie Zeiträume verwalten"
       }
+    },
+    {
+      "id": "edit-machine",
+      "label": { "en_US.utf8": "Customise a machine", "fr.utf8": "Personnaliser une machine", "de.utf8": "Maschine anpassen" },
+      "description": {
+        "en_US.utf8": "Manage the non-working periods of a single machine",
+        "fr.utf8": "Gérer les périodes non travaillées propres à une machine",
+        "de.utf8": "Arbeitsfreie Zeiträume einer einzelnen Maschine verwalten"
+      }
     }
   ]
 }

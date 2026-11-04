@@ -11,6 +11,7 @@ import { LitElement, css, html, type PropertyValues, type TemplateResult } from 
 import { customElement, property, state } from 'lit/decorators.js';
 import {
   DEFAULT_BUILDING,
+  DEFAULT_COLUMN_COLOR,
   DEFAULT_NAV_CORNER,
   NAV_CORNER_LABELS,
   type BuildingConfig,
@@ -20,6 +21,7 @@ import {
 } from '../types.js';
 import { FLOOR_PATTERNS } from '../scene/floor-patterns.js';
 import { dialogStyles } from './dialog-styles.js';
+import { overlayClicked, overlayDown } from '@visuelconcept-winccoa/wui-fleet-core/ui/overlay-dismiss.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { MSG, localize, localizeDir } from '../i18n.js';
 
@@ -36,6 +38,14 @@ const ROOF_TYPE_LABELS: Record<RoofType, MultiLangString> = {
 };
 // Driven from the pattern registry so new floor types appear automatically.
 const FLOOR_TYPES = Object.keys(FLOOR_PATTERNS) as FloorType[];
+/** Column colour presets: steel grey, RAL 9010 white, anthracite, safety yellow, petrol. */
+const COLUMN_PRESETS: { color: string; label: MultiLangString }[] = [
+  { color: DEFAULT_COLUMN_COLOR, label: MSG.buildingDialog.colSteel },
+  { color: '#f1ece1', label: MSG.buildingDialog.colWhite },
+  { color: '#383e42', label: MSG.buildingDialog.colAnthracite },
+  { color: '#f0b400', label: MSG.buildingDialog.colYellow },
+  { color: '#009999', label: MSG.buildingDialog.colPetrol }
+];
 const NAV_CORNERS = Object.keys(NAV_CORNER_LABELS) as NavCorner[];
 
 @customElement('mf-building-dialog')
@@ -56,6 +66,20 @@ export class MfBuildingDialog extends LitElement {
         margin-bottom: 0.1rem;
         color: var(--theme-color-soft-text);
       }
+      .color-field {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+      }
+      .swatch {
+        width: 1.25rem;
+        height: 1.25rem;
+        padding: 0;
+        border: 1px solid var(--theme-color-soft-bdr);
+        border-radius: var(--theme-default-border-radius);
+        cursor: pointer;
+      }
       .slider-val {
         font-weight: 600;
         color: var(--theme-color-std-text);
@@ -75,7 +99,7 @@ export class MfBuildingDialog extends LitElement {
   override render(): TemplateResult {
     const b = this.working;
     return html`
-      <div class="overlay" @click=${this.close}>
+      <div class="overlay" @pointerdown=${overlayDown} @click=${(e: Event) => overlayClicked(e) && this.close()}>
         <div class="panel" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
             <ix-typography format="h3">${localizeDir(MSG.buildingDialog.title)}</ix-typography>
@@ -120,6 +144,34 @@ export class MfBuildingDialog extends LitElement {
                   (c) => html`<ix-select-item label=${NAV_CORNER_LABELS[c]} value=${c}></ix-select-item>`
                 )}
               </ix-select>
+            </div>
+            <div class="grid2">
+              <ix-checkbox
+                label=${localize(MSG.buildingDialog.perimeterColumns)}
+                .checked=${b.showPerimeterColumns !== false}
+                @checkedChange=${(e: CustomEvent<boolean>) => this.patch({ showPerimeterColumns: e.detail })}
+              ></ix-checkbox>
+              <ix-checkbox
+                label=${localize(MSG.buildingDialog.walls)}
+                .checked=${b.showWalls !== false}
+                @checkedChange=${(e: CustomEvent<boolean>) => this.patch({ showWalls: e.detail })}
+              ></ix-checkbox>
+            </div>
+            <div class="color-field">
+              <span>${localizeDir(MSG.buildingDialog.columnColor)}</span>
+              <input
+                type="color"
+                .value=${b.columnColor || DEFAULT_COLUMN_COLOR}
+                @input=${(e: Event) => this.patch({ columnColor: (e.target as HTMLInputElement).value })}
+              />
+              ${COLUMN_PRESETS.map(
+                (c) => html`<button
+                  class="swatch"
+                  style="background: ${c.color}"
+                  title=${localize(c.label)}
+                  @click=${() => this.patch({ columnColor: c.color })}
+                ></button>`
+              )}
             </div>
           </div>
           <div class="panel-foot">

@@ -46,23 +46,43 @@ import { normDp, toNumber } from '../data/dp-utils.js';
 import type { FleetStore } from '../data/fleet-store.js';
 import { MSG, confirmDeleteAtelierMsg, localize, localizeDir } from '../i18n.js';
 import { SceneController } from '../scene/scene-controller.js';
+import type { OtherSymbol } from './mf-symbol-wizard.js';
+import {
+  loadDefaultPage,
+  loadUserViews,
+  saveDefaultPage,
+  saveUserViews,
+  type UserAtelierViews
+} from '@visuelconcept-winccoa/wui-fleet-core/user-views.js';
+
+/** Viewpoints of the atelier, for everyone (role `edit`), or the user's own (#60). */
+type VpScope = 'public' | 'mine';
+import './mf-symbol-wizard.js';
 import {
   DEFAULT_NAV_CORNER,
   DEFAULT_STATE_MAPPINGS,
   DEFAULT_TRS_THRESHOLDS,
   DISCONNECTED_LABEL,
   KPI_TYPE_INFO,
-  STATE_LABELS,
+  atelierStates,
+  formatParamValue,
   formatStopCause,
+  isRunningState,
+  mappingStates,
   MAX_DASHBOARD_LINKS,
+  appLinkHref,
+  followMarkers,
+  fleetStats,
+  nextMarkerNumber,
   isDisconnected,
+  placeMachine,
   resolveConnected,
   resolveDashboardMode,
   resolveDisplaySlots,
   resolveState,
-  resolveStateColors,
   resolveTrsColor,
   stateColor,
+  stateLabel,
   type Atelier,
   type DisplaySlot,
   type BuildingConfig,
@@ -71,16 +91,36 @@ import {
   type GlbResource,
   type Machine,
   type MachineDef,
+  type PlacementMarker,
   type StateMapping,
   type StopCause,
   type TrsThresholds,
   type Viewpoint
 } from '../types.js';
+import {
+  loadDisplayPrefs,
+  saveDisplayPrefs,
+  type AtelierDisplayPrefs
+} from '@visuelconcept-winccoa/wui-fleet-core/bubble-prefs.js';
+import '@visuelconcept-winccoa/wui-fleet-core/fleet-settings-service.js';
+import { settingsCache } from '@visuelconcept-winccoa/wui-fleet-core/settings-cache.js';
+import {
+  filterDimensions,
+  isFilterActive,
+  loadFleetFilter,
+  loadStateFilter,
+  matchesFilter,
+  pruneFilter,
+  saveFleetFilter,
+  saveStateFilter,
+  type FleetFilter
+} from '@visuelconcept-winccoa/wui-fleet-core/filters.js';
 import './mf-ai-prompt.js';
 import './mf-building-dialog.js';
 import './mf-config-panel.js';
 import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
 import './mf-graphics-catalog.js';
+import './mf-filter-bar.js';
 import './mf-machine-dashboard.js';
 import './mf-machine-dialog.js';
 import './mf-state-mapping-dialog.js';
@@ -97,6 +137,7 @@ type DpKind =
   | 'stopCause'
   | 'workOrder'
   | 'operation'
+  | 'alarmCode'
   | 'comm'
   | 'tilt';
 interface DpTarget {
@@ -176,8 +217,17 @@ export class MfAtelierView extends LitElement {
   @state() private building!: BuildingConfig;
   @state() private display!: DisplayConfig;
   @state() private machines: MachineDef[] = [];
+  /** Remembered machine filter (shared with the overview); machines left out are hidden. */
+  @state() private filter: FleetFilter = loadFleetFilter();
+  /** Remembered state filter (state keys); machines in another state are hidden. */
+  @state() private stateFilter: string[] = loadStateFilter();
+  /** The viewer's own display toggles (their user settings), over the atelier's outside edit mode. */
+  @state() private userDisplay: AtelierDisplayPrefs = {};
   @state() private mappings: StateMapping[] = [];
   @state() private thresholds: TrsThresholds[] = [];
+  @state() private markers: PlacementMarker[] = [];
+  /** The plant's machines an integration offers to add (MachineFleet3D_Catalog). */
+  @state() private catalog: MachineDef[] = [];
   @state() private thresholdsOpen = false;
   /** Right machine-list drawer — hidden by default; shown on demand. */
   @state() private panelOpen = false;
@@ -187,6 +237,9 @@ export class MfAtelierView extends LitElement {
   /** Scene camera mode: 3D (perspective) or 2D (orthographic plan). */
   @state() private cameraMode: '2d' | '3d' = '3d';
   @state() private editing: MachineDef | null = null;
+  /** The "add a symbol" wizard (#67), and the other ateliers' symbols it offers. */
+  @state() private wizardOpen = false;
+  @state() private otherSymbols: OtherSymbol[] = [];
   @state() private buildingOpen = false;
   @state() private mappingOpen = false;
   @state() private atelierName = '';
@@ -194,8 +247,16 @@ export class MfAtelierView extends LitElement {
   @state() private confirmDeleteOpen = false;
   @state() private viewpoints: Viewpoint[] = [];
   @state() private defaultViewpointId = '';
+  /** The user's own viewpoints of this atelier and their default (their user settings, #60). */
+  @state() private myViews: UserAtelierViews = { viewpoints: [] };
+  /** The user's own default page is this atelier. */
+  @state() private myLanding = false;
   @state() private viewpointsOpen = false;
   @state() private renamingVpId: string | null = null;
+  /** A new placement pin follows the pointer until a click on the floor drops it (#63). */
+  @state() private placingPin = false;
+  /** The pin being renamed / deleted, and where its editor opens (viewport px). */
+  @state() private pinEdit: { id: string; x: number; y: number; label: string } | null = null;
   @state() private vpRenameValue = '';
   @state() private glbResources: GlbResource[] = [];
   @state() private billboardResources: GlbResource[] = [];
@@ -212,6 +273,8 @@ export class MfAtelierView extends LitElement {
   private visibility: IntersectionObserver | null = null;
   private readonly api = this.resolveApi();
   private dpSubscription = new Subscription();
+  /** The viewer's settings (filters, bubbles, display toggles), read again on every login. */
+  private settingsSub: Subscription | null = null;
   // One DP can drive several targets (e.g. the same DP bound to the state AND a
   // KPI of the same machine), so each key maps to a LIST of targets.
   private dpTargets = new Map<string, DpTarget[]>();
@@ -228,11 +291,24 @@ export class MfAtelierView extends LitElement {
     super.connectedCallback();
     // Connected again after a disconnect (moved in the DOM): rebuild what disconnect released.
     if (this.sceneBuilt && !this.scene) this.setupScene();
+    this.settingsSub = settingsCache.watch(['fleet-filter', 'fleet-ateliers', 'fleet-views'], () => this.restoreSettings());
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
+    this.settingsSub?.unsubscribe();
+    this.settingsSub = null;
     this.releaseScene();
+  }
+
+  /** The viewer's settings, once loaded (and after a login). */
+  private restoreSettings(): void {
+    this.filter = loadFleetFilter();
+    this.stateFilter = loadStateFilter();
+    if (!this.atelier) return;
+    this.userDisplay = loadDisplayPrefs(this.atelier.id);
+    this.myViews = loadUserViews(this.atelier.id);
+    this.myLanding = loadDefaultPage() === this.atelier.id;
   }
 
   override render(): TemplateResult {
@@ -240,11 +316,12 @@ export class MfAtelierView extends LitElement {
     return html`
       <div class="page">
         ${this.renderTopbar()}
+        ${this.renderFilters()}
         <div class="stage">
           <div class="viewport">
             <canvas></canvas>
             <div class="overlay-layer"></div>
-            ${this.renderViewpoints()} ${this.renderDetail()}
+            ${this.renderViewpoints()} ${this.renderPinEdit()} ${this.renderDetail()}
             ${this.hideNav ? nothing : html`${this.renderNav()} ${this.renderViewBar()}`}
           </div>
           ${this.renderPanel()}
@@ -269,23 +346,36 @@ export class MfAtelierView extends LitElement {
       this.machines = structuredClone(this.atelier.machines);
       this.mappings = structuredClone(this.atelier.mappings);
       this.thresholds = structuredClone(this.atelier.trsThresholds ?? DEFAULT_TRS_THRESHOLDS);
+      this.markers = structuredClone(this.atelier.markers ?? []);
       this.viewpoints = structuredClone(this.atelier.viewpoints ?? []);
       this.defaultViewpointId = this.atelier.defaultViewpointId ?? '';
+      this.myViews = loadUserViews(this.atelier.id);
+      this.myLanding = loadDefaultPage() === this.atelier.id;
+        this.userDisplay = loadDisplayPrefs(this.atelier.id);
     }
   }
 
-  protected override updated(_changed: PropertyValues): void {
+  protected override updated(changed: PropertyValues): void {
     // The first render that has the canvas (an atelier) builds the scene once.
-    if (this.scene || !this.building || !this.isConnected || this.sceneBuilt) return;
-    this.sceneBuilt = true;
-    this.setupScene();
-    if (!this.displayOnly) {
-      // Editing data: graphics library, WinCC OA dashboards, the catalog through the store.
-      void this.loadResources();
-      void this.loadDashboards();
-      void this.loadStopCauses();
+    if (!this.scene && this.building && this.isConnected && !this.sceneBuilt) {
+      this.sceneBuilt = true;
+      this.setupScene();
+      if (!this.displayOnly) {
+        // Editing data: graphics library, WinCC OA dashboards, the catalogs through the store.
+        void this.loadResources();
+        void this.loadDashboards();
+        void this.loadStopCauses();
+        void this.loadCatalog();
+      }
+      void this.loadAliAssets();
     }
-    void this.loadAliAssets();
+    if (changed.has('filter') || changed.has('stateFilter') || changed.has('machines')) {
+      const out = this.filteredOutIds();
+      this.scene?.setFilteredOut(out);
+      // The card of a machine the filter leaves out closes with it.
+      if (this.selectedId && out.has(this.selectedId)) this.selectedId = null;
+    }
+    if (changed.has('userDisplay')) this.applyDisplay();
   }
 
   /** Edit affordances: the combined grant, never in display-only mode. */
@@ -309,8 +399,13 @@ export class MfAtelierView extends LitElement {
     const store = this.store;
     if (store) this.scene.setResourceResolver((ref) => store.readResourceDataUrl(ref));
     this.scene.setOnMachineMove((id, x, z) => this.onMachineMove(id, x, z));
+    this.scene.setOnMarkerMove((id, x, z) => this.onMarkerMove(id, x, z));
+    this.scene.setOnMarkerPick((id, sx, sy) => this.openPinEdit(id, sx, sy));
+    this.scene.setOnBubbleEdit((id, patch) => this.onBubbleEdit(id, patch));
+    this.scene.setEditMode(this.editMode);
     this.scene.setOnRotate(this.onCameraRotate);
     this.scene.setBuilding(this.building);
+    this.scene.setMarkers(this.markers);
     this.scene.setMachines(this.machines);
     this.applyStateColors();
     this.applyDisplay();
@@ -347,12 +442,28 @@ export class MfAtelierView extends LitElement {
     }
   }
 
+  /** Live counts beside the atelier's name, faults and stops first (#65); the filter bar applies. */
+  private renderStats(): TemplateResult {
+    const out = this.filteredOutIds();
+    const shown = this.machines.filter((m) => !out.has(m.id));
+    const stats = fleetStats(shown, atelierStates(this.mappings.length ? this.mappings : DEFAULT_STATE_MAPPINGS));
+    const item = (cls: string, n: number, label: string): TemplateResult =>
+      html`<span class="stat ${cls}" title=${label} aria-label=${`${label} : ${n}`}><span class="stat__dot"></span>${n}<span class="stat__label">${label}</span></span>`;
+    return html`<div class="stats">
+      ${item('stat--fault', stats.fault, localize(MSG.view.statFault))}
+      ${item('stat--stop', stats.stop, localize(MSG.view.statStop))}
+      ${item('stat--prod', stats.production, localize(MSG.view.statProduction))}
+      ${stats.offline > 0 ? item('stat--offline', stats.offline, DISCONNECTED_LABEL) : ''}
+    </div>`;
+  }
+
   private renderTopbar(): TemplateResult | typeof nothing {
     if (this.hideToolbar) return nothing;
     if (this.displayOnly) {
       return html`
         <div class="topbar">
           <ix-typography class="title" format="h3">${this.atelierName || localize(MSG.view.atelier)}</ix-typography>
+          ${this.renderStats()}
           <span class="topbar-spacer"></span>
           ${this.renderDisplayToolbar()}
         </div>
@@ -373,6 +484,7 @@ export class MfAtelierView extends LitElement {
               ${this.editable
                 ? html`<ix-icon-button ghost icon="pen" title=${localize(MSG.view.renameAtelier)} @click=${this.startRename}></ix-icon-button>`
                 : ''}`}
+        ${this.renderStats()}
         <span class="topbar-spacer"></span>
         ${this.renderToolbar()}
         ${this.editable
@@ -399,9 +511,9 @@ export class MfAtelierView extends LitElement {
   /** Roof / labels / alerts-only toggles (saved with the atelier, except in display-only mode). */
   private renderDisplayToggles(): TemplateResult {
     return html`
-      <ix-icon-button icon="home" ghost title=${localize(MSG.view.roof)} variant=${this.display.roof ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, roof: !this.display.roof })}></ix-icon-button>
-      <ix-icon-button icon="label" ghost title=${localize(MSG.view.labels)} variant=${this.display.labels ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, labels: !this.display.labels })}></ix-icon-button>
-      <ix-icon-button icon="warning" ghost title=${localize(MSG.view.alertsOnly)} variant=${this.display.alertOnly ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, alertOnly: !this.display.alertOnly })}></ix-icon-button>
+      <ix-icon-button icon="home" ghost title=${localize(MSG.view.roof)} variant=${this.shownDisplay.roof ? 'primary' : 'secondary'} @click=${() => this.toggleDisplay('roof')}></ix-icon-button>
+      <ix-icon-button icon="label" ghost title=${localize(MSG.view.labels)} variant=${this.shownDisplay.labels ? 'primary' : 'secondary'} @click=${() => this.toggleDisplay('labels')}></ix-icon-button>
+      <ix-icon-button icon="warning" ghost title=${localize(MSG.view.alertsOnly)} variant=${this.shownDisplay.alertOnly ? 'primary' : 'secondary'} @click=${() => this.toggleDisplay('alertOnly')}></ix-icon-button>
     `;
   }
 
@@ -422,7 +534,9 @@ export class MfAtelierView extends LitElement {
       <div class="toolbar">
         <ix-icon-button icon="undo" ghost title=${localize(MSG.view.resetView)} @click=${() => this.scene?.resetView()}></ix-icon-button>
         ${this.editable
-          ? html`<ix-icon-button icon="move" ghost title=${localize(MSG.view.editMode)} variant=${this.editMode ? 'primary' : 'secondary'} @click=${this.toggleEditMode}></ix-icon-button>`
+          ? html`<ix-icon-button icon="move" ghost title=${localize(MSG.view.editMode)} variant=${this.editMode ? 'primary' : 'secondary'} @click=${this.toggleEditMode}></ix-icon-button>
+              <ix-icon-button icon="eye" ghost title=${localize(MSG.bubble.hoverMode)} variant=${this.display.bubblesOnHover ? 'primary' : 'secondary'} @click=${this.toggleBubblesOnHover}></ix-icon-button>
+              <ix-icon-button icon="location" ghost title=${localize(MSG.markers.place)} variant=${this.placingPin ? 'primary' : 'secondary'} @click=${this.placePin}></ix-icon-button>`
           : ''}
         ${this.renderDisplayToggles()}
         <ix-icon-button icon="screenshot" ghost title=${localize(MSG.view.viewpoints)} variant=${this.viewpointsOpen ? 'primary' : 'secondary'} @click=${() => (this.viewpointsOpen = !this.viewpointsOpen)}></ix-icon-button>
@@ -501,7 +615,7 @@ export class MfAtelierView extends LitElement {
     else this.goHome();
   }
 
-  /** User rotated the camera: leave 2D (plan) mode automatically, keeping angle. */
+  /** User rotated the camera — only possible in 3D (in 2D rotate inputs pan, #57). */
   private readonly onCameraRotate = (): void => {
     if (this.cameraMode === '2d') this.switchCamera('3d');
   };
@@ -512,7 +626,66 @@ export class MfAtelierView extends LitElement {
     this.scene?.setView(preset);
   }
 
+  /** The filter bar over this atelier's machines (filter pruned to what still exists), plus their state. */
+  private renderFilters(): TemplateResult {
+    const dims = filterDimensions(this.machines);
+    const states = this.stateValues();
+    if (dims.length === 0 && states.length === 0) return html``;
+    const stateDim = localize(MSG.view.filterState);
+    const filter: FleetFilter = { ...pruneFilter(this.filter, dims) };
+    const stateSelected = states.filter((s) => s.keys.some((k) => this.stateFilter.includes(k))).map((s) => s.label);
+    if (stateSelected.length > 0) filter[stateDim] = stateSelected;
+    return html`<mf-filter-bar
+      class="filters"
+      .dimensions=${[...dims, { key: stateDim, values: states.map((s) => s.label) }]}
+      .filter=${filter}
+      .shown=${this.machines.length - this.filteredOutIds().size}
+      .total=${this.machines.length}
+      @wui:filter=${(e: CustomEvent<FleetFilter>) => this.onFilter(e.detail, stateDim)}
+    ></mf-filter-bar>`;
+  }
+
+  private onFilter(filter: FleetFilter, stateDim: string): void {
+    const { [stateDim]: stateLabels = [], ...tags } = filter;
+    this.filter = tags;
+    saveFleetFilter(tags);
+    this.stateFilter = this.stateValues()
+      .filter((s) => stateLabels.includes(s.label))
+      .flatMap((s) => s.keys);
+    saveStateFilter(this.stateFilter);
+  }
+
+  /**
+   * The states the machines of this atelier can take (their mappings'), one per label: two mappings
+   * may name a state alike under different keys (« Production » of the built-in states and of a
+   * mapping with its own), and the filter shows it once for all of them.
+   */
+  private stateValues(): { label: string; keys: string[] }[] {
+    const out: { label: string; keys: string[] }[] = [];
+    for (const m of this.machines) {
+      for (const s of mappingStates(this.mappingFor(m))) {
+        const same = out.find((o) => o.label === s.label);
+        if (!same) out.push({ label: s.label, keys: [s.key] });
+        else if (!same.keys.includes(s.key)) same.keys.push(s.key);
+      }
+    }
+    return out;
+  }
+
+  /** Ids of the machines the filter leaves out (tags, then state). */
+  private filteredOutIds(): Set<string> {
+    const filter = pruneFilter(this.filter, filterDimensions(this.machines));
+    const byState = this.stateFilter.length > 0;
+    if (!isFilterActive(filter) && !byState) return new Set();
+    return new Set(
+      this.machines
+        .filter((m) => !matchesFilter(m, filter) || (byState && !this.stateFilter.includes(m.state)))
+        .map((m) => m.id)
+    );
+  }
+
   /** Always-on bottom bar of ghost buttons to jump between saved camera views. */
+
   private renderViewBar(): TemplateResult {
     if (this.viewpoints.length === 0) return html``;
     return html`
@@ -529,45 +702,67 @@ export class MfAtelierView extends LitElement {
     `;
   }
 
+  /** Public viewpoints (the atelier's, role `edit`) and the user's own (#60), with the default pages. */
   private renderViewpoints(): TemplateResult {
     if (!this.viewpointsOpen) return html``;
     return html`
       <div class="viewpoints">
-        <div class="vp-head">
-          <span>${localizeDir(MSG.view.viewpoints)}</span>
-          ${this.editable
-            ? html`<ix-button variant="secondary" @click=${this.saveViewpoint}>
-                <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.view.saveView)}
-              </ix-button>`
-            : ''}
-        </div>
-        ${this.viewpoints.length === 0
-          ? html`<div class="muted">${localizeDir(MSG.view.noViewpoints)}</div>`
-          : html`<div class="vp-list">
-              ${this.viewpoints.map((vp) => this.renderViewpointRow(vp))}
+        ${this.renderVpGroup('public')} ${this.displayOnly ? '' : this.renderVpGroup('mine')}
+        ${this.displayOnly
+          ? ''
+          : html`<div class="vp-pages">
+              <label>
+                <input type="checkbox" .checked=${this.myLanding} @change=${(e: Event) => this.setMyLanding((e.target as HTMLInputElement).checked)} />
+                ${localizeDir(MSG.view.myLanding)}
+              </label>
+              ${this.editable
+                ? html`<label>
+                    <input type="checkbox" .checked=${this.atelier.landing === true} @change=${(e: Event) => this.setPublicLanding((e.target as HTMLInputElement).checked)} />
+                    ${localizeDir(MSG.view.publicLanding)}
+                  </label>`
+                : ''}
             </div>`}
       </div>
     `;
   }
 
-  private renderViewpointRow(vp: Viewpoint): TemplateResult {
+  private renderVpGroup(scope: VpScope): TemplateResult {
+    const list = this.vpList(scope);
+    const canWrite = scope === 'mine' || this.editable;
+    return html`
+      <div class="vp-head">
+        <span>${localizeDir(scope === 'public' ? MSG.view.publicViews : MSG.view.myViews)}</span>
+        ${canWrite
+          ? html`<ix-button variant="secondary" @click=${() => this.saveViewpoint(scope)}>
+              <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.view.saveView)}
+            </ix-button>`
+          : ''}
+      </div>
+      ${list.length === 0
+        ? html`<div class="muted">${localizeDir(MSG.view.noViewpoints)}</div>`
+        : html`<div class="vp-list">${list.map((vp) => this.renderViewpointRow(vp, scope))}</div>`}
+    `;
+  }
+
+  private renderViewpointRow(vp: Viewpoint, scope: VpScope): TemplateResult {
+    const canWrite = scope === 'mine' || this.editable;
     if (this.renamingVpId === vp.id) {
       return html`<div class="vp-row">
         <ix-input
           class="vp-input"
           .value=${this.vpRenameValue}
           @valueChange=${(e: CustomEvent<string>) => (this.vpRenameValue = String(e.detail))}
-          @keydown=${(e: KeyboardEvent) => this.onVpRenameKey(e, vp)}
+          @keydown=${(e: KeyboardEvent) => this.onVpRenameKey(e, vp, scope)}
         ></ix-input>
-        <ix-icon-button ghost size="16" icon="check" title=${localize(MSG.view.confirm)} @click=${() => this.commitVpRename(vp)}></ix-icon-button>
+        <ix-icon-button ghost size="16" icon="check" title=${localize(MSG.view.confirm)} @click=${() => this.commitVpRename(vp, scope)}></ix-icon-button>
       </div>`;
     }
-    const isDefault = vp.id === this.defaultViewpointId;
+    const isDefault = vp.id === this.vpDefaultId(scope);
     return html`<div class="vp-row">
       <span class="vp-name" title=${localize(MSG.view.goToView)} @click=${() => this.applyViewpoint(vp)}>
-        ${vp.name}${isDefault ? html`<ix-icon class="vp-default-badge" name="star-filled" size="12"></ix-icon>` : ''}
+        ${vp.name}${vp.mode === '2d' ? ' (2D)' : ''}${isDefault ? html`<ix-icon class="vp-default-badge" name="star-filled" size="12"></ix-icon>` : ''}
       </span>
-      ${this.editable
+      ${canWrite
         ? html`<ix-icon-button
               ghost
               size="16"
@@ -576,11 +771,11 @@ export class MfAtelierView extends LitElement {
               title=${isDefault
                 ? localize(MSG.view.defaultViewpointOn)
                 : localize(MSG.view.defaultViewpointOff)}
-              @click=${() => this.setDefaultViewpoint(vp.id)}
+              @click=${() => this.setDefaultViewpoint(vp.id, scope)}
             ></ix-icon-button>
-            <ix-icon-button ghost size="16" icon="refresh" title=${localize(MSG.view.refreshFromCamera)} @click=${() => this.updateViewpoint(vp.id)}></ix-icon-button>
+            <ix-icon-button ghost size="16" icon="refresh" title=${localize(MSG.view.refreshFromCamera)} @click=${() => this.updateViewpoint(vp.id, scope)}></ix-icon-button>
             <ix-icon-button ghost size="16" icon="pen" title=${localize(MSG.view.rename)} @click=${() => this.startVpRename(vp)}></ix-icon-button>
-            <ix-icon-button ghost size="16" icon="trashcan" title=${localize(MSG.view.delete)} @click=${() => this.deleteViewpoint(vp.id)}></ix-icon-button>`
+            <ix-icon-button ghost size="16" icon="trashcan" title=${localize(MSG.view.delete)} @click=${() => this.deleteViewpoint(vp.id, scope)}></ix-icon-button>`
         : ''}
     </div>`;
   }
@@ -591,12 +786,13 @@ export class MfAtelierView extends LitElement {
       <div class="drawer">
         <mf-config-panel
           .machines=${this.machines}
+          .states=${atelierStates(this.mappings.length ? this.mappings : DEFAULT_STATE_MAPPINGS)}
           .canEdit=${this.editable}
           ?list-only=${this.displayOnly}
           @wui:focus=${(e: CustomEvent<{ id: string }>) => this.onFocus(e.detail.id)}
           @wui:edit=${(e: CustomEvent<{ id: string }>) => this.onEdit(e.detail.id)}
           @wui:delete=${(e: CustomEvent<{ id: string }>) => this.onDelete(e.detail.id)}
-          @wui:add=${() => this.onAdd()}
+          @wui:add=${() => this.openWizard()}
         ></mf-config-panel>
       </div>
     `;
@@ -632,8 +828,9 @@ export class MfAtelierView extends LitElement {
     // Always offer a dashboard: the built-in contextualised one, or — when the
     // machine is configured for it — a specific WinCC OA dashboard. Plus any
     // custom URL links (each opens in a new tab).
+    // A machine whose links stay within the application shows only those (appLinksOnly).
     const links = (m.dashboardLinks ?? [])
-      .filter((l) => l.url.trim() !== '')
+      .filter((l) => l.url.trim() !== '' && (!m.appLinksOnly || appLinkHref(l.url) !== undefined))
       .slice(0, MAX_DASHBOARD_LINKS);
     return html`
       <ix-button class="dash-btn" variant="primary" @click=${() => this.openMachineDashboard(m)}>
@@ -645,14 +842,22 @@ export class MfAtelierView extends LitElement {
           variant="secondary"
           icon=${l.icon || 'ontology'}
           title=${l.url}
-          @click=${() => this.openLink(l.url)}
+          @click=${() => this.openLink(l.url, m.appLinksOnly === true)}
         >${l.label || localize(MSG.view.link)}</ix-button>`
       )}
     `;
   }
 
-  /** Open a configured dashboard-link URL in a new browser tab. */
-  private openLink(raw: string): void {
+  /**
+   * Open a configured dashboard-link URL in a new browser tab — or, for a link that stays
+   * within the application (`inApp`), in the application itself.
+   */
+  private openLink(raw: string, inApp = false): void {
+    if (inApp) {
+      const href = appLinkHref(raw);
+      if (href) window.location.assign(href);
+      return;
+    }
     const url = raw.trim();
     if (!url) return;
     // Accept full URLs and site-relative paths; otherwise assume https.
@@ -688,12 +893,12 @@ export class MfAtelierView extends LitElement {
     if (slot.kind === 'state') {
       return {
         label: localize(MSG.view.state),
-        value: STATE_LABELS[m.state],
+        value: stateLabel(this.mappingFor(m), m.state),
         style: `color:${stateColor(this.mappingFor(m), m.state)};font-weight:700`
       };
     }
     if (slot.kind === 'stopCause') {
-      const cause = m.state === 'ok' ? undefined : (m.stopCauseLabel || m.stopCause);
+      const cause = isRunningState(this.mappingFor(m), m.state) ? undefined : (m.stopCauseLabel || m.stopCause);
       return cause != null && cause !== '' ? { label: localize(MSG.view.stopCause), value: cause } : null;
     }
     if (slot.kind === 'workOrder') {
@@ -706,10 +911,15 @@ export class MfAtelierView extends LitElement {
         ? { label: localize(MSG.view.operation), value: m.operation }
         : null;
     }
+    if (slot.kind === 'alarmCode') {
+      // Shown while the machine is not producing (stop, maintenance…), as the stop cause.
+      const code = isRunningState(this.mappingFor(m), m.state) ? undefined : m.alarmCode;
+      return code != null && code !== '' ? { label: localize(MSG.view.alarmCode), value: code } : null;
+    }
     if (slot.kind === 'param') {
       const p = slot.param;
       if (!p) return null;
-      const value = `${p.value ?? '—'}${p.value != null && p.unit ? ` ${p.unit}` : ''}`;
+      const value = p.value == null ? '—' : `${formatParamValue(p.value, p.decimals)}${p.unit ? ` ${p.unit}` : ''}`;
       return { label: p.label || slot.label, value };
     }
     if (slot.kind === 'obsolescence') {
@@ -726,7 +936,7 @@ export class MfAtelierView extends LitElement {
     if (!k) return null;
     const v = (m.kpiCalcValues ?? {})[k.id];
     const info = KPI_TYPE_INFO[k.type];
-    const value = v == null ? '—' : `${Number.isInteger(v) ? v : v.toFixed(2)} ${info.unit}`;
+    const value = v == null ? '—' : `${formatParamValue(v)} ${info.unit}`;
     const color = (m.kpiCalcColors ?? {})[k.id];
     return { label: slot.label, value, style: color ? `color:${color};font-weight:700` : '' };
   }
@@ -741,9 +951,18 @@ export class MfAtelierView extends LitElement {
             @wui:close=${() => (this.buildingOpen = false)}
           ></mf-building-dialog>`
         : ''}
+      ${this.wizardOpen
+        ? html`<mf-symbol-wizard
+            .catalog=${this.catalog.filter((c) => !this.machines.some((m) => m.id === c.id))}
+            .others=${this.otherSymbols}
+            @wui:addsymbol=${(e: CustomEvent<{ def: MachineDef; keepId: boolean }>) => this.onAddSymbol(e.detail.def, e.detail.keepId)}
+            @wui:close=${() => (this.wizardOpen = false)}
+          ></mf-symbol-wizard>`
+        : ''}
       ${this.editing
         ? html`<mf-machine-dialog
             .machine=${this.editing}
+            .markers=${this.markers}
             .store=${this.store}
             .mappings=${this.mappings}
             .thresholds=${this.thresholds}
@@ -818,6 +1037,10 @@ export class MfAtelierView extends LitElement {
     this.billboardResources = await this.store.listResources('billboard');
   }
 
+  private async loadCatalog(): Promise<void> {
+    if (this.store) this.catalog = await this.store.listCatalog();
+  }
+
   private async loadStopCauses(): Promise<void> {
     if (!this.store) return;
     this.stopCauses = await this.store.listStopCauses();
@@ -888,7 +1111,7 @@ export class MfAtelierView extends LitElement {
   }
 
   /** Resolve the state mapping bound to a machine (for the dashboard Gantt). */
-  private mappingFor(m: Machine): StateMapping {
+  private mappingFor(m: Pick<MachineDef, 'stateMappingId'>): StateMapping {
     return (
       this.mappings.find((mp) => mp.id === m.stateMappingId) ??
       this.mappings[0] ??
@@ -905,9 +1128,17 @@ export class MfAtelierView extends LitElement {
     );
   }
 
-  /** Push the resolved state/overlay colours to the scene (dots, leaders, bubbles). */
+  /**
+   * Push the atelier's states to the scene (dots, leaders, bubbles): those of every mapping
+   * of the atelier — a machine may use another mapping than the primary one — with the
+   * primary mapping's "not connected" overlay colour.
+   */
   private applyStateColors(): void {
-    this.scene?.setStateColors(resolveStateColors(this.primaryMapping()));
+    const defs = atelierStates(this.mappings.length ? this.mappings : DEFAULT_STATE_MAPPINGS);
+    const colors: Record<string, string> = Object.fromEntries(defs.map((s) => [s.key, s.color]));
+    colors['disconnected'] = stateColor(this.primaryMapping(), 'disconnected');
+    this.scene?.setStateColors(colors);
+    this.scene?.setStateDefs(defs);
   }
 
   private resolveDashboardService(): DashboardService | null {
@@ -965,19 +1196,100 @@ export class MfAtelierView extends LitElement {
   private toggleEditMode(): void {
     this.editMode = !this.editMode;
     this.scene?.setEditMode(this.editMode);
+    if (!this.editMode) {
+      this.placingPin = false;
+      this.pinEdit = null;
+    }
+  }
+
+  /** Toolbar pin button: a new marker dropped by a click on the floor, then named (#63). */
+  private placePin(): void {
+    if (!this.scene) return;
+    if (this.placingPin) {
+      this.scene.cancelMarkerPlacement();
+      this.placingPin = false;
+      return;
+    }
+    if (!this.editMode) this.toggleEditMode();
+    this.pinEdit = null;
+    this.placingPin = true;
+    this.scene.startMarkerPlacement((x, z) => {
+      this.placingPin = false;
+      const label = `${localize(MSG.markers.newLabel)} ${nextMarkerNumber(this.markers)}`;
+      const marker = { id: `mk-${Date.now()}`, label, x, z };
+      this.onMarkers([...this.markers, marker]);
+    });
+  }
+
+  /** A pin clicked in edit mode: its editor (name, delete) opens beside it. */
+  private openPinEdit(id: string, clientX: number, clientY: number): void {
+    const marker = this.markers.find((k) => k.id === id);
+    if (!marker) return;
+    const rect = this.viewportEl.getBoundingClientRect();
+    this.pinEdit = { id, x: clientX - rect.left, y: clientY - rect.top, label: marker.label };
+  }
+
+  private renderPinEdit(): TemplateResult {
+    const edit = this.pinEdit;
+    if (!edit) return html``;
+    const commit = (): void => {
+      const label = edit.label.trim();
+      if (label) this.onMarkers(this.markers.map((k) => (k.id === edit.id ? { ...k, label } : k)));
+      this.pinEdit = null;
+    };
+    const remove = (): void => {
+      this.onMarkers(this.markers.filter((k) => k.id !== edit.id));
+      this.pinEdit = null;
+    };
+    return html`
+      <div class="pin-edit" style="left: ${edit.x + 12}px; top: ${edit.y + 12}px">
+        <ix-input
+          label=${localize(MSG.markers.label)}
+          .value=${edit.label}
+          @valueChange=${(e: CustomEvent<string>) => (this.pinEdit = { ...edit, label: String(e.detail) })}
+          @keydown=${(e: KeyboardEvent) => {
+            if (e.key === 'Enter') commit();
+            else if (e.key === 'Escape') this.pinEdit = null;
+          }}
+        ></ix-input>
+        <ix-icon-button ghost size="16" icon="check" title=${localize(MSG.view.confirm)} @click=${commit}></ix-icon-button>
+        <ix-icon-button ghost size="16" icon="trashcan" title=${localize(MSG.markers.remove)} @click=${remove}></ix-icon-button>
+        <ix-icon-button ghost size="16" icon="close" title=${localize(MSG.markers.close)} @click=${() => (this.pinEdit = null)}></ix-icon-button>
+      </div>
+    `;
   }
 
   private onMachineMove(id: string, x: number, z: number): void {
+    // Moved by the user: placed, so its "à placer" mark goes (saved with the atelier).
     this.machines = this.machines.map((m) =>
-      m.id === id ? { ...m, x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10 } : m
+      m.id === id ? placeMachine(m, Math.round(x * 10) / 10, Math.round(z * 10) / 10) : m
     );
+    this.scene?.updateMachineLive(id, { toPlace: undefined });
     this.scheduleSave();
   }
 
-  private onDisplay(display: DisplayConfig): void {
-    this.display = display;
+  /** The display toggles shown: the atelier's, with the viewer's own over them. */
+  private get shownDisplay(): DisplayConfig {
+    return { ...this.display, ...this.userDisplay };
+  }
+
+  /**
+   * A display toggle: in edit mode it changes the atelier's own (everyone's default, saved with
+   * the atelier); otherwise only the viewer's, kept in their user settings.
+   */
+  private toggleDisplay(key: keyof AtelierDisplayPrefs): void {
+    const value = !this.shownDisplay[key];
+    const others = { ...this.userDisplay };
+    delete others[key];
+    if (this.editMode && this.editable) {
+      this.display = { ...this.display, [key]: value };
+      this.userDisplay = others;
+      this.scheduleSave();
+    } else {
+      this.userDisplay = { ...others, [key]: value };
+    }
+    saveDisplayPrefs(this.atelier.id, this.userDisplay);
     this.applyDisplay();
-    this.scheduleSave();
   }
 
   private onBuilding(building: BuildingConfig): void {
@@ -987,20 +1299,36 @@ export class MfAtelierView extends LitElement {
     this.scheduleSave();
   }
 
-  private onAdd(): void {
+  /** "Add a symbol": the wizard, with the other ateliers' symbols to copy (#67). */
+  private async openWizard(): Promise<void> {
     if (!this.editable) return;
-    const def: MachineDef = {
-      id: `machine-${Date.now()}`,
-      name: localize(MSG.view.newMachineName),
-      type: 'cabinet',
-      x: 0,
-      z: 0,
-      state: 'ok',
-      kpis: []
-    };
+    this.wizardOpen = true;
+    this.otherSymbols = [];
+    if (!this.store) return;
+    try {
+      const ateliers = await this.store.listAteliers();
+      this.otherSymbols = ateliers
+        .filter((a) => a.id !== this.atelier.id)
+        .flatMap((a) => a.machines.map((machine) => ({ atelier: a.name, machine })));
+    } catch {
+      // Backend unreachable: the other sources stay usable.
+    }
+  }
+
+  /**
+   * A symbol from the wizard: the site's catalogue keeps its id (the site's machine), the others
+   * get a new one; not bound to a marker, "à placer" at the centre of the floor, shown at once.
+   */
+  private onAddSymbol(source: MachineDef, keepId: boolean): void {
+    if (!this.editable) return;
+    if (keepId && this.machines.some((m) => m.id === source.id)) return;
+    const def: MachineDef = { ...source, id: keepId ? source.id : `machine-${Date.now()}`, x: 0, z: 0, toPlace: true };
+    delete def.markerId;
+    delete def.bubbleOffset;
     this.machines = [...this.machines, def];
-    this.editing = def;
+    this.wizardOpen = false;
     this.rebuildMachines();
+    this.onFocus(def.id);
   }
 
   private onEdit(id: string): void {
@@ -1010,7 +1338,12 @@ export class MfAtelierView extends LitElement {
   }
 
   private onMachineApply(machine: MachineDef): void {
-    this.machines = this.machines.map((m) => (m.id === machine.id ? machine : m));
+    // A position changed in the dialog places the machine too.
+    this.machines = this.machines.map((m) => {
+      if (m.id !== machine.id) return m;
+      const moved = machine.toPlace && (machine.x !== m.x || machine.z !== m.z);
+      return moved ? placeMachine(machine, machine.x, machine.z) : machine;
+    });
     this.editing = null;
     this.rebuildMachines();
   }
@@ -1030,6 +1363,21 @@ export class MfAtelierView extends LitElement {
     this.scheduleSave();
   }
 
+  /**
+   * New markers, placed, renamed, deleted or dragged as pins in edit mode: the machines bound to a
+   * moved marker follow it (SDS 2.2 SL-IMP-02).
+   */
+  private onMarkers(markers: PlacementMarker[]): void {
+    this.machines = followMarkers(this.machines, this.markers, markers);
+    this.markers = markers;
+    this.scene?.setMarkers(markers);
+    this.rebuildMachines();
+  }
+
+  private onMarkerMove(id: string, x: number, z: number): void {
+    this.onMarkers(this.markers.map((k) => (k.id === id ? { ...k, x, z } : k)));
+  }
+
   private onThresholds(thresholds: TrsThresholds[]): void {
     this.thresholds = thresholds;
     this.thresholdsOpen = false;
@@ -1037,9 +1385,33 @@ export class MfAtelierView extends LitElement {
   }
 
   private applyDisplay(): void {
-    this.scene?.setRoofVisible(this.display.roof);
-    this.scene?.setLabelsEnabled(this.display.labels);
-    this.scene?.setAlertOnly(this.display.alertOnly);
+    const shown = this.shownDisplay;
+    this.scene?.setRoofVisible(shown.roof);
+    this.scene?.setLabelsEnabled(shown.labels);
+    this.scene?.setAlertOnly(shown.alertOnly);
+    // The atelier's own setting, never a viewer's (#56).
+    this.scene?.setBubblesOnHover(this.display.bubblesOnHover === true);
+  }
+
+  /** A bubble moved / resized by hand in edit mode, or back to automatic (null): saved (#59). */
+  private onBubbleEdit(id: string, patch: { bubbleScale?: number | null; bubbleOffset?: [number, number] | null }): void {
+    this.machines = this.machines.map((m) => {
+      if (m.id !== id) return m;
+      const next = { ...m };
+      if (patch.bubbleScale === null) delete next.bubbleScale;
+      else if (patch.bubbleScale !== undefined) next.bubbleScale = patch.bubbleScale;
+      if (patch.bubbleOffset === null) delete next.bubbleOffset;
+      else if (patch.bubbleOffset !== undefined) next.bubbleOffset = patch.bubbleOffset;
+      return next;
+    });
+    this.scheduleSave();
+  }
+
+  /** Edit toolbar: bubbles always shown, or on hover only — for this atelier and everyone (#56). */
+  private toggleBubblesOnHover(): void {
+    this.display = { ...this.display, bubblesOnHover: !this.display.bubblesOnHover };
+    this.applyDisplay();
+    this.scheduleSave();
   }
 
   private rebuildMachines(): void {
@@ -1081,43 +1453,74 @@ export class MfAtelierView extends LitElement {
     this.dispatchEvent(new CustomEvent('wui:remove', { bubbles: true, composed: true }));
   }
 
-  private saveViewpoint(): void {
+  private vpList(scope: VpScope): Viewpoint[] {
+    return scope === 'public' ? this.viewpoints : this.myViews.viewpoints;
+  }
+
+  private vpDefaultId(scope: VpScope): string {
+    return scope === 'public' ? this.defaultViewpointId : (this.myViews.defaultViewpointId ?? '');
+  }
+
+  /** New list (and default) of a scope: the atelier's saved with it, the user's in their settings. */
+  private setVps(scope: VpScope, list: Viewpoint[], defaultId: string): void {
+    const def = list.some((v) => v.id === defaultId) ? defaultId : '';
+    if (scope === 'public') {
+      this.viewpoints = list;
+      this.defaultViewpointId = def;
+      this.scheduleSave();
+      return;
+    }
+    this.myViews = def ? { viewpoints: list, defaultViewpointId: def } : { viewpoints: list };
+    saveUserViews(this.atelier.id, this.myViews);
+  }
+
+  /** Save the current camera (and its 2D / 3D mode) as a new viewpoint of the scope. */
+  private saveViewpoint(scope: VpScope): void {
     if (!this.scene) return;
     const pose = this.scene.captureView();
-    this.viewpoints = [
-      ...this.viewpoints,
-      {
-        id: `vp-${Date.now()}`,
-        name: `${localize(MSG.view.viewLabel)} ${this.viewpoints.length + 1}`,
-        pos: pose.pos,
-        target: pose.target
-      }
-    ];
-    this.scheduleSave();
+    const list = this.vpList(scope);
+    const vp: Viewpoint = {
+      id: `vp-${Date.now()}`,
+      name: `${localize(MSG.view.viewLabel)} ${list.length + 1}`,
+      pos: pose.pos,
+      target: pose.target,
+      mode: this.cameraMode
+    };
+    this.setVps(scope, [...list, vp], this.vpDefaultId(scope));
   }
 
   private applyViewpoint(vp: Viewpoint): void {
+    if (vp.mode === '2d') {
+      this.switchCamera('2d');
+    } else {
+      // A viewpoint seen at an angle cannot be shown in the plan: it returns to 3D (#57).
+      const topDown = Math.hypot(vp.pos[0] - vp.target[0], vp.pos[2] - vp.target[2]) < 0.1 * Math.abs(vp.pos[1] - vp.target[1]);
+      if (this.cameraMode === '2d' && (!topDown || vp.mode === '3d')) this.switchCamera('3d');
+    }
     this.scene?.applyView(vp.pos, vp.target);
   }
 
-  /** Overwrite a saved viewpoint's pose with the current camera plane. */
-  private updateViewpoint(id: string): void {
+  /** Overwrite a saved viewpoint's pose (and mode) with the current camera. */
+  private updateViewpoint(id: string, scope: VpScope): void {
     if (!this.scene) return;
     const pose = this.scene.captureView();
-    this.viewpoints = this.viewpoints.map((v) =>
-      v.id === id ? { ...v, pos: pose.pos, target: pose.target } : v
+    const list = this.vpList(scope).map((v) =>
+      v.id === id ? { ...v, pos: pose.pos, target: pose.target, mode: this.cameraMode } : v
     );
-    this.scheduleSave();
+    this.setVps(scope, list, this.vpDefaultId(scope));
   }
 
-  /** The viewpoint configured as default for this atelier, if it still exists. */
+  /** The viewpoint applied on load: the user's own default, else the atelier's. */
   private defaultViewpoint(): Viewpoint | undefined {
+    const mine = this.myViews.defaultViewpointId;
+    const own = mine ? this.myViews.viewpoints.find((v) => v.id === mine) : undefined;
+    if (own) return own;
     return this.defaultViewpointId
       ? this.viewpoints.find((v) => v.id === this.defaultViewpointId)
       : undefined;
   }
 
-  /** Apply the configured default viewpoint, if any, when the view first loads. */
+  /** Apply the default viewpoint, if any, when the view first loads. */
   private applyDefaultViewpoint(): void {
     const vp = this.defaultViewpoint();
     if (vp) this.applyViewpoint(vp);
@@ -1130,16 +1533,13 @@ export class MfAtelierView extends LitElement {
     else this.scene?.resetView();
   }
 
-  /** Toggle a viewpoint as the one applied on load (canPublish-gated in the UI). */
-  private setDefaultViewpoint(id: string): void {
-    this.defaultViewpointId = this.defaultViewpointId === id ? '' : id;
-    this.scheduleSave();
+  /** Toggle a viewpoint as the scope's one applied on load. */
+  private setDefaultViewpoint(id: string, scope: VpScope): void {
+    this.setVps(scope, this.vpList(scope), this.vpDefaultId(scope) === id ? '' : id);
   }
 
-  private deleteViewpoint(id: string): void {
-    this.viewpoints = this.viewpoints.filter((v) => v.id !== id);
-    if (this.defaultViewpointId === id) this.defaultViewpointId = '';
-    this.scheduleSave();
+  private deleteViewpoint(id: string, scope: VpScope): void {
+    this.setVps(scope, this.vpList(scope).filter((v) => v.id !== id), this.vpDefaultId(scope));
   }
 
   private startVpRename(vp: Viewpoint): void {
@@ -1147,16 +1547,27 @@ export class MfAtelierView extends LitElement {
     this.vpRenameValue = vp.name;
   }
 
-  private onVpRenameKey(e: KeyboardEvent, vp: Viewpoint): void {
-    if (e.key === 'Enter') this.commitVpRename(vp);
+  private onVpRenameKey(e: KeyboardEvent, vp: Viewpoint, scope: VpScope): void {
+    if (e.key === 'Enter') this.commitVpRename(vp, scope);
     else if (e.key === 'Escape') this.renamingVpId = null;
   }
 
-  private commitVpRename(vp: Viewpoint): void {
+  private commitVpRename(vp: Viewpoint, scope: VpScope): void {
     const name = this.vpRenameValue.trim();
     this.renamingVpId = null;
     if (name === '' || name === vp.name) return;
-    this.viewpoints = this.viewpoints.map((v) => (v.id === vp.id ? { ...v, name } : v));
+    this.setVps(scope, this.vpList(scope).map((v) => (v.id === vp.id ? { ...v, name } : v)), this.vpDefaultId(scope));
+  }
+
+  /** This atelier as the user's own default page (their settings), or back to the public one. */
+  private setMyLanding(on: boolean): void {
+    this.myLanding = on;
+    saveDefaultPage(on ? this.atelier.id : undefined);
+  }
+
+  /** This atelier as the public default page (role `edit`); the shell clears it on the others. */
+  private setPublicLanding(on: boolean): void {
+    this.atelier = { ...this.atelier, landing: on || undefined };
     this.scheduleSave();
   }
 
@@ -1169,6 +1580,7 @@ export class MfAtelierView extends LitElement {
       machines: this.machines,
       mappings: this.mappings,
       trsThresholds: this.thresholds,
+      ...(this.markers.length > 0 || this.atelier.markers ? { markers: this.markers } : {}),
       viewpoints: this.viewpoints,
       defaultViewpointId: this.defaultViewpointId || undefined
     };
@@ -1212,7 +1624,9 @@ export class MfAtelierView extends LitElement {
     if (Array.isArray(imported.viewpoints)) this.viewpoints = imported.viewpoints;
     this.defaultViewpointId = imported.defaultViewpointId ?? '';
     if (Array.isArray(imported.machines)) this.machines = imported.machines;
+    if (Array.isArray(imported.markers)) this.markers = imported.markers;
     this.scene?.setBuilding(this.building);
+    this.scene?.setMarkers(this.markers);
     this.applyDisplay();
     this.rebuildMachines();
   }
@@ -1265,6 +1679,7 @@ export class MfAtelierView extends LitElement {
         [m.stopCauseDp, 'stopCause'],
         [m.workOrderDp, 'workOrder'],
         [m.operationDp, 'operation'],
+        [m.alarmCodeDp, 'alarmCode'],
         [m.commDp, 'comm'],
         [m.tiltDp, 'tilt']
       ];
@@ -1394,6 +1809,9 @@ export class MfAtelierView extends LitElement {
     } else if (target.kind === 'workOrder') {
       machine.workOrder = value;
       this.scene?.updateMachineLive(machine.id, { workOrder: value });
+    } else if (target.kind === 'alarmCode') {
+      machine.alarmCode = value;
+      this.scene?.updateMachineLive(machine.id, { alarmCode: value });
     } else {
       machine.operation = value;
       this.scene?.updateMachineLive(machine.id, { operation: value });
@@ -1449,6 +1867,9 @@ function viewStyles() {
       overflow: hidden;
       border-radius: var(--theme-default-border-radius);
     }
+    canvas:focus:not(:focus-visible) {
+      outline: none;
+    }
     canvas {
       position: absolute;
       inset: 0;
@@ -1470,6 +1891,10 @@ function viewStyles() {
     }
     .import-input {
       display: none;
+    }
+    .filters {
+      padding: 0.4rem 0.75rem;
+      border-bottom: 1px solid var(--theme-color-soft-bdr);
     }
     .viewbar {
       position: absolute;
@@ -1569,6 +1994,131 @@ function viewStyles() {
     .mode-btn--on {
       background: var(--theme-color-primary);
       color: var(--theme-color-primary-contrast, #fff);
+    }
+    .stats {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-left: 0.75rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .stat {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      color: var(--theme-color-std-text);
+    }
+    .stat__dot {
+      width: 0.65rem;
+      height: 0.65rem;
+      border-radius: 50%;
+      background: var(--c);
+    }
+    .stat__label {
+      font-weight: 400;
+      color: var(--theme-color-soft-text);
+    }
+    .stat--fault {
+      --c: var(--theme-color-alarm);
+    }
+    .stat--stop {
+      --c: var(--theme-color-warning);
+    }
+    .stat--prod {
+      --c: var(--theme-color-success);
+    }
+    .stat--offline {
+      --c: var(--theme-color-neutral);
+    }
+    .mf-label__resize,
+    .mf-label__reset {
+      display: none;
+    }
+    .mf-label--editable {
+      cursor: move;
+      overflow: visible;
+    }
+    .mf-label--editable .mf-label__resize {
+      display: block;
+      position: absolute;
+      right: -0.3rem;
+      bottom: -0.3rem;
+      width: 0.8rem;
+      height: 0.8rem;
+      cursor: nwse-resize;
+      background: var(--theme-color-primary);
+      border-radius: 2px;
+    }
+    .mf-label--editable.mf-label--manual .mf-label__reset {
+      display: block;
+      position: absolute;
+      top: -0.6rem;
+      right: -0.6rem;
+      width: 1.2rem;
+      height: 1.2rem;
+      padding: 0;
+      font-size: 0.8rem;
+      line-height: 1;
+      cursor: pointer;
+      color: var(--theme-color-std-text);
+      background: var(--theme-color-2);
+      border: 1px solid var(--theme-color-soft-bdr);
+      border-radius: 50%;
+    }
+    .vp-pages {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      margin-top: 0.5rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid var(--theme-color-soft-bdr);
+      font-size: 0.85rem;
+    }
+    .pin-edit {
+      position: absolute;
+      z-index: 10;
+      display: flex;
+      align-items: flex-end;
+      gap: 0.25rem;
+      background: var(--theme-color-2);
+      border: 1px solid var(--theme-color-soft-bdr);
+      border-radius: var(--theme-default-border-radius);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      padding: 0.5rem;
+    }
+    .mf-pin {
+      position: absolute;
+      top: 0;
+      left: 0;
+      display: flex;
+      align-items: flex-end;
+      gap: 0.2rem;
+      /* The icon's tip on the anchor: shifted up by its height, left by half its width. */
+      margin: -2rem 0 0 -1rem;
+      pointer-events: auto;
+      cursor: grab;
+      z-index: 7;
+      user-select: none;
+    }
+    .mf-pin__icon {
+      color: var(--theme-color-alarm);
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+    }
+    .mf-pin__name {
+      margin-bottom: 1.2rem;
+      padding: 0.05rem 0.35rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      white-space: nowrap;
+      color: var(--theme-color-std-text);
+      background: var(--theme-color-2);
+      border: 1px solid var(--theme-color-soft-bdr);
+      border-radius: var(--theme-default-border-radius);
+    }
+    .mf-pin--ghost {
+      opacity: 0.7;
+      pointer-events: none;
     }
     .viewpoints {
       position: absolute;
@@ -1761,7 +2311,7 @@ function viewStyles() {
       top: 0;
       left: 0;
       box-sizing: border-box;
-      width: 9.5rem;
+      width: 13.194em;
       pointer-events: auto;
       cursor: pointer;
       z-index: 7;
@@ -1769,15 +2319,17 @@ function viewStyles() {
       border: 1px solid var(--mf-state, var(--theme-color-primary));
       border-left: 3px solid var(--mf-state, var(--theme-color-primary));
       border-radius: var(--theme-default-border-radius);
-      padding: 0.45rem 0.55rem;
-      font-size: 0.72rem;
+      padding: 0.625em 0.764em;
+      /* One third larger than the first 0.72rem (#59); every size inside is in em, so a
+       * machine's own bubble scale (--mf-bubble-scale) enlarges the whole bubble. */
+      font-size: calc(0.96rem * var(--mf-bubble-scale, 1));
       line-height: 1.35;
       overflow: hidden;
       color: var(--theme-color-std-text);
       box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
       display: flex;
       flex-direction: column;
-      gap: 0.3rem;
+      gap: 0.417em;
     }
     .mf-label__name {
       font-weight: 600;
@@ -1789,21 +2341,35 @@ function viewStyles() {
       display: flex;
       flex-direction: column;
       align-items: flex-start;
-      gap: 0.3rem;
+      gap: 0.417em;
       width: 100%;
     }
     .mf-label__badge:not(:empty) {
       align-self: flex-start;
-      padding: 0.1rem 0.45rem;
-      border-radius: 0.7rem;
-      font-size: 0.68rem;
+      padding: 0.139em 0.625em;
+      border-radius: 0.972em;
+      font-size: 0.944em;
       font-weight: 600;
       color: var(--mf-state, var(--theme-color-primary));
       border: 1px solid var(--mf-state, var(--theme-color-primary));
       background: color-mix(in srgb, var(--mf-state) 16%, transparent);
     }
+    .mf-label__to-place {
+      align-self: flex-start;
+      padding: 0.139em 0.625em;
+      border-radius: 0.417em;
+      font-size: 0.944em;
+      font-weight: 700;
+      color: var(--theme-color-std-text);
+      border: 1px dashed var(--theme-color-warning);
+      background: color-mix(in srgb, var(--theme-color-warning) 22%, transparent);
+    }
+    .mf-dot--to-place {
+      outline: 2px dashed var(--theme-color-warning);
+      outline-offset: 2px;
+    }
     .mf-label__cause:not(:empty) {
-      font-size: 0.66rem;
+      font-size: 0.917em;
       font-weight: 600;
       color: var(--mf-state, var(--theme-color-std-text));
       max-width: 100%;
@@ -1821,9 +2387,9 @@ function viewStyles() {
     }
     .mf-label__trs:not(:empty) {
       align-self: flex-start;
-      padding: 0.1rem 0.45rem;
-      border-radius: 0.3rem;
-      font-size: 0.72rem;
+      padding: 0.139em 0.625em;
+      border-radius: 0.417em;
+      font-size: 1em;
       font-weight: 700;
       letter-spacing: 0.02em;
       color: var(--theme-color-std-text);
@@ -1832,9 +2398,9 @@ function viewStyles() {
     }
     .mf-label__prod-line {
       align-self: stretch;
-      padding: 0.2rem 0.4rem;
+      padding: 0.278em 0.556em;
       border-left: 2px solid var(--theme-color-primary);
-      border-radius: 0.2rem;
+      border-radius: 0.278em;
       background: color-mix(in srgb, var(--theme-color-primary) 14%, transparent);
       font-weight: 600;
       font-variant-numeric: tabular-nums;

@@ -81,6 +81,55 @@ DP and type provisioning/CRUD via the backend's **PARA REST API** (see Backend),
   operation | param:<key> | kpi:<id>`. `resolveDisplaySlots(m)` builds the ordered
   catalog; items missing from `display` are auto-added (new params/KPIs
   appear on their own). The old scattered visibility toggles have been removed.
+- **Bubbles** (`scene/label-manager.ts`): each sits right above its machine (#55), decluttered
+  every frame — the cheapest free spot around its own (up first, then sideways, below last; the
+  other machines' dots kept clear), a leader only for a bubble moved away. A third larger than the
+  first ones, every size in `em`, so `MachineDef.bubbleScale` (0.6–2.5) scales the whole bubble;
+  in edit mode a bubble is dragged to a spot of its own (`MachineDef.bubbleOffset`, px from the
+  dot, kept at any zoom) and resized by its corner, ↺ back to automatic (#59).
+  `DisplayConfig.bubblesOnHover` (edit toolbar, eye — the atelier's, for everyone): a bubble shows
+  only while the pointer is over the machine's on-screen box + 16 px, or its dot / bubble (#56).
+- **Placement markers** (`Atelier.markers`, `MachineDef.markerId`, SDS 2.2 SL-IMP-02) are
+  **location pins** (`scene/marker-pins.ts`): HTML overlay elements projected from their floor
+  point, the same size on screen at any zoom — no 3D post. They show in **edit mode only**. The
+  toolbar's pin button (role `edit`) places one: a ghost pin follows the pointer, a click on the
+  floor drops it ("Repère N"); in edit mode a pin is dragged, and a click on it opens its editor
+  (name, delete). A machine is bound to a marker in the machine dialog (marker + offset X / Z) and
+  follows it (#58, #63).
+- **Viewpoints and default page** (#60): *public* viewpoints and default viewpoint stay in the
+  atelier (`viewpoints`, `defaultViewpointId`), written by the role `edit`; every user also has
+  *their own* (`wui-fleet-core` `user-views.ts`, user setting `fleet-views` → `WUI_MF_VIEWS`),
+  whose default wins for them. A viewpoint keeps its 2D / 3D mode. Default page: the user's own
+  ("Ma page par défaut", their settings) else the public one (`Atelier.landing`, one atelier at
+  most, role `edit`), opened on arriving at `/fleet-3d` (not when coming back from an atelier).
+  No separate "public views" role: the atelier DP is written through `/api/fleet`, which checks
+  `edit` for the whole DP — a narrower role would need a store of its own.
+- **Symbols** (#67): what an atelier places is called a *symbol* in its configuration (drawer,
+  symbol dialog, wizard); the real equipment stays a *machine* (dashboard, states, stops, KPIs).
+  Code identifiers (`MachineDef`, `machines`) and stored ateliers are unchanged. One "Ajouter un
+  symbole" button opens `mf-symbol-wizard`: from the site's catalogue (keeps the site's id), from
+  another atelier (a copy), from a JSON file (as the symbol dialog exports it), or a short form
+  (name, representation, state DP); the symbol lands "à placer" at the centre of the floor.
+- **No work-centre notion** (#66): no group outlines on the floor (`MachineDef.group` is gone, a
+  stored one is ignored), and the tag dimensions "Îlot" / "Workcenter" an integration may still
+  write are neither offered by the filter bar nor filtered on (`isFilterDimension`).
+- **Each user's own choices** (added 2026-11): the tag and state filters, the display toggles (roof,
+  labels, alerts only — outside edit mode they are the viewer's own, over the atelier's; in edit
+  mode they change the atelier's), the machine dashboard filter, and the selections of the stop
+  analysis, the KPI analysis and the closures (ateliers, machines, period — a span ending today
+  or fixed dates —, sort, tab, year) are kept in the user's **WinCC OA user settings**: one DP
+  `_usr_<UserId>_<setting>` of type `_UserDefinedSettings` per user and setting (`WUI_MF_FILTER`,
+  `WUI_MF_ATELIERS`, `WUI_MF_DASHBOARD`, `WUI_MF_STOP_ANALYSIS`, `WUI_MF_KPI_ANALYSIS`,
+  `WUI_MF_CLOSURES`), the base definition `_uss_<setting>` created on first need, `.Content`,
+  `.Format`, `.FullName` and `.SettingName` written as WinCC OA's `usr_addNewSetting` does. Each
+  user finds them on any workstation, and again after "Switch user". What a bubble shows is
+  not a per-user choice: it is the atelier's configuration ("Affichage" tab), the same for
+  everyone (the "My bubbles" menu was removed, #64; its stored `lines` / `hidden` are ignored and
+  dropped on the next write). Page side:
+  `wui-fleet-core` `settings-cache.ts` (synchronous cache, loaded on every login),
+  `user-settings.ts` (deferred writes), `fleet-settings-service.ts` (token and user from the
+  shell), `page-prefs.ts` (a page's selection). The choices a browser kept before (localStorage
+  `wui.machine-fleet.*`) are moved to the user's account on first load, then removed.
 
 ## Key algorithms / formulas
 
@@ -231,6 +280,10 @@ does not exist is dropped by the `dpGet` validation before the `dpConnect`.
   keep the names the toolkit's descriptor `index.ts` imports (written ONCE per target), so an
   existing target mounts the new routes on redeploy without editing it. One mount per module in
   wui-toolkit: hence `/api/ai/fleet` rather than `/api/fleet`.
+- **User settings** `GET` / `PUT /api/ai/fleet/settings/:key` (`backend/fleetSettings.ts`, added
+  2026-11): the caller's own value, identified by the WebUI token (`fleetGuard.requestIdentity`),
+  no role; 401 without a valid token, 404 for a key not in `FLEET_SETTINGS`, 413 above 16,000
+  characters. The fleet pages (Machine Fleet, the analyses, the closures) all use it.
 
 - **Backend module `/api/para`** (REST PARA): the only way to **create DP/type** and to **write
   values** (`POST /api/para/dptype/create`, `/api/para/dp/create`, `/api/para/dp/set`,

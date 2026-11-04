@@ -17,6 +17,7 @@ import {
 } from '../types.js';
 import { MSG, localize, localizeDir } from '../i18n.js';
 import { dialogStyles } from './dialog-styles.js';
+import { overlayClicked, overlayDown } from './overlay-dismiss.js';
 
 interface IxValueEvent {
   detail: string;
@@ -26,7 +27,11 @@ interface IxCheckedEvent {
   detail: boolean;
 }
 
-const CLASSIFICATIONS: StopClassification[] = ['unplanned', 'planned', 'production'];
+/**
+ * Classifications offered for a cause: a stop is planned or unplanned. 'production' stays
+ * readable for a cause already classified so, but is no longer offered.
+ */
+const CLASSIFICATIONS: StopClassification[] = ['unplanned', 'planned'];
 
 /** Localized label per stop classification (kit-local; the shared
  * `STOP_CLASSIFICATION_LABELS` map stays a plain-string data contract). */
@@ -50,7 +55,7 @@ export class MfStopCauses extends LitElement {
 
   override render(): TemplateResult {
     return html`
-      <div class="overlay" @click=${this.close}>
+      <div class="overlay" @pointerdown=${overlayDown} @click=${(e: Event) => overlayClicked(e) && this.close()}>
         <div class="panel causes" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
             <ix-typography format="h3">${localizeDir(MSG.causes.title)}</ix-typography>
@@ -127,7 +132,7 @@ export class MfStopCauses extends LitElement {
           @valueChange=${(e: IxValueEvent) =>
             this.patch(i, { classification: e.detail as StopClassification })}
         >
-          ${CLASSIFICATIONS.map(
+          ${[...CLASSIFICATIONS, ...(CLASSIFICATIONS.includes(c.classification) ? [] : [c.classification])].map(
             (k) => html`<ix-select-item label=${localize(CLASSIFICATION_LABELS[k])} value=${k}></ix-select-item>`
           )}
         </ix-select>

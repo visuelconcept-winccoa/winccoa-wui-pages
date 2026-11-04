@@ -32,6 +32,9 @@ import appSecurityRoles from './app-security.roles.json';
 import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import { canEditFleet, canEditFleet$ } from '@visuelconcept-winccoa/wui-kit/data/permissions.js';
 import { FleetStore } from '@visuelconcept-winccoa/wui-fleet-core/data/fleet-store.js';
+import { settingsCache } from '@visuelconcept-winccoa/wui-fleet-core/settings-cache.js';
+import { landingAtelier } from '@visuelconcept-winccoa/wui-fleet-core/user-views.js';
+import '@visuelconcept-winccoa/wui-fleet-core/fleet-settings-service.js';
 import {
   DEFAULT_STATE_MAPPINGS,
   resolveState,
@@ -74,6 +77,7 @@ const MACHINE_LIVE_FIELDS = new Set<string>([
   'stopCauseLabel',
   'workOrder',
   'operation',
+  'alarmCode',
   'tiltAngle',
   // Server-computed KPI values pushed live by the editor's dpConnect (not config).
   'kpiCalcValues',
@@ -117,6 +121,9 @@ function stripKpiValue(kpi: unknown): unknown {
   return config;
 }
 
+/** Longest wait (ms) for the user's settings before choosing the default page (#60). */
+const LANDING_WAIT_MS = 1500;
+
 @customElement('wui-machine-fleet-3d')
 export class WuiMachineFleet3d extends LitElement {
   static override readonly styles = [IXCoreStyles, shellStyles()];
@@ -140,6 +147,8 @@ export class WuiMachineFleet3d extends LitElement {
   private readonly audit = new AuditTrailWriter({ dpName: AUDIT_DP, itemType: 'Atelier' });
   private readonly api = this.resolveApi();
   private overviewSub = new Subscription();
+  /** The first arrival has been handled (a later visit of the overview stays there). */
+  private landed = false;
   /** canPublish + Application-Security grant subscriptions. */
   private permSub = new Subscription();
   /** normalized stateDp → machines (across ateliers) it drives, for the overview. */
@@ -237,9 +246,26 @@ export class WuiMachineFleet3d extends LitElement {
     if (this.atelierId) {
       this.active = this.ateliers.find((a) => a.id === this.atelierId) ?? null;
     } else {
+      // Arriving at the fleet (not back from an atelier): the default page, if any (#60).
+      const landing = this.landed ? undefined : await this.landingPage();
+      if (landing) {
+        this.landed = true;
+        this.loading = false;
+        this.navigate(landing);
+        return;
+      }
       this.subscribeOverview();
     }
+    this.landed = true;
     this.loading = false;
+  }
+
+  /** The user's own default page, else the public one (user settings loaded first). */
+  private async landingPage(): Promise<string | undefined> {
+    // Never hold the page: settings unreachable or slow, the public default page applies.
+    const timeout = new Promise<void>((resolve) => setTimeout(resolve, LANDING_WAIT_MS));
+    await Promise.race([settingsCache.load('fleet-views').catch(() => undefined), timeout]);
+    return landingAtelier(this.ateliers);
   }
 
   /** Trace one atelier edit (best-effort, fire-and-forget); no-op in the offline demo. */
@@ -343,6 +369,8 @@ export class WuiMachineFleet3d extends LitElement {
     const before = this.ateliers.find((a) => a.id === atelier.id);
     await this.store.saveAtelier(atelier);
     this.ateliers = this.ateliers.map((a) => (a.id === atelier.id ? atelier : a));
+    // One public default page at most (#60): the others drop their mark.
+    if (atelier.landing && !before?.landing) await this.clearOtherLandings(atelier.id);
     this.offline = this.store.offline;
     if (!before) {
       this.trace({
@@ -355,6 +383,14 @@ export class WuiMachineFleet3d extends LitElement {
     // Diff the projected config so live-state churn and camera viewpoints don't log spurious rows.
     const diff = auditDiff(projectAtelier(before), projectAtelier(atelier), ATELIER_AUDIT_FIELDS);
     if (diff) this.trace({ action: 'UPDATE', item: this.dpeOf(atelier), oldval: diff.old, newval: diff.new });
+  }
+
+  private async clearOtherLandings(keep: string): Promise<void> {
+    for (const other of this.ateliers.filter((a) => a.id !== keep && a.landing)) {
+      const cleared = { ...other, landing: undefined };
+      await this.store.saveAtelier(cleared);
+      this.ateliers = this.ateliers.map((a) => (a.id === other.id ? cleared : a));
+    }
   }
 
   private navigate(id: string): void {

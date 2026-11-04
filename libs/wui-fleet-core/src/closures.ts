@@ -5,9 +5,10 @@
  * Non-worked period model for the KPI page.
  *
  * Closures (jours/plages non travaillés) reduce a machine's **opening time**,
- * i.e. the denominator of the availability-TRS. They can be defined for a whole
- * atelier (applies implicitly to all its machines) or for a single machine; the
- * effective set for a machine is the union of both.
+ * i.e. the denominator of the availability-TRS. They can be defined globally
+ * (every machine), for a whole atelier (applies implicitly to all its machines)
+ * or for a single machine; the effective set for a machine is the union of all
+ * three.
  *
  * Persisted as one app-level JSON datapoint (`MachineFleet3D_Closures`) via the
  * FleetStore, keyed by atelier id and machine id.
@@ -19,8 +20,10 @@ export interface ClosureRange {
   end: string;
 }
 
-/** Closures keyed by scope: atelier-wide and per-machine. */
+/** Closures keyed by scope: global, atelier-wide and per-machine. */
 export interface ClosureConfig {
+  /** Periods of every machine (the global schedule). Absent = none. */
+  global?: ClosureRange[];
   ateliers: Record<string, ClosureRange[]>;
   machines: Record<string, ClosureRange[]>;
 }
@@ -38,7 +41,11 @@ export function emptyClosureConfig(): ClosureConfig {
 /** Coerce a parsed JSON blob into a valid {@link ClosureConfig}. */
 export function normaliseClosures(raw: unknown): ClosureConfig {
   const cfg = (raw ?? {}) as Partial<ClosureConfig>;
+  const global = Array.isArray(cfg.global)
+    ? cfg.global.map((r) => normaliseRange(r)).filter((r) => r.start !== '')
+    : [];
   return {
+    ...(global.length > 0 ? { global } : {}),
     ateliers: normaliseScope(cfg.ateliers),
     machines: normaliseScope(cfg.machines)
   };
@@ -61,13 +68,17 @@ function normaliseRange(raw: unknown): ClosureRange {
   return { start: String(r.start ?? ''), end: String(r.end ?? '') };
 }
 
-/** Effective closures for a machine = atelier-wide ranges ∪ machine ranges. */
+/** Effective closures for a machine = global ranges ∪ atelier-wide ranges ∪ machine ranges. */
 export function closuresForMachine(
   config: ClosureConfig,
   atelierId: string,
   machineId: string
 ): ClosureRange[] {
-  return [...(config.ateliers[atelierId] ?? []), ...(config.machines[machineId] ?? [])];
+  return [
+    ...(config.global ?? []),
+    ...(config.ateliers[atelierId] ?? []),
+    ...(config.machines[machineId] ?? [])
+  ];
 }
 
 /** Parse closure ranges to epoch-ms intervals, dropping invalid/empty ones. */
@@ -107,6 +118,9 @@ export function strictlyContains(outer: ClosureRange, inner: ClosureRange): bool
 
 /** True when any incoming range overlaps an existing range within the same scope. */
 export function hasOverlap(existing: ClosureConfig, incoming: ClosureConfig): boolean {
+  for (const inc of incoming.global ?? []) {
+    if ((existing.global ?? []).some((ex) => rangesOverlap(ex, inc))) return true;
+  }
   const scopes: ('ateliers' | 'machines')[] = ['ateliers', 'machines'];
   for (const scope of scopes) {
     for (const [key, incomingRanges] of Object.entries(incoming[scope])) {
@@ -132,6 +146,9 @@ export function mergeClosures(
 ): ClosureConfig {
   if (mode === 'replace') return normaliseClosures(incoming);
   const out = structuredClone(existing);
+  const current = out.global ?? [];
+  const globalAdditions = (incoming.global ?? []).filter((inc) => !current.some((ex) => rangesOverlap(ex, inc)));
+  if (globalAdditions.length > 0) out.global = [...current, ...globalAdditions];
   const scopes: ('ateliers' | 'machines')[] = ['ateliers', 'machines'];
   for (const scope of scopes) {
     for (const [key, incomingRanges] of Object.entries(incoming[scope])) {

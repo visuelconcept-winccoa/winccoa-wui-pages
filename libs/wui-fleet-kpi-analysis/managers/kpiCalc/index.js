@@ -13,8 +13,9 @@
  *   3. recomputes the KPI over its sliding window from the archived `state`
  *      (+ `cause`) history every `refreshMin` minutes and writes `.value`.
  *
- * Formulas (sliding window W, no closures applied server-side yet):
- *   - production = W − non-production time; non-production = state ≠ ok.
+ * Formulas (sliding window W):
+ *   - opening = W − closures − time in states their mapping marks `outsideOpening`.
+ *   - production = opening − non-production time; non-production = state ≠ ok.
  *   - each non-production interval is classified by the cause active at its
  *     start: catalog classification `planned` ⇒ planned downtime; anything else
  *     (unplanned / unknown / no cause) ⇒ unplanned downtime ("failure").
@@ -176,11 +177,12 @@ async function loadClosures() {
   try {
     const cfg = JSON.parse(extractString(await winccoa.dpGet(`${SYS}${CLOSURES_DP}.json`)));
     closures = {
+      global: cfg && Array.isArray(cfg.global) ? cfg.global : [],
       ateliers: cfg && cfg.ateliers ? cfg.ateliers : {},
       machines: cfg && cfg.machines ? cfg.machines : {}
     };
   } catch {
-    closures = { ateliers: {}, machines: {} };
+    closures = { global: [], ateliers: {}, machines: {} };
   }
 }
 
@@ -192,7 +194,11 @@ function classify(code) {
 
 /** Closed (non-worked) intervals for a machine, clipped+merged to [start,end]. */
 function closedIntervals(atelierId, machineId, start, end) {
-  const ranges = [...(closures.ateliers[atelierId] || []), ...(closures.machines[machineId] || [])];
+  const ranges = [
+    ...(closures.global || []),
+    ...(closures.ateliers[atelierId] || []),
+    ...(closures.machines[machineId] || [])
+  ];
   const raw = [];
   for (const r of ranges) {
     const s = Date.parse(r && r.start);
@@ -270,15 +276,42 @@ function partitionByCause(stop, causeSamples) {
 
 // ---- KPI math --------------------------------------------------------------
 
-function resolveStateOk(mapping, value) {
-  // Returns true when the machine is producing (state 'ok').
-  if (!mapping || !Array.isArray(mapping.rules)) return value === 1;
+/** True when the state counts as producing: its `running` flag when the mapping declares
+ *  its own states (wui-fleet-core isRunningState), else the built-in 'ok'. */
+function isRunningState(mapping, key) {
+  const states = mapping && Array.isArray(mapping.states) && mapping.states.length ? mapping.states : null;
+  if (!states) return key === 'ok';
+  const def = states.find((s) => s.key === key);
+  return Boolean(def && def.running);
+}
+
+/** State key a value resolves to through the mapping's rules (null without rules). */
+function stateKeyOf(mapping, value) {
+  if (!mapping || !Array.isArray(mapping.rules)) return null;
   for (const rule of mapping.rules) {
     const okMin = rule.min == null || value >= rule.min;
     const okMax = rule.max == null || value <= rule.max;
-    if (okMin && okMax) return rule.state === 'ok';
+    if (okMin && okMax) return rule.state;
   }
-  return mapping.fallback === 'ok';
+  return mapping.fallback;
+}
+
+function resolveStateOk(mapping, value) {
+  // Returns true when the machine is producing (a producing state of its mapping).
+  const key = stateKeyOf(mapping, value);
+  return key == null ? value === 1 : isRunningState(mapping, key);
+}
+
+/** True when the time in that state is taken out of the opening time (wui-fleet-core isOutsideOpening). */
+function isOutsideOpening(mapping, key) {
+  const states = mapping && Array.isArray(mapping.states) ? mapping.states : [];
+  const def = states.find((s) => s.key === key);
+  return Boolean(def && def.outsideOpening && !def.running);
+}
+
+function resolveOffOpening(mapping, value) {
+  const key = stateKeyOf(mapping, value);
+  return key != null && isOutsideOpening(mapping, key);
 }
 
 /** Parse one dpGetPeriod DPE result into time-sorted {t,v} samples. */
@@ -326,26 +359,46 @@ function codeAt(samples, t) {
 }
 
 /** Merged non-production intervals within [start,end] from state history. */
-function nonProductionIntervals(samples, mapping, start, end) {
+function nonProductionIntervals(samples, mapping, start, end, minStopMs = 0) {
   if (samples.length === 0) return [];
+  const intervals = [];
+  for (let i = 0; i < samples.length; i++) {
+    // Whole periods first (unclipped start): a short stop is judged on its full length.
+    const segStart = samples[i].t;
+    const segEnd = Math.min(samples[i + 1] ? samples[i + 1].t : end, end);
+    if (segEnd <= segStart) continue;
+    const value = Math.round(toNumber(samples[i].v));
+    if (resolveStateOk(mapping, value) || resolveOffOpening(mapping, value)) continue;
+    const last = intervals.at(-1);
+    if (last && last.e >= segStart) last.e = Math.max(last.e, segEnd);
+    else intervals.push({ s: segStart, e: segEnd });
+  }
+  // A period shorter than the machine's minimum stop is production (MachineDef.minStopSec).
+  return intervals
+    .filter((iv) => iv.e - iv.s >= minStopMs)
+    .map((iv) => ({ s: Math.max(iv.s, start), e: Math.min(iv.e, end) }))
+    .filter((iv) => iv.e > iv.s);
+}
+
+/** Merged intervals within [start,end] spent in a state taken out of the opening time. */
+function offOpeningIntervals(samples, mapping, start, end) {
   const intervals = [];
   for (let i = 0; i < samples.length; i++) {
     const segStart = Math.max(samples[i].t, start);
     const segEnd = Math.min(samples[i + 1] ? samples[i + 1].t : end, end);
     if (segEnd <= segStart) continue;
-    if (resolveStateOk(mapping, Math.round(toNumber(samples[i].v)))) continue;
-    const last = intervals.at(-1);
-    if (last && last.e >= segStart) last.e = Math.max(last.e, segEnd);
-    else intervals.push({ s: segStart, e: segEnd });
+    if (!resolveOffOpening(mapping, Math.round(toNumber(samples[i].v)))) continue;
+    intervals.push({ s: segStart, e: segEnd });
   }
-  return intervals;
+  return clipMerge(intervals);
 }
 
-function computeValue(type, stateSamples, causeSamples, mapping, closed, start, end) {
+function computeValue(type, stateSamples, causeSamples, mapping, closures, start, end, minStopMs = 0) {
   const windowMs = end - start;
-  // Opening time = window minus non-worked (closure) periods.
+  // Opening time = window minus non-worked periods: closures, and time in off-opening states.
+  const closed = clipMerge([...closures, ...offOpeningIntervals(stateSamples, mapping, start, end)]);
   const openingMs = Math.max(0, windowMs - sumLength(closed));
-  const stops = nonProductionIntervals(stateSamples, mapping, start, end);
+  const stops = nonProductionIntervals(stateSamples, mapping, start, end, minStopMs);
   let plannedMs = 0;
   let unplannedMs = 0;
   let failures = 0;
@@ -443,7 +496,8 @@ async function refreshKpi(entry) {
     ? await queryHistory(machine.stopCauseDp, start - windowMs, end)
     : [];
   const closed = closedIntervals(atelierId, machine.id, start, end);
-  const value = computeValue(kpi.type, stateSamples, causeSamples, mapping, closed, start, end);
+  const minStopMs = (Number(machine.minStopSec) || 0) * 1000;
+  const value = computeValue(kpi.type, stateSamples, causeSamples, mapping, closed, start, end, minStopMs);
   const unit = kpi.type === 'TRS' ? '%' : 'min';
   try {
     await winccoa.dpSet([

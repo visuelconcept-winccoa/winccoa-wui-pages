@@ -16,6 +16,13 @@ const CONFIG_TYPE = 'MachineFleet3D_Config';
 const DP_PREFIX = 'MachineFleet3D_';
 const STOPCAUSE_DP = 'MachineFleet3D_StopCauses';
 
+/** Setting keys of backend/fleetSettings.ts (FLEET_SETTINGS). */
+const SETTING_KEYS = ['fleet-filter', 'fleet-ateliers', 'fleet-dashboard', 'fleet-stop-analysis', 'fleet-kpi-analysis', 'fleet-closures'];
+const settings = new Map();
+const knownSetting = (key) => {
+  if (!SETTING_KEYS.includes(key)) throw Object.assign(new Error(`unknown setting: ${key}`), { status: 404 });
+};
+
 const DEMO = JSON.parse(readFileSync(new URL('./demo-ateliers.json', import.meta.url), 'utf8'));
 
 const notFound = (id) =>
@@ -67,5 +74,17 @@ export default {
     if (!atelier) throw notFound(params.id);
     const causes = parse(fixtures?.values?.[`System1:${STOPCAUSE_DP}.json`], '[');
     return { ok: true, atelier, stopCauses: Array.isArray(causes) ? causes : [] };
+  },
+
+  // Each user's own choices (backend/fleetSettings.ts), kept in memory for the session.
+  'GET /api/ai/fleet/settings/:key': ({ params }) => {
+    knownSetting(params.key);
+    return { ok: true, key: params.key, user: 'dev', value: settings.has(params.key) ? settings.get(params.key) : null };
+  },
+
+  'PUT /api/ai/fleet/settings/:key': ({ params, body }) => {
+    knownSetting(params.key);
+    settings.set(params.key, body?.value ?? null);
+    return { ok: true, key: params.key, user: 'dev' };
   }
 };

@@ -27,6 +27,8 @@ import type { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { firstValueFrom } from 'rxjs';
 import {
   DEFAULT_STATE_MAPPINGS,
+  isRunningState,
+  isOutsideOpening,
   resolveState,
   type Atelier,
   type StateMapping,
@@ -44,6 +46,8 @@ export interface AnalysisMachine {
   stateDp: string;
   stopCauseDp: string;
   mapping: StateMapping | undefined;
+  /** Shortest stop that counts, in ms (MachineDef.minStopSec); shorter ones are production. */
+  minStopMs?: number;
 }
 
 /** One aggregated cause row of the result table. */
@@ -70,6 +74,8 @@ export interface RawStop {
   atelierName: string;
   /** Grouping key (same as the aggregated row's key). */
   causeKey: string;
+  /** Raw cause code read on the machine ('' when none). */
+  code: string;
   /** Display label, e.g. "12 — Manque matière". */
   causeLabel: string;
   classification?: StopClassification;
@@ -140,6 +146,7 @@ export function collectMachines(
         machineName: m.name,
         stateDp: m.stateDp,
         stopCauseDp: m.stopCauseDp,
+        minStopMs: (m.minStopSec ?? 0) * 1000,
         mapping:
           atelier.mappings.find((mp) => mp.id === m.stateMappingId) ??
           atelier.mappings[0] ??
@@ -185,7 +192,7 @@ export async function analyseStopCauses(
     if (stateSamples.length > 0 || causeSamples.length > 0) anySample = true;
 
     const closed = mergeClip(nonWorked.get(machine.machineId) ?? [], startMs, endMs);
-    const stops = nonProductionIntervals(stateSamples, machine.mapping, startMs, endMs);
+    const stops = nonProductionIntervals(stateSamples, machine.mapping, startMs, endMs, machine.minStopMs);
     for (const stop of stops) {
       attributeStop(stop, causeSamples, catalog, machine, agg, contributing, rawStops, closed);
     }
@@ -250,7 +257,7 @@ export async function queryHistory(
   start: Date,
   end: Date
 ): Promise<Sample[]> {
-  if (!api) return [];
+  if (!api || !dpe) return [];
   try {
     const raw = await firstValueFrom(api.dpGetPeriod(start, end, ALL_VALUES, dpe + VALUE_ATTR));
     return toSamples(raw);
@@ -290,21 +297,83 @@ function toMs(t: unknown): number {
  * Build the merged non-production intervals within [windowStart, windowEnd].
  * The state active at `windowStart` is taken from the last sample at-or-before
  * it (the look-back guarantees one exists when the machine was already down).
+ * A period shorter than `minStopMs` (measured whole, before clipping to the window)
+ * is production, not a stop.
  */
 export function nonProductionIntervals(
   samples: Sample[],
   mapping: StateMapping | undefined,
   windowStart: number,
+  windowEnd: number,
+  minStopMs = 0
+): { s: number; e: number }[] {
+  return clipIntervals(
+    wholeNonProduction(samples, mapping, windowEnd).filter((i) => i.e - i.s >= minStopMs),
+    windowStart,
+    windowEnd
+  );
+}
+
+/**
+ * The non-producing periods shorter than `minStopMs`, within [windowStart, windowEnd]: the
+ * ones taken as production (MachineDef.minStopSec). Empty when `minStopMs` is 0.
+ */
+export function shortStopIntervals(
+  samples: Sample[],
+  mapping: StateMapping | undefined,
+  windowStart: number,
+  windowEnd: number,
+  minStopMs = 0
+): { s: number; e: number }[] {
+  if (minStopMs <= 0) return [];
+  return clipIntervals(
+    wholeNonProduction(samples, mapping, windowEnd).filter((i) => i.e - i.s < minStopMs),
+    windowStart,
+    windowEnd
+  );
+}
+
+/** Merged non-producing periods, unclipped at their start (the look-back included). */
+function wholeNonProduction(
+  samples: Sample[],
+  mapping: StateMapping | undefined,
   windowEnd: number
 ): { s: number; e: number }[] {
-  if (samples.length === 0) return [];
+  const intervals: { s: number; e: number }[] = [];
+  for (const [i, sample] of samples.entries()) {
+    const segStart = sample.t;
+    const segEnd = Math.min(samples[i + 1]?.t ?? windowEnd, windowEnd);
+    if (segEnd <= segStart) continue;
+    const state = resolveState(mapping, Math.round(toNumber(sample.v)));
+    if (isRunningState(mapping, state) || isOutsideOpening(mapping, state)) continue;
+    const last = intervals.at(-1);
+    if (last && last.e >= segStart) last.e = Math.max(last.e, segEnd);
+    else intervals.push({ s: segStart, e: segEnd });
+  }
+  return intervals;
+}
+
+/** Intervals clipped to [lo, hi], the empty ones dropped. */
+function clipIntervals(list: { s: number; e: number }[], lo: number, hi: number): { s: number; e: number }[] {
+  return list.map((i) => ({ s: Math.max(i.s, lo), e: Math.min(i.e, hi) })).filter((i) => i.e > i.s);
+}
+
+/**
+ * Merged intervals within [windowStart, windowEnd] spent in a state its mapping takes out of
+ * the opening time (StateDef.outsideOpening): neither available nor a stop.
+ */
+export function offOpeningIntervals(
+  samples: Sample[],
+  mapping: StateMapping | undefined,
+  windowStart: number,
+  windowEnd: number
+): { s: number; e: number }[] {
   const intervals: { s: number; e: number }[] = [];
   for (const [i, sample] of samples.entries()) {
     const segStart = Math.max(sample.t, windowStart);
     const segEnd = Math.min(samples[i + 1]?.t ?? windowEnd, windowEnd);
     if (segEnd <= segStart) continue;
-    const state = resolveState(mapping, Math.round(toNumber(sample.v)));
-    if (state === 'ok') continue;
+    if (!isOutsideOpening(mapping, resolveState(mapping, Math.round(toNumber(sample.v))))) continue;
     const last = intervals.at(-1);
     if (last && last.e >= segStart) last.e = Math.max(last.e, segEnd);
     else intervals.push({ s: segStart, e: segEnd });
@@ -370,6 +439,7 @@ function attributeStop(
       machineName: machine.machineName,
       atelierName: machine.atelierName,
       causeKey: key,
+      code: seg.code,
       causeLabel: label,
       classification,
       startMs: seg.start,

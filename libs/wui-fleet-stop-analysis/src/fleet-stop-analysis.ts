@@ -29,6 +29,9 @@ import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
 import { pageStyles } from '@visuelconcept-winccoa/wui-fleet-core/styles.js';
 import { FleetStore } from '@visuelconcept-winccoa/wui-fleet-core/data/fleet-store.js';
+import '@visuelconcept-winccoa/wui-fleet-core/fleet-settings-service.js';
+import { PagePrefs, oneOf, restorePeriod, storePeriod } from '@visuelconcept-winccoa/wui-fleet-core/page-prefs.js';
+import { stringList } from '@visuelconcept-winccoa/wui-fleet-core/settings-cache.js';
 import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import appSecurityRoles from './app-security.roles.json';
 import { canEditFleet, canEditFleet$ } from '@visuelconcept-winccoa/wui-kit/data/permissions.js';
@@ -79,7 +82,8 @@ const SERIES_COLORS = [
 ];
 
 /** Sortable columns of the raw-data table. */
-type RawSortCol = 'machine' | 'cause' | 'category' | 'start' | 'end' | 'duration' | 'counted';
+const RAW_SORT_COLS = ['machine', 'cause', 'category', 'start', 'end', 'duration', 'counted'] as const;
+type RawSortCol = (typeof RAW_SORT_COLS)[number];
 type SortDir = 'asc' | 'desc';
 
 /** Time-category (classification) filter: a classification or "all". */
@@ -152,6 +156,14 @@ export class WuiFleetStopAnalysis extends LitElement {
   private resizeObserver: ResizeObserver | null = null;
   private permSub = new Subscription();
   private roleSub = new Subscription();
+  /** The user's selection, kept in their settings (restored at start, after a login). */
+  private readonly prefs = new PagePrefs(
+    'fleet-stop-analysis',
+    () => this.selection(),
+    (stored) => this.applySelection(stored),
+    () => void this.recompute()
+  );
+  private prefsSub: Subscription | null = null;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -161,6 +173,7 @@ export class WuiFleetStopAnalysis extends LitElement {
     this.roleSub = hasRole$('fleet-stop-analysis', 'view').subscribe((granted) => {
       this.canView = granted;
     });
+    this.prefsSub = this.prefs.watch();
   }
 
   override disconnectedCallback(): void {
@@ -171,6 +184,8 @@ export class WuiFleetStopAnalysis extends LitElement {
     this.chart = null;
     this.permSub.unsubscribe();
     this.roleSub.unsubscribe();
+    this.prefsSub?.unsubscribe();
+    this.prefsSub = null;
   }
 
   override render(): TemplateResult {
@@ -206,6 +221,7 @@ export class WuiFleetStopAnalysis extends LitElement {
 
   protected override updated(_changed: PropertyValues): void {
     if (this.tab === TAB_CHART) this.renderChart();
+    this.prefs.save();
   }
 
   private renderToolbar(): TemplateResult {
@@ -608,8 +624,49 @@ export class WuiFleetStopAnalysis extends LitElement {
     this.catalog = await this.store.listStopCauses();
     this.closures = normaliseClosures(await this.store.listClosures());
     this.offline = this.store.offline;
+    // The user's last selection, unless a hand-off asks for a machine.
+    await this.prefs.restore();
     this.applyHandoffFilter();
     await this.recompute();
+  }
+
+  /** What the user's settings keep of the page. */
+  private selection(): Record<string, unknown> {
+    return {
+      ateliers: this.selectedAteliers,
+      machines: this.selectedMachines,
+      period: storePeriod(this.startStr, this.endStr),
+      sort: this.sortKey,
+      classFilter: this.classFilter,
+      chartTop: this.chartTop,
+      search: this.machineSearch,
+      rawSort: { col: this.rawSortCol, dir: this.rawSortDir },
+      tab: this.tab
+    };
+  }
+
+  /** A stored selection, what is unknown or gone left at its default. */
+  private applySelection(stored: Record<string, unknown>): void {
+    const atelierIds = new Set(this.ateliers.map((a) => a.id));
+    this.selectedAteliers = stringList(stored['ateliers']).filter((id) => atelierIds.has(id));
+    const offered = new Set(this.machineOptions().map((m) => m.id));
+    this.selectedMachines = stringList(stored['machines']).filter((id) => offered.has(id));
+    const period = restorePeriod(stored['period']);
+    if (period) {
+      this.startStr = period.start;
+      this.endStr = period.end;
+    } else {
+      this.initDefaultRange();
+    }
+    this.sortKey = oneOf(stored['sort'], Object.keys(SORT_LABELS) as SortKey[]) ?? 'assigned';
+    this.classFilter = oneOf(stored['classFilter'], CLASS_OPTIONS.map((o) => o.value)) ?? 'unplanned';
+    const top = stored['chartTop'];
+    this.chartTop = typeof top === 'number' && Number.isInteger(top) && top >= 0 ? top : DEFAULT_CHART_TOP;
+    this.machineSearch = typeof stored['search'] === 'string' ? stored['search'] : '';
+    const raw = (stored['rawSort'] ?? {}) as Record<string, unknown>;
+    this.rawSortCol = oneOf(raw['col'], RAW_SORT_COLS) ?? 'start';
+    this.rawSortDir = oneOf(raw['dir'], ['asc', 'desc'] as const) ?? 'desc';
+    this.tab = oneOf(stored['tab'], [TAB_TABLE, TAB_CHART, TAB_RAW]) ?? TAB_TABLE;
   }
 
   /** Pre-filter from a hand-off (e.g. the machine dashboard's "Analyser" button):
