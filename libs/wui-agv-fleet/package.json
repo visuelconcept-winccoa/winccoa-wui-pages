@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-agv-fleet",
   "type": "module",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "AGV Fleet — standalone WinCC OA WebUI page: live supervision of an AGV fleet (one AGV_Vehicle datapoint per vehicle) with a KPI bar, a status list and a warehouse floor-plan map.",
   "author": {
     "name": "Visuel Concept"
@@ -55,6 +55,31 @@
     "backend": {
       "managers": [
         "agvSim"
+      ]
+    },
+    "showcase": {
+      "entry": "/agv-fleet",
+      "hide": [
+        "wui-agv-fleet div.notice"
+      ],
+      "caption": {
+        "fr": "La flotte en mouvement",
+        "en": "The fleet on the move",
+        "de": "Die Flotte in Bewegung"
+      },
+      "steps": [
+        {
+          "wait": 6,
+          "pause": 0
+        },
+        {
+          "caption": {
+            "fr": "Chaque véhicule : sa position, sa mission, sa batterie",
+            "en": "Every vehicle: its position, its mission, its battery",
+            "de": "Jedes Fahrzeug: Position, Auftrag, Batterie"
+          },
+          "pause": 6.5
+        }
       ]
     }
   },

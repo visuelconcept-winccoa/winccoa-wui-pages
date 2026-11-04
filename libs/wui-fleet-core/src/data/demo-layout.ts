@@ -139,7 +139,8 @@ export const DEMO_MACHINES: MachineDef[] = [
 export const DEMO_ATELIER: Atelier = {
   id: 'demo',
   name: 'Atelier de démonstration',
-  building: { ...DEFAULT_BUILDING },
+  // A light floor: the machines and their state colours stand out on it (a demo is filmed and shown).
+  building: { ...DEFAULT_BUILDING, floorType: 'concrete-white' },
   display: { ...DEFAULT_DISPLAY },
   machines: structuredClone(DEMO_MACHINES),
   mappings: structuredClone(DEFAULT_STATE_MAPPINGS)

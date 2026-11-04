@@ -1,0 +1,117 @@
+{
+  "name": "@visuelconcept-winccoa/wui-users",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Users — standalone WinCC OA WebUI page (/users): the project's user administration as the WinCC OA panel does it — users (create, edit, enable/disable, password of local users, groups, delete), groups and their 32 permission bits, domains (areas) and per-domain permissions, the permission names, the authentication method (WinCC OA / Active Directory), the import of AD groups and users, and an automatic import of the missing AD users of the AD-linked groups; config/config entries and user settings shown read-only. Every write goes through the vendor's UserManagement classes (CTRL, _CommandChannel) in the usersService JS manager — never a dpSet on _Users — role-gated (Application Security) and audited.",
+  "author": {
+    "name": "Visuel Concept"
+  },
+  "keywords": [
+    "OpenArchitecture",
+    "WinCCOA",
+    "dashboard",
+    "webcomponents",
+    "standalone-page",
+    "users",
+    "active-directory"
+  ],
+  "license": "AGPL-3.0-only",
+  "dependencies": {
+    "@visuelconcept-winccoa/wui-app-security": "^0.1.3",
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0",
+    "@visuelconcept-winccoa/wui-para": "^0.1.0"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "@wincc-oa/wui-i18n-shared": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-models": "*",
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-shared": "*"
+  },
+  "peerDependenciesMeta": {
+    "lit": {
+      "optional": true
+    },
+    "rxjs": {
+      "optional": true
+    },
+    "@wincc-oa/wui-i18n-shared": {
+      "optional": true
+    },
+    "@wincc-oa/wui-ix-wrappers": {
+      "optional": true
+    },
+    "@wincc-oa/wui-models": {
+      "optional": true
+    },
+    "@wincc-oa/wui-oarxjs-context": {
+      "optional": true
+    },
+    "@wincc-oa/wui-shared": {
+      "optional": true
+    }
+  },
+  "exports": {
+    "./*": {
+      "types": "./types/*",
+      "import": "./*"
+    }
+  },
+  "wuiPage": {
+    "requires": [
+      "para",
+      "app-security"
+    ],
+    "route": "/users",
+    "routeId": "users",
+    "component": "wui-users",
+    "module": "/data/dashboard-wc/pages/users.js",
+    "icon": "user-management",
+    "permission": [
+      "connected"
+    ],
+    "tier": 3,
+    "backend": {
+      "mount": "/api/users",
+      "routeClass": "UsersRoute",
+      "routeFile": "usersRoute",
+      "files": [
+        "usersController.ts",
+        "usersRoute.ts"
+      ],
+      "shared": [
+        "@visuelconcept-winccoa/wui-app-security/appSecurityGuard.ts"
+      ],
+      "managers": [
+        "usersService"
+      ],
+      "notes": [
+        "/api/users/*",
+        "usersService manager: start it with a user that has the user-administration permission (_System.Auth.UserManagement), e.g. `-user <admin>:<password>` in pmon — the commandChannel manager checks that user for every write",
+        "settings and last report of the automatic AD import in the DP WuiUsers_Config (created at the manager's start); the import is off until turned on in the page",
+        "audit lines go to an _AuditTrail DP, when it exists: auditDp in the [wui-users] section of config/config, else WUI_USERS_AUDIT_DP, else AuditTrail_Users"
+      ]
+    }
+  },
+  "files": [
+    "src",
+    "backend",
+    "managers",
+    "menu.fragment.jsonc",
+    "mock",
+    "!**/*.spec.ts",
+    "!**/*.spec.mjs",
+    "!**/*.test.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/visuelconcept-winccoa/winccoa-wui-pages.git",
+    "directory": "libs/wui-users"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  }
+}

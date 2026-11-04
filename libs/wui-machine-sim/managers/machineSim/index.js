@@ -4,39 +4,46 @@
 'use strict';
 
 /**
- * Machine Fleet 3D — production simulator.
+ * Machine simulator (module wui-machine-sim) — drives the Machine Fleet 3D
+ * ateliers with simulated production, for demos, training and commissioning.
+ * NOT for a production system: it creates datapoints and writes values.
  *
  * Runs as a WinCC OA **JavaScript Manager** (WCCOAjsManager): the patched
  * `require('winccoa-manager')` and `new WinccoaManager()` connect to the running
- * project automatically. Register it in `config/progs`, e.g.:
+ * project automatically. `wui build` registers it in `config/progs` as
  *
  *   node | manual | 30 | 2 | 2 |machineSim/index.js
+ *
+ * (`--auto-map` appended to that line opts into AUTO_MAP, below).
  *
  * What it does, in order:
  *   1. Creates the data model — a `MachineSim` datapoint type (one struct per
  *      machine: state / cause / workOrder / operation / comm + parameters).
  *   2. Creates one `MachineSim_<machineId>` datapoint per machine found in the
  *      atelier configs (DP type `MachineFleet3D_Config`).
- *   3. (AUTO_MAP) Wires each atelier machine's bindings to its MachineSim DP and
- *      saves the atelier back, so the page shows the simulation with no manual
- *      mapping. Set AUTO_MAP = false to only create the DPs and map by hand.
+ *   3. AUTO_MAP — OFF by default. Opt in with `--auto-map` in the progs options
+ *      (or MACHINE_SIM_AUTO_MAP=1 in the manager's environment): it then wires
+ *      each atelier machine that has no state binding yet to its MachineSim DP
+ *      (and a basculeur's tilt to `.angle`) and saves the atelier back, so the
+ *      page shows the simulation with no manual mapping. Off, no atelier is
+ *      ever written: bind the machines to `MachineSim_<id>.*` by hand in the
+ *      3D page's machine dialog.
  *   4. Simulates production: machine STATE changes ~every 30 s; PARAMETERS
  *      change every 500 ms.
  *
- * After the first run with AUTO_MAP, reload the atelier page (Ctrl+F5) so it
+ * After a first run with AUTO_MAP, reload the atelier page (Ctrl+F5) so it
  * picks up the new bindings from the datapoints.
  */
 const { WinccoaManager, WinccoaDpTypeNode } = require('winccoa-manager');
+const { SIM_TYPE, SYS, ALL_PARAMS, autoMapEnabled, planAtelier } = require('./model.js');
 
 const winccoa = new WinccoaManager();
 
 // ---- configuration ---------------------------------------------------------
-const SIM_TYPE = 'MachineSim';
 const CONFIG_TYPE = 'MachineFleet3D_Config';
 const STOPCAUSE_DP = 'MachineFleet3D_StopCauses';
-const SYS = 'System1:';
-/** Wire each atelier machine to its MachineSim DP and persist (recommended). */
-const AUTO_MAP = true;
+/** Wire the unbound atelier machines to their MachineSim DP and persist — opt-in (see header). */
+const AUTO_MAP = autoMapEnabled(process.argv, process.env);
 const STATE_INTERVAL_MS = 30_000;
 const PARAM_INTERVAL_MS = 500;
 /** Probability that a stop emits an erroneous code absent from the catalog. */
@@ -59,55 +66,6 @@ const OPERATION_CODES = ['0010', '0020', '0030', '0040', '0050', '0060', '0070',
 const OF_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const OF_LENGTH = 8;
 
-/**
- * Domain parameters per process family (KPI bindings). Analog params have
- * `base`/`span` (+ optional `max`); discrete params have `discrete` (a generator
- * kind) and are stored as String (e.g. a program/tool number).
- */
-const GENERIC_PARAMS = [
-  { el: 'cadence', label: 'Cadence', unit: 'p/h', base: 60, span: 15 },
-  { el: 'temperature', label: 'Température', unit: '°C', base: 70, span: 25 },
-  { el: 'vitesse', label: 'Vitesse', unit: 'tr/min', base: 1500, span: 400 },
-  { el: 'charge', label: 'Charge', unit: '%', base: 55, span: 30, max: 100 }
-];
-const USINAGE_PARAMS = [
-  { el: 'programme', label: '# Programme', unit: '', discrete: 'program' },
-  { el: 'outil', label: '# Outil', unit: '', discrete: 'tool' },
-  { el: 'broche', label: 'Vitesse broche', unit: 'tr/min', base: 3500, span: 2500 },
-  { el: 'avance', label: "Vitesse d'avance", unit: 'mm/min', base: 900, span: 600 }
-];
-const SOUDAGE_PARAMS = [
-  { el: 'tension', label: 'Tension', unit: 'V', base: 24, span: 8 },
-  { el: 'intensite', label: 'Intensité', unit: 'A', base: 180, span: 80 },
-  { el: 'vitesseSoudage', label: 'Vitesse de soudage', unit: 'cm/min', base: 40, span: 20 }
-];
-const PARAM_SETS = {
-  generic: GENERIC_PARAMS,
-  usinage: USINAGE_PARAMS,
-  soudage: SOUDAGE_PARAMS
-};
-/** Union of every parameter element (drives the DP type). Deduped by `el`. */
-const ALL_PARAMS = [...GENERIC_PARAMS, ...USINAGE_PARAMS, ...SOUDAGE_PARAMS].filter(
-  (p, i, arr) => arr.findIndex((q) => q.el === p.el) === i
-);
-/** Machine types that default to the `usinage` family (mirrors types.ts). */
-const USINAGE_TYPES = new Set(['tour', 'fraiseuse', 'brocheuse', 'scie']);
-const SOUDAGE_KEYS = new Set(['tension', 'intensite', 'vitesseSoudage']);
-const USINAGE_KEYS = new Set(['programme', 'outil', 'broche', 'avance', 'vitesseBroche', 'vitesseAvance']);
-
-/** Process family for AUTO_MAP: explicit `process`, else machine type, else
- * inferred from any existing KPI bindings, else generic. */
-function resolveFamily(machine) {
-  if (machine.process === 'usinage' || machine.process === 'soudage' || machine.process === 'generic') {
-    return machine.process;
-  }
-  if (USINAGE_TYPES.has(machine.type)) return 'usinage';
-  const keys = (machine.kpis || []).map((k) => k.key);
-  if (keys.some((k) => SOUDAGE_KEYS.has(k))) return 'soudage';
-  if (keys.some((k) => USINAGE_KEYS.has(k))) return 'usinage';
-  return 'generic';
-}
-
 /** Generators for discrete parameters (program / tool numbers). */
 function makeDiscrete(kind) {
   if (kind === 'program') return `O${1000 + Math.floor(Math.random() * 9000)}`;
@@ -129,10 +87,6 @@ let causeCodesKey = '';
 function log(msg) {
   // eslint-disable-next-line no-console
   console.log(`[MachineSim] ${msg}`);
-}
-
-function sanitize(id) {
-  return String(id).replace(/[^A-Za-z0-9_]/g, '_');
 }
 
 function extractString(raw) {
@@ -217,35 +171,6 @@ async function loadCauses() {
   }
 }
 
-function mapMachine(machine, dp, family) {
-  machine.stateDp = `${SYS}${dp}.state`;
-  machine.stateMappingId = 'default';
-  machine.stopCauseDp = `${SYS}${dp}.cause`;
-  machine.workOrderDp = `${SYS}${dp}.workOrder`;
-  machine.operationDp = `${SYS}${dp}.operation`;
-  machine.commDp = `${SYS}${dp}.comm`;
-  machine.kpis = (PARAM_SETS[family] || GENERIC_PARAMS).map((p, i) => ({
-    key: p.el,
-    label: p.label,
-    unit: p.unit,
-    dp: `${SYS}${dp}.${p.el}`,
-    showInCard: true,
-    showInBubble: i === 0
-  }));
-}
-
-const DEFAULT_MAPPING = {
-  id: 'default',
-  name: 'Standard (0=arrêt, 1=ok, 2=défaut, 3=maint)',
-  fallback: 'stop',
-  rules: [
-    { state: 'stop', min: 0, max: 0 },
-    { state: 'ok', min: 1, max: 1 },
-    { state: 'warn', min: 2, max: 2 },
-    { state: 'maint', min: 3, max: 3 }
-  ]
-};
-
 async function setupAteliers() {
   const configDps = winccoa.dpNames('*', CONFIG_TYPE);
   for (const name of configDps) {
@@ -257,45 +182,16 @@ async function setupAteliers() {
       log(`Atelier illisible ${dpName} : ${e}`);
       continue;
     }
-    const machines = Array.isArray(atelier.machines) ? atelier.machines : [];
-    let mapped = false;
-    for (const m of machines) {
-      const dp = `${SIM_TYPE}_${sanitize(m.id)}`;
+    // Every machine simulates ALL parameter families, so any KPI binding
+    // (process params of any métier) resolves to live values. AUTO_MAP only
+    // wires machines not yet bound — never a machine the user configured.
+    const { machines, changed } = planAtelier(atelier, AUTO_MAP);
+    for (const { dp, isBasculeur } of machines) {
       // eslint-disable-next-line no-await-in-loop
       await ensureDp(dp);
-      // Every machine simulates ALL parameter families, so any KPI binding
-      // (process params of any métier) resolves to live values.
-      sims.push(makeSim(dp, m.type === 'basculeur'));
-      // AUTO_MAP only wires machines not yet bound — never overwrite a machine
-      // the user has already configured (preserves its KPIs / labels).
-      if (AUTO_MAP && !m.stateDp) {
-        mapMachine(m, dp, resolveFamily(m));
-        mapped = true;
-      }
-      // A basculeur's tilt is driven by the simulated `.angle`; point its tilt DP
-      // (and any "angle" KPI) at it even on already-mapped machines.
-      if (AUTO_MAP && m.type === 'basculeur') {
-        const angleDp = `${SYS}${dp}.angle`;
-        if (m.tiltDp !== angleDp) {
-          m.tiltDp = angleDp;
-          mapped = true;
-        }
-        for (const k of m.kpis || []) {
-          if ((k.key === 'angle' || /angle/i.test(k.label || '')) && k.dp !== angleDp) {
-            k.dp = angleDp;
-            mapped = true;
-          }
-          // The basculeur's "vitesse" is the tilt angular speed in °/s.
-          if (k.key === 'vitesse' && k.unit !== '°/s') {
-            k.unit = '°/s';
-            mapped = true;
-          }
-        }
-      }
+      sims.push(makeSim(dp, isBasculeur));
     }
-    if (AUTO_MAP && mapped) {
-      if (!Array.isArray(atelier.mappings)) atelier.mappings = [];
-      if (!atelier.mappings.some((mp) => mp.id === 'default')) atelier.mappings.push(DEFAULT_MAPPING);
+    if (changed) {
       try {
         // eslint-disable-next-line no-await-in-loop
         await winccoa.dpSetWait(`${dpName}.json`, JSON.stringify(atelier));
@@ -456,6 +352,11 @@ function safeSet(dpes, values) {
 
 async function main() {
   log('Démarrage du simulateur Machine Fleet 3D…');
+  log(
+    AUTO_MAP
+      ? 'AUTO_MAP actif : les machines non liées des ateliers sont liées à leur DP MachineSim.'
+      : 'AUTO_MAP inactif : aucun atelier n’est modifié (option --auto-map pour l’activer).'
+  );
   await ensureType();
   await loadCauses();
   await setupAteliers();

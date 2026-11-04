@@ -1,0 +1,11 @@
+{
+  "values": {
+    "System1:MachineSim_four1.state": 1,
+    "System1:MachineSim_four1.comm": true,
+    "System1:MachineSim_tour2.state": 0,
+    "System1:MachineSim_tour2.comm": true,
+    "System1:MachineSim_robot3.state": 2,
+    "System1:MachineSim_robot3.comm": false
+  },
+  "simulate": {}
+}

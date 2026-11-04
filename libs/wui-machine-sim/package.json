@@ -1,0 +1,115 @@
+{
+  "name": "@visuelconcept-winccoa/wui-machine-sim",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Machine Sim — optional production simulator for the Machine Fleet 3D ateliers (demos, training, commissioning; not for production): the machineSim WinCC OA JavaScript manager creates and drives one MachineSim_<machine> datapoint per atelier machine; AUTO_MAP (wiring the unbound machines to them) is opt-in. Hidden status page listing the simulated machines.",
+  "author": {
+    "name": "Visuel Concept"
+  },
+  "keywords": [
+    "OpenArchitecture",
+    "WinCCOA",
+    "dashboard",
+    "webcomponents",
+    "standalone-page",
+    "simulator"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0",
+    "@visuelconcept-winccoa/wui-para": "^0.1.0",
+    "@visuelconcept-winccoa/wui-app-security": "^0.1.0"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "tsyringe": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-i18n-shared": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-models": "*",
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-shared": "*"
+  },
+  "exports": {
+    "./*": {
+      "types": "./types/*",
+      "import": "./*"
+    }
+  },
+  "wuiPage": {
+    "requires": [
+      "para",
+      "app-security"
+    ],
+    "route": "/machine-sim",
+    "routeId": "machine-sim",
+    "component": "wui-machine-sim",
+    "module": "/data/dashboard-wc/pages/machine-sim.js",
+    "icon": "play",
+    "hidden": true,
+    "tier": 1,
+    "backend": {
+      "managers": [
+        "machineSim"
+      ],
+      "progs": [
+        {
+          "options": "machineSim/index.js",
+          "start": "manual"
+        }
+      ],
+      "notes": [
+        "machineSim — production simulator for the Machine Fleet 3D ateliers (no REST route of its own), registered in config/progs as manual: start it in the console. Not for a production system.",
+        "AUTO_MAP (wiring unbound atelier machines to MachineSim_<id>) is OFF unless --auto-map is added to its progs options"
+      ]
+    }
+  },
+  "peerDependenciesMeta": {
+    "lit": {
+      "optional": true
+    },
+    "rxjs": {
+      "optional": true
+    },
+    "tsyringe": {
+      "optional": true
+    },
+    "@etm-professional-control/oa-rx-js-api": {
+      "optional": true
+    },
+    "@wincc-oa/wui-i18n-shared": {
+      "optional": true
+    },
+    "@wincc-oa/wui-ix-wrappers": {
+      "optional": true
+    },
+    "@wincc-oa/wui-models": {
+      "optional": true
+    },
+    "@wincc-oa/wui-oarxjs-context": {
+      "optional": true
+    },
+    "@wincc-oa/wui-shared": {
+      "optional": true
+    }
+  },
+  "files": [
+    "src",
+    "managers",
+    "menu.fragment.jsonc",
+    "mock",
+    "!**/*.spec.ts",
+    "!**/*.spec.mjs",
+    "!**/*.test.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/visuelconcept-winccoa/winccoa-wui-pages.git",
+    "directory": "libs/wui-machine-sim"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  }
+}

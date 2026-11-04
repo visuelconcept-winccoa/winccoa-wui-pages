@@ -1,0 +1,7 @@
+{
+  "module": "machine-sim",
+  "title": { "en_US.utf8": "Machine simulator", "fr.utf8": "Simulateur machines", "de.utf8": "Maschinensimulator" },
+  "roles": [
+    { "id": "view", "label": { "en_US.utf8": "View", "fr.utf8": "Consulter", "de.utf8": "Ansehen" } }
+  ]
+}

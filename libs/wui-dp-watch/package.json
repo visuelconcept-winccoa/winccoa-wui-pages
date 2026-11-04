@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-dp-watch",
   "type": "module",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "DP Watch — standalone WinCC OA WebUI page and embeddable element: live values of every datapoint element matching a pattern (dpNames + dpConnect). Read-only; ships its own mock fixtures for `wui dev`.",
   "author": {
     "name": "Visuel Concept"
@@ -38,7 +38,43 @@
     "permission": [
       "connected"
     ],
-    "tier": 1
+    "tier": 1,
+    "showcase": {
+      "entry": "/dp-watch",
+      "caption": {
+        "fr": "Les variables surveillées, leur valeur et leur état",
+        "en": "The watched tags, their value and state",
+        "de": "Die überwachten Variablen, ihr Wert und Zustand"
+      },
+      "steps": [
+        {
+          "type": {
+            "into": "wui-dp-watch ix-input input",
+            "text": "{pattern}"
+          },
+          "zoom": true,
+          "caption": {
+            "fr": "Un motif : les variables d’un type d’équipement",
+            "en": "A pattern: the tags of one kind of equipment",
+            "de": "Ein Muster: die Variablen einer Geräteart"
+          },
+          "pause": 2.5
+        },
+        {
+          "move": true,
+          "caption": {
+            "fr": "Elles changent sous les yeux de l’opérateur",
+            "en": "They change before the operator’s eyes",
+            "de": "Sie ändern sich vor den Augen des Bedieners"
+          },
+          "pause": 3
+        },
+        {
+          "move": true,
+          "pause": 3
+        }
+      ]
+    }
   },
   "peerDependenciesMeta": {
     "lit": {

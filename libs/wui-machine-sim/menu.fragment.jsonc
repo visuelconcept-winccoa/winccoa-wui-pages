@@ -1,0 +1,4 @@
+// Menu fragment for @visuelconcept-winccoa/wui-machine-sim (status page of the optional simulator; hidden — open /machine-sim).
+[
+  { "title": { "en_US": "Machine simulator", "fr": "Simulateur machines", "de_AT": "Maschinensimulator" }, "icon": "play", "path": "/machine-sim", "module": "/data/dashboard-wc/pages/machine-sim.js", "routeId": "machine-sim", "component": "wui-machine-sim", "hidden": true }
+]

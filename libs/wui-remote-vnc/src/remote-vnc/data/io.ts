@@ -10,8 +10,11 @@
  * - `parseConnections` accepts a bare array, the export envelope, or a single
  *   connection object, and coerces each record against {@link blankConnection}.
  *
- * NB: exports include the stored VNC password in clear text (same trade-off as
- * the datapoint storage — see the dialog warning).
+ * Passwords: since 0.2 the backend never sends them to the browser, so an
+ * export carries none. An imported record keeps its `password` only when the
+ * file has one (a string): absent, the stored password of an existing
+ * connection is kept (files exported by 0.1 still hold them in clear text —
+ * they are imported, then never shown again).
  */
 import {
   DEFAULT_CONNECT_TIMEOUT_SEC,
@@ -37,7 +40,8 @@ function slug(name: string): string {
 }
 
 function envelope(connections: VncConnection[]): string {
-  return JSON.stringify({ kind: KIND, version: 1, connections }, null, JSON_INDENT);
+  const clean = connections.map(({ password: _password, hasPassword: _has, ...rest }) => rest);
+  return JSON.stringify({ kind: KIND, version: 1, connections: clean }, null, JSON_INDENT);
 }
 
 /** Download the whole catalogue as a JSON file. */
@@ -79,6 +83,10 @@ function normalize(item: Partial<VncConnection>): VncConnection {
       (out as unknown as Record<string, unknown>)[key] = item[key];
     }
   }
+  // Write-only password: only what the file holds (absent = keep the stored one).
+  if (typeof item.password === 'string') out.password = item.password;
+  else delete out.password;
+  delete out.hasPassword;
   out.port = Number(out.port) || DEFAULT_VNC_PORT;
   out.viewOnly = Boolean(out.viewOnly);
   out.shared = Boolean(out.shared);

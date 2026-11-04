@@ -1,7 +1,7 @@
 /**
  * Minimal ambient declaration for the bundled noVNC client (`@novnc/novnc`,
  * which ships ES modules without TypeScript types). Only the subset of the RFB
- * API used by {@link ./ui/rv-viewer.ts} is declared.
+ * API used by {@link ../vnc-viewer.ts} is declared.
  */
 declare module '@novnc/novnc/core/rfb.js' {
   export interface RfbCredentials {

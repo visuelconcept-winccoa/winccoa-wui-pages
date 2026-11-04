@@ -13,6 +13,11 @@
  * still open; the shell waits 3 s at most and never lets a hook block the
  * logout — auditSessionClose never rejects.
  *
+ * An idle expiry: the shell knows only `logout` and `switch-user`, so a site
+ * module that closes an idle session through `switchUser()` puts
+ * `logoutReason: 'idle'` and `idleMinutes` in the login context first; the
+ * close is then audited as `idle` (SESSION_EXPIREE_INACTIVITE) with its delay.
+ *
  * Declares neither a header element nor `loginHome`: it goes along with a
  * site module's boot script (the station's page and item).
  */
@@ -34,7 +39,11 @@ export interface WuiShellBoot {
 }
 
 export default function boot(shell: WuiShellBoot): void {
-  shell.onLogout((info) =>
-    auditSessionClose(info.reason, { item: info.context?.['item'], provider: info.provider ?? 'standard' })
-  );
+  shell.onLogout((info) => {
+    const context = info.context ?? {};
+    const base = { item: context['item'], provider: info.provider ?? 'standard' };
+    if (context['logoutReason'] !== 'idle') return auditSessionClose(info.reason, base);
+    const idleMinutes = Number(context['idleMinutes']);
+    return auditSessionClose('idle', Number.isFinite(idleMinutes) && idleMinutes > 0 ? { ...base, idleMinutes } : base);
+  });
 }

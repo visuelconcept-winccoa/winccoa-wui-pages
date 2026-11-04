@@ -22,9 +22,14 @@ import { BadgeFrameDetector, BadgeFrameOptions, DEFAULT_BADGE_FRAME_OPTIONS } fr
 
 const API = '/api/auth-badge';
 
-export type BadgeConfig = BadgeFrameOptions & { enabled?: boolean };
+export type BadgeConfig = BadgeFrameOptions & {
+  enabled?: boolean;
+  /** The requesting station's badge login is locked (the blacklist); until `lockedUntil` (null: until unlocked). */
+  locked?: boolean;
+  lockedUntil?: number | null;
+};
 
-/** GET /config: the reader's frame and whether the badge login is on — the defaults when it fails. */
+/** GET /config: the reader's frame, whether the badge login is on and the station locked — the defaults when it fails. */
 export async function fetchBadgeConfig(): Promise<BadgeConfig> {
   const config = await fetch(`${API}/config`, { cache: 'no-store' })
     .then((res) => (res.ok ? (res.json() as Promise<Partial<BadgeConfig>>) : {}))

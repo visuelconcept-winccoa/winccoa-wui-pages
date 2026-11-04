@@ -5,6 +5,11 @@
  * Lightweight spherical orbit camera (azimuth θ / polar φ / radius r), ported in
  * spirit from the prototype's hand-rolled `applyOrbit`. Left-drag orbits,
  * right-drag pans the target, wheel zooms. No external OrbitControls dependency.
+ *
+ * What the buttons ask — a preset, a machine to frame, a viewpoint, a step of
+ * rotation or zoom — the camera glides to (eased), so the eye follows where it
+ * goes; a drag or the wheel takes over at once. No glide when the user's system
+ * asks for reduced motion.
  */
 import { PerspectiveCamera, Vector3 } from 'three';
 
@@ -21,6 +26,25 @@ const MAX_RADIUS = 900;
 const ORBIT_SPEED = 0.005;
 const PAN_SPEED = 0.0016;
 const ZOOM_STEP = 0.0009;
+/** Glide durations (ms): a whole new viewpoint, then a single button step. */
+const GLIDE_VIEW = 900;
+const GLIDE_STEP = 320;
+
+const easeInOut = (t: number): number => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+/** The shortest way round from one azimuth to another. */
+const angleDelta = (from: number, to: number): number => {
+  const d = (to - from) % (2 * Math.PI);
+  return d > Math.PI ? d - 2 * Math.PI : d < -Math.PI ? d + 2 * Math.PI : d;
+};
+const reducedMotion = (): boolean => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+
+interface Glide {
+  from: OrbitState;
+  fromTarget: Vector3;
+  start: number;
+  ms: number;
+  frame: number;
+}
 
 export class OrbitController {
   /** Fired when the user ROTATES the camera (left-drag or `orbitBy`) — not on
@@ -31,6 +55,10 @@ export class OrbitController {
   private readonly state: OrbitState = { theta: Math.PI / 4, phi: 0.9, radius: 300 };
   private readonly home: OrbitState;
   private readonly homeTarget: Vector3;
+  /** What the camera shows: `state` / `target`, or on its way there during a glide. */
+  private readonly shown: OrbitState = { ...this.state };
+  private readonly shownTarget = this.target.clone();
+  private glide: Glide | null = null;
 
   private dragButton = -1;
   private lastX = 0;
@@ -48,7 +76,7 @@ export class OrbitController {
     this.apply();
   }
 
-  /** Frame a focus pose (used by "fly to machine"). */
+  /** Frame a focus pose (used by "fly to machine", a saved viewpoint): the camera glides there. */
   setFocus(pos: [number, number, number], target: [number, number, number]): void {
     this.target.set(...target);
     const dx = pos[0] - target[0];
@@ -58,20 +86,20 @@ export class OrbitController {
     this.state.theta = Math.atan2(dz, dx);
     this.state.phi = Math.acos(Math.min(1, Math.max(-1, dy / this.state.radius)));
     this.clamp();
-    this.apply();
+    this.glideTo(GLIDE_VIEW);
   }
 
   reset(): void {
     Object.assign(this.state, this.home);
     this.target.copy(this.homeTarget);
-    this.apply();
+    this.glideTo(GLIDE_VIEW);
   }
 
   /** Current camera pose (position + target) for saving a viewpoint. */
   getPose(): { pos: [number, number, number]; target: [number, number, number] } {
     return {
       pos: [this.camera.position.x, this.camera.position.y, this.camera.position.z],
-      target: [this.target.x, this.target.y, this.target.z]
+      target: [this.shownTarget.x, this.shownTarget.y, this.shownTarget.z]
     };
   }
 
@@ -80,7 +108,7 @@ export class OrbitController {
     this.state.theta += dTheta;
     this.state.phi += dPhi;
     this.clamp();
-    this.apply();
+    this.glideTo(GLIDE_STEP);
     if (dTheta !== 0 || dPhi !== 0) this.onRotate?.();
   }
 
@@ -88,13 +116,13 @@ export class OrbitController {
   zoomBy(factor: number): void {
     this.state.radius *= factor;
     this.clamp();
-    this.apply();
+    this.glideTo(GLIDE_STEP);
   }
 
   /** Pan the target by screen-space deltas (pixels). */
   panBy(dx: number, dy: number): void {
     this.pan(dx, dy);
-    this.apply();
+    this.glideTo(GLIDE_STEP);
   }
 
   /** Snap to a preset orientation, keeping the current target/radius. */
@@ -121,10 +149,11 @@ export class OrbitController {
       }
     }
     this.clamp();
-    this.apply();
+    this.glideTo(GLIDE_VIEW);
   }
 
   dispose(): void {
+    this.stopGlide();
     this.el.removeEventListener('pointerdown', this.onPointerDown);
     this.el.removeEventListener('wheel', this.onWheel);
     this.el.removeEventListener('contextmenu', this.onContext);
@@ -133,6 +162,7 @@ export class OrbitController {
   }
 
   private handleDown(e: PointerEvent): void {
+    this.takeOver();
     this.dragButton = e.button;
     this.lastX = e.clientX;
     this.lastY = e.clientY;
@@ -164,6 +194,7 @@ export class OrbitController {
 
   private handleWheel(e: WheelEvent): void {
     e.preventDefault();
+    this.takeOver();
     this.state.radius *= 1 + e.deltaY * ZOOM_STEP;
     this.clamp();
     this.apply();
@@ -183,15 +214,61 @@ export class OrbitController {
     this.state.radius = Math.min(MAX_RADIUS, Math.max(MIN_RADIUS, this.state.radius));
   }
 
+  /** The camera at `state` / `target` at once (a drag, the wheel). */
   private apply(): void {
-    const { theta, phi, radius } = this.state;
+    this.stopGlide();
+    Object.assign(this.shown, this.state);
+    this.shownTarget.copy(this.target);
+    this.place();
+  }
+
+  /** From what is shown now to `state` / `target`, eased over `ms`. */
+  private glideTo(ms: number): void {
+    if (reducedMotion()) {
+      this.apply();
+      return;
+    }
+    this.stopGlide();
+    const glide: Glide = { from: { ...this.shown }, fromTarget: this.shownTarget.clone(), start: performance.now(), ms, frame: 0 };
+    const dTheta = angleDelta(glide.from.theta, this.state.theta);
+    const step = (now: number): void => {
+      const t = Math.min(1, Math.max(0, (now - glide.start) / glide.ms));
+      const e = easeInOut(t);
+      this.shown.theta = glide.from.theta + dTheta * e;
+      this.shown.phi = glide.from.phi + (this.state.phi - glide.from.phi) * e;
+      // Geometric: a zoom from far away does not rush the last metres.
+      this.shown.radius = glide.from.radius * (this.state.radius / glide.from.radius) ** e;
+      this.shownTarget.lerpVectors(glide.fromTarget, this.target, e);
+      this.place();
+      if (t < 1) glide.frame = requestAnimationFrame(step);
+      else this.glide = null;
+    };
+    this.glide = glide;
+    glide.frame = requestAnimationFrame(step);
+  }
+
+  private stopGlide(): void {
+    if (this.glide) cancelAnimationFrame(this.glide.frame);
+    this.glide = null;
+  }
+
+  /** The user takes the camera mid-glide: it goes on from where it is. */
+  private takeOver(): void {
+    if (!this.glide) return;
+    this.stopGlide();
+    Object.assign(this.state, this.shown);
+    this.target.copy(this.shownTarget);
+  }
+
+  private place(): void {
+    const { theta, phi, radius } = this.shown;
     const sinPhi = Math.sin(phi);
     this.camera.position.set(
-      this.target.x + radius * sinPhi * Math.cos(theta),
-      this.target.y + radius * Math.cos(phi),
-      this.target.z + radius * sinPhi * Math.sin(theta)
+      this.shownTarget.x + radius * sinPhi * Math.cos(theta),
+      this.shownTarget.y + radius * Math.cos(phi),
+      this.shownTarget.z + radius * sinPhi * Math.sin(theta)
     );
-    this.camera.lookAt(this.target);
+    this.camera.lookAt(this.shownTarget);
   }
 
   private readonly onPointerDown = (e: PointerEvent): void => this.handleDown(e);

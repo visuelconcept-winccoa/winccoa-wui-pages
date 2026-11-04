@@ -51,8 +51,9 @@ edit mode: the two widgets appear in the palette under **Machine Fleet**.
 
 Prerequisites on the WinCC OA side (the same as for the fleet's own dashboard):
 
-- the machine's **state** and **stop-cause** DPEs are **NGA-archived** (machineSim
-  DPs are not archived by default — enable it in the machine dialog / NGA config);
+- the machine's **state** and **stop-cause** DPEs are **NGA-archived** (the simulator's
+  `MachineSim_*` DPs — optional [`machine-sim`](../wui-machine-sim/README.md) module — are not
+  archived by default: enable it in the machine dialog / NGA config);
 - the fleet pages have been installed at least once (they create the
   `MachineFleet3D_<atelier>` and `MachineFleet3D_StopCauses` DPs the widgets bind).
 
@@ -62,7 +63,7 @@ Prerequisites on the WinCC OA side (the same as for the fleet's own dashboard):
    histories are fetched over it; the range button in the widget lets the viewer
    change it live when _Range selectable_ is on.
 2. **Content → Machine state (archived)**: pick the machine's state DPE
-   (`System1:MachineSim_<machine>.state`).
+   (e.g. `System1:MachineSim_<machine>.state` with the simulator).
 3. **Content → Stop cause (archived)**: pick `System1:MachineSim_<machine>.cause`
    (optional for the Gantt — without it segments have no cause; required for a
    meaningful downtime analysis).

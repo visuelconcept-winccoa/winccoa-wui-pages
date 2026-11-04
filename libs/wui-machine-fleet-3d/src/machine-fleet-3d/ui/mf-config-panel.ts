@@ -61,13 +61,18 @@ export class MfConfigPanel extends LitElement {
   @property({ attribute: false }) available: MachineDef[] = [];
   /** The atelier's placement markers; every change is emitted at once as `wui:markers`. */
   @property({ attribute: false }) markers: PlacementMarker[] = [];
+  /**
+   * List only (the embeddable view): rows focus their machine, nothing else — no
+   * view/edit/delete action per row, no Add. Overrides `canEdit`.
+   */
+  @property({ type: Boolean, attribute: 'list-only' }) listOnly = false;
 
   @state() private query = '';
   @state() private confirmId: string | null = null;
 
   override render(): TemplateResult {
     return html`
-      <div class="panel">${this.renderMachineSection()} ${this.renderMarkerSection()}</div>
+      <div class="panel">${this.renderMachineSection()} ${this.listOnly ? '' : this.renderMarkerSection()}</div>
       ${this.renderConfirm()}
     `;
   }
@@ -99,12 +104,12 @@ export class MfConfigPanel extends LitElement {
           <ix-icon name="search" slot="input-start"></ix-icon>
         </ix-input>
         <div class="list">${filtered.map((m) => this.renderRow(m))}</div>
-        ${this.canEdit
+        ${this.canEdit && !this.listOnly
           ? html`<ix-button class="add" variant="secondary" @click=${this.emitAdd}>
               <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.configPanel.addMachine)}
             </ix-button>`
           : ''}
-        ${this.canEdit && this.available.length > 0
+        ${this.canEdit && !this.listOnly && this.available.length > 0
           ? html`<ix-select
               class="add"
               label=${localize(MSG.configPanel.addFromCatalog)}
@@ -142,22 +147,7 @@ export class MfConfigPanel extends LitElement {
           ? html`<span class="to-place" title=${localize(MSG.toPlace.hint)}>${localize(MSG.toPlace.label)}</span>`
           : ''}
         <span class="badge" style="--c:${color}">${label}</span>
-        <ix-icon-button
-          ghost
-          size="16"
-          icon=${this.canEdit ? 'pen' : 'eye'}
-          title=${this.canEdit ? localize(MSG.configPanel.edit) : localize(MSG.configPanel.viewOnly)}
-          @click=${(e: Event) => this.onEdit(e, m.id)}
-        ></ix-icon-button>
-        ${this.canEdit
-          ? html`<ix-icon-button
-              ghost
-              size="16"
-              icon="trashcan"
-              title=${localize(MSG.configPanel.delete)}
-              @click=${(e: Event) => this.onDelete(e, m.id)}
-            ></ix-icon-button>`
-          : ''}
+        ${this.listOnly ? '' : this.renderRowActions(m)}
       </div>
     `;
   }
@@ -222,6 +212,27 @@ export class MfConfigPanel extends LitElement {
 
   private emitMarkers(markers: PlacementMarker[]): void {
     this.dispatchEvent(new CustomEvent('wui:markers', { detail: { markers }, bubbles: true, composed: true }));
+  }
+
+  private renderRowActions(m: MachineDef): TemplateResult {
+    return html`
+      <ix-icon-button
+        ghost
+        size="16"
+        icon=${this.canEdit ? 'pen' : 'eye'}
+        title=${this.canEdit ? localize(MSG.configPanel.edit) : localize(MSG.configPanel.viewOnly)}
+        @click=${(e: Event) => this.onEdit(e, m.id)}
+      ></ix-icon-button>
+      ${this.canEdit
+        ? html`<ix-icon-button
+            ghost
+            size="16"
+            icon="trashcan"
+            title=${localize(MSG.configPanel.delete)}
+            @click=${(e: Event) => this.onDelete(e, m.id)}
+          ></ix-icon-button>`
+        : ''}
+    `;
   }
 
   private filteredMachines(): MachineDef[] {

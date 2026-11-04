@@ -11,9 +11,10 @@
 //   hashBadges          the badge numbers stored as a one-way fingerprint
 //                       (badgeHash.ts); turned on, every number in clear is
 //                       rewritten — turned off, the fingerprints stay
-//   lockAfterFailures   the refused badge logins in a row, imputable to one
-//                       user (disabled account, no WebUI login permission),
-//                       after which that user's badge is locked (0: never)
+//   lockAfterFailures   the refused badges in a row from one station (its IP
+//                       address) — unknown, or a recognised user refused —,
+//                       after which that station's badge login is locked
+//                       (0: never; badgeBlacklist.ts)
 //   lockDurationMin     how long, in minutes (0: until unlocked on "Badges")
 //
 // and the reader's frame (badge-frame-detector.ts, the browser's side; GET

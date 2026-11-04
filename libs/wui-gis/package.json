@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-gis",
   "type": "module",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "GIS — standalone WinCC OA WebUI page: map-based monitoring on MapLibre GL / OpenStreetMap (no licence cost). One GIS_Site datapoint per site, holding geo-located assets bound to datapoints, areas (districts / sectors / catchments) grouping them, live value overlays, alarm highlighting from the OA alert state and a configurable drill-down from map to area to asset to its process or 3D view.",
   "author": {
     "name": "Visuel Concept"
@@ -73,6 +73,62 @@
       ],
       "notes": [
         "gisSim — optional network simulator (no REST route of its own); drives the GisSim_* datapoints the site and the gis-plants page read"
+      ]
+    },
+    "showcase": {
+      "entry": "/gis/{site}",
+      "hide": [
+        "wui-gis div.notice"
+      ],
+      "caption": {
+        "fr": "Le réseau sur la carte, avec les mesures en temps réel",
+        "en": "The network on the map, with live readings",
+        "de": "Das Netz auf der Karte, mit Live-Messwerten"
+      },
+      "steps": [
+        {
+          "move": true,
+          "caption": {
+            "fr": "Les valeurs vivent : débits, niveaux, pressions",
+            "en": "The values live: flows, levels, pressures",
+            "de": "Die Werte leben: Durchflüsse, Füllstände, Drücke"
+          },
+          "pause": 2.5
+        },
+        {
+          "click": "gis-map .marker:has-text('{asset}')",
+          "zoom": true,
+          "caption": {
+            "fr": "Un équipement : ses mesures en direct",
+            "en": "One piece of equipment: its live readings",
+            "de": "Ein Betriebsmittel: seine Live-Messwerte"
+          },
+          "pause": 2.5
+        },
+        {
+          "alarm": true,
+          "caption": {
+            "fr": "Une alarme arrive : l’équipement passe en alarme",
+            "en": "An alarm comes in: the equipment turns to alarm",
+            "de": "Ein Alarm kommt: das Betriebsmittel geht in Alarm"
+          },
+          "pause": 1.5,
+          "hold": 1.5
+        },
+        {
+          "click": "ix-button:has-text('In alarm only'), ix-button:has-text('En alarme seulement'), ix-button:has-text('Nur in Alarm')",
+          "caption": {
+            "fr": "Seulement les équipements en alarme",
+            "en": "Only the equipment in alarm",
+            "de": "Nur die Betriebsmittel im Alarm"
+          },
+          "pause": 2.5
+        },
+        {
+          "click": "ix-button:has-text('In alarm only'), ix-button:has-text('En alarme seulement'), ix-button:has-text('Nur in Alarm')",
+          "caption": null,
+          "pause": 1
+        }
       ]
     }
   },

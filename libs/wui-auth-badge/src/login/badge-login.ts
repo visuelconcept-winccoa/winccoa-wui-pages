@@ -8,11 +8,13 @@
  *
  * The reader is captured while this page is shown (badge-reader.ts, the
  * capture "Badges" uses too): an invisible field that keeps the focus, only a
- * reader's frame kept. The badge → user resolution, the user's lock after
- * refused logins and the audit are the server's (/api/auth-badge/login): the
- * badge numbers never reach the browser. A locked account is shown with its
- * user's name for a moment; the page then waits for the next badge — the lock
- * is the user's, not the station's.
+ * reader's frame kept. The badge → user resolution, the station's lock after
+ * refused badges and the audit are the server's (/api/auth-badge/login): the
+ * badge numbers never reach the browser. The station locked (its IP address,
+ * on the blacklist — told by /config as the page loads, or by a login), the
+ * page says so with the deadline until it passes; a badge presented meanwhile
+ * asks the server again (an unlock on "Badges" is taken at once). The password
+ * form stays open.
  *
  * The badge login turned off on the "Badges" page (`/config`'s `enabled`, or a
  * login answered `disabled`): the page says so; the password form stays.
@@ -29,8 +31,6 @@ import { fetchBadgeConfig, WuiAuthBadgeReader } from '../badge-reader.js';
 const API = '/api/auth-badge';
 /** How long an error stays before the page is back at rest (ms). */
 const ERROR_DISPLAY_MS = 4000;
-/** How long a locked account's message stays before the page is back at rest (ms). */
-const LOCKED_DISPLAY_MS = 8000;
 /** How long the user's name and the success stay before the session opens (ms). */
 const WELCOME_DISPLAY_MS = 3000;
 /** The number the test mode's button presents. */
@@ -39,8 +39,8 @@ const TEST_BADGE = '12345678';
 type LoginResult =
   | { status: 'ok'; username: string; fullName?: string; token: string }
   | { status: 'unknown' }
-  /** `lockedUntil` null: until unlocked on "Badges". */
-  | { status: 'locked'; lockedUntil: number | null; username?: string; fullName?: string }
+  /** The station is locked; `lockedUntil` null: until unlocked on "Badges". */
+  | { status: 'locked'; lockedUntil: number | null }
   | { status: 'disabled' };
 
 type Phase = 'idle' | 'resolving' | 'welcome' | 'error' | 'locked' | 'disabled';
@@ -62,9 +62,10 @@ export class WuiAuthBadgeLogin extends LoginProviderElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
-    void fetchBadgeConfig().then(({ enabled, ...options }) => {
+    void fetchBadgeConfig().then(({ enabled, locked, lockedUntil, ...options }) => {
       this.frameOptions = options;
       if (enabled === false) this.phase = 'disabled';
+      else if (locked) this.showLocked(lockedUntil ?? null);
     });
   }
 
@@ -118,11 +119,11 @@ export class WuiAuthBadgeLogin extends LoginProviderElement {
         };
       case 'locked':
         return {
-          heading: this.message ? `Compte ${this.message} verrouillé` : 'Compte verrouillé',
-          message: html`Trop de connexions par badge refusées.<br />
+          heading: 'Connexion par badge verrouillée sur ce poste',
+          message: html`Trop de badges refusés sur ce poste.<br />
             ${this.lockedUntil === null
-              ? 'Faites déverrouiller le compte par une personne habilitée'
-              : `Réessayez après ${formatTime(this.lockedUntil)}`}, ou connectez-vous par identifiant et mot de passe.`,
+              ? 'Faites déverrouiller le poste par une personne habilitée'
+              : `Verrouillée jusqu'à ${formatDeadline(this.lockedUntil)}`}. Connectez-vous par identifiant et mot de passe.`,
           tone: 'error'
         };
       default:
@@ -146,7 +147,7 @@ export class WuiAuthBadgeLogin extends LoginProviderElement {
       return;
     }
     if (result.status === 'locked') {
-      this.showLocked(result.lockedUntil, result.fullName || result.username || '');
+      this.showLocked(result.lockedUntil);
       return;
     }
     if (result.status !== 'ok' || !result.token) {
@@ -168,12 +169,19 @@ export class WuiAuthBadgeLogin extends LoginProviderElement {
     this.returnToIdleTimer = setTimeout(() => this.returnToIdle(), ERROR_DISPLAY_MS);
   }
 
-  /** The user's account is locked — not the page: back at rest after a moment, for the next badge. */
-  private showLocked(lockedUntil: number | null, name: string): void {
+  /**
+   * The station is locked: said until the deadline (none: until a badge is let through after an
+   * unlock). The reader stays on — a badge asks the server again.
+   */
+  private showLocked(lockedUntil: number | null): void {
+    clearTimeout(this.returnToIdleTimer);
     this.phase = 'locked';
     this.lockedUntil = lockedUntil;
-    this.message = name;
-    this.returnToIdleTimer = setTimeout(() => this.returnToIdle(), LOCKED_DISPLAY_MS);
+    this.message = '';
+    this.reader?.reset();
+    if (lockedUntil !== null) {
+      this.returnToIdleTimer = setTimeout(() => this.returnToIdle(), Math.max(0, lockedUntil - Date.now()));
+    }
   }
 
   private returnToIdle(): void {
@@ -183,8 +191,13 @@ export class WuiAuthBadgeLogin extends LoginProviderElement {
   }
 }
 
-function formatTime(epochMs: number): string {
-  return new Date(epochMs).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+/** The deadline's time — with its date when it is not today. */
+function formatDeadline(epochMs: number): string {
+  const deadline = new Date(epochMs);
+  const time = deadline.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  return deadline.toDateString() === new Date().toDateString()
+    ? time
+    : `${deadline.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} ${time}`;
 }
 
 declare global {

@@ -44,6 +44,7 @@ function qualityTemplate(): ReportTemplate {
         {
           id: uid('ds'),
           label: 'Température',
+          // The furnace of the fleet demo, driven by the optional wui-machine-sim simulator.
           dp: 'MachineSim_four1.temperature',
           ops: ['avg', 'min', 'max', 'stddev']
         }

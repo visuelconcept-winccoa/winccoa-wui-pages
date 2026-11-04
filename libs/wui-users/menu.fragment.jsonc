@@ -1,0 +1,12 @@
+// The Users page's menu entry, upserted by routeId into the target's menuconfig.json.
+[
+  {
+    "title": { "en_US.utf8": "Users", "de_AT.utf8": "Benutzer", "fr_FR.utf8": "Utilisateurs" },
+    "icon": "user-management",
+    "path": "/users",
+    "module": "/data/dashboard-wc/pages/users.js",
+    "routeId": "users",
+    "component": "wui-users",
+    "permission": ["connected"]
+  }
+]

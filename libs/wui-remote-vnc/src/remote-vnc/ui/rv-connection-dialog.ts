@@ -5,12 +5,17 @@
  * Modal dialog to create or edit one VNC connection: identity (name/group),
  * target (host/port), the optional stored password, a description and the RFB
  * options (read-only, shared). Emits `wui:save` / `wui:cancel`.
+ *
+ * The password is write-only (the backend never sends it back): when editing,
+ * the field starts empty and `password` stays absent from the saved detail —
+ * the stored one is kept — unless the user types a new one or removes it
+ * (empty string).
  */
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
-import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
+import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { MSG, localizeDir } from '../i18n.js';
+import { MSG, localize, localizeDir } from '../i18n.js';
 import {
   DEFAULT_CONNECT_TIMEOUT_SEC,
   DEFAULT_RECONNECT_DELAY_SEC,
@@ -70,9 +75,10 @@ export class RvConnectionDialog extends LitElement {
                 <input
                   class="pw"
                   .type=${this.showPassword ? 'text' : 'password'}
-                  autocomplete="off"
-                  .value=${this.working.password}
-                  @input=${(e: Event) => this.patch({ password: (e.target as HTMLInputElement).value })}
+                  autocomplete="new-password"
+                  placeholder=${this.keepsPassword() ? localize(MSG.dialog.passwordKept) : ''}
+                  .value=${this.working.password ?? ''}
+                  @input=${(e: Event) => this.onPasswordInput((e.target as HTMLInputElement).value)}
                 />
                 <ix-button
                   variant="secondary"
@@ -83,6 +89,7 @@ export class RvConnectionDialog extends LitElement {
                   ${this.showPassword ? localizeDir(MSG.dialog.hide) : localizeDir(MSG.dialog.show)}
                 </ix-button>
               </div>
+              ${this.renderPasswordRemoval()}
               <div class="warn">
                 <ix-icon name="warning"></ix-icon>${localizeDir(MSG.dialog.passwordWarning)}
               </div>
@@ -169,11 +176,46 @@ export class RvConnectionDialog extends LitElement {
     if (changed.has('connection')) {
       // Spread over blankConnection() so records saved before the timeout /
       // reconnect fields existed are backfilled with the default values.
-      this.working = this.connection
-        ? { ...blankConnection(), ...structuredClone(this.connection) }
-        : blankConnection();
+      if (this.connection) {
+        this.working = { ...blankConnection(), ...structuredClone(this.connection) };
+        // Write-only: absent = keep the stored password.
+        delete this.working.password;
+      } else {
+        this.working = blankConnection();
+      }
       this.showPassword = false;
     }
+  }
+
+  /** Editing a connection whose stored password is kept as is. */
+  private keepsPassword(): boolean {
+    return Boolean(this.connection?.hasPassword) && this.working.password === undefined;
+  }
+
+  private onPasswordInput(value: string): void {
+    // Emptying the field of an existing connection goes back to "keep it".
+    if (value === '' && this.connection) {
+      const { password: _password, ...rest } = this.working;
+      this.working = rest;
+      return;
+    }
+    this.patch({ password: value });
+  }
+
+  private renderPasswordRemoval(): TemplateResult | typeof nothing {
+    if (!this.connection?.hasPassword) return nothing;
+    if (this.working.password === '') {
+      return html`<div class="pw-note">
+        ${localizeDir(MSG.dialog.passwordRemoved)}
+        <ix-button variant="secondary" ghost @click=${() => this.onPasswordInput('')}>${localizeDir(MSG.dialog.undo)}</ix-button>
+      </div>`;
+    }
+    if (this.working.password !== undefined) return nothing;
+    return html`<div class="pw-note">
+      <ix-button variant="secondary" ghost @click=${() => this.patch({ password: '' })}>
+        <ix-icon name="trashcan" slot="icon"></ix-icon>${localizeDir(MSG.dialog.passwordRemove)}
+      </ix-button>
+    </div>`;
   }
 
   private textField(label: MultiLangString, key: 'name' | 'group' | 'host'): TemplateResult {
@@ -222,6 +264,13 @@ function extraStyles(): ReturnType<typeof css> {
       border-radius: var(--theme-default-border-radius);
       font-family: inherit;
       font-size: 0.9rem;
+    }
+    .pw-note {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 0.35rem;
+      font-size: 0.8rem;
     }
     .warn {
       display: flex;

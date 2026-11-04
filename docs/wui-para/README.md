@@ -54,7 +54,7 @@ mounts it, is up to you.
 - A **wui-toolkit site** for the target project (`npx wui init target prod` done once).
 - The **dashboard webserver** installed by `npx wui init target prod` (provides `/api/para` via backend-module auto-discovery).
 - For **DPL import/export**: the **`dplAscii`** JS manager registered in `config/progs` (by `wui build`) (e.g. `node | always | 30 | 2 | 2 |dplAscii/index.js`) and restarted. It drives `WCCOAasciiSQLite` via `child_process`, so that binary must be on the project PATH (standard WinCC OA install).
-- For the **AI assistant**: the `/api/ai` bridge + the **`aiAssistant`** manager must be deployed (same as the Machine-Fleet pages). Without them the panel still opens but prompts return 5xx. The assistant uses the project's configured MCP servers in **read-only** mode (mutating tools filtered out in the manager), so it can inspect the model without being able to change it.
+- For the **AI assistant**: the `/api/ai` bridge + the **`aiAssistant`** manager must be deployed (same as the Machine-Fleet pages) and running — `machine-fleet-3d` registers it `manual` since 0.3.0: start it in the console. Without them the panel still opens but prompts return 5xx. The assistant uses the project's configured MCP servers in **read-only** mode (mutating tools filtered out in the manager), so it can inspect the model without being able to change it.
 
 ## Contents
 ```
