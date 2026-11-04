@@ -13,6 +13,7 @@
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, svg, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import type { Subscription } from 'rxjs';
 import type { FleetStore } from '../data/fleet-store.js';
 import { MSG, localize, localizeDir } from '../i18n.js';
 import {
@@ -24,6 +25,8 @@ import {
   saveFleetFilter,
   type FleetFilter
 } from '@visuelconcept-winccoa/wui-fleet-core/filters.js';
+import '@visuelconcept-winccoa/wui-fleet-core/fleet-settings-service.js';
+import { settingsCache } from '@visuelconcept-winccoa/wui-fleet-core/settings-cache.js';
 import { UNKNOWN_STATE_COLOR, atelierStates, type Atelier, type MachineDef, type MachineState } from '../types.js';
 import './mf-ai-prompt.js';
 import './mf-atelier-create-dialog.js';
@@ -51,8 +54,20 @@ export class MfAtelierOverview extends LitElement {
   @state() private createTemplate = '';
   @state() private createDefaultName = '';
   @state() private resourcesOpen = false;
-  /** Remembered machine filter (shared with the atelier views). */
+  /** Remembered machine filter (the user's settings, shared with the atelier views). */
   @state() private filter: FleetFilter = loadFleetFilter();
+  private settingsSub: Subscription | null = null;
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    this.settingsSub = settingsCache.watch(['fleet-filter'], () => (this.filter = loadFleetFilter()));
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.settingsSub?.unsubscribe();
+    this.settingsSub = null;
+  }
 
   override render(): TemplateResult {
     return html`

@@ -63,7 +63,7 @@ console — details in [README.md](README.md#upgrading-to-03).
 
 ## Verify
 1. Logged in → **"Parc machines 3D"** (3D machine fleet) entry, `/fleet-3d` loads the 3D view (per-machine status/KPI bubbles).
-2. `GET https://<dashboard>/api/ai/health` → `ok` response (the AI bridge is mounted); `GET https://<dashboard>/api/ai/fleet/workshops` → `{ ok: true, ateliers: [...] }` (the atelier listing for embedding hosts, role `view`).
+2. `GET https://<dashboard>/api/ai/health` → `ok` response (the AI bridge is mounted); `GET https://<dashboard>/api/ai/fleet/workshops` → `{ ok: true, ateliers: [...] }` (the atelier listing for embedding hosts, role `view`); logged in, `GET https://<dashboard>/api/ai/fleet/settings/fleet-filter` from the page → `{ ok: true, value }` (the user's own filters; 401 without a WebUI token).
 3. The state and parameter bubbles follow the machines' bound datapoints; configured KPIs show once `kpiCalc` ([`fleet-kpi-analysis`](../wui-fleet-kpi-analysis/INTEGRATION.md)) runs; the AI assistant responds via `aiAssistant` (MCP tools require the optional external MCP server).
 
 ## Notes / security

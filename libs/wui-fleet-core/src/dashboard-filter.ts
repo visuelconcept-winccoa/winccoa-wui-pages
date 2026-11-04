@@ -11,9 +11,11 @@
  *   - states: the stops starting in one of the selected states;
  *   - causes: the stops attributed to one of the selected causes (grouping keys).
  *
- * The selection is remembered in the browser; a value that no longer appears is ignored.
+ * The selection is remembered in the user's WinCC OA settings (settings-cache.ts); a value
+ * that no longer appears is ignored.
  */
 import type { CauseRow, RawStop } from './engine.js';
+import { settingsCache, stringList } from './settings-cache.js';
 
 export interface MsSpan {
   s: number;
@@ -36,8 +38,8 @@ export interface DashboardFilter {
 
 export const EMPTY_DASHBOARD_FILTER: DashboardFilter = { states: [], causes: [], context: {} };
 
-/** localStorage key of the remembered dashboard filter (shared by every machine). */
-export const DASHBOARD_FILTER_STORAGE_KEY = 'wui.machine-fleet.dashboard-filter';
+/** User setting holding the dashboard filter (shared by every machine). */
+export const DASHBOARD_FILTER_SETTING = 'fleet-dashboard';
 
 /** A piecewise-constant text history → spans of each value within [start, end] (empty values dropped). */
 export function valueSpans(samples: readonly { t: number; v: unknown }[], start: number, end: number): ValueSpan[] {
@@ -133,25 +135,17 @@ export function paretoFromStops(stops: readonly RawStop[]): CauseRow[] {
   return [...rows.values()];
 }
 
-/** The remembered filter (empty when none or unreadable). */
+/** The user's filter (empty when none, unreadable, or before their settings are loaded). */
 export function loadDashboardFilter(): DashboardFilter {
-  try {
-    const raw = globalThis.localStorage?.getItem(DASHBOARD_FILTER_STORAGE_KEY);
-    const p = raw ? (JSON.parse(raw) as Partial<DashboardFilter>) : {};
-    const strings = (x: unknown): string[] => (Array.isArray(x) ? x.filter((v): v is string => typeof v === 'string') : []);
-    const context: Record<string, string[]> = {};
-    if (p.context && typeof p.context === 'object') for (const [k, v] of Object.entries(p.context)) context[k] = strings(v);
-    const alarmTypes = strings(p.alarmTypes);
-    return { states: strings(p.states), causes: strings(p.causes), context, ...(alarmTypes.length > 0 ? { alarmTypes } : {}) };
-  } catch {
-    return { states: [], causes: [], context: {} };
-  }
+  const v = settingsCache.get(DASHBOARD_FILTER_SETTING);
+  const p = (v && typeof v === 'object' && !Array.isArray(v) ? v : {}) as Partial<Record<keyof DashboardFilter, unknown>>;
+  const context: Record<string, string[]> = {};
+  if (p.context && typeof p.context === 'object') for (const [k, x] of Object.entries(p.context)) context[k] = stringList(x);
+  const alarmTypes = stringList(p.alarmTypes);
+  return { states: stringList(p.states), causes: stringList(p.causes), context, ...(alarmTypes.length > 0 ? { alarmTypes } : {}) };
 }
 
+/** Remember the filter in the user's settings. */
 export function saveDashboardFilter(filter: DashboardFilter): void {
-  try {
-    globalThis.localStorage?.setItem(DASHBOARD_FILTER_STORAGE_KEY, JSON.stringify(filter));
-  } catch {
-    // Storage unavailable: the filter just isn't remembered.
-  }
+  settingsCache.set(DASHBOARD_FILTER_SETTING, filter);
 }

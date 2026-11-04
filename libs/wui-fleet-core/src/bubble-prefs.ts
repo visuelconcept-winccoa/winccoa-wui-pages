@@ -2,14 +2,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * A viewer's own choice of what the machine bubbles show, per atelier, kept in their browser
- * (it never changes the atelier configuration, nor what other users see):
+ * A viewer's own choice of what the machine bubbles show, per atelier, kept in their WinCC OA
+ * user settings (settings-cache.ts; it never changes the atelier configuration, nor what other
+ * users see):
  *   - `lines`: display item ref (e.g. 'state', 'param:ARTICLE', 'kpi:trs') → shown or not,
  *     for every machine of the atelier offering that item; an item absent keeps the
  *     machine's configured visibility;
  *   - `hidden`: machines whose bubble is hidden.
+ * The same setting keeps the viewer's display toggles of each atelier (roof, labels, alerts
+ * only: {@link AtelierDisplayPrefs}), which override the atelier's own outside edit mode.
  * Only items a machine offers can be shown: the choice never adds an item to a machine.
  */
+import { settingObject, settingsCache, stringList } from './settings-cache.js';
 import { resolveDisplaySlots, type MachineDef } from './types.js';
 
 export interface BubblePrefs {
@@ -25,8 +29,27 @@ export interface BubbleItem {
   byDefault: boolean;
 }
 
-/** localStorage key of the bubble choices (all ateliers). */
-export const BUBBLE_PREFS_STORAGE_KEY = 'wui.machine-fleet.bubbles';
+/** User setting holding, per atelier id, the bubble choices and display toggles. */
+export const ATELIER_PREFS_SETTING = 'fleet-ateliers';
+
+/** A viewer's display toggles of an atelier; an absent toggle keeps the atelier's own. */
+export interface AtelierDisplayPrefs {
+  roof?: boolean;
+  labels?: boolean;
+  alertOnly?: boolean;
+}
+
+const DISPLAY_TOGGLES = ['roof', 'labels', 'alertOnly'] as const;
+
+/** The stored entry of an atelier ({} when none). */
+function atelierEntry(atelierId: string): Record<string, unknown> {
+  const e = settingObject(ATELIER_PREFS_SETTING)[atelierId];
+  return e && typeof e === 'object' && !Array.isArray(e) ? (e as Record<string, unknown>) : {};
+}
+
+function saveAtelierEntry(atelierId: string, entry: Record<string, unknown>): void {
+  settingsCache.set(ATELIER_PREFS_SETTING, { ...settingObject(ATELIER_PREFS_SETTING), [atelierId]: entry });
+}
 
 export const EMPTY_BUBBLE_PREFS: BubblePrefs = { lines: {}, hidden: [] };
 
@@ -48,37 +71,34 @@ export function showsInBubble(prefs: BubblePrefs, ref: string, configured: boole
   return prefs.lines[ref] ?? configured;
 }
 
-/** The viewer's choices for an atelier (empty when none, or when the storage is unavailable). */
+/** The viewer's choices for an atelier (empty when none, or before their settings are loaded). */
 export function loadBubblePrefs(atelierId: string): BubblePrefs {
-  try {
-    const raw = globalThis.localStorage?.getItem(BUBBLE_PREFS_STORAGE_KEY);
-    const all = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-    const p = all && typeof all === 'object' ? (all[atelierId] as Partial<BubblePrefs> | undefined) : undefined;
-    const lines: Record<string, boolean> = {};
-    for (const [k, v] of Object.entries(p?.lines ?? {})) if (typeof v === 'boolean') lines[k] = v;
-    const hidden = Array.isArray(p?.hidden) ? p.hidden.filter((x): x is string => typeof x === 'string') : [];
-    return { lines, hidden };
-  } catch {
-    return { lines: {}, hidden: [] };
-  }
+  const e = atelierEntry(atelierId);
+  const lines: Record<string, boolean> = {};
+  const raw = e['lines'];
+  if (raw && typeof raw === 'object') for (const [k, v] of Object.entries(raw)) if (typeof v === 'boolean') lines[k] = v;
+  return { lines, hidden: stringList(e['hidden']) };
 }
 
-/** Remember the viewer's choices for an atelier (best effort; other ateliers kept). */
+/** Remember the viewer's choices for an atelier (other ateliers and the display toggles kept). */
 export function saveBubblePrefs(atelierId: string, prefs: BubblePrefs): void {
-  try {
-    const storage = globalThis.localStorage;
-    if (!storage) return;
-    const raw = storage.getItem(BUBBLE_PREFS_STORAGE_KEY);
-    let all: Record<string, unknown> = {};
-    try {
-      const parsed = raw ? (JSON.parse(raw) as unknown) : {};
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) all = parsed as Record<string, unknown>;
-    } catch {
-      // Unreadable: start afresh.
+  saveAtelierEntry(atelierId, { ...atelierEntry(atelierId), lines: prefs.lines, hidden: prefs.hidden });
+}
+
+/** The viewer's display toggles of an atelier (only those they changed). */
+export function loadDisplayPrefs(atelierId: string): AtelierDisplayPrefs {
+  const raw = atelierEntry(atelierId)['display'];
+  const out: AtelierDisplayPrefs = {};
+  if (raw && typeof raw === 'object') {
+    for (const k of DISPLAY_TOGGLES) {
+      const v = (raw as Record<string, unknown>)[k];
+      if (typeof v === 'boolean') out[k] = v;
     }
-    all[atelierId] = prefs;
-    storage.setItem(BUBBLE_PREFS_STORAGE_KEY, JSON.stringify(all));
-  } catch {
-    // Storage unavailable: the choice just isn't remembered.
   }
+  return out;
+}
+
+/** Remember the viewer's display toggles of an atelier ({} : back to the atelier's own). */
+export function saveDisplayPrefs(atelierId: string, display: AtelierDisplayPrefs): void {
+  saveAtelierEntry(atelierId, { ...atelierEntry(atelierId), display });
 }

@@ -86,10 +86,15 @@ import {
 import {
   bubbleItems,
   loadBubblePrefs,
+  loadDisplayPrefs,
   saveBubblePrefs,
+  saveDisplayPrefs,
   showsInBubble,
+  type AtelierDisplayPrefs,
   type BubblePrefs
 } from '@visuelconcept-winccoa/wui-fleet-core/bubble-prefs.js';
+import '@visuelconcept-winccoa/wui-fleet-core/fleet-settings-service.js';
+import { settingsCache } from '@visuelconcept-winccoa/wui-fleet-core/settings-cache.js';
 import {
   filterDimensions,
   isFilterActive,
@@ -209,6 +214,8 @@ export class MfAtelierView extends LitElement {
   @state() private stateFilter: string[] = loadStateFilter();
   /** The viewer's own bubble choices for this atelier (browser storage, SL-ENC-04 / -06). */
   @state() private bubblePrefs: BubblePrefs = { lines: {}, hidden: [] };
+  /** The viewer's own display toggles (their user settings), over the atelier's outside edit mode. */
+  @state() private userDisplay: AtelierDisplayPrefs = {};
   @state() private bubblesOpen = false;
   @state() private mappings: StateMapping[] = [];
   @state() private thresholds: TrsThresholds[] = [];
@@ -249,6 +256,8 @@ export class MfAtelierView extends LitElement {
   private visibility: IntersectionObserver | null = null;
   private readonly api = this.resolveApi();
   private dpSubscription = new Subscription();
+  /** The viewer's settings (filters, bubbles, display toggles), read again on every login. */
+  private settingsSub: Subscription | null = null;
   // One DP can drive several targets (e.g. the same DP bound to the state AND a
   // KPI of the same machine), so each key maps to a LIST of targets.
   private dpTargets = new Map<string, DpTarget[]>();
@@ -265,11 +274,23 @@ export class MfAtelierView extends LitElement {
     super.connectedCallback();
     // Connected again after a disconnect (moved in the DOM): rebuild what disconnect released.
     if (this.sceneBuilt && !this.scene) this.setupScene();
+    this.settingsSub = settingsCache.watch(['fleet-filter', 'fleet-ateliers'], () => this.restoreSettings());
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
+    this.settingsSub?.unsubscribe();
+    this.settingsSub = null;
     this.releaseScene();
+  }
+
+  /** The viewer's settings, once loaded (and after a login). */
+  private restoreSettings(): void {
+    this.filter = loadFleetFilter();
+    this.stateFilter = loadStateFilter();
+    if (!this.atelier) return;
+    this.bubblePrefs = loadBubblePrefs(this.atelier.id);
+    this.userDisplay = loadDisplayPrefs(this.atelier.id);
   }
 
   override render(): TemplateResult {
@@ -311,6 +332,7 @@ export class MfAtelierView extends LitElement {
       this.viewpoints = structuredClone(this.atelier.viewpoints ?? []);
       this.defaultViewpointId = this.atelier.defaultViewpointId ?? '';
       this.bubblePrefs = loadBubblePrefs(this.atelier.id);
+      this.userDisplay = loadDisplayPrefs(this.atelier.id);
     }
   }
 
@@ -335,6 +357,7 @@ export class MfAtelierView extends LitElement {
       if (this.selectedId && out.has(this.selectedId)) this.selectedId = null;
     }
     if (changed.has('bubblePrefs')) this.scene?.setBubblePrefs(this.bubblePrefs);
+    if (changed.has('userDisplay')) this.applyDisplay();
   }
 
   /** Edit affordances: the combined grant, never in display-only mode. */
@@ -451,9 +474,9 @@ export class MfAtelierView extends LitElement {
   /** Roof / labels / alerts-only toggles (saved with the atelier, except in display-only mode). */
   private renderDisplayToggles(): TemplateResult {
     return html`
-      <ix-icon-button icon="home" ghost title=${localize(MSG.view.roof)} variant=${this.display.roof ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, roof: !this.display.roof })}></ix-icon-button>
-      <ix-icon-button icon="label" ghost title=${localize(MSG.view.labels)} variant=${this.display.labels ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, labels: !this.display.labels })}></ix-icon-button>
-      <ix-icon-button icon="warning" ghost title=${localize(MSG.view.alertsOnly)} variant=${this.display.alertOnly ? 'primary' : 'secondary'} @click=${() => this.onDisplay({ ...this.display, alertOnly: !this.display.alertOnly })}></ix-icon-button>
+      <ix-icon-button icon="home" ghost title=${localize(MSG.view.roof)} variant=${this.shownDisplay.roof ? 'primary' : 'secondary'} @click=${() => this.toggleDisplay('roof')}></ix-icon-button>
+      <ix-icon-button icon="label" ghost title=${localize(MSG.view.labels)} variant=${this.shownDisplay.labels ? 'primary' : 'secondary'} @click=${() => this.toggleDisplay('labels')}></ix-icon-button>
+      <ix-icon-button icon="warning" ghost title=${localize(MSG.view.alertsOnly)} variant=${this.shownDisplay.alertOnly ? 'primary' : 'secondary'} @click=${() => this.toggleDisplay('alertOnly')}></ix-icon-button>
     `;
   }
 
@@ -687,12 +710,22 @@ export class MfAtelierView extends LitElement {
             </label>`
           )}
         </div>
-        ${hidden.length > 0
-          ? html`<div class="muted bubble-hidden">
-              ${hidden.length} ${localize(MSG.view.hiddenBubbles)}
-              <ix-button ghost @click=${() => this.setBubblePrefs({ ...prefs, hidden: [] })}>${localizeDir(MSG.view.showAllBubbles)}</ix-button>
-            </div>`
-          : ''}
+        <div class="vp-head bubble-machines">
+          <span>${localizeDir(MSG.view.bubbleMachines)}</span>
+          <ix-button variant="secondary" ?disabled=${hidden.length === 0} @click=${() => this.setBubblePrefs({ ...prefs, hidden: [] })}>
+            ${localizeDir(MSG.view.showAllBubbles)}
+          </ix-button>
+        </div>
+        <div class="vp-list">
+          ${[...this.machines]
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map(
+              (m) => html`<label class="bubble-item">
+                <input type="checkbox" .checked=${!prefs.hidden.includes(m.id)} @change=${() => this.toggleBubble(m.id)} />
+                ${m.name}
+              </label>`
+            )}
+        </div>
       </div>
     `;
   }
@@ -780,9 +813,6 @@ export class MfAtelierView extends LitElement {
           <span class="dot" style="background:${headColor}"></span>
           <ix-typography class="name" format="h3" title=${m.name}>${m.name}</ix-typography>
           <ix-chip outline>${m.loc ?? m.type}</ix-chip>
-          ${this.bubblePrefs.hidden.includes(m.id)
-            ? html`<ix-icon-button ghost icon="eye" title=${localize(MSG.view.showBubble)} @click=${() => this.toggleBubble(m.id)}></ix-icon-button>`
-            : html`<ix-icon-button ghost icon="eye-cancelled" title=${localize(MSG.view.hideBubble)} @click=${() => this.toggleBubble(m.id)}></ix-icon-button>`}
           ${this.displayOnly
             ? nothing
             : html`<ix-icon-button ghost icon=${this.editable ? 'pen' : 'eye'} title=${this.editable ? localize(MSG.view.edit) : localize(MSG.view.viewOnly)} @click=${() => this.onEdit(m.id)}></ix-icon-button>`}
@@ -1171,10 +1201,28 @@ export class MfAtelierView extends LitElement {
     this.scheduleSave();
   }
 
-  private onDisplay(display: DisplayConfig): void {
-    this.display = display;
+  /** The display toggles shown: the atelier's, with the viewer's own over them. */
+  private get shownDisplay(): DisplayConfig {
+    return { ...this.display, ...this.userDisplay };
+  }
+
+  /**
+   * A display toggle: in edit mode it changes the atelier's own (everyone's default, saved with
+   * the atelier); otherwise only the viewer's, kept in their user settings.
+   */
+  private toggleDisplay(key: keyof AtelierDisplayPrefs): void {
+    const value = !this.shownDisplay[key];
+    const others = { ...this.userDisplay };
+    delete others[key];
+    if (this.editMode && this.editable) {
+      this.display = { ...this.display, [key]: value };
+      this.userDisplay = others;
+      this.scheduleSave();
+    } else {
+      this.userDisplay = { ...others, [key]: value };
+    }
+    saveDisplayPrefs(this.atelier.id, this.userDisplay);
     this.applyDisplay();
-    this.scheduleSave();
   }
 
   private onBuilding(building: BuildingConfig): void {
@@ -1267,9 +1315,10 @@ export class MfAtelierView extends LitElement {
   }
 
   private applyDisplay(): void {
-    this.scene?.setRoofVisible(this.display.roof);
-    this.scene?.setLabelsEnabled(this.display.labels);
-    this.scene?.setAlertOnly(this.display.alertOnly);
+    const shown = this.shownDisplay;
+    this.scene?.setRoofVisible(shown.roof);
+    this.scene?.setLabelsEnabled(shown.labels);
+    this.scene?.setAlertOnly(shown.alertOnly);
   }
 
   private rebuildMachines(): void {
@@ -1714,10 +1763,7 @@ function viewStyles() {
       gap: 0.4rem;
       font-size: 0.85rem;
     }
-    .bubble-hidden {
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
+    .bubble-machines {
       margin-top: 0.5rem;
     }
     .filters {

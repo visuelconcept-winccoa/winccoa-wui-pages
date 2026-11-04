@@ -81,6 +81,21 @@ DP and type provisioning/CRUD via the backend's **PARA REST API** (see Backend),
   operation | param:<key> | kpi:<id>`. `resolveDisplaySlots(m)` builds the ordered
   catalog; items missing from `display` are auto-added (new params/KPIs
   appear on their own). The old scattered visibility toggles have been removed.
+- **Each user's own choices** (added 2026-11): the tag and state filters, the bubble lines and
+  the machines whose bubble is hidden ("My bubbles", per atelier), the display toggles (roof,
+  labels, alerts only — outside edit mode they are the viewer's own, over the atelier's; in edit
+  mode they change the atelier's), the machine dashboard filter, and the selections of the stop
+  analysis, the KPI analysis and the closures (ateliers, machines, period — a span ending today
+  or fixed dates —, sort, tab, year) are kept in the user's **WinCC OA user settings**: one DP
+  `_usr_<UserId>_<setting>` of type `_UserDefinedSettings` per user and setting (`WUI_MF_FILTER`,
+  `WUI_MF_ATELIERS`, `WUI_MF_DASHBOARD`, `WUI_MF_STOP_ANALYSIS`, `WUI_MF_KPI_ANALYSIS`,
+  `WUI_MF_CLOSURES`), the base definition `_uss_<setting>` created on first need, `.Content`,
+  `.Format`, `.FullName` and `.SettingName` written as WinCC OA's `usr_addNewSetting` does. Each
+  user finds them on any workstation, and again after "Switch user". Page side:
+  `wui-fleet-core` `settings-cache.ts` (synchronous cache, loaded on every login),
+  `user-settings.ts` (deferred writes), `fleet-settings-service.ts` (token and user from the
+  shell), `page-prefs.ts` (a page's selection). The choices a browser kept before (localStorage
+  `wui.machine-fleet.*`) are moved to the user's account on first load, then removed.
 
 ## Key algorithms / formulas
 
@@ -231,6 +246,10 @@ does not exist is dropped by the `dpGet` validation before the `dpConnect`.
   keep the names the toolkit's descriptor `index.ts` imports (written ONCE per target), so an
   existing target mounts the new routes on redeploy without editing it. One mount per module in
   wui-toolkit: hence `/api/ai/fleet` rather than `/api/fleet`.
+- **User settings** `GET` / `PUT /api/ai/fleet/settings/:key` (`backend/fleetSettings.ts`, added
+  2026-11): the caller's own value, identified by the WebUI token (`fleetGuard.requestIdentity`),
+  no role; 401 without a valid token, 404 for a key not in `FLEET_SETTINGS`, 413 above 16,000
+  characters. The fleet pages (Machine Fleet, the analyses, the closures) all use it.
 
 - **Backend module `/api/para`** (REST PARA): the only way to **create DP/type** and to **write
   values** (`POST /api/para/dptype/create`, `/api/para/dp/create`, `/api/para/dp/set`,

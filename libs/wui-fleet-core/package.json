@@ -24,6 +24,7 @@
     "@etm-professional-control/oa-rx-js-api": "*",
     "@wincc-oa/wui-data-selector-data": "*",
     "@wincc-oa/wui-i18n-shared": "*",
+    "@wincc-oa/wui-iam-data": "*",
     "@wincc-oa/wui-models": "*",
     "@wincc-oa/wui-shared": "*"
   },
@@ -50,6 +51,9 @@
       "optional": true
     },
     "@wincc-oa/wui-i18n-shared": {
+      "optional": true
+    },
+    "@wincc-oa/wui-iam-data": {
       "optional": true
     },
     "@wincc-oa/wui-models": {

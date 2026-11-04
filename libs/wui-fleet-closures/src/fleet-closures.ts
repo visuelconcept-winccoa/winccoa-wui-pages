@@ -46,6 +46,9 @@ import {
 } from './i18n.js';
 import { pageStyles } from '@visuelconcept-winccoa/wui-fleet-core/styles.js';
 import { FleetStore } from '@visuelconcept-winccoa/wui-fleet-core/data/fleet-store.js';
+import '@visuelconcept-winccoa/wui-fleet-core/fleet-settings-service.js';
+import { PagePrefs } from '@visuelconcept-winccoa/wui-fleet-core/page-prefs.js';
+import { stringList } from '@visuelconcept-winccoa/wui-fleet-core/settings-cache.js';
 import type { Atelier } from '@visuelconcept-winccoa/wui-fleet-core/types.js';
 import {
   emptyClosureConfig,
@@ -132,6 +135,14 @@ export class WuiFleetClosures extends LitElement {
 
   private readonly store = new FleetStore();
   private roleSubs = new Subscription();
+  /** The user's selection (ateliers, machines, year), kept in their settings. */
+  private readonly prefs = new PagePrefs(
+    'fleet-closures',
+    () => ({ ateliers: this.selectedAteliers, machines: this.selectedMachines, year: this.year }),
+    (stored) => this.applySelection(stored),
+    () => undefined
+  );
+  private prefsSub: Subscription | null = null;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -151,11 +162,14 @@ export class WuiFleetClosures extends LitElement {
     this.roleSubs.add(
       hasRole$(MODULE_ID, 'edit-machine').subscribe((granted) => (this.canEditMachine = granted))
     );
+    this.prefsSub = this.prefs.watch();
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.roleSubs.unsubscribe();
+    this.prefsSub?.unsubscribe();
+    this.prefsSub = null;
   }
 
   override render(): TemplateResult {
@@ -181,6 +195,10 @@ export class WuiFleetClosures extends LitElement {
 
   protected override firstUpdated(_changed: PropertyValues): void {
     void this.bootstrap();
+  }
+
+  protected override updated(_changed: PropertyValues): void {
+    this.prefs.save();
   }
 
   private renderToolbar(): TemplateResult {
@@ -469,7 +487,18 @@ export class WuiFleetClosures extends LitElement {
     this.offline = this.store.offline;
     this.working = normaliseClosures(await this.store.listClosures());
     this.addScope = this.scopeOptions()[0]?.key ?? '';
+    await this.prefs.restore();
     this.loading = false;
+  }
+
+  /** A stored selection, what is unknown or gone left at its default (the current year). */
+  private applySelection(stored: Record<string, unknown>): void {
+    const atelierIds = new Set(this.ateliers.map((a) => a.id));
+    this.selectedAteliers = stringList(stored['ateliers']).filter((id) => atelierIds.has(id));
+    const allowed = new Set(this.machineOptions().map((m) => m.id));
+    this.selectedMachines = stringList(stored['machines']).filter((id) => allowed.has(id));
+    const year = stored['year'];
+    this.year = typeof year === 'number' && Number.isInteger(year) && year >= 0 ? year : new Date().getFullYear();
   }
 
   private async save(): Promise<void> {

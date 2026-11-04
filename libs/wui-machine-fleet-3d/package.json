@@ -70,7 +70,8 @@
       "files": [
         "aiRoute.ts",
         "fleetAteliers.ts",
-        "fleetGuard.ts"
+        "fleetGuard.ts",
+        "fleetSettings.ts"
       ],
       "shared": [
         "@visuelconcept-winccoa/wui-ai-kit/aiController.ts",

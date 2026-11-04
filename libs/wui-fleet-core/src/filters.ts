@@ -6,10 +6,12 @@
  * values it has in it ({@link MachineDef.tags}). The filter bar offers every dimension found
  * on the machines, with their values; a filter keeps, for each dimension where values are
  * selected, the machines having one of them (OR within a dimension, AND across dimensions).
- * The selection is remembered in the browser, shared by the overview and the atelier views.
+ * The selection is remembered in the user's WinCC OA settings (settings-cache.ts), shared by
+ * the overview and the atelier views.
  * The free tags the user puts on a machine of an atelier ({@link MachineDef.cardTags}) are one
  * more dimension, {@link CARD_TAGS_DIMENSION}.
  */
+import { settingObject, settingsCache, stringList } from './settings-cache.js';
 import type { MachineDef } from './types.js';
 
 /** Dimension of the free tags put on the machines of an atelier ({@link MachineDef.cardTags}). */
@@ -31,11 +33,8 @@ export interface FilterDimension {
   values: string[];
 }
 
-/** localStorage key of the remembered filter. */
-export const FLEET_FILTER_STORAGE_KEY = 'wui.machine-fleet.filter';
-
-/** localStorage key of the remembered state filter of the atelier views (state keys). */
-export const FLEET_STATE_FILTER_STORAGE_KEY = 'wui.machine-fleet.state-filter';
+/** User setting holding the tag filter and the state filter (`{ tags, states }`). */
+export const FLEET_FILTER_SETTING = 'fleet-filter';
 
 /** Dimensions found on the machines, in order of first appearance, values sorted. */
 export function filterDimensions(machines: Iterable<Pick<MachineDef, 'tags' | 'cardTags'>>): FilterDimension[] {
@@ -79,47 +78,32 @@ export function pruneFilter(filter: FleetFilter, dims: FilterDimension[]): Fleet
   return out;
 }
 
-/** The remembered filter (empty when none, or when the browser storage is unavailable). */
+/** A tag filter as stored (unknown shape tolerated): dimension → selected values. */
+export function parseFleetFilter(raw: unknown): FleetFilter {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: FleetFilter = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (Array.isArray(v)) out[k] = stringList(v);
+  }
+  return out;
+}
+
+/** The user's tag filter (empty when none, or before their settings are loaded). */
 export function loadFleetFilter(): FleetFilter {
-  try {
-    const raw = globalThis.localStorage?.getItem(FLEET_FILTER_STORAGE_KEY);
-    const parsed = raw ? (JSON.parse(raw) as unknown) : {};
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-    const out: FleetFilter = {};
-    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-      if (Array.isArray(v)) out[k] = v.filter((x): x is string => typeof x === 'string');
-    }
-    return out;
-  } catch {
-    return {};
-  }
+  return parseFleetFilter(settingObject(FLEET_FILTER_SETTING)['tags']);
 }
 
-/** Remember the filter in the browser (best effort). */
+/** Remember the tag filter in the user's settings. */
 export function saveFleetFilter(filter: FleetFilter): void {
-  try {
-    globalThis.localStorage?.setItem(FLEET_FILTER_STORAGE_KEY, JSON.stringify(filter));
-  } catch {
-    // Storage unavailable (private mode, blocked): the filter just isn't remembered.
-  }
+  settingsCache.set(FLEET_FILTER_SETTING, { ...settingObject(FLEET_FILTER_SETTING), tags: filter });
 }
 
-/** The remembered state filter of the atelier views (state keys; empty when none). */
+/** The user's state filter of the atelier views (state keys; empty when none). */
 export function loadStateFilter(): string[] {
-  try {
-    const raw = globalThis.localStorage?.getItem(FLEET_STATE_FILTER_STORAGE_KEY);
-    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
-    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
-  } catch {
-    return [];
-  }
+  return stringList(settingObject(FLEET_FILTER_SETTING)['states']);
 }
 
-/** Remember the state filter of the atelier views (best effort). */
+/** Remember the state filter of the atelier views in the user's settings. */
 export function saveStateFilter(keys: string[]): void {
-  try {
-    globalThis.localStorage?.setItem(FLEET_STATE_FILTER_STORAGE_KEY, JSON.stringify(keys));
-  } catch {
-    // Storage unavailable: the state filter just isn't remembered.
-  }
+  settingsCache.set(FLEET_FILTER_SETTING, { ...settingObject(FLEET_FILTER_SETTING), states: keys });
 }

@@ -134,9 +134,7 @@ export const MSG = {
       'Was die Infoblasen für Sie zeigen (in diesem Browser gespeichert, ohne Wirkung für andere)'
     ),
     bubblesReset: ml('Back to the configuration', 'Revenir à la configuration', 'Zurück zur Konfiguration'),
-    hideBubble: ml("Hide this machine's bubble", "Masquer l'encart de cette machine", 'Infoblase dieser Maschine ausblenden'),
-    showBubble: ml("Show this machine's bubble", "Afficher l'encart de cette machine", 'Infoblase dieser Maschine einblenden'),
-    hiddenBubbles: ml('hidden bubbles', 'encarts masqués', 'ausgeblendete Infoblasen'),
+    bubbleMachines: ml('Machine bubbles', 'Encarts des machines', 'Infoblasen der Maschinen'),
     showAllBubbles: ml('Show them all', 'Tous les afficher', 'Alle einblenden'),
     confirm: ml('Confirm', 'Valider', 'Bestätigen'),
     atelier: ml('Atelier', 'Atelier', 'Werkstatt'),

@@ -3,13 +3,12 @@
 
 /**
  * Machine filters: dimensions found on the machines' tags, OR within a dimension, AND
- * across dimensions, stale remembered values pruned, remembered in the browser.
+ * across dimensions, stale remembered values pruned, remembered in the user's settings.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   CARD_TAGS_DIMENSION,
-  FLEET_FILTER_STORAGE_KEY,
-  FLEET_STATE_FILTER_STORAGE_KEY,
+  FLEET_FILTER_SETTING,
   filterDimensions,
   isFilterActive,
   loadFleetFilter,
@@ -19,6 +18,7 @@ import {
   saveFleetFilter,
   saveStateFilter
 } from './filters.js';
+import { settingsCache } from './settings-cache.js';
 
 const PRESS = { tags: { Line: ['L2'], Activity: ['Pressing'] } };
 const OVEN = { tags: { Line: ['L3'], Activity: ['Heat', 'Welding'] } };
@@ -49,39 +49,29 @@ describe('filters', () => {
 });
 
 describe('remembered filter', () => {
-  const store = new Map<string, string>();
-  const fake = {
-    getItem: (k: string) => store.get(k) ?? null,
-    setItem: (k: string, v: string) => void store.set(k, v)
-  };
-  afterEach(() => {
-    store.clear();
-    Reflect.deleteProperty(globalThis, 'localStorage');
-  });
+  afterEach(() => settingsCache.connect(null));
 
   it('comes back as saved', () => {
-    Object.defineProperty(globalThis, 'localStorage', { value: fake, configurable: true });
     saveFleetFilter({ Line: ['L3'] });
-    expect(store.get(FLEET_FILTER_STORAGE_KEY)).toBe('{"Line":["L3"]}');
+    expect(settingsCache.get(FLEET_FILTER_SETTING)).toEqual({ tags: { Line: ['L3'] } });
     expect(loadFleetFilter()).toEqual({ Line: ['L3'] });
   });
 
-  it('is empty when the storage is missing or holds garbage', () => {
+  it('is empty before loading or with garbage', () => {
     expect(loadFleetFilter()).toEqual({});
-    Object.defineProperty(globalThis, 'localStorage', { value: fake, configurable: true });
-    store.set(FLEET_FILTER_STORAGE_KEY, '[1,2]');
+    settingsCache.set(FLEET_FILTER_SETTING, { tags: [1, 2] });
     expect(loadFleetFilter()).toEqual({});
-    store.set(FLEET_FILTER_STORAGE_KEY, '{nope');
+    settingsCache.set(FLEET_FILTER_SETTING, 'nope');
     expect(loadFleetFilter()).toEqual({});
   });
 
-  it('keeps the state filter apart, as state keys', () => {
-    Object.defineProperty(globalThis, 'localStorage', { value: fake, configurable: true });
+  it('keeps the state filter apart, as state keys, in the same setting', () => {
+    saveFleetFilter({ Line: ['L3'] });
     saveStateFilter(['arret', 'maintenance']);
-    expect(store.get(FLEET_STATE_FILTER_STORAGE_KEY)).toBe('["arret","maintenance"]');
+    expect(settingsCache.get(FLEET_FILTER_SETTING)).toEqual({ tags: { Line: ['L3'] }, states: ['arret', 'maintenance'] });
     expect(loadStateFilter()).toEqual(['arret', 'maintenance']);
-    expect(loadFleetFilter()).toEqual({});
-    store.set(FLEET_STATE_FILTER_STORAGE_KEY, '{"a":1}');
+    expect(loadFleetFilter()).toEqual({ Line: ['L3'] });
+    settingsCache.set(FLEET_FILTER_SETTING, { states: { a: 1 } });
     expect(loadStateFilter()).toEqual([]);
   });
 

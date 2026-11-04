@@ -3,16 +3,19 @@
 
 /**
  * A viewer's bubble choices: items offered by the machines, the viewer's choice over the
- * machine's configuration, remembered per atelier in the browser.
+ * machine's configuration, remembered per atelier in the user's settings.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  BUBBLE_PREFS_STORAGE_KEY,
+  ATELIER_PREFS_SETTING,
   bubbleItems,
   loadBubblePrefs,
+  loadDisplayPrefs,
   saveBubblePrefs,
+  saveDisplayPrefs,
   showsInBubble
 } from './bubble-prefs.js';
+import { settingsCache } from './settings-cache.js';
 import type { MachineDef } from './types.js';
 
 const machine = (id: string, kpis: MachineDef['kpis']): MachineDef =>
@@ -41,26 +44,26 @@ describe('bubble items', () => {
 });
 
 describe('remembered choices', () => {
-  const store = new Map<string, string>();
-  const fake = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) };
-  afterEach(() => {
-    store.clear();
-    Reflect.deleteProperty(globalThis, 'localStorage');
-  });
+  afterEach(() => settingsCache.connect(null));
 
-  it('are kept per atelier', () => {
-    Object.defineProperty(globalThis, 'localStorage', { value: fake, configurable: true });
+  it('are kept per atelier, with the display toggles apart', () => {
     saveBubblePrefs('a1', { lines: { state: false }, hidden: ['M1'] });
     saveBubblePrefs('a2', { lines: {}, hidden: ['M9'] });
+    saveDisplayPrefs('a1', { labels: false });
     expect(loadBubblePrefs('a1')).toEqual({ lines: { state: false }, hidden: ['M1'] });
     expect(loadBubblePrefs('a2').hidden).toEqual(['M9']);
     expect(loadBubblePrefs('a3')).toEqual({ lines: {}, hidden: [] });
+    expect(loadDisplayPrefs('a1')).toEqual({ labels: false });
+    expect(loadDisplayPrefs('a2')).toEqual({});
+    // Saving the bubbles keeps the toggles, and back.
+    saveBubblePrefs('a1', { lines: {}, hidden: [] });
+    expect(loadDisplayPrefs('a1')).toEqual({ labels: false });
   });
 
-  it('are empty without storage or with garbage', () => {
+  it('are empty before loading or with garbage', () => {
     expect(loadBubblePrefs('a1')).toEqual({ lines: {}, hidden: [] });
-    Object.defineProperty(globalThis, 'localStorage', { value: fake, configurable: true });
-    store.set(BUBBLE_PREFS_STORAGE_KEY, '{"a1":{"lines":{"x":"yes"},"hidden":[1,"M2"]}}');
+    settingsCache.set(ATELIER_PREFS_SETTING, { a1: { lines: { x: 'yes' }, hidden: [1, 'M2'], display: { roof: 'no', alertOnly: true } } });
     expect(loadBubblePrefs('a1')).toEqual({ lines: {}, hidden: ['M2'] });
+    expect(loadDisplayPrefs('a1')).toEqual({ alertOnly: true });
   });
 });

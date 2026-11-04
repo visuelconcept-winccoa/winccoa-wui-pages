@@ -64,6 +64,8 @@ import {
   type DashboardFilter,
   type ValueSpan
 } from '@visuelconcept-winccoa/wui-fleet-core/dashboard-filter.js';
+import '@visuelconcept-winccoa/wui-fleet-core/fleet-settings-service.js';
+import { settingsCache } from '@visuelconcept-winccoa/wui-fleet-core/settings-cache.js';
 import type { FleetFilter } from '@visuelconcept-winccoa/wui-fleet-core/filters.js';
 import './mf-filter-bar.js';
 import { scopeFromDpes } from '@visuelconcept-winccoa/wui-alarms-core/scope.js';
@@ -229,6 +231,7 @@ export class MfMachineDashboard extends LitElement {
   @state() private liveValues: Record<string, unknown> = {};
 
   private dpSub = new Subscription();
+  private settingsSub: Subscription | null = null;
   /** Normalised state-DP name (to detect state changes in the live stream). */
   private stateKey = '';
   /** Normalised stop-cause-DP name (a cause assignment re-classifies a stop). */
@@ -287,11 +290,15 @@ export class MfMachineDashboard extends LitElement {
     // The panel covers the whole viewport, so there is no backdrop left to click:
     // Escape is the way out besides the close button.
     window.addEventListener('keydown', this.onKeyDown);
+    // The filter is the user's (their settings), read again on every login.
+    this.settingsSub = settingsCache.watch(['fleet-dashboard'], () => (this.filter = loadDashboardFilter()));
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     window.removeEventListener('keydown', this.onKeyDown);
+    this.settingsSub?.unsubscribe();
+    this.settingsSub = null;
     this.dpSub.unsubscribe();
     window.clearTimeout(this.historyDebounce);
     window.clearInterval(this.liveTimer);

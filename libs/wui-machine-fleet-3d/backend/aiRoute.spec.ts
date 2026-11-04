@@ -52,7 +52,9 @@ vi.mock('./fleetGuard', () => ({
       if (oa.denied.has(`${module}/${role}`)) res.status(403).json({ ok: false, error: `forbidden: role '${role}' of '${module}' required` });
       else next();
     };
-  }
+  },
+  // The user settings routes (fleetSettings.ts) identify the caller, with no role.
+  requestIdentity: async () => ({ username: 'alice', userId: 7, admin: false, groups: [] })
 }));
 
 vi.mock('./aiController', () => ({
@@ -70,7 +72,7 @@ vi.mock('ultimate-express', () => {
       (method: string) =>
       (path: string, ...handlers: Handler[]) =>
         routes.set(`${method} ${path}`, handlers);
-    return { use: () => undefined, get: add('GET'), post: add('POST') };
+    return { use: () => undefined, get: add('GET'), post: add('POST'), put: add('PUT') };
   };
   return { Router, json: () => () => undefined };
 });
@@ -133,6 +135,9 @@ describe('/api/ai — the routes of machine-fleet-3d', () => {
     // The AI bridge stays as in wui-ai-kit.
     expect(routes.get('GET /health')).toHaveLength(1);
     expect(routes.get('POST /chat')).toHaveLength(1);
+    // Each user's own settings: no role, the caller is identified by the handler.
+    expect(routes.get('GET /fleet/settings/:key')).toHaveLength(1);
+    expect(routes.get('PUT /fleet/settings/:key')).toHaveLength(1);
   });
 
   it('lists the ateliers server-side: id from the DP, name, machine count — sorted, nothing else', async () => {

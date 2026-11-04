@@ -27,6 +27,7 @@ import { Router, json } from 'ultimate-express';
 import { AiController } from './aiController';
 import { FleetController } from './fleetAteliers';
 import { requireFleetRole } from './fleetGuard';
+import { FleetSettingsController } from './fleetSettings';
 
 /**
  * Endpoints (relative to the "/api/ai" mount point), with their role:
@@ -34,12 +35,15 @@ import { requireFleetRole } from './fleetGuard';
  *   POST /chat                  body { prompt, … } -> { text, provider, model }      (open, as in wui-ai-kit)
  *   GET  /fleet/workshops        -> { ok, ateliers: [{ id, name, machineCount }] }    view
  *   GET  /fleet/workshops/:id    -> { ok, atelier, stopCauses } | 404                  view
+ *   GET  /fleet/settings/:key    -> { ok, key, user, value } (the caller's own; 401 unidentified)
+ *   PUT  /fleet/settings/:key    body { value } -> { ok, key, user }  (fleetSettings.ts)
  */
 export class AiRoute {
   static routes(): Router {
     const router = Router();
     const ai = new AiController();
     const fleet = new FleetController();
+    const settings = new FleetSettingsController();
 
     router.use(json({ limit: '1mb' }));
 
@@ -48,6 +52,10 @@ export class AiRoute {
 
     router.get('/fleet/workshops', requireFleetRole('view'), fleet.list);
     router.get('/fleet/workshops/:id', requireFleetRole('view'), fleet.get);
+
+    // Each user's own choices: identified by the token, no role.
+    router.get('/fleet/settings/:key', settings.get);
+    router.put('/fleet/settings/:key', settings.put);
 
     return router;
   }
