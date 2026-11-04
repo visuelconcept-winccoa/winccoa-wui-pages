@@ -59,6 +59,27 @@ export const MSG = {
     offsetX: ml('Offset X (m)', 'Décalage X (m)', 'Versatz X (m)'),
     offsetZ: ml('Offset Z (m)', 'Décalage Z (m)', 'Versatz Z (m)')
   },
+  wizard: {
+    title: ml('Add a symbol', 'Ajouter un symbole', 'Symbol hinzufügen'),
+    fromCatalog: ml('From the site', 'Depuis le site', 'Vom Standort'),
+    fromAtelier: ml('From another atelier', 'Depuis un autre atelier', 'Aus einer anderen Werkstatt'),
+    fromFile: ml('From a file (JSON)', 'Depuis un fichier (JSON)', 'Aus einer Datei (JSON)'),
+    create: ml('New symbol', 'Nouveau symbole', 'Neues Symbol'),
+    search: ml('Search…', 'Rechercher…', 'Suchen…'),
+    none: ml('Nothing to add.', 'Rien à ajouter.', 'Nichts hinzuzufügen.'),
+    chooseFile: ml('Choose a JSON file', 'Choisir un fichier JSON', 'JSON-Datei auswählen'),
+    badFile: ml('Not a symbol file.', "Ce fichier n'est pas un symbole.", 'Keine Symboldatei.'),
+    name: ml('Name', 'Nom', 'Name'),
+    type: ml('Representation', 'Représentation', 'Darstellung'),
+    stateDp: ml('State datapoint (optional)', 'Datapoint d’état (optionnel)', 'Zustands-Datenpunkt (optional)'),
+    add: ml('Add', 'Ajouter', 'Hinzufügen'),
+    cancel: ml('Cancel', 'Annuler', 'Abbrechen'),
+    later: ml(
+      'Everything else is set later in the symbol’s configuration.',
+      'Tout le reste se règle ensuite dans la configuration du symbole.',
+      'Alles Weitere wird danach in der Symbolkonfiguration eingestellt.'
+    )
+  },
   bubble: {
     resize: ml('Resize the bubble', "Redimensionner l'encart", 'Infoblase skalieren'),
     reset: ml(
@@ -188,7 +209,7 @@ export const MSG = {
       "Exporter l'atelier (JSON)",
       'Werkstatt exportieren (JSON)'
     ),
-    machines: ml('Machines', 'Machines', 'Maschinen'),
+    machines: ml('Symbols', 'Symboles', 'Symbole'),
     tiltUp: ml('Tilt up', 'Incliner vers le haut', 'Nach oben neigen'),
     tiltDown: ml('Tilt down', 'Incliner vers le bas', 'Nach unten neigen'),
     rotateLeft: ml('Rotate left', 'Pivoter à gauche', 'Nach links drehen'),
@@ -242,7 +263,6 @@ export const MSG = {
     operation: ml('Operation', 'Opération', 'Vorgang'),
     obsolescenceAli: ml('Obsolescence (ALI)', 'Obsolescence (ALI)', 'Obsoleszenz (ALI)'),
     confirmDeleteHeading: ml("Delete the atelier", "Supprimer l'atelier", 'Werkstatt löschen'),
-    newMachineName: ml('New machine', 'Nouvelle machine', 'Neue Maschine'),
     viewLabel: ml('View', 'Vue', 'Ansicht')
   },
   create: {
@@ -341,14 +361,14 @@ export const MSG = {
   },
   machineDialog: {
     importMachine: ml(
-      'Import the machine (JSON)',
-      'Importer la machine (JSON)',
-      'Maschine importieren (JSON)'
+      'Import the symbol (JSON)',
+      'Importer le symbole (JSON)',
+      'Symbol importieren (JSON)'
     ),
     exportMachine: ml(
-      'Export the machine (JSON)',
-      'Exporter la machine (JSON)',
-      'Maschine exportieren (JSON)'
+      'Export the symbol (JSON)',
+      'Exporter le symbole (JSON)',
+      'Symbol exportieren (JSON)'
     ),
     cancel: ml('Cancel', 'Annuler', 'Abbrechen'),
     close: ml('Close', 'Fermer', 'Schließen'),
@@ -629,7 +649,7 @@ export const MSG = {
     paramUnit: ml('Unit', 'Unité', 'Einheit'),
     defaultParamName: ml('Parameter', 'Paramètre', 'Parameter'),
     delete: ml('Delete', 'Supprimer', 'Löschen'),
-    editTitlePrefix: ml('Edit', 'Édition', 'Bearbeiten')
+    editTitlePrefix: ml('Symbol', 'Symbole', 'Symbol')
   },
   buildingDialog: {
     title: ml('Building configuration', 'Configuration du bâtiment', 'Gebäudekonfiguration'),
@@ -657,15 +677,14 @@ export const MSG = {
     colPetrol: ml('Petrol', 'Pétrole', 'Petrol')
   },
   configPanel: {
-    deleteMachineHeading: ml('Delete the machine', 'Supprimer la machine', 'Maschine löschen'),
-    machines: ml('Machines', 'Machines', 'Maschinen'),
+    deleteMachineHeading: ml('Delete the symbol', 'Supprimer le symbole', 'Symbol löschen'),
+    machines: ml('Symbols', 'Symboles', 'Symbole'),
     searchMachine: ml(
-      'Search for a machine…',
-      'Rechercher une machine…',
-      'Maschine suchen…'
+      'Search for a symbol…',
+      'Rechercher un symbole…',
+      'Symbol suchen…'
     ),
-    addMachine: ml('Add a machine', 'Ajouter une machine', 'Maschine hinzufügen'),
-    addFromCatalog: ml('Add a machine of the plant', 'Ajouter une machine du site', 'Maschine des Werks hinzufügen'),
+    addMachine: ml('Add a symbol', 'Ajouter un symbole', 'Symbol hinzufügen'),
     edit: ml('Edit', 'Éditer', 'Bearbeiten'),
     viewOnly: ml('View', 'Visualiser', 'Anzeigen'),
     delete: ml('Delete', 'Supprimer', 'Löschen')
@@ -821,9 +840,9 @@ export function noStopOfClassMsg(klass: string): string {
 export function confirmDeleteMachineMsg(name: string): string {
   return localize(
     ml(
-      `Remove the machine « ${name} » from this atelier?`,
-      `Supprimer la machine « ${name} » de cet atelier ?`,
-      `Maschine « ${name} » aus dieser Werkstatt entfernen?`
+      `Remove the symbol « ${name} » from this atelier?`,
+      `Supprimer le symbole « ${name} » de cet atelier ?`,
+      `Symbol « ${name} » aus dieser Werkstatt entfernen?`
     )
   );
 }
@@ -832,9 +851,9 @@ export function confirmDeleteMachineMsg(name: string): string {
 export function machinesCountMsg(shown: number, total: number): string {
   return localize(
     ml(
-      `Machines (${shown}/${total})`,
-      `Machines (${shown}/${total})`,
-      `Maschinen (${shown}/${total})`
+      `Symbols (${shown}/${total})`,
+      `Symboles (${shown}/${total})`,
+      `Symbole (${shown}/${total})`
     )
   );
 }

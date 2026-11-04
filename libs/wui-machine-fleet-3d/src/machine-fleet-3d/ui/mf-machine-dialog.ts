@@ -65,7 +65,7 @@ interface IxCheckedEvent {
 /** The gantry-with-rotary-table machine type (referenced in several places). */
 const PORTIQUE_TABLE: MachineType = 'portique-table';
 
-const MACHINE_TYPES: MachineType[] = [
+export const MACHINE_TYPES: MachineType[] = [
   'four',
   'robot',
   'positionneur',

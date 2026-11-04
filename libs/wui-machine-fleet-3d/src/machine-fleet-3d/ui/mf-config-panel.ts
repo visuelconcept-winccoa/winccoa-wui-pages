@@ -55,8 +55,6 @@ export class MfConfigPanel extends LitElement {
   @property({ attribute: false }) states: StateDef[] = BUILTIN_STATES;
   /** When false, edit/delete/add are hidden and the row action becomes view-only. */
   @property({ type: Boolean }) canEdit = true;
-  /** Machines of the plant's catalogue not yet in this atelier, offered to add (by an integration). */
-  @property({ attribute: false }) available: MachineDef[] = [];
   /**
    * List only (the embeddable view): rows focus their machine, nothing else — no
    * view/edit/delete action per row, no Add. Overrides `canEdit`.
@@ -104,18 +102,6 @@ export class MfConfigPanel extends LitElement {
           ? html`<ix-button class="add" variant="secondary" @click=${this.emitAdd}>
               <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.configPanel.addMachine)}
             </ix-button>`
-          : ''}
-        ${this.canEdit && !this.listOnly && this.available.length > 0
-          ? html`<ix-select
-              class="add"
-              label=${localize(MSG.configPanel.addFromCatalog)}
-              .value=${''}
-              @valueChange=${(e: { detail: string | string[] }) => this.emitAddFrom(String(e.detail))}
-            >
-              ${this.available.map(
-                (m) => html`<ix-select-item label=${m.name} value=${m.id}></ix-select-item>`
-              )}
-            </ix-select>`
           : ''}
       </section>
     `;
@@ -209,11 +195,6 @@ export class MfConfigPanel extends LitElement {
     this.dispatchEvent(
       new CustomEvent('wui:delete', { detail: { id }, bubbles: true, composed: true })
     );
-  }
-
-  private emitAddFrom(id: string): void {
-    if (!id) return;
-    this.dispatchEvent(new CustomEvent('wui:addfrom', { detail: { id }, bubbles: true, composed: true }));
   }
 
   private emitAdd(): void {

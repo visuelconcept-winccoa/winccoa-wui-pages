@@ -46,6 +46,8 @@ import { normDp, toNumber } from '../data/dp-utils.js';
 import type { FleetStore } from '../data/fleet-store.js';
 import { MSG, confirmDeleteAtelierMsg, localize, localizeDir } from '../i18n.js';
 import { SceneController } from '../scene/scene-controller.js';
+import type { OtherSymbol } from './mf-symbol-wizard.js';
+import './mf-symbol-wizard.js';
 import {
   DEFAULT_NAV_CORNER,
   DEFAULT_STATE_MAPPINGS,
@@ -225,6 +227,9 @@ export class MfAtelierView extends LitElement {
   /** Scene camera mode: 3D (perspective) or 2D (orthographic plan). */
   @state() private cameraMode: '2d' | '3d' = '3d';
   @state() private editing: MachineDef | null = null;
+  /** The "add a symbol" wizard (#67), and the other ateliers' symbols it offers. */
+  @state() private wizardOpen = false;
+  @state() private otherSymbols: OtherSymbol[] = [];
   @state() private buildingOpen = false;
   @state() private mappingOpen = false;
   @state() private atelierName = '';
@@ -744,12 +749,10 @@ export class MfAtelierView extends LitElement {
           .states=${atelierStates(this.mappings.length ? this.mappings : DEFAULT_STATE_MAPPINGS)}
           .canEdit=${this.editable}
           ?list-only=${this.displayOnly}
-          .available=${this.displayOnly ? [] : this.catalog.filter((c) => !this.machines.some((m) => m.id === c.id))}
-          @wui:addfrom=${(e: CustomEvent<{ id: string }>) => this.onAddFrom(e.detail.id)}
           @wui:focus=${(e: CustomEvent<{ id: string }>) => this.onFocus(e.detail.id)}
           @wui:edit=${(e: CustomEvent<{ id: string }>) => this.onEdit(e.detail.id)}
           @wui:delete=${(e: CustomEvent<{ id: string }>) => this.onDelete(e.detail.id)}
-          @wui:add=${() => this.onAdd()}
+          @wui:add=${() => this.openWizard()}
         ></mf-config-panel>
       </div>
     `;
@@ -907,6 +910,14 @@ export class MfAtelierView extends LitElement {
             @wui:apply=${(e: CustomEvent<{ building: BuildingConfig }>) => this.onBuilding(e.detail.building)}
             @wui:close=${() => (this.buildingOpen = false)}
           ></mf-building-dialog>`
+        : ''}
+      ${this.wizardOpen
+        ? html`<mf-symbol-wizard
+            .catalog=${this.catalog.filter((c) => !this.machines.some((m) => m.id === c.id))}
+            .others=${this.otherSymbols}
+            @wui:addsymbol=${(e: CustomEvent<{ def: MachineDef; keepId: boolean }>) => this.onAddSymbol(e.detail.def, e.detail.keepId)}
+            @wui:close=${() => (this.wizardOpen = false)}
+          ></mf-symbol-wizard>`
         : ''}
       ${this.editing
         ? html`<mf-machine-dialog
@@ -1248,31 +1259,34 @@ export class MfAtelierView extends LitElement {
     this.scheduleSave();
   }
 
-  private onAdd(): void {
+  /** "Add a symbol": the wizard, with the other ateliers' symbols to copy (#67). */
+  private async openWizard(): Promise<void> {
     if (!this.editable) return;
-    const def: MachineDef = {
-      id: `machine-${Date.now()}`,
-      name: localize(MSG.view.newMachineName),
-      type: 'cabinet',
-      x: 0,
-      z: 0,
-      state: 'ok',
-      kpis: []
-    };
-    this.machines = [...this.machines, def];
-    this.editing = def;
-    this.rebuildMachines();
-    // No marker by default: at the centre of the floor, shown at once.
-    this.onFocus(def.id);
+    this.wizardOpen = true;
+    this.otherSymbols = [];
+    if (!this.store) return;
+    try {
+      const ateliers = await this.store.listAteliers();
+      this.otherSymbols = ateliers
+        .filter((a) => a.id !== this.atelier.id)
+        .flatMap((a) => a.machines.map((machine) => ({ atelier: a.name, machine })));
+    } catch {
+      // Backend unreachable: the other sources stay usable.
+    }
   }
 
-  /** Add a machine of the plant's catalogue: its bindings as the integration gives them, to be placed. */
-  private onAddFrom(id: string): void {
-    const entry = this.catalog.find((c) => c.id === id);
-    if (!entry || this.machines.some((m) => m.id === id)) return;
-    const def: MachineDef = { ...structuredClone(entry), x: 0, z: 0, toPlace: true };
+  /**
+   * A symbol from the wizard: the site's catalogue keeps its id (the site's machine), the others
+   * get a new one; not bound to a marker, "à placer" at the centre of the floor, shown at once.
+   */
+  private onAddSymbol(source: MachineDef, keepId: boolean): void {
+    if (!this.editable) return;
+    if (keepId && this.machines.some((m) => m.id === source.id)) return;
+    const def: MachineDef = { ...source, id: keepId ? source.id : `machine-${Date.now()}`, x: 0, z: 0, toPlace: true };
     delete def.markerId;
+    delete def.bubbleOffset;
     this.machines = [...this.machines, def];
+    this.wizardOpen = false;
     this.rebuildMachines();
     this.onFocus(def.id);
   }

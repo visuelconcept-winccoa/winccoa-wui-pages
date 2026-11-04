@@ -96,6 +96,12 @@ DP and type provisioning/CRUD via the backend's **PARA REST API** (see Backend),
   floor drops it ("Repère N"); in edit mode a pin is dragged, and a click on it opens its editor
   (name, delete). A machine is bound to a marker in the machine dialog (marker + offset X / Z) and
   follows it (#58, #63).
+- **Symbols** (#67): what an atelier places is called a *symbol* in its configuration (drawer,
+  symbol dialog, wizard); the real equipment stays a *machine* (dashboard, states, stops, KPIs).
+  Code identifiers (`MachineDef`, `machines`) and stored ateliers are unchanged. One "Ajouter un
+  symbole" button opens `mf-symbol-wizard`: from the site's catalogue (keeps the site's id), from
+  another atelier (a copy), from a JSON file (as the symbol dialog exports it), or a short form
+  (name, representation, state DP); the symbol lands "à placer" at the centre of the floor.
 - **No work-centre notion** (#66): no group outlines on the floor (`MachineDef.group` is gone, a
   stored one is ignored), and the tag dimensions "Îlot" / "Workcenter" an integration may still
   write are neither offered by the filter bar nor filtered on (`isFilterDimension`).
