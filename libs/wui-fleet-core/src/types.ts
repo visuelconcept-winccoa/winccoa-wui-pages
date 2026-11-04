@@ -404,6 +404,45 @@ export interface StateDef {
    * state is removed from the opening time, as a non-worked period is. Ignored when `running`.
    */
   outsideOpening?: boolean;
+  /** A fault (counted apart from the other stops in the atelier's statistics). Absent: the
+   * built-in `warn` ("Défaut") only. Ignored when `running`. */
+  fault?: boolean;
+}
+
+/** Whether a state is a fault (its own flag, else the built-in `warn`). */
+export function isFaultState(s: StateDef): boolean {
+  return !s.running && (s.fault ?? s.key === 'warn');
+}
+
+/** Machines of an atelier per kind of state: faults, stops, producing, not connected. */
+export interface FleetStats {
+  fault: number;
+  stop: number;
+  production: number;
+  offline: number;
+}
+
+/**
+ * Count the machines by kind of state (#65): not connected apart, then producing (`running`),
+ * fault ({@link isFaultState}), and any other state — maintenance included — as a stop. A state
+ * the atelier does not know counts as a stop.
+ */
+export function fleetStats(
+  machines: readonly Pick<MachineDef, 'state' | 'connected' | 'commDp'>[],
+  states: readonly StateDef[]
+): FleetStats {
+  const out: FleetStats = { fault: 0, stop: 0, production: 0, offline: 0 };
+  for (const m of machines) {
+    if (isDisconnected(m)) {
+      out.offline++;
+      continue;
+    }
+    const def = states.find((x) => x.key === m.state);
+    if (def?.running) out.production++;
+    else if (def && isFaultState(def)) out.fault++;
+    else out.stop++;
+  }
+  return out;
 }
 
 /** A named, ordered value→state mapping (first matching rule wins). */

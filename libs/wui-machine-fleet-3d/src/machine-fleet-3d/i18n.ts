@@ -132,6 +132,9 @@ export const MSG = {
     filterState: ml('State', 'État', 'Zustand'),
     fullscreen: ml('Full screen', 'Plein écran', 'Vollbild'),
     exitFullscreen: ml('Exit full screen', 'Quitter le plein écran', 'Vollbild beenden'),
+    statFault: ml('fault', 'défaut', 'Störung'),
+    statStop: ml('stopped', 'arrêt', 'Stillstand'),
+    statProduction: ml('producing', 'production', 'Produktion'),
     backToAteliers: ml('Back to ateliers', 'Retour aux ateliers', 'Zurück zu den Werkstätten'),
     confirm: ml('Confirm', 'Valider', 'Bestätigen'),
     atelier: ml('Atelier', 'Atelier', 'Werkstatt'),
@@ -725,6 +728,12 @@ export const MSG = {
       'Counts as producing time (Gantt, stop analysis, TRS)',
       'Compte comme temps de production (Gantt, analyse des arrêts, TRS)',
       'Zählt als Produktionszeit (Gantt, Stillstandsanalyse, OEE)'
+    ),
+    stateFault: ml('Fault', 'Défaut', 'Störung'),
+    stateFaultHint: ml(
+      'Counted as a fault (not as a stop) in the atelier statistics',
+      'Compté comme défaut (et non comme arrêt) dans les statistiques de l’atelier',
+      'In der Werkstattstatistik als Störung (nicht als Stillstand) gezählt'
     ),
     stateOffOpening: ml('Off opening', 'Hors ouverture', 'Außerhalb der Öffnungszeit'),
     stateOffOpeningHint: ml(

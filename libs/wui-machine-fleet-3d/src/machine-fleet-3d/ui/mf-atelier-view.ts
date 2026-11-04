@@ -60,6 +60,7 @@ import {
   MAX_DASHBOARD_LINKS,
   appLinkHref,
   followMarkers,
+  fleetStats,
   nextMarkerNumber,
   isDisconnected,
   placeMachine,
@@ -417,12 +418,28 @@ export class MfAtelierView extends LitElement {
     }
   }
 
+  /** Live counts beside the atelier's name, faults and stops first (#65); the filter bar applies. */
+  private renderStats(): TemplateResult {
+    const out = this.filteredOutIds();
+    const shown = this.machines.filter((m) => !out.has(m.id));
+    const stats = fleetStats(shown, atelierStates(this.mappings.length ? this.mappings : DEFAULT_STATE_MAPPINGS));
+    const item = (cls: string, n: number, label: string): TemplateResult =>
+      html`<span class="stat ${cls}" title=${label} aria-label=${`${label} : ${n}`}><span class="stat__dot"></span>${n}<span class="stat__label">${label}</span></span>`;
+    return html`<div class="stats">
+      ${item('stat--fault', stats.fault, localize(MSG.view.statFault))}
+      ${item('stat--stop', stats.stop, localize(MSG.view.statStop))}
+      ${item('stat--prod', stats.production, localize(MSG.view.statProduction))}
+      ${stats.offline > 0 ? item('stat--offline', stats.offline, DISCONNECTED_LABEL) : ''}
+    </div>`;
+  }
+
   private renderTopbar(): TemplateResult | typeof nothing {
     if (this.hideToolbar) return nothing;
     if (this.displayOnly) {
       return html`
         <div class="topbar">
           <ix-typography class="title" format="h3">${this.atelierName || localize(MSG.view.atelier)}</ix-typography>
+          ${this.renderStats()}
           <span class="topbar-spacer"></span>
           ${this.renderDisplayToolbar()}
         </div>
@@ -443,6 +460,7 @@ export class MfAtelierView extends LitElement {
               ${this.editable
                 ? html`<ix-icon-button ghost icon="pen" title=${localize(MSG.view.renameAtelier)} @click=${this.startRename}></ix-icon-button>`
                 : ''}`}
+        ${this.renderStats()}
         <span class="topbar-spacer"></span>
         ${this.renderToolbar()}
         ${this.editable
@@ -1855,6 +1873,42 @@ function viewStyles() {
     .mode-btn--on {
       background: var(--theme-color-primary);
       color: var(--theme-color-primary-contrast, #fff);
+    }
+    .stats {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-left: 0.75rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .stat {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      color: var(--theme-color-std-text);
+    }
+    .stat__dot {
+      width: 0.65rem;
+      height: 0.65rem;
+      border-radius: 50%;
+      background: var(--c);
+    }
+    .stat__label {
+      font-weight: 400;
+      color: var(--theme-color-soft-text);
+    }
+    .stat--fault {
+      --c: var(--theme-color-alarm);
+    }
+    .stat--stop {
+      --c: var(--theme-color-warning);
+    }
+    .stat--prod {
+      --c: var(--theme-color-success);
+    }
+    .stat--offline {
+      --c: var(--theme-color-neutral);
     }
     .pin-edit {
       position: absolute;

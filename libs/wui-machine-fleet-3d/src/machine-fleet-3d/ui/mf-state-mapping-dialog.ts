@@ -14,6 +14,7 @@ import {
   BUILTIN_STATES,
   STATE_COLOR_KEYS,
   STATE_COLOR_LABELS,
+  isFaultState,
   mappingStates,
   stateColor,
   type MachineState,
@@ -185,6 +186,15 @@ export class MfStateMappingDialog extends LitElement {
             @change=${(e: Event) => this.patchState(i, { running: (e.target as HTMLInputElement).checked })}
           />
           ${localizeDir(MSG.stateMapping.stateRunning)}
+        </label>
+        <label class="running" title=${localize(MSG.stateMapping.stateFaultHint)}>
+          <input
+            type="checkbox"
+            .checked=${isFaultState(s)}
+            ?disabled=${!this.canEdit || Boolean(s.running)}
+            @change=${(e: Event) => this.patchState(i, { fault: (e.target as HTMLInputElement).checked })}
+          />
+          ${localizeDir(MSG.stateMapping.stateFault)}
         </label>
         <label class="running" title=${localize(MSG.stateMapping.stateOffOpeningHint)}>
           <input
@@ -405,7 +415,7 @@ function extraStyles(): ReturnType<typeof css> {
     }
     .state-row {
       display: grid;
-      grid-template-columns: auto 1fr 1.6fr auto auto auto;
+      grid-template-columns: auto 1fr 1.6fr auto auto auto auto;
       gap: 0.4rem;
       align-items: end;
     }
