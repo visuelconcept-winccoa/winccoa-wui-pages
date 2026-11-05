@@ -3,6 +3,14 @@
 
 # Changelog — @visuelconcept-winccoa/wui-fleet-core
 
+## 0.2.1 — 2026-11-05
+
+- `opening-view.ts` (#70): opening view types and bounds, the module settings
+  (`MachineFleet3D_Settings`), the opening order (`resolveOpeningView`), and the pure framing of a
+  box of symbols for a mode, a tilt, a front side and a margin (`frameOpeningView`, unit-tested).
+- `Atelier.opening` (front side, own view); `FleetStore.readModuleSettings` /
+  `saveModuleSettings` (through `/api/fleet`, traced in `AuditTrail_Fleet`).
+
 ## 0.2.0 — 2026-11-04 (SDS 2.2)
 
 **Upgrade.** The pages using this kit move to `^0.2.0` together (machine-fleet-3d 0.4.0,

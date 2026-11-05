@@ -55,6 +55,13 @@ import { MarkerPins } from './marker-pins.js';
 import { MachineMaterials } from './machine-materials.js';
 import { BILLBOARD_CHILD, applyBillboardTexture, buildMachine } from './machine-factory.js';
 import { OrbitController } from './orbit-controller.js';
+import {
+  floorBox,
+  frameOpeningView,
+  symbolsBox,
+  type FrontSide,
+  type OpeningViewSetting
+} from '@visuelconcept-winccoa/wui-fleet-core/opening-view.js';
 
 const ACCENT_POOL_SIZE = 6;
 const DRAG_THRESHOLD_PX = 5;
@@ -281,6 +288,25 @@ export class SceneController {
     const dir = new Vector3(1, 0.75, 1).normalize();
     const pos = center.clone().add(dir.multiplyScalar(dist));
     this.orbit.setFocus([pos.x, pos.y, pos.z], [center.x, center.y, center.z]);
+  }
+
+  /**
+   * Frame the opening view of the atelier (#70): the box of the placed symbols (the floor when
+   * there is none), seen from the building's `front` side, in `view.mode` — the caller has set
+   * the camera mode first (3D for `tilted`, 2D otherwise). In `tilted-ortho` the 2D mode stays
+   * locked at the tilt: zoom and pan only, as the plan (#57).
+   */
+  frameOpening(view: OpeningViewSetting, front: FrontSide): void {
+    const box = symbolsBox(this.machines) ?? floorBox(this.cfg);
+    const pose = frameOpeningView(box, view, front, this.camera.fov, this.camera.aspect);
+    if (view.mode === 'tilted-ortho') this.orbit.setPlanLock(true, { theta: pose.theta, phi: pose.phi });
+    else if (view.mode === 'plan') this.orbit.setPlanLock(this.cameraMode === '2d', { theta: pose.theta, phi: pose.phi });
+    this.orbit.frame(pose);
+  }
+
+  /** The symbols as the opening-view preview draws them: footprints, heights, "à placer", hidden. */
+  previewSymbols(): { bbox: Machine['bbox']; topY: number; toPlace?: boolean; hidden?: boolean }[] {
+    return this.machines.map((m) => ({ bbox: { ...m.bbox }, topY: m.topY, toPlace: m.toPlace, hidden: m.hidden }));
   }
 
   resetView(): void {

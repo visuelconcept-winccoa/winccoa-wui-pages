@@ -104,6 +104,31 @@ DP and type provisioning/CRUD via the backend's **PARA REST API** (see Backend),
   most, role `edit`), opened on arriving at `/fleet-3d` (not when coming back from an atelier).
   No separate "public views" role: the atelier DP is written through `/api/fleet`, which checks
   `edit` for the whole DP — a narrower role would need a store of its own.
+- **Opening view** (#70): an atelier opened without a default viewpoint (neither the user's nor
+  the public one) is framed on its **placed** symbols — hidden and "à placer" ones excluded, the
+  floor when none is placed — in one of three modes: **A** plan (2D, straight down), **B** tilted
+  plan in perspective (3D, free orbit), **C** tilted plan without perspective (the 2D orthographic
+  camera locked at the tilt: zoom and pan only, as the plan, #57). The camera stands on the
+  building's **front** side (entrance south / east / north / west), tilted towards the back by
+  5–60°; a margin of 0–40 % around the symbols. Settings at two levels:
+  - **module** — "Paramètres du module" in the overview (`mf-module-settings-dialog`), the
+    default of every atelier, DP **`MachineFleet3D_Settings`** (type of the same name, element
+    `json`: `{ openingView: { mode, tilt, margin } }`), role **`configure`** (checked by
+    `/api/fleet`, fleet-closures `fleetRules.ts`), traced in `AuditTrail_Fleet`;
+  - **atelier** — the "Vue d'ouverture" button of the toolbar (`mf-opening-dialog`):
+    `Atelier.opening = { front?, view? }` (no `view` = the module's), role `edit`.
+
+  Both dialogs share `mf-opening-editor`: the three choice cards rendered live, tilt and margin
+  sliders, a preview on which the tilt is set by dragging up / down (or the arrow keys), and in the
+  module dialog the site's ateliers (blocks of a default footprint) and three example layouts to
+  try the setting on (`scene/opening-preview.ts`, one shared WebGL renderer copied into 2D
+  canvases). Opening order, for the load and the home button: the user's default viewpoint, the
+  public one, the atelier's view, the module's (`resolveOpeningView`). The 3D toggle opens a C or
+  A setting in perspective at its tilt; the 2D toggle is the plan straight down. The framing is
+  pure (`wui-fleet-core/opening-view.ts` `frameOpeningView`, unit-tested: every corner of the box
+  in view, the projected box centred and filling `1 / (1 + margin)`); `SceneController.frameOpening`
+  applies it through `OrbitController.frame` / `setPlanLock(on, angle)`.
+  Not done: framing again when the view is resized before the user moves the camera.
 - **Symbols** (#67): what an atelier places is called a *symbol* in its configuration (drawer,
   symbol dialog, wizard); the real equipment stays a *machine* (dashboard, states, stops, KPIs).
   Code identifiers (`MachineDef`, `machines`) and stored ateliers are unchanged. One "Ajouter un
@@ -406,8 +431,10 @@ All writes are best-effort (never throw into the edit), no-op when the store is 
 
 ## Application Security (roles — added 2026-07)
 
-The page declares 3 roles (self-registration in `machine-fleet-3d.ts`, module id
-`machine-fleet-3d`, mirrored in the app-security manifest): `view`, `edit`, `ai`.
+The page declares 4 roles (self-registration in `machine-fleet-3d.ts`, module id
+`machine-fleet-3d`, mirrored in the app-security manifest): `view`, `edit`, `configure`, `ai`.
+`configure` (#70) changes the module settings common to every atelier (the default opening view),
+combined with `canEditFleet()` like `edit`; `/api/fleet` checks it on `MachineFleet3D_Settings`.
 All OPEN until an admin assigns groups in `/app-security`
 (docs/wui-app-security/INTEGRATION.md).
 
