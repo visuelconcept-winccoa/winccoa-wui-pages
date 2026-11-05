@@ -91,6 +91,7 @@
     }
   },
   "files": [
+    "CHANGELOG.md",
     "src",
     "backend",
     "managers",
