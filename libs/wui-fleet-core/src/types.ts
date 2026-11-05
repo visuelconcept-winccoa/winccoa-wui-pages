@@ -949,6 +949,28 @@ export interface StopCause {
 }
 
 /**
+ * A cause given by hand to a stop (#272): to a stop without one, or in place of the one the
+ * machine sent. It never rewrites the machine's cause history: the analyses lay it over that
+ * history for [startMs, endMs). Stored in one app-level datapoint, traced in the audit trail.
+ */
+export interface StopQualification {
+  atelierId: string;
+  machineId: string;
+  /** The stop period it qualifies (ms epoch). */
+  startMs: number;
+  endMs: number;
+  /** Catalog code retained. */
+  code: string;
+  /** Code read on the machine at the start of the stop ('' when none). */
+  machineCode: string;
+  /** Why it was given (mandatory). */
+  reason: string;
+  /** Who gave it, and when (ISO). */
+  user: string;
+  at: string;
+}
+
+/**
  * Resolve a stop-cause code against the catalog → "code — description".
  * When the code is unknown, falls back to the catalog's default entry (the one
  * flagged `isDefault`) if any, otherwise to the bare code. Returns an empty

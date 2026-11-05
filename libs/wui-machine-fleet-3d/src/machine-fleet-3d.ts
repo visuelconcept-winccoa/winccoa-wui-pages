@@ -123,6 +123,12 @@ function stripKpiValue(kpi: unknown): unknown {
 
 /** Longest wait (ms) for the user's settings before choosing the default page (#60). */
 const LANDING_WAIT_MS = 1500;
+/**
+ * An atelier was just left (back arrow, browser back, another page): the router builds a new page
+ * element for the overview, so the "already landed" mark of the old one is lost. Kept here, it stops
+ * the overview reached from an atelier from opening the default atelier again.
+ */
+let leftAnAtelier = false;
 
 @customElement('wui-machine-fleet-3d')
 export class WuiMachineFleet3d extends LitElement {
@@ -141,6 +147,10 @@ export class WuiMachineFleet3d extends LitElement {
   @state() private canView = true;
   @state() private roleEdit = true;
   @state() private roleAi = true;
+  /** Public views and the welcome atelier for everyone (#278): a role of its own, e.g. for sysadmin. */
+  @state() private roleViews = true;
+  /** Give a cause to a stop by hand, from the machine dashboard (#272). */
+  @state() private roleQualify = true;
 
   private readonly store = new FleetStore();
   /** Traces atelier create/update/delete into the shared `AuditTrail_Fleet` DP. */
@@ -162,10 +172,13 @@ export class WuiMachineFleet3d extends LitElement {
     this.permSub.add(hasRole$(MODULE_ID, 'view').subscribe((granted) => (this.canView = granted)));
     this.permSub.add(hasRole$(MODULE_ID, 'edit').subscribe((granted) => (this.roleEdit = granted)));
     this.permSub.add(hasRole$(MODULE_ID, 'ai').subscribe((granted) => (this.roleAi = granted)));
+    this.permSub.add(hasRole$(MODULE_ID, 'views').subscribe((granted) => (this.roleViews = granted)));
+    this.permSub.add(hasRole$(MODULE_ID, 'qualify').subscribe((granted) => (this.roleQualify = granted)));
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
+    if (this.atelierId) leftAnAtelier = true;
     this.overviewSub.unsubscribe();
     this.permSub.unsubscribe();
   }
@@ -211,6 +224,7 @@ export class WuiMachineFleet3d extends LitElement {
           @wui:analyze=${() => this.dispatchEvent(new RouterEvent('/fleet-stops'))}
           @wui:kpi=${() => this.dispatchEvent(new RouterEvent('/fleet-kpi'))}
           @wui:closures=${() => this.dispatchEvent(new RouterEvent('/fleet-closures'))}
+          @wui:page=${(e: CustomEvent<{ path: string }>) => this.dispatchEvent(new RouterEvent(e.detail.path))}
         ></mf-atelier-overview>
       </div>
     `;
@@ -230,8 +244,10 @@ export class WuiMachineFleet3d extends LitElement {
         .store=${this.store}
         .canEdit=${this.canEdit && this.roleEdit}
         .roleAi=${this.roleAi}
+        .canPublicViews=${this.canEdit && this.roleViews}
+        .canQualify=${this.canEdit && this.roleQualify}
         @wui:save=${(e: CustomEvent<Atelier>) => this.onSave(e.detail)}
-        @wui:remove=${() => this.onRemoveActive()}
+        @wui:remove=${(e: CustomEvent<{ reason?: string }>) => this.onRemoveActive(e.detail?.reason ?? '')}
         @wui:back=${() => this.back()}
       ></mf-atelier-view>
     `;
@@ -247,7 +263,9 @@ export class WuiMachineFleet3d extends LitElement {
       this.active = this.ateliers.find((a) => a.id === this.atelierId) ?? null;
     } else {
       // Arriving at the fleet (not back from an atelier): the default page, if any (#60).
-      const landing = this.landed ? undefined : await this.landingPage();
+      const back = this.landed || leftAnAtelier;
+      leftAnAtelier = false;
+      const landing = back ? undefined : await this.landingPage();
       if (landing) {
         this.landed = true;
         this.loading = false;
@@ -350,7 +368,8 @@ export class WuiMachineFleet3d extends LitElement {
     this.navigate(atelier.id);
   }
 
-  private async onRemoveActive(): Promise<void> {
+  /** Delete the open atelier; the reason typed in the confirmation goes to the audit trail. */
+  private async onRemoveActive(reason: string): Promise<void> {
     const active = this.active;
     if (!active) return;
     await this.store.deleteAtelier(active.id);
@@ -359,7 +378,8 @@ export class WuiMachineFleet3d extends LitElement {
     this.trace({
       action: 'DELETE',
       item: this.dpeOf(active),
-      oldval: auditSnapshot(projectAtelier(active), ATELIER_AUDIT_FIELDS)
+      oldval: auditSnapshot(projectAtelier(active), ATELIER_AUDIT_FIELDS),
+      reason
     });
     this.back();
   }

@@ -28,7 +28,8 @@ import {
   type GlbResource,
   type GraphicKind,
   type MachineDef,
-  type StopCause
+  type StopCause,
+  type StopQualification
 } from '../types.js';
 import { DEMO_ATELIER } from './demo-layout.js';
 
@@ -41,6 +42,9 @@ const RESOURCE_TYPES: Record<GraphicKind, { type: string; prefix: string }> = {
 };
 const STOPCAUSE_TYPE = 'MachineFleet3D_StopCauses';
 const STOPCAUSE_DP = 'MachineFleet3D_StopCauses';
+/** Causes given by hand to stops (#272), one app-level datapoint. */
+const STOPQUAL_TYPE = 'MachineFleet3D_StopQualifications';
+const STOPQUAL_DP = 'MachineFleet3D_StopQualifications';
 /** Shared GxP audit DP for the whole fleet feature (atelier CRUD + the KPI / stop-cause sub-pages). */
 const AUDIT_DP = 'AuditTrail_Fleet';
 /**
@@ -333,6 +337,52 @@ export class FleetStore {
       await this.ensureDp(STOPCAUSE_DP, STOPCAUSE_TYPE);
       await this.send(DP_SET_URL, jsonPost({ dpeName: `${STOPCAUSE_DP}.json`, value: JSON.stringify(causes) }));
       this.traceBlob('StopCauseCatalog', STOPCAUSE_DP, before, causes);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // --- causes given by hand to stops (#272) ---------------------------------
+
+  async listQualifications(): Promise<StopQualification[]> {
+    const ok = await this.ensureType(STOPQUAL_TYPE, [{ name: 'json', type: 'String', refName: '' }]);
+    const api = this.api;
+    if (!ok || !api) return [];
+    try {
+      const raw = await firstValueFrom(api.dpGet(`${STOPQUAL_DP}.json`));
+      const json = this.extractString(raw);
+      const list = json ? (JSON.parse(json) as unknown) : [];
+      return Array.isArray(list) ? (list as StopQualification[]) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Record the cause given to a stop, replacing an earlier one of the same stop, on a fresh read
+   * so two users qualifying different stops do not drop each other's work. Traced in the audit
+   * trail with the stop, the old and new cause, and the reason (mandatory).
+   */
+  async saveQualification(q: StopQualification): Promise<boolean> {
+    const ok = await this.ensureType(STOPQUAL_TYPE, [{ name: 'json', type: 'String', refName: '' }]);
+    if (!ok || q.reason.trim() === '') return false;
+    const current = this.offline ? [] : await this.listQualifications();
+    const same = (x: StopQualification): boolean =>
+      x.atelierId === q.atelierId && x.machineId === q.machineId && x.startMs === q.startMs;
+    const before = current.find(same);
+    const next = [...current.filter((x) => !same(x)), q];
+    try {
+      await this.ensureDp(STOPQUAL_DP, STOPQUAL_TYPE);
+      await this.send(DP_SET_URL, jsonPost({ dpeName: `${STOPQUAL_DP}.json`, value: JSON.stringify(next) }));
+      this.trace({
+        action: before ? 'UPDATE' : 'CREATE',
+        item: `${q.machineId} @ ${new Date(q.startMs).toISOString()}`,
+        itemType: 'StopQualification',
+        oldval: before ? before.code : q.machineCode,
+        newval: q.code,
+        reason: q.reason
+      });
       return true;
     } catch {
       return false;

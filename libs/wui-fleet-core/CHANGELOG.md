@@ -3,11 +3,22 @@
 
 # Changelog — @visuelconcept-winccoa/wui-fleet-core
 
-## 0.2.1 — 2026-11-05 (SDS 2.2)
+## 0.3.0 — 2026-11-05 (SDS 2.2)
+
+**Upgrade.** The fleet pages move to `^0.3.0` together (machine-fleet-3d 0.5.0, fleet-closures,
+fleet-kpi-analysis and fleet-stop-analysis 0.3.0).
+
+- **Causes given by hand to stops** (`StopQualification`): to a stop without a cause, or in place
+  of the one the machine sent, with a mandatory reason. Kept apart from the machine's history in
+  `MachineFleet3D_StopQualifications` (`FleetStore.listQualifications` / `saveQualification`,
+  traced in the audit trail with the old and new cause and the reason) and laid over that history
+  by `applyQualifications`; `analyseStopCauses` takes them as a last argument and marks the stops
+  concerned (`qualifiedBy`, `qualifiedAt`).
 
 - **"Îlot" is a filter again**: the îlot (a location in the plant) is one of the filters the
   SDS 2.2 acceptance requires, beside UAP and activity (SL-ORG-01, SL-LOB-05). Only the
   "Workcenter" dimension stays out of the filters (#66).
+- Stop causes window: import with the arrow down, export with the arrow up, as in Machine Fleet.
 
 ## 0.2.0 — 2026-11-04 (SDS 2.2)
 

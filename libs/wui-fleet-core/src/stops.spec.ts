@@ -8,7 +8,7 @@
 import type { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { of } from 'rxjs';
 import { describe, expect, it } from 'vitest';
-import { analyseStopCauses, type AnalysisMachine } from './engine.js';
+import { analyseStopCauses, applyQualifications, type AnalysisMachine } from './engine.js';
 import { DEFAULT_STATE_MAPPINGS, type StopCause } from './types.js';
 
 const MIN = 60_000;
@@ -59,5 +59,31 @@ describe('the stop list', () => {
     const api = fakeApi({ 'M1.state': [{ t: t(0), v: 1 }, { t: t(10), v: 0 }, { t: t(20), v: 1 }] });
     const r = await analyseStopCauses(api, [{ ...MACHINE, stopCauseDp: '' }], [], new Date(t(0)), new Date(t(60)));
     expect(r.rawStops.map((s) => [s.durationMs / MIN, s.code, s.classification])).toEqual([[10, '', undefined]]);
+  });
+});
+
+describe('causes given by hand (#272)', () => {
+  const QUAL = { atelierId: 'a', machineId: 'M1', machineCode: '', reason: 'Oubli', user: 'op', at: '2026-11-05T10:00:00Z' };
+
+  it('lay over the history for the stop, the machine cause resuming after', () => {
+    const samples = [{ t: t(10), v: '42' }, { t: t(15), v: '43' }, { t: t(30), v: '' }];
+    const out = applyQualifications(samples, [{ startMs: t(10), endMs: t(20), code: '10' }]);
+    expect(out.map((s) => [(s.t - T0) / MIN, s.v])).toEqual([[10, '10'], [20, '43'], [30, '']]);
+  });
+
+  it('give its cause to a stop without one, and replace the one the machine sent', async () => {
+    const api = fakeApi({
+      'M1.state': [{ t: t(0), v: 1 }, { t: t(10), v: 0 }, { t: t(20), v: 1 }, { t: t(30), v: 0 }, { t: t(40), v: 1 }],
+      'M1.cause': [{ t: t(30), v: '99' }, { t: t(40), v: '' }]
+    });
+    const quals = [
+      { ...QUAL, startMs: t(10), endMs: t(20), code: '10' },
+      { ...QUAL, startMs: t(30), endMs: t(40), code: '10', machineCode: '99' }
+    ];
+    const r = await analyseStopCauses(api, [MACHINE], CATALOG, new Date(t(0)), new Date(t(60)), new Map(), quals);
+    expect(r.rawStops.map((s) => [(s.startMs - T0) / MIN, s.code, s.classification, s.qualifiedBy])).toEqual([
+      [30, '10', 'planned', 'op'],
+      [10, '10', 'planned', 'op']
+    ]);
   });
 });

@@ -719,7 +719,9 @@ export class WuiFleetStopAnalysis extends LitElement {
       new Set(this.selectedMachines)
     );
     const nonWorked = buildNonWorkedMap(this.closures, machines);
-    this.result = await analyseStopCauses(this.api, machines, this.catalog, start, end, nonWorked);
+    // Causes given by hand from the machine dashboard lay over the machines' history (#272).
+    const qualifications = await this.store.listQualifications();
+    this.result = await analyseStopCauses(this.api, machines, this.catalog, start, end, nonWorked, qualifications);
     this.loading = false;
   }
 

@@ -45,6 +45,7 @@ import { AliAssetReader, type AliAssetInfo } from '../data/ali-assets.js';
 import { normDp, toNumber } from '../data/dp-utils.js';
 import type { FleetStore } from '../data/fleet-store.js';
 import { MSG, confirmDeleteAtelierMsg, localize, localizeDir } from '../i18n.js';
+import { uniqueName } from '../symbol-names.js';
 import { SceneController } from '../scene/scene-controller.js';
 import type { OtherSymbol } from './mf-symbol-wizard.js';
 import {
@@ -119,6 +120,7 @@ import './mf-ai-prompt.js';
 import './mf-building-dialog.js';
 import './mf-config-panel.js';
 import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
+import './mf-reason-dialog.js';
 import './mf-graphics-catalog.js';
 import './mf-filter-bar.js';
 import './mf-machine-dashboard.js';
@@ -196,6 +198,10 @@ export class MfAtelierView extends LitElement {
   @property({ type: Boolean }) canEdit = true;
   /** Application-Security 'ai' grant — gates the AI-assistant affordance. */
   @property({ type: Boolean }) roleAi = true;
+  /** Grant to manage the public views and the welcome atelier for everyone (role `views`, #278). */
+  @property({ type: Boolean }) canPublicViews = true;
+  /** Grant to give a cause to a stop by hand (role `qualify`, #272). */
+  @property({ type: Boolean }) canQualify = true;
   /** Display only (the embeddable view): no edit, no management, no navigation away, no save. */
   @property({ type: Boolean, attribute: 'display-only' }) displayOnly = false;
   /** Hide the top bar (title + toolbar). */
@@ -383,6 +389,11 @@ export class MfAtelierView extends LitElement {
     return this.canEdit && !this.displayOnly;
   }
 
+  /** Public views and the welcome atelier for everyone: their own role (#278), never in display-only mode. */
+  private get publicViewsWritable(): boolean {
+    return this.canPublicViews && !this.displayOnly;
+  }
+
   /** Create the WebGL scene, its observers and the live datapoint subscription. */
   private setupScene(): void {
     if (this.contextReleased) {
@@ -544,9 +555,9 @@ export class MfAtelierView extends LitElement {
         <ix-icon-button icon="building1" ghost title=${localize(MSG.view.configureBuilding)} @click=${() => (this.buildingOpen = true)}></ix-icon-button>
         <ix-icon-button icon="configuration" ghost title=${localize(MSG.view.stateMappings)} @click=${() => (this.mappingOpen = true)}></ix-icon-button>
         ${this.editable
-          ? html`<ix-icon-button icon="upload" ghost title=${localize(MSG.view.importAtelier)} @click=${this.triggerImport}></ix-icon-button>`
+          ? html`<ix-icon-button icon="download" ghost title=${localize(MSG.view.importAtelier)} @click=${this.triggerImport}></ix-icon-button>`
           : ''}
-        <ix-icon-button icon="download" ghost title=${localize(MSG.view.exportAtelier)} @click=${this.exportAtelier}></ix-icon-button>
+        <ix-icon-button icon="upload" ghost title=${localize(MSG.view.exportAtelier)} @click=${this.exportAtelier}></ix-icon-button>
         <ix-icon-button icon="app-menu" ghost title=${localize(MSG.view.machines)} variant=${this.panelOpen ? 'primary' : 'secondary'} @click=${() => (this.panelOpen = !this.panelOpen)}></ix-icon-button>
         ${this.renderFullscreenButton()}
       </div>
@@ -715,7 +726,7 @@ export class MfAtelierView extends LitElement {
                 <input type="checkbox" .checked=${this.myLanding} @change=${(e: Event) => this.setMyLanding((e.target as HTMLInputElement).checked)} />
                 ${localizeDir(MSG.view.myLanding)}
               </label>
-              ${this.editable
+              ${this.publicViewsWritable
                 ? html`<label>
                     <input type="checkbox" .checked=${this.atelier.landing === true} @change=${(e: Event) => this.setPublicLanding((e.target as HTMLInputElement).checked)} />
                     ${localizeDir(MSG.view.publicLanding)}
@@ -728,7 +739,7 @@ export class MfAtelierView extends LitElement {
 
   private renderVpGroup(scope: VpScope): TemplateResult {
     const list = this.vpList(scope);
-    const canWrite = scope === 'mine' || this.editable;
+    const canWrite = scope === 'mine' || this.publicViewsWritable;
     return html`
       <div class="vp-head">
         <span>${localizeDir(scope === 'public' ? MSG.view.publicViews : MSG.view.myViews)}</span>
@@ -745,7 +756,7 @@ export class MfAtelierView extends LitElement {
   }
 
   private renderViewpointRow(vp: Viewpoint, scope: VpScope): TemplateResult {
-    const canWrite = scope === 'mine' || this.editable;
+    const canWrite = scope === 'mine' || this.publicViewsWritable;
     if (this.renamingVpId === vp.id) {
       return html`<div class="vp-row">
         <ix-input
@@ -792,6 +803,7 @@ export class MfAtelierView extends LitElement {
           @wui:focus=${(e: CustomEvent<{ id: string }>) => this.onFocus(e.detail.id)}
           @wui:edit=${(e: CustomEvent<{ id: string }>) => this.onEdit(e.detail.id)}
           @wui:delete=${(e: CustomEvent<{ id: string }>) => this.onDelete(e.detail.id)}
+          @wui:show=${(e: CustomEvent<{ id: string }>) => this.onShowMachine(e.detail.id)}
           @wui:add=${() => this.openWizard()}
         ></mf-config-panel>
       </div>
@@ -962,6 +974,7 @@ export class MfAtelierView extends LitElement {
       ${this.editing
         ? html`<mf-machine-dialog
             .machine=${this.editing}
+            .siblings=${this.machines}
             .markers=${this.markers}
             .store=${this.store}
             .mappings=${this.mappings}
@@ -997,12 +1010,12 @@ export class MfAtelierView extends LitElement {
           ></mf-trs-thresholds-dialog>`
         : ''}
       ${this.confirmDeleteOpen
-        ? html`<wui-confirm-dialog
+        ? html`<mf-reason-dialog
             heading=${localize(MSG.view.confirmDeleteHeading)}
             message=${confirmDeleteAtelierMsg(this.atelierName)}
-            @wui:confirm=${this.confirmDelete}
+            @wui:confirm=${(e: CustomEvent<{ reason: string }>) => this.confirmDelete(e.detail.reason)}
             @wui:cancel=${() => (this.confirmDeleteOpen = false)}
-          ></wui-confirm-dialog>`
+          ></mf-reason-dialog>`
         : ''}
       ${this.resourcesOpen
         ? html`<mf-graphics-catalog
@@ -1027,6 +1040,8 @@ export class MfAtelierView extends LitElement {
       .api=${this.api}
       atelierId=${this.atelier.id}
       atelierName=${this.atelierName}
+      .store=${this.store}
+      .canQualify=${this.canQualify}
       @wui:close=${() => (this.dashboardMachineId = null)}
     ></mf-machine-dashboard>`;
   }
@@ -1322,7 +1337,9 @@ export class MfAtelierView extends LitElement {
   private onAddSymbol(source: MachineDef, keepId: boolean): void {
     if (!this.editable) return;
     if (keepId && this.machines.some((m) => m.id === source.id)) return;
-    const def: MachineDef = { ...source, id: keepId ? source.id : `machine-${Date.now()}`, x: 0, z: 0, toPlace: true };
+    // A symbol's name is unique in its atelier (#276): a taken one gets the first free « (n) ».
+    const name = uniqueName(source.name, this.machines);
+    const def: MachineDef = { ...source, name, id: keepId ? source.id : `machine-${Date.now()}`, x: 0, z: 0, toPlace: true };
     delete def.markerId;
     delete def.bubbleOffset;
     this.machines = [...this.machines, def];
@@ -1345,6 +1362,13 @@ export class MfAtelierView extends LitElement {
       return moved ? placeMachine(machine, machine.x, machine.z) : machine;
     });
     this.editing = null;
+    this.rebuildMachines();
+  }
+
+  /** A hidden machine shown again from the list (#280). */
+  private onShowMachine(id: string): void {
+    if (!this.editable) return;
+    this.machines = this.machines.map((m) => (m.id === id ? { ...m, hidden: undefined } : m));
     this.rebuildMachines();
   }
 
@@ -1448,9 +1472,10 @@ export class MfAtelierView extends LitElement {
     this.scheduleSave();
   }
 
-  private confirmDelete(): void {
+  /** Deletion confirmed with its reason, which goes to the audit trail. */
+  private confirmDelete(reason: string): void {
     this.confirmDeleteOpen = false;
-    this.dispatchEvent(new CustomEvent('wui:remove', { bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent('wui:remove', { detail: { reason }, bubbles: true, composed: true }));
   }
 
   private vpList(scope: VpScope): Viewpoint[] {
@@ -1465,6 +1490,7 @@ export class MfAtelierView extends LitElement {
   private setVps(scope: VpScope, list: Viewpoint[], defaultId: string): void {
     const def = list.some((v) => v.id === defaultId) ? defaultId : '';
     if (scope === 'public') {
+      if (!this.publicViewsWritable) return;
       this.viewpoints = list;
       this.defaultViewpointId = def;
       this.scheduleSave();
@@ -1567,6 +1593,7 @@ export class MfAtelierView extends LitElement {
 
   /** This atelier as the public default page (role `edit`); the shell clears it on the others. */
   private setPublicLanding(on: boolean): void {
+    if (!this.publicViewsWritable) return;
     this.atelier = { ...this.atelier, landing: on || undefined };
     this.scheduleSave();
   }
@@ -2321,7 +2348,8 @@ function viewStyles() {
       border-radius: var(--theme-default-border-radius);
       padding: 0.625em 0.764em;
       /* One third larger than the first 0.72rem (#59); every size inside is in em, so a
-       * machine's own bubble scale (--mf-bubble-scale) enlarges the whole bubble. */
+       * machine's own bubble scale (--mf-bubble-scale) enlarges or reduces the whole bubble, its
+       * text with it, keeping its proportions (#275). */
       font-size: calc(0.96rem * var(--mf-bubble-scale, 1));
       line-height: 1.35;
       overflow: hidden;

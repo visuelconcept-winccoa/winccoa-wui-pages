@@ -401,16 +401,23 @@ export class LabelManager {
     window.addEventListener('pointerup', up);
   }
 
-  /** Edit mode: the corner handle scales the whole bubble (text included). */
+  /**
+   * Edit mode: the corner handle enlarges or reduces the whole bubble, text included, keeping its
+   * proportions; dragging right or down enlarges it, whichever moves it most (#275).
+   */
   private resizeBubble(entry: LabelEntry, down: PointerEvent): void {
     if (down.button !== 0) return;
     down.stopPropagation();
     down.preventDefault();
     const startScale = entry.machine.bubbleScale ?? 1;
-    const startW = entry.el.offsetWidth || DEFAULT_BUBBLE_W;
+    const startW = entry.el.offsetWidth || DEFAULT_BUBBLE_W * startScale;
+    const startH = entry.el.offsetHeight || DEFAULT_BUBBLE_H * startScale;
     let scale = startScale;
     const move = (e: PointerEvent): void => {
-      scale = Math.min(BUBBLE_SCALE_MAX, Math.max(BUBBLE_SCALE_MIN, (startScale * (startW + e.clientX - down.clientX)) / startW));
+      const fx = (startW + e.clientX - down.clientX) / startW;
+      const fy = (startH + e.clientY - down.clientY) / startH;
+      const f = Math.abs(fx - 1) >= Math.abs(fy - 1) ? fx : fy;
+      scale = Math.min(BUBBLE_SCALE_MAX, Math.max(BUBBLE_SCALE_MIN, startScale * f));
       scale = Math.round(scale * 20) / 20;
       entry.el.style.setProperty('--mf-bubble-scale', String(scale));
     };

@@ -3,6 +3,11 @@
 
 # Changelog — @visuelconcept-winccoa/wui-fleet-stop-analysis
 
+## 0.3.0 — 2026-11-05 (SDS 2.2)
+
+- The analysis takes the causes given by hand to stops from the machine dashboard into account
+  (wui-fleet-core 0.3.0).
+
 ## 0.2.0 — 2026-11-04 (SDS 2.2)
 
 **Upgrade.** Requires **fleet-closures** (its `/api/fleet` backend, deployed headless when not

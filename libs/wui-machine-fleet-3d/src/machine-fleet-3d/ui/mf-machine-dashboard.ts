@@ -41,10 +41,12 @@ import {
   type Machine,
   type MachineState,
   type StateMapping,
-  type StopCause
+  type StopCause,
+  type StopQualification
 } from '../types.js';
 import {
   analyseStopCauses,
+  applyQualifications,
   formatDuration,
   queryHistory,
   shortStopIntervals,
@@ -81,6 +83,11 @@ import {
   noStopOfClassMsg,
   rangeLabelMsg
 } from '../i18n.js';
+import { ganttTicks, tickLabel } from '../gantt-ticks.js';
+import type { FleetStore } from '@visuelconcept-winccoa/wui-fleet-core/data/fleet-store.js';
+import { currentAuditUser } from '@visuelconcept-winccoa/wui-kit/data/audit-trail.js';
+import './mf-qualify-dialog.js';
+import { dashboardParams } from '../dashboard-lines.js';
 
 /**
  * The duration of each alarm in the dashboard's alarm panel: from its appearance to its
@@ -107,6 +114,18 @@ interface StateSegment {
   endMs: number;
   /** Stop cause label active over the segment (non-ok states), if any. */
   causeLabel?: string;
+  /** Its cause code ('' when none), and who gave it by hand (#272). */
+  code?: string;
+  qualifiedBy?: string;
+}
+
+/** A stop being given a cause by hand (#272). */
+interface QualifyTarget {
+  startMs: number;
+  endMs: number;
+  /** Cause as it stands: code, and label for display. */
+  code: string;
+  label: string;
 }
 
 type Period = 'today' | '24h' | '7d' | '30d' | 'week' | 'month' | 'custom';
@@ -193,6 +212,14 @@ export class MfMachineDashboard extends LitElement {
   @property({ attribute: false }) api: OaRxJsApi | null = null;
   @property() atelierId = '';
   @property() atelierName = '';
+  /** Store of the causes given by hand (null: read-only). */
+  @property({ attribute: false }) store: FleetStore | null = null;
+  /** May give a cause to a stop (canPublish + the 'qualify' role, #272). */
+  @property({ type: Boolean }) canQualify = false;
+  /** This machine's causes given by hand, laid over its cause history. */
+  @state() private qualifications: StopQualification[] = [];
+  @state() private qualifying: QualifyTarget | null = null;
+  @state() private qualifyError = false;
 
   @state() private period: Period = '7d';
   /** How far back the window is shifted from "now" (ms); 0 = current period. */
@@ -281,7 +308,7 @@ export class MfMachineDashboard extends LitElement {
           </div>
         </div>
       </div>
-      ${this.renderTip()}
+      ${this.renderTip()} ${this.renderQualify()}
     `;
   }
 
@@ -341,7 +368,7 @@ export class MfMachineDashboard extends LitElement {
     this.causeKey = m.stopCauseDp ? normDp(m.stopCauseDp) : '';
     const dps = [
       ...new Set(
-        [m.stateDp, m.stopCauseDp, ...(m.kpis ?? []).map((k) => k.dp)].filter(
+        [m.stateDp, m.stopCauseDp, m.workOrderDp, m.operationDp, ...(m.kpis ?? []).map((k) => k.dp)].filter(
           (d): d is string => typeof d === 'string' && d !== ''
         )
       )
@@ -645,22 +672,63 @@ export class MfMachineDashboard extends LitElement {
     return rangeLabelMsg(formatDateTime(start.getTime()), formatDateTime(end.getTime()));
   }
 
-  /** Top band: one card per bound parameter and per computed KPI, gauge included. */
+  /**
+   * Top band: the context line (production context, identities, work order and
+   * operation), then one card per process parameter and per computed KPI.
+   */
   private renderParams(): TemplateResult {
+    const context = this.contextItems();
     const cards = this.paramCards();
-    if (cards.length === 0) return html`<div class="muted">${localizeDir(MSG.machineDash.noProcessParams)}</div>`;
-    return html`<div class="cards">${cards.map((c) => this.renderCard(c))}</div>`;
+    return html`
+      ${context.length
+        ? html`<div class="context">
+            ${context.map(
+              (c) => html`<span class="ctx-item"
+                ><span class="ctx-label">${c.label}</span
+                ><span class="ctx-value" title=${c.value}>${c.value}</span></span
+              >`
+            )}
+          </div>`
+        : ''}
+      ${cards.length === 0
+        ? html`<div class="muted">${localizeDir(MSG.machineDash.noProcessParams)}</div>`
+        : html`<div class="cards">${cards.map((c) => this.renderCard(c))}</div>`}
+    `;
+  }
+
+  /** A live value as text, '—' when empty. */
+  private liveDisplay(dp: string | undefined, fallback?: number | string, decimals?: number): string {
+    const live = dp ? extractScalar(this.liveValues[normDp(dp)]) : undefined;
+    const v = live ?? fallback;
+    if (v == null || v === '') return '—';
+    return typeof v === 'number' ? formatParamValue(v, decimals) : String(v);
   }
 
   /**
-   * The cards of the top band: the machine's bound process parameters (live via
-   * `dpConnect`) followed by the KPIs the `kpiCalc` manager computes. The KPI
-   * values are read straight off the live machine object the 3D view keeps
-   * updated — they refresh with the next render, driven by the parameter stream.
+   * The context line, outside the process parameters' cap: the context parameters
+   * (article, contract, identities…), then the work order and the operation.
+   */
+  private contextItems(): { label: string; value: string }[] {
+    const m = this.machine;
+    const items = dashboardParams(m).context.map((k) => ({
+      label: k.label || k.key,
+      value: this.liveDisplay(k.dp, k.value, k.decimals)
+    }));
+    if (m.workOrderDp) items.push({ label: localize(MSG.view.workOrder), value: this.liveDisplay(m.workOrderDp) });
+    if (m.operationDp) items.push({ label: localize(MSG.view.operation), value: this.liveDisplay(m.operationDp) });
+    return items;
+  }
+
+  /**
+   * The cards of the top band: the process parameters ticked for the machine's
+   * popup, at most MAX_SHOWN (live via `dpConnect`), followed by the KPIs the
+   * `kpiCalc` manager computes. The KPI values are read straight off the live
+   * machine object the 3D view keeps updated — they refresh with the next render,
+   * driven by the parameter stream.
    */
   private paramCards(): ParamCard[] {
     const m = this.machine;
-    const cards: ParamCard[] = (m.kpis ?? []).map((k) => {
+    const cards: ParamCard[] = dashboardParams(m).process.map((k) => {
       // Prefer the live dpConnect value; fall back to the last known value.
       const live = k.dp ? extractScalar(this.liveValues[normDp(k.dp)]) : undefined;
       // Where the value comes from (automatic, manual…), when the integration tells it.
@@ -776,6 +844,8 @@ export class MfMachineDashboard extends LitElement {
     }
     const start = segs[0].startMs;
     const total = segs.at(-1)!.endMs - start || 1;
+    // Dates of the start, the end and the state changes, readable without hovering (#279).
+    const ticks = ganttTicks([...segs.map((s) => s.startMs), segs.at(-1)!.endMs]);
     return html`
       ${head}
       <svg class="gantt" viewBox="0 0 100 10" preserveAspectRatio="none">
@@ -785,9 +855,18 @@ export class MfMachineDashboard extends LitElement {
           return svg`<rect x=${x} y="0" width=${Math.max(w, 0.2)} height="10"
             fill=${stateColor(this.mapping, s.state)}
             @pointermove=${(e: PointerEvent) => this.showTip(e, s)}
-            @pointerleave=${() => (this.tip = null)}></rect>`;
+            @pointerleave=${() => (this.tip = null)}
+            @click=${() => this.qualifySegment(s)}></rect>`;
         })}
+        ${ticks
+          .filter((t) => t.align === 'middle')
+          .map((t) => svg`<line class="gantt-mark" x1=${t.pct} x2=${t.pct} y1="0" y2="10"></line>`)}
       </svg>
+      <div class="gantt-axis">
+        ${ticks.map(
+          (t) => html`<span class="tick tick--${t.align}" style="left:${t.pct}%">${tickLabel(t.ms, total)}</span>`
+        )}
+      </div>
       <div class="legend">
         ${this.mappingStates().map(
           (st) => html`<span class="leg"
@@ -836,6 +915,8 @@ export class MfMachineDashboard extends LitElement {
         <div>${localizeDir(MSG.machineDash.tipEnd)} ${formatDateTimeSec(s.endMs)}</div>
         <div>${localizeDir(MSG.machineDash.tipDuration)} ${formatDuration(s.endMs - s.startMs)}</div>
         ${s.causeLabel ? html`<div>${localizeDir(MSG.machineDash.tipCause)} ${s.causeLabel}</div>` : ''}
+        ${s.qualifiedBy ? html`<div class="muted">${localizeDir(MSG.qualify.givenBy)} ${s.qualifiedBy}</div>` : ''}
+        ${this.canQualifySegment(s) ? html`<div class="muted">${localizeDir(MSG.qualify.clickHint)}</div>` : ''}
       </div>
     `;
   }
@@ -885,6 +966,7 @@ export class MfMachineDashboard extends LitElement {
     if (this.loading) return html`${head}<div class="center"><ix-spinner></ix-spinner></div>`;
     if (shown.length === 0) return html`${head}<div class="muted small">${localizeDir(MSG.machineDash.stopsNone)}</div>`;
     return html`${head}
+      ${this.qualifyError ? html`<div class="small qualify-error">${localizeDir(MSG.qualify.failed)}</div>` : ''}
       <div class="stops-scroll">
         <table class="stops">
           <thead>
@@ -894,6 +976,7 @@ export class MfMachineDashboard extends LitElement {
               <th class="num">${localizeDir(MSG.machineDash.stopsDuration)}</th>
               <th>${localizeDir(MSG.machineDash.stopsCause)}</th>
               <th>${localizeDir(MSG.machineDash.stopsClass)}</th>
+              ${this.canQualify ? html`<th></th>` : ''}
             </tr>
           </thead>
           <tbody>
@@ -902,8 +985,23 @@ export class MfMachineDashboard extends LitElement {
                 <td>${formatDateTime(s.startMs)}</td>
                 <td>${formatDateTime(s.endMs)}</td>
                 <td class="num">${formatDuration(s.durationMs)}</td>
-                <td>${s.code !== '' ? s.causeLabel : '—'}</td>
+                <td>
+                  ${s.code !== '' ? s.causeLabel : '—'}
+                  ${s.qualifiedBy ? html`<span class="muted small" title=${localize(MSG.qualify.givenBy)}> · ${s.qualifiedBy}</span>` : ''}
+                </td>
                 <td>${stopClassLabel(s.classification)}</td>
+                ${this.canQualify
+                  ? html`<td>
+                      <ix-icon-button
+                        ghost
+                        size="16"
+                        icon="pen"
+                        title=${localize(MSG.qualify.title)}
+                        ?disabled=${this.stopCauses.length === 0}
+                        @click=${() => this.openQualify({ startMs: s.startMs, endMs: s.endMs, code: s.code, label: s.code !== '' ? s.causeLabel : '' })}
+                      ></ix-icon-button>
+                    </td>`
+                  : ''}
               </tr>`
             )}
           </tbody>
@@ -1145,6 +1243,9 @@ export class MfMachineDashboard extends LitElement {
       this.loading = false;
       return;
     }
+    const all = this.store ? await this.store.listQualifications() : [];
+    if (gen !== this.reloadGen) return;
+    this.qualifications = all.filter((q) => q.machineId === m.id && q.atelierId === this.atelierId);
     const segments = await this.buildSegments(m, start, end);
     const contextDims = await this.buildContext(m, start, end);
     // Stops without a cause datapoint still count: they are listed without a cause.
@@ -1187,9 +1288,10 @@ export class MfMachineDashboard extends LitElement {
   private async buildSegments(m: Machine, start: Date, end: Date): Promise<StateSegment[]> {
     const samples = await queryHistory(this.api, m.stateDp ?? '', start, end);
     if (samples.length === 0) return [];
-    const causeSamples: HistorySample[] = m.stopCauseDp
-      ? await queryHistory(this.api, m.stopCauseDp, start, end)
-      : [];
+    const causeSamples: HistorySample[] = applyQualifications(
+      m.stopCauseDp ? await queryHistory(this.api, m.stopCauseDp, start, end) : [],
+      this.qualifications
+    );
     const startMs = start.getTime();
     const endMs = end.getTime();
     const segs: StateSegment[] = [];
@@ -1198,12 +1300,15 @@ export class MfMachineDashboard extends LitElement {
       const segEnd = Math.min(samples[i + 1] ? samples[i + 1].t : endMs, endMs);
       if (segEnd <= segStart) continue;
       const state = resolveState(this.mapping, Math.round(Number(s.v)));
-      const causeLabel = isRunningState(this.mapping, state) ? undefined : this.causeAt(causeSamples, segStart);
+      const running = isRunningState(this.mapping, state);
+      const causeLabel = running ? undefined : this.causeAt(causeSamples, segStart);
+      const code = running ? undefined : this.codeAt(causeSamples, segStart);
       const last = segs.at(-1);
       if (last && last.state === state && last.causeLabel === causeLabel && last.endMs >= segStart) {
         last.endMs = segEnd;
       } else {
-        segs.push({ state, startMs: segStart, endMs: segEnd, causeLabel });
+        const qual = code ? this.qualifications.find((q) => q.code === code && q.startMs <= segStart && q.endMs > segStart) : undefined;
+        segs.push({ state, startMs: segStart, endMs: segEnd, causeLabel, code, ...(qual ? { qualifiedBy: qual.user } : {}) });
       }
     }
     return this.withoutShortStops(segs, samples, startMs, endMs, (m.minStopSec ?? 0) * 1000);
@@ -1237,6 +1342,72 @@ export class MfMachineDashboard extends LitElement {
     return out;
   }
 
+  /** Stop-cause code active at time `t` ('' when none). */
+  private codeAt(samples: HistorySample[], t: number): string {
+    let code = '';
+    for (const s of samples) {
+      if (s.t > t) break;
+      code = s.v == null ? '' : String(s.v).trim();
+    }
+    return code;
+  }
+
+  /**
+   * A stop of the Gantt may be given a cause: with the role, a catalog, and once it is over (an
+   * ongoing stop has no end yet), #272.
+   */
+  private canQualifySegment(s: StateSegment): boolean {
+    if (!this.canQualify || !this.store || this.stopCauses.length === 0) return false;
+    if (isRunningState(this.mapping, s.state)) return false;
+    return !(this.offsetMs === 0 && s.endMs >= this.resolveRange().end.getTime() - 1000);
+  }
+
+  private qualifySegment(s: StateSegment): void {
+    if (!this.canQualifySegment(s)) return;
+    this.tip = null;
+    this.openQualify({ startMs: s.startMs, endMs: s.endMs, code: s.code ?? '', label: s.causeLabel ?? '' });
+  }
+
+  private openQualify(target: QualifyTarget): void {
+    if (!this.canQualify || !this.store || this.stopCauses.length === 0) return;
+    this.qualifyError = false;
+    this.qualifying = target;
+  }
+
+  private renderQualify(): TemplateResult {
+    const q = this.qualifying;
+    if (!q) return html``;
+    return html`<mf-qualify-dialog
+      .causes=${this.stopCauses}
+      period=${`${formatDateTime(q.startMs)} → ${formatDateTime(q.endMs)} (${formatDuration(q.endMs - q.startMs)})`}
+      current=${q.label}
+      initialCode=${q.code}
+      @wui:confirm=${(e: CustomEvent<{ code: string; reason: string }>) => void this.qualify(q, e.detail.code, e.detail.reason)}
+      @wui:cancel=${() => (this.qualifying = null)}
+    ></mf-qualify-dialog>`;
+  }
+
+  /** Give `code` to the stop (#272): stored apart from the history, traced, then reloaded. */
+  private async qualify(target: QualifyTarget, code: string, reason: string): Promise<void> {
+    if (!this.store) return;
+    this.qualifying = null;
+    const user = await currentAuditUser();
+    const previous = this.qualifications.find((x) => x.startMs === target.startMs);
+    const ok = await this.store.saveQualification({
+      atelierId: this.atelierId,
+      machineId: this.machine.id,
+      startMs: target.startMs,
+      endMs: target.endMs,
+      code,
+      machineCode: previous ? previous.machineCode : target.code,
+      reason,
+      user: user.name || String(user.id),
+      at: new Date().toISOString()
+    });
+    this.qualifyError = !ok;
+    if (ok) await this.reload(true);
+  }
+
   /** Stop-cause label active at time `t` (catalog-resolved), or undefined. */
   private causeAt(samples: HistorySample[], t: number): string | undefined {
     let code = '';
@@ -1258,7 +1429,7 @@ export class MfMachineDashboard extends LitElement {
       mapping: this.mapping,
       minStopMs: (m.minStopSec ?? 0) * 1000
     };
-    const result = await analyseStopCauses(this.api, [target], this.stopCauses, start, end);
+    const result = await analyseStopCauses(this.api, [target], this.stopCauses, start, end, new Map(), this.qualifications);
     // Keep both planned & unplanned; the Pareto filters by the chosen class. A stop with no
     // cause and no catalog default has no classification: it is unplanned (as in the TRS).
     const rows = result.rows
@@ -1569,6 +1740,32 @@ function dashboardStyles() {
       margin: 0 0 0.5rem;
       font-size: 0.95rem;
     }
+    /* Context line above the cards: label over value, wrapping, outside the cap. */
+    .context {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem 1.5rem;
+      margin: 0 0 0.6rem;
+      padding: 0 0 0.5rem;
+      border-bottom: 1px solid var(--theme-color-soft-bdr);
+    }
+    .ctx-item {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      max-width: 18rem;
+    }
+    .ctx-label {
+      font-size: 0.72rem;
+      color: var(--theme-color-soft-text);
+    }
+    .ctx-value {
+      font-size: 0.95rem;
+      font-weight: 700;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     /*
      * Parameter band: cards wrap onto as many rows as needed, and the band
      * scrolls past two rows (three on a tall screen) so a machine with a dozen
@@ -1722,6 +1919,36 @@ function dashboardStyles() {
     }
     .gantt rect {
       cursor: pointer;
+    }
+    .qualify-error {
+      color: var(--theme-color-alarm);
+      margin-bottom: 0.3rem;
+    }
+    .gantt-mark {
+      stroke: var(--theme-color-std-text);
+      stroke-width: 1;
+      stroke-opacity: 0.55;
+      vector-effect: non-scaling-stroke;
+      pointer-events: none;
+    }
+    .gantt-axis {
+      position: relative;
+      height: 1.1rem;
+      margin-top: 0.15rem;
+      font-size: 0.7rem;
+      color: var(--theme-color-soft-text);
+    }
+    .gantt-axis .tick {
+      position: absolute;
+      top: 0;
+      white-space: nowrap;
+      transform: translateX(-50%);
+    }
+    .gantt-axis .tick--start {
+      transform: none;
+    }
+    .gantt-axis .tick--end {
+      transform: translateX(-100%);
     }
     .gantt-tip {
       position: fixed;

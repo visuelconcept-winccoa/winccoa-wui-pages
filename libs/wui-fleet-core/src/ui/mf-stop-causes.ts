@@ -63,14 +63,14 @@ export class MfStopCauses extends LitElement {
             ${this.canEdit
               ? html`<ix-icon-button
                   ghost
-                  icon="upload"
+                  icon="download"
                   title=${localize(MSG.causes.importJson)}
                   @click=${this.triggerImport}
                 ></ix-icon-button>`
               : ''}
             <ix-icon-button
               ghost
-              icon="download"
+              icon="upload"
               title=${localize(MSG.causes.exportJson)}
               ?disabled=${this.causes.length === 0}
               @click=${this.exportCauses}

@@ -13,6 +13,24 @@
       }
     },
     {
+      "id": "views",
+      "label": { "en_US.utf8": "Manage public views", "fr.utf8": "Gérer les vues publiques", "de.utf8": "Öffentliche Ansichten verwalten" },
+      "description": {
+        "en_US.utf8": "Public views of the ateliers and welcome atelier for everyone.",
+        "fr.utf8": "Vues publiques des ateliers et atelier d’accueil pour tous.",
+        "de.utf8": "Öffentliche Ansichten der Ateliers und Start-Atelier für alle."
+      }
+    },
+    {
+      "id": "qualify",
+      "label": { "en_US.utf8": "Qualify stops", "fr.utf8": "Qualifier les arrêts", "de.utf8": "Stillstände qualifizieren" },
+      "description": {
+        "en_US.utf8": "Give a stop its cause from the catalog, or replace the machine's (reason required, traced).",
+        "fr.utf8": "Cause d’un arrêt choisie dans le référentiel, ou remplacée (motif obligatoire, tracé).",
+        "de.utf8": "Einem Stillstand eine Katalogursache geben oder ersetzen (Begründung Pflicht, protokolliert)."
+      }
+    },
+    {
       "id": "ai",
       "label": { "en_US.utf8": "AI assistant", "fr.utf8": "Assistant IA", "de.utf8": "KI-Assistent" },
       "description": {

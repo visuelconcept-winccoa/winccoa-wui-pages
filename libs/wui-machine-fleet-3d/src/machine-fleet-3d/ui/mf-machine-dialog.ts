@@ -54,6 +54,9 @@ import { dialogStyles } from './dialog-styles.js';
 import { overlayClicked, overlayDown } from '@visuelconcept-winccoa/wui-fleet-core/ui/overlay-dismiss.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { MSG, localize, localizeDir, linkFallbackMsg, dashboardLinksHintMsg } from '../i18n.js';
+import { nameTaken } from '../symbol-names.js';
+import { dashboardTicks, isProcessSlot, type DashboardDisplayEntry } from '../dashboard-lines.js';
+import { SYMBOL_SCALE_MAX, SYMBOL_SCALE_MIN, storedScale, symbolScale, type ScaledMachineDef } from '../symbol-scale.js';
 
 interface IxValueEvent {
   detail: string | number;
@@ -114,6 +117,8 @@ export class MfMachineDialog extends LitElement {
   static override readonly styles = [IXCoreStyles, dialogStyles(), extraStyles()];
 
   @property({ attribute: false }) machine!: MachineDef;
+  /** The atelier's symbols, for the unique-name check (#276). */
+  @property({ attribute: false }) siblings: ReadonlyArray<{ id: string; name: string }> = [];
   @property({ attribute: false }) mappings: StateMapping[] = [];
   @property({ attribute: false }) thresholds: TrsThresholds[] = [];
   /** Placement markers of the atelier, to place the machine from one (SDS 2.2 SL-IMP-02). */
@@ -152,13 +157,13 @@ export class MfMachineDialog extends LitElement {
             <span class="head-spacer"></span>
             <ix-icon-button
               ghost
-              icon="upload"
+              icon="download"
               title=${localize(MSG.machineDialog.importMachine)}
               @click=${this.triggerImport}
             ></ix-icon-button>
             <ix-icon-button
               ghost
-              icon="download"
+              icon="upload"
               title=${localize(MSG.machineDialog.exportMachine)}
               @click=${this.exportMachine}
             ></ix-icon-button>
@@ -198,7 +203,8 @@ export class MfMachineDialog extends LitElement {
           <div class="panel-foot">
             <ix-button variant="secondary" @click=${this.close}>${this.canEdit ? localizeDir(MSG.machineDialog.cancel) : localizeDir(MSG.machineDialog.close)}</ix-button>
             ${this.canEdit
-              ? html`<ix-button @click=${this.apply}>${localizeDir(MSG.machineDialog.save)}</ix-button>`
+              ? html`${this.nameError ? html`<span class="foot-error">${this.nameError}</span>` : ''}
+                  <ix-button ?disabled=${this.nameError !== ''} @click=${this.apply}>${localizeDir(MSG.machineDialog.save)}</ix-button>`
               : ''}
           </div>
         </div>
@@ -500,6 +506,8 @@ export class MfMachineDialog extends LitElement {
       <div class="grid2">
         <ix-input
           label=${localize(MSG.machineDialog.fieldName)}
+          class=${this.nameError ? 'ix-invalid' : ''}
+          invalid-text=${this.nameError}
           .value=${m.name}
           @valueChange=${(e: IxValueEvent) => this.patch({ name: String(e.detail) })}
         ></ix-input>
@@ -572,6 +580,16 @@ export class MfMachineDialog extends LitElement {
         >
           ${ROTATIONS.map((r) => html`<ix-select-item label=${`${r}°`} value=${String(r)}></ix-select-item>`)}
         </ix-select>
+        <ix-number-input
+          label=${localize(MSG.machineDialog.scaleLabel)}
+          helper-text=${localize(MSG.machineDialog.scaleHint)}
+          min=${SYMBOL_SCALE_MIN}
+          max=${SYMBOL_SCALE_MAX}
+          step="0.1"
+          .value=${symbolScale(m as ScaledMachineDef)}
+          @valueChange=${(e: IxValueEvent) =>
+            this.patch({ symbolScale: storedScale(Number(e.detail)) } as Partial<ScaledMachineDef>)}
+        ></ix-number-input>
         <div class="color-field">
           <span class="color-label">${localizeDir(MSG.machineDialog.colour)}</span>
           <div class="color-controls">
@@ -617,7 +635,8 @@ export class MfMachineDialog extends LitElement {
   /** "Affichage" tab — visibility (bubble / popup) and order for every info item. */
   private renderDisplay(): TemplateResult {
     const slots = shownSlots(this.working);
-    const shown = shownCounts(slots);
+    const ticks = dashboardTicks(this.working, slots);
+    const shown = { ...shownCounts(slots), dashboard: [...ticks.values()].filter(Boolean).length };
     return html`
       <div class="subhead">${localizeDir(MSG.machineDialog.displayTitle)}</div>
       <div class="hint">
@@ -627,9 +646,10 @@ export class MfMachineDialog extends LitElement {
         <span class="disp-label">${localizeDir(MSG.machineDialog.colInformation)}</span>
         <span class="disp-tog">${localizeDir(MSG.machineDialog.colBubble)}<br />${shown.bubble} / ${MAX_SHOWN}</span>
         <span class="disp-tog">${localizeDir(MSG.machineDialog.colPopup)}<br />${shown.popup} / ${MAX_SHOWN}</span>
+        <span class="disp-tog">${localizeDir(MSG.machineDialog.colDashboard)}<br />${shown.dashboard} / ${MAX_SHOWN}</span>
         <span class="disp-ord">${localizeDir(MSG.machineDialog.colOrder)}</span>
       </div>
-      <div class="disp-list">${slots.map((s, i) => this.renderDisplayRow(s, i, slots.length, shown))}</div>
+      <div class="disp-list">${slots.map((s, i) => this.renderDisplayRow(s, i, slots.length, shown, ticks))}</div>
     `;
   }
 
@@ -637,11 +657,14 @@ export class MfMachineDialog extends LitElement {
     slot: DisplaySlot,
     i: number,
     count: number,
-    shown: { bubble: number; popup: number }
+    shown: { bubble: number; popup: number; dashboard: number },
+    ticks: Map<string, boolean>
   ): TemplateResult {
     // A line not shown yet cannot be ticked once MAX_SHOWN lines are: untick another first.
     const bubbleFull = !slot.inBubble && shown.bubble >= MAX_SHOWN;
     const popupFull = !slot.inPopup && shown.popup >= MAX_SHOWN;
+    const inDashboard = ticks.get(slot.ref) === true;
+    const dashboardFull = !inDashboard && shown.dashboard >= MAX_SHOWN;
     const fullTitle = localize(MSG.machineDialog.displayFull);
     return html`
       <div class="disp-row">
@@ -664,6 +687,16 @@ export class MfMachineDialog extends LitElement {
           title=${popupFull ? fullTitle : ''}
           @checkedChange=${(e: IxCheckedEvent) => this.patchDisplay(slot.ref, { inPopup: e.detail })}
         ></ix-toggle>
+        ${isProcessSlot(slot)
+          ? html`<ix-toggle
+              class="disp-tog"
+              hide-text
+              ?checked=${inDashboard}
+              ?disabled=${dashboardFull}
+              title=${dashboardFull ? fullTitle : ''}
+              @checkedChange=${(e: IxCheckedEvent) => this.patchDisplay(slot.ref, { inDashboard: e.detail })}
+            ></ix-toggle>`
+          : html`<span class="disp-tog disp-na">—</span>`}
         <span class="disp-ord">
           <ix-icon-button
             ghost
@@ -686,23 +719,30 @@ export class MfMachineDialog extends LitElement {
     `;
   }
 
-  /** Snapshot the resolved slots into `display`, overriding one item's visibility. */
-  private patchDisplay(ref: string, patch: Partial<DisplayEntry>): void {
-    const display: DisplayEntry[] = shownSlots(this.working).map((s) => ({
+  /**
+   * The resolved slots as `display` entries, the dashboard tick of each process
+   * parameter included (taken as resolved, so a default becomes explicit).
+   */
+  private displaySnapshot(): DashboardDisplayEntry[] {
+    const slots = shownSlots(this.working);
+    const ticks = dashboardTicks(this.working, slots);
+    return slots.map((s) => ({
       ref: s.ref,
-      inBubble: s.ref === ref ? (patch.inBubble ?? s.inBubble) : s.inBubble,
-      inPopup: s.ref === ref ? (patch.inPopup ?? s.inPopup) : s.inPopup
+      inBubble: s.inBubble,
+      inPopup: s.inPopup,
+      ...(ticks.has(s.ref) ? { inDashboard: ticks.get(s.ref) } : {})
     }));
+  }
+
+  /** Snapshot the resolved slots into `display`, overriding one item's visibility. */
+  private patchDisplay(ref: string, patch: Partial<DashboardDisplayEntry>): void {
+    const display: DisplayEntry[] = this.displaySnapshot().map((e) => (e.ref === ref ? { ...e, ...patch } : e));
     this.patch({ display });
   }
 
   /** Move a display item up (dir = -1) or down (dir = +1). */
   private moveDisplay(i: number, dir: number): void {
-    const display: DisplayEntry[] = shownSlots(this.working).map((s) => ({
-      ref: s.ref,
-      inBubble: s.inBubble,
-      inPopup: s.inPopup
-    }));
+    const display: DisplayEntry[] = this.displaySnapshot();
     const j = i + dir;
     if (j < 0 || j >= display.length) return;
     [display[i], display[j]] = [display[j], display[i]];
@@ -1357,7 +1397,15 @@ export class MfMachineDialog extends LitElement {
     this.dispatchEvent(new CustomEvent('wui:mapping', { bubbles: true, composed: true }));
   }
 
+  /** Empty, or the reason the name is refused: required, and unique in the atelier (#276). */
+  private get nameError(): string {
+    const name = this.working?.name ?? '';
+    if (name.trim() === '') return localize(MSG.machineDialog.nameRequired);
+    return nameTaken(name, this.working.id, this.siblings) ? localize(MSG.machineDialog.nameTaken) : '';
+  }
+
   private apply(): void {
+    if (this.nameError) return;
     this.dispatchEvent(
       new CustomEvent('wui:apply', {
         detail: { machine: this.working },
@@ -1402,6 +1450,11 @@ export class MfMachineDialog extends LitElement {
 
 function extraStyles(): ReturnType<typeof css> {
   return css`
+    .foot-error {
+      margin-right: auto;
+      color: var(--theme-color-alarm);
+      font-size: 0.8rem;
+    }
     .link {
       margin-top: 0.5rem;
     }
@@ -1431,7 +1484,7 @@ function extraStyles(): ReturnType<typeof css> {
     }
     .disp-row {
       display: grid;
-      grid-template-columns: 1fr 4rem 4rem 4.5rem;
+      grid-template-columns: 1fr 4rem 4rem 5.5rem 4.5rem;
       align-items: center;
       gap: 0.5rem;
       padding: 0.35rem 0.25rem;
@@ -1459,6 +1512,9 @@ function extraStyles(): ReturnType<typeof css> {
     }
     .disp-tog {
       justify-self: center;
+    }
+    .disp-na {
+      color: var(--theme-color-soft-text);
     }
     .disp-ord {
       display: flex;

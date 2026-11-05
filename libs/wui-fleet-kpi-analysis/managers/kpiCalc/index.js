@@ -35,6 +35,8 @@ const KPI_PREFIX = 'MachineFleet3D_Kpi_';
 const CONFIG_TYPE = 'MachineFleet3D_Config';
 const STOPCAUSE_DP = 'MachineFleet3D_StopCauses';
 const CLOSURES_DP = 'MachineFleet3D_Closures';
+/** Causes given by hand to stops (wui-fleet-core StopQualification[], #272). */
+const STOPQUAL_DP = 'MachineFleet3D_StopQualifications';
 const SYS = 'System1:';
 const ELEM = { Struct: 1, Float: 22, String: 25 };
 
@@ -66,6 +68,8 @@ const archived = new Set();
 let causeClass = {};
 /** Closures config { ateliers:{id:[{start,end}]}, machines:{id:[...]} }. */
 let closures = { ateliers: {}, machines: {} };
+/** Causes given by hand to stops, laid over the cause history (#272). */
+let qualifications = [];
 
 function log(msg) {
   // eslint-disable-next-line no-console
@@ -349,6 +353,31 @@ async function queryHistory(dpe, start, end) {
   }
 }
 
+/**
+ * Lay causes given by hand over a cause history (wui-fleet-core applyQualifications, #272):
+ * within each [startMs, endMs) the cause is the qualified code, and at its end the cause read on
+ * the machine resumes.
+ */
+function applyQualifications(causeSamples, quals) {
+  if (!quals || quals.length === 0) return causeSamples;
+  const inside = (t) => quals.some((q) => t >= q.startMs && t < q.endMs);
+  const out = causeSamples.filter((s) => !inside(s.t));
+  for (const q of quals) {
+    out.push({ t: q.startMs, v: q.code });
+    if (!inside(q.endMs)) out.push({ t: q.endMs, v: codeAt(causeSamples, q.endMs) });
+  }
+  return out.sort((a, b) => a.t - b.t);
+}
+
+async function loadQualifications() {
+  try {
+    const list = JSON.parse(extractString(await winccoa.dpGet(`${SYS}${STOPQUAL_DP}.json`)));
+    qualifications = Array.isArray(list) ? list : [];
+  } catch {
+    qualifications = [];
+  }
+}
+
 function codeAt(samples, t) {
   let code = '';
   for (const s of samples) {
@@ -492,9 +521,13 @@ async function refreshKpi(entry) {
   const windowMs = WINDOW_MS[kpi.window] || WINDOW_MS['24h'];
   const start = end - windowMs;
   const stateSamples = await queryHistory(machine.stateDp, start - windowMs, end);
-  const causeSamples = machine.stopCauseDp
+  const rawCauses = machine.stopCauseDp
     ? await queryHistory(machine.stopCauseDp, start - windowMs, end)
     : [];
+  const causeSamples = applyQualifications(
+    rawCauses,
+    qualifications.filter((q) => q.machineId === machine.id && q.atelierId === atelierId)
+  );
   const closed = closedIntervals(atelierId, machine.id, start, end);
   const minStopMs = (Number(machine.minStopSec) || 0) * 1000;
   const value = computeValue(kpi.type, stateSamples, causeSamples, mapping, closed, start, end, minStopMs);
@@ -524,6 +557,7 @@ async function tick() {
     lastReload = now;
     await loadCauseClassification();
     await loadClosures();
+    await loadQualifications();
     kpiEntries = await loadKpis();
   }
   for (const entry of kpiEntries) {

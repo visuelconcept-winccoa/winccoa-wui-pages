@@ -5,6 +5,39 @@
 
 ## 0.5.0 — 2026-11-05 (SDS 2.2)
 
+**Upgrade.** Requires wui-fleet-core and fleet-closures `^0.3.0`. New roles, open to all until
+assigned in Application Security: **`views`** ("Gérer les vues publiques", e.g. for sysadmin) and
+**`qualify`** ("Qualifier les arrêts").
+
+- **Back from an atelier stays on the overview**: the welcome atelier opens on arriving at the fleet
+  only, no longer again when coming back from an atelier (back arrow or browser back).
+- **Settings pages of the site in the overview**: a button for each menu entry marked
+  `"fleetSettings": true` (usually hidden from the menu), titled and iconned from its entry, opens it —
+  a site adds its own fleet settings without a menu entry of their own.
+- **Give a stop its cause by hand** (role `qualify`): a click on a finished stop of the Gantt, or
+  the pen of the stop list, opens "Cause de l'arrêt" — a cause from the catalog and a mandatory
+  reason. It fills a stop without a cause or replaces the machine's; the history is left as it
+  is, the cause given lays over it in the Gantt, the Pareto, the stop list, the TRS and the stop
+  analysis, and is traced in the audit trail.
+
+- **Public views and "welcome atelier for everyone" need the `views` role** (no longer the
+  atelier edit right); "My views" and "welcome atelier for me" stay with each user. The two
+  checkboxes read "Atelier d'accueil : pour moi / pour tous".
+- **A symbol's name is unique in its atelier** (case, accents and spaces ignored): the symbol
+  window refuses a taken or empty name; a symbol added under a taken name gets " (2)", " (3)"…
+- **Symbol scale**: "Échelle (×)" in the symbol window, from 0.1 to 10, on the 3D model whatever
+  its kind (`symbolScale`, absent = 1).
+- **Resizing a bubble** follows the handle both ways (right or down, whichever moves most) and
+  scales the whole bubble, text included, keeping its proportions.
+- **Gantt dates without hovering**: under the machine-state Gantt, the start, the end and the
+  state changes are written (time, with the day past 24 h), a mark on each change; labels that
+  would overlap are skipped.
+- **Hidden symbol shown in the machine list**: a crossed eye on its row; in edit, a click shows it
+  again.
+- **Import / export icons the right way round**: import = arrow down, export = arrow up (atelier,
+  symbol window, graphics catalogue).
+- **Deleting an atelier asks for a reason** (mandatory), written with the deletion in the audit
+  trail (`AuditTrail_Fleet`, `reason`); new `mf-reason-dialog`.
 - **"Îlot" filter back** in the filter bar (wui-fleet-core 0.2.1), beside UAP, activity, tags and
   state; "Workcenter" stays out (#66).
 - **"Affichage" tab**: at most **10 lines in the bubble and 10 in the popup**, counted per column
@@ -13,6 +46,12 @@
   are hidden.
 - A machine carries **any number of parameters**: the "Paramètres" tab no longer stops at 10, so
   the site's catalogue can propose all of a slot's and the atelier picks what it shows.
+- **Machine dashboard, "Paramètres Process"**: a context line on top (the `filterable`
+  parameters such as article and contract, the fixed-value ones such as machine or workcenter,
+  then the work order and the operation), always shown; under it, a card for each process
+  parameter ticked in the new **"Tableau de bord"** column of the "Affichage" tab (**at most 10**,
+  "Tableau de bord n / 10", in display order), then the TRS. Optional `inDashboard` on the
+  `display` entries; absent, the first 10 process parameters in display order are shown.
 
 ## 0.4.0 — 2026-11-04 (SDS 2.2)
 

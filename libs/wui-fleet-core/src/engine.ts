@@ -33,7 +33,8 @@ import {
   type Atelier,
   type StateMapping,
   type StopCause,
-  type StopClassification
+  type StopClassification,
+  type StopQualification
 } from './types.js';
 import type { MsInterval } from './closures.js';
 
@@ -85,6 +86,9 @@ export interface RawStop {
   durationMs: number;
   /** Portion of the period within worked (open) time — what actually counts, ms. */
   countedMs: number;
+  /** Set when the cause was given by hand (a {@link StopQualification}, #272). */
+  qualifiedBy?: string;
+  qualifiedAt?: string;
 }
 
 /** Full analysis output. */
@@ -172,7 +176,8 @@ export async function analyseStopCauses(
   catalog: StopCause[],
   start: Date,
   end: Date,
-  nonWorked: Map<string, MsInterval[]> = new Map()
+  nonWorked: Map<string, MsInterval[]> = new Map(),
+  qualifications: StopQualification[] = []
 ): Promise<AnalysisResult> {
   const startMs = start.getTime();
   const endMs = end.getTime();
@@ -188,13 +193,16 @@ export async function analyseStopCauses(
     // eslint-disable-next-line no-await-in-loop -- sequential keeps backend load bounded
     const stateSamples = await queryHistory(api, machine.stateDp, lookbackStart, end);
     // eslint-disable-next-line no-await-in-loop
-    const causeSamples = await queryHistory(api, machine.stopCauseDp, lookbackStart, end);
-    if (stateSamples.length > 0 || causeSamples.length > 0) anySample = true;
+    const rawCauses = await queryHistory(api, machine.stopCauseDp, lookbackStart, end);
+    if (stateSamples.length > 0 || rawCauses.length > 0) anySample = true;
+    // Causes given by hand lay over the machine's history (#272).
+    const quals = qualifications.filter((q) => q.machineId === machine.machineId && q.atelierId === machine.atelierId);
+    const causeSamples = applyQualifications(rawCauses, quals);
 
     const closed = mergeClip(nonWorked.get(machine.machineId) ?? [], startMs, endMs);
     const stops = nonProductionIntervals(stateSamples, machine.mapping, startMs, endMs, machine.minStopMs);
     for (const stop of stops) {
-      attributeStop(stop, causeSamples, catalog, machine, agg, contributing, rawStops, closed);
+      attributeStop(stop, causeSamples, catalog, machine, agg, contributing, rawStops, closed, quals);
     }
   }
 
@@ -421,7 +429,8 @@ function attributeStop(
   agg: Map<string, CauseRow>,
   contributing: Map<string, string>,
   rawStops: RawStop[],
-  closed: MsInterval[] = []
+  closed: MsInterval[] = [],
+  quals: StopQualification[] = []
 ): void {
   // Worked portion of the whole stop (excludes non-worked periods). A stop fully
   // inside a closure counts for nothing and is dropped entirely.
@@ -434,6 +443,7 @@ function attributeStop(
     const { key, label, classification } = resolveGroup(catalog, seg.code);
     const countedMs = seg.end - seg.start - overlapLength(seg.start, seg.end, closed);
     perKey.set(key, (perKey.get(key) ?? 0) + Math.max(0, countedMs));
+    const qual = quals.find((q) => q.code === seg.code && q.startMs < seg.end && q.endMs > seg.start);
     rawStops.push({
       machineId: machine.machineId,
       machineName: machine.machineName,
@@ -445,7 +455,8 @@ function attributeStop(
       startMs: seg.start,
       endMs: seg.end,
       durationMs: seg.end - seg.start,
-      countedMs: Math.max(0, countedMs)
+      countedMs: Math.max(0, countedMs),
+      ...(qual ? { qualifiedBy: qual.user, qualifiedAt: qual.at } : {})
     });
   }
   for (const [key, ms] of perKey) {
@@ -504,6 +515,25 @@ function causeBoundaries(
 
 function firstNonEmpty(spans: { code: string }[]): string {
   return spans.find((s) => s.code !== '')?.code ?? '';
+}
+
+/**
+ * Lay causes given by hand over a cause history (#272): within each qualification's
+ * [startMs, endMs) the cause is the qualified code, and at its end the cause read on the machine
+ * resumes. The history itself is left as it is.
+ */
+export function applyQualifications(
+  causeSamples: { t: number; v: unknown }[],
+  quals: readonly Pick<StopQualification, 'startMs' | 'endMs' | 'code'>[]
+): { t: number; v: unknown }[] {
+  if (quals.length === 0) return causeSamples;
+  const inside = (t: number): boolean => quals.some((q) => t >= q.startMs && t < q.endMs);
+  const out = causeSamples.filter((s) => !inside(s.t));
+  for (const q of quals) {
+    out.push({ t: q.startMs, v: q.code });
+    if (!inside(q.endMs)) out.push({ t: q.endMs, v: codeAt(causeSamples, q.endMs) });
+  }
+  return out.sort((a, b) => a.t - b.t);
 }
 
 /** Cause code active at time `t` (last sample at-or-before `t`). */

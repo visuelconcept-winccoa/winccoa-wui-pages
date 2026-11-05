@@ -229,8 +229,8 @@ export const MSG = {
     saveView: ml('Save the view', 'Enregistrer la vue', 'Ansicht speichern'),
     publicViews: ml('Public views', 'Vues publiques', 'Öffentliche Ansichten'),
     myViews: ml('My views', 'Mes vues', 'Meine Ansichten'),
-    myLanding: ml('My default page', 'Ma page par défaut', 'Meine Startseite'),
-    publicLanding: ml('Default page for everyone', 'Page par défaut pour tous', 'Startseite für alle'),
+    myLanding: ml('Welcome atelier: for me', 'Atelier d’accueil : pour moi', 'Start-Atelier: für mich'),
+    publicLanding: ml('Welcome atelier: for everyone', 'Atelier d’accueil : pour tous', 'Start-Atelier: für alle'),
     noViewpoints: ml(
       'No viewpoint saved',
       'Aucun point de vue enregistré',
@@ -268,6 +268,23 @@ export const MSG = {
     obsolescenceAli: ml('Obsolescence (ALI)', 'Obsolescence (ALI)', 'Obsoleszenz (ALI)'),
     confirmDeleteHeading: ml("Delete the atelier", "Supprimer l'atelier", 'Werkstatt löschen'),
     viewLabel: ml('View', 'Vue', 'Ansicht')
+  },
+  qualify: {
+    title: ml('Cause of the stop', "Cause de l'arrêt", 'Stillstandsursache'),
+    period: ml('Stop', 'Arrêt', 'Stillstand'),
+    current: ml('Current cause', 'Cause actuelle', 'Aktuelle Ursache'),
+    cause: ml('Cause', 'Cause', 'Ursache'),
+    reason: ml('Reason (mandatory)', 'Motif (obligatoire)', 'Begründung (Pflicht)'),
+    cancel: ml('Cancel', 'Annuler', 'Abbrechen'),
+    confirm: ml('Save', 'Enregistrer', 'Speichern'),
+    givenBy: ml('cause given by', 'cause saisie par', 'Ursache erfasst von'),
+    clickHint: ml('Click: give the cause', 'Clic : saisir la cause', 'Klick: Ursache erfassen'),
+    failed: ml('Cause not saved', 'Cause non enregistrée', 'Ursache nicht gespeichert')
+  },
+  reasonDialog: {
+    reason: ml('Reason (required)', 'Motif (obligatoire)', 'Grund (Pflichtfeld)'),
+    cancel: ml('Cancel', 'Annuler', 'Abbrechen'),
+    confirm: ml('Delete', 'Supprimer', 'Löschen')
   },
   create: {
     title: ml('New atelier', 'Nouvel atelier', 'Neue Werkstatt'),
@@ -453,6 +470,8 @@ export const MSG = {
     kpiThresholdsLabel: ml('Thresholds (colours)', 'Seuils (couleurs)', 'Schwellenwerte (Farben)'),
     identity: ml('Identity', 'Identité', 'Identität'),
     fieldName: ml('Name', 'Nom', 'Name'),
+    nameRequired: ml('Name required', 'Nom obligatoire', 'Name erforderlich'),
+    nameTaken: ml('Name already used in this atelier', 'Nom déjà utilisé dans cet atelier', 'Name in diesem Atelier bereits vergeben'),
     fieldType: ml('Type', 'Type', 'Typ'),
     processLabel: ml(
       'Process (parameter set of the machine simulator)',
@@ -463,6 +482,8 @@ export const MSG = {
     fieldHeight: ml('Height', 'Hauteur', 'Höhe'),
     appearance: ml('Appearance', 'Apparence', 'Erscheinungsbild'),
     rotationLabel: ml('Rotation (vertical axis)', 'Rotation (axe vertical)', 'Drehung (vertikale Achse)'),
+    scaleLabel: ml('Scale (×)', 'Échelle (×)', 'Maßstab (×)'),
+    scaleHint: ml('1 = actual size · 0.1 to 10', '1 = taille d’origine · de 0,1 à 10', '1 = Originalgröße · 0,1 bis 10'),
     colour: ml('Colour', 'Couleur', 'Farbe'),
     defaultColour: ml('Default colour', 'Couleur par défaut', 'Standardfarbe'),
     showInScene: ml(
@@ -472,9 +493,9 @@ export const MSG = {
     ),
     displayTitle: ml('Display (bubble & popup)', 'Affichage (bulle & popup)', 'Anzeige (Blase & Popup)'),
     displayHint: ml(
-      "For each piece of information (state, production tracking, parameters and KPI), choose its visibility in the machine bubble and in the popup (on click), and set its display order with the arrows.",
-      "Pour chaque information (état, suivi de production, paramètres et KPI), choisissez sa visibilité dans la bulle machine et dans le popup (au clic), et réglez son ordre d'affichage avec les flèches.",
-      'Wählen Sie für jede Information (Zustand, Produktionsverfolgung, Parameter und KPI) ihre Sichtbarkeit in der Maschinenblase und im Popup (beim Klick) und stellen Sie die Anzeigereihenfolge mit den Pfeilen ein.'
+      "For each piece of information (state, production tracking, parameters and KPI), choose its visibility in the machine bubble and in the popup (on click), and set its display order with the arrows. \"Dashboard\": the process parameters shown as cards on the machine dashboard; the context (article, contract, identities, work order, operation) and the TRS are always shown there.",
+      "Pour chaque information (état, suivi de production, paramètres et KPI), choisissez sa visibilité dans la bulle machine et dans le popup (au clic), et réglez son ordre d'affichage avec les flèches. « Tableau de bord » : les paramètres process affichés en cartes dans le tableau de bord de la machine ; le contexte (article, contrat, identifiants, OF, opération) et le TRS y sont toujours affichés.",
+      'Wählen Sie für jede Information (Zustand, Produktionsverfolgung, Parameter und KPI) ihre Sichtbarkeit in der Maschinenblase und im Popup (beim Klick) und stellen Sie die Anzeigereihenfolge mit den Pfeilen ein. „Dashboard“: die Prozessparameter, die als Karten im Maschinen-Dashboard erscheinen; Kontext (Artikel, Vertrag, Kennungen, Auftrag, Vorgang) und OEE werden dort immer angezeigt.'
     ),
     displayFull: ml(
       'At most 10 lines: untick another one first.',
@@ -484,6 +505,7 @@ export const MSG = {
     colInformation: ml('Information', 'Information', 'Information'),
     colBubble: ml('Bubble', 'Bulle', 'Blase'),
     colPopup: ml('Popup', 'Popup', 'Popup'),
+    colDashboard: ml('Dashboard', 'Tableau de bord', 'Dashboard'),
     colOrder: ml('Order', 'Ordre', 'Reihenfolge'),
     moveUp: ml('Move up', 'Monter', 'Nach oben'),
     moveDown: ml('Move down', 'Descendre', 'Nach unten'),
@@ -696,7 +718,9 @@ export const MSG = {
     addMachine: ml('Add a symbol', 'Ajouter un symbole', 'Symbol hinzufügen'),
     edit: ml('Edit', 'Éditer', 'Bearbeiten'),
     viewOnly: ml('View', 'Visualiser', 'Anzeigen'),
-    delete: ml('Delete', 'Supprimer', 'Löschen')
+    delete: ml('Delete', 'Supprimer', 'Löschen'),
+    hidden: ml('Hidden in the scene', 'Masqué dans la scène', 'In der Szene ausgeblendet'),
+    showAgain: ml('Hidden in the scene · show', 'Masqué dans la scène · afficher', 'In der Szene ausgeblendet · anzeigen')
   },
   graphicsCatalog: {
     title: ml('Graphics catalog', 'Catalogue de graphiques', 'Grafikkatalog'),

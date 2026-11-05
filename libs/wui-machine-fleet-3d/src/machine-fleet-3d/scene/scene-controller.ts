@@ -55,6 +55,7 @@ import { MarkerPins } from './marker-pins.js';
 import { MachineMaterials } from './machine-materials.js';
 import { BILLBOARD_CHILD, applyBillboardTexture, buildMachine } from './machine-factory.js';
 import { OrbitController } from './orbit-controller.js';
+import { symbolScale, type ScaledMachineDef } from '../symbol-scale.js';
 
 const ACCENT_POOL_SIZE = 6;
 const DRAG_THRESHOLD_PX = 5;
@@ -476,6 +477,7 @@ export class SceneController {
     const mesh = buildMachine(def, this.materials);
     mesh.position.set(def.x, def.y ?? 0, def.z);
     mesh.rotation.y = ((def.rotationY ?? 0) * Math.PI) / 180;
+    mesh.scale.setScalar(symbolScale(def as ScaledMachineDef));
     mesh.visible = !def.hidden;
     mesh.userData['machineId'] = def.id;
     this.machinesGroup.add(mesh);
@@ -538,6 +540,7 @@ export class SceneController {
     const fresh = buildMachine({ ...machine, type: 'cabinet' }, this.materials);
     fresh.position.copy(old.position);
     fresh.rotation.copy(old.rotation);
+    fresh.scale.copy(old.scale);
     fresh.visible = old.visible;
     fresh.userData['machineId'] = machine.id;
     this.machinesGroup.add(fresh);

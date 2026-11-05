@@ -3,6 +3,12 @@
 
 # Changelog — @visuelconcept-winccoa/wui-fleet-kpi-analysis
 
+## 0.3.0 — 2026-11-05 (SDS 2.2)
+
+- `kpiCalc` lays the causes given by hand to stops (`MachineFleet3D_StopQualifications`, reread
+  every minute) over the machine's cause history: a stop given a planned cause counts as planned
+  in the TRS (wui-fleet-core 0.3.0).
+
 ## 0.2.0 — 2026-11-04 (SDS 2.2)
 
 **Upgrade.** Requires **fleet-closures** (its `/api/fleet` backend, deployed headless when not

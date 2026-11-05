@@ -3,6 +3,11 @@
 
 # Changelog — @visuelconcept-winccoa/wui-fleet-closures
 
+## 0.3.0 — 2026-11-05 (SDS 2.2)
+
+- `/api/fleet`: the causes given by hand to stops (`MachineFleet3D_StopQualifications`) are
+  written with machine-fleet-3d's **`qualify`** role only (wui-fleet-core 0.3.0).
+
 ## 0.2.0 — 2026-11-04 (SDS 2.2)
 
 **Upgrade.** The module now has a **backend**, `/api/fleet`: `wui build` deploys it, restart

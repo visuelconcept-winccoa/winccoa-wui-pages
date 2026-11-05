@@ -15,7 +15,7 @@ import { LitElement, css, html, svg, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { Subscription } from 'rxjs';
 import type { FleetStore } from '../data/fleet-store.js';
-import { MSG, localize, localizeDir } from '../i18n.js';
+import { MSG, localize, localizeDir, ml } from '../i18n.js';
 import {
   filterDimensions,
   isFilterActive,
@@ -32,6 +32,7 @@ import './mf-ai-prompt.js';
 import './mf-atelier-create-dialog.js';
 import './mf-filter-bar.js';
 import './mf-graphics-catalog.js';
+import { loadSettingsPages, type FleetSettingsPage } from '../settings-pages.js';
 
 /** Minimap rendered height (px) — must match the `.minimap { height }` CSS. */
 const MINIMAP_HEIGHT_PX = 110;
@@ -54,6 +55,8 @@ export class MfAtelierOverview extends LitElement {
   @state() private createTemplate = '';
   @state() private createDefaultName = '';
   @state() private resourcesOpen = false;
+  /** Settings pages the site adds to the fleet (menu entries marked `fleetSettings`). */
+  @state() private settingsPages: FleetSettingsPage[] = [];
   /** Remembered machine filter (the user's settings, shared with the atelier views). */
   @state() private filter: FleetFilter = loadFleetFilter();
   private settingsSub: Subscription | null = null;
@@ -61,6 +64,7 @@ export class MfAtelierOverview extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     this.settingsSub = settingsCache.watch(['fleet-filter'], () => (this.filter = loadFleetFilter()));
+    void loadSettingsPages().then((pages) => (this.settingsPages = pages));
   }
 
   override disconnectedCallback(): void {
@@ -73,6 +77,11 @@ export class MfAtelierOverview extends LitElement {
     return html`
       <div class="head">
         <span class="spacer"></span>
+        ${this.settingsPages.map(
+          (p) => html`<ix-button variant="secondary" @click=${() => this.openPage(p.path)}>
+            <ix-icon name=${p.icon} slot="icon"></ix-icon>${localize(ml(p.title.en, p.title.fr, p.title.de))}
+          </ix-button>`
+        )}
         <ix-button variant="secondary" @click=${() => (this.resourcesOpen = true)}>
           <ix-icon name="box-open" slot="icon"></ix-icon>${localizeDir(MSG.overview.graphicsCatalog)}
         </ix-button>
@@ -254,6 +263,11 @@ export class MfAtelierOverview extends LitElement {
   private readonly analyzeKpi = (): void => {
     this.dispatchEvent(new CustomEvent('wui:kpi', { bubbles: true, composed: true }));
   };
+
+  /** A settings page of the site (`wui:page`, the host routes to it). */
+  private openPage(path: string): void {
+    this.dispatchEvent(new CustomEvent('wui:page', { detail: { path }, bubbles: true, composed: true }));
+  }
 
   private readonly manageClosures = (): void => {
     this.dispatchEvent(new CustomEvent('wui:closures', { bubbles: true, composed: true }));
