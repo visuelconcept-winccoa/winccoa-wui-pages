@@ -118,6 +118,7 @@ import {
 import './mf-ai-prompt.js';
 import './mf-building-dialog.js';
 import './mf-opening-dialog.js';
+import { OpeningReframe } from '../scene/opening-reframe.js';
 import {
   parseModuleSettings,
   resolveOpeningView,
@@ -252,6 +253,9 @@ export class MfAtelierView extends LitElement {
   @state() private buildingOpen = false;
   /** The atelier's opening view dialog (#70). */
   @state() private openingOpen = false;
+  /** Frame the opening view again on a resize while the camera is untouched (#72). */
+  private readonly reframe = new OpeningReframe();
+  private reframeFrame = 0;
   @state() private mappingOpen = false;
   @state() private atelierName = '';
   @state() private renaming = false;
@@ -415,6 +419,7 @@ export class MfAtelierView extends LitElement {
     this.scene.setOnBubbleEdit((id, patch) => this.onBubbleEdit(id, patch));
     this.scene.setEditMode(this.editMode);
     this.scene.setOnRotate(this.onCameraRotate);
+    this.scene.setOnUserMove(() => this.reframe.userMoved());
     this.scene.setBuilding(this.building);
     this.scene.setMarkers(this.markers);
     this.scene.setMachines(this.machines);
@@ -425,7 +430,10 @@ export class MfAtelierView extends LitElement {
     this.applyDefaultViewpoint();
     this.resubscribeDps();
 
-    this.resizeObserver = new ResizeObserver(() => this.scene?.resize());
+    this.resizeObserver = new ResizeObserver(() => {
+      this.scene?.resize();
+      this.scheduleReframe();
+    });
     this.resizeObserver.observe(this.viewportEl);
     this.visibility = new IntersectionObserver((entries) => {
       if (entries.some((e) => e.isIntersecting)) this.scene?.start();
@@ -440,6 +448,8 @@ export class MfAtelierView extends LitElement {
     this.saveTimer = 0;
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
+    cancelAnimationFrame(this.reframeFrame);
+    this.reframeFrame = 0;
     this.visibility?.disconnect();
     this.visibility = null;
     // A dpGet validation still in flight must not open a dpConnect after this.
@@ -1566,12 +1576,27 @@ export class MfAtelierView extends LitElement {
     });
     if (vp || !opening.view) {
       if (vp) this.applyViewpoint(vp);
+      this.reframe.viewpointApplied();
       return;
     }
     let view = opening.view;
     if (want3d && view.mode !== 'tilted') view = { ...view, mode: 'tilted' };
     this.switchCamera(view.mode === 'tilted' ? '3d' : '2d');
     this.scene?.frameOpening(view, opening.front);
+    this.reframe.opened(view, opening.front);
+  }
+
+  /**
+   * A resize (#72): the opening view framed again for the new aspect, while the user has not
+   * moved the camera — once per frame (a panel animating sends many resizes), placed at once.
+   */
+  private scheduleReframe(): void {
+    if (this.reframeFrame) return;
+    this.reframeFrame = requestAnimationFrame(() => {
+      this.reframeFrame = 0;
+      const again = this.reframe.toReframe();
+      if (again) this.scene?.frameOpening(again.view, again.front, { immediate: true });
+    });
   }
 
   /** The atelier's opening view changed (#70): stored with the atelier, shown at once. */

@@ -3,6 +3,14 @@
 
 # Changelog — @visuelconcept-winccoa/wui-machine-fleet-3d
 
+## 0.5.1 — 2026-11-05
+
+- The opening view (#70) is framed again when the view is resized — the machine list or a
+  panel opening beside it, full screen, a window or a dashboard tile resized — as long as the user
+  has not moved the camera since it was framed (#72). Any move of theirs (drag, wheel, keys, pad
+  buttons, presets, fly to a machine, a viewpoint, the 2D / 3D toggle) stops it; "Default view"
+  frames it again. A saved viewpoint keeps its pose.
+
 ## 0.5.0 — 2026-11-05
 
 **Upgrade.** New role **`configure`** (module settings, common to every atelier) — open until an
