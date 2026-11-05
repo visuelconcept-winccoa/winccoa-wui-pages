@@ -40,7 +40,7 @@ export const MSG = {
     title: ml('Placement markers', "Repères d'implantation", 'Platzierungsmarken'),
     hint: ml(
       'Placement markers of this view (axis, workstation, landmark…), placed with the pin button and moved in edit mode; a machine placed from one follows it',
-      "Repères d'implantation de cette vue (axe, poste, borne…), posés avec le bouton repère et déplacés en mode édition ; une machine placée à partir d'un repère le suit",
+      "Repères d'implantation (axe, poste, borne…) · pose : bouton repère · déplacement : mode édition · machine liée à un repère : le suit",
       'Platzierungsmarken dieser Ansicht (Achse, Arbeitsplatz, Orientierungspunkt…), mit der Marken-Schaltfläche gesetzt und im Bearbeitungsmodus verschoben; eine davon platzierte Maschine folgt ihr'
     ),
     label: ml('Marker', 'Repère', 'Marke'),
@@ -76,7 +76,7 @@ export const MSG = {
     cancel: ml('Cancel', 'Annuler', 'Abbrechen'),
     later: ml(
       'Everything else is set later in the symbol’s configuration.',
-      'Tout le reste se règle ensuite dans la configuration du symbole.',
+      'Autres réglages : configuration du symbole',
       'Alles Weitere wird danach in der Symbolkonfiguration eingestellt.'
     )
   },
@@ -97,7 +97,7 @@ export const MSG = {
     label: ml('To place', 'À placer', 'Zu platzieren'),
     hint: ml(
       'New in this atelier, or moved elsewhere in the plant: move it to its place in edit mode',
-      "Nouvelle dans cet atelier, ou réaffectée : déplacez-la à sa place en mode édition",
+      "Nouvelle ou réaffectée : à placer en mode édition",
       'Neu in dieser Werkstatt oder umgesetzt: im Bearbeitungsmodus an ihren Platz verschieben'
     )
   },
@@ -478,7 +478,7 @@ export const MSG = {
     ),
     displayFull: ml(
       'At most 10 lines: untick another one first.',
-      "10 lignes au plus : décochez-en d'abord une autre.",
+      "10 lignes au plus",
       'Höchstens 10 Zeilen: zuerst eine andere abwählen.'
     ),
     colInformation: ml('Information', 'Information', 'Information'),
@@ -580,7 +580,7 @@ export const MSG = {
     minStopLabel: ml('Minimum stop (s)', "Délai minimal d'arrêt (s)", 'Mindest-Stillstand (s)'),
     minStopHint: ml(
       'A shorter stop counts as production: not in the Gantt, the stops or the TRS',
-      'Un arrêt plus court compte comme de la production : ni dans le Gantt, ni dans les arrêts, ni dans le TRS',
+      'Arrêt plus court : compté en production, hors Gantt, arrêts et TRS',
       'Ein kürzerer Stillstand zählt als Produktion: weder im Gantt, noch bei den Stillständen, noch in der OEE'
     ),
     dashboardMachine: ml('Machine dashboard', 'Dashboard machine', 'Maschinen-Dashboard'),
@@ -636,20 +636,20 @@ export const MSG = {
     appLinks: ml('Links of the application', "Liens de l'application", 'Links der Anwendung'),
     appLinksHint: ml(
       'Up to 3 links to pages of the application appear as buttons in the machine card (popup); each opens in the application. Address: a route (#/…) or a path of this server (/…).',
-      "Jusqu'à 3 liens vers des pages de l'application s'affichent comme boutons dans la fiche machine (popup) ; chacun s'ouvre dans l'application. Adresse : une route (#/…) ou un chemin de ce serveur (/…).",
+      "3 liens au plus, en boutons de la fiche machine, ouverts dans l'application · adresse : route (#/…) ou chemin du serveur (/…)",
       'Bis zu 3 Links zu Seiten der Anwendung erscheinen als Schaltflächen in der Maschinenkarte (Popup); jeder öffnet sich in der Anwendung. Adresse: eine Route (#/…) oder ein Pfad dieses Servers (/…).'
     ),
     appUrlLabel: ml('Address (#/… or /…)', 'Adresse (#/… ou /…)', 'Adresse (#/… oder /…)'),
     appUrlPlaceholder: ml('#/alarmes', '#/alarmes', '#/alarmes'),
     appUrlInvalid: ml(
       'Not an address of the application: the link is not shown.',
-      "Ce n'est pas une adresse de l'application : le lien n'est pas affiché.",
+      "Adresse hors application : lien non affiché",
       'Keine Adresse der Anwendung: Der Link wird nicht angezeigt.'
     ),
     cardTags: ml('Tags in this atelier', 'Étiquettes dans cette carte', 'Tags in diesem Atelier'),
     cardTagsHint: ml(
       'Free tags put on the machine in this atelier, separated by commas; they are filters of the views.',
-      'Étiquettes libres posées sur la machine dans cette carte, séparées par des virgules ; elles servent de filtres des vues.',
+      'Étiquettes libres de la machine dans cet atelier, séparées par des virgules · filtres des vues',
       'Freie Tags der Maschine in diesem Atelier, durch Kommas getrennt; sie dienen als Filter der Ansichten.'
     ),
     paramsTitle: ml('Parameters', 'Paramètres', 'Parameter'),

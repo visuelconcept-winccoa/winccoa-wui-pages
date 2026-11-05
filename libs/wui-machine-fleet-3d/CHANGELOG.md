@@ -5,6 +5,8 @@
 
 ## 0.5.0 — 2026-11-05 (SDS 2.2)
 
+- **"Îlot" filter back** in the filter bar (wui-fleet-core 0.2.1), beside UAP, activity, tags and
+  state; "Workcenter" stays out (#66).
 - **"Affichage" tab**: at most **10 lines in the bubble and 10 in the popup**, counted per column
   ("Bulle n / 10", "Popup n / 10"); a line not shown yet cannot be ticked once 10 are, until
   another is unticked. Past 10 (defaults, older configurations), the last lines in display order

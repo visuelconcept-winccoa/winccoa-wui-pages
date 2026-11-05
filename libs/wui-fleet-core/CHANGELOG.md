@@ -3,6 +3,12 @@
 
 # Changelog — @visuelconcept-winccoa/wui-fleet-core
 
+## 0.2.1 — 2026-11-05 (SDS 2.2)
+
+- **"Îlot" is a filter again**: the îlot (a location in the plant) is one of the filters the
+  SDS 2.2 acceptance requires, beside UAP and activity (SL-ORG-01, SL-LOB-05). Only the
+  "Workcenter" dimension stays out of the filters (#66).
+
 ## 0.2.0 — 2026-11-04 (SDS 2.2)
 
 **Upgrade.** The pages using this kit move to `^0.2.0` together (machine-fleet-3d 0.4.0,
