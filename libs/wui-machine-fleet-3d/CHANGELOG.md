@@ -3,6 +3,15 @@
 
 # Changelog — @visuelconcept-winccoa/wui-machine-fleet-3d
 
+## 0.5.0 — 2026-11-05 (SDS 2.2)
+
+- **"Affichage" tab**: at most **10 lines in the bubble and 10 in the popup**, counted per column
+  ("Bulle n / 10", "Popup n / 10"); a line not shown yet cannot be ticked once 10 are, until
+  another is unticked. Past 10 (defaults, older configurations), the last lines in display order
+  are hidden.
+- A machine carries **any number of parameters**: the "Paramètres" tab no longer stops at 10, so
+  the site's catalogue can propose all of a slot's and the atelier picks what it shows.
+
 ## 0.4.0 — 2026-11-04 (SDS 2.2)
 
 **Upgrade.** Requires **fleet-closures** (`/api/fleet`, the Fleet's writes checked on the

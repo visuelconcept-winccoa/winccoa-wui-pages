@@ -3,9 +3,8 @@
 
 /**
  * Modal dialog to edit one machine: identity + geometry, the state-datapoint
- * binding (with a selectable state mapping), and up to MAX_PARAMS KPI
- * parameters, each bound to a datapoint, one of which can be highlighted in the
- * machine's floating bubble.
+ * binding (with a selectable state mapping), its parameters, each bound to a
+ * datapoint, and what its bubble and popup show (at most MAX_SHOWN lines each).
  */
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
@@ -20,13 +19,14 @@ import {
   KPI_TYPE_INFO,
   MACHINE_PROCESS_LABEL,
   MAX_DASHBOARD_LINKS,
-  MAX_PARAMS,
+  MAX_SHOWN,
   PORTIQUE_SPANS,
   TRS_WINDOW_LABELS,
   appLinkHref,
   resolveDashboardMode,
-  resolveDisplaySlots,
+  shownSlots,
   resolveProcess,
+  shownCounts,
   type DashboardLink,
   type DashboardMode,
   type DashboardOption,
@@ -616,7 +616,8 @@ export class MfMachineDialog extends LitElement {
 
   /** "Affichage" tab — visibility (bubble / popup) and order for every info item. */
   private renderDisplay(): TemplateResult {
-    const slots = resolveDisplaySlots(this.working);
+    const slots = shownSlots(this.working);
+    const shown = shownCounts(slots);
     return html`
       <div class="subhead">${localizeDir(MSG.machineDialog.displayTitle)}</div>
       <div class="hint">
@@ -624,15 +625,24 @@ export class MfMachineDialog extends LitElement {
       </div>
       <div class="disp-row disp-row--head">
         <span class="disp-label">${localizeDir(MSG.machineDialog.colInformation)}</span>
-        <span class="disp-tog">${localizeDir(MSG.machineDialog.colBubble)}</span>
-        <span class="disp-tog">${localizeDir(MSG.machineDialog.colPopup)}</span>
+        <span class="disp-tog">${localizeDir(MSG.machineDialog.colBubble)}<br />${shown.bubble} / ${MAX_SHOWN}</span>
+        <span class="disp-tog">${localizeDir(MSG.machineDialog.colPopup)}<br />${shown.popup} / ${MAX_SHOWN}</span>
         <span class="disp-ord">${localizeDir(MSG.machineDialog.colOrder)}</span>
       </div>
-      <div class="disp-list">${slots.map((s, i) => this.renderDisplayRow(s, i, slots.length))}</div>
+      <div class="disp-list">${slots.map((s, i) => this.renderDisplayRow(s, i, slots.length, shown))}</div>
     `;
   }
 
-  private renderDisplayRow(slot: DisplaySlot, i: number, count: number): TemplateResult {
+  private renderDisplayRow(
+    slot: DisplaySlot,
+    i: number,
+    count: number,
+    shown: { bubble: number; popup: number }
+  ): TemplateResult {
+    // A line not shown yet cannot be ticked once MAX_SHOWN lines are: untick another first.
+    const bubbleFull = !slot.inBubble && shown.bubble >= MAX_SHOWN;
+    const popupFull = !slot.inPopup && shown.popup >= MAX_SHOWN;
+    const fullTitle = localize(MSG.machineDialog.displayFull);
     return html`
       <div class="disp-row">
         <span class="disp-label">
@@ -642,12 +652,16 @@ export class MfMachineDialog extends LitElement {
           class="disp-tog"
           hide-text
           ?checked=${slot.inBubble}
+          ?disabled=${bubbleFull}
+          title=${bubbleFull ? fullTitle : ''}
           @checkedChange=${(e: IxCheckedEvent) => this.patchDisplay(slot.ref, { inBubble: e.detail })}
         ></ix-toggle>
         <ix-toggle
           class="disp-tog"
           hide-text
           ?checked=${slot.inPopup}
+          ?disabled=${popupFull}
+          title=${popupFull ? fullTitle : ''}
           @checkedChange=${(e: IxCheckedEvent) => this.patchDisplay(slot.ref, { inPopup: e.detail })}
         ></ix-toggle>
         <span class="disp-ord">
@@ -674,7 +688,7 @@ export class MfMachineDialog extends LitElement {
 
   /** Snapshot the resolved slots into `display`, overriding one item's visibility. */
   private patchDisplay(ref: string, patch: Partial<DisplayEntry>): void {
-    const display: DisplayEntry[] = resolveDisplaySlots(this.working).map((s) => ({
+    const display: DisplayEntry[] = shownSlots(this.working).map((s) => ({
       ref: s.ref,
       inBubble: s.ref === ref ? (patch.inBubble ?? s.inBubble) : s.inBubble,
       inPopup: s.ref === ref ? (patch.inPopup ?? s.inPopup) : s.inPopup
@@ -684,7 +698,7 @@ export class MfMachineDialog extends LitElement {
 
   /** Move a display item up (dir = -1) or down (dir = +1). */
   private moveDisplay(i: number, dir: number): void {
-    const display: DisplayEntry[] = resolveDisplaySlots(this.working).map((s) => ({
+    const display: DisplayEntry[] = shownSlots(this.working).map((s) => ({
       ref: s.ref,
       inBubble: s.inBubble,
       inPopup: s.inPopup
@@ -1277,12 +1291,11 @@ export class MfMachineDialog extends LitElement {
   private renderParams(): TemplateResult {
     const params = this.working.kpis ?? [];
     return html`
-      <div class="subhead">${localizeDir(MSG.machineDialog.paramsTitle)} (${params.length}/${MAX_PARAMS})</div>
+      <div class="subhead">${localizeDir(MSG.machineDialog.paramsTitle)} (${params.length})</div>
       <div class="params">${params.map((p, i) => this.renderParamRow(p, i))}</div>
       <ix-button
         class="link"
         variant="secondary"
-        ?disabled=${params.length >= MAX_PARAMS}
         @click=${this.addParam}
       >
         <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.machineDialog.addParam)}
@@ -1331,7 +1344,6 @@ export class MfMachineDialog extends LitElement {
 
   private addParam(): void {
     const kpis = [...(this.working.kpis ?? [])];
-    if (kpis.length >= MAX_PARAMS) return;
     kpis.push({ key: `p${kpis.length + 1}`, label: localize(MSG.machineDialog.defaultParamName), showInCard: true });
     this.patch({ kpis });
   }

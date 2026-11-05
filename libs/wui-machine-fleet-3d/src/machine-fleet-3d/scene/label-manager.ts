@@ -26,7 +26,7 @@ import {
   BUBBLE_SCALE_MIN,
   formatParamValue,
   isDisconnected,
-  resolveDisplaySlots,
+  shownSlots,
   type DisplaySlot,
   type Kpi,
   type Machine,
@@ -122,7 +122,7 @@ interface BubbleLine {
 /** Ordered, visible bubble lines for a machine (order and visibility = the Affichage tab). */
 function buildBubbleLines(m: Machine, states: StateInfo): BubbleLine[] {
   const lines: BubbleLine[] = [];
-  for (const slot of resolveDisplaySlots(m)) {
+  for (const slot of shownSlots(m)) {
     if (!slot.inBubble) continue;
     const line = bubbleLineFor(slot, m, states);
     if (line) lines.push(line);

@@ -78,7 +78,7 @@ import {
   placeMachine,
   resolveConnected,
   resolveDashboardMode,
-  resolveDisplaySlots,
+  shownSlots,
   resolveState,
   resolveTrsColor,
   stateColor,
@@ -867,7 +867,7 @@ export class MfAtelierView extends LitElement {
 
   /** Popup info rows — ordered & filtered by the per-machine "Affichage" config. */
   private renderInfoRows(m: Machine): TemplateResult {
-    const rows = resolveDisplaySlots(m)
+    const rows = shownSlots(m)
       .filter((s) => s.inPopup)
       .map((s) => this.popupRow(s, m))
       .filter((r): r is TemplateResult => r !== null);

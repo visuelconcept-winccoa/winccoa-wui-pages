@@ -476,6 +476,11 @@ export const MSG = {
       "Pour chaque information (état, suivi de production, paramètres et KPI), choisissez sa visibilité dans la bulle machine et dans le popup (au clic), et réglez son ordre d'affichage avec les flèches.",
       'Wählen Sie für jede Information (Zustand, Produktionsverfolgung, Parameter und KPI) ihre Sichtbarkeit in der Maschinenblase und im Popup (beim Klick) und stellen Sie die Anzeigereihenfolge mit den Pfeilen ein.'
     ),
+    displayFull: ml(
+      'At most 10 lines: untick another one first.',
+      "10 lignes au plus : décochez-en d'abord une autre.",
+      'Höchstens 10 Zeilen: zuerst eine andere abwählen.'
+    ),
     colInformation: ml('Information', 'Information', 'Information'),
     colBubble: ml('Bubble', 'Bulle', 'Blase'),
     colPopup: ml('Popup', 'Popup', 'Popup'),
