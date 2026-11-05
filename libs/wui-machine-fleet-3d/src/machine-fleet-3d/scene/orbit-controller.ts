@@ -60,6 +60,11 @@ export class OrbitController {
   /** Fired when the user ROTATES the camera (left-drag, `orbitBy`, arrow keys) — not on
    * pan/zoom, and never in plan (2D) mode, where rotate inputs pan. */
   onRotate: (() => void) | null = null;
+  /**
+   * Fired when the USER moves the camera — drag, wheel, keys, and the steps, presets and focus
+   * the page's buttons ask for — never for `frame` (the opening view) nor a mode change (#72).
+   */
+  onUserMove: (() => void) | null = null;
 
   private readonly target = new Vector3(0, 4, 0);
   private readonly state: OrbitState = { theta: Math.PI / 4, phi: 0.9, radius: 300 };
@@ -95,6 +100,7 @@ export class OrbitController {
 
   /** Frame a focus pose (used by "fly to machine", a saved viewpoint): the camera glides there. */
   setFocus(pos: [number, number, number], target: [number, number, number]): void {
+    this.onUserMove?.();
     this.target.set(...target);
     const dx = pos[0] - target[0];
     const dy = pos[1] - target[1];
@@ -130,13 +136,15 @@ export class OrbitController {
    * Glide to an orbit pose (the opening view of an atelier, #70): azimuth, polar angle, target and
    * radius as computed by fleet-core `frameOpeningView`.
    */
-  frame(pose: { theta: number; phi: number; target: [number, number, number]; radius: number }): void {
+  frame(pose: { theta: number; phi: number; target: [number, number, number]; radius: number }, { immediate = false } = {}): void {
     this.state.theta = pose.theta;
     this.state.phi = pose.phi;
     this.state.radius = pose.radius;
     this.target.set(...pose.target);
     this.clamp();
-    this.glideTo(GLIDE_VIEW);
+    // Immediate (a resize, #72): placed at once — a glide in progress ends on the new framing.
+    if (immediate) this.apply();
+    else this.glideTo(GLIDE_VIEW);
   }
 
   /** Current camera pose (position + target) for saving a viewpoint. */
@@ -149,6 +157,7 @@ export class OrbitController {
 
   /** Rotate the camera (azimuth / polar deltas in radians). */
   orbitBy(dTheta: number, dPhi: number): void {
+    this.onUserMove?.();
     if (this.planLock) {
       // In the plan a pad arrow moves the view that way (left arrow: see further left).
       this.panBy(-dTheta * PLAN_PAN_PX, -dPhi * PLAN_PAN_PX);
@@ -163,6 +172,7 @@ export class OrbitController {
 
   /** Zoom by a multiplicative factor (<1 closer, >1 farther). */
   zoomBy(factor: number): void {
+    this.onUserMove?.();
     this.state.radius *= factor;
     this.clamp();
     this.glideTo(GLIDE_STEP);
@@ -170,12 +180,14 @@ export class OrbitController {
 
   /** Pan the target by screen-space deltas (pixels). */
   panBy(dx: number, dy: number): void {
+    this.onUserMove?.();
     this.pan(dx, dy);
     this.glideTo(GLIDE_STEP);
   }
 
   /** Snap to a preset orientation, keeping the current target/radius. */
   setView(preset: 'top' | 'front' | 'side' | 'iso'): void {
+    this.onUserMove?.();
     switch (preset) {
       case 'top': {
         this.state.theta = Math.PI / 2;
@@ -238,6 +250,7 @@ export class OrbitController {
     const dy = e.clientY - this.lastY;
     this.lastX = e.clientX;
     this.lastY = e.clientY;
+    if (dx !== 0 || dy !== 0) this.onUserMove?.();
     if (this.dragButton === 0 && !this.planLock) {
       this.state.theta -= dx * ORBIT_SPEED;
       this.state.phi -= dy * ORBIT_SPEED;
@@ -258,6 +271,7 @@ export class OrbitController {
   private handleWheel(e: WheelEvent): void {
     e.preventDefault();
     this.takeOver();
+    this.onUserMove?.();
     this.state.radius *= 1 + e.deltaY * ZOOM_STEP;
     this.clamp();
     this.apply();

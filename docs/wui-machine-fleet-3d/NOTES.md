@@ -128,7 +128,11 @@ DP and type provisioning/CRUD via the backend's **PARA REST API** (see Backend),
   pure (`wui-fleet-core/opening-view.ts` `frameOpeningView`, unit-tested: every corner of the box
   in view, the projected box centred and filling `1 / (1 + margin)`); `SceneController.frameOpening`
   applies it through `OrbitController.frame` / `setPlanLock(on, angle)`.
-  Not done: framing again when the view is resized before the user moves the camera.
+  **Resize** (#72): while the user has not moved the camera since the opening view was framed,
+  a resize of the view frames it again for the new aspect (once per frame, placed at once — a
+  glide in progress ends on the new framing). `OrbitController.onUserMove` (drag, wheel, keys,
+  steps, presets, focus — never `frame` nor a mode change) clears it (`scene/opening-reframe.ts`);
+  a viewpoint is a pose and is never framed again.
 - **Symbols** (#67): what an atelier places is called a *symbol* in its configuration (drawer,
   symbol dialog, wizard); the real equipment stays a *machine* (dashboard, states, stops, KPIs).
   Code identifiers (`MachineDef`, `machines`) and stored ateliers are unchanged. One "Ajouter un

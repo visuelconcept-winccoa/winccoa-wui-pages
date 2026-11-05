@@ -266,6 +266,11 @@ export class SceneController {
   }
 
   /** Notified when the user rotates the camera (left-drag or nav arrows). */
+  /** Notified when the user moves the camera in any way (#72) — not for the opening framing. */
+  setOnUserMove(cb: () => void): void {
+    this.orbit.onUserMove = cb;
+  }
+
   setOnRotate(cb: () => void): void {
     this.orbit.onRotate = cb;
   }
@@ -296,12 +301,12 @@ export class SceneController {
    * the camera mode first (3D for `tilted`, 2D otherwise). In `tilted-ortho` the 2D mode stays
    * locked at the tilt: zoom and pan only, as the plan (#57).
    */
-  frameOpening(view: OpeningViewSetting, front: FrontSide): void {
+  frameOpening(view: OpeningViewSetting, front: FrontSide, { immediate = false } = {}): void {
     const box = symbolsBox(this.machines) ?? floorBox(this.cfg);
     const pose = frameOpeningView(box, view, front, this.camera.fov, this.camera.aspect);
     if (view.mode === 'tilted-ortho') this.orbit.setPlanLock(true, { theta: pose.theta, phi: pose.phi });
     else if (view.mode === 'plan') this.orbit.setPlanLock(this.cameraMode === '2d', { theta: pose.theta, phi: pose.phi });
-    this.orbit.frame(pose);
+    this.orbit.frame(pose, { immediate });
   }
 
   /** The symbols as the opening-view preview draws them: footprints, heights, "à placer", hidden. */
