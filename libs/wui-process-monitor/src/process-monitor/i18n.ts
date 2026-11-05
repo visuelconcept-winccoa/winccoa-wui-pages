@@ -71,7 +71,12 @@ export const MSG = {
       'Le manager est en cours : l’arrêter avant la suppression demande le rôle « Piloter les managers »',
       'Der Manager läuft: ihn vor dem Löschen zu stoppen erfordert die Rolle „Manager steuern"'
     ),
-    edit: ml('Edit configuration', 'Modifier la configuration', 'Konfiguration bearbeiten')
+    edit: ml('Edit configuration', 'Modifier la configuration', 'Konfiguration bearbeiten'),
+    selfRestart: ml(
+      'The processMonitor agent of this host is restarting itself: its list comes back in a few seconds.',
+      'L’agent processMonitor de cet hôte redémarre lui-même : sa liste revient dans quelques secondes.',
+      'Der processMonitor-Agent dieses Hosts startet sich selbst neu: seine Liste ist in wenigen Sekunden wieder da.'
+    )
   },
   instances: {
     title: ml('Instances', 'Instances', 'Instanzen'),
@@ -119,6 +124,8 @@ export const MSG = {
     save: ml('Save', 'Enregistrer', 'Speichern'),
     delete: ml('Delete manager', 'Supprimer le manager', 'Manager löschen'),
     fName: ml('Manager (without .exe)', 'Manager (sans .exe)', 'Manager (ohne .exe)'),
+    typeOther: ml('Other… (type the executable)', 'Autre… (saisir l’exécutable)', 'Andere… (ausführbare Datei eingeben)'),
+    typeInUse: ml('on this host', 'sur cet hôte', 'auf diesem Host'),
     fStartMode: ml('Start mode', 'Mode de démarrage', 'Startmodus'),
     modeAlways: ml('always — auto-start & restart', 'always — démarrage/redémarrage auto', 'always — Auto-Start & Neustart'),
     modeOnce: ml('once — at project start only', 'once — au démarrage du projet uniquement', 'once — nur beim Projektstart'),

@@ -10,10 +10,10 @@
 // base64 chunks in the request body.
 // -----------------------------------------------------------------------------
 
-import { Router, json } from 'ultimate-express';
+import { NextFunction, Request, Response, Router, json } from 'ultimate-express';
 
-import { requireRole } from './appSecurityGuard';
-import { ProcessMonitorController, whenBodyFlag } from './processMonitorController';
+import { identityOf, requireRole } from './appSecurityGuard';
+import { ProcessMonitorController, actorOf, whenBodyFlag } from './processMonitorController';
 
 /**
  * Route definitions for the Process Monitor API.
@@ -43,6 +43,9 @@ import { ProcessMonitorController, whenBodyFlag } from './processMonitorControll
  *   POST /logs/read   { node, files[], fromOffset?, maxLines?, mergeBak? }
  *                                          -> { ok, host, files: [{name, text, offset, size, truncated, reset, bak?}] }
  *   POST /logs/export { node, files[], mergeBak? } -> the whole files (role logs-read)
+ *   POST /logs/exported { host, files[], kind, format?, mergeBak? } -> { ok }  (an export, traced; role logs-read)
+ *   GET  /history                          -> { ok, entries }  (History tab, newest first)
+ * Every write carries who asks (`actorOf`): the manager traces it — audit line + History entry.
  */
 export class ProcessMonitorRoute {
   static routes(): Router {
@@ -50,6 +53,12 @@ export class ProcessMonitorRoute {
     const controller = new ProcessMonitorController();
 
     router.use(json({ limit: '64mb' }));
+    // Who asks, for the trace the manager writes of every operation (issue 53).
+    router.use(async (req: Request, _res: Response, next: NextFunction) => {
+      const who = await identityOf(req).catch(() => ({ username: '', userId: -1 }));
+      (req as Request & { wuiActor?: unknown }).wuiActor = actorOf(req, who);
+      next();
+    });
 
     // Application Security: manager control and project deploy are role-gated
     // (open until the admin assigns groups — see appSecurityGuard).
@@ -86,6 +95,8 @@ export class ProcessMonitorRoute {
     router.get('/logs', requireRole(MODULE_ID, 'logs-read'), controller.logs);
     router.post('/logs/read', requireRole(MODULE_ID, 'logs-read'), controller.logsRead);
     router.post('/logs/export', requireRole(MODULE_ID, 'logs-read'), controller.logsExport);
+    router.post('/logs/exported', requireRole(MODULE_ID, 'logs-read'), controller.logsExported);
+    router.get('/history', controller.history);
 
     return router;
   }

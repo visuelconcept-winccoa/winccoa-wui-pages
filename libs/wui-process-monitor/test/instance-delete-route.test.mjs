@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+
 import { instanceDeleteTarget } from '../backend/processMonitorController.ts';
 
 const read = (rel) => fs.readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
@@ -28,5 +29,18 @@ describe('POST /instance/delete', () => {
     for (const body of [undefined, null, {}, { node: '' }, { node: 'all' }, { node: 'ALL' }, { node: 42 }, { node: 'PC2' }]) {
       expect(instanceDeleteTarget(body)).toBeNull();
     }
+  });
+});
+
+describe('who asks (issue 53)', () => {
+  it('forwards the session user first, the host the page was served from, and the user the page declares', async () => {
+    const { actorOf } = await import('../backend/processMonitorController.ts');
+    expect(actorOf({ headers: { host: 'scada.local:8443' }, body: { clientUser: { name: 'page', id: 9 } } }, { username: 'srv', userId: 7 })).toEqual({
+      username: 'srv',
+      userId: 7,
+      host: 'scada.local',
+      clientUser: { name: 'page', id: 9 }
+    });
+    expect(actorOf({ headers: {}, body: {} }, { username: '', userId: -1 })).toEqual({ username: '', userId: -1, host: '' });
   });
 });

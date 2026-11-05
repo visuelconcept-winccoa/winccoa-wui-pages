@@ -124,7 +124,42 @@ function errorText(error: unknown): string {
 }
 
 /** In-flight chunked uploads: id -> temp ZIP path. */
-const uploads = new Map<string, { tmpPath: string }>();
+const uploads = new Map<string, { tmpPath: string; fileName: string }>();
+
+/** Who asks, as the manager traces it (issue 53). */
+export interface Actor {
+  username: string;
+  userId: number;
+  host: string;
+  clientUser?: { name: string; id: number };
+}
+
+/**
+ * Who asks, forwarded with every write: the manager writes the audit line and the History
+ * entry (issue 53). `who`: the webserver session's identity (appSecurityGuard `identityOf`,
+ * resolved by the route's `the identity middleware`) — '' when the webserver has no HTTP authentication
+ * (the WebUI authenticates on its websocket); the manager then takes `clientUser`, the user
+ * the page declares. `host`: the host the page was served from (as the page used to record
+ * `location.hostname`).
+ */
+export function actorOf(req: Request, who: { username: string; userId: number }): Actor {
+  const body = (req.body ?? {}) as { clientUser?: { name?: unknown; id?: unknown } };
+  const declared = body.clientUser;
+  const hostHeader = String(req.headers?.host ?? '');
+  return {
+    username: who.username,
+    userId: who.userId,
+    host: hostHeader.replace(/:\d+$/, ''),
+    ...(declared && typeof declared.name === 'string'
+      ? { clientUser: { name: declared.name, id: typeof declared.id === 'number' ? declared.id : 0 } }
+      : {})
+  };
+}
+
+/** The actor the route's `the identity middleware` attached to the request (none: an unknown caller). */
+function actor(req: Request): Actor {
+  return (req as Request & { wuiActor?: Actor }).wuiActor ?? actorOf(req, { username: '', userId: -1 });
+}
 
 /**
  * Resolve `<project>/temp` (created on demand) for assembling uploaded ZIPs.
@@ -249,17 +284,22 @@ export class ProcessMonitorController {
 
   /** POST /manager { action: start|stop|restart, index, node? } — node = target node DP */
   public manager = async (req: Request, res: Response): Promise<void> => {
-    const { action, index, node, systemName } = (req.body ?? {}) as {
+    const { action, index, node, systemName, name } = (req.body ?? {}) as {
       action?: string;
       index?: number;
       node?: string;
       systemName?: string;
+      name?: unknown;
     };
     if (!['start', 'stop', 'restart'].includes(String(action)) || typeof index !== 'number') {
       res.status(400).json({ ok: false, error: 'action (start|stop|restart) + index (number) requis' });
       return;
     }
-    await this.call('ControlManager', { action, index, node: node ?? systemName ?? '' }, res);
+    await this.call(
+      'ControlManager',
+      { action, index, node: node ?? systemName ?? '', ...(typeof name === 'string' ? { name } : {}), actor: actor(req) },
+      res
+    );
   };
 
   /** POST /manager/add { name, startMode?, options?, secKill?, restartCount?, resetMin?, index?, node? } */
@@ -284,7 +324,8 @@ export class ProcessMonitorController {
       {
         node: node ?? systemName ?? '',
         index: typeof index === 'number' ? index : -1,
-        manager: { name, startMode, options, secKill, restartCount, resetMin }
+        manager: { name, startMode, options, secKill, restartCount, resetMin },
+        actor: actor(req)
       },
       res
     );
@@ -296,12 +337,13 @@ export class ProcessMonitorController {
    * route also requires the `control` role for it. `name` must still be the entry at `index`.
    */
   public managerRemove = async (req: Request, res: Response): Promise<void> => {
-    const { index, node, systemName, name, stopFirst } = (req.body ?? {}) as {
+    const { index, node, systemName, name, stopFirst, options } = (req.body ?? {}) as {
       index?: number;
       node?: string;
       systemName?: string;
       name?: unknown;
       stopFirst?: unknown;
+      options?: unknown;
     };
     if (typeof index !== 'number' || !Number.isInteger(index) || index < 1) {
       res.status(400).json({ ok: false, error: 'index (number ≥ 1) requis — 0 est pmon' });
@@ -309,7 +351,14 @@ export class ProcessMonitorController {
     }
     await this.call(
       'RemoveManager',
-      { node: node ?? systemName ?? '', index, ...(typeof name === 'string' && name ? { name } : {}), ...(stopFirst === true ? { stopFirst: true } : {}) },
+      {
+        node: node ?? systemName ?? '',
+        index,
+        ...(typeof name === 'string' && name ? { name } : {}),
+        ...(stopFirst === true ? { stopFirst: true } : {}),
+        ...(typeof options === 'string' ? { options } : {}),
+        actor: actor(req)
+      },
       res
     );
   };
@@ -325,13 +374,13 @@ export class ProcessMonitorController {
       res.status(400).json({ ok: false, error: parsed.error });
       return;
     }
-    await this.call('UpdateManager', parsed, res);
+    await this.call('UpdateManager', { ...parsed, actor: actor(req) }, res);
   };
 
   /** POST /restart { node? } -> restart all managers of one node (computer), or local */
   public restartAll = async (req: Request, res: Response): Promise<void> => {
     const { node, systemName } = (req.body ?? {}) as { node?: string; systemName?: string };
-    await this.call('RestartAll', { node: node ?? systemName ?? '' }, res);
+    await this.call('RestartAll', { node: node ?? systemName ?? '', actor: actor(req) }, res);
   };
 
   /**
@@ -345,7 +394,30 @@ export class ProcessMonitorController {
       res.status(400).json({ ok: false, error: 'node (instance DP) required' });
       return;
     }
-    await this.call('DeleteInstance', { node }, res);
+    await this.call('DeleteInstance', { node, actor: actor(req) }, res);
+  };
+
+  /** GET /history -> { ok, entries } — the History tab, newest first (written by the manager). */
+  public history = async (_req: Request, res: Response): Promise<void> => {
+    await this.call('History', {}, res);
+  };
+
+  /**
+   * POST /logs/exported { host, files[], kind: 'raw'|'displayed', format?, mergeBak? } -> { ok }
+   * An export the page made from what it read (role `logs-read`): traced by the manager.
+   */
+  public logsExported = async (req: Request, res: Response): Promise<void> => {
+    const { host, files, kind, format, mergeBak } = (req.body ?? {}) as Record<string, unknown>;
+    const names = Array.isArray(files) ? files.filter((f): f is string => typeof f === 'string' && f !== '') : [];
+    if (names.length === 0) {
+      res.status(400).json({ ok: false, error: 'files required' });
+      return;
+    }
+    await this.call(
+      'LogsExported',
+      { host: typeof host === 'string' ? host : '', files: names, kind: kind === 'raw' ? 'raw' : 'displayed', format: typeof format === 'string' ? format : '', mergeBak: mergeBak === true, actor: actor(req) },
+      res
+    );
   };
 
   /** GET /logs?node= -> { ok, host, files } — the log files of one node (`<project>/log`). */
@@ -401,7 +473,7 @@ export class ProcessMonitorController {
     try {
       const tmpPath = path.join(projectTempDir(), `process-monitor-${uploadId}.zip`);
       fs.writeFileSync(tmpPath, Buffer.alloc(0)); // truncate/create
-      uploads.set(uploadId, { tmpPath });
+      uploads.set(uploadId, { tmpPath, fileName: path.basename(fileName) });
       res.status(200).json({ ok: true, uploadId });
     } catch (error) {
       res.status(500).json({ ok: false, error: (error as Error).message });
@@ -448,6 +520,8 @@ export class ProcessMonitorController {
     uploads.delete(uploadId);
     const payload = {
       zipPath: up.tmpPath,
+      fileName: up.fileName,
+      actor: actor(req),
       clearFolders: Array.isArray(clearFolders) ? clearFolders : [],
       restart: restart === true,
       target: target || 'all'
