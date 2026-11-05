@@ -32,6 +32,8 @@ import './mf-ai-prompt.js';
 import './mf-atelier-create-dialog.js';
 import './mf-filter-bar.js';
 import './mf-graphics-catalog.js';
+import './mf-module-settings-dialog.js';
+import { parseModuleSettings, type FleetModuleSettings } from '@visuelconcept-winccoa/wui-fleet-core/opening-view.js';
 
 /** Minimap rendered height (px) — must match the `.minimap { height }` CSS. */
 const MINIMAP_HEIGHT_PX = 110;
@@ -49,11 +51,16 @@ export class MfAtelierOverview extends LitElement {
   @property({ type: Boolean }) canEdit = true;
   /** Application-Security 'ai' grant — gates the AI-assistant affordance. */
   @property({ type: Boolean }) roleAi = true;
+  /** The module settings (#70) and the grant to change them (canPublish && role 'configure'). */
+  @property({ attribute: false }) moduleSettings: FleetModuleSettings = parseModuleSettings('');
+  @property({ type: Boolean }) canConfigure = false;
 
   @state() private createOpen = false;
   @state() private createTemplate = '';
   @state() private createDefaultName = '';
   @state() private resourcesOpen = false;
+  @state() private settingsOpen = false;
+  @state() private settingsError = false;
   /** Remembered machine filter (the user's settings, shared with the atelier views). */
   @state() private filter: FleetFilter = loadFleetFilter();
   private settingsSub: Subscription | null = null;
@@ -85,6 +92,9 @@ export class MfAtelierOverview extends LitElement {
         <ix-button variant="secondary" @click=${this.analyzeKpi}>
           <ix-icon name="barchart" slot="icon"></ix-icon>${localizeDir(MSG.overview.kpiAnalysis)}
         </ix-button>
+        <ix-button variant="secondary" @click=${() => ((this.settingsOpen = true), (this.settingsError = false))}>
+          <ix-icon name="cogwheel" slot="icon"></ix-icon>${localizeDir(MSG.opening.moduleButton)}
+        </ix-button>
         ${this.canEdit
           ? html`<ix-button @click=${this.create}>
               <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.overview.newEllipsis)}
@@ -109,6 +119,16 @@ export class MfAtelierOverview extends LitElement {
             @wui:cancel=${() => (this.createOpen = false)}
           ></mf-atelier-create-dialog>`
         : ''}
+      ${this.settingsOpen
+        ? html`<mf-module-settings-dialog
+            .settings=${this.moduleSettings}
+            .ateliers=${this.ateliers}
+            .canConfigure=${this.canConfigure}
+            .error=${this.settingsError}
+            @wui:apply=${(e: CustomEvent<{ settings: FleetModuleSettings }>) => void this.saveModuleSettings(e.detail.settings)}
+            @wui:close=${() => (this.settingsOpen = false)}
+          ></mf-module-settings-dialog>`
+        : ''}
       ${this.resourcesOpen
         ? html`<mf-graphics-catalog
             .store=${this.store}
@@ -117,6 +137,17 @@ export class MfAtelierOverview extends LitElement {
           ></mf-graphics-catalog>`
         : ''}
     `;
+  }
+
+  /** Save the module settings (#70) — /api/fleet checks the role `configure` again. */
+  private async saveModuleSettings(settings: FleetModuleSettings): Promise<void> {
+    const ok = (await this.store?.saveModuleSettings(settings)) ?? false;
+    if (!ok) {
+      this.settingsError = true;
+      return;
+    }
+    this.settingsOpen = false;
+    this.dispatchEvent(new CustomEvent('wui:module-settings', { detail: { settings }, bubbles: true, composed: true }));
   }
 
   private renderEmpty(): TemplateResult {

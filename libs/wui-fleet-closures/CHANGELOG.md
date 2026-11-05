@@ -3,6 +3,11 @@
 
 # Changelog — @visuelconcept-winccoa/wui-fleet-closures
 
+## 0.2.1 — 2026-11-05
+
+- `/api/fleet`: the module settings of machine-fleet-3d (`MachineFleet3D_Settings`, its type and
+  DP) need the role **`machine-fleet-3d/configure`** (#70).
+
 ## 0.2.0 — 2026-11-04 (SDS 2.2)
 
 **Upgrade.** The module now has a **backend**, `/api/fleet`: `wui build` deploys it, restart

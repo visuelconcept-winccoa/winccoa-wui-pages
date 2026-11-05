@@ -60,6 +60,10 @@ import { Subscription } from 'rxjs';
 import { hasRole$ } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import { fetchAtelier, type AtelierPayload } from './machine-fleet-3d/data/fleet-api.js';
 import { FleetStore } from './machine-fleet-3d/data/fleet-store.js';
+import { parseModuleSettings, type FleetModuleSettings } from '@visuelconcept-winccoa/wui-fleet-core/opening-view.js';
+
+/** How long an embedded view waits for the module settings before opening on the defaults. */
+const SETTINGS_WAIT_MS = 1500;
 import { MSG, localizeDir } from './machine-fleet-3d/i18n.js';
 import './machine-fleet-3d/ui/mf-atelier-view.js';
 
@@ -98,6 +102,8 @@ export class WuiFleet3dView extends LitElement {
   @state() private data: AtelierPayload | null = null;
   @state() private message = '';
   @state() private isFullscreen = false;
+  /** The module settings (#70: the default opening view), read before the view is shown. */
+  @state() private moduleSettings: FleetModuleSettings = parseModuleSettings('');
 
   /** Resolves `dp:` graphics references (GLB / billboard) with a read-only dpGet. */
   private store: FleetStore | null = null;
@@ -147,6 +153,7 @@ export class WuiFleet3dView extends LitElement {
         .atelier=${data.atelier}
         .stopCauseCatalog=${data.stopCauses}
         .store=${this.store}
+        .moduleSettings=${this.moduleSettings}
         .canEdit=${false}
         .roleAi=${false}
         @wui:fullscreen=${this.toggleFullscreen}
@@ -216,6 +223,13 @@ export class WuiFleet3dView extends LitElement {
       return;
     }
     this.store ??= new FleetStore();
+    // The default opening view (#70): waited for a short while, the module's default otherwise.
+    const settings = await Promise.race([
+      this.store.readModuleSettings().catch(() => null),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), SETTINGS_WAIT_MS))
+    ]);
+    if (gen !== this.generation) return;
+    if (settings) this.moduleSettings = settings;
     this.data = out.body;
     this.state = 'ready';
   }

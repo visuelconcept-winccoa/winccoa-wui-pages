@@ -117,6 +117,13 @@ import {
 } from '@visuelconcept-winccoa/wui-fleet-core/filters.js';
 import './mf-ai-prompt.js';
 import './mf-building-dialog.js';
+import './mf-opening-dialog.js';
+import {
+  parseModuleSettings,
+  resolveOpeningView,
+  type AtelierOpening,
+  type FleetModuleSettings
+} from '@visuelconcept-winccoa/wui-fleet-core/opening-view.js';
 import './mf-config-panel.js';
 import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
 import './mf-graphics-catalog.js';
@@ -208,6 +215,8 @@ export class MfAtelierView extends LitElement {
   @property({ type: Boolean }) fullscreenActive = false;
   /** Display only: the stop-cause catalog, given by the host (null = read through the store). */
   @property({ attribute: false }) stopCauseCatalog: StopCause[] | null = null;
+  /** The module settings (#70): the default opening view of every atelier. */
+  @property({ attribute: false }) moduleSettings: FleetModuleSettings = parseModuleSettings('');
 
   @query('canvas') private canvasEl!: HTMLCanvasElement;
   @query('.overlay-layer') private overlayEl!: HTMLElement;
@@ -241,6 +250,8 @@ export class MfAtelierView extends LitElement {
   @state() private wizardOpen = false;
   @state() private otherSymbols: OtherSymbol[] = [];
   @state() private buildingOpen = false;
+  /** The atelier's opening view dialog (#70). */
+  @state() private openingOpen = false;
   @state() private mappingOpen = false;
   @state() private atelierName = '';
   @state() private renaming = false;
@@ -542,6 +553,7 @@ export class MfAtelierView extends LitElement {
         <ix-icon-button icon="screenshot" ghost title=${localize(MSG.view.viewpoints)} variant=${this.viewpointsOpen ? 'primary' : 'secondary'} @click=${() => (this.viewpointsOpen = !this.viewpointsOpen)}></ix-icon-button>
         <ix-icon-button icon="box-open" ghost title=${localize(MSG.view.graphicsCatalogGlb)} @click=${() => (this.resourcesOpen = true)}></ix-icon-button>
         <ix-icon-button icon="building1" ghost title=${localize(MSG.view.configureBuilding)} @click=${() => (this.buildingOpen = true)}></ix-icon-button>
+        <ix-icon-button icon="home" ghost title=${localize(MSG.opening.atelierButton)} @click=${() => (this.openingOpen = true)}></ix-icon-button>
         <ix-icon-button icon="configuration" ghost title=${localize(MSG.view.stateMappings)} @click=${() => (this.mappingOpen = true)}></ix-icon-button>
         ${this.editable
           ? html`<ix-icon-button icon="upload" ghost title=${localize(MSG.view.importAtelier)} @click=${this.triggerImport}></ix-icon-button>`
@@ -611,8 +623,11 @@ export class MfAtelierView extends LitElement {
   /** 2D/3D toggle button: 2D ⇒ plan (top) view; 3D ⇒ default viewpoint / home. */
   private setCameraMode(mode: '2d' | '3d'): void {
     this.switchCamera(mode);
-    if (mode === '2d') this.scene?.setView('top');
-    else this.goHome();
+    if (mode === '2d') {
+      // The plan straight down, also out of a 2D locked at a tilt (opening view C, #70).
+      this.scene?.setCameraMode('2d');
+      this.scene?.setView('top');
+    } else this.goHome(true);
   }
 
   /** User rotated the camera — only possible in 3D (in 2D rotate inputs pan, #57). */
@@ -950,6 +965,16 @@ export class MfAtelierView extends LitElement {
             @wui:apply=${(e: CustomEvent<{ building: BuildingConfig }>) => this.onBuilding(e.detail.building)}
             @wui:close=${() => (this.buildingOpen = false)}
           ></mf-building-dialog>`
+        : ''}
+      ${this.openingOpen
+        ? html`<mf-opening-dialog
+            .opening=${this.atelier.opening ?? {}}
+            .moduleView=${this.moduleSettings.openingView}
+            .preview=${{ name: this.atelierName || this.atelier.name, length: this.building.length, width: this.building.width, symbols: this.scene?.previewSymbols() ?? [] }}
+            .canEdit=${this.editable}
+            @wui:apply=${(e: CustomEvent<{ opening: AtelierOpening }>) => this.onOpening(e.detail.opening)}
+            @wui:close=${() => (this.openingOpen = false)}
+          ></mf-opening-dialog>`
         : ''}
       ${this.wizardOpen
         ? html`<mf-symbol-wizard
@@ -1520,17 +1545,44 @@ export class MfAtelierView extends LitElement {
       : undefined;
   }
 
-  /** Apply the default viewpoint, if any, when the view first loads. */
+  /** When the view first loads: the default viewpoint, else the opening view (#70). */
   private applyDefaultViewpoint(): void {
-    const vp = this.defaultViewpoint();
-    if (vp) this.applyViewpoint(vp);
+    this.goHome();
   }
 
-  /** Home button: jump to the default viewpoint if defined, else reset the camera. */
-  private goHome(): void {
+  /**
+   * Home button (and load): the user's default viewpoint, else the atelier's public one, else the
+   * opening view — the atelier's own, else the module's — framed on the placed symbols (#70).
+   * `want3d` (the 3D toggle): an opening view without perspective opens with perspective instead.
+   */
+  private goHome(want3d = false): void {
     const vp = this.defaultViewpoint();
-    if (vp) this.applyViewpoint(vp);
-    else this.scene?.resetView();
+    const mine = this.myViews.defaultViewpointId;
+    const opening = resolveOpeningView({
+      userViewpoint: Boolean(vp && mine && vp.id === mine),
+      publicViewpoint: Boolean(vp),
+      atelier: this.atelier.opening,
+      module: this.moduleSettings
+    });
+    if (vp || !opening.view) {
+      if (vp) this.applyViewpoint(vp);
+      return;
+    }
+    let view = opening.view;
+    if (want3d && view.mode !== 'tilted') view = { ...view, mode: 'tilted' };
+    this.switchCamera(view.mode === 'tilted' ? '3d' : '2d');
+    this.scene?.frameOpening(view, opening.front);
+  }
+
+  /** The atelier's opening view changed (#70): stored with the atelier, shown at once. */
+  private onOpening(opening: AtelierOpening): void {
+    this.openingOpen = false;
+    const next: Atelier = { ...this.atelier };
+    if (opening.front !== undefined || opening.view) next.opening = opening;
+    else delete next.opening;
+    this.atelier = next;
+    this.scheduleSave();
+    if (!this.defaultViewpoint()) this.goHome();
   }
 
   /** Toggle a viewpoint as the scope's one applied on load. */

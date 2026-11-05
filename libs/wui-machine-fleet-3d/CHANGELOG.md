@@ -3,6 +3,26 @@
 
 # Changelog — @visuelconcept-winccoa/wui-machine-fleet-3d
 
+## 0.5.0 — 2026-11-05
+
+**Upgrade.** New role **`configure`** (module settings, common to every atelier) — open until an
+admin assigns groups in `/app-security`. Needs fleet-core 0.2.1 and fleet-closures 0.2.1 (the
+server-side rule of the module settings).
+
+- **Opening view of an atelier** (#70): an atelier opened without a default viewpoint is framed on
+  its placed symbols ("à placer" and hidden ones excluded; the floor when there is none), in one of
+  three modes — **A** plan (2D), **B** tilted plan in perspective (3D), **C** tilted plan without
+  perspective (2D locked at the tilt: zoom and pan only). Tilt towards the back 5–60°, margin
+  0–40 %, the building's front side (where the camera stands).
+- **"Paramètres du module"** in the overview: the default opening view of every atelier (DP
+  `MachineFleet3D_Settings`, role `configure`), with the three choices rendered live, a preview
+  whose tilt is set by dragging, tried on the site's ateliers and on example layouts.
+- **"Vue d'ouverture"** in an atelier's toolbar: its front side, and the module's view or a view
+  of its own (`Atelier.opening`, role `edit`).
+- Opening order (load and "Default view" button): the user's default viewpoint, the atelier's
+  public one, the atelier's opening view, the module's. The 3D toggle opens a plan or C setting
+  in perspective; the 2D toggle stays the plan straight down.
+
 ## 0.4.0 — 2026-11-04 (SDS 2.2)
 
 **Upgrade.** Requires **fleet-closures** (`/api/fleet`, the Fleet's writes checked on the

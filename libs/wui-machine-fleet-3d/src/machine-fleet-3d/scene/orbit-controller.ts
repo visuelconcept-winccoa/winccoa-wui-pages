@@ -72,6 +72,9 @@ export class OrbitController {
 
   /** Plan (2D) mode: the angle is locked straight down; rotate inputs pan instead (#57). */
   private planLock = false;
+  /** The angle the 2D mode is locked at: straight down, or tilted (opening view C, #70). */
+  private planTheta = PLAN_THETA;
+  private planPhi = PLAN_PHI;
   private dragButton = -1;
   private lastX = 0;
   private lastY = 0;
@@ -114,9 +117,24 @@ export class OrbitController {
    * Plan (2D) mode: the camera looks straight down and stays so — wheel, drag, pad arrows and
    * keys zoom and pan in the plan, never tilt or rotate it (#57).
    */
-  setPlanLock(on: boolean): void {
+  setPlanLock(on: boolean, angle?: { theta: number; phi: number }): void {
     this.planLock = on;
+    this.planTheta = angle?.theta ?? PLAN_THETA;
+    this.planPhi = angle?.phi ?? PLAN_PHI;
     if (!on) return;
+    this.clamp();
+    this.glideTo(GLIDE_VIEW);
+  }
+
+  /**
+   * Glide to an orbit pose (the opening view of an atelier, #70): azimuth, polar angle, target and
+   * radius as computed by fleet-core `frameOpeningView`.
+   */
+  frame(pose: { theta: number; phi: number; target: [number, number, number]; radius: number }): void {
+    this.state.theta = pose.theta;
+    this.state.phi = pose.phi;
+    this.state.radius = pose.radius;
+    this.target.set(...pose.target);
     this.clamp();
     this.glideTo(GLIDE_VIEW);
   }
@@ -256,8 +274,8 @@ export class OrbitController {
 
   private clamp(): void {
     if (this.planLock) {
-      this.state.theta = PLAN_THETA;
-      this.state.phi = PLAN_PHI;
+      this.state.theta = this.planTheta;
+      this.state.phi = this.planPhi;
     }
     this.state.phi = Math.min(MAX_PHI, Math.max(MIN_PHI, this.state.phi));
     this.state.radius = Math.min(MAX_RADIUS, Math.max(MIN_RADIUS, this.state.radius));

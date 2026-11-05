@@ -20,10 +20,13 @@ export interface FleetRole {
 export const FLEET_PREFIX = 'MachineFleet3D';
 /** The non-worked periods datapoint (and its type). */
 export const CLOSURES_DP = 'MachineFleet3D_Closures';
+/** The module settings datapoint (and its type): settings of every atelier (#70). */
+export const SETTINGS_DP = 'MachineFleet3D_Settings';
 
 const EDIT_FLEET: FleetRole = { module: 'machine-fleet-3d', role: 'edit' };
 const EDIT_CLOSURES: FleetRole = { module: 'fleet-closures', role: 'edit' };
 const EDIT_MACHINE_CLOSURES: FleetRole = { module: 'fleet-closures', role: 'edit-machine' };
+const CONFIGURE_FLEET: FleetRole = { module: 'machine-fleet-3d', role: 'configure' };
 
 /** A DPE without its system name ("System1:Dp.el" → "Dp.el"); a config (":_…") is not a system. */
 function withoutSystem(dpe: string): string {
@@ -56,18 +59,21 @@ export function rolesForSet(dpe: string): FleetRole[] {
   if (config) return config === '_archive' ? [EDIT_FLEET] : [];
   if (!isFleet(dp)) return [];
   if (dp === CLOSURES_DP) return [EDIT_CLOSURES, EDIT_MACHINE_CLOSURES];
+  if (dp === SETTINGS_DP) return [CONFIGURE_FLEET];
   return [EDIT_FLEET];
 }
 
 /** Roles of which ANY grants creating (or deleting) the datapoint `dp` of type `type`. */
 export function rolesForDp(dp: string, type?: string): FleetRole[] {
   if (!isFleet(dp) || (type !== undefined && !isFleet(type))) return [];
+  if (dp === SETTINGS_DP) return [CONFIGURE_FLEET];
   return dp === CLOSURES_DP ? [EDIT_CLOSURES, EDIT_MACHINE_CLOSURES] : [EDIT_FLEET];
 }
 
 /** Roles of which ANY grants creating the datapoint type `type`. */
 export function rolesForType(type: string): FleetRole[] {
   if (!isFleet(type)) return [];
+  if (type === SETTINGS_DP) return [CONFIGURE_FLEET];
   return type === CLOSURES_DP ? [EDIT_CLOSURES, EDIT_MACHINE_CLOSURES] : [EDIT_FLEET];
 }
 
