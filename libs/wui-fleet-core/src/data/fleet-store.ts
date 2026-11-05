@@ -27,6 +27,7 @@ import {
   type Atelier,
   type GlbResource,
   type GraphicKind,
+  type MachineDef,
   type StopCause
 } from '../types.js';
 import { DEMO_ATELIER } from './demo-layout.js';
@@ -42,6 +43,11 @@ const STOPCAUSE_TYPE = 'MachineFleet3D_StopCauses';
 const STOPCAUSE_DP = 'MachineFleet3D_StopCauses';
 /** Shared GxP audit DP for the whole fleet feature (atelier CRUD + the KPI / stop-cause sub-pages). */
 const AUDIT_DP = 'AuditTrail_Fleet';
+/**
+ * Catalogue of the plant's machines, written by an integration (e.g. the plant's supervision) —
+ * the machines a user may add to an atelier. Read only here; absent = none.
+ */
+const CATALOG_DP = 'MachineFleet3D_Catalog';
 const CLOSURES_TYPE = 'MachineFleet3D_Closures';
 const CLOSURES_DP = 'MachineFleet3D_Closures';
 /** Side-table mapping a resource id → its library name (avoids schema change). */
@@ -54,6 +60,12 @@ const CREATE_TYPE_URL = '/api/para/dptype/create';
 const CREATE_DP_URL = '/api/para/dp/create';
 const DP_SET_URL = '/api/para/dp/set';
 const DELETE_DP_BASE = '/api/para/dp';
+/**
+ * The Fleet's guarded writes (backend of wui-fleet-closures): the same endpoints, each checked on the server
+ * against the role it needs. Used when deployed; otherwise the writes go to /api/para.
+ */
+const FLEET_API = '/api/fleet';
+const PARA_API = '/api/para';
 const ID_RADIX = 36;
 const HTTP_BAD_REQUEST = 400;
 
@@ -94,6 +106,8 @@ export class FleetStore {
   private readonly api = this.resolveApi();
   private readonly dpe = this.resolveDpe();
   private memory: Atelier[] | null = null;
+  /** Whether /api/fleet answers (asked once, on the first write). */
+  private fleetApi: Promise<boolean> | null = null;
   private typeReady = false;
   private readonly resourceReady = new Map<GraphicKind, boolean>();
   /**
@@ -325,6 +339,24 @@ export class FleetStore {
     }
   }
 
+  // --- catalogue of the plant's machines ---------------------------------------
+
+  /** The machines an integration offers to add to an atelier (`{ machines: MachineDef[] }`); [] when none. */
+  async listCatalog(): Promise<MachineDef[]> {
+    const api = this.api;
+    if (!api || this.offline) return [];
+    try {
+      const raw = await firstValueFrom(api.dpGet(`${CATALOG_DP}.json`));
+      const json = this.extractString(raw);
+      const parsed = json ? (JSON.parse(json) as { machines?: unknown }) : null;
+      return Array.isArray(parsed?.machines)
+        ? (parsed.machines as MachineDef[]).filter((m) => m && typeof m.id === 'string' && m.id !== '')
+        : [];
+    } catch {
+      return [];
+    }
+  }
+
   // --- non-worked periods (KPI opening-time closures) ------------------------
 
   /** Read the raw closures JSON blob (shape owned by the KPI page). */
@@ -501,7 +533,7 @@ export class FleetStore {
     }
     try {
       const res = await fetch(
-        CREATE_TYPE_URL,
+        await this.writeUrl(CREATE_TYPE_URL),
         jsonPost({ typeName, structure: { name: typeName, type: 'Struct', children } })
       );
       return res.ok || res.status === HTTP_BAD_REQUEST;
@@ -569,8 +601,16 @@ export class FleetStore {
     return undefined;
   }
 
+  /** A write's URL: through the Fleet's guarded writes when they are deployed, else PARA's. */
+  private async writeUrl(url: string): Promise<string> {
+    this.fleetApi ??= fetch(`${FLEET_API}/health`)
+      .then((r) => r.ok)
+      .catch(() => false);
+    return (await this.fleetApi) && url.startsWith(PARA_API) ? FLEET_API + url.slice(PARA_API.length) : url;
+  }
+
   private async send(url: string, init: RequestInit): Promise<void> {
-    const res = await fetch(url, init);
+    const res = await fetch(await this.writeUrl(url), init);
     if (!res.ok) throw new Error(`${init.method ?? 'GET'} ${url} → ${res.status}`);
   }
 

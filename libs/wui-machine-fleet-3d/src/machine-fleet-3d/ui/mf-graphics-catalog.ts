@@ -26,6 +26,7 @@ import {
   resourcesCountMsg
 } from '../i18n.js';
 import { dialogStyles } from './dialog-styles.js';
+import { overlayClicked, overlayDown } from '@visuelconcept-winccoa/wui-fleet-core/ui/overlay-dismiss.js';
 
 interface IxValueEvent {
   detail: string;
@@ -81,7 +82,7 @@ export class MfGraphicsCatalog extends LitElement {
   override render(): TemplateResult {
     const cfg = KIND_CFG[this.kind];
     return html`
-      <div class="overlay" @click=${this.close}>
+      <div class="overlay" @pointerdown=${overlayDown} @click=${(e: Event) => overlayClicked(e) && this.close()}>
         <div class="panel res" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
             <ix-typography format="h3">${localizeDir(MSG.graphicsCatalog.title)}</ix-typography>

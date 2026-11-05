@@ -7,7 +7,8 @@
  * Reached from the Machine Fleet 3D overview ("Jours non travaillés"). Manages
  * the closures (non-worked periods) that reduce a machine's opening time — the
  * denominator of the availability-TRS used by the KPI page. Closures are defined
- * per atelier (applies to all its machines) or per machine, and persisted as one
+ * globally (every machine), per atelier (applies to all its machines) or per
+ * machine, and persisted as one
  * app-level JSON datapoint via the {@link FleetStore} (shared with the KPI page,
  * which reads them for the TRS computation).
  *
@@ -16,6 +17,9 @@
  * of scope and bounds, add / delete, and JSON import / export. On import, if any
  * incoming range overlaps an existing one in the same scope, the user is asked to
  * replace, ignore (keep existing, add only non-conflicting), or cancel.
+ *
+ * Rights: `edit` manages every period; `edit-machine` only the periods of one
+ * machine (customising its schedule). Every save is traced by the store.
  *
  * Registered at `/fleet-closures` (component `wui-fleet-closures`).
  */
@@ -35,12 +39,16 @@ import {
   atelierScopeLabel,
   periodCountMsg,
   coveredReasonMsg,
+  atGlobalLevelMsg,
   atWorkshopLevelMsg,
   daysSpanMsg,
   hoursSpanMsg
 } from './i18n.js';
 import { pageStyles } from '@visuelconcept-winccoa/wui-fleet-core/styles.js';
 import { FleetStore } from '@visuelconcept-winccoa/wui-fleet-core/data/fleet-store.js';
+import '@visuelconcept-winccoa/wui-fleet-core/fleet-settings-service.js';
+import { PagePrefs } from '@visuelconcept-winccoa/wui-fleet-core/page-prefs.js';
+import { stringList } from '@visuelconcept-winccoa/wui-fleet-core/settings-cache.js';
 import type { Atelier } from '@visuelconcept-winccoa/wui-fleet-core/types.js';
 import {
   emptyClosureConfig,
@@ -51,9 +59,13 @@ import {
   type ClosureConfig,
   type ClosureRange
 } from '@visuelconcept-winccoa/wui-fleet-core/closures.js';
+import { overlayClicked, overlayDown } from '@visuelconcept-winccoa/wui-fleet-core/ui/overlay-dismiss.js';
 
 /** Application-Security module id of this page. */
 const MODULE_ID = 'fleet-closures';
+
+/** Scope key of the global schedule (every machine). */
+const GLOBAL_SCOPE = 'g:all';
 
 const DATE_FORMAT = 'yyyy-MM-dd';
 const TIME_FORMAT = 'HH:mm';
@@ -77,7 +89,7 @@ interface FlatRow {
   range: ClosureRange;
 }
 
-/** Scope option: `a:<atelierId>` (atelier-wide) or `m:<machineId>` (one machine). */
+/** Scope option: `g:all` (global), `a:<atelierId>` (atelier-wide) or `m:<machineId>` (one machine). */
 interface ScopeOption {
   key: string;
   label: string;
@@ -118,9 +130,19 @@ export class WuiFleetClosures extends LitElement {
   /** Application-Security grants — open until an admin assigns groups. */
   @state() private canView = true;
   @state() private canEdit = true;
+  /** May edit the periods of a single machine only ('edit-machine'). */
+  @state() private canEditMachine = false;
 
   private readonly store = new FleetStore();
   private roleSubs = new Subscription();
+  /** The user's selection (ateliers, machines, year), kept in their settings. */
+  private readonly prefs = new PagePrefs(
+    'fleet-closures',
+    () => ({ ateliers: this.selectedAteliers, machines: this.selectedMachines, year: this.year }),
+    (stored) => this.applySelection(stored),
+    () => undefined
+  );
+  private prefsSub: Subscription | null = null;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -137,11 +159,17 @@ export class WuiFleetClosures extends LitElement {
         if (!granted) this.pendingImport = null;
       })
     );
+    this.roleSubs.add(
+      hasRole$(MODULE_ID, 'edit-machine').subscribe((granted) => (this.canEditMachine = granted))
+    );
+    this.prefsSub = this.prefs.watch();
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.roleSubs.unsubscribe();
+    this.prefsSub?.unsubscribe();
+    this.prefsSub = null;
   }
 
   override render(): TemplateResult {
@@ -169,6 +197,10 @@ export class WuiFleetClosures extends LitElement {
     void this.bootstrap();
   }
 
+  protected override updated(_changed: PropertyValues): void {
+    this.prefs.save();
+  }
+
   private renderToolbar(): TemplateResult {
     return html`
       <div class="toolbar">
@@ -186,7 +218,7 @@ export class WuiFleetClosures extends LitElement {
         <ix-button variant="secondary" outline @click=${this.exportJson}>
           <ix-icon name="download" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.export)}
         </ix-button>
-        ${this.canEdit
+        ${this.canEdit || this.canEditMachine
           ? html`<ix-button @click=${() => void this.save()} ?disabled=${!this.dirty || this.saving}>
               <ix-icon name="disk" slot="icon"></ix-icon>${localizeDir(MSG.toolbar.save)}
             </ix-button>`
@@ -297,7 +329,7 @@ export class WuiFleetClosures extends LitElement {
           <tfoot>
             <tr>
               <td colspan="5">
-                ${this.canEdit
+                ${this.canEdit || this.canEditMachine
                   ? html`<ix-button variant="secondary" @click=${this.addRange}>
                         <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.table.addRange)}
                       </ix-button>
@@ -320,6 +352,7 @@ export class WuiFleetClosures extends LitElement {
     const start = splitDateTime(r.range.start);
     const end = splitDateTime(r.range.end);
     const covered = this.coveredReason(r);
+    const editable = this.canEditRow(r);
     return html`
       <tr class=${covered ? 'covered' : ''}>
         <td>
@@ -331,19 +364,19 @@ export class WuiFleetClosures extends LitElement {
                 title=${covered}
               ></ix-icon>`
             : ''}
-          ${this.renderScopeSelect(r.scope, (v) => this.moveScope(r, v), !this.canEdit)}
+          ${this.renderScopeSelect(r.scope, (v) => this.moveScope(r, v), !editable)}
         </td>
         <td class="nowrap">
           <ix-date-input
             format=${DATE_FORMAT}
             .value=${start.date}
-            ?disabled=${!this.canEdit}
+            ?disabled=${!editable}
             @valueChange=${(e: IxValueEvent) => this.patchBound(r, 'start', 'date', e.detail)}
           ></ix-date-input>
           <ix-time-input
             format=${TIME_FORMAT}
             .value=${start.time}
-            ?disabled=${!this.canEdit}
+            ?disabled=${!editable}
             @valueChange=${(e: IxValueEvent) => this.patchBound(r, 'start', 'time', e.detail)}
           ></ix-time-input>
         </td>
@@ -351,19 +384,19 @@ export class WuiFleetClosures extends LitElement {
           <ix-date-input
             format=${DATE_FORMAT}
             .value=${end.date}
-            ?disabled=${!this.canEdit}
+            ?disabled=${!editable}
             @valueChange=${(e: IxValueEvent) => this.patchBound(r, 'end', 'date', e.detail)}
           ></ix-date-input>
           <ix-time-input
             format=${TIME_FORMAT}
             .value=${end.time}
-            ?disabled=${!this.canEdit}
+            ?disabled=${!editable}
             @valueChange=${(e: IxValueEvent) => this.patchBound(r, 'end', 'time', e.detail)}
           ></ix-time-input>
         </td>
         <td class="num">${formatSpan(r.range)}</td>
         <td class="num">
-          ${this.canEdit
+          ${editable
             ? html`<ix-icon-button
                 ghost
                 icon="trashcan"
@@ -374,6 +407,11 @@ export class WuiFleetClosures extends LitElement {
         </td>
       </tr>
     `;
+  }
+
+  /** True when the session user may edit this row ('edit', or 'edit-machine' for a machine period). */
+  private canEditRow(r: FlatRow): boolean {
+    return this.canEdit || (this.canEditMachine && r.scope.startsWith('m:'));
   }
 
   private renderScopeSelect(
@@ -398,7 +436,7 @@ export class WuiFleetClosures extends LitElement {
   private renderOverlapDialog(): TemplateResult {
     if (!this.pendingImport) return html``;
     return html`
-      <div class="overlay" @click=${() => (this.pendingImport = null)}>
+      <div class="overlay" @pointerdown=${overlayDown} @click=${(e: Event) => { if (overlayClicked(e)) this.pendingImport = null; }}>
         <div class="panel" @click=${(e: Event) => e.stopPropagation()}>
           <div class="panel-head">
             <ix-typography format="h3">${localizeDir(MSG.overlap.title)}</ix-typography>
@@ -449,7 +487,18 @@ export class WuiFleetClosures extends LitElement {
     this.offline = this.store.offline;
     this.working = normaliseClosures(await this.store.listClosures());
     this.addScope = this.scopeOptions()[0]?.key ?? '';
+    await this.prefs.restore();
     this.loading = false;
+  }
+
+  /** A stored selection, what is unknown or gone left at its default (the current year). */
+  private applySelection(stored: Record<string, unknown>): void {
+    const atelierIds = new Set(this.ateliers.map((a) => a.id));
+    this.selectedAteliers = stringList(stored['ateliers']).filter((id) => atelierIds.has(id));
+    const allowed = new Set(this.machineOptions().map((m) => m.id));
+    this.selectedMachines = stringList(stored['machines']).filter((id) => allowed.has(id));
+    const year = stored['year'];
+    this.year = typeof year === 'number' && Number.isInteger(year) && year >= 0 ? year : new Date().getFullYear();
   }
 
   private async save(): Promise<void> {
@@ -471,7 +520,7 @@ export class WuiFleetClosures extends LitElement {
     const ateliers = new Set(this.selectedAteliers);
     const machines = new Set(this.selectedMachines);
     return this.allRows().filter((r) => {
-      const atelierOk = ateliers.size === 0 || ateliers.has(r.atelierId);
+      const atelierOk = ateliers.size === 0 || !r.atelierId || ateliers.has(r.atelierId);
       const machineOk = machines.size === 0 || !r.machineId || machines.has(r.machineId);
       const yearOk = this.year === ALL_YEARS || rangeInYear(r.range, this.year);
       return atelierOk && machineOk && yearOk;
@@ -481,6 +530,9 @@ export class WuiFleetClosures extends LitElement {
   private allRows(): FlatRow[] {
     const out: FlatRow[] = [];
     const multi = this.ateliers.length > 1;
+    for (const [index, range] of (this.working.global ?? []).entries()) {
+      out.push({ scope: GLOBAL_SCOPE, label: localize(MSG.scope.global), atelierId: '', machineId: '', index, range });
+    }
     for (const a of this.ateliers) {
       for (const [index, range] of (this.working.ateliers[a.id] ?? []).entries()) {
         out.push({
@@ -516,7 +568,10 @@ export class WuiFleetClosures extends LitElement {
   private coveredReason(r: FlatRow): string {
     const cover = this.coveringCandidates(r).find((c) => strictlyContains(c.range, r.range));
     if (!cover) return '';
-    const where = cover.kind === 'a' && r.machineId ? atWorkshopLevelMsg() : '';
+    const [kind] = splitScope(r.scope);
+    let where = '';
+    if (cover.kind === 'g' && kind !== 'g') where = atGlobalLevelMsg();
+    else if (cover.kind === 'a' && r.machineId) where = atWorkshopLevelMsg();
     return coveredReasonMsg(
       where,
       formatDateTimeFr(cover.range.start),
@@ -525,13 +580,14 @@ export class WuiFleetClosures extends LitElement {
   }
 
   /** Ranges that could subsume `r` (its effective set, excluding `r` itself). */
-  private coveringCandidates(r: FlatRow): { range: ClosureRange; kind: 'a' | 'm' }[] {
-    const [kind, id] = splitScope(r.scope);
-    const out: { range: ClosureRange; kind: 'a' | 'm' }[] = [];
-    const sameBucket = kind === 'a' ? this.working.ateliers[id] : this.working.machines[id];
-    for (const [i, range] of (sameBucket ?? []).entries()) {
-      if (i !== r.index) out.push({ range, kind: kind === 'a' ? 'a' : 'm' });
+  private coveringCandidates(r: FlatRow): { range: ClosureRange; kind: 'g' | 'a' | 'm' }[] {
+    const [kind] = splitScope(r.scope);
+    const out: { range: ClosureRange; kind: 'g' | 'a' | 'm' }[] = [];
+    for (const [i, range] of this.rangesFor(r.scope).entries()) {
+      if (i !== r.index) out.push({ range, kind: kind === '' ? 'm' : kind });
     }
+    // Any atelier or machine range is also covered by a global range.
+    if (kind !== 'g') for (const range of this.working.global ?? []) out.push({ range, kind: 'g' });
     // A machine range is also covered by any atelier-wide range of its atelier.
     if (kind === 'm') {
       for (const range of this.working.ateliers[r.atelierId] ?? []) out.push({ range, kind: 'a' });
@@ -541,9 +597,10 @@ export class WuiFleetClosures extends LitElement {
 
   private scopeOptions(): ScopeOption[] {
     const multi = this.ateliers.length > 1;
-    const out: ScopeOption[] = [];
+    const all = this.canEdit || !this.canEditMachine;
+    const out: ScopeOption[] = all ? [{ key: GLOBAL_SCOPE, label: localize(MSG.scope.global) }] : [];
     for (const a of this.ateliers) {
-      out.push({ key: `a:${a.id}`, label: atelierScopeLabel(a.name) });
+      if (all) out.push({ key: `a:${a.id}`, label: atelierScopeLabel(a.name) });
       for (const m of a.machines) {
         out.push({ key: `m:${m.id}`, label: `   ${m.name}${multi ? ` · ${a.name}` : ''}` });
       }
@@ -595,6 +652,7 @@ export class WuiFleetClosures extends LitElement {
 
   private rangesFor(scope: string): ClosureRange[] {
     const [kind, id] = splitScope(scope);
+    if (kind === 'g') return this.working.global ?? [];
     if (!id) return [];
     const bucket = kind === 'a' ? this.working.ateliers : this.working.machines;
     return bucket[id] ?? [];
@@ -602,6 +660,11 @@ export class WuiFleetClosures extends LitElement {
 
   private setRangesFor(scope: string, ranges: ClosureRange[]): void {
     const [kind, id] = splitScope(scope);
+    if (kind === 'g') {
+      this.working = { ...this.working, global: ranges };
+      this.dirty = true;
+      return;
+    }
     if (!id) return;
     const key = kind === 'a' ? 'ateliers' : 'machines';
     this.working = { ...this.working, [key]: { ...this.working[key], [id]: ranges } };
@@ -717,11 +780,11 @@ export class WuiFleetClosures extends LitElement {
 const TOAST_MS = 2500;
 
 /** Split a scope key `a:<id>` / `m:<id>` into [kind, id]. */
-function splitScope(scope: string): ['a' | 'm' | '', string] {
+function splitScope(scope: string): ['g' | 'a' | 'm' | '', string] {
   const sep = scope.indexOf(':');
   if (sep === -1) return ['', ''];
   const kind = scope.slice(0, sep);
-  return [kind === 'a' || kind === 'm' ? kind : '', scope.slice(sep + 1)];
+  return [kind === 'g' || kind === 'a' || kind === 'm' ? kind : '', scope.slice(sep + 1)];
 }
 
 /** Split `yyyy-MM-ddTHH:mm` → { date, time }. */

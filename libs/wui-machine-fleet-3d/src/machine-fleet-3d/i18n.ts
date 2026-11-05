@@ -36,6 +36,81 @@ export const MSG = {
       'Ihre Gruppen besitzen die Rolle „Ansehen" dieser Seite nicht.'
     )
   },
+  markers: {
+    title: ml('Placement markers', "Repères d'implantation", 'Platzierungsmarken'),
+    hint: ml(
+      'Placement markers of this view (axis, workstation, landmark…), placed with the pin button and moved in edit mode; a machine placed from one follows it',
+      "Repères d'implantation de cette vue (axe, poste, borne…), posés avec le bouton repère et déplacés en mode édition ; une machine placée à partir d'un repère le suit",
+      'Platzierungsmarken dieser Ansicht (Achse, Arbeitsplatz, Orientierungspunkt…), mit der Marken-Schaltfläche gesetzt und im Bearbeitungsmodus verschoben; eine davon platzierte Maschine folgt ihr'
+    ),
+    label: ml('Marker', 'Repère', 'Marke'),
+    add: ml('Add a marker', 'Ajouter un repère', 'Marke hinzufügen'),
+    none: ml('No marker yet.', 'Aucun repère.', 'Noch keine Marke.'),
+    remove: ml('Delete this marker', 'Supprimer ce repère', 'Diese Marke löschen'),
+    newLabel: ml('Marker', 'Repère', 'Marke'),
+    place: ml(
+      'Place a marker: click on the floor (Esc to cancel)',
+      'Poser un repère : cliquer sur le sol (Échap pour annuler)',
+      'Marke setzen: auf den Boden klicken (Esc zum Abbrechen)'
+    ),
+    close: ml('Close', 'Fermer', 'Schließen'),
+    placeFrom: ml('Placed from marker', 'Placée à partir du repère', 'Platziert von Marke'),
+    noMarker: ml('— free position —', '— position libre —', '— freie Position —'),
+    offsetX: ml('Offset X (m)', 'Décalage X (m)', 'Versatz X (m)'),
+    offsetZ: ml('Offset Z (m)', 'Décalage Z (m)', 'Versatz Z (m)')
+  },
+  wizard: {
+    title: ml('Add a symbol', 'Ajouter un symbole', 'Symbol hinzufügen'),
+    fromCatalog: ml('From the site', 'Depuis le site', 'Vom Standort'),
+    fromAtelier: ml('From another atelier', 'Depuis un autre atelier', 'Aus einer anderen Werkstatt'),
+    fromFile: ml('From a file (JSON)', 'Depuis un fichier (JSON)', 'Aus einer Datei (JSON)'),
+    create: ml('New symbol', 'Nouveau symbole', 'Neues Symbol'),
+    search: ml('Search…', 'Rechercher…', 'Suchen…'),
+    none: ml('Nothing to add.', 'Rien à ajouter.', 'Nichts hinzuzufügen.'),
+    chooseFile: ml('Choose a JSON file', 'Choisir un fichier JSON', 'JSON-Datei auswählen'),
+    badFile: ml('Not a symbol file.', "Ce fichier n'est pas un symbole.", 'Keine Symboldatei.'),
+    name: ml('Name', 'Nom', 'Name'),
+    type: ml('Representation', 'Représentation', 'Darstellung'),
+    stateDp: ml('State datapoint (optional)', 'Datapoint d’état (optionnel)', 'Zustands-Datenpunkt (optional)'),
+    add: ml('Add', 'Ajouter', 'Hinzufügen'),
+    cancel: ml('Cancel', 'Annuler', 'Abbrechen'),
+    later: ml(
+      'Everything else is set later in the symbol’s configuration.',
+      'Tout le reste se règle ensuite dans la configuration du symbole.',
+      'Alles Weitere wird danach in der Symbolkonfiguration eingestellt.'
+    )
+  },
+  bubble: {
+    resize: ml('Resize the bubble', "Redimensionner l'encart", 'Infoblase skalieren'),
+    reset: ml(
+      'Bubble back to its automatic place and size',
+      "Remettre l'encart à sa place et à sa taille automatiques",
+      'Infoblase zurück an automatische Position und Größe'
+    ),
+    hoverMode: ml(
+      'Bubbles on hover only (this atelier, for everyone)',
+      'Encarts au survol uniquement (cet atelier, pour tous)',
+      'Infoblasen nur beim Überfahren (diese Werkstatt, für alle)'
+    )
+  },
+  toPlace: {
+    label: ml('To place', 'À placer', 'Zu platzieren'),
+    hint: ml(
+      'New in this atelier, or moved elsewhere in the plant: move it to its place in edit mode',
+      "Nouvelle dans cet atelier, ou réaffectée : déplacez-la à sa place en mode édition",
+      'Neu in dieser Werkstatt oder umgesetzt: im Bearbeitungsmodus an ihren Platz verschieben'
+    )
+  },
+  filterBar: {
+    label: ml('Filters', 'Filtres', 'Filter'),
+    reset: ml('Reset', 'Réinitialiser', 'Zurücksetzen'),
+    machines: ml('machines', 'machines', 'Maschinen'),
+    noMatch: ml(
+      'No atelier has a machine matching the filters.',
+      'Aucun atelier ne contient de machine correspondant aux filtres.',
+      'Keine Werkstatt hat eine Maschine, die den Filtern entspricht.'
+    )
+  },
   overview: {
     graphicsCatalog: ml('Graphics catalog', 'Catalogue graphiques', 'Grafikkatalog'),
     closures: ml('Non-working days', 'Jours non travaillés', 'Arbeitsfreie Tage'),
@@ -88,8 +163,12 @@ export const MSG = {
     retry: ml('Retry', 'Réessayer', 'Erneut versuchen')
   },
   view: {
+    filterState: ml('State', 'État', 'Zustand'),
     fullscreen: ml('Full screen', 'Plein écran', 'Vollbild'),
     exitFullscreen: ml('Exit full screen', 'Quitter le plein écran', 'Vollbild beenden'),
+    statFault: ml('fault', 'défaut', 'Störung'),
+    statStop: ml('stopped', 'arrêt', 'Stillstand'),
+    statProduction: ml('producing', 'production', 'Produktion'),
     backToAteliers: ml('Back to ateliers', 'Retour aux ateliers', 'Zurück zu den Werkstätten'),
     confirm: ml('Confirm', 'Valider', 'Bestätigen'),
     atelier: ml('Atelier', 'Atelier', 'Werkstatt'),
@@ -130,7 +209,7 @@ export const MSG = {
       "Exporter l'atelier (JSON)",
       'Werkstatt exportieren (JSON)'
     ),
-    machines: ml('Machines', 'Machines', 'Maschinen'),
+    machines: ml('Symbols', 'Symboles', 'Symbole'),
     tiltUp: ml('Tilt up', 'Incliner vers le haut', 'Nach oben neigen'),
     tiltDown: ml('Tilt down', 'Incliner vers le bas', 'Nach unten neigen'),
     rotateLeft: ml('Rotate left', 'Pivoter à gauche', 'Nach links drehen'),
@@ -148,6 +227,10 @@ export const MSG = {
       '3D-Ansicht (Perspektive) / 2D (oben)'
     ),
     saveView: ml('Save the view', 'Enregistrer la vue', 'Ansicht speichern'),
+    publicViews: ml('Public views', 'Vues publiques', 'Öffentliche Ansichten'),
+    myViews: ml('My views', 'Mes vues', 'Meine Ansichten'),
+    myLanding: ml('My default page', 'Ma page par défaut', 'Meine Startseite'),
+    publicLanding: ml('Default page for everyone', 'Page par défaut pour tous', 'Startseite für alle'),
     noViewpoints: ml(
       'No viewpoint saved',
       'Aucun point de vue enregistré',
@@ -180,10 +263,10 @@ export const MSG = {
     state: ml('State', 'État', 'Zustand'),
     stopCause: ml("Stop cause", "Cause d'arrêt", 'Stillstandsursache'),
     workOrder: ml('Current work order', 'OF en cours', 'Aktueller Fertigungsauftrag'),
+    alarmCode: ml('Alarm code', 'Code alarme', 'Alarmcode'),
     operation: ml('Operation', 'Opération', 'Vorgang'),
     obsolescenceAli: ml('Obsolescence (ALI)', 'Obsolescence (ALI)', 'Obsoleszenz (ALI)'),
     confirmDeleteHeading: ml("Delete the atelier", "Supprimer l'atelier", 'Werkstatt löschen'),
-    newMachineName: ml('New machine', 'Nouvelle machine', 'Neue Maschine'),
     viewLabel: ml('View', 'Vue', 'Ansicht')
   },
   create: {
@@ -229,8 +312,23 @@ export const MSG = {
     ),
     tipStart: ml('Start:', 'Début :', 'Beginn:'),
     tipEnd: ml('End:', 'Fin :', 'Ende:'),
+    tipDuration: ml('Duration:', 'Durée :', 'Dauer:'),
     tipCause: ml('Cause:', 'Cause :', 'Ursache:'),
     paretoTitle: ml('Pareto of stops', 'Pareto des arrêts', 'Pareto der Stillstände'),
+    stopsTitle: ml('Stops', 'Liste des arrêts', 'Stillstände'),
+    alarmDuration: ml('Duration', 'Durée', 'Dauer'),
+    filterState: ml('State', 'État', 'Zustand'),
+    filterCause: ml('Stop cause', "Cause d'arrêt", 'Stillstandsursache'),
+    filterWorkOrder: ml('Work order', 'OF', 'Auftrag'),
+    filterAlarmType: ml('Alarm type', "Type d'alarme", 'Alarmtyp'),
+    stopsNone: ml('No stop over the period.', 'Aucun arrêt sur la période.', 'Kein Stillstand im Zeitraum.'),
+    stopsStart: ml('Start', 'Début', 'Beginn'),
+    stopsEnd: ml('End', 'Fin', 'Ende'),
+    stopsDuration: ml('Duration', 'Durée', 'Dauer'),
+    stopsCause: ml('Cause', 'Cause', 'Ursache'),
+    stopsClass: ml('Class', 'Classe', 'Klasse'),
+    classProduction: ml('production', 'production', 'Produktion'),
+    exportStopsCsv: ml('Export the stops (CSV)', 'Exporter les arrêts (CSV)', 'Stillstände exportieren (CSV)'),
     exportParetoCsv: ml('Export the Pareto (CSV)', 'Exporter le Pareto (CSV)', 'Pareto exportieren (CSV)'),
     openAnalysisTitle: ml(
       "Open the stop-cause analysis filtered on this machine",
@@ -267,14 +365,14 @@ export const MSG = {
   },
   machineDialog: {
     importMachine: ml(
-      'Import the machine (JSON)',
-      'Importer la machine (JSON)',
-      'Maschine importieren (JSON)'
+      'Import the symbol (JSON)',
+      'Importer le symbole (JSON)',
+      'Symbol importieren (JSON)'
     ),
     exportMachine: ml(
-      'Export the machine (JSON)',
-      'Exporter la machine (JSON)',
-      'Maschine exportieren (JSON)'
+      'Export the symbol (JSON)',
+      'Exporter le symbole (JSON)',
+      'Symbol exportieren (JSON)'
     ),
     cancel: ml('Cancel', 'Annuler', 'Abbrechen'),
     close: ml('Close', 'Fermer', 'Schließen'),
@@ -438,6 +536,7 @@ export const MSG = {
     commLabel: ml('Communication', 'Communication', 'Kommunikation'),
     stopCauseLabel: ml('Stop cause', "Cause d'arrêt", 'Stillstandsursache'),
     workOrderLabel: ml('Current work order', 'OF en cours', 'Aktueller Fertigungsauftrag'),
+    alarmCodeLabel: ml('Alarm code', 'Code alarme', 'Alarmcode'),
     operationLabel: ml('Operation', 'Opération', 'Vorgang'),
     tiltAngleLabel: ml('Tilt angle', 'Angle basculement', 'Kippwinkel'),
     stateDpLabel: ml('State datapoint', "Datapoint d'état", 'Zustands-Datenpunkt'),
@@ -471,7 +570,14 @@ export const MSG = {
     production: ml('Production tracking', 'Suivi production', 'Produktionsverfolgung'),
     stopCauseDpLabel: ml('Stop-cause DP', "DP cause d'arrêt", 'Stillstandsursache-DP'),
     workOrderDpLabel: ml('Current work order DP', "DP OF en cours", 'DP aktueller Fertigungsauftrag'),
+    alarmCodeDpLabel: ml('Alarm code DP', 'DP code alarme', 'DP Alarmcode'),
     operationDpLabel: ml('Current operation DP', "DP opération en cours", 'DP aktueller Vorgang'),
+    minStopLabel: ml('Minimum stop (s)', "Délai minimal d'arrêt (s)", 'Mindest-Stillstand (s)'),
+    minStopHint: ml(
+      'A shorter stop counts as production: not in the Gantt, the stops or the TRS',
+      'Un arrêt plus court compte comme de la production : ni dans le Gantt, ni dans les arrêts, ni dans le TRS',
+      'Ein kürzerer Stillstand zählt als Produktion: weder im Gantt, noch bei den Stillständen, noch in der OEE'
+    ),
     dashboardMachine: ml('Machine dashboard', 'Dashboard machine', 'Maschinen-Dashboard'),
     dashboardModeLabel: ml(
       'Dashboard opened from the machine card',
@@ -522,13 +628,32 @@ export const MSG = {
       'https://exemple.com/tableau-de-bord',
       'https://beispiel.de/dashboard'
     ),
+    appLinks: ml('Links of the application', "Liens de l'application", 'Links der Anwendung'),
+    appLinksHint: ml(
+      'Up to 3 links to pages of the application appear as buttons in the machine card (popup); each opens in the application. Address: a route (#/…) or a path of this server (/…).',
+      "Jusqu'à 3 liens vers des pages de l'application s'affichent comme boutons dans la fiche machine (popup) ; chacun s'ouvre dans l'application. Adresse : une route (#/…) ou un chemin de ce serveur (/…).",
+      'Bis zu 3 Links zu Seiten der Anwendung erscheinen als Schaltflächen in der Maschinenkarte (Popup); jeder öffnet sich in der Anwendung. Adresse: eine Route (#/…) oder ein Pfad dieses Servers (/…).'
+    ),
+    appUrlLabel: ml('Address (#/… or /…)', 'Adresse (#/… ou /…)', 'Adresse (#/… oder /…)'),
+    appUrlPlaceholder: ml('#/alarmes', '#/alarmes', '#/alarmes'),
+    appUrlInvalid: ml(
+      'Not an address of the application: the link is not shown.',
+      "Ce n'est pas une adresse de l'application : le lien n'est pas affiché.",
+      'Keine Adresse der Anwendung: Der Link wird nicht angezeigt.'
+    ),
+    cardTags: ml('Tags in this atelier', 'Étiquettes dans cette carte', 'Tags in diesem Atelier'),
+    cardTagsHint: ml(
+      'Free tags put on the machine in this atelier, separated by commas; they are filters of the views.',
+      'Étiquettes libres posées sur la machine dans cette carte, séparées par des virgules ; elles servent de filtres des vues.',
+      'Freie Tags der Maschine in diesem Atelier, durch Kommas getrennt; sie dienen als Filter der Ansichten.'
+    ),
     paramsTitle: ml('Parameters', 'Paramètres', 'Parameter'),
     addParam: ml('Add a parameter', 'Ajouter un paramètre', 'Parameter hinzufügen'),
     paramLabel: ml('Label', 'Libellé', 'Bezeichnung'),
     paramUnit: ml('Unit', 'Unité', 'Einheit'),
     defaultParamName: ml('Parameter', 'Paramètre', 'Parameter'),
     delete: ml('Delete', 'Supprimer', 'Löschen'),
-    editTitlePrefix: ml('Edit', 'Édition', 'Bearbeiten')
+    editTitlePrefix: ml('Symbol', 'Symbole', 'Symbol')
   },
   buildingDialog: {
     title: ml('Building configuration', 'Configuration du bâtiment', 'Gebäudekonfiguration'),
@@ -545,17 +670,25 @@ export const MSG = {
     roofShed: ml('Sheds (sawtooth)', 'Sheds (redents)', 'Sheddach'),
     roofFlat: ml('Flat', 'Plate', 'Flach'),
     roofMonoslope: ml('Monoslope', 'Monopente', 'Pultdach'),
-    roofNone: ml('None', 'Aucune', 'Keine')
+    roofNone: ml('None', 'Aucune', 'Keine'),
+    perimeterColumns: ml('Perimeter columns', 'Poteaux extérieurs', 'Außenstützen'),
+    walls: ml('Transparent outer walls', 'Cloisons extérieures transparentes', 'Transparente Außenwände'),
+    columnColor: ml('Column colour', 'Couleur des poteaux', 'Stützenfarbe'),
+    colSteel: ml('Steel grey', 'Gris acier', 'Stahlgrau'),
+    colWhite: ml('White (RAL 9010)', 'Blanc (RAL 9010)', 'Weiß (RAL 9010)'),
+    colAnthracite: ml('Anthracite', 'Anthracite', 'Anthrazit'),
+    colYellow: ml('Safety yellow', 'Jaune sécurité', 'Sicherheitsgelb'),
+    colPetrol: ml('Petrol', 'Pétrole', 'Petrol')
   },
   configPanel: {
-    deleteMachineHeading: ml('Delete the machine', 'Supprimer la machine', 'Maschine löschen'),
-    machines: ml('Machines', 'Machines', 'Maschinen'),
+    deleteMachineHeading: ml('Delete the symbol', 'Supprimer le symbole', 'Symbol löschen'),
+    machines: ml('Symbols', 'Symboles', 'Symbole'),
     searchMachine: ml(
-      'Search for a machine…',
-      'Rechercher une machine…',
-      'Maschine suchen…'
+      'Search for a symbol…',
+      'Rechercher un symbole…',
+      'Symbol suchen…'
     ),
-    addMachine: ml('Add a machine', 'Ajouter une machine', 'Maschine hinzufügen'),
+    addMachine: ml('Add a symbol', 'Ajouter un symbole', 'Symbol hinzufügen'),
     edit: ml('Edit', 'Éditer', 'Bearbeiten'),
     viewOnly: ml('View', 'Visualiser', 'Anzeigen'),
     delete: ml('Delete', 'Supprimer', 'Löschen')
@@ -616,7 +749,36 @@ export const MSG = {
     colorsHeading: ml('Colours per state', 'Couleurs par état', 'Farben pro Zustand'),
     min: ml('min', 'min', 'min'),
     max: ml('max', 'max', 'max'),
-    newMappingName: ml('New mapping', 'Nouveau mapping', 'Neue Zuordnung')
+    newMappingName: ml('New mapping', 'Nouveau mapping', 'Neue Zuordnung'),
+    statesHeading: ml('States', 'États', 'Zustände'),
+    ownStates: ml(
+      'States of this mapping (instead of the four built-in ones)',
+      'États propres à ce mapping (au lieu des quatre états intégrés)',
+      'Eigene Zustände dieser Zuordnung (statt der vier eingebauten)'
+    ),
+    stateKey: ml('Key', 'Clé', 'Schlüssel'),
+    stateLabel: ml('Label', 'Libellé', 'Bezeichnung'),
+    stateColor: ml('Colour', 'Couleur', 'Farbe'),
+    stateRunning: ml('Production', 'Production', 'Produktion'),
+    stateRunningHint: ml(
+      'Counts as producing time (Gantt, stop analysis, TRS)',
+      'Compte comme temps de production (Gantt, analyse des arrêts, TRS)',
+      'Zählt als Produktionszeit (Gantt, Stillstandsanalyse, OEE)'
+    ),
+    stateFault: ml('Fault', 'Défaut', 'Störung'),
+    stateFaultHint: ml(
+      'Counted as a fault (not as a stop) in the atelier statistics',
+      'Compté comme défaut (et non comme arrêt) dans les statistiques de l’atelier',
+      'In der Werkstattstatistik als Störung (nicht als Stillstand) gezählt'
+    ),
+    stateOffOpening: ml('Off opening', 'Hors ouverture', 'Außerhalb der Öffnungszeit'),
+    stateOffOpeningHint: ml(
+      'Neither available nor a stop: removed from the opening time, like a non-worked period (TRS)',
+      "Ni disponible ni arrêt : retiré du temps d'ouverture, comme une période non travaillée (TRS)",
+      'Weder verfügbar noch Stillstand: aus der Öffnungszeit herausgenommen, wie eine arbeitsfreie Zeit (OEE)'
+    ),
+    addState: ml('Add a state', 'Ajouter un état', 'Zustand hinzufügen'),
+    deleteState: ml('Delete this state', 'Supprimer cet état', 'Diesen Zustand löschen')
   },
   trsThresholds: {
     title: ml('TRS thresholds', 'Seuils TRS', 'OEE-Schwellenwerte'),
@@ -682,9 +844,9 @@ export function noStopOfClassMsg(klass: string): string {
 export function confirmDeleteMachineMsg(name: string): string {
   return localize(
     ml(
-      `Remove the machine « ${name} » from this atelier?`,
-      `Supprimer la machine « ${name} » de cet atelier ?`,
-      `Maschine « ${name} » aus dieser Werkstatt entfernen?`
+      `Remove the symbol « ${name} » from this atelier?`,
+      `Supprimer le symbole « ${name} » de cet atelier ?`,
+      `Symbol « ${name} » aus dieser Werkstatt entfernen?`
     )
   );
 }
@@ -693,9 +855,9 @@ export function confirmDeleteMachineMsg(name: string): string {
 export function machinesCountMsg(shown: number, total: number): string {
   return localize(
     ml(
-      `Machines (${shown}/${total})`,
-      `Machines (${shown}/${total})`,
-      `Maschinen (${shown}/${total})`
+      `Symbols (${shown}/${total})`,
+      `Symboles (${shown}/${total})`,
+      `Symbole (${shown}/${total})`
     )
   );
 }

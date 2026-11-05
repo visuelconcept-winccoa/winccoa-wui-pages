@@ -44,17 +44,22 @@ import {
   type Machine,
   type MachineDef,
   type MachineState,
-  type StateColorKey
+  type PlacementMarker,
+  type StateColorKey,
+  type StateDef
 } from '../types.js';
 import { BuildingBuilder } from './building-builder.js';
 import { disposeObject } from './dispose.js';
 import { LabelManager } from './label-manager.js';
+import { MarkerPins } from './marker-pins.js';
 import { MachineMaterials } from './machine-materials.js';
 import { BILLBOARD_CHILD, applyBillboardTexture, buildMachine } from './machine-factory.js';
 import { OrbitController } from './orbit-controller.js';
 
 const ACCENT_POOL_SIZE = 6;
 const DRAG_THRESHOLD_PX = 5;
+/** Margin (px) around a machine's on-screen box that still shows its bubble in hover mode (#56). */
+const HOVER_MARGIN_PX = 16;
 /** If the longest GLB dimension exceeds this (metres), assume mm → scale by 0.001. */
 const MM_TO_M_THRESHOLD = 100;
 const MM_TO_M_SCALE = 0.001;
@@ -79,7 +84,11 @@ export class SceneController {
   private buildingGroup: Group | null = null;
   private roofGroup: Group | null = null;
   private machinesGroup = new Group();
+  /** Placement markers: location pins (HTML overlay), shown in edit mode. */
+  private readonly pins: MarkerPins;
   private machines: Machine[] = [];
+  /** Machines left out by the filter bar (kept across setMachines). */
+  private filteredOut: ReadonlySet<string> = new Set();
   private cfg: BuildingConfig = { ...DEFAULT_BUILDING };
   private resourceResolver: ((ref: string) => Promise<string | undefined>) | null = null;
   private onMachineMove: ((id: string, x: number, z: number) => void) | null = null;
@@ -91,6 +100,11 @@ export class SceneController {
 
   // --- edit-mode dragging ----------------------------------------------------
   private editMode = false;
+  /** Bubbles on hover only (#56), and a pick pending for the next frame. */
+  private hoverMode = false;
+  private hoverPending = false;
+  private readonly hoverBox = new Box3();
+  private readonly hoverCorner = new Vector3();
   private dragging: Machine | null = null;
   private dragMoved = false;
   private readonly dragPlane = new Plane(new Vector3(0, 1, 0), 0);
@@ -124,6 +138,7 @@ export class SceneController {
 
     this.orbit = new OrbitController(this.camera, canvas);
     this.labels = new LabelManager(overlay, onSelect);
+    this.pins = new MarkerPins(overlay, { camera: () => this.activeCamera(), canvas: () => this.canvas });
 
     canvas.addEventListener('pointerdown', this.onCanvasDown);
     canvas.addEventListener('click', this.onCanvasClick);
@@ -156,6 +171,48 @@ export class SceneController {
     });
   }
 
+  /** The atelier's placement markers, drawn as location pins (shown in edit mode). */
+  setMarkers(markers: readonly PlacementMarker[]): void {
+    this.pins.setMarkers(markers);
+  }
+
+  /** Place a new marker: a ghost pin follows the pointer until a click on the floor drops it. */
+  startMarkerPlacement(done: (x: number, z: number) => void): void {
+    this.pins.startPlacement(done);
+  }
+
+  cancelMarkerPlacement(): void {
+    this.pins.cancelPlacement();
+  }
+
+  /** A bubble moved or resized by hand in edit mode (`null`: back to automatic, #59). */
+  setOnBubbleEdit(fn: (id: string, patch: { bubbleScale?: number | null; bubbleOffset?: [number, number] | null }) => void): void {
+    this.labels.onBubbleEdit = fn;
+  }
+
+  /**
+   * Hover mode (#56): a machine's bubble shows only while the pointer is over the machine — its
+   * 3D model and a margin around it on screen — or over its dot or bubble.
+   */
+  setBubblesOnHover(on: boolean): void {
+    if (on === this.hoverMode) return;
+    this.hoverMode = on;
+    this.labels.setHoverMode(on);
+    if (on) {
+      this.canvas.addEventListener('pointermove', this.onHoverMove);
+      this.canvas.addEventListener('pointerleave', this.onHoverLeave);
+    } else {
+      this.canvas.removeEventListener('pointermove', this.onHoverMove);
+      this.canvas.removeEventListener('pointerleave', this.onHoverLeave);
+      this.labels.setHovered(null);
+    }
+  }
+
+  /** Callback invoked when a pin is clicked (not dragged) in edit mode, to rename / delete it. */
+  setOnMarkerPick(fn: (id: string, screenX: number, screenY: number) => void): void {
+    this.pins.onPick = fn;
+  }
+
   setMachines(defs: MachineDef[]): void {
     this.scene.remove(this.machinesGroup);
     disposeObject(this.machinesGroup);
@@ -163,6 +220,7 @@ export class SceneController {
     this.scene.add(this.machinesGroup);
     this.machines = defs.map((def) => this.createMachine(def));
     this.labels.setMachines(this.machines);
+    this.setFilteredOut(this.filteredOut);
   }
 
   setRoofVisible(visible: boolean): void {
@@ -177,6 +235,18 @@ export class SceneController {
     this.labels.setAlertOnly(on);
   }
 
+  /** Hide the machines left out by the filter bar (mesh, bubble, picking); the others show again. */
+  setFilteredOut(ids: ReadonlySet<string>): void {
+    this.filteredOut = ids;
+    for (const m of this.machines) m.mesh.visible = !m.hidden && !ids.has(m.id);
+    this.labels.setFilteredOut(ids);
+  }
+
+  /** Set the atelier's states for the labels (state label, producing states). */
+  setStateDefs(defs: StateDef[]): void {
+    this.labels.setStateDefs(defs);
+  }
+
   setStateColors(colors: Record<StateColorKey, string>): void {
     this.labels.setStateColors(colors);
   }
@@ -184,6 +254,8 @@ export class SceneController {
   /** Switch the scene camera type: '3d' = perspective, '2d' = orthographic. */
   setCameraMode(mode: '3d' | '2d'): void {
     this.cameraMode = mode;
+    // 2D is a plan: zoom and pan only, the angle stays straight down (#57).
+    this.orbit.setPlanLock(mode === '2d');
   }
 
   /** Notified when the user rotates the camera (left-drag or nav arrows). */
@@ -255,11 +327,18 @@ export class SceneController {
   setEditMode(on: boolean): void {
     this.editMode = on;
     this.canvas.style.cursor = on ? 'move' : '';
+    this.pins.setVisible(on);
+    this.labels.setEditMode(on);
   }
 
   /** Callback invoked when a machine is dropped at a new (x, z) in edit mode. */
   setOnMachineMove(fn: (id: string, x: number, z: number) => void): void {
     this.onMachineMove = fn;
+  }
+
+  /** Callback invoked when a placement marker is dropped at a new (x, z) in edit mode. */
+  setOnMarkerMove(fn: (id: string, x: number, z: number) => void): void {
+    this.pins.onMove = fn;
   }
 
   /** Push live datapoint-driven updates (state / KPI / production info) onto a machine. */
@@ -272,6 +351,7 @@ export class SceneController {
       stopCauseLabel?: string;
       workOrder?: string | number;
       operation?: string | number;
+      alarmCode?: string | number;
       connected?: boolean;
       tiltAngle?: number;
       kpiCalcValues?: Record<string, number>;
@@ -279,6 +359,7 @@ export class SceneController {
       aliRiskScore?: number;
       aliRiskLabel?: string;
       aliRiskColor?: string;
+      toPlace?: boolean;
     }
   ): void {
     const m = this.machines.find((x) => x.id === id);
@@ -294,6 +375,7 @@ export class SceneController {
     if (patch.stopCause !== undefined) m.stopCause = patch.stopCause;
     if (patch.stopCauseLabel !== undefined) m.stopCauseLabel = patch.stopCauseLabel;
     if (patch.workOrder !== undefined) m.workOrder = patch.workOrder;
+    if (patch.alarmCode !== undefined) m.alarmCode = patch.alarmCode;
     if (patch.operation !== undefined) m.operation = patch.operation;
     if (patch.connected !== undefined) m.connected = patch.connected;
     if (patch.kpiCalcValues !== undefined) m.kpiCalcValues = patch.kpiCalcValues;
@@ -302,6 +384,7 @@ export class SceneController {
     if ('aliRiskScore' in patch) m.aliRiskScore = patch.aliRiskScore;
     if ('aliRiskLabel' in patch) m.aliRiskLabel = patch.aliRiskLabel;
     if ('aliRiskColor' in patch) m.aliRiskColor = patch.aliRiskColor;
+    if ('toPlace' in patch) m.toPlace = patch.toPlace;
   }
 
   start(): void {
@@ -335,7 +418,10 @@ export class SceneController {
     window.removeEventListener('pointermove', this.onEditMove);
     window.removeEventListener('pointerup', this.onEditUp);
     this.orbit.dispose();
+    this.canvas.removeEventListener('pointermove', this.onHoverMove);
+    this.canvas.removeEventListener('pointerleave', this.onHoverLeave);
     this.labels.dispose();
+    this.pins.dispose();
     if (this.buildingGroup) disposeObject(this.buildingGroup);
     disposeObject(this.machinesGroup);
     this.materials.dispose();
@@ -411,6 +497,8 @@ export class SceneController {
       accentConfig: this.accentConfigFor(def)
     };
     if (def.type === 'glb' && def.glbUrl) this.loadGlb(machine, def.glbUrl);
+    // No model of its own: the model of its family, when there is one (familyGlbUrl).
+    else if (def.type !== 'billboard' && def.familyGlbUrl) this.loadGlb(machine, def.familyGlbUrl);
     if (def.type === 'billboard' && def.billboardUrl) this.loadBillboard(machine, def.billboardUrl);
     return machine;
   }
@@ -571,13 +659,17 @@ export class SceneController {
     this.setPointer(e);
     this.raycaster.setFromCamera(this.pointer, this.activeCamera());
     const hits = this.raycaster.intersectObjects(this.machinesGroup.children, true);
-    if (hits.length === 0) return undefined;
-    let obj: Object3D | null = hits[0].object;
-    while (obj && obj.userData['machineId'] == null) {
-      obj = obj.parent;
+    // The raycaster also hits hidden meshes: skip the machines hidden or filtered out.
+    for (const hit of hits) {
+      let obj: Object3D | null = hit.object;
+      while (obj && obj.userData['machineId'] == null) {
+        obj = obj.parent;
+      }
+      if (!obj?.visible) continue;
+      const id = obj.userData['machineId'];
+      return typeof id === 'string' ? this.machines.find((m) => m.id === id) : undefined;
     }
-    const id = obj?.userData['machineId'];
-    return typeof id === 'string' ? this.machines.find((m) => m.id === id) : undefined;
+    return undefined;
   }
 
   /** The camera used for rendering / projection (orthographic in 2D mode). */
@@ -610,6 +702,7 @@ export class SceneController {
     const cam = this.activeCamera();
     this.faceBillboards();
     this.labels.update(cam, this.host.clientWidth, this.host.clientHeight);
+    this.pins.update(cam, this.host.clientWidth, this.host.clientHeight);
     this.renderer.render(this.scene, cam);
   }
 
@@ -632,6 +725,63 @@ export class SceneController {
   };
 
   private readonly onCanvasClick = (e: MouseEvent): void => this.handleCanvasClick(e);
+
+  /** Hover mode: the machine under the pointer, picked at most once per frame. */
+  private readonly onHoverMove = (e: PointerEvent): void => {
+    if (this.hoverPending) return;
+    this.hoverPending = true;
+    requestAnimationFrame(() => {
+      this.hoverPending = false;
+      this.labels.setHovered(this.machineNear(e));
+    });
+  };
+
+  private readonly onHoverLeave = (): void => this.labels.setHovered(null);
+
+  /**
+   * The machine whose model, seen on screen, holds the pointer — its projected bounding box,
+   * widened by HOVER_MARGIN_PX, so the whole machine and a little around it count, not only its
+   * dot. The nearest to the camera wins when boxes overlap.
+   */
+  private machineNear(e: PointerEvent): string | null {
+    const rect = this.canvas.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    const cam = this.activeCamera();
+    let best: string | null = null;
+    let bestDist = Infinity;
+    for (const m of this.machines) {
+      if (m.hidden || this.filteredOut.has(m.id)) continue;
+      this.hoverBox.setFromObject(m.mesh);
+      if (this.hoverBox.isEmpty()) continue;
+      let x1 = Infinity;
+      let y1 = Infinity;
+      let x2 = -Infinity;
+      let y2 = -Infinity;
+      const { min, max } = this.hoverBox;
+      for (const x of [min.x, max.x]) {
+        for (const y of [min.y, max.y]) {
+          for (const z of [min.z, max.z]) {
+            this.hoverCorner.set(x, y, z).project(cam);
+            const sx = (this.hoverCorner.x * 0.5 + 0.5) * rect.width;
+            const sy = (-this.hoverCorner.y * 0.5 + 0.5) * rect.height;
+            x1 = Math.min(x1, sx);
+            x2 = Math.max(x2, sx);
+            y1 = Math.min(y1, sy);
+            y2 = Math.max(y2, sy);
+          }
+        }
+      }
+      const inside = px >= x1 - HOVER_MARGIN_PX && px <= x2 + HOVER_MARGIN_PX && py >= y1 - HOVER_MARGIN_PX && py <= y2 + HOVER_MARGIN_PX;
+      if (!inside) continue;
+      const d = cam.position.distanceTo(m.mesh.position);
+      if (d < bestDist) {
+        bestDist = d;
+        best = m.id;
+      }
+    }
+    return best;
+  }
 
   private readonly onEditDown = (e: PointerEvent): void => {
     if (!this.editMode || e.button !== 0) return;
@@ -665,7 +815,9 @@ export class SceneController {
     this.dragging = null;
     window.removeEventListener('pointermove', this.onEditMove);
     window.removeEventListener('pointerup', this.onEditUp);
-    if (m && this.dragMoved) this.onMachineMove?.(m.id, m.mesh.position.x, m.mesh.position.z);
+    if (m && this.dragMoved) {
+      this.onMachineMove?.(m.id, m.mesh.position.x, m.mesh.position.z);
+    }
   };
 }
 

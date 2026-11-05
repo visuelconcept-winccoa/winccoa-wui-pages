@@ -11,6 +11,7 @@
  */
 import {
   BoxGeometry,
+  Color,
   DoubleSide,
   Group,
   Mesh,
@@ -18,7 +19,7 @@ import {
   MeshStandardMaterial,
   PlaneGeometry
 } from 'three';
-import type { BuildingConfig } from '../types.js';
+import { DEFAULT_COLUMN_COLOR, type BuildingConfig } from '../types.js';
 import { FLOOR_PATTERNS } from './floor-patterns.js';
 
 export interface BuildingResult {
@@ -40,7 +41,7 @@ export class BuildingBuilder {
     this.addColumns(root, cfg, bayW);
     const roofGroup = this.addRoof(cfg, bayW, roofPeak);
     root.add(roofGroup);
-    this.addWalls(root, cfg);
+    if (cfg.showWalls !== false) this.addWalls(root, cfg);
 
     return { group: root, roofGroup };
   }
@@ -116,14 +117,20 @@ export class BuildingBuilder {
 
   private addColumns(root: Group, cfg: BuildingConfig, bayW: number): void {
     const steelMat = new MeshStandardMaterial({
-      color: 0x5B_65_78,
+      color: new Color(cfg.columnColor || DEFAULT_COLUMN_COLOR),
       metalness: 0.6,
       roughness: 0.6
     });
     const colStep = cfg.colStep || 20;
     const colGeo = new BoxGeometry(0.8, cfg.height, 0.8);
-    for (let x = -cfg.length / 2; x <= cfg.length / 2 + 0.1; x += colStep) {
+    const perimeter = cfg.showPerimeterColumns !== false;
+    const xs: number[] = [];
+    for (let x = -cfg.length / 2; x <= cfg.length / 2 + 0.1; x += colStep) xs.push(x);
+    for (const [xi, x] of xs.entries()) {
+      const xEdge = xi === 0 || xi === xs.length - 1;
       for (let zi = 0; zi <= cfg.bays; zi++) {
+        // A column on the building's outline is left out when the perimeter ones are hidden.
+        if (!perimeter && (xEdge || zi === 0 || zi === cfg.bays)) continue;
         const z = -cfg.width / 2 + zi * bayW;
         const col = new Mesh(colGeo, steelMat);
         col.position.set(x, cfg.height / 2, z);

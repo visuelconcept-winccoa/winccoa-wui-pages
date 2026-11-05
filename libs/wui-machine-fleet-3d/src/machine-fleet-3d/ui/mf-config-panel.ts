@@ -4,8 +4,9 @@
 /**
  * Right-hand drawer for the Machine Fleet 3D page.
  *
- * Holds the labelled display toggles and the machine list (search field on top,
- * one compact row per machine with focus / edit / delete actions). Building
+ * Holds the labelled display toggles, the machine list (search field on top,
+ * one compact row per machine with focus / edit / delete actions). The
+ * placement markers are placed and edited on the view itself (pins, #63). Building
  * configuration lives in a separate dialog (`mf-building-dialog`); per-machine
  * editing opens `mf-machine-dialog`. This component only lists and emits intent
  * — the page owns the source of truth.
@@ -16,13 +17,13 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import {
+  BUILTIN_STATES,
   DISCONNECTED_COLOR,
   DISCONNECTED_LABEL,
-  STATE_COLORS,
-  STATE_LABELS,
+  UNKNOWN_STATE_COLOR,
   isDisconnected,
   type MachineDef,
-  type MachineState
+  type StateDef
 } from '../types.js';
 import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
 import {
@@ -35,8 +36,11 @@ import {
 
 export type { DisplayConfig } from '../types.js';
 
-/** Machine-list sort priority: alert → stopped → production → maintenance. */
-const STATE_ORDER: Record<MachineState, number> = { warn: 0, stop: 1, ok: 2, maint: 3 };
+/** Machine-list sort priority of the built-in states: alert → stopped → production → maintenance. */
+const STATE_ORDER: Record<string, number> = { warn: 0, stop: 1, ok: 2, maint: 3 };
+/** Declared states sort after the built-in ones: non-producing first, in their order, then producing. */
+const DECLARED_RANK = 10;
+const RUNNING_RANK = 50;
 
 interface IxValueEvent {
   detail: string | number;
@@ -47,6 +51,8 @@ export class MfConfigPanel extends LitElement {
   static override readonly styles = [IXCoreStyles, panelStyles()];
 
   @property({ attribute: false }) machines: MachineDef[] = [];
+  /** States of the atelier (label, colour, producing), from its mappings. */
+  @property({ attribute: false }) states: StateDef[] = BUILTIN_STATES;
   /** When false, edit/delete/add are hidden and the row action becomes view-only. */
   @property({ type: Boolean }) canEdit = true;
   /**
@@ -103,8 +109,9 @@ export class MfConfigPanel extends LitElement {
 
   private renderRow(m: MachineDef): TemplateResult {
     const offline = isDisconnected(m);
-    const color = offline ? DISCONNECTED_COLOR : STATE_COLORS[m.state];
-    const label = offline ? DISCONNECTED_LABEL : STATE_LABELS[m.state];
+    const def = this.states.find((s) => s.key === m.state);
+    const color = offline ? DISCONNECTED_COLOR : (def?.color ?? UNKNOWN_STATE_COLOR);
+    const label = offline ? DISCONNECTED_LABEL : (def?.label ?? m.state);
     return html`
       <div
         class="row"
@@ -118,6 +125,9 @@ export class MfConfigPanel extends LitElement {
           <span class="row-name">${m.name}</span>
           <span class="row-sub">${m.type}${m.loc ? ` · ${m.loc}` : ''}</span>
         </span>
+        ${m.toPlace
+          ? html`<span class="to-place" title=${localize(MSG.toPlace.hint)}>${localize(MSG.toPlace.label)}</span>`
+          : ''}
         <span class="badge" style="--c:${color}">${label}</span>
         ${this.listOnly ? '' : this.renderRowActions(m)}
       </div>
@@ -158,7 +168,12 @@ export class MfConfigPanel extends LitElement {
   }
 
   private rank(m: MachineDef): number {
-    return isDisconnected(m) ? -1 : STATE_ORDER[m.state];
+    if (isDisconnected(m)) return -1;
+    const builtin = STATE_ORDER[m.state];
+    if (builtin !== undefined) return builtin;
+    const i = this.states.findIndex((s) => s.key === m.state);
+    if (i < 0) return RUNNING_RANK * 2;
+    return (this.states[i].running ? RUNNING_RANK : DECLARED_RANK) + i;
   }
 
   private onEdit(e: Event, id: string): void {
@@ -286,6 +301,17 @@ function panelStyles() {
       color: var(--c, var(--theme-color-primary));
       border: 1px solid var(--c, var(--theme-color-primary));
       background: color-mix(in srgb, var(--c) 16%, transparent);
+    }
+    .to-place {
+      flex-shrink: 0;
+      padding: 0.1rem 0.45rem;
+      border-radius: 0.3rem;
+      font-size: 0.68rem;
+      font-weight: 700;
+      white-space: nowrap;
+      color: var(--theme-color-std-text);
+      border: 1px dashed var(--theme-color-warning);
+      background: color-mix(in srgb, var(--theme-color-warning) 22%, transparent);
     }
     .add {
       margin-top: 0.5rem;
