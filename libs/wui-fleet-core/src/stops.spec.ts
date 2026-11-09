@@ -8,7 +8,7 @@
 import type { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { of } from 'rxjs';
 import { describe, expect, it } from 'vitest';
-import { analyseStopCauses, applyQualifications, type AnalysisMachine } from './engine.js';
+import { analyseStopCauses, applyQualifications, qualificationAt, type AnalysisMachine } from './engine.js';
 import { DEFAULT_STATE_MAPPINGS, type StopCause } from './types.js';
 
 const MIN = 60_000;
@@ -85,5 +85,22 @@ describe('causes given by hand (#272)', () => {
       [30, '10', 'planned', 'op'],
       [10, '10', 'planned', 'op']
     ]);
+  });
+});
+
+describe('overlapping causes given by hand (#272)', () => {
+  it('the latest given wins an overlap, whatever its start', () => {
+    const older = { startMs: t(20), endMs: t(30), code: 'B', at: '2026-11-05T10:00:00Z' };
+    const newer = { startMs: t(10), endMs: t(30), code: 'C', at: '2026-11-05T11:00:00Z' };
+    const out = applyQualifications([{ t: t(0), v: 'M' }], [older, newer]);
+    expect(out.map((s) => [(s.t - T0) / MIN, s.v])).toEqual([[0, 'M'], [10, 'C'], [20, 'C'], [30, 'M']]);
+    expect(qualificationAt([older, newer], t(25))?.code).toBe('C');
+  });
+
+  it('an older one still applies where the newer does not reach', () => {
+    const older = { startMs: t(10), endMs: t(30), code: 'B', at: '2026-11-05T10:00:00Z' };
+    const newer = { startMs: t(20), endMs: t(25), code: 'C', at: '2026-11-05T11:00:00Z' };
+    const out = applyQualifications([], [older, newer]);
+    expect(out.map((s) => [(s.t - T0) / MIN, s.v])).toEqual([[10, 'B'], [20, 'C'], [25, 'B'], [30, '']]);
   });
 });

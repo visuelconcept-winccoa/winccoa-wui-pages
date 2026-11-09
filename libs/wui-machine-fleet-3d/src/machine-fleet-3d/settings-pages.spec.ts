@@ -9,19 +9,29 @@ describe('settings pages of the fleet', () => {
     const menu = {
       entries: [
         { path: '/fleet-3d', title: { en_US: 'Machine Fleet', fr: 'Parc machine' } },
-        { path: '/organisation', hidden: true, fleetSettings: true, icon: 'cogwheel',
+        { path: '/organisation', hidden: true, fleetSettings: { roles: ['msp/view'] }, icon: 'cogwheel',
           title: { 'en_US.utf8': 'Organisation', 'fr_FR.utf8': 'Organisation', 'de_DE.utf8': 'Organisation' } },
         { path: '/x', children: [{ path: '/x/y', fleetSettings: true, title: { en_US: 'Shifts', fr: 'Équipes' } }] }
       ]
     };
     expect(settingsPages(menu)).toEqual([
-      { path: '/organisation', title: { en: 'Organisation', fr: 'Organisation', de: 'Organisation' }, icon: 'cogwheel' },
-      { path: '/x/y', title: { en: 'Shifts', fr: 'Équipes', de: 'Shifts' }, icon: 'cogwheel' }
+      {
+        path: '/organisation',
+        title: { en: 'Organisation', fr: 'Organisation', de: 'Organisation' },
+        icon: 'cogwheel',
+        roles: [{ module: 'msp', role: 'view' }]
+      },
+      { path: '/x/y', title: { en: 'Shifts', fr: 'Équipes', de: 'Shifts' }, icon: 'cogwheel', roles: [] }
     ]);
   });
 
+  it('keeps only well-formed roles', () => {
+    const menu = { entries: [{ path: '/p', fleetSettings: { roles: ['msp/view', 'bad', '/x', 'a/'] } }] };
+    expect(settingsPages(menu)[0].roles).toEqual([{ module: 'msp', role: 'view' }]);
+  });
+
   it('has none without a marked entry or a readable menu', () => {
-    expect(settingsPages({ entries: [{ path: '/a' }, { fleetSettings: true }] })).toEqual([]);
+    expect(settingsPages({ entries: [{ path: '/a' }, { fleetSettings: true }, { path: '/b', fleetSettings: false }] })).toEqual([]);
     expect(settingsPages(null)).toEqual([]);
   });
 });

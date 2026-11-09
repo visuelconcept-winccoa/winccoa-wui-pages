@@ -353,18 +353,36 @@ async function queryHistory(dpe, start, end) {
   }
 }
 
+/** The given causes from the oldest to the latest (`at`, then list order): the latest wins an overlap. */
+function byAge(quals) {
+  return quals
+    .map((q, i) => ({ q, i }))
+    .sort((a, b) => (Date.parse(a.q.at || '') || 0) - (Date.parse(b.q.at || '') || 0) || a.i - b.i)
+    .map((x) => x.q);
+}
+
 /**
- * Lay causes given by hand over a cause history (wui-fleet-core applyQualifications, #272):
- * within each [startMs, endMs) the cause is the qualified code, and at its end the cause read on
- * the machine resumes.
+ * Lay causes given by hand over a cause history (wui-fleet-core applyQualifications, #272): within the
+ * periods they cover, the cause is the one given last, and at the end of a covered run the cause read
+ * on the machine resumes.
  */
 function applyQualifications(causeSamples, quals) {
   if (!quals || quals.length === 0) return causeSamples;
-  const inside = (t) => quals.some((q) => t >= q.startMs && t < q.endMs);
+  const ordered = byAge(quals);
+  const bounds = [...new Set(quals.flatMap((q) => [q.startMs, q.endMs]))].sort((a, b) => a - b);
+  const pieces = [];
+  for (let k = 0; k < bounds.length - 1; k++) {
+    const s = bounds[k];
+    const e = bounds[k + 1];
+    let code;
+    for (const q of ordered) if (q.startMs <= s && q.endMs >= e) code = q.code;
+    if (code !== undefined) pieces.push({ s, e, code });
+  }
+  const inside = (t) => pieces.some((p) => t >= p.s && t < p.e);
   const out = causeSamples.filter((s) => !inside(s.t));
-  for (const q of quals) {
-    out.push({ t: q.startMs, v: q.code });
-    if (!inside(q.endMs)) out.push({ t: q.endMs, v: codeAt(causeSamples, q.endMs) });
+  for (const p of pieces) {
+    out.push({ t: p.s, v: p.code });
+    if (!inside(p.e)) out.push({ t: p.e, v: codeAt(causeSamples, p.e) });
   }
   return out.sort((a, b) => a.t - b.t);
 }

@@ -9,19 +9,23 @@
 assigned in Application Security: **`views`** ("Gérer les vues publiques", e.g. for sysadmin) and
 **`qualify`** ("Qualifier les arrêts").
 
-- **Back from an atelier stays on the overview**: the welcome atelier opens on arriving at the fleet
-  only, no longer again when coming back from an atelier (back arrow or browser back).
-- **Settings pages of the site in the overview**: a button for each menu entry marked
-  `"fleetSettings": true` (usually hidden from the menu), titled and iconned from its entry, opens it —
-  a site adds its own fleet settings without a menu entry of their own.
+- **One "Paramètres" button in the overview** (with the module settings of 0.5.0): it opens the
+  module's opening view directly, or a short menu when the site adds settings pages — menu entries
+  marked `"fleetSettings": true`, or `{ "roles": ["<module>/<role>"] }` to list a page only for a user
+  granted one of these roles (usually hidden from the menu), titled and iconned from their entry. A site
+  adds its own fleet settings without a menu entry of their own.
+- **Back to the overview stays on it**: the welcome atelier opens on arriving at the fleet only, no
+  longer again when coming back from an atelier (back arrow or browser back), the stop or KPI analysis,
+  the non-worked days or a settings page of the site.
 - **Give a stop its cause by hand** (role `qualify`): a click on a finished stop of the Gantt, or
   the pen of the stop list, opens "Cause de l'arrêt" — a cause from the catalog and a mandatory
-  reason. It fills a stop without a cause or replaces the machine's; the history is left as it
+  reason. Only a stop seen whole: an ongoing one, or one the period shown cuts, waits ("En cours, ou
+  coupé par la période : élargir la période"). It fills a stop without a cause or replaces the machine's; the history is left as it
   is, the cause given lays over it in the Gantt, the Pareto, the stop list, the TRS and the stop
   analysis, and is traced in the audit trail.
 
-- **Public views and "welcome atelier for everyone" need the `views` role** (no longer the
-  atelier edit right); "My views" and "welcome atelier for me" stay with each user. The two
+- **Public views and "welcome atelier for everyone" also need the `views` role**, on top of the
+  atelier edit right (the server saves the whole atelier under `edit`); "My views" and "welcome atelier for me" stay with each user. The two
   checkboxes read "Atelier d'accueil : pour moi / pour tous".
 - **A symbol's name is unique in its atelier** (case, accents and spaces ignored): the symbol
   window refuses a taken or empty name; a symbol added under a taken name gets " (2)", " (3)"…

@@ -443,7 +443,9 @@ function attributeStop(
     const { key, label, classification } = resolveGroup(catalog, seg.code);
     const countedMs = seg.end - seg.start - overlapLength(seg.start, seg.end, closed);
     perKey.set(key, (perKey.get(key) ?? 0) + Math.max(0, countedMs));
-    const qual = quals.find((q) => q.code === seg.code && q.startMs < seg.end && q.endMs > seg.start);
+    // The cause given by hand that set this segment's code, if any (the latest covering its start).
+    const given = qualificationAt(quals, seg.start);
+    const qual = given && given.code === seg.code ? given : undefined;
     rawStops.push({
       machineId: machine.machineId,
       machineName: machine.machineName,
@@ -517,21 +519,49 @@ function firstNonEmpty(spans: { code: string }[]): string {
   return spans.find((s) => s.code !== '')?.code ?? '';
 }
 
+/** What an overlay needs of a cause given by hand: its period, its code, and when it was given. */
+export type QualificationSpan = Pick<StopQualification, 'startMs' | 'endMs' | 'code'> & { at?: string };
+
+/** The given causes from the oldest to the latest (`at`, then list order): the latest wins an overlap. */
+function byAge<Q extends QualificationSpan>(quals: readonly Q[]): Q[] {
+  return quals
+    .map((q, i) => ({ q, i }))
+    .sort((a, b) => (Date.parse(a.q.at ?? '') || 0) - (Date.parse(b.q.at ?? '') || 0) || a.i - b.i)
+    .map((x) => x.q);
+}
+
+/** The cause given by hand that applies at `t`: the latest of those covering it, if any. */
+export function qualificationAt<Q extends QualificationSpan>(quals: readonly Q[], t: number): Q | undefined {
+  let found: Q | undefined;
+  for (const q of byAge(quals)) if (t >= q.startMs && t < q.endMs) found = q;
+  return found;
+}
+
 /**
- * Lay causes given by hand over a cause history (#272): within each qualification's
- * [startMs, endMs) the cause is the qualified code, and at its end the cause read on the machine
- * resumes. The history itself is left as it is.
+ * Lay causes given by hand over a cause history (#272): within the periods they cover, the cause is
+ * the one given last (an overlap of two periods takes the latest, whatever its start), and at the end
+ * of a covered run the cause read on the machine resumes. The history itself is left as it is.
  */
 export function applyQualifications(
   causeSamples: { t: number; v: unknown }[],
-  quals: readonly Pick<StopQualification, 'startMs' | 'endMs' | 'code'>[]
+  quals: readonly QualificationSpan[]
 ): { t: number; v: unknown }[] {
   if (quals.length === 0) return causeSamples;
-  const inside = (t: number): boolean => quals.some((q) => t >= q.startMs && t < q.endMs);
+  const ordered = byAge(quals);
+  const bounds = [...new Set(quals.flatMap((q) => [q.startMs, q.endMs]))].sort((a, b) => a - b);
+  const pieces: { s: number; e: number; code: string }[] = [];
+  for (let k = 0; k < bounds.length - 1; k++) {
+    const s = bounds[k];
+    const e = bounds[k + 1];
+    let code: string | undefined;
+    for (const q of ordered) if (q.startMs <= s && q.endMs >= e) code = q.code;
+    if (code !== undefined) pieces.push({ s, e, code });
+  }
+  const inside = (t: number): boolean => pieces.some((p) => t >= p.s && t < p.e);
   const out = causeSamples.filter((s) => !inside(s.t));
-  for (const q of quals) {
-    out.push({ t: q.startMs, v: q.code });
-    if (!inside(q.endMs)) out.push({ t: q.endMs, v: codeAt(causeSamples, q.endMs) });
+  for (const p of pieces) {
+    out.push({ t: p.s, v: p.code });
+    if (!inside(p.e)) out.push({ t: p.e, v: codeAt(causeSamples, p.e) });
   }
   return out.sort((a, b) => a.t - b.t);
 }

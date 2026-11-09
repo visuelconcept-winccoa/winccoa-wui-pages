@@ -207,9 +207,9 @@ export class MfAtelierView extends LitElement {
   /** Application-Security 'ai' grant — gates the AI-assistant affordance. */
   @property({ type: Boolean }) roleAi = true;
   /** Grant to manage the public views and the welcome atelier for everyone (role `views`, #278). */
-  @property({ type: Boolean }) canPublicViews = true;
+  @property({ type: Boolean }) canPublicViews = false;
   /** Grant to give a cause to a stop by hand (role `qualify`, #272). */
-  @property({ type: Boolean }) canQualify = true;
+  @property({ type: Boolean }) canQualify = false;
   /** Display only (the embeddable view): no edit, no management, no navigation away, no save. */
   @property({ type: Boolean, attribute: 'display-only' }) displayOnly = false;
   /** Hide the top bar (title + toolbar). */

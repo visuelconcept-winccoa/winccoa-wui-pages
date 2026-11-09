@@ -127,11 +127,12 @@ function stripKpiValue(kpi: unknown): unknown {
 /** Longest wait (ms) for the user's settings before choosing the default page (#60). */
 const LANDING_WAIT_MS = 1500;
 /**
- * An atelier was just left (back arrow, browser back, another page): the router builds a new page
- * element for the overview, so the "already landed" mark of the old one is lost. Kept here, it stops
- * the overview reached from an atelier from opening the default atelier again.
+ * The fleet was just left for a page of its own (an atelier, by the back arrow or the browser's; the
+ * stop or KPI analysis, the non-worked days, a settings page of the site): the router builds a new
+ * page element for the overview, so the "already landed" mark of the old one is lost. Kept here, it
+ * stops the overview reached back from them from opening the default atelier again.
  */
-let leftAnAtelier = false;
+let leftForFleetPage = false;
 
 @customElement('wui-machine-fleet-3d')
 export class WuiMachineFleet3d extends LitElement {
@@ -186,7 +187,7 @@ export class WuiMachineFleet3d extends LitElement {
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
-    if (this.atelierId) leftAnAtelier = true;
+    if (this.atelierId) leftForFleetPage = true;
     this.overviewSub.unsubscribe();
     this.permSub.unsubscribe();
   }
@@ -232,10 +233,10 @@ export class WuiMachineFleet3d extends LitElement {
           @wui:module-settings=${(e: CustomEvent<{ settings: FleetModuleSettings }>) => (this.moduleSettings = e.detail.settings)}
           @wui:open=${(e: CustomEvent<{ id: string }>) => this.navigate(e.detail.id)}
           @wui:create=${(e: CustomEvent<{ name: string; id?: string; seed?: string }>) => this.onCreate(e.detail)}
-          @wui:analyze=${() => this.dispatchEvent(new RouterEvent('/fleet-stops'))}
-          @wui:kpi=${() => this.dispatchEvent(new RouterEvent('/fleet-kpi'))}
-          @wui:closures=${() => this.dispatchEvent(new RouterEvent('/fleet-closures'))}
-          @wui:page=${(e: CustomEvent<{ path: string }>) => this.dispatchEvent(new RouterEvent(e.detail.path))}
+          @wui:analyze=${() => this.goToFleetPage('/fleet-stops')}
+          @wui:kpi=${() => this.goToFleetPage('/fleet-kpi')}
+          @wui:closures=${() => this.goToFleetPage('/fleet-closures')}
+          @wui:page=${(e: CustomEvent<{ path: string }>) => this.goToFleetPage(e.detail.path)}
         ></mf-atelier-overview>
       </div>
     `;
@@ -255,7 +256,7 @@ export class WuiMachineFleet3d extends LitElement {
         .store=${this.store}
         .canEdit=${this.canEdit && this.roleEdit}
         .roleAi=${this.roleAi}
-        .canPublicViews=${this.canEdit && this.roleViews}
+        .canPublicViews=${this.canEdit && this.roleEdit && this.roleViews}
         .canQualify=${this.canEdit && this.roleQualify}
         .moduleSettings=${this.moduleSettings}
         @wui:save=${(e: CustomEvent<Atelier>) => this.onSave(e.detail)}
@@ -277,8 +278,8 @@ export class WuiMachineFleet3d extends LitElement {
       this.active = this.ateliers.find((a) => a.id === this.atelierId) ?? null;
     } else {
       // Arriving at the fleet (not back from an atelier): the default page, if any (#60).
-      const back = this.landed || leftAnAtelier;
-      leftAnAtelier = false;
+      const back = this.landed || leftForFleetPage;
+      leftForFleetPage = false;
       const landing = back ? undefined : await this.landingPage();
       if (landing) {
         this.landed = true;
@@ -430,6 +431,12 @@ export class WuiMachineFleet3d extends LitElement {
 
   private navigate(id: string): void {
     this.dispatchEvent(new RouterEvent(`/fleet-3d/${id}`));
+  }
+
+  /** A page reached from the overview: coming back from it stays on the overview. */
+  private goToFleetPage(path: string): void {
+    leftForFleetPage = true;
+    this.dispatchEvent(new RouterEvent(path));
   }
 
   private back(): void {

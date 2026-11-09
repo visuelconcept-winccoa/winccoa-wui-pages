@@ -47,6 +47,7 @@ import {
 import {
   analyseStopCauses,
   applyQualifications,
+  qualificationAt,
   formatDuration,
   queryHistory,
   shortStopIntervals,
@@ -140,6 +141,8 @@ const PERIOD_LABEL: Record<Period, MultiLangString> = {
 };
 const PERIODS = Object.keys(PERIOD_LABEL) as Period[];
 const DAY_MS = 86_400_000;
+/** A stop within this of an edge of the period shown is taken as cut by it (ms). */
+const EDGE_MS = 1000;
 const DATE_FORMAT = 'yyyy-MM-dd';
 const END_OF_DAY_MS = DAY_MS - 1;
 
@@ -218,6 +221,8 @@ export class MfMachineDashboard extends LitElement {
   @property({ type: Boolean }) canQualify = false;
   /** This machine's causes given by hand, laid over its cause history. */
   @state() private qualifications: StopQualification[] = [];
+  /** The period last analysed (ms): a stop touching its edges is not given a cause. */
+  private windowMs = { start: 0, end: 0 };
   @state() private qualifying: QualifyTarget | null = null;
   @state() private qualifyError = false;
 
@@ -996,8 +1001,8 @@ export class MfMachineDashboard extends LitElement {
                         ghost
                         size="16"
                         icon="pen"
-                        title=${localize(MSG.qualify.title)}
-                        ?disabled=${this.stopCauses.length === 0}
+                        title=${this.qualifiable(s.startMs, s.endMs) ? localize(MSG.qualify.title) : localize(MSG.qualify.notWhole)}
+                        ?disabled=${!this.qualifiable(s.startMs, s.endMs)}
                         @click=${() => this.openQualify({ startMs: s.startMs, endMs: s.endMs, code: s.code, label: s.code !== '' ? s.causeLabel : '' })}
                       ></ix-icon-button>
                     </td>`
@@ -1243,6 +1248,7 @@ export class MfMachineDashboard extends LitElement {
       this.loading = false;
       return;
     }
+    this.windowMs = { start: start.getTime(), end: end.getTime() };
     const all = this.store ? await this.store.listQualifications() : [];
     if (gen !== this.reloadGen) return;
     this.qualifications = all.filter((q) => q.machineId === m.id && q.atelierId === this.atelierId);
@@ -1307,7 +1313,8 @@ export class MfMachineDashboard extends LitElement {
       if (last && last.state === state && last.causeLabel === causeLabel && last.endMs >= segStart) {
         last.endMs = segEnd;
       } else {
-        const qual = code ? this.qualifications.find((q) => q.code === code && q.startMs <= segStart && q.endMs > segStart) : undefined;
+        const given = code ? qualificationAt(this.qualifications, segStart) : undefined;
+        const qual = given && given.code === code ? given : undefined;
         segs.push({ state, startMs: segStart, endMs: segEnd, causeLabel, code, ...(qual ? { qualifiedBy: qual.user } : {}) });
       }
     }
@@ -1353,13 +1360,18 @@ export class MfMachineDashboard extends LitElement {
   }
 
   /**
-   * A stop of the Gantt may be given a cause: with the role, a catalog, and once it is over (an
-   * ongoing stop has no end yet), #272.
+   * A stop may be given a cause (#272): with the role and a catalog, once it is over and seen whole —
+   * not touching an edge of the period shown (an ongoing stop, or one the period cuts, would be
+   * qualified in part only, and under another start each time).
    */
-  private canQualifySegment(s: StateSegment): boolean {
+  private qualifiable(startMs: number, endMs: number): boolean {
     if (!this.canQualify || !this.store || this.stopCauses.length === 0) return false;
-    if (isRunningState(this.mapping, s.state)) return false;
-    return !(this.offsetMs === 0 && s.endMs >= this.resolveRange().end.getTime() - 1000);
+    const w = this.windowMs;
+    return startMs > w.start + EDGE_MS && endMs < w.end - EDGE_MS;
+  }
+
+  private canQualifySegment(s: StateSegment): boolean {
+    return !isRunningState(this.mapping, s.state) && this.qualifiable(s.startMs, s.endMs);
   }
 
   private qualifySegment(s: StateSegment): void {
@@ -1369,7 +1381,7 @@ export class MfMachineDashboard extends LitElement {
   }
 
   private openQualify(target: QualifyTarget): void {
-    if (!this.canQualify || !this.store || this.stopCauses.length === 0) return;
+    if (!this.qualifiable(target.startMs, target.endMs)) return;
     this.qualifyError = false;
     this.qualifying = target;
   }
@@ -1392,7 +1404,8 @@ export class MfMachineDashboard extends LitElement {
     if (!this.store) return;
     this.qualifying = null;
     const user = await currentAuditUser();
-    const previous = this.qualifications.find((x) => x.startMs === target.startMs);
+    // The machine's own code: the one kept by a cause given earlier, else the stop's code (no overlay).
+    const previous = qualificationAt(this.qualifications, target.startMs);
     const ok = await this.store.saveQualification({
       atelierId: this.atelierId,
       machineId: this.machine.id,

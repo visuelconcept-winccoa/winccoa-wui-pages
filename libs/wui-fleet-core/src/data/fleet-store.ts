@@ -33,6 +33,7 @@ import {
 } from '../types.js';
 import { DEMO_ATELIER } from './demo-layout.js';
 import { guardedWritesBase, routedWriteUrl } from './write-routing.js';
+import { qualificationAt } from '../engine.js';
 import { parseModuleSettings, type FleetModuleSettings } from '../opening-view.js';
 
 const CONFIG_TYPE = 'MachineFleet3D_Config';
@@ -350,32 +351,56 @@ export class FleetStore {
   // --- causes given by hand to stops (#272) ---------------------------------
 
   async listQualifications(): Promise<StopQualification[]> {
+    return (await this.readQualifications()) ?? [];
+  }
+
+  /**
+   * The causes given by hand as stored: [] when none were ever saved (no datapoint, or empty), null
+   * when they could not be read (read failed, unreadable content) — a save must not then write over
+   * them.
+   */
+  private async readQualifications(): Promise<StopQualification[] | null> {
     const ok = await this.ensureType(STOPQUAL_TYPE, [{ name: 'json', type: 'String', refName: '' }]);
     const api = this.api;
-    if (!ok || !api) return [];
+    if (!ok || !api) return null;
+    let raw: unknown;
     try {
-      const raw = await firstValueFrom(api.dpGet(`${STOPQUAL_DP}.json`));
-      const json = this.extractString(raw);
-      const list = json ? (JSON.parse(json) as unknown) : [];
-      return Array.isArray(list) ? (list as StopQualification[]) : [];
+      raw = await firstValueFrom(api.dpGet(`${STOPQUAL_DP}.json`));
     } catch {
-      return [];
+      // Never saved yet (no datapoint) is an empty list; anything else is a failed read.
+      try {
+        const names = (await firstValueFrom(api.dpNames(STOPQUAL_DP, STOPQUAL_TYPE))) as string[];
+        return Array.isArray(names) && names.length === 0 ? [] : null;
+      } catch {
+        return null;
+      }
+    }
+    const json = this.extractString(raw);
+    if (!json || json.trim() === '') return [];
+    try {
+      const list = JSON.parse(json) as unknown;
+      return Array.isArray(list) ? (list as StopQualification[]) : null;
+    } catch {
+      return null;
     }
   }
 
   /**
-   * Record the cause given to a stop, replacing an earlier one of the same stop, on a fresh read
-   * so two users qualifying different stops do not drop each other's work. Traced in the audit
-   * trail with the stop, the old and new cause, and the reason (mandatory).
+   * Record the cause given to a stop, on a fresh read so two users qualifying different stops do not
+   * drop each other's work; refused (false) when the stored list cannot be read, never written over.
+   * The latest given wins an overlap (engine applyQualifications); those it covers entirely are
+   * dropped. Traced in the audit trail with the stop, the old and new cause, and the reason
+   * (mandatory).
    */
   async saveQualification(q: StopQualification): Promise<boolean> {
     const ok = await this.ensureType(STOPQUAL_TYPE, [{ name: 'json', type: 'String', refName: '' }]);
     if (!ok || q.reason.trim() === '') return false;
-    const current = this.offline ? [] : await this.listQualifications();
-    const same = (x: StopQualification): boolean =>
-      x.atelierId === q.atelierId && x.machineId === q.machineId && x.startMs === q.startMs;
-    const before = current.find(same);
-    const next = [...current.filter((x) => !same(x)), q];
+    const current = this.offline ? [] : await this.readQualifications();
+    if (current === null) return false;
+    const mine = (x: StopQualification): boolean => x.atelierId === q.atelierId && x.machineId === q.machineId;
+    const before = qualificationAt(current.filter(mine), q.startMs);
+    const covered = (x: StopQualification): boolean => mine(x) && x.startMs >= q.startMs && x.endMs <= q.endMs;
+    const next = [...current.filter((x) => !covered(x)), q];
     try {
       await this.ensureDp(STOPQUAL_DP, STOPQUAL_TYPE);
       await this.send(DP_SET_URL, jsonPost({ dpeName: `${STOPQUAL_DP}.json`, value: JSON.stringify(next) }));

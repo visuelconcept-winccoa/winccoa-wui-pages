@@ -112,6 +112,7 @@ export const MSG = {
     )
   },
   overview: {
+    settings: ml('Settings', 'Paramètres', 'Einstellungen'),
     graphicsCatalog: ml('Graphics catalog', 'Catalogue graphiques', 'Grafikkatalog'),
     closures: ml('Non-working days', 'Jours non travaillés', 'Arbeitsfreie Tage'),
     stopAnalysis: ml(
@@ -279,6 +280,11 @@ export const MSG = {
     confirm: ml('Save', 'Enregistrer', 'Speichern'),
     givenBy: ml('cause given by', 'cause saisie par', 'Ursache erfasst von'),
     clickHint: ml('Click: give the cause', 'Clic : saisir la cause', 'Klick: Ursache erfassen'),
+    notWhole: ml(
+      'Ongoing, or cut by the period shown: widen the period',
+      'En cours, ou coupé par la période : élargir la période',
+      'Laufend oder vom Zeitraum abgeschnitten: Zeitraum erweitern'
+    ),
     failed: ml('Cause not saved', 'Cause non enregistrée', 'Ursache nicht gespeichert')
   },
   reasonDialog: {

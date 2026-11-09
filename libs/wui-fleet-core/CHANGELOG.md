@@ -19,7 +19,9 @@ fleet-kpi-analysis and fleet-stop-analysis 0.3.0). A page that declares fleet-cl
   `MachineFleet3D_StopQualifications` (`FleetStore.listQualifications` / `saveQualification`,
   traced in the audit trail with the old and new cause and the reason) and laid over that history
   by `applyQualifications`; `analyseStopCauses` takes them as a last argument and marks the stops
-  concerned (`qualifiedBy`, `qualifiedAt`).
+  concerned (`qualifiedBy`, `qualifiedAt`). The latest given wins an overlap of two periods, whatever
+  its start (`qualificationAt`); a save is refused, never written over, when the stored list cannot be
+  read (a datapoint never saved is an empty list), and drops the earlier ones it covers entirely.
 - **"Îlot" is a filter again**: the îlot (a location in the plant) is one of the filters the
   SDS 2.2 acceptance requires, beside UAP and activity (SL-ORG-01, SL-LOB-05). Only the
   "Workcenter" dimension stays out of the filters (#66).

@@ -15,6 +15,7 @@ import { LitElement, css, html, svg, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { Subscription } from 'rxjs';
 import type { FleetStore } from '../data/fleet-store.js';
+import { hasRole$ } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import { MSG, localize, localizeDir, ml } from '../i18n.js';
 import {
   filterDimensions,
@@ -62,6 +63,11 @@ export class MfAtelierOverview extends LitElement {
   @state() private resourcesOpen = false;
   /** Settings pages the site adds to the fleet (menu entries marked `fleetSettings`). */
   @state() private settingsPages: FleetSettingsPage[] = [];
+  /** Paths of the settings pages the user may open (one of their roles granted, or none asked). */
+  @state() private grantedPages: string[] = [];
+  /** The "Paramètres" menu (opening view of the module, settings pages of the site) is open. */
+  @state() private settingsMenuOpen = false;
+  private pageRoleSubs: Subscription[] = [];
   @state() private settingsOpen = false;
   @state() private settingsError = false;
   /** Remembered machine filter (the user's settings, shared with the atelier views). */
@@ -71,24 +77,47 @@ export class MfAtelierOverview extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     this.settingsSub = settingsCache.watch(['fleet-filter'], () => (this.filter = loadFleetFilter()));
-    void loadSettingsPages().then((pages) => (this.settingsPages = pages));
+    void loadSettingsPages().then((pages) => this.watchPageRoles(pages));
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.settingsSub?.unsubscribe();
     this.settingsSub = null;
+    this.pageRoleSubs.forEach((s) => s.unsubscribe());
+    this.pageRoleSubs = [];
+  }
+
+  /** Follow the grants of each settings page: listed when one of its roles is granted, or none asked. */
+  private watchPageRoles(pages: FleetSettingsPage[]): void {
+    this.settingsPages = pages;
+    const granted = new Map<string, Set<string>>();
+    const update = (): void => {
+      this.grantedPages = pages
+        .filter((p) => p.roles.length === 0 || (granted.get(p.path)?.size ?? 0) > 0)
+        .map((p) => p.path);
+    };
+    for (const p of pages) {
+      for (const r of p.roles) {
+        const key = `${r.module}/${r.role}`;
+        this.pageRoleSubs.push(
+          hasRole$(r.module, r.role).subscribe((on) => {
+            const set = granted.get(p.path) ?? new Set<string>();
+            if (on) set.add(key);
+            else set.delete(key);
+            granted.set(p.path, set);
+            update();
+          })
+        );
+      }
+    }
+    update();
   }
 
   override render(): TemplateResult {
     return html`
       <div class="head">
         <span class="spacer"></span>
-        ${this.settingsPages.map(
-          (p) => html`<ix-button variant="secondary" @click=${() => this.openPage(p.path)}>
-            <ix-icon name=${p.icon} slot="icon"></ix-icon>${localize(ml(p.title.en, p.title.fr, p.title.de))}
-          </ix-button>`
-        )}
         <ix-button variant="secondary" @click=${() => (this.resourcesOpen = true)}>
           <ix-icon name="box-open" slot="icon"></ix-icon>${localizeDir(MSG.overview.graphicsCatalog)}
         </ix-button>
@@ -101,9 +130,7 @@ export class MfAtelierOverview extends LitElement {
         <ix-button variant="secondary" @click=${this.analyzeKpi}>
           <ix-icon name="barchart" slot="icon"></ix-icon>${localizeDir(MSG.overview.kpiAnalysis)}
         </ix-button>
-        <ix-button variant="secondary" @click=${() => ((this.settingsOpen = true), (this.settingsError = false))}>
-          <ix-icon name="cogwheel" slot="icon"></ix-icon>${localizeDir(MSG.opening.moduleButton)}
-        </ix-button>
+        ${this.renderSettingsButton()}
         ${this.canEdit
           ? html`<ix-button @click=${this.create}>
               <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.overview.newEllipsis)}
@@ -296,6 +323,46 @@ export class MfAtelierOverview extends LitElement {
   };
 
   /** A settings page of the site (`wui:page`, the host routes to it). */
+  /**
+   * One "Paramètres" button: the module's own settings (its opening view) and the settings pages of the
+   * site the user may open. With no such page, it opens the module's settings directly.
+   */
+  private renderSettingsButton(): TemplateResult {
+    const pages = this.settingsPages.filter((p) => this.grantedPages.includes(p.path));
+    const openModule = (): void => {
+      this.settingsMenuOpen = false;
+      this.settingsOpen = true;
+      this.settingsError = false;
+    };
+    if (pages.length === 0) {
+      return html`<ix-button variant="secondary" @click=${openModule}>
+        <ix-icon name="cogwheel" slot="icon"></ix-icon>${localizeDir(MSG.overview.settings)}
+      </ix-button>`;
+    }
+    return html`<span class="settings-wrap">
+      <ix-button variant="secondary" aria-haspopup="menu" aria-expanded=${this.settingsMenuOpen ? 'true' : 'false'}
+        @click=${() => (this.settingsMenuOpen = !this.settingsMenuOpen)}>
+        <ix-icon name="cogwheel" slot="icon"></ix-icon>${localizeDir(MSG.overview.settings)}
+      </ix-button>
+      ${this.settingsMenuOpen
+        ? html`<div class="menu-backdrop" @click=${() => (this.settingsMenuOpen = false)}></div>
+            <div class="settings-menu" role="menu">
+              <button type="button" role="menuitem" @click=${openModule}>
+                <ix-icon name="cogwheel" size="16"></ix-icon>${localizeDir(MSG.opening.moduleDefault)}
+              </button>
+              ${pages.map(
+                (p) => html`<button type="button" role="menuitem" @click=${() => {
+                  this.settingsMenuOpen = false;
+                  this.openPage(p.path);
+                }}>
+                  <ix-icon name=${p.icon} size="16"></ix-icon>${localize(ml(p.title.en, p.title.fr, p.title.de))}
+                </button>`
+              )}
+            </div>`
+        : ''}
+    </span>`;
+  }
+
   private openPage(path: string): void {
     this.dispatchEvent(new CustomEvent('wui:page', { detail: { path }, bubbles: true, composed: true }));
   }
@@ -324,6 +391,44 @@ function overviewStyles() {
     }
     .spacer {
       flex: 1;
+    }
+    .settings-wrap {
+      position: relative;
+    }
+    .menu-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+    }
+    .settings-menu {
+      position: absolute;
+      top: calc(100% + 0.25rem);
+      right: 0;
+      z-index: 21;
+      display: flex;
+      flex-direction: column;
+      min-width: 14rem;
+      padding: 0.25rem;
+      background: var(--theme-color-2);
+      border: 1px solid var(--theme-color-soft-bdr);
+      border-radius: var(--theme-default-border-radius);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    }
+    .settings-menu button {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.45rem 0.6rem;
+      border: 0;
+      border-radius: 0.2rem;
+      background: transparent;
+      color: var(--theme-color-std-text);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .settings-menu button:hover {
+      background: var(--theme-color-ghost--hover);
     }
     .filters {
       margin-bottom: 1rem;
