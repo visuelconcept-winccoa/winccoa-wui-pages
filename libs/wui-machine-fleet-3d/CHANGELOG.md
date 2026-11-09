@@ -3,7 +3,7 @@
 
 # Changelog — @visuelconcept-winccoa/wui-machine-fleet-3d
 
-## 0.5.0 — 2026-11-05 (SDS 2.2)
+## 0.6.0 — 2026-11-09 (SDS 2.2)
 
 **Upgrade.** Requires wui-fleet-core and fleet-closures `^0.3.0`. New roles, open to all until
 assigned in Application Security: **`views`** ("Gérer les vues publiques", e.g. for sysadmin) and
@@ -38,7 +38,7 @@ assigned in Application Security: **`views`** ("Gérer les vues publiques", e.g.
   symbol window, graphics catalogue).
 - **Deleting an atelier asks for a reason** (mandatory), written with the deletion in the audit
   trail (`AuditTrail_Fleet`, `reason`); new `mf-reason-dialog`.
-- **"Îlot" filter back** in the filter bar (wui-fleet-core 0.2.1), beside UAP, activity, tags and
+- **"Îlot" filter back** in the filter bar (wui-fleet-core 0.3.0), beside UAP, activity, tags and
   state; "Workcenter" stays out (#66).
 - **"Affichage" tab**: at most **10 lines in the bubble and 10 in the popup**, counted per column
   ("Bulle n / 10", "Popup n / 10"); a line not shown yet cannot be ticked once 10 are, until
@@ -52,6 +52,33 @@ assigned in Application Security: **`views`** ("Gérer les vues publiques", e.g.
   parameter ticked in the new **"Tableau de bord"** column of the "Affichage" tab (**at most 10**,
   "Tableau de bord n / 10", in display order), then the TRS. Optional `inDashboard` on the
   `display` entries; absent, the first 10 process parameters in display order are shown.
+## 0.5.1 — 2026-11-05
+
+- The opening view (#70) is framed again when the view is resized — the machine list or a
+  panel opening beside it, full screen, a window or a dashboard tile resized — as long as the user
+  has not moved the camera since it was framed (#72). Any move of theirs (drag, wheel, keys, pad
+  buttons, presets, fly to a machine, a viewpoint, the 2D / 3D toggle) stops it; "Default view"
+  frames it again. A saved viewpoint keeps its pose.
+
+## 0.5.0 — 2026-11-05
+
+**Upgrade.** New role **`configure`** (module settings, common to every atelier) — open until an
+admin assigns groups in `/app-security`. Needs fleet-core 0.2.1 and fleet-closures 0.2.1 (the
+server-side rule of the module settings).
+
+- **Opening view of an atelier** (#70): an atelier opened without a default viewpoint is framed on
+  its placed symbols ("à placer" and hidden ones excluded; the floor when there is none), in one of
+  three modes — **A** plan (2D), **B** tilted plan in perspective (3D), **C** tilted plan without
+  perspective (2D locked at the tilt: zoom and pan only). Tilt towards the back 5–60°, margin
+  0–40 %, the building's front side (where the camera stands).
+- **"Paramètres du module"** in the overview: the default opening view of every atelier (DP
+  `MachineFleet3D_Settings`, role `configure`), with the three choices rendered live, a preview
+  whose tilt is set by dragging, tried on the site's ateliers and on example layouts.
+- **"Vue d'ouverture"** in an atelier's toolbar: its front side, and the module's view or a view
+  of its own (`Atelier.opening`, role `edit`).
+- Opening order (load and "Default view" button): the user's default viewpoint, the atelier's
+  public one, the atelier's opening view, the module's. The 3D toggle opens a plan or C setting
+  in perspective; the 2D toggle stays the plan straight down.
 
 ## 0.4.0 — 2026-11-04 (SDS 2.2)
 

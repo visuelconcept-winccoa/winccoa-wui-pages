@@ -31,6 +31,15 @@
       }
     },
     {
+      "id": "configure",
+      "label": { "en_US.utf8": "Configure the module", "fr.utf8": "Configurer le module", "de.utf8": "Modul konfigurieren" },
+      "description": {
+        "en_US.utf8": "Change the settings common to every atelier, such as the default opening view.",
+        "fr.utf8": "Modifier les réglages communs à tous les ateliers, comme la vue d’ouverture par défaut.",
+        "de.utf8": "Die für alle Werkstätten gemeinsamen Einstellungen ändern, etwa die Standard-Eröffnungsansicht."
+      }
+    },
+    {
       "id": "ai",
       "label": { "en_US.utf8": "AI assistant", "fr.utf8": "Assistant IA", "de.utf8": "KI-Assistent" },
       "description": {

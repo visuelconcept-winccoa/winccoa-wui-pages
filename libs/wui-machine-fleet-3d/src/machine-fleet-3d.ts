@@ -49,6 +49,7 @@ import {
   auditSnapshot,
   type AuditRecord
 } from '@visuelconcept-winccoa/wui-kit/data/audit-trail.js';
+import { parseModuleSettings, type FleetModuleSettings } from '@visuelconcept-winccoa/wui-fleet-core/opening-view.js';
 import './machine-fleet-3d/ui/mf-atelier-overview.js';
 import './machine-fleet-3d/ui/mf-atelier-view.js';
 
@@ -153,6 +154,10 @@ export class WuiMachineFleet3d extends LitElement {
   @state() private roleViews = true;
   /** Give a cause to a stop by hand, from the machine dashboard (#272). */
   @state() private roleQualify = true;
+  /** Role `configure`: the module settings, common to every atelier (#70). */
+  @state() private roleConfigure = true;
+  /** The module settings (#70: the default opening view of every atelier). */
+  @state() private moduleSettings: FleetModuleSettings = parseModuleSettings('');
 
   private readonly store = new FleetStore();
   /** Traces atelier create/update/delete into the shared `AuditTrail_Fleet` DP. */
@@ -176,6 +181,7 @@ export class WuiMachineFleet3d extends LitElement {
     this.permSub.add(hasRole$(MODULE_ID, 'ai').subscribe((granted) => (this.roleAi = granted)));
     this.permSub.add(hasRole$(MODULE_ID, 'views').subscribe((granted) => (this.roleViews = granted)));
     this.permSub.add(hasRole$(MODULE_ID, 'qualify').subscribe((granted) => (this.roleQualify = granted)));
+    this.permSub.add(hasRole$(MODULE_ID, 'configure').subscribe((granted) => (this.roleConfigure = granted)));
   }
 
   override disconnectedCallback(): void {
@@ -220,7 +226,10 @@ export class WuiMachineFleet3d extends LitElement {
           .store=${this.store}
           .canEdit=${this.canEdit && this.roleEdit}
           .roleAi=${this.roleAi}
+          .moduleSettings=${this.moduleSettings}
+          .canConfigure=${this.canEdit && this.roleConfigure}
           ?offline=${this.offline}
+          @wui:module-settings=${(e: CustomEvent<{ settings: FleetModuleSettings }>) => (this.moduleSettings = e.detail.settings)}
           @wui:open=${(e: CustomEvent<{ id: string }>) => this.navigate(e.detail.id)}
           @wui:create=${(e: CustomEvent<{ name: string; id?: string; seed?: string }>) => this.onCreate(e.detail)}
           @wui:analyze=${() => this.dispatchEvent(new RouterEvent('/fleet-stops'))}
@@ -248,6 +257,7 @@ export class WuiMachineFleet3d extends LitElement {
         .roleAi=${this.roleAi}
         .canPublicViews=${this.canEdit && this.roleViews}
         .canQualify=${this.canEdit && this.roleQualify}
+        .moduleSettings=${this.moduleSettings}
         @wui:save=${(e: CustomEvent<Atelier>) => this.onSave(e.detail)}
         @wui:remove=${(e: CustomEvent<{ reason?: string }>) => this.onRemoveActive(e.detail?.reason ?? '')}
         @wui:back=${() => this.back()}
@@ -257,7 +267,9 @@ export class WuiMachineFleet3d extends LitElement {
 
   private async refresh(): Promise<void> {
     this.loading = true;
-    this.ateliers = await this.store.listAteliers();
+    const [ateliers, settings] = await Promise.all([this.store.listAteliers(), this.store.readModuleSettings()]);
+    this.ateliers = ateliers;
+    this.moduleSettings = settings;
     this.offline = this.store.offline;
     // Provision the audit-trail DP early (best-effort), but only with a real backend.
     if (!this.offline) void this.audit.ensure();
@@ -385,6 +397,7 @@ export class WuiMachineFleet3d extends LitElement {
     });
     this.back();
   }
+
 
   private async onSave(atelier: Atelier): Promise<void> {
     // Capture the previous persisted atelier BEFORE the map() reassignment overwrites it.

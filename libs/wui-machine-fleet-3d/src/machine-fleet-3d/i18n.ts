@@ -682,6 +682,65 @@ export const MSG = {
     delete: ml('Delete', 'Supprimer', 'Löschen'),
     editTitlePrefix: ml('Symbol', 'Symbole', 'Symbol')
   },
+  opening: {
+    modeTitle: ml('Opening view', "Vue d'ouverture", 'Eröffnungsansicht'),
+    modeHint: ml(
+      'Used when the atelier opens without a default viewpoint (neither the user’s nor the atelier’s public one). The camera frames the placed symbols (the floor when there is none).',
+      'Utilisée quand l’atelier s’ouvre sans vue par défaut (ni celle de l’utilisateur, ni la vue publique de l’atelier). La caméra cadre les symboles placés (le sol s’il n’y en a aucun).',
+      'Gilt, wenn die Werkstatt ohne Standardansicht geöffnet wird (weder die des Benutzers noch die öffentliche der Werkstatt). Die Kamera rahmt die platzierten Symbole (den Boden, wenn keines platziert ist).'
+    ),
+    plan: ml('Plan', 'Plan', 'Grundriss'),
+    planText: ml('Straight down, as the 2D mode. The layout, without relief.', 'Vue de dessus, comme le mode 2D. L’implantation, sans relief.', 'Senkrecht von oben, wie der 2D-Modus. Das Layout, ohne Relief.'),
+    tilted: ml('Tilted plan, perspective', 'Plan incliné, perspective', 'Geneigter Grundriss, perspektivisch'),
+    tiltedText: ml(
+      'Above the plan, tilted towards the back: the front at the bottom, the back recedes. Opens in 3D.',
+      'Au-dessus du plan, basculé vers le fond : l’avant en bas, le fond fuit. S’ouvre en 3D.',
+      'Über dem Grundriss, nach hinten geneigt: vorne unten, hinten fluchtend. Öffnet in 3D.'
+    ),
+    tiltedOrtho: ml('Tilted plan, no perspective', 'Plan incliné, sans perspective', 'Geneigter Grundriss, ohne Perspektive'),
+    tiltedOrthoText: ml(
+      'Same tilt, distances to the plan’s scale. Opens in 2D: zoom and pan, no rotation.',
+      'Même inclinaison, distances à l’échelle du plan. S’ouvre en 2D : zoom et déplacement, sans rotation.',
+      'Gleiche Neigung, Abstände maßstäblich. Öffnet in 2D: Zoomen und Verschieben, ohne Drehen.'
+    ),
+    tilt: ml('Tilt towards the back', 'Inclinaison vers l’arrière', 'Neigung nach hinten'),
+    margin: ml('Margin', 'Marge', 'Rand'),
+    front: ml('Front side of the building', 'Côté « avant » du bâtiment', 'Vorderseite des Gebäudes'),
+    frontHint: ml('Where the camera stands (the entrance), at the bottom of the screen.', 'Là où se tient la caméra (l’entrée), en bas de l’écran.', 'Wo die Kamera steht (der Eingang), unten am Bildschirm.'),
+    frontSouth: ml('Entrance (south)', 'Entrée (sud)', 'Eingang (Süd)'),
+    frontEast: ml('East', 'Est', 'Ost'),
+    frontNorth: ml('North', 'Nord', 'Nord'),
+    frontWest: ml('West', 'Ouest', 'West'),
+    dragHint: ml('Drag up or down on the preview (or arrow keys) to set the tilt.', 'Glisse vers le haut ou le bas sur l’aperçu (ou flèches) pour régler l’inclinaison.', 'Auf der Vorschau nach oben/unten ziehen (oder Pfeiltasten), um die Neigung einzustellen.'),
+    previewLabel: ml('Preview', 'Aperçu', 'Vorschau'),
+    samples: ml('Try it on', 'Essayer sur', 'Ausprobieren an'),
+    sampleCluster: ml('Example: compact cluster', 'Exemple : îlot compact', 'Beispiel: kompakte Insel'),
+    sampleLine: ml('Example: long line', 'Exemple : ligne longue', 'Beispiel: lange Linie'),
+    sampleFull: ml('Example: full atelier', 'Exemple : atelier plein', 'Beispiel: volle Werkstatt'),
+    symbols: ml('symbols', 'symboles', 'Symbole'),
+    noWebgl: ml('Preview unavailable (WebGL).', 'Aperçu indisponible (WebGL).', 'Vorschau nicht verfügbar (WebGL).'),
+    moduleTitle: ml('Module settings — every atelier', 'Paramètres du module — tous les ateliers', 'Moduleinstellungen — alle Werkstätten'),
+    moduleButton: ml('Module settings', 'Paramètres du module', 'Moduleinstellungen'),
+    moduleDefault: ml('Default opening view', "Vue d'ouverture par défaut", 'Standard-Eröffnungsansicht'),
+    moduleHint: ml(
+      'Applies to every atelier that has no setting of its own. Role "Configure the module".',
+      'S’applique à chaque atelier qui n’a pas son propre réglage. Rôle « Configurer le module ».',
+      'Gilt für jede Werkstatt ohne eigene Einstellung. Rolle „Modul konfigurieren".'
+    ),
+    atelierButton: ml("Opening view", "Vue d'ouverture", 'Eröffnungsansicht'),
+    atelierTitle: ml("Opening view of this atelier", "Vue d'ouverture de cet atelier", 'Eröffnungsansicht dieser Werkstatt'),
+    useModule: ml('Use the module’s setting', 'Utiliser le réglage du module', 'Einstellung des Moduls verwenden'),
+    own: ml('Setting specific to this atelier', 'Réglage propre à cet atelier', 'Eigene Einstellung dieser Werkstatt'),
+    priority: ml(
+      'Opening order: the user’s default viewpoint, the atelier’s public one, this setting, the module’s.',
+      'Ordre à l’ouverture : la vue par défaut de l’utilisateur, la vue publique de l’atelier, ce réglage, celui du module.',
+      'Reihenfolge beim Öffnen: Standardansicht des Benutzers, öffentliche der Werkstatt, diese Einstellung, die des Moduls.'
+    ),
+    apply: ml('Apply', 'Appliquer', 'Übernehmen'),
+    cancel: ml('Cancel', 'Annuler', 'Abbrechen'),
+    readOnly: ml('Read-only: your role does not allow this change.', 'Lecture seule : votre rôle ne permet pas ce changement.', 'Nur lesen: Ihre Rolle erlaubt diese Änderung nicht.'),
+    saveFailed: ml('The module settings could not be saved.', 'Les paramètres du module n’ont pas pu être enregistrés.', 'Die Moduleinstellungen konnten nicht gespeichert werden.')
+  },
   buildingDialog: {
     title: ml('Building configuration', 'Configuration du bâtiment', 'Gebäudekonfiguration'),
     close: ml('Close', 'Fermer', 'Schließen'),

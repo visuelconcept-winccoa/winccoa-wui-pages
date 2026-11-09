@@ -7,6 +7,10 @@
 
 - `/api/fleet`: the causes given by hand to stops (`MachineFleet3D_StopQualifications`) are
   written with machine-fleet-3d's **`qualify`** role only (wui-fleet-core 0.3.0).
+## 0.2.1 — 2026-11-05
+
+- `/api/fleet`: the module settings of machine-fleet-3d (`MachineFleet3D_Settings`, its type and
+  DP) need the role **`machine-fleet-3d/configure`** (#70).
 
 ## 0.2.0 — 2026-11-04 (SDS 2.2)
 

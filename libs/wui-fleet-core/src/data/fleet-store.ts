@@ -33,6 +33,7 @@ import {
 } from '../types.js';
 import { DEMO_ATELIER } from './demo-layout.js';
 import { guardedWritesBase, routedWriteUrl } from './write-routing.js';
+import { parseModuleSettings, type FleetModuleSettings } from '../opening-view.js';
 
 const CONFIG_TYPE = 'MachineFleet3D_Config';
 const DP_PREFIX = 'MachineFleet3D_';
@@ -58,6 +59,9 @@ const CLOSURES_DP = 'MachineFleet3D_Closures';
 /** Side-table mapping a resource id → its library name (avoids schema change). */
 const RESLIB_TYPE = 'MachineFleet3D_ResLibraries';
 const RESLIB_DP = 'MachineFleet3D_ResLibraries';
+/** Settings of the whole module (#70: the default opening view of every atelier); role `configure`. */
+const SETTINGS_TYPE = 'MachineFleet3D_Settings';
+const SETTINGS_DP = 'MachineFleet3D_Settings';
 /** Reference scheme for a DP-backed resource (GLB or billboard). */
 const REF_SCHEME = 'dp:';
 const DATA_URL_SCHEME = 'data:';
@@ -108,6 +112,8 @@ export class FleetStore {
   private readonly api = this.resolveApi();
   private readonly dpe = this.resolveDpe();
   private memory: Atelier[] | null = null;
+  /** The module settings while offline (no backend). */
+  private moduleSettingsMem: FleetModuleSettings | null = null;
   /** Whether the guarded writes answer (asked once, on the first write, when a page set them). */
   private fleetApi: Promise<boolean> | null = null;
   private typeReady = false;
@@ -429,6 +435,43 @@ export class FleetStore {
       await this.ensureDp(CLOSURES_DP, CLOSURES_TYPE);
       await this.send(DP_SET_URL, jsonPost({ dpeName: `${CLOSURES_DP}.json`, value: JSON.stringify(config) }));
       this.traceBlob('Closures', CLOSURES_DP, before, config);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // --- module settings (#70) ----------------------------------------------------
+
+  /**
+   * The module settings (the default opening view of every atelier); defaults when absent.
+   * Read only (no type created): an embedded view without any write right reads them too.
+   */
+  async readModuleSettings(): Promise<FleetModuleSettings> {
+    const api = this.api;
+    if (this.offline || !api) return parseModuleSettings(this.moduleSettingsMem);
+    try {
+      const raw = await firstValueFrom(api.dpGet(`${SETTINGS_DP}.json`));
+      return parseModuleSettings(this.extractString(raw) ?? '');
+    } catch {
+      return parseModuleSettings('');
+    }
+  }
+
+  /** Save the module settings (through /api/fleet: role machine-fleet-3d/configure), traced. */
+  async saveModuleSettings(settings: FleetModuleSettings): Promise<boolean> {
+    const value = parseModuleSettings(settings);
+    if (this.offline) {
+      this.moduleSettingsMem = value;
+      return true;
+    }
+    const ok = await this.ensureType(SETTINGS_TYPE, [{ name: 'json', type: 'String', refName: '' }]);
+    if (!ok) return false;
+    const before = await this.readModuleSettings();
+    try {
+      await this.ensureDp(SETTINGS_DP, SETTINGS_TYPE);
+      await this.send(DP_SET_URL, jsonPost({ dpeName: `${SETTINGS_DP}.json`, value: JSON.stringify(value) }));
+      this.traceBlob('Settings', SETTINGS_DP, before, value);
       return true;
     } catch {
       return false;

@@ -5,7 +5,7 @@
 
 ## 0.3.0 — 2026-11-05 (SDS 2.2)
 
-**Upgrade.** The fleet pages move to `^0.3.0` together (machine-fleet-3d 0.5.0, fleet-closures,
+**Upgrade.** The fleet pages move to `^0.3.0` together (machine-fleet-3d 0.6.0, fleet-closures,
 fleet-kpi-analysis and fleet-stop-analysis 0.3.0). A page that declares fleet-closures imports
 `data/guarded-writes.js` for its writes to go through `/api/fleet`.
 
@@ -20,11 +20,17 @@ fleet-kpi-analysis and fleet-stop-analysis 0.3.0). A page that declares fleet-cl
   traced in the audit trail with the old and new cause and the reason) and laid over that history
   by `applyQualifications`; `analyseStopCauses` takes them as a last argument and marks the stops
   concerned (`qualifiedBy`, `qualifiedAt`).
-
 - **"Îlot" is a filter again**: the îlot (a location in the plant) is one of the filters the
   SDS 2.2 acceptance requires, beside UAP and activity (SL-ORG-01, SL-LOB-05). Only the
   "Workcenter" dimension stays out of the filters (#66).
 - Stop causes window: import with the arrow down, export with the arrow up, as in Machine Fleet.
+## 0.2.1 — 2026-11-05
+
+- `opening-view.ts` (#70): opening view types and bounds, the module settings
+  (`MachineFleet3D_Settings`), the opening order (`resolveOpeningView`), and the pure framing of a
+  box of symbols for a mode, a tilt, a front side and a margin (`frameOpeningView`, unit-tested).
+- `Atelier.opening` (front side, own view); `FleetStore.readModuleSettings` /
+  `saveModuleSettings` (through `/api/fleet`, traced in `AuditTrail_Fleet`).
 
 ## 0.2.0 — 2026-11-04 (SDS 2.2)
 

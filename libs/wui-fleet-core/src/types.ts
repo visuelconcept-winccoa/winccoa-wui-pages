@@ -10,6 +10,7 @@
  * UI share one typed contract.
  */
 import type { Group, PointLight } from 'three';
+import type { AtelierOpening } from './opening-view.js';
 
 /** The four states every mapping knows when it declares no state list of its own. */
 export type BuiltinState = 'ok' | 'warn' | 'stop' | 'maint';
@@ -1037,6 +1038,11 @@ export interface Atelier {
   landing?: boolean;
   /** Placement markers of this atelier (location pins), machines placed from them. */
   markers?: PlacementMarker[];
+  /**
+   * The opening view when no default viewpoint applies (#70): the building's front side and, when
+   * set, this atelier's own view; absent = front south, the module's view (opening-view.ts).
+   */
+  opening?: AtelierOpening;
 }
 
 /**

@@ -40,6 +40,7 @@ vi.mock('@visuelconcept-winccoa/wui-kit/data/app-security.js', () => ({
 vi.mock('./machine-fleet-3d/data/fleet-store.js', () => ({
   FleetStore: class {
     readResourceDataUrl = async (): Promise<undefined> => undefined;
+    readModuleSettings = async () => ({ openingView: { mode: 'tilted', tilt: 30, margin: 12 } });
   }
 }));
 vi.mock('./machine-fleet-3d/data/ali-assets.js', () => ({

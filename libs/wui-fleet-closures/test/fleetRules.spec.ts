@@ -11,6 +11,7 @@ import { closuresRoles, configOf, dpOf, rolesForDp, rolesForSet, rolesForType } 
 const FLEET = { module: 'machine-fleet-3d', role: 'edit' };
 const CLOSURES = { module: 'fleet-closures', role: 'edit' };
 const MACHINE = { module: 'fleet-closures', role: 'edit-machine' };
+const CONFIGURE = { module: 'machine-fleet-3d', role: 'configure' };
 
 describe('fleet write rules', () => {
   it('reads the datapoint and the config of a DPE, system or not', () => {
@@ -30,6 +31,12 @@ describe('fleet write rules', () => {
     expect(rolesForSet('WC_FOUR_P_TEMP.Value:_archive.._archive')).toEqual([FLEET]);
     expect(rolesForDp('MachineFleet3D_ilot-1', 'MachineFleet3D_Config')).toEqual([FLEET]);
     expect(rolesForType('MachineFleet3D_Glb')).toEqual([FLEET]);
+  });
+
+  it('the module settings (every atelier, #70) need the Fleet configure role', () => {
+    expect(rolesForSet('System1:MachineFleet3D_Settings.json')).toEqual([CONFIGURE]);
+    expect(rolesForDp('MachineFleet3D_Settings', 'MachineFleet3D_Settings')).toEqual([CONFIGURE]);
+    expect(rolesForType('MachineFleet3D_Settings')).toEqual([CONFIGURE]);
   });
 
   it('anything else is refused', () => {
