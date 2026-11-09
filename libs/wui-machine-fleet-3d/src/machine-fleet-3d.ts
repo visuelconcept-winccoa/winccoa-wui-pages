@@ -35,6 +35,8 @@ import { FleetStore } from '@visuelconcept-winccoa/wui-fleet-core/data/fleet-sto
 import { settingsCache } from '@visuelconcept-winccoa/wui-fleet-core/settings-cache.js';
 import { landingAtelier } from '@visuelconcept-winccoa/wui-fleet-core/user-views.js';
 import '@visuelconcept-winccoa/wui-fleet-core/fleet-settings-service.js';
+// The page requires fleet-closures: its writes go through /api/fleet (not the embeddable fleet-view).
+import '@visuelconcept-winccoa/wui-fleet-core/data/guarded-writes.js';
 import {
   DEFAULT_STATE_MAPPINGS,
   resolveState,

@@ -47,6 +47,8 @@ import {
 import { pageStyles } from '@visuelconcept-winccoa/wui-fleet-core/styles.js';
 import { FleetStore } from '@visuelconcept-winccoa/wui-fleet-core/data/fleet-store.js';
 import '@visuelconcept-winccoa/wui-fleet-core/fleet-settings-service.js';
+// Writes through this module's own /api/fleet.
+import '@visuelconcept-winccoa/wui-fleet-core/data/guarded-writes.js';
 import { PagePrefs } from '@visuelconcept-winccoa/wui-fleet-core/page-prefs.js';
 import { stringList } from '@visuelconcept-winccoa/wui-fleet-core/settings-cache.js';
 import type { Atelier } from '@visuelconcept-winccoa/wui-fleet-core/types.js';

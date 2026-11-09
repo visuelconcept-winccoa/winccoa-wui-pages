@@ -29,6 +29,8 @@ import appSecurityRoles from './app-security.roles.json';
 import { pageStyles } from '@visuelconcept-winccoa/wui-fleet-core/styles.js';
 import { FleetStore } from '@visuelconcept-winccoa/wui-fleet-core/data/fleet-store.js';
 import '@visuelconcept-winccoa/wui-fleet-core/fleet-settings-service.js';
+// The page requires fleet-closures: its writes go through /api/fleet.
+import '@visuelconcept-winccoa/wui-fleet-core/data/guarded-writes.js';
 import { PagePrefs, oneOf, restorePeriod, storePeriod } from '@visuelconcept-winccoa/wui-fleet-core/page-prefs.js';
 import { stringList } from '@visuelconcept-winccoa/wui-fleet-core/settings-cache.js';
 import {

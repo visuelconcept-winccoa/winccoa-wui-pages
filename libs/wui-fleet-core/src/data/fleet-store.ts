@@ -32,6 +32,7 @@ import {
   type StopQualification
 } from '../types.js';
 import { DEMO_ATELIER } from './demo-layout.js';
+import { guardedWritesBase, routedWriteUrl } from './write-routing.js';
 
 const CONFIG_TYPE = 'MachineFleet3D_Config';
 const DP_PREFIX = 'MachineFleet3D_';
@@ -64,12 +65,9 @@ const CREATE_TYPE_URL = '/api/para/dptype/create';
 const CREATE_DP_URL = '/api/para/dp/create';
 const DP_SET_URL = '/api/para/dp/set';
 const DELETE_DP_BASE = '/api/para/dp';
-/**
- * The Fleet's guarded writes (backend of wui-fleet-closures): the same endpoints, each checked on the server
- * against the role it needs. Used when deployed; otherwise the writes go to /api/para.
- */
-const FLEET_API = '/api/fleet';
-const PARA_API = '/api/para';
+// The Fleet's guarded writes (fleet-closures' backend) are turned on by `data/guarded-writes.js`, imported
+// only by the pages that declare fleet-closures (write-routing.ts): this file names no other module's backend.
+export { routeWritesThrough } from './write-routing.js';
 const ID_RADIX = 36;
 const HTTP_BAD_REQUEST = 400;
 
@@ -110,7 +108,7 @@ export class FleetStore {
   private readonly api = this.resolveApi();
   private readonly dpe = this.resolveDpe();
   private memory: Atelier[] | null = null;
-  /** Whether /api/fleet answers (asked once, on the first write). */
+  /** Whether the guarded writes answer (asked once, on the first write, when a page set them). */
   private fleetApi: Promise<boolean> | null = null;
   private typeReady = false;
   private readonly resourceReady = new Map<GraphicKind, boolean>();
@@ -651,12 +649,14 @@ export class FleetStore {
     return undefined;
   }
 
-  /** A write's URL: through the Fleet's guarded writes when they are deployed, else PARA's. */
+  /** A write's URL: through the Fleet's guarded writes when a page set them and they answer, else PARA's. */
   private async writeUrl(url: string): Promise<string> {
-    this.fleetApi ??= fetch(`${FLEET_API}/health`)
+    const base = guardedWritesBase();
+    if (!base) return url;
+    this.fleetApi ??= fetch(`${base}/health`)
       .then((r) => r.ok)
       .catch(() => false);
-    return (await this.fleetApi) && url.startsWith(PARA_API) ? FLEET_API + url.slice(PARA_API.length) : url;
+    return routedWriteUrl(url, base, await this.fleetApi);
   }
 
   private async send(url: string, init: RequestInit): Promise<void> {
