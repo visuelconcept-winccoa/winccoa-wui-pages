@@ -5,8 +5,8 @@
 
 ## 0.3.0 — 2026-11-05 (SDS 2.2)
 
-- The analysis takes the causes given by hand to stops from the machine dashboard into account
-  (wui-fleet-core 0.3.0).
+- Each machine analysed with its own stop-cause catalogue (#74); a catalogue's causes stay apart from
+  another's reusing a code.
 
 ## 0.2.0 — 2026-11-04 (SDS 2.2)
 

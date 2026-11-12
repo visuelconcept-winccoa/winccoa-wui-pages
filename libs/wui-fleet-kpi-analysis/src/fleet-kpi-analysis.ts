@@ -38,6 +38,7 @@ import {
   resolveTrsColor,
   type Atelier,
   type StopCause,
+  type StopCauseCatalog,
   type TrsThresholds
 } from '@visuelconcept-winccoa/wui-fleet-core/types.js';
 import {
@@ -56,6 +57,7 @@ import {
   type ClosureConfig
 } from '@visuelconcept-winccoa/wui-fleet-core/closures.js';
 import { MSG, localize, localizeDir } from './fleet-kpi-analysis/i18n.js';
+import { defaultCatalog } from '@visuelconcept-winccoa/wui-fleet-core/stop-catalogs.js';
 
 const TAB_TABLE = 'table';
 const TAB_CHART = 'chart';
@@ -81,6 +83,8 @@ export class WuiFleetKpiAnalysis extends LitElement {
 
   @state() private ateliers: Atelier[] = [];
   @state() private catalog: StopCause[] = [];
+  /** Every stop-cause catalogue (#74): each machine is classified with its own, else the default. */
+  private catalogs: StopCauseCatalog[] = [];
   @state() private selectedAteliers: string[] = [];
   @state() private selectedMachines: string[] = [];
   @state() private startStr = '';
@@ -444,7 +448,8 @@ export class WuiFleetKpiAnalysis extends LitElement {
   private async bootstrap(): Promise<void> {
     this.loading = true;
     this.ateliers = await this.store.listAteliers();
-    this.catalog = await this.store.listStopCauses();
+    this.catalogs = await this.store.listCatalogs();
+    this.catalog = defaultCatalog(this.catalogs).causes;
     this.closures = normaliseClosures(await this.store.listClosures());
     this.buildTrsConfigMap();
     this.offline = this.store.offline;
@@ -514,7 +519,8 @@ export class WuiFleetKpiAnalysis extends LitElement {
     const machines = collectMachines(
       this.ateliers,
       new Set(this.selectedAteliers),
-      new Set(this.selectedMachines)
+      new Set(this.selectedMachines),
+      this.catalogs
     );
     const nonWorked = buildNonWorkedMap(this.closures, machines);
     this.result = await analyseKpi(this.api, machines, this.catalog, start, end, nonWorked);

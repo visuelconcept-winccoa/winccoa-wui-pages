@@ -275,23 +275,6 @@ export const MSG = {
     clear: ml('Clear', 'Effacer', 'Leeren'),
     missing: ml('Datapoint not found', 'Datapoint introuvable', 'Datenpunkt nicht gefunden')
   },
-  qualify: {
-    title: ml('Cause of the stop', "Cause de l'arrêt", 'Stillstandsursache'),
-    period: ml('Stop', 'Arrêt', 'Stillstand'),
-    current: ml('Current cause', 'Cause actuelle', 'Aktuelle Ursache'),
-    cause: ml('Cause', 'Cause', 'Ursache'),
-    reason: ml('Reason (mandatory)', 'Motif (obligatoire)', 'Begründung (Pflicht)'),
-    cancel: ml('Cancel', 'Annuler', 'Abbrechen'),
-    confirm: ml('Save', 'Enregistrer', 'Speichern'),
-    givenBy: ml('cause given by', 'cause saisie par', 'Ursache erfasst von'),
-    clickHint: ml('Click: give the cause', 'Clic : saisir la cause', 'Klick: Ursache erfassen'),
-    notWhole: ml(
-      'Ongoing, or cut by the period shown: widen the period',
-      'En cours, ou coupé par la période : élargir la période',
-      'Laufend oder vom Zeitraum abgeschnitten: Zeitraum erweitern'
-    ),
-    failed: ml('Cause not saved', 'Cause non enregistrée', 'Ursache nicht gespeichert')
-  },
   reasonDialog: {
     reason: ml('Reason (required)', 'Motif (obligatoire)', 'Grund (Pflichtfeld)'),
     cancel: ml('Cancel', 'Annuler', 'Abbrechen'),

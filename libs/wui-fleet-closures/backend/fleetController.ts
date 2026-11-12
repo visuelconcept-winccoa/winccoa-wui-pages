@@ -156,4 +156,30 @@ export class FleetController {
       res.status(HTTP_BAD_REQUEST).json({ ok: false, error: message(error) });
     }
   };
+
+  /**
+   * POST /api/fleet/dptype/change  body { typeName, structure } (as PARA's): an existing Fleet type changed
+   * in place, its datapoints kept (e.g. `name` added to the stop-cause catalogue type, #74). Same roles as
+   * creating the type.
+   */
+  public changeDpType = async (req: Request, res: Response): Promise<void> => {
+    const { typeName, structure } = (req.body ?? {}) as { typeName?: string; structure?: ParaTypeStructure };
+    if (!typeName || !structure) {
+      res.status(HTTP_BAD_REQUEST).json({ ok: false, error: 'typeName and structure are required' });
+      return;
+    }
+    if (!(await this.allowed(req, res, rolesForType(typeName), typeName))) return;
+    try {
+      WsjServerGlobal.winccoa.dpTypeGet(typeName);
+    } catch {
+      res.status(404).json({ ok: false, error: `data point type '${typeName}' does not exist` });
+      return;
+    }
+    try {
+      const changed = await WsjServerGlobal.winccoa.dpTypeChange(createTypeFromStructure(typeName, structure));
+      res.status(changed ? 200 : HTTP_ERROR).json({ ok: Boolean(changed), typeName });
+    } catch (error) {
+      res.status(HTTP_BAD_REQUEST).json({ ok: false, error: message(error) });
+    }
+  };
 }

@@ -18,6 +18,7 @@ import { FleetController } from './fleetController';
  * Endpoints (relative to "/api/fleet"):
  *   GET    /health
  *   POST   /dptype/create   body { typeName, structure }
+ *   POST   /dptype/change   body { typeName, structure }  (an existing Fleet type, its datapoints kept)
  *   POST   /dp/create       body { dpName, dpType }
  *   POST   /dp/set          body { dpeName, value } | { dpeNames, values }
  *   DELETE /dp/:name        optional ?dpType= guard
@@ -31,6 +32,7 @@ export class FleetRoute {
 
     router.get('/health', controller.health);
     router.post('/dptype/create', controller.createDpType);
+    router.post('/dptype/change', controller.changeDpType);
     router.post('/dp/create', controller.createDp);
     router.post('/dp/set', controller.setValue);
     router.delete('/dp/:name', controller.deleteDp);

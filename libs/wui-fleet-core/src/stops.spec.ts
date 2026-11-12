@@ -8,7 +8,7 @@
 import type { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { of } from 'rxjs';
 import { describe, expect, it } from 'vitest';
-import { analyseStopCauses, applyQualifications, qualificationAt, type AnalysisMachine } from './engine.js';
+import { analyseStopCauses, type AnalysisMachine } from './engine.js';
 import { DEFAULT_STATE_MAPPINGS, type StopCause } from './types.js';
 
 const MIN = 60_000;
@@ -62,45 +62,15 @@ describe('the stop list', () => {
   });
 });
 
-describe('causes given by hand (#272)', () => {
-  const QUAL = { atelierId: 'a', machineId: 'M1', machineCode: '', reason: 'Oubli', user: 'op', at: '2026-11-05T10:00:00Z' };
-
-  it('lay over the history for the stop, the machine cause resuming after', () => {
-    const samples = [{ t: t(10), v: '42' }, { t: t(15), v: '43' }, { t: t(30), v: '' }];
-    const out = applyQualifications(samples, [{ startMs: t(10), endMs: t(20), code: '10' }]);
-    expect(out.map((s) => [(s.t - T0) / MIN, s.v])).toEqual([[10, '10'], [20, '43'], [30, '']]);
-  });
-
-  it('give its cause to a stop without one, and replace the one the machine sent', async () => {
+describe('a machine with its own stop-cause catalogue (#74)', () => {
+  it('names and classifies its stops from it, apart from the default catalogue', async () => {
     const api = fakeApi({
-      'M1.state': [{ t: t(0), v: 1 }, { t: t(10), v: 0 }, { t: t(20), v: 1 }, { t: t(30), v: 0 }, { t: t(40), v: 1 }],
-      'M1.cause': [{ t: t(30), v: '99' }, { t: t(40), v: '' }]
+      'M1.state': [{ t: t(0), v: 1 }, { t: t(10), v: 0 }, { t: t(20), v: 1 }],
+      'M1.cause': [{ t: t(10), v: '10' }]
     });
-    const quals = [
-      { ...QUAL, startMs: t(10), endMs: t(20), code: '10' },
-      { ...QUAL, startMs: t(30), endMs: t(40), code: '10', machineCode: '99' }
-    ];
-    const r = await analyseStopCauses(api, [MACHINE], CATALOG, new Date(t(0)), new Date(t(60)), new Map(), quals);
-    expect(r.rawStops.map((s) => [(s.startMs - T0) / MIN, s.code, s.classification, s.qualifiedBy])).toEqual([
-      [30, '10', 'planned', 'op'],
-      [10, '10', 'planned', 'op']
-    ]);
-  });
-});
-
-describe('overlapping causes given by hand (#272)', () => {
-  it('the latest given wins an overlap, whatever its start', () => {
-    const older = { startMs: t(20), endMs: t(30), code: 'B', at: '2026-11-05T10:00:00Z' };
-    const newer = { startMs: t(10), endMs: t(30), code: 'C', at: '2026-11-05T11:00:00Z' };
-    const out = applyQualifications([{ t: t(0), v: 'M' }], [older, newer]);
-    expect(out.map((s) => [(s.t - T0) / MIN, s.v])).toEqual([[0, 'M'], [10, 'C'], [20, 'C'], [30, 'M']]);
-    expect(qualificationAt([older, newer], t(25))?.code).toBe('C');
-  });
-
-  it('an older one still applies where the newer does not reach', () => {
-    const older = { startMs: t(10), endMs: t(30), code: 'B', at: '2026-11-05T10:00:00Z' };
-    const newer = { startMs: t(20), endMs: t(25), code: 'C', at: '2026-11-05T11:00:00Z' };
-    const out = applyQualifications([], [older, newer]);
-    expect(out.map((s) => [(s.t - T0) / MIN, s.v])).toEqual([[10, 'B'], [20, 'C'], [25, 'B'], [30, '']]);
+    const inox = { id: 'inox', name: 'Inox', causes: [{ code: '10', description: 'Décapage', classification: 'unplanned' as const }] };
+    const r = await analyseStopCauses(api, [{ ...MACHINE, catalog: inox }], CATALOG, new Date(t(0)), new Date(t(60)));
+    expect(r.rawStops.map((s) => [s.causeKey, s.causeLabel, s.classification])).toEqual([['inox:10', '10 — Décapage · Inox', 'unplanned']]);
+    expect(r.rows.map((row) => [row.key, row.label])).toEqual([['inox:10', '10 — Décapage · Inox']]);
   });
 });

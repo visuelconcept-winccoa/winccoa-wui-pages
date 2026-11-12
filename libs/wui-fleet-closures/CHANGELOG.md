@@ -5,8 +5,8 @@
 
 ## 0.3.0 — 2026-11-05 (SDS 2.2)
 
-- `/api/fleet`: the causes given by hand to stops (`MachineFleet3D_StopQualifications`) are
-  written with machine-fleet-3d's **`qualify`** role only (wui-fleet-core 0.3.0).
+- `/api/fleet/dptype/change`: an existing Fleet type changed in place, its datapoints kept, with the
+  roles of its creation (wui-fleet-core 0.3.0 adds `name` to the stop-cause catalogue type, #74).
 ## 0.2.1 — 2026-11-05
 
 - `/api/fleet`: the module settings of machine-fleet-3d (`MachineFleet3D_Settings`, its type and

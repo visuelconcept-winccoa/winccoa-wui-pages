@@ -153,8 +153,6 @@ export class WuiMachineFleet3d extends LitElement {
   @state() private roleAi = true;
   /** Public views and the welcome atelier for everyone (#278): a role of its own, e.g. for sysadmin. */
   @state() private roleViews = true;
-  /** Give a cause to a stop by hand, from the machine dashboard (#272). */
-  @state() private roleQualify = true;
   /** Role `configure`: the module settings, common to every atelier (#70). */
   @state() private roleConfigure = true;
   /** The module settings (#70: the default opening view of every atelier). */
@@ -181,7 +179,6 @@ export class WuiMachineFleet3d extends LitElement {
     this.permSub.add(hasRole$(MODULE_ID, 'edit').subscribe((granted) => (this.roleEdit = granted)));
     this.permSub.add(hasRole$(MODULE_ID, 'ai').subscribe((granted) => (this.roleAi = granted)));
     this.permSub.add(hasRole$(MODULE_ID, 'views').subscribe((granted) => (this.roleViews = granted)));
-    this.permSub.add(hasRole$(MODULE_ID, 'qualify').subscribe((granted) => (this.roleQualify = granted)));
     this.permSub.add(hasRole$(MODULE_ID, 'configure').subscribe((granted) => (this.roleConfigure = granted)));
   }
 
@@ -257,7 +254,6 @@ export class WuiMachineFleet3d extends LitElement {
         .canEdit=${this.canEdit && this.roleEdit}
         .roleAi=${this.roleAi}
         .canPublicViews=${this.canEdit && this.roleEdit && this.roleViews}
-        .canQualify=${this.canEdit && this.roleQualify}
         .moduleSettings=${this.moduleSettings}
         @wui:save=${(e: CustomEvent<Atelier>) => this.onSave(e.detail)}
         @wui:remove=${(e: CustomEvent<{ reason?: string }>) => this.onRemoveActive(e.detail?.reason ?? '')}

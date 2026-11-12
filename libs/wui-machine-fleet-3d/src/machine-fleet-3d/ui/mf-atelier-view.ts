@@ -59,6 +59,7 @@ import {
 /** Viewpoints of the atelier, for everyone (role `edit`), or the user's own (#60). */
 type VpScope = 'public' | 'mine';
 import './mf-symbol-wizard.js';
+import { causesFor } from '@visuelconcept-winccoa/wui-fleet-core/stop-catalogs.js';
 import {
   DEFAULT_NAV_CORNER,
   DEFAULT_STATE_MAPPINGS,
@@ -95,6 +96,7 @@ import {
   type PlacementMarker,
   type StateMapping,
   type StopCause,
+  type StopCauseCatalog,
   type TrsThresholds,
   type Viewpoint
 } from '../types.js';
@@ -208,8 +210,6 @@ export class MfAtelierView extends LitElement {
   @property({ type: Boolean }) roleAi = true;
   /** Grant to manage the public views and the welcome atelier for everyone (role `views`, #278). */
   @property({ type: Boolean }) canPublicViews = false;
-  /** Grant to give a cause to a stop by hand (role `qualify`, #272). */
-  @property({ type: Boolean }) canQualify = false;
   /** Display only (the embeddable view): no edit, no management, no navigation away, no save. */
   @property({ type: Boolean, attribute: 'display-only' }) displayOnly = false;
   /** Hide the top bar (title + toolbar). */
@@ -220,8 +220,8 @@ export class MfAtelierView extends LitElement {
   @property({ type: Boolean, attribute: 'fullscreen-button' }) fullscreenButton = false;
   /** Whether the embedding element is full screen (icon of the toggle). */
   @property({ type: Boolean }) fullscreenActive = false;
-  /** Display only: the stop-cause catalog, given by the host (null = read through the store). */
-  @property({ attribute: false }) stopCauseCatalog: StopCause[] | null = null;
+  /** Display only: the stop-cause catalogues (#74), given by the host (null = read through the store). */
+  @property({ attribute: false }) stopCauseCatalogs: StopCauseCatalog[] | null = null;
   /** The module settings (#70): the default opening view of every atelier. */
   @property({ attribute: false }) moduleSettings: FleetModuleSettings = parseModuleSettings('');
 
@@ -284,7 +284,8 @@ export class MfAtelierView extends LitElement {
   @state() private resourcesOpen = false;
   @state() private editMode = false;
   @state() private dashboards: DashboardOption[] = [];
-  @state() private stopCauses: StopCause[] = [];
+  /** The stop-cause catalogues (#74): each machine names its own, else the default one. */
+  @state() private stopCatalogs: StopCauseCatalog[] = [];
   /** Assets from the Asset Lifecycle Intelligence module (machine link + obsolescence). */
   @state() private aliAssets: AliAssetInfo[] = [];
 
@@ -360,7 +361,7 @@ export class MfAtelierView extends LitElement {
     if (changed.has('atelier') && this.atelier && !this.loaded) {
       this.loaded = true;
       // Display only: the catalog is the host's, known before the first live value.
-      if (this.displayOnly) this.stopCauses = this.stopCauseCatalog ?? [];
+      if (this.displayOnly) this.stopCatalogs = this.stopCauseCatalogs ?? [];
       this.atelierName = this.atelier.name;
       this.building = structuredClone(this.atelier.building);
       this.display = structuredClone(this.atelier.display);
@@ -1071,12 +1072,10 @@ export class MfAtelierView extends LitElement {
     return html`<mf-machine-dashboard
       .machine=${m}
       .mapping=${this.mappingFor(m)}
-      .stopCauses=${this.stopCauses}
+      .stopCauses=${this.causesOf(m)}
       .api=${this.api}
       atelierId=${this.atelier.id}
       atelierName=${this.atelierName}
-      .store=${this.store}
-      .canQualify=${this.canQualify}
       @wui:close=${() => (this.dashboardMachineId = null)}
     ></mf-machine-dashboard>`;
   }
@@ -1091,14 +1090,19 @@ export class MfAtelierView extends LitElement {
     if (this.store) this.catalog = await this.store.listCatalog();
   }
 
+  /** The causes of a machine's catalogue (#74): the one it names, else the default. */
+  private causesOf(m: { stopCatalogId?: string }): StopCause[] {
+    return causesFor(this.stopCatalogs, m.stopCatalogId);
+  }
+
   private async loadStopCauses(): Promise<void> {
     if (!this.store) return;
-    this.stopCauses = await this.store.listStopCauses();
-    // Re-resolve any already-received stop-cause codes against the fresh catalog.
+    this.stopCatalogs = await this.store.listCatalogs();
+    // Re-resolve any already-received stop-cause codes against the fresh catalogues.
     let touched = false;
     for (const m of this.machines) {
       if (m.stopCause == null || m.stopCause === '') continue;
-      const label = formatStopCause(this.stopCauses, m.stopCause);
+      const label = formatStopCause(this.causesOf(m), m.stopCause);
       if (label !== m.stopCauseLabel) {
         m.stopCauseLabel = label;
         this.scene?.updateMachineLive(m.id, { stopCauseLabel: label });
@@ -1905,7 +1909,7 @@ export class MfAtelierView extends LitElement {
     const value = scalarValue(raw);
     if (target.kind === 'stopCause') {
       machine.stopCause = value;
-      machine.stopCauseLabel = formatStopCause(this.stopCauses, value);
+      machine.stopCauseLabel = formatStopCause(this.causesOf(machine), value);
       this.scene?.updateMachineLive(machine.id, {
         stopCause: value,
         stopCauseLabel: machine.stopCauseLabel

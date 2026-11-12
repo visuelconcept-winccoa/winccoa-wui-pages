@@ -33,10 +33,13 @@ const winccoa = new WinccoaManager();
 const KPI_TYPE = 'MachineFleet3D_Kpi';
 const KPI_PREFIX = 'MachineFleet3D_Kpi_';
 const CONFIG_TYPE = 'MachineFleet3D_Config';
+/**
+ * Stop-cause catalogues (#74 of winccoa-wui-pages), one DP each of this type: the default one is
+ * `MachineFleet3D_StopCauses`, the single catalogue of before; any other `MachineFleet3D_StopCauses_<id>`.
+ */
+const STOPCAUSE_TYPE = 'MachineFleet3D_StopCauses';
 const STOPCAUSE_DP = 'MachineFleet3D_StopCauses';
 const CLOSURES_DP = 'MachineFleet3D_Closures';
-/** Causes given by hand to stops (wui-fleet-core StopQualification[], #272). */
-const STOPQUAL_DP = 'MachineFleet3D_StopQualifications';
 const SYS = 'System1:';
 const ELEM = { Struct: 1, Float: 22, String: 25 };
 
@@ -64,12 +67,13 @@ let archiveGroup = '';
 const nextDue = new Map();
 /** DPEs whose archiving has already been ensured this process. */
 const archived = new Set();
-/** code → classification ('planned'|'unplanned'|'production'); plus __default. */
-let causeClass = {};
+/**
+ * Per stop-cause catalogue id: code → classification ('planned'|'unplanned'|'production'), plus __default
+ * (the class of the catalogue's default entry). 'default': the catalogue of a machine naming none.
+ */
+let causeClasses = {};
 /** Closures config { ateliers:{id:[{start,end}]}, machines:{id:[...]} }. */
 let closures = { ateliers: {}, machines: {} };
-/** Causes given by hand to stops, laid over the cause history (#272). */
-let qualifications = [];
 
 function log(msg) {
   // eslint-disable-next-line no-console
@@ -161,20 +165,46 @@ async function disableArchived(valueDpe) {
   }
 }
 
-async function loadCauseClassification() {
-  try {
-    const arr = JSON.parse(extractString(await winccoa.dpGet(`${SYS}${STOPCAUSE_DP}.json`)));
-    const map = {};
-    let def = 'unplanned';
-    for (const c of arr) {
-      if (c && c.code) map[String(c.code)] = c.classification || 'unplanned';
-      if (c && c.isDefault) def = c.classification || 'unplanned';
-    }
-    map.__default = def;
-    causeClass = map;
-  } catch {
-    causeClass = { __default: 'unplanned' };
+/** code → classification of one list of causes, plus __default. */
+function classesOf(causes) {
+  const map = {};
+  let def = 'unplanned';
+  for (const c of Array.isArray(causes) ? causes : []) {
+    if (c && c.code) map[String(c.code)] = c.classification || 'unplanned';
+    if (c && c.isDefault) def = c.classification || 'unplanned';
   }
+  map.__default = def;
+  return map;
+}
+
+/** The catalogue id of a catalogue DP name ('default' for MachineFleet3D_StopCauses), '' for another DP. */
+function catalogIdOfDp(name) {
+  const dp = String(name).replace(/^[^:]*:/, '').replace(/\.$/, '');
+  if (dp === STOPCAUSE_DP) return 'default';
+  return dp.startsWith(`${STOPCAUSE_DP}_`) ? dp.slice(STOPCAUSE_DP.length + 1) : '';
+}
+
+/** The classification of every stop-cause catalogue (#74), one DP each; the default one is 'default'. */
+async function loadCauseClassification() {
+  const read = async (dp) => {
+    try {
+      return JSON.parse(extractString(await winccoa.dpGet(`${SYS}${dp}.json`)));
+    } catch {
+      return null;
+    }
+  };
+  let names = [];
+  try {
+    names = winccoa.dpNames(`${STOPCAUSE_DP}*`, STOPCAUSE_TYPE) || [];
+  } catch {
+    names = []; // no catalogue type yet
+  }
+  causeClasses = {};
+  for (const name of names) {
+    const id = catalogIdOfDp(name);
+    if (id) causeClasses[id] = classesOf(await read(id === 'default' ? STOPCAUSE_DP : `${STOPCAUSE_DP}_${id}`));
+  }
+  if (!causeClasses.default) causeClasses.default = classesOf(null);
 }
 
 async function loadClosures() {
@@ -190,10 +220,11 @@ async function loadClosures() {
   }
 }
 
-/** Classify a cause code: 'planned' subtracts from required; else "failure". */
-function classify(code) {
+/** Classify a cause code in a machine's catalogue: 'planned' subtracts from required; else "failure". */
+function classify(code, catalogId) {
   if (code === '' || code == null) return 'unplanned';
-  return causeClass[String(code)] || causeClass.__default || 'unplanned';
+  const map = causeClasses[catalogId] || causeClasses.default || {};
+  return map[String(code)] || map.__default || 'unplanned';
 }
 
 /** Closed (non-worked) intervals for a machine, clipped+merged to [start,end]. */
@@ -353,49 +384,6 @@ async function queryHistory(dpe, start, end) {
   }
 }
 
-/** The given causes from the oldest to the latest (`at`, then list order): the latest wins an overlap. */
-function byAge(quals) {
-  return quals
-    .map((q, i) => ({ q, i }))
-    .sort((a, b) => (Date.parse(a.q.at || '') || 0) - (Date.parse(b.q.at || '') || 0) || a.i - b.i)
-    .map((x) => x.q);
-}
-
-/**
- * Lay causes given by hand over a cause history (wui-fleet-core applyQualifications, #272): within the
- * periods they cover, the cause is the one given last, and at the end of a covered run the cause read
- * on the machine resumes.
- */
-function applyQualifications(causeSamples, quals) {
-  if (!quals || quals.length === 0) return causeSamples;
-  const ordered = byAge(quals);
-  const bounds = [...new Set(quals.flatMap((q) => [q.startMs, q.endMs]))].sort((a, b) => a - b);
-  const pieces = [];
-  for (let k = 0; k < bounds.length - 1; k++) {
-    const s = bounds[k];
-    const e = bounds[k + 1];
-    let code;
-    for (const q of ordered) if (q.startMs <= s && q.endMs >= e) code = q.code;
-    if (code !== undefined) pieces.push({ s, e, code });
-  }
-  const inside = (t) => pieces.some((p) => t >= p.s && t < p.e);
-  const out = causeSamples.filter((s) => !inside(s.t));
-  for (const p of pieces) {
-    out.push({ t: p.s, v: p.code });
-    if (!inside(p.e)) out.push({ t: p.e, v: codeAt(causeSamples, p.e) });
-  }
-  return out.sort((a, b) => a.t - b.t);
-}
-
-async function loadQualifications() {
-  try {
-    const list = JSON.parse(extractString(await winccoa.dpGet(`${SYS}${STOPQUAL_DP}.json`)));
-    qualifications = Array.isArray(list) ? list : [];
-  } catch {
-    qualifications = [];
-  }
-}
-
 function codeAt(samples, t) {
   let code = '';
   for (const s of samples) {
@@ -440,7 +428,7 @@ function offOpeningIntervals(samples, mapping, start, end) {
   return clipMerge(intervals);
 }
 
-function computeValue(type, stateSamples, causeSamples, mapping, closures, start, end, minStopMs = 0) {
+function computeValue(type, stateSamples, causeSamples, mapping, closures, start, end, minStopMs = 0, catalogId = '') {
   const windowMs = end - start;
   // Opening time = window minus non-worked periods: closures, and time in off-opening states.
   const closed = clipMerge([...closures, ...offOpeningIntervals(stateSamples, mapping, start, end)]);
@@ -454,7 +442,7 @@ function computeValue(type, stateSamples, causeSamples, mapping, closures, start
     // Partition the whole stop by cause (cause back-filled to the stop start),
     // then count only the worked portions (closures excluded).
     for (const seg of partitionByCause(stop, causeSamples)) {
-      const planned = classify(seg.code) === 'planned';
+      const planned = classify(seg.code, catalogId) === 'planned';
       for (const w of subtract(seg.start, seg.end, closed)) {
         const dur = w.e - w.s;
         if (planned) plannedMs += dur;
@@ -539,16 +527,12 @@ async function refreshKpi(entry) {
   const windowMs = WINDOW_MS[kpi.window] || WINDOW_MS['24h'];
   const start = end - windowMs;
   const stateSamples = await queryHistory(machine.stateDp, start - windowMs, end);
-  const rawCauses = machine.stopCauseDp
+  const causeSamples = machine.stopCauseDp
     ? await queryHistory(machine.stopCauseDp, start - windowMs, end)
     : [];
-  const causeSamples = applyQualifications(
-    rawCauses,
-    qualifications.filter((q) => q.machineId === machine.id && q.atelierId === atelierId)
-  );
   const closed = closedIntervals(atelierId, machine.id, start, end);
   const minStopMs = (Number(machine.minStopSec) || 0) * 1000;
-  const value = computeValue(kpi.type, stateSamples, causeSamples, mapping, closed, start, end, minStopMs);
+  const value = computeValue(kpi.type, stateSamples, causeSamples, mapping, closed, start, end, minStopMs, machine.stopCatalogId || '');
   const unit = kpi.type === 'TRS' ? '%' : 'min';
   try {
     await winccoa.dpSet([
@@ -575,7 +559,6 @@ async function tick() {
     lastReload = now;
     await loadCauseClassification();
     await loadClosures();
-    await loadQualifications();
     kpiEntries = await loadKpis();
   }
   for (const entry of kpiEntries) {

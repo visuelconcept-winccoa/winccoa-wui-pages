@@ -42,6 +42,7 @@ import {
   STOP_CLASSIFICATION_LABELS,
   type Atelier,
   type StopCause,
+  type StopCauseCatalog,
   type StopClassification
 } from '@visuelconcept-winccoa/wui-fleet-core/types.js';
 import {
@@ -63,6 +64,7 @@ import {
 } from '@visuelconcept-winccoa/wui-fleet-core/closures.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { MSG, localize, localizeDir, rawStopCountMsg } from './i18n.js';
+import { defaultCatalog } from '@visuelconcept-winccoa/wui-fleet-core/stop-catalogs.js';
 
 const TAB_TABLE = 'table';
 const TAB_CHART = 'chart';
@@ -128,6 +130,8 @@ export class WuiFleetStopAnalysis extends LitElement {
 
   @state() private ateliers: Atelier[] = [];
   @state() private catalog: StopCause[] = [];
+  /** Every stop-cause catalogue (#74): each machine is analysed with its own, else the default. */
+  private catalogs: StopCauseCatalog[] = [];
   @state() private selectedAteliers: string[] = [];
   @state() private selectedMachines: string[] = [];
   @state() private startStr = '';
@@ -623,7 +627,8 @@ export class WuiFleetStopAnalysis extends LitElement {
   private async bootstrap(): Promise<void> {
     this.loading = true;
     this.ateliers = await this.store.listAteliers();
-    this.catalog = await this.store.listStopCauses();
+    this.catalogs = await this.store.listCatalogs();
+    this.catalog = defaultCatalog(this.catalogs).causes;
     this.closures = normaliseClosures(await this.store.listClosures());
     this.offline = this.store.offline;
     // The user's last selection, unless a hand-off asks for a machine.
@@ -718,12 +723,11 @@ export class WuiFleetStopAnalysis extends LitElement {
     const machines = collectMachines(
       this.ateliers,
       new Set(this.selectedAteliers),
-      new Set(this.selectedMachines)
+      new Set(this.selectedMachines),
+      this.catalogs
     );
     const nonWorked = buildNonWorkedMap(this.closures, machines);
-    // Causes given by hand from the machine dashboard lay over the machines' history (#272).
-    const qualifications = await this.store.listQualifications();
-    this.result = await analyseStopCauses(this.api, machines, this.catalog, start, end, nonWorked, qualifications);
+    this.result = await analyseStopCauses(this.api, machines, this.catalog, start, end, nonWorked);
     this.loading = false;
   }
 
@@ -790,7 +794,8 @@ export class WuiFleetStopAnalysis extends LitElement {
   };
 
   private async reloadCatalog(): Promise<void> {
-    this.catalog = await this.store.listStopCauses();
+    this.catalogs = await this.store.listCatalogs();
+    this.catalog = defaultCatalog(this.catalogs).causes;
     await this.recompute();
   }
 

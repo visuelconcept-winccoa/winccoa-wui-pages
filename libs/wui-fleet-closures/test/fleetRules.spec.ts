@@ -25,9 +25,6 @@ describe('fleet write rules', () => {
     expect(rolesForSet('MachineFleet3D_ilot-1.json')).toEqual([FLEET]);
     expect(rolesForSet('MachineFleet3D_Glb_four_x.data')).toEqual([FLEET]);
     expect(rolesForSet('MachineFleet3D_StopCauses.json')).toEqual([FLEET]);
-    expect(rolesForSet('MachineFleet3D_StopQualifications.json')).toEqual([{ module: 'machine-fleet-3d', role: 'qualify' }]);
-    expect(rolesForDp('MachineFleet3D_StopQualifications', 'MachineFleet3D_StopQualifications')).toEqual([{ module: 'machine-fleet-3d', role: 'qualify' }]);
-    expect(rolesForType('MachineFleet3D_StopQualifications')).toEqual([{ module: 'machine-fleet-3d', role: 'qualify' }]);
     expect(rolesForSet('WC_FOUR_P_TEMP.Value:_archive.._archive')).toEqual([FLEET]);
     expect(rolesForDp('MachineFleet3D_ilot-1', 'MachineFleet3D_Config')).toEqual([FLEET]);
     expect(rolesForType('MachineFleet3D_Glb')).toEqual([FLEET]);

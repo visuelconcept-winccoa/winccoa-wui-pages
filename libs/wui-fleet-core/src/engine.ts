@@ -33,10 +33,11 @@ import {
   type Atelier,
   type StateMapping,
   type StopCause,
-  type StopClassification,
-  type StopQualification
+  type StopCauseCatalog,
+  type StopClassification
 } from './types.js';
 import type { MsInterval } from './closures.js';
+import { catalogFor, defaultCatalog } from './stop-catalogs.js';
 
 /** A machine eligible for analysis (both histories bound). */
 export interface AnalysisMachine {
@@ -49,6 +50,12 @@ export interface AnalysisMachine {
   mapping: StateMapping | undefined;
   /** Shortest stop that counts, in ms (MachineDef.minStopSec); shorter ones are production. */
   minStopMs?: number;
+  /**
+   * The machine's own stop-cause catalogue (#74), when not the default: its causes, and its id and name
+   * to keep its causes apart from another catalogue's that reuse a code. Absent: the catalogue given to
+   * `analyseStopCauses`.
+   */
+  catalog?: { id: string; name: string; causes: StopCause[] };
 }
 
 /** One aggregated cause row of the result table. */
@@ -86,9 +93,6 @@ export interface RawStop {
   durationMs: number;
   /** Portion of the period within worked (open) time — what actually counts, ms. */
   countedMs: number;
-  /** Set when the cause was given by hand (a {@link StopQualification}, #272). */
-  qualifiedBy?: string;
-  qualifiedAt?: string;
 }
 
 /** Full analysis output. */
@@ -135,9 +139,11 @@ interface Sample {
 export function collectMachines(
   ateliers: Atelier[],
   selectedAtelierIds: Set<string>,
-  selectedMachineIds: Set<string>
+  selectedMachineIds: Set<string>,
+  catalogs: readonly StopCauseCatalog[] = []
 ): AnalysisMachine[] {
   const out: AnalysisMachine[] = [];
+  const def = catalogs.length ? defaultCatalog(catalogs) : null;
   for (const atelier of ateliers) {
     if (selectedAtelierIds.size > 0 && !selectedAtelierIds.has(atelier.id)) continue;
     for (const m of atelier.machines) {
@@ -151,6 +157,10 @@ export function collectMachines(
         stateDp: m.stateDp,
         stopCauseDp: m.stopCauseDp,
         minStopMs: (m.minStopSec ?? 0) * 1000,
+        // A machine on a catalogue other than the default one (#74) is analysed with it.
+        ...(def && m.stopCatalogId && catalogFor(catalogs, m.stopCatalogId).id !== def.id
+          ? { catalog: catalogFor(catalogs, m.stopCatalogId) }
+          : {}),
         mapping:
           atelier.mappings.find((mp) => mp.id === m.stateMappingId) ??
           atelier.mappings[0] ??
@@ -176,8 +186,7 @@ export async function analyseStopCauses(
   catalog: StopCause[],
   start: Date,
   end: Date,
-  nonWorked: Map<string, MsInterval[]> = new Map(),
-  qualifications: StopQualification[] = []
+  nonWorked: Map<string, MsInterval[]> = new Map()
 ): Promise<AnalysisResult> {
   const startMs = start.getTime();
   const endMs = end.getTime();
@@ -193,16 +202,13 @@ export async function analyseStopCauses(
     // eslint-disable-next-line no-await-in-loop -- sequential keeps backend load bounded
     const stateSamples = await queryHistory(api, machine.stateDp, lookbackStart, end);
     // eslint-disable-next-line no-await-in-loop
-    const rawCauses = await queryHistory(api, machine.stopCauseDp, lookbackStart, end);
-    if (stateSamples.length > 0 || rawCauses.length > 0) anySample = true;
-    // Causes given by hand lay over the machine's history (#272).
-    const quals = qualifications.filter((q) => q.machineId === machine.machineId && q.atelierId === machine.atelierId);
-    const causeSamples = applyQualifications(rawCauses, quals);
+    const causeSamples = await queryHistory(api, machine.stopCauseDp, lookbackStart, end);
+    if (stateSamples.length > 0 || causeSamples.length > 0) anySample = true;
 
     const closed = mergeClip(nonWorked.get(machine.machineId) ?? [], startMs, endMs);
     const stops = nonProductionIntervals(stateSamples, machine.mapping, startMs, endMs, machine.minStopMs);
     for (const stop of stops) {
-      attributeStop(stop, causeSamples, catalog, machine, agg, contributing, rawStops, closed, quals);
+      attributeStop(stop, causeSamples, catalog, machine, agg, contributing, rawStops, closed);
     }
   }
 
@@ -429,8 +435,7 @@ function attributeStop(
   agg: Map<string, CauseRow>,
   contributing: Map<string, string>,
   rawStops: RawStop[],
-  closed: MsInterval[] = [],
-  quals: StopQualification[] = []
+  closed: MsInterval[] = []
 ): void {
   // Worked portion of the whole stop (excludes non-worked periods). A stop fully
   // inside a closure counts for nothing and is dropped entirely.
@@ -439,13 +444,17 @@ function attributeStop(
 
   const partition = partitionByCause(stop, causeSamples);
   const perKey = new Map<string, number>();
+  const groups = new Map<string, { label: string; classification?: StopClassification }>();
+  // The machine's own catalogue (#74): its causes are told apart from another catalogue's reusing a code.
+  const own = machine.catalog;
   for (const seg of partition) {
-    const { key, label, classification } = resolveGroup(catalog, seg.code);
+    const group = resolveGroup(own ? own.causes : catalog, seg.code);
+    const key = own ? `${own.id}:${group.key}` : group.key;
+    const label = own ? `${group.label} · ${own.name}` : group.label;
+    const classification = group.classification;
+    groups.set(key, { label, classification });
     const countedMs = seg.end - seg.start - overlapLength(seg.start, seg.end, closed);
     perKey.set(key, (perKey.get(key) ?? 0) + Math.max(0, countedMs));
-    // The cause given by hand that set this segment's code, if any (the latest covering its start).
-    const given = qualificationAt(quals, seg.start);
-    const qual = given && given.code === seg.code ? given : undefined;
     rawStops.push({
       machineId: machine.machineId,
       machineName: machine.machineName,
@@ -457,13 +466,12 @@ function attributeStop(
       startMs: seg.start,
       endMs: seg.end,
       durationMs: seg.end - seg.start,
-      countedMs: Math.max(0, countedMs),
-      ...(qual ? { qualifiedBy: qual.user, qualifiedAt: qual.at } : {})
+      countedMs: Math.max(0, countedMs)
     });
   }
   for (const [key, ms] of perKey) {
     if (ms <= 0) continue;
-    const row = ensureRow(agg, catalog, key);
+    const row = ensureRow(agg, key, groups.get(key) ?? { label: key });
     row.assignedMs += ms;
     row.downtimeMs += workedStopMs;
     row.occurrences += 1;
@@ -519,53 +527,6 @@ function firstNonEmpty(spans: { code: string }[]): string {
   return spans.find((s) => s.code !== '')?.code ?? '';
 }
 
-/** What an overlay needs of a cause given by hand: its period, its code, and when it was given. */
-export type QualificationSpan = Pick<StopQualification, 'startMs' | 'endMs' | 'code'> & { at?: string };
-
-/** The given causes from the oldest to the latest (`at`, then list order): the latest wins an overlap. */
-function byAge<Q extends QualificationSpan>(quals: readonly Q[]): Q[] {
-  return quals
-    .map((q, i) => ({ q, i }))
-    .sort((a, b) => (Date.parse(a.q.at ?? '') || 0) - (Date.parse(b.q.at ?? '') || 0) || a.i - b.i)
-    .map((x) => x.q);
-}
-
-/** The cause given by hand that applies at `t`: the latest of those covering it, if any. */
-export function qualificationAt<Q extends QualificationSpan>(quals: readonly Q[], t: number): Q | undefined {
-  let found: Q | undefined;
-  for (const q of byAge(quals)) if (t >= q.startMs && t < q.endMs) found = q;
-  return found;
-}
-
-/**
- * Lay causes given by hand over a cause history (#272): within the periods they cover, the cause is
- * the one given last (an overlap of two periods takes the latest, whatever its start), and at the end
- * of a covered run the cause read on the machine resumes. The history itself is left as it is.
- */
-export function applyQualifications(
-  causeSamples: { t: number; v: unknown }[],
-  quals: readonly QualificationSpan[]
-): { t: number; v: unknown }[] {
-  if (quals.length === 0) return causeSamples;
-  const ordered = byAge(quals);
-  const bounds = [...new Set(quals.flatMap((q) => [q.startMs, q.endMs]))].sort((a, b) => a - b);
-  const pieces: { s: number; e: number; code: string }[] = [];
-  for (let k = 0; k < bounds.length - 1; k++) {
-    const s = bounds[k];
-    const e = bounds[k + 1];
-    let code: string | undefined;
-    for (const q of ordered) if (q.startMs <= s && q.endMs >= e) code = q.code;
-    if (code !== undefined) pieces.push({ s, e, code });
-  }
-  const inside = (t: number): boolean => pieces.some((p) => t >= p.s && t < p.e);
-  const out = causeSamples.filter((s) => !inside(s.t));
-  for (const p of pieces) {
-    out.push({ t: p.s, v: p.code });
-    if (!inside(p.e)) out.push({ t: p.e, v: codeAt(causeSamples, p.e) });
-  }
-  return out.sort((a, b) => a.t - b.t);
-}
-
 /** Cause code active at time `t` (last sample at-or-before `t`). */
 function codeAt(causeSamples: Sample[], t: number): string {
   let code = '';
@@ -608,10 +569,13 @@ export function resolveGroup(
   return { key: code, label: code };
 }
 
-function ensureRow(agg: Map<string, CauseRow>, catalog: StopCause[], key: string): CauseRow {
+function ensureRow(
+  agg: Map<string, CauseRow>,
+  key: string,
+  group: { label: string; classification?: StopClassification }
+): CauseRow {
   const existing = agg.get(key);
   if (existing) return existing;
-  const group = resolveGroup(catalog, key === NO_CAUSE_KEY ? '' : key);
   const row: CauseRow = {
     key,
     label: group.label,

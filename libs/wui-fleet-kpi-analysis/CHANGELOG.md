@@ -5,9 +5,8 @@
 
 ## 0.3.0 — 2026-11-05 (SDS 2.2)
 
-- `kpiCalc` lays the causes given by hand to stops (`MachineFleet3D_StopQualifications`, reread
-  every minute) over the machine's cause history: a stop given a planned cause counts as planned
-  in the TRS (wui-fleet-core 0.3.0); the latest given wins an overlap, as in the stop analysis.
+- Planned / unplanned from each machine's stop-cause catalogue (#74), in the page and in kpiCalc (one
+  datapoint per catalogue, `MachineFleet3D_StopCauses` the default one, reread every minute).
 
 ## 0.2.0 — 2026-11-04 (SDS 2.2)
 

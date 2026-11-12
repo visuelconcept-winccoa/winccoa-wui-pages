@@ -66,6 +66,7 @@ import { parseModuleSettings, type FleetModuleSettings } from '@visuelconcept-wi
 const SETTINGS_WAIT_MS = 1500;
 import { MSG, localizeDir } from './machine-fleet-3d/i18n.js';
 import './machine-fleet-3d/ui/mf-atelier-view.js';
+import { parseCatalogs } from '@visuelconcept-winccoa/wui-fleet-core/stop-catalogs.js';
 
 export { listAteliers, type AtelierSummary } from './machine-fleet-3d/data/fleet-api.js';
 
@@ -151,7 +152,7 @@ export class WuiFleet3dView extends LitElement {
         ?hide-nav=${this.hideNav}
         .fullscreenActive=${this.isFullscreen}
         .atelier=${data.atelier}
-        .stopCauseCatalog=${data.stopCauses}
+        .stopCauseCatalogs=${parseCatalogs(data.stopCatalogs, data.stopCauses)}
         .store=${this.store}
         .moduleSettings=${this.moduleSettings}
         .canEdit=${false}

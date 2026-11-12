@@ -22,15 +22,6 @@
       }
     },
     {
-      "id": "qualify",
-      "label": { "en_US.utf8": "Qualify stops", "fr.utf8": "Qualifier les arrêts", "de.utf8": "Stillstände qualifizieren" },
-      "description": {
-        "en_US.utf8": "Give a stop its cause from the catalog, or replace the machine's (reason required, traced).",
-        "fr.utf8": "Cause d’un arrêt choisie dans le référentiel, ou remplacée (motif obligatoire, tracé).",
-        "de.utf8": "Einem Stillstand eine Katalogursache geben oder ersetzen (Begründung Pflicht, protokolliert)."
-      }
-    },
-    {
       "id": "configure",
       "label": { "en_US.utf8": "Configure the module", "fr.utf8": "Configurer le module", "de.utf8": "Modul konfigurieren" },
       "description": {

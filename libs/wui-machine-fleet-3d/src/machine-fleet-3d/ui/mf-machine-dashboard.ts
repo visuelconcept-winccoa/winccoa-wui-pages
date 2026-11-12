@@ -41,13 +41,10 @@ import {
   type Machine,
   type MachineState,
   type StateMapping,
-  type StopCause,
-  type StopQualification
+  type StopCause
 } from '../types.js';
 import {
   analyseStopCauses,
-  applyQualifications,
-  qualificationAt,
   formatDuration,
   queryHistory,
   shortStopIntervals,
@@ -85,9 +82,6 @@ import {
   rangeLabelMsg
 } from '../i18n.js';
 import { ganttTicks, tickLabel } from '../gantt-ticks.js';
-import type { FleetStore } from '@visuelconcept-winccoa/wui-fleet-core/data/fleet-store.js';
-import { currentAuditUser } from '@visuelconcept-winccoa/wui-kit/data/audit-trail.js';
-import './mf-qualify-dialog.js';
 import { dashboardParams } from '../dashboard-lines.js';
 
 /**
@@ -115,18 +109,6 @@ interface StateSegment {
   endMs: number;
   /** Stop cause label active over the segment (non-ok states), if any. */
   causeLabel?: string;
-  /** Its cause code ('' when none), and who gave it by hand (#272). */
-  code?: string;
-  qualifiedBy?: string;
-}
-
-/** A stop being given a cause by hand (#272). */
-interface QualifyTarget {
-  startMs: number;
-  endMs: number;
-  /** Cause as it stands: code, and label for display. */
-  code: string;
-  label: string;
 }
 
 type Period = 'today' | '24h' | '7d' | '30d' | 'week' | 'month' | 'custom';
@@ -141,8 +123,6 @@ const PERIOD_LABEL: Record<Period, MultiLangString> = {
 };
 const PERIODS = Object.keys(PERIOD_LABEL) as Period[];
 const DAY_MS = 86_400_000;
-/** A stop within this of an edge of the period shown is taken as cut by it (ms). */
-const EDGE_MS = 1000;
 const DATE_FORMAT = 'yyyy-MM-dd';
 const END_OF_DAY_MS = DAY_MS - 1;
 
@@ -215,16 +195,6 @@ export class MfMachineDashboard extends LitElement {
   @property({ attribute: false }) api: OaRxJsApi | null = null;
   @property() atelierId = '';
   @property() atelierName = '';
-  /** Store of the causes given by hand (null: read-only). */
-  @property({ attribute: false }) store: FleetStore | null = null;
-  /** May give a cause to a stop (canPublish + the 'qualify' role, #272). */
-  @property({ type: Boolean }) canQualify = false;
-  /** This machine's causes given by hand, laid over its cause history. */
-  @state() private qualifications: StopQualification[] = [];
-  /** The period last analysed (ms): a stop touching its edges is not given a cause. */
-  private windowMs = { start: 0, end: 0 };
-  @state() private qualifying: QualifyTarget | null = null;
-  @state() private qualifyError = false;
 
   @state() private period: Period = '7d';
   /** How far back the window is shifted from "now" (ms); 0 = current period. */
@@ -313,7 +283,7 @@ export class MfMachineDashboard extends LitElement {
           </div>
         </div>
       </div>
-      ${this.renderTip()} ${this.renderQualify()}
+      ${this.renderTip()}
     `;
   }
 
@@ -860,8 +830,7 @@ export class MfMachineDashboard extends LitElement {
           return svg`<rect x=${x} y="0" width=${Math.max(w, 0.2)} height="10"
             fill=${stateColor(this.mapping, s.state)}
             @pointermove=${(e: PointerEvent) => this.showTip(e, s)}
-            @pointerleave=${() => (this.tip = null)}
-            @click=${() => this.qualifySegment(s)}></rect>`;
+            @pointerleave=${() => (this.tip = null)}></rect>`;
         })}
         ${ticks
           .filter((t) => t.align === 'middle')
@@ -920,8 +889,6 @@ export class MfMachineDashboard extends LitElement {
         <div>${localizeDir(MSG.machineDash.tipEnd)} ${formatDateTimeSec(s.endMs)}</div>
         <div>${localizeDir(MSG.machineDash.tipDuration)} ${formatDuration(s.endMs - s.startMs)}</div>
         ${s.causeLabel ? html`<div>${localizeDir(MSG.machineDash.tipCause)} ${s.causeLabel}</div>` : ''}
-        ${s.qualifiedBy ? html`<div class="muted">${localizeDir(MSG.qualify.givenBy)} ${s.qualifiedBy}</div>` : ''}
-        ${this.canQualifySegment(s) ? html`<div class="muted">${localizeDir(MSG.qualify.clickHint)}</div>` : ''}
       </div>
     `;
   }
@@ -971,7 +938,6 @@ export class MfMachineDashboard extends LitElement {
     if (this.loading) return html`${head}<div class="center"><ix-spinner></ix-spinner></div>`;
     if (shown.length === 0) return html`${head}<div class="muted small">${localizeDir(MSG.machineDash.stopsNone)}</div>`;
     return html`${head}
-      ${this.qualifyError ? html`<div class="small qualify-error">${localizeDir(MSG.qualify.failed)}</div>` : ''}
       <div class="stops-scroll">
         <table class="stops">
           <thead>
@@ -981,7 +947,6 @@ export class MfMachineDashboard extends LitElement {
               <th class="num">${localizeDir(MSG.machineDash.stopsDuration)}</th>
               <th>${localizeDir(MSG.machineDash.stopsCause)}</th>
               <th>${localizeDir(MSG.machineDash.stopsClass)}</th>
-              ${this.canQualify ? html`<th></th>` : ''}
             </tr>
           </thead>
           <tbody>
@@ -990,23 +955,8 @@ export class MfMachineDashboard extends LitElement {
                 <td>${formatDateTime(s.startMs)}</td>
                 <td>${formatDateTime(s.endMs)}</td>
                 <td class="num">${formatDuration(s.durationMs)}</td>
-                <td>
-                  ${s.code !== '' ? s.causeLabel : '—'}
-                  ${s.qualifiedBy ? html`<span class="muted small" title=${localize(MSG.qualify.givenBy)}> · ${s.qualifiedBy}</span>` : ''}
-                </td>
+                <td>${s.code !== '' ? s.causeLabel : '—'}</td>
                 <td>${stopClassLabel(s.classification)}</td>
-                ${this.canQualify
-                  ? html`<td>
-                      <ix-icon-button
-                        ghost
-                        size="16"
-                        icon="pen"
-                        title=${this.qualifiable(s.startMs, s.endMs) ? localize(MSG.qualify.title) : localize(MSG.qualify.notWhole)}
-                        ?disabled=${!this.qualifiable(s.startMs, s.endMs)}
-                        @click=${() => this.openQualify({ startMs: s.startMs, endMs: s.endMs, code: s.code, label: s.code !== '' ? s.causeLabel : '' })}
-                      ></ix-icon-button>
-                    </td>`
-                  : ''}
               </tr>`
             )}
           </tbody>
@@ -1248,10 +1198,6 @@ export class MfMachineDashboard extends LitElement {
       this.loading = false;
       return;
     }
-    this.windowMs = { start: start.getTime(), end: end.getTime() };
-    const all = this.store ? await this.store.listQualifications() : [];
-    if (gen !== this.reloadGen) return;
-    this.qualifications = all.filter((q) => q.machineId === m.id && q.atelierId === this.atelierId);
     const segments = await this.buildSegments(m, start, end);
     const contextDims = await this.buildContext(m, start, end);
     // Stops without a cause datapoint still count: they are listed without a cause.
@@ -1294,10 +1240,7 @@ export class MfMachineDashboard extends LitElement {
   private async buildSegments(m: Machine, start: Date, end: Date): Promise<StateSegment[]> {
     const samples = await queryHistory(this.api, m.stateDp ?? '', start, end);
     if (samples.length === 0) return [];
-    const causeSamples: HistorySample[] = applyQualifications(
-      m.stopCauseDp ? await queryHistory(this.api, m.stopCauseDp, start, end) : [],
-      this.qualifications
-    );
+    const causeSamples: HistorySample[] = m.stopCauseDp ? await queryHistory(this.api, m.stopCauseDp, start, end) : [];
     const startMs = start.getTime();
     const endMs = end.getTime();
     const segs: StateSegment[] = [];
@@ -1308,14 +1251,11 @@ export class MfMachineDashboard extends LitElement {
       const state = resolveState(this.mapping, Math.round(Number(s.v)));
       const running = isRunningState(this.mapping, state);
       const causeLabel = running ? undefined : this.causeAt(causeSamples, segStart);
-      const code = running ? undefined : this.codeAt(causeSamples, segStart);
       const last = segs.at(-1);
       if (last && last.state === state && last.causeLabel === causeLabel && last.endMs >= segStart) {
         last.endMs = segEnd;
       } else {
-        const given = code ? qualificationAt(this.qualifications, segStart) : undefined;
-        const qual = given && given.code === code ? given : undefined;
-        segs.push({ state, startMs: segStart, endMs: segEnd, causeLabel, code, ...(qual ? { qualifiedBy: qual.user } : {}) });
+        segs.push({ state, startMs: segStart, endMs: segEnd, causeLabel });
       }
     }
     return this.withoutShortStops(segs, samples, startMs, endMs, (m.minStopSec ?? 0) * 1000);
@@ -1349,78 +1289,6 @@ export class MfMachineDashboard extends LitElement {
     return out;
   }
 
-  /** Stop-cause code active at time `t` ('' when none). */
-  private codeAt(samples: HistorySample[], t: number): string {
-    let code = '';
-    for (const s of samples) {
-      if (s.t > t) break;
-      code = s.v == null ? '' : String(s.v).trim();
-    }
-    return code;
-  }
-
-  /**
-   * A stop may be given a cause (#272): with the role and a catalog, once it is over and seen whole —
-   * not touching an edge of the period shown (an ongoing stop, or one the period cuts, would be
-   * qualified in part only, and under another start each time).
-   */
-  private qualifiable(startMs: number, endMs: number): boolean {
-    if (!this.canQualify || !this.store || this.stopCauses.length === 0) return false;
-    const w = this.windowMs;
-    return startMs > w.start + EDGE_MS && endMs < w.end - EDGE_MS;
-  }
-
-  private canQualifySegment(s: StateSegment): boolean {
-    return !isRunningState(this.mapping, s.state) && this.qualifiable(s.startMs, s.endMs);
-  }
-
-  private qualifySegment(s: StateSegment): void {
-    if (!this.canQualifySegment(s)) return;
-    this.tip = null;
-    this.openQualify({ startMs: s.startMs, endMs: s.endMs, code: s.code ?? '', label: s.causeLabel ?? '' });
-  }
-
-  private openQualify(target: QualifyTarget): void {
-    if (!this.qualifiable(target.startMs, target.endMs)) return;
-    this.qualifyError = false;
-    this.qualifying = target;
-  }
-
-  private renderQualify(): TemplateResult {
-    const q = this.qualifying;
-    if (!q) return html``;
-    return html`<mf-qualify-dialog
-      .causes=${this.stopCauses}
-      period=${`${formatDateTime(q.startMs)} → ${formatDateTime(q.endMs)} (${formatDuration(q.endMs - q.startMs)})`}
-      current=${q.label}
-      initialCode=${q.code}
-      @wui:confirm=${(e: CustomEvent<{ code: string; reason: string }>) => void this.qualify(q, e.detail.code, e.detail.reason)}
-      @wui:cancel=${() => (this.qualifying = null)}
-    ></mf-qualify-dialog>`;
-  }
-
-  /** Give `code` to the stop (#272): stored apart from the history, traced, then reloaded. */
-  private async qualify(target: QualifyTarget, code: string, reason: string): Promise<void> {
-    if (!this.store) return;
-    this.qualifying = null;
-    const user = await currentAuditUser();
-    // The machine's own code: the one kept by a cause given earlier, else the stop's code (no overlay).
-    const previous = qualificationAt(this.qualifications, target.startMs);
-    const ok = await this.store.saveQualification({
-      atelierId: this.atelierId,
-      machineId: this.machine.id,
-      startMs: target.startMs,
-      endMs: target.endMs,
-      code,
-      machineCode: previous ? previous.machineCode : target.code,
-      reason,
-      user: user.name || String(user.id),
-      at: new Date().toISOString()
-    });
-    this.qualifyError = !ok;
-    if (ok) await this.reload(true);
-  }
-
   /** Stop-cause label active at time `t` (catalog-resolved), or undefined. */
   private causeAt(samples: HistorySample[], t: number): string | undefined {
     let code = '';
@@ -1442,7 +1310,7 @@ export class MfMachineDashboard extends LitElement {
       mapping: this.mapping,
       minStopMs: (m.minStopSec ?? 0) * 1000
     };
-    const result = await analyseStopCauses(this.api, [target], this.stopCauses, start, end, new Map(), this.qualifications);
+    const result = await analyseStopCauses(this.api, [target], this.stopCauses, start, end);
     // Keep both planned & unplanned; the Pareto filters by the chosen class. A stop with no
     // cause and no catalog default has no classification: it is unplanned (as in the TRS).
     const rows = result.rows
@@ -1932,10 +1800,6 @@ function dashboardStyles() {
     }
     .gantt rect {
       cursor: pointer;
-    }
-    .qualify-error {
-      color: var(--theme-color-alarm);
-      margin-bottom: 0.3rem;
     }
     .gantt-mark {
       stroke: var(--theme-color-std-text);

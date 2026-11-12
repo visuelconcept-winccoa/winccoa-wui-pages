@@ -597,6 +597,12 @@ export interface MachineDef {
   display?: DisplayEntry[];
   /** Datapoint giving the stop-cause code. */
   stopCauseDp?: string;
+  /**
+   * Stop-cause catalogue of this machine (`StopCauseCatalog.id`, #74 of winccoa-wui-pages): its causes
+   * name, colour and classify the machine's stops. Absent or unknown: the default catalogue. Usually
+   * written by the integration (the site picks it per node of its organisation).
+   */
+  stopCatalogId?: string;
   /** Datapoint giving the current work order (OF). */
   workOrderDp?: string;
   /** Datapoint giving the current operation. */
@@ -940,6 +946,19 @@ export const STOP_CLASSIFICATION_LABELS: Record<StopClassification, string> = {
   production: 'Production'
 };
 
+/**
+ * A named stop-cause catalogue (#74 of winccoa-wui-pages): several may exist, one datapoint each of type
+ * `MachineFleet3D_StopCauses` (`json`: the causes, `name`). The default one (`id` 'default', `isDefault`),
+ * used by every machine without its own `stopCatalogId`, is `MachineFleet3D_StopCauses` itself, the single
+ * catalogue of before; another is `MachineFleet3D_StopCauses_<id>` (stop-catalogs.ts).
+ */
+export interface StopCauseCatalog {
+  id: string;
+  name: string;
+  causes: StopCause[];
+  isDefault?: boolean;
+}
+
 /** A stop-cause catalog entry (single-level catalog). */
 export interface StopCause {
   code: string;
@@ -947,28 +966,6 @@ export interface StopCause {
   classification: StopClassification;
   /** When true, this entry is shown for any code not found in the catalog. */
   isDefault?: boolean;
-}
-
-/**
- * A cause given by hand to a stop (#272): to a stop without one, or in place of the one the
- * machine sent. It never rewrites the machine's cause history: the analyses lay it over that
- * history for [startMs, endMs). Stored in one app-level datapoint, traced in the audit trail.
- */
-export interface StopQualification {
-  atelierId: string;
-  machineId: string;
-  /** The stop period it qualifies (ms epoch). */
-  startMs: number;
-  endMs: number;
-  /** Catalog code retained. */
-  code: string;
-  /** Code read on the machine at the start of the stop ('' when none). */
-  machineCode: string;
-  /** Why it was given (mandatory). */
-  reason: string;
-  /** Who gave it, and when (ISO). */
-  user: string;
-  at: string;
 }
 
 /**

@@ -6,8 +6,9 @@
 // -----------------------------------------------------------------------------
 // One DP per atelier, as the page writes them (wui-fleet-core FleetStore):
 // `MachineFleet3D_<id>` of type `MachineFleet3D_Config` (Struct: `name` String +
-// `json` String, the whole atelier serialised). The stop-cause catalog is the
-// single DP `MachineFleet3D_StopCauses` (`json`: an array).
+// `json` String, the whole atelier serialised). The stop-cause catalogues are one
+// DP each of type `MachineFleet3D_StopCauses` (`json`: an array; `name`, #74): the
+// default one `MachineFleet3D_StopCauses`, any other `MachineFleet3D_StopCauses_<id>`.
 //
 // READ ONLY, for hosts that embed one atelier (<wui-fleet-3d-view>, the
 // listing a host's picker shows): the browser of a host never reads these DPs
@@ -127,6 +128,35 @@ export async function readStopCauses(): Promise<unknown[]> {
   return parseArray(await oa().dpGet(`${STOPCAUSE_DP}.json`));
 }
 
+/** Type of the stop-cause catalogues (#74), one DP each: the default `MachineFleet3D_StopCauses`, others `…_<id>`. */
+export const STOPCAUSE_TYPE = 'MachineFleet3D_StopCauses';
+const CATALOG_PREFIX = `${STOPCAUSE_DP}_`;
+
+/** One stop-cause catalogue as served: its id ('default' for the single one of before), name and causes. */
+export interface StopCatalogPayload {
+  id: string;
+  name: string;
+  causes: unknown[];
+}
+
+/** The stop-cause catalogues (#74), one per DP of the catalogue type; [] when the type does not exist yet. */
+export async function readStopCatalogs(): Promise<StopCatalogPayload[]> {
+  if (!((oa().dpTypes(STOPCAUSE_TYPE) as string[]) ?? []).includes(STOPCAUSE_TYPE)) return [];
+  const out: StopCatalogPayload[] = [];
+  for (const dp of ((oa().dpNames(`${STOPCAUSE_DP}*`, STOPCAUSE_TYPE) as string[]) ?? []).map(bareName)) {
+    const id = dp === STOPCAUSE_DP ? 'default' : dp.startsWith(CATALOG_PREFIX) ? dp.slice(CATALOG_PREFIX.length) : '';
+    if (!id) continue;
+    let name = '';
+    try {
+      name = textOf(await oa().dpGet(`${dp}.name`));
+    } catch {
+      name = ''; // the type of before #74 has no `name` until a first save adds it
+    }
+    out.push({ id, name, causes: parseArray(await oa().dpGet(`${dp}.json`)) });
+  }
+  return out;
+}
+
 // --- HTTP ----------------------------------------------------------------------
 
 function unavailable(res: Response, error: unknown): void {
@@ -146,7 +176,7 @@ export class FleetController {
     }
   };
 
-  /** GET /fleet/workshops/:id -> { ok, atelier, stopCauses } | 404 */
+  /** GET /fleet/workshops/:id -> { ok, atelier, stopCauses, stopCatalogs } | 404 */
   public get = async (req: Request, res: Response): Promise<void> => {
     const id = String(req.params?.['id'] ?? '');
     try {
@@ -155,7 +185,7 @@ export class FleetController {
         res.status(HTTP_NOT_FOUND).json({ ok: false, error: 'not-found', message: `unknown atelier: ${id}` });
         return;
       }
-      res.json({ ok: true, atelier, stopCauses: await readStopCauses() });
+      res.json({ ok: true, atelier, stopCauses: await readStopCauses(), stopCatalogs: await readStopCatalogs() });
     } catch (error) {
       unavailable(res, error);
     }

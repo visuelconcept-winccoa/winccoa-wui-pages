@@ -9,19 +9,23 @@
 fleet-kpi-analysis and fleet-stop-analysis 0.3.0). A page that declares fleet-closures imports
 `data/guarded-writes.js` for its writes to go through `/api/fleet`.
 
+- **Several stop-cause catalogues** (#74): `StopCauseCatalog { id, name, causes, isDefault }`, one
+  datapoint each of type `MachineFleet3D_StopCauses` (`json`: the causes, a plain list; `name`, added to
+  the type at the first save through `dptype/change`). The default one is `MachineFleet3D_StopCauses`
+  itself, the single catalogue of before, unchanged for its readers; another is
+  `MachineFleet3D_StopCauses_<id>`. A machine names its own with `stopCatalogId`, else the default.
+  `FleetStore.listCatalogs` / `saveCatalogs` (a catalogue removed: its datapoint deleted);
+  `stop-catalogs.ts` (`catalogsFromDps`, `catalogFor`, `causesFor`…); the stop-causes window chooses,
+  creates, duplicates, renames and deletes catalogues (not the default one); `collectMachines` / the stop
+  analysis give each machine its catalogue, its causes kept apart from another catalogue's (`<id>:<code>`).
 - **`FleetStore` no longer names `/api/fleet`**: its writes go to PARA unless a page imported
   `data/guarded-writes.js` (the pages that declare fleet-closures), which routes them through `/api/fleet`
   when it answers (`write-routing.ts`). A page embedding a fleet view without that module (the
   workcenters' "Vue machine fleet") thus calls no fleet-closures backend, and wui-toolkit's
   `wuiPage.requires` check passes without declaring it.
-- **Causes given by hand to stops** (`StopQualification`): to a stop without a cause, or in place
-  of the one the machine sent, with a mandatory reason. Kept apart from the machine's history in
-  `MachineFleet3D_StopQualifications` (`FleetStore.listQualifications` / `saveQualification`,
-  traced in the audit trail with the old and new cause and the reason) and laid over that history
-  by `applyQualifications`; `analyseStopCauses` takes them as a last argument and marks the stops
-  concerned (`qualifiedBy`, `qualifiedAt`). The latest given wins an overlap of two periods, whatever
-  its start (`qualificationAt`); a save is refused, never written over, when the stored list cannot be
-  read (a datapoint never saved is an empty list), and drops the earlier ones it covers entirely.
+- **No cause given by hand to a stop** (#75): the workcenter gives it, the fleet shows the cause
+  history it reads. `StopQualification`, `applyQualifications`, `qualificationAt` and
+  `FleetStore.listQualifications` / `saveQualification` are gone, with `MachineFleet3D_StopQualifications`.
 - **"Îlot" is a filter again**: the îlot (a location in the plant) is one of the filters the
   SDS 2.2 acceptance requires, beside UAP and activity (SL-ORG-01, SL-LOB-05). Only the
   "Workcenter" dimension stays out of the filters (#66).

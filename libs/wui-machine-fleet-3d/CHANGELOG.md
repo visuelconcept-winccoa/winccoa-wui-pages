@@ -6,9 +6,13 @@
 ## 0.6.0 — 2026-11-09 (SDS 2.2)
 
 **Upgrade.** Requires wui-fleet-core and fleet-closures `^0.3.0`. New roles, open to all until
-assigned in Application Security: **`views`** ("Gérer les vues publiques", e.g. for sysadmin) and
-**`qualify`** ("Qualifier les arrêts").
+assigned in Application Security: **`views`** ("Gérer les vues publiques", e.g. for sysadmin). The
+role **`qualify`** of the 0.5.0 previews is gone (#75): remove it from the groups it was given to.
 
+- **Each machine's stop-cause catalogue** (#74, wui-fleet-core 0.3.0): the bubble, the card and the
+  machine dashboard name the causes from the machine's own catalogue (`stopCatalogId`), else the default;
+  the embedded view gets the catalogues from `GET /api/ai/fleet/workshops/:id` (`stopCatalogs`, one per
+  datapoint of type `MachineFleet3D_StopCauses`).
 - **Datapoint fields as in the dashboard's widget settings** (`mf-dp-field`, in place of wui-kit's
   `wui-dp-input`): clear button, and the magnifier opens the platform's data selector (systems,
   datapoint tree, CNS, details) in a modal; a datapoint that does not exist shows a red broken link.
@@ -21,12 +25,8 @@ assigned in Application Security: **`views`** ("Gérer les vues publiques", e.g.
 - **Back to the overview stays on it**: the welcome atelier opens on arriving at the fleet only, no
   longer again when coming back from an atelier (back arrow or browser back), the stop or KPI analysis,
   the non-worked days or a settings page of the site.
-- **Give a stop its cause by hand** (role `qualify`): a click on a finished stop of the Gantt, or
-  the pen of the stop list, opens "Cause de l'arrêt" — a cause from the catalog and a mandatory
-  reason. Only a stop seen whole: an ongoing one, or one the period shown cuts, waits ("En cours, ou
-  coupé par la période : élargir la période"). It fills a stop without a cause or replaces the machine's; the history is left as it
-  is, the cause given lays over it in the Gantt, the Pareto, the stop list, the TRS and the stop
-  analysis, and is traced in the audit trail.
+- **No cause given by hand to a stop** (#75): the workcenter gives it; the Gantt, the stop list and the
+  Pareto show the cause history the machine's cause datapoint holds.
 
 - **Public views and "welcome atelier for everyone" also need the `views` role**, on top of the
   atelier edit right (the server saves the whole atelier under `edit`); "My views" and "welcome atelier for me" stay with each user. The two
