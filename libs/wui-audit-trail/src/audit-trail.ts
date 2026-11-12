@@ -37,7 +37,7 @@ import { listAuditDps } from './audit-trail/dp-admin.js';
 import { auditColumns, buildMergedPivot, type PivotResult } from './audit-trail/engine.js';
 import { exportAuditCsv, exportAuditJson, printAudit } from './audit-trail/export.js';
 import { PICKER_FORMAT, pickerDate, pickerToStored, resolveStoredRange, storedToPicker, toStoredBound } from './audit-trail/range.js';
-import { MSG, colLabel, liveSuffixMsg, localize, localizeDir, recordsMsg, shownOfMsg, truncatedMsg } from './audit-trail/i18n.js';
+import { MSG, colLabel, dateLocale, liveSuffixMsg, localize, localizeDir, recordsMsg, shownOfMsg, truncatedMsg } from './audit-trail/i18n.js';
 import {
   AUDIT_DP_TYPE,
   AUDIT_FIELDS,
@@ -282,7 +282,7 @@ export class WuiAuditTrail extends LitElement {
         .value=${start}
         .maxDate=${pickerDate(end)}
         show-week-numbers
-        week-start-index="1"
+        locale=${dateLocale()}
         @valueChange=${(e: CustomEvent<string | undefined>) => this.onRangePicked('rangeStart', e.detail)}
       ></ix-datetime-input>
       <span class="arrow">→</span>
@@ -293,7 +293,7 @@ export class WuiAuditTrail extends LitElement {
         .value=${end}
         .minDate=${pickerDate(start)}
         show-week-numbers
-        week-start-index="1"
+        locale=${dateLocale()}
         @valueChange=${(e: CustomEvent<string | undefined>) => this.onRangePicked('rangeEnd', e.detail)}
       ></ix-datetime-input>
     </span>`;
