@@ -153,8 +153,6 @@ export class WuiMachineFleet3d extends LitElement {
   @state() private roleAi = true;
   /** Public views and the welcome atelier for everyone (#278): a role of its own, e.g. for sysadmin. */
   @state() private roleViews = true;
-  /** Role `configure`: the module settings, common to every atelier (#70). */
-  @state() private roleConfigure = true;
   /** The module settings (#70: the default opening view of every atelier). */
   @state() private moduleSettings: FleetModuleSettings = parseModuleSettings('');
 
@@ -179,7 +177,6 @@ export class WuiMachineFleet3d extends LitElement {
     this.permSub.add(hasRole$(MODULE_ID, 'edit').subscribe((granted) => (this.roleEdit = granted)));
     this.permSub.add(hasRole$(MODULE_ID, 'ai').subscribe((granted) => (this.roleAi = granted)));
     this.permSub.add(hasRole$(MODULE_ID, 'views').subscribe((granted) => (this.roleViews = granted)));
-    this.permSub.add(hasRole$(MODULE_ID, 'configure').subscribe((granted) => (this.roleConfigure = granted)));
   }
 
   override disconnectedCallback(): void {
@@ -224,10 +221,7 @@ export class WuiMachineFleet3d extends LitElement {
           .store=${this.store}
           .canEdit=${this.canEdit && this.roleEdit}
           .roleAi=${this.roleAi}
-          .moduleSettings=${this.moduleSettings}
-          .canConfigure=${this.canEdit && this.roleConfigure}
           ?offline=${this.offline}
-          @wui:module-settings=${(e: CustomEvent<{ settings: FleetModuleSettings }>) => (this.moduleSettings = e.detail.settings)}
           @wui:open=${(e: CustomEvent<{ id: string }>) => this.navigate(e.detail.id)}
           @wui:create=${(e: CustomEvent<{ name: string; id?: string; seed?: string }>) => this.onCreate(e.detail)}
           @wui:analyze=${() => this.goToFleetPage('/fleet-stops')}

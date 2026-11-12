@@ -34,8 +34,6 @@ import './mf-atelier-create-dialog.js';
 import './mf-filter-bar.js';
 import './mf-graphics-catalog.js';
 import { loadSettingsPages, type FleetSettingsPage } from '../settings-pages.js';
-import './mf-module-settings-dialog.js';
-import { parseModuleSettings, type FleetModuleSettings } from '@visuelconcept-winccoa/wui-fleet-core/opening-view.js';
 
 /** Minimap rendered height (px) — must match the `.minimap { height }` CSS. */
 const MINIMAP_HEIGHT_PX = 110;
@@ -53,9 +51,6 @@ export class MfAtelierOverview extends LitElement {
   @property({ type: Boolean }) canEdit = true;
   /** Application-Security 'ai' grant — gates the AI-assistant affordance. */
   @property({ type: Boolean }) roleAi = true;
-  /** The module settings (#70) and the grant to change them (canPublish && role 'configure'). */
-  @property({ attribute: false }) moduleSettings: FleetModuleSettings = parseModuleSettings('');
-  @property({ type: Boolean }) canConfigure = false;
 
   @state() private createOpen = false;
   @state() private createTemplate = '';
@@ -65,11 +60,9 @@ export class MfAtelierOverview extends LitElement {
   @state() private settingsPages: FleetSettingsPage[] = [];
   /** Paths of the settings pages the user may open (one of their roles granted, or none asked). */
   @state() private grantedPages: string[] = [];
-  /** The "Paramètres" menu (opening view of the module, settings pages of the site) is open. */
+  /** The "Paramètres" menu (settings pages of the site) is open. */
   @state() private settingsMenuOpen = false;
   private pageRoleSubs: Subscription[] = [];
-  @state() private settingsOpen = false;
-  @state() private settingsError = false;
   /** Remembered machine filter (the user's settings, shared with the atelier views). */
   @state() private filter: FleetFilter = loadFleetFilter();
   private settingsSub: Subscription | null = null;
@@ -155,16 +148,6 @@ export class MfAtelierOverview extends LitElement {
             @wui:cancel=${() => (this.createOpen = false)}
           ></mf-atelier-create-dialog>`
         : ''}
-      ${this.settingsOpen
-        ? html`<mf-module-settings-dialog
-            .settings=${this.moduleSettings}
-            .ateliers=${this.ateliers}
-            .canConfigure=${this.canConfigure}
-            .error=${this.settingsError}
-            @wui:apply=${(e: CustomEvent<{ settings: FleetModuleSettings }>) => void this.saveModuleSettings(e.detail.settings)}
-            @wui:close=${() => (this.settingsOpen = false)}
-          ></mf-module-settings-dialog>`
-        : ''}
       ${this.resourcesOpen
         ? html`<mf-graphics-catalog
             .store=${this.store}
@@ -173,17 +156,6 @@ export class MfAtelierOverview extends LitElement {
           ></mf-graphics-catalog>`
         : ''}
     `;
-  }
-
-  /** Save the module settings (#70) — /api/fleet checks the role `configure` again. */
-  private async saveModuleSettings(settings: FleetModuleSettings): Promise<void> {
-    const ok = (await this.store?.saveModuleSettings(settings)) ?? false;
-    if (!ok) {
-      this.settingsError = true;
-      return;
-    }
-    this.settingsOpen = false;
-    this.dispatchEvent(new CustomEvent('wui:module-settings', { detail: { settings }, bubbles: true, composed: true }));
   }
 
   private renderEmpty(): TemplateResult {
@@ -327,15 +299,16 @@ export class MfAtelierOverview extends LitElement {
    * One "Paramètres" button: the module's own settings (its opening view) and the settings pages of the
    * site the user may open. With no such page, it opens the module's settings directly.
    */
+  /**
+   * "Paramètres": the settings pages of the site the user may open — none: no button; one: the button opens
+   * it; several: a menu. (The default opening view of every atelier is no longer offered here.)
+   */
   private renderSettingsButton(): TemplateResult {
     const pages = this.settingsPages.filter((p) => this.grantedPages.includes(p.path));
-    const openModule = (): void => {
-      this.settingsMenuOpen = false;
-      this.settingsOpen = true;
-      this.settingsError = false;
-    };
-    if (pages.length === 0) {
-      return html`<ix-button variant="secondary" @click=${openModule}>
+    if (pages.length === 0) return html``;
+    if (pages.length === 1) {
+      const [only] = pages;
+      return html`<ix-button variant="secondary" @click=${() => this.openPage(only.path)}>
         <ix-icon name="cogwheel" slot="icon"></ix-icon>${localizeDir(MSG.overview.settings)}
       </ix-button>`;
     }
@@ -347,9 +320,6 @@ export class MfAtelierOverview extends LitElement {
       ${this.settingsMenuOpen
         ? html`<div class="menu-backdrop" @click=${() => (this.settingsMenuOpen = false)}></div>
             <div class="settings-menu" role="menu">
-              <button type="button" role="menuitem" @click=${openModule}>
-                <ix-icon name="cogwheel" size="16"></ix-icon>${localizeDir(MSG.opening.moduleDefault)}
-              </button>
               ${pages.map(
                 (p) => html`<button type="button" role="menuitem" @click=${() => {
                   this.settingsMenuOpen = false;

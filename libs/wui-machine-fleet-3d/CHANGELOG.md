@@ -17,11 +17,12 @@ role **`qualify`** of the 0.5.0 previews is gone (#75): remove it from the group
   `wui-dp-input`): clear button, and the magnifier opens the platform's data selector (systems,
   datapoint tree, CNS, details) in a modal; a datapoint that does not exist shows a red broken link.
   New platform peers: `@siemens/ix`, `@wincc-oa/wui-data-selector-smart-ui` (in the shell's import map).
-- **One "Paramètres" button in the overview** (with the module settings of 0.5.0): it opens the
-  module's opening view directly, or a short menu when the site adds settings pages — menu entries
+- **One "Paramètres" button in the overview**, for the settings pages a site adds — menu entries
   marked `"fleetSettings": true`, or `{ "roles": ["<module>/<role>"] }` to list a page only for a user
-  granted one of these roles (usually hidden from the menu), titled and iconned from their entry. A site
-  adds its own fleet settings without a menu entry of their own.
+  granted one of these roles (usually hidden from the menu), titled and iconned from their entry: it opens
+  the only one directly, or a short menu; no button without any. A site adds its own fleet settings without
+  a menu entry of their own. The default opening view of every atelier (module settings of 0.5.0) is no
+  longer offered there: the setting saved stays in force, each atelier keeps its own opening view.
 - **Back to the overview stays on it**: the welcome atelier opens on arriving at the fleet only, no
   longer again when coming back from an atelier (back arrow or browser back), the stop or KPI analysis,
   the non-worked days or a settings page of the site.

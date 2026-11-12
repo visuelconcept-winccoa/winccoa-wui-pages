@@ -713,14 +713,6 @@ export const MSG = {
     sampleFull: ml('Example: full atelier', 'Exemple : atelier plein', 'Beispiel: volle Werkstatt'),
     symbols: ml('symbols', 'symboles', 'Symbole'),
     noWebgl: ml('Preview unavailable (WebGL).', 'Aperçu indisponible (WebGL).', 'Vorschau nicht verfügbar (WebGL).'),
-    moduleTitle: ml('Module settings — every atelier', 'Paramètres du module — tous les ateliers', 'Moduleinstellungen — alle Werkstätten'),
-    moduleButton: ml('Module settings', 'Paramètres du module', 'Moduleinstellungen'),
-    moduleDefault: ml('Default opening view', "Vue d'ouverture par défaut", 'Standard-Eröffnungsansicht'),
-    moduleHint: ml(
-      'Applies to every atelier that has no setting of its own. Role "Configure the module".',
-      'S’applique à chaque atelier qui n’a pas son propre réglage. Rôle « Configurer le module ».',
-      'Gilt für jede Werkstatt ohne eigene Einstellung. Rolle „Modul konfigurieren".'
-    ),
     atelierButton: ml("Opening view", "Vue d'ouverture", 'Eröffnungsansicht'),
     atelierTitle: ml("Opening view of this atelier", "Vue d'ouverture de cet atelier", 'Eröffnungsansicht dieser Werkstatt'),
     useModule: ml('Use the module’s setting', 'Utiliser le réglage du module', 'Einstellung des Moduls verwenden'),
