@@ -35,6 +35,21 @@ export const MSG = {
     cancel: ml('Cancel', 'Annuler', 'Abbrechen')
   },
   dpInput: {
-    browse: ml('Search for a datapoint', 'Rechercher un datapoint', 'Datenpunkt suchen')
+    browse: ml('Search for a datapoint', 'Rechercher un datapoint', 'Datenpunkt suchen'),
+    types: ml('Datapoint types', 'Types de datapoint', 'Datenpunkttypen'),
+    allTypes: ml('All types', 'Tous les types', 'Alle Typen'),
+    up: ml('Up one level', 'Niveau supérieur', 'Eine Ebene höher'),
+    none: ml('No datapoint found', 'Aucun datapoint trouvé', 'Kein Datenpunkt gefunden'),
+    notFound: ml('Datapoint not found', 'Datapoint introuvable', 'Datenpunkt nicht gefunden'),
+    loading: ml('Searching…', 'Recherche…', 'Suche…')
   }
 } as const;
+
+/** "40 first results — refine the search", in the active language. */
+export function truncatedMsg(shown: number): MultiLangString {
+  return ml(
+    `First ${shown} results — refine the search`,
+    `${shown} premiers résultats — précisez la recherche`,
+    `Erste ${shown} Ergebnisse — Suche verfeinern`
+  );
+}
