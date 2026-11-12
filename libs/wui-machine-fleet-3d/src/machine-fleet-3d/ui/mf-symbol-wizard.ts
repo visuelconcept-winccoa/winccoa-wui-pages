@@ -18,7 +18,7 @@ import { MSG, localize, localizeDir } from '../i18n.js';
 import { dialogStyles } from './dialog-styles.js';
 import { MACHINE_TYPES } from './mf-machine-dialog.js';
 import { overlayClicked, overlayDown } from '@visuelconcept-winccoa/wui-fleet-core/ui/overlay-dismiss.js';
-import '@visuelconcept-winccoa/wui-kit/ui/wui-dp-input.js';
+import './mf-dp-field.js';
 
 type Source = 'catalog' | 'atelier' | 'file' | 'create';
 
@@ -147,11 +147,11 @@ export class MfSymbolWizard extends LitElement {
         <ix-select label=${localize(MSG.wizard.type)} .value=${this.type} @valueChange=${(e: IxValueEvent) => (this.type = e.detail as MachineType)}>
           ${MACHINE_TYPES.map((t) => html`<ix-select-item label=${t} value=${t}></ix-select-item>`)}
         </ix-select>
-        <wui-dp-input
+        <mf-dp-field
           label=${localize(MSG.wizard.stateDp)}
           .value=${this.stateDp}
           @wui:change=${(e: CustomEvent<{ value: string }>) => (this.stateDp = e.detail.value)}
-        ></wui-dp-input>
+        ></mf-dp-field>
         <div class="muted">${localizeDir(MSG.wizard.later)}</div>
       </div>
     `;

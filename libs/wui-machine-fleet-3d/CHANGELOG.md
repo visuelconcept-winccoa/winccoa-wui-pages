@@ -9,6 +9,10 @@
 assigned in Application Security: **`views`** ("Gérer les vues publiques", e.g. for sysadmin) and
 **`qualify`** ("Qualifier les arrêts").
 
+- **Datapoint fields as in the dashboard's widget settings** (`mf-dp-field`, in place of wui-kit's
+  `wui-dp-input`): clear button, and the magnifier opens the platform's data selector (systems,
+  datapoint tree, CNS, details) in a modal; a datapoint that does not exist shows a red broken link.
+  New platform peers: `@siemens/ix`, `@wincc-oa/wui-data-selector-smart-ui` (in the shell's import map).
 - **One "Paramètres" button in the overview** (with the module settings of 0.5.0): it opens the
   module's opening view directly, or a short menu when the site adds settings pages — menu entries
   marked `"fleetSettings": true`, or `{ "roles": ["<module>/<role>"] }` to list a page only for a user

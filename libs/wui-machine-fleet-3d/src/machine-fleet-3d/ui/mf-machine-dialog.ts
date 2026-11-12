@@ -46,7 +46,7 @@ import {
   type TrsThresholds,
   type TrsWindow
 } from '../types.js';
-import '@visuelconcept-winccoa/wui-kit/ui/wui-dp-input.js';
+import './mf-dp-field.js';
 import { SEMIFAB_ICONS } from '../data/semifab-icons.js';
 import type { AliAssetInfo } from '../data/ali-assets.js';
 import type { FleetStore } from '../data/fleet-store.js';
@@ -831,11 +831,11 @@ export class MfMachineDialog extends LitElement {
       ${this.dimSlider(localize(MSG.machineDialog.width), w, 2, 10, (v) => this.patch({ basculeurW: v }))}
       ${this.dimSlider(localize(MSG.machineDialog.height), h, 2, 8, (v) => this.patch({ basculeurH: v }))}
       ${this.dimSlider(localize(MSG.machineDialog.depth), d, 2, 8, (v) => this.patch({ basculeurD: v }))}
-      <wui-dp-input
+      <mf-dp-field
         label=${localize(MSG.machineDialog.tiltDpLabel)}
         .value=${this.working.tiltDp ?? ''}
         @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ tiltDp: e.detail.value })}
-      ></wui-dp-input>
+      ></mf-dp-field>
       ${this.labeledToggle(
         localize(MSG.machineDialog.tiltInvert),
         this.working.tiltInvert ?? false,
@@ -987,11 +987,11 @@ export class MfMachineDialog extends LitElement {
     return html`
       <div class="subhead">${localizeDir(MSG.machineDialog.machineState)}</div>
       <div class="grid2">
-        <wui-dp-input
+        <mf-dp-field
           label=${localize(MSG.machineDialog.stateDpLabel)}
           .value=${m.stateDp ?? ''}
           @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ stateDp: e.detail.value })}
-        ></wui-dp-input>
+        ></mf-dp-field>
         <ix-select
           label=${localize(MSG.machineDialog.stateMappingLabel)}
           .value=${m.stateMappingId ?? ''}
@@ -1005,11 +1005,11 @@ export class MfMachineDialog extends LitElement {
       <ix-button class="link" variant="secondary" @click=${this.openMappings}>
         <ix-icon name="cogwheel" slot="icon"></ix-icon>${localizeDir(MSG.machineDialog.manageStateMappings)}
       </ix-button>
-      <wui-dp-input
+      <mf-dp-field
         label=${localize(MSG.machineDialog.commDpLabel)}
         .value=${m.commDp ?? ''}
         @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ commDp: e.detail.value })}
-      ></wui-dp-input>
+      ></mf-dp-field>
       ${this.renderAliLink()}
     `;
   }
@@ -1103,26 +1103,26 @@ export class MfMachineDialog extends LitElement {
     return html`
       <div class="subhead">${localizeDir(MSG.machineDialog.production)}</div>
       <div class="grid2">
-        <wui-dp-input
+        <mf-dp-field
           label=${localize(MSG.machineDialog.stopCauseDpLabel)}
           .value=${m.stopCauseDp ?? ''}
           @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ stopCauseDp: e.detail.value })}
-        ></wui-dp-input>
-        <wui-dp-input
+        ></mf-dp-field>
+        <mf-dp-field
           label=${localize(MSG.machineDialog.workOrderDpLabel)}
           .value=${m.workOrderDp ?? ''}
           @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ workOrderDp: e.detail.value })}
-        ></wui-dp-input>
-        <wui-dp-input
+        ></mf-dp-field>
+        <mf-dp-field
           label=${localize(MSG.machineDialog.operationDpLabel)}
           .value=${m.operationDp ?? ''}
           @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ operationDp: e.detail.value })}
-        ></wui-dp-input>
-        <wui-dp-input
+        ></mf-dp-field>
+        <mf-dp-field
           label=${localize(MSG.machineDialog.alarmCodeDpLabel)}
           .value=${m.alarmCodeDp ?? ''}
           @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ alarmCodeDp: e.detail.value })}
-        ></wui-dp-input>
+        ></mf-dp-field>
         <ix-number-input
           label=${localize(MSG.machineDialog.minStopLabel)}
           helper-text=${localize(MSG.machineDialog.minStopHint)}
@@ -1352,11 +1352,11 @@ export class MfMachineDialog extends LitElement {
           .value=${p.label}
           @valueChange=${(e: IxValueEvent) => this.patchParam(i, { label: String(e.detail) })}
         ></ix-input>
-        <wui-dp-input
+        <mf-dp-field
           class="p-dp"
           .value=${p.dp ?? ''}
           @wui:change=${(e: CustomEvent<{ value: string }>) => this.patchParam(i, { dp: e.detail.value })}
-        ></wui-dp-input>
+        ></mf-dp-field>
         <ix-input
           class="p-unit"
           placeholder=${localize(MSG.machineDialog.paramUnit)}

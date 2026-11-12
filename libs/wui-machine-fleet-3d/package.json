@@ -36,7 +36,9 @@
     "@wincc-oa/wui-models": "*",
     "@wincc-oa/wui-oarxjs-context": "*",
     "@wincc-oa/wui-shared": "*",
-    "@wincc-oa/wui-iam-data": "*"
+    "@wincc-oa/wui-iam-data": "*",
+    "@wincc-oa/wui-data-selector-smart-ui": "*",
+    "@siemens/ix": "*"
   },
   "exports": {
     "./*": {

@@ -270,6 +270,11 @@ export const MSG = {
     confirmDeleteHeading: ml("Delete the atelier", "Supprimer l'atelier", 'Werkstatt löschen'),
     viewLabel: ml('View', 'Vue', 'Ansicht')
   },
+  dpField: {
+    browse: ml('Choose a datapoint', 'Choisir un datapoint', 'Datenpunkt auswählen'),
+    clear: ml('Clear', 'Effacer', 'Leeren'),
+    missing: ml('Datapoint not found', 'Datapoint introuvable', 'Datenpunkt nicht gefunden')
+  },
   qualify: {
     title: ml('Cause of the stop', "Cause de l'arrêt", 'Stillstandsursache'),
     period: ml('Stop', 'Arrêt', 'Stillstand'),
