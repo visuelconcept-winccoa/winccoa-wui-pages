@@ -45,6 +45,8 @@ export const MSG = {
     print: ml('Print', 'Imprimer', 'Drucken'),
     refresh: ml('Refresh', 'Actualiser', 'Aktualisieren'),
     live24h: ml('Live 24 h', 'Live 24 h', 'Live 24 h'),
+    rangeStart: ml('Start', 'Début', 'Beginn'),
+    rangeEnd: ml('End', 'Fin', 'Ende'),
     search: ml('Search…', 'Rechercher…', 'Suchen…')
   },
   table: {
