@@ -17,6 +17,10 @@ role **`qualify`** of the 0.5.0 previews is gone (#75): remove it from the group
   `wui-dp-input`): clear button, and the magnifier opens the platform's data selector (systems,
   datapoint tree, CNS, details) in a modal; a datapoint that does not exist shows a red broken link.
   New platform peers: `@siemens/ix`, `@wincc-oa/wui-data-selector-smart-ui` (in the shell's import map).
+- **The overview's cards follow the machines' live state**: the dots of each atelier's minimap and its state
+  counts read every machine's state datapoint through its mapping (one subscription for the whole page), as
+  the atelier view does, and no longer show the state stored with each machine (always "ok" for a machine of
+  the site).
 - **One "Paramètres" button in the overview**, for the settings pages a site adds — menu entries
   marked `"fleetSettings": true`, or `{ "roles": ["<module>/<role>"] }` to list a page only for a user
   granted one of these roles (usually hidden from the menu), titled and iconned from their entry: it opens

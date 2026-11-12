@@ -5,7 +5,9 @@
  * Stop-cause catalogues manager (#74): several named catalogues, one datapoint each; the default one (the
  * single catalogue of before, used by every machine without a catalogue of its own) is always there. Each
  * has entries with a code, a description and a time classification (unplanned / planned). A catalogue is
- * chosen, created, duplicated, renamed or deleted (not the default; deletion confirmed by a second click).
+ * chosen, created, duplicated, renamed or deleted (not the default; deletion confirmed by a second click), or made
+ * the default one: its name and causes are swapped with the default's, on a second click. A catalogue not saved yet
+ * takes its id from its name as it is renamed (the id names its datapoint).
  * All catalogues are saved together via {@link FleetStore.saveCatalogs}. Import / export (JSON) act on the
  * catalogue shown.
  * Emits `wui:close`.
@@ -59,6 +61,10 @@ export class MfStopCauses extends LitElement {
   @state() private currentId = '';
   /** The catalogue waiting for a second click to be deleted. */
   @state() private confirmDeleteId = '';
+  /** The catalogue waiting for a second click to become the default one. */
+  @state() private confirmDefaultId = '';
+  /** Ids of the catalogues as saved: one not saved yet takes its id from its name. */
+  private savedIds = new Set<string>();
   @state() private busy = false;
 
   /** The catalogue shown (the default one when none chosen yet). */
@@ -138,7 +144,7 @@ export class MfStopCauses extends LitElement {
     void this.reload();
   }
 
-  /** Which catalogue (★ the default one) and its name; new, duplicate, delete. */
+  /** Which catalogue (★ the default one) and its name; new, duplicate, make default, delete. */
   private renderCatalogBar(): TemplateResult {
     const ro = !this.canEdit;
     const cur = this.current;
@@ -152,6 +158,7 @@ export class MfStopCauses extends LitElement {
           @valueChange=${(e: IxValueEvent) => {
             this.currentId = String(e.detail);
             this.confirmDeleteId = '';
+            this.confirmDefaultId = '';
           }}
         >
           ${this.catalogs.map(
@@ -173,6 +180,17 @@ export class MfStopCauses extends LitElement {
               <ix-button variant="secondary" @click=${() => this.addCatalog(true)}>
                 <ix-icon name="duplicate" slot="icon"></ix-icon>${localizeDir(MSG.causes.duplicateCatalog)}
               </ix-button>
+              ${isDefault
+                ? ''
+                : html`<ix-button
+                    variant=${this.confirmDefaultId === cur.id ? 'primary' : 'secondary'}
+                    title=${localize(MSG.causes.makeDefaultHint)}
+                    @click=${() => this.makeDefault()}
+                  >
+                    <ix-icon name="star" slot="icon"></ix-icon>${localizeDir(
+                      this.confirmDefaultId === cur.id ? MSG.causes.confirmMakeDefault : MSG.causes.makeDefault
+                    )}
+                  </ix-button>`}
               <ix-button
                 variant=${this.confirmDeleteId === cur.id ? 'primary' : 'secondary'}
                 ?disabled=${isDefault}
@@ -187,9 +205,39 @@ export class MfStopCauses extends LitElement {
     `;
   }
 
+  /** Rename the catalogue shown; one not saved yet takes its id from the new name. */
   private renameCurrent(name: string): void {
     const id = this.current.id;
-    this.catalogs = this.catalogs.map((c) => (c.id === id ? { ...c, name } : c));
+    const fresh = !this.savedIds.has(id) && this.current.isDefault !== true;
+    const nextId = fresh ? newCatalogId(name, this.catalogs.filter((c) => c.id !== id).map((c) => c.id)) : id;
+    this.catalogs = this.catalogs.map((c) => (c.id === id ? { ...c, id: nextId, name } : c));
+    if (nextId !== id) {
+      this.currentId = nextId;
+      this.confirmDeleteId = '';
+      this.confirmDefaultId = '';
+    }
+  }
+
+  /**
+   * Make the catalogue shown the default one, on a second click: the default datapoint takes its name and causes,
+   * it takes the default's. Whoever had chosen it (a workcenter, a machine) then gets the former default's causes.
+   */
+  private makeDefault(): void {
+    const cur = this.current;
+    if (cur.isDefault) return;
+    if (this.confirmDefaultId !== cur.id) {
+      this.confirmDefaultId = cur.id;
+      this.confirmDeleteId = '';
+      return;
+    }
+    const def = defaultCatalog(this.catalogs);
+    this.catalogs = this.catalogs.map((c) => {
+      if (c.id === def.id) return { ...c, name: cur.name, causes: cur.causes };
+      if (c.id === cur.id) return { ...c, name: def.name, causes: def.causes };
+      return c;
+    });
+    this.currentId = def.id;
+    this.confirmDefaultId = '';
   }
 
   /** A new catalogue, empty or a copy of the one shown; shown at once. */
@@ -200,6 +248,7 @@ export class MfStopCauses extends LitElement {
     this.catalogs = [...this.catalogs, { id, name, causes }];
     this.currentId = id;
     this.confirmDeleteId = '';
+    this.confirmDefaultId = '';
   }
 
   /** Delete the catalogue shown, on a second click; never the default. */
@@ -208,6 +257,7 @@ export class MfStopCauses extends LitElement {
     if (cur.isDefault) return;
     if (this.confirmDeleteId !== cur.id) {
       this.confirmDeleteId = cur.id;
+      this.confirmDefaultId = '';
       return;
     }
     this.catalogs = this.catalogs.filter((c) => c.id !== cur.id);
@@ -262,6 +312,7 @@ export class MfStopCauses extends LitElement {
   private async reload(): Promise<void> {
     if (!this.store) return;
     this.catalogs = await this.store.listCatalogs();
+    this.savedIds = new Set(this.catalogs.map((c) => c.id));
     this.currentId = defaultCatalog(this.catalogs).id;
   }
 

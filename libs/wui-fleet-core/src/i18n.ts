@@ -61,6 +61,13 @@ export const MSG = {
     ),
     newCatalog: ml('New', 'Nouveau', 'Neu'),
     duplicateCatalog: ml('Duplicate', 'Dupliquer', 'Duplizieren'),
+    makeDefault: ml('Make it the default', 'Définir comme référentiel par défaut', 'Als Standard festlegen'),
+    confirmMakeDefault: ml('Confirm the swap with the default', 'Confirmer l’échange avec le référentiel par défaut', 'Tausch mit dem Standard bestätigen'),
+    makeDefaultHint: ml(
+      'The default catalogue takes the name and causes of this one, and this one those of the default: whoever had chosen it gets the former default.',
+      'Le référentiel par défaut prend le nom et les causes de celui-ci, et celui-ci ceux du référentiel par défaut : qui l’avait choisi reçoit l’ancien référentiel par défaut.',
+      'Der Standardkatalog übernimmt Name und Ursachen dieses Katalogs und umgekehrt: Wer ihn gewählt hatte, erhält den bisherigen Standard.'
+    ),
     deleteCatalog: ml('Delete the catalogue', 'Supprimer le référentiel', 'Katalog löschen'),
     confirmDeleteCatalog: ml('Confirm the deletion', 'Confirmer la suppression', 'Löschen bestätigen'),
     newCatalogName: ml('New catalogue', 'Nouveau référentiel', 'Neuer Katalog'),

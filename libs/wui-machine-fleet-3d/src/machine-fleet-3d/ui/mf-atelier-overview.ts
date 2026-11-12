@@ -11,9 +11,12 @@
  * machines; an atelier with none is hidden. The selection is remembered in the browser.
  */
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
-import { LitElement, css, html, svg, type TemplateResult } from 'lit';
+import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
+import { LitElement, css, html, svg, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import type { Subscription } from 'rxjs';
+import { firstValueFrom, type Subscription } from 'rxjs';
+import { container } from 'tsyringe';
+import { normDp, toNumber } from '../data/dp-utils.js';
 import type { FleetStore } from '../data/fleet-store.js';
 import { hasRole$ } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import { MSG, localize, localizeDir, ml } from '../i18n.js';
@@ -28,7 +31,15 @@ import {
 } from '@visuelconcept-winccoa/wui-fleet-core/filters.js';
 import '@visuelconcept-winccoa/wui-fleet-core/fleet-settings-service.js';
 import { settingsCache } from '@visuelconcept-winccoa/wui-fleet-core/settings-cache.js';
-import { UNKNOWN_STATE_COLOR, atelierStates, type Atelier, type MachineDef, type MachineState } from '../types.js';
+import {
+  DEFAULT_STATE_MAPPINGS,
+  UNKNOWN_STATE_COLOR,
+  atelierStates,
+  resolveState,
+  type Atelier,
+  type MachineDef,
+  type MachineState
+} from '../types.js';
 import './mf-ai-prompt.js';
 import './mf-atelier-create-dialog.js';
 import './mf-filter-bar.js';
@@ -66,6 +77,11 @@ export class MfAtelierOverview extends LitElement {
   /** Remembered machine filter (the user's settings, shared with the atelier views). */
   @state() private filter: FleetFilter = loadFleetFilter();
   private settingsSub: Subscription | null = null;
+  /** Live value of each machine's state datapoint (normalised name → raw value), for the cards' dots and counts. */
+  @state() private liveStates = new Map<string, unknown>();
+  /** The state datapoints followed (sorted, joined): a new list of ateliers re-subscribes only when it changes. */
+  private liveKey = '';
+  private liveSub: Subscription | null = null;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -79,6 +95,73 @@ export class MfAtelierOverview extends LitElement {
     this.settingsSub = null;
     this.pageRoleSubs.forEach((s) => s.unsubscribe());
     this.pageRoleSubs = [];
+    this.liveSub?.unsubscribe();
+    this.liveSub = null;
+    this.liveKey = '';
+  }
+
+  protected override updated(changed: PropertyValues): void {
+    if (changed.has('ateliers')) this.watchStates();
+  }
+
+  /**
+   * Follow the state datapoint of every machine of the ateliers, so that the cards' dots and counts show the
+   * state the machines are in now, as the atelier view does, and not the state stored with each machine.
+   */
+  private watchStates(): void {
+    const dps = [...new Set(this.ateliers.flatMap((a) => a.machines.map((m) => m.stateDp ?? '')).filter(Boolean))].sort();
+    const key = dps.join('|');
+    if (key === this.liveKey) return;
+    this.liveKey = key;
+    this.liveSub?.unsubscribe();
+    this.liveSub = null;
+    if (dps.length === 0) return;
+    let api: OaRxJsApi;
+    try {
+      api = container.resolve<OaRxJsApi>(OaRxJsApi);
+    } catch {
+      return; // No WinCC OA runtime (standalone / demo host): the stored states stay.
+    }
+    void this.connectStates(api, dps, key);
+  }
+
+  /** A one-shot read keeps the datapoints that exist (one missing would fail the whole block), then one dpConnect. */
+  private async connectStates(api: OaRxJsApi, dps: string[], key: string): Promise<void> {
+    const results = await Promise.allSettled(dps.map((dp) => firstValueFrom(api.dpGet(dp))));
+    if (key !== this.liveKey) return;
+    const live = new Map(this.liveStates);
+    const valid: string[] = [];
+    for (const [i, dp] of dps.entries()) {
+      const result = results[i];
+      if (result.status !== 'fulfilled') continue;
+      valid.push(dp);
+      live.set(normDp(dp), result.value);
+    }
+    this.liveStates = live;
+    if (valid.length === 0) return;
+    try {
+      this.liveSub = api.dpConnect(valid, true).subscribe({
+        next: (data: { dp: string[]; value: unknown[] }) => {
+          if (key !== this.liveKey) return;
+          const next = new Map(this.liveStates);
+          for (const [i, dp] of data.dp.entries()) next.set(normDp(dp), data.value[i]);
+          this.liveStates = next;
+        },
+        error: () => {
+          // Live channel dropped: keep the last values.
+        }
+      });
+    } catch {
+      // Backend not connected: keep the values read.
+    }
+  }
+
+  /** A machine's state now: its state datapoint read through its mapping, else the state stored with it. */
+  private stateOf(a: Atelier, m: MachineDef): MachineState {
+    const raw = m.stateDp ? this.liveStates.get(normDp(m.stateDp)) : undefined;
+    if (raw === undefined) return m.state;
+    const mapping = a.mappings.find((mp) => mp.id === m.stateMappingId) ?? a.mappings[0] ?? DEFAULT_STATE_MAPPINGS[0];
+    return resolveState(mapping, Math.round(toNumber(raw)));
   }
 
   /** Follow the grants of each settings page: listed when one of its roles is granted, or none asked. */
@@ -228,7 +311,10 @@ export class MfAtelierOverview extends LitElement {
 
   private renderStateChips(a: Atelier, machines: MachineDef[]): TemplateResult {
     const counts = new Map<MachineState, number>();
-    for (const m of machines) counts.set(m.state, (counts.get(m.state) ?? 0) + 1);
+    for (const m of machines) {
+      const s = this.stateOf(a, m);
+      counts.set(s, (counts.get(s) ?? 0) + 1);
+    }
     // One chip per state of the atelier's mappings that has machines, in their display order.
     return html`
       ${atelierStates(a.mappings).filter((s) => counts.get(s.key)).map(
@@ -254,7 +340,7 @@ export class MfAtelierOverview extends LitElement {
               cx=${m.x + length / 2}
               cy=${m.z + width / 2}
               r=${r}
-              fill=${colors.get(m.state) ?? UNKNOWN_STATE_COLOR}
+              fill=${colors.get(this.stateOf(a, m)) ?? UNKNOWN_STATE_COLOR}
             ></circle>`
         )}
       </svg>

@@ -16,7 +16,9 @@ fleet-kpi-analysis and fleet-stop-analysis 0.3.0). A page that declares fleet-cl
   `MachineFleet3D_StopCauses_<id>`. A machine names its own with `stopCatalogId`, else the default.
   `FleetStore.listCatalogs` / `saveCatalogs` (a catalogue removed: its datapoint deleted);
   `stop-catalogs.ts` (`catalogsFromDps`, `catalogFor`, `causesFor`…); the stop-causes window chooses,
-  creates, duplicates, renames and deletes catalogues (not the default one); `collectMachines` / the stop
+  creates, duplicates, renames and deletes catalogues (not the default one), and makes one the default (name and
+  causes swapped with the default's, on a second click); a catalogue not saved yet takes its id, which names its
+  datapoint, from its name as it is renamed; `collectMachines` / the stop
   analysis give each machine its catalogue, its causes kept apart from another catalogue's (`<id>:<code>`).
 - **`FleetStore` no longer names `/api/fleet`**: its writes go to PARA unless a page imported
   `data/guarded-writes.js` (the pages that declare fleet-closures), which routes them through `/api/fleet`
