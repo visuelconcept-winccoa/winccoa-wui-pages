@@ -12,6 +12,8 @@ role **`qualify`** of the 0.5.0 previews is gone (#75): remove it from the group
 - **The Parameters tab of the symbol dialog helps check the bindings**: each row shows its current value
   (read while the tab is open; '—' when its datapoint cannot be read); a row with a fixed value and no
   datapoint (machine, workcenter…) shows "Fixed value" instead of an empty datapoint field.
+- **The machine dashboard's Gantt tooltip stays on screen** (winccoa-fra-msp-stma#336): left of the pointer in
+  the right half of the screen, above it in the bottom third (`tip-place.ts`), instead of going off screen.
 - **Each machine's stop-cause catalogue** (#74, wui-fleet-core 0.3.0): the bubble, the card and the
   machine dashboard name the causes from the machine's own catalogue (`stopCatalogId`), else the default;
   the embedded view gets the catalogues from `GET /api/ai/fleet/workshops/:id` (`stopCatalogs`, one per

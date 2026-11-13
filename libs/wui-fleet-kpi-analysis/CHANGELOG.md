@@ -5,6 +5,7 @@
 
 ## 0.3.0 — 2026-11-05 (SDS 2.2)
 
+- **The chart's tooltip stays inside the chart** (`confine`), never off screen near an edge (winccoa-fra-msp-stma#336).
 - Planned / unplanned from each machine's stop-cause catalogue (#74), in the page and in kpiCalc (one
   datapoint per catalogue, `MachineFleet3D_StopCauses` the default one, reread every minute).
 

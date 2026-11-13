@@ -410,7 +410,9 @@ export class WuiFleetKpiAnalysis extends LitElement {
     return {
       backgroundColor: 'transparent',
       textStyle: { color: text },
+      // Kept inside the chart, never off screen near an edge (feedback of the 13/11/2026 demo).
       tooltip: {
+        confine: true,
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
         valueFormatter: (v: unknown) => `${Number(v).toLocaleString('fr-FR')} %`

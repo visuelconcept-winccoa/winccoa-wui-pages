@@ -83,6 +83,7 @@ import {
   rangeLabelMsg
 } from '../i18n.js';
 import { ganttTicks, tickLabel } from '../gantt-ticks.js';
+import { tipTransform } from '../tip-place.js';
 import { dashboardParams } from '../dashboard-lines.js';
 
 /**
@@ -884,7 +885,7 @@ export class MfMachineDashboard extends LitElement {
     if (!tip) return html``;
     const s = tip.seg;
     return html`
-      <div class="gantt-tip" style="left:${tip.x}px;top:${tip.y}px">
+      <div class="gantt-tip" style="left:${tip.x}px;top:${tip.y}px;transform:${tipTransform(tip.x, tip.y, window.innerWidth, window.innerHeight)}">
         <div class="tip-state" style="color:${stateColor(this.mapping, s.state)}">${stateLabel(this.mapping, s.state)}</div>
         <div>${localizeDir(MSG.machineDash.tipStart)} ${formatDateTimeSec(s.startMs)}</div>
         <div>${localizeDir(MSG.machineDash.tipEnd)} ${formatDateTimeSec(s.endMs)}</div>
