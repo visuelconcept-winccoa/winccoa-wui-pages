@@ -9,6 +9,9 @@
 assigned in Application Security: **`views`** ("Gérer les vues publiques", e.g. for sysadmin). The
 role **`qualify`** of the 0.5.0 previews is gone (#75): remove it from the groups it was given to.
 
+- **The Parameters tab of the symbol dialog helps check the bindings**: each row shows its current value
+  (read while the tab is open; '—' when its datapoint cannot be read); a row with a fixed value and no
+  datapoint (machine, workcenter…) shows "Fixed value" instead of an empty datapoint field.
 - **Each machine's stop-cause catalogue** (#74, wui-fleet-core 0.3.0): the bubble, the card and the
   machine dashboard name the causes from the machine's own catalogue (`stopCatalogId`), else the default;
   the embedded view gets the catalogues from `GET /api/ai/fleet/workshops/:id` (`stopCatalogs`, one per

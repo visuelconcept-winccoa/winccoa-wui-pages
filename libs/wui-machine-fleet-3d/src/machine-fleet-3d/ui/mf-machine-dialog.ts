@@ -6,10 +6,14 @@
  * binding (with a selectable state mapping), its parameters, each bound to a
  * datapoint, and what its bubble and popup show (at most MAX_SHOWN lines each).
  */
+import type { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
+import { Subscription, firstValueFrom } from 'rxjs';
+import { normDp } from '../data/dp-utils.js';
 import {
+  formatParamValue,
   DEFAULT_TRS_REFRESH_MIN,
   DEFAULT_TRS_WINDOW,
   DASHBOARD_LINK_ICONS,
@@ -128,6 +132,8 @@ export class MfMachineDialog extends LitElement {
   @property({ attribute: false }) store: FleetStore | null = null;
   /** When false, the dialog is view-only: saving is disabled. */
   @property({ type: Boolean }) canEdit = true;
+  /** WinCC OA API, to show each parameter's current value in the Parameters tab; none → '—'. */
+  @property({ attribute: false }) api: OaRxJsApi | null = null;
 
   @query('.import-input') private importInput!: HTMLInputElement;
 
@@ -139,6 +145,75 @@ export class MfMachineDialog extends LitElement {
   @state() private iconPickerRow = -1;
   @state() private archiveGroups: string[] = [];
   @state() private archiveStatus = new Map<string, { enabled: boolean; group: string }>();
+  /** Current values of the parameters' datapoints (Parameters tab), by normalised name. */
+  @state() private paramValues: Record<string, unknown> = {};
+  private paramSub = new Subscription();
+  /** The datapoints {@link paramSub} reads, joined; '' when none is read. */
+  private paramDps = '';
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.stopParamValues();
+  }
+
+  protected override updated(): void {
+    // Read the parameters' values while their tab is open, again when their datapoints change.
+    const dps = this.tab === 2 && this.api ? [...new Set((this.working?.kpis ?? []).map((k) => k.dp?.trim() ?? '').filter(Boolean))] : [];
+    const key = dps.join('\n');
+    if (key === this.paramDps) return;
+    this.stopParamValues();
+    this.paramDps = key;
+    if (dps.length > 0 && this.api) void this.readParamValues(this.api, dps, key);
+  }
+
+  private stopParamValues(): void {
+    this.paramSub.unsubscribe();
+    this.paramSub = new Subscription();
+    this.paramDps = '';
+  }
+
+  /**
+   * Each datapoint read once (a missing one is left out: `dpConnect` fails as a block), then the
+   * readable ones followed live. Results of a set of datapoints since replaced are dropped.
+   */
+  private async readParamValues(api: OaRxJsApi, dps: string[], key: string): Promise<void> {
+    const results = await Promise.allSettled(dps.map((dp) => firstValueFrom(api.dpGet(dp))));
+    if (key !== this.paramDps) return;
+    const values: Record<string, unknown> = {};
+    const valid: string[] = [];
+    for (const [i, dp] of dps.entries()) {
+      const r = results[i];
+      if (r.status !== 'fulfilled') continue;
+      valid.push(dp);
+      values[normDp(dp)] = r.value;
+    }
+    this.paramValues = values;
+    if (valid.length === 0) return;
+    try {
+      this.paramSub.add(
+        api.dpConnect(valid, false).subscribe({
+          next: (e: { dp: string[]; value: unknown[] }) => {
+            const next = { ...this.paramValues };
+            for (const [i, name] of e.dp.entries()) next[normDp(name)] = e.value[i];
+            this.paramValues = next;
+          },
+          error: () => {
+            // Live channel dropped: the values read stay shown.
+          }
+        })
+      );
+    } catch {
+      // Not connected: the values read stay shown.
+    }
+  }
+
+  /** A parameter's value as shown in the Parameters tab: its datapoint's, else its fixed value; '' if none. */
+  private paramValueText(p: Kpi): string {
+    const raw = p.dp ? this.paramValues[normDp(p.dp)] : p.value;
+    const v = Array.isArray(raw) ? raw[0] : raw;
+    if (v === undefined || v === null || v === '') return '';
+    return typeof v === 'number' ? formatParamValue(v, p.decimals) : String(v);
+  }
 
   override render(): TemplateResult {
     if (!this.working) return html``;
@@ -1238,6 +1313,10 @@ export class MfMachineDialog extends LitElement {
   }
 
   private renderParamRow(p: Kpi, i: number): TemplateResult {
+    // A row with a value and no datapoint (machine, workcenter…) shows that value, fixed, instead
+    // of an empty datapoint field that reads as a forgotten binding.
+    const fixed = !p.dp && p.value !== undefined && p.value !== '';
+    const value = this.paramValueText(p);
     return html`
       <div class="param-row">
         <ix-input
@@ -1246,11 +1325,16 @@ export class MfMachineDialog extends LitElement {
           .value=${p.label}
           @valueChange=${(e: IxValueEvent) => this.patchParam(i, { label: String(e.detail) })}
         ></ix-input>
-        <mf-dp-field
-          class="p-dp"
-          .value=${p.dp ?? ''}
-          @wui:change=${(e: CustomEvent<{ value: string }>) => this.patchParam(i, { dp: e.detail.value })}
-        ></mf-dp-field>
+        ${fixed
+          ? html`<span class="p-fixed" title=${localize(MSG.machineDialog.paramFixedTitle)}>${localizeDir(MSG.machineDialog.paramFixed)}</span>`
+          : html`<mf-dp-field
+              class="p-dp"
+              .value=${p.dp ?? ''}
+              @wui:change=${(e: CustomEvent<{ value: string }>) => this.patchParam(i, { dp: e.detail.value })}
+            ></mf-dp-field>`}
+        <span class="p-value ${value === '' ? 'p-value--none' : ''}" title=${`${localize(MSG.machineDialog.paramLiveTitle)} — ${value || '—'}`}
+          >${value || '—'}</span
+        >
         <ix-input
           class="p-unit"
           placeholder=${localize(MSG.machineDialog.paramUnit)}
@@ -1421,18 +1505,25 @@ function extraStyles(): ReturnType<typeof css> {
       gap: 0.4rem;
     }
     .param-row {
-      display: flex;
+      display: grid;
+      grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) minmax(0, 1.2fr) minmax(0, 1fr) auto;
       align-items: center;
       gap: 0.4rem;
     }
-    .param-row .p-label {
-      flex: 2;
+    .p-fixed {
+      color: var(--theme-color-soft-text);
+      font-style: italic;
+      padding: 0 0.5rem;
     }
-    .param-row .p-dp {
-      flex: 3;
+    .p-value {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
     }
-    .param-row .p-unit {
-      flex: 1;
+    .p-value--none {
+      color: var(--theme-color-soft-text);
     }
     .grid3 {
       display: grid;

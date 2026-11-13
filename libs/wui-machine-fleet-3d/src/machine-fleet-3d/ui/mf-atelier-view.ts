@@ -1025,6 +1025,7 @@ export class MfAtelierView extends LitElement {
             .dashboards=${this.dashboards}
             .aliAssets=${this.aliAssets}
             .canEdit=${this.editable}
+            .api=${this.api}
             @wui:apply=${(e: CustomEvent<{ machine: MachineDef }>) => this.onMachineApply(e.detail.machine)}
             @wui:mapping=${() => (this.mappingOpen = true)}
             @wui:thresholds=${() => (this.thresholdsOpen = true)}

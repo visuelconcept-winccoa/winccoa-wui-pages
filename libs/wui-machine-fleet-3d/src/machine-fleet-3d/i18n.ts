@@ -261,6 +261,13 @@ export const MSG = {
       'Von aktueller Kameraansicht aktualisieren'
     ),
     rename: ml('Rename', 'Renommer', 'Umbenennen'),
+    paramFixed: ml('Fixed value', 'Valeur fixe', 'Fester Wert'),
+    paramFixedTitle: ml(
+      'This row shows a fixed value, not a datapoint',
+      "Cette ligne montre une valeur fixe, pas un datapoint",
+      'Diese Zeile zeigt einen festen Wert, keinen Datenpunkt'
+    ),
+    paramLiveTitle: ml('Current value', 'Valeur actuelle', 'Aktueller Wert'),
     delete: ml('Delete', 'Supprimer', 'Löschen'),
     edit: ml('Edit', 'Éditer', 'Bearbeiten'),
     viewOnly: ml('View', 'Visualiser', 'Anzeigen'),
