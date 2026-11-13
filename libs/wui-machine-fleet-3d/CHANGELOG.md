@@ -7,8 +7,28 @@
 
 **Upgrade.** Requires wui-fleet-core and fleet-closures `^0.3.0`. New roles, open to all until
 assigned in Application Security: **`views`** ("Gérer les vues publiques", e.g. for sysadmin). The
-role **`qualify`** of the 0.5.0 previews is gone (#75): remove it from the groups it was given to.
+role **`qualify`** of the 0.5.0 previews is gone (#75): remove it from the groups it was given to. New manager
+**`fleetState`** (`node | always`, winccoa-fra-msp-stma#339): start it in the WinCC OA console; it records the state
+history from then on — the Gantt, the stops, the Pareto and the TRS start again from that moment (the archive of
+the bound state datapoints is no longer read). New role **`declare`** ("Déclarer l'état d'une machine"), open to all
+until assigned.
 
+- **Machine Fleet computes and records its states itself** (winccoa-fra-msp-stma#339). A state mapping may name
+  inputs besides the state datapoint, each symbol binding a datapoint to them (symbol dialog, "État & production");
+  its rules test them (=, ≠, between, outside, all of them, a rule's min / max on the state code as before) and a
+  rule "Selon la cause" gives the planned or the other state by the class of the stop cause in progress; the
+  symbol lists further stop-cause datapoints by priority. The mapping editor edits the inputs, the conditions,
+  the states by cause and the order of the rules (`mapping-edit.ts`). The live views — atelier, overview, machine
+  dashboard header — compute the state from the inputs (wui-fleet-core `state-eval.ts`), never waiting for a
+  manager; the new manager **`fleetState`** computes it the same way (shared cases, thousands of random cases
+  compared) and records the state and the cause at each change in `MachineFleet3D_State_<symbol>`, archived in
+  WinCC OA's standard value group `_NGA_G_EVENT` (otherwise the active value group of highest priority, never the
+  alarm group, whose values cannot be read back): the history the Gantt, the stop list and the Pareto read. A
+  datapoint archived in another group is moved to it, its state written again. A symbol may accept a **state declared by an
+  operator** (input `declared`), chosen from the machine dashboard with a reason traced in the audit trail
+  (role `declare`). The dashboard widgets read a recorded history (state keys) or a raw state datapoint as before.
+- **French title "Machine Fleet"** (menu, page header, Application Security, widget folder), instead of "Parc
+  machine": the site uses the module's name in French too (winccoa-fra-msp-stma, 13/11/2026 demo).
 - **The Parameters tab of the symbol dialog helps check the bindings**: each row shows its current value
   (read while the tab is open; '—' when its datapoint cannot be read); a row with a fixed value and no
   datapoint (machine, workcenter…) shows "Fixed value" instead of an empty datapoint field.

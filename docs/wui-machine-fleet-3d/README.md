@@ -4,7 +4,9 @@ The **Machine Fleet 3D** hub page (`/fleet-3d`): a **three.js** 3D fleet view wi
 per-machine **state/KPI bubbles**, a **stop-cause catalog**, a contextual machine
 dashboard (**gauge cards + Gantt + alarms + Pareto**), and an **AI assistant**
 (`/api/ai` bridge).
-Deploys one manager, `aiAssistant` (the AI assistant), registered `manual`. The assistant's MCP
+Deploys two managers: **`fleetState`** (registered `always`), which records each symbol's state and stop
+cause — the history of the Gantt, the stops, the Pareto and the TRS — and `aiAssistant` (the AI assistant),
+registered `manual`. The assistant's MCP
 tools come from an **optional, external** WinCC OA MCP server (ETM
 `@etm-professional-control/winccoa-mcp-server`, ISC) — installed separately, **not shipped** here.
 
@@ -44,7 +46,9 @@ wui-toolkit does not write that file.
 
 ## After install (required)
 1. **Webserver:** restart the webserver manager (already rebuilt by `wui build`; it auto-mounts `/api/ai`).
-2. **Manager:** if you enable the AI assistant, start **`aiAssistant`** in the WinCC OA console (set it to `always` to have it come back with the project). (MCP tools need the optional external MCP server — see NOTES.)
+2. **Managers:** start **`fleetState`** in the WinCC OA console (registered `always`: it then comes back with the
+   project); without it the live views still work, but no state history is recorded. If you enable the AI
+   assistant, start **`aiAssistant`** in the WinCC OA console (set it to `always` to have it come back with the project). (MCP tools need the optional external MCP server — see NOTES.)
 3. **Browser:** DevTools → Application → Storage → **`Clear site data`**, then reload (logged in).
    ⚠️ The service worker caches `menuconfig.json` — **`Ctrl+Shift+R` is NOT enough**; only `Clear site data` purges it.
 

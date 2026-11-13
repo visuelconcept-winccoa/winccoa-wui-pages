@@ -61,6 +61,7 @@ import {
 type VpScope = 'public' | 'mine';
 import './mf-symbol-wizard.js';
 import { causesFor } from '@visuelconcept-winccoa/wui-fleet-core/stop-catalogs.js';
+import { liveState, liveTargets } from '@visuelconcept-winccoa/wui-fleet-core/state-eval.js';
 import {
   DEFAULT_NAV_CORNER,
   DEFAULT_STATE_MAPPINGS,
@@ -82,7 +83,6 @@ import {
   resolveConnected,
   resolveDashboardMode,
   shownSlots,
-  resolveState,
   resolveTrsColor,
   stateColor,
   stateLabel,
@@ -144,10 +144,10 @@ interface DpEmission {
   value: unknown[];
 }
 type DpKind =
-  | 'state'
+  | 'input'
   | 'kpi'
   | 'kpiCalc'
-  | 'stopCause'
+  | 'cause'
   | 'workOrder'
   | 'operation'
   | 'alarmCode'
@@ -159,6 +159,10 @@ interface DpTarget {
   kpiIndex?: number;
   /** For kind 'kpiCalc': the MachineKpi.id this server DP feeds. */
   kpiCalcId?: string;
+  /** For kind 'input': the input of the machine's mapping (winccoa-fra-msp-stma#339). */
+  input?: string;
+  /** For kind 'cause': the rank of the stop-cause source. */
+  cause?: number;
 }
 
 /** DP-name prefix used by the kpiCalc manager for its per-KPI datapoints. */
@@ -301,6 +305,9 @@ export class MfAtelierView extends LitElement {
   // One DP can drive several targets (e.g. the same DP bound to the state AND a
   // KPI of the same machine), so each key maps to a LIST of targets.
   private dpTargets = new Map<string, DpTarget[]>();
+  /** Values received for each machine's state (winccoa-fra-msp-stma#339): its inputs by key, its cause sources by rank. */
+  private liveInputs = new Map<string, Record<string, unknown>>();
+  private liveCauses = new Map<string, unknown[]>();
   /** Bumped each (re)subscribe so stale async validation results are ignored. */
   private subGen = 0;
   private saveTimer = 0;
@@ -1083,6 +1090,7 @@ export class MfAtelierView extends LitElement {
       .mapping=${this.mappingFor(m)}
       .stopCauses=${this.causesOf(m)}
       .api=${this.api}
+      .store=${this.store}
       atelierId=${this.atelier.id}
       atelierName=${this.atelierName}
       @wui:close=${() => (this.dashboardMachineId = null)}
@@ -1099,6 +1107,21 @@ export class MfAtelierView extends LitElement {
     if (this.store) this.catalog = await this.store.listCatalog();
   }
 
+  /**
+   * A machine's state and stop cause from the values received (fleet-core `liveState`): the state its mapping
+   * gives once an input has a value (until then the state it has), the cause in progress from its sources by
+   * priority, named from its catalogue.
+   */
+  private applyLiveState(machine: MachineDef): boolean {
+    const causes = this.causesOf(machine);
+    const live = liveState(this.mappingFor(machine), this.liveInputs.get(machine.id) ?? {}, this.liveCauses.get(machine.id) ?? [], causes);
+    if (live.state !== null) machine.state = live.state;
+    machine.stopCause = live.cause;
+    machine.stopCauseLabel = formatStopCause(causes, live.cause);
+    this.scene?.updateMachineLive(machine.id, { state: machine.state, stopCause: live.cause, stopCauseLabel: machine.stopCauseLabel });
+    return true;
+  }
+
   /** The causes of a machine's catalogue (#74): the one it names, else the default. */
   private causesOf(m: { stopCatalogId?: string }): StopCause[] {
     return causesFor(this.stopCatalogs, m.stopCatalogId);
@@ -1107,16 +1130,11 @@ export class MfAtelierView extends LitElement {
   private async loadStopCauses(): Promise<void> {
     if (!this.store) return;
     this.stopCatalogs = await this.store.listCatalogs();
-    // Re-resolve any already-received stop-cause codes against the fresh catalogues.
+    // Re-resolve the causes received, and the states a cause's class gives, against the fresh catalogues.
     let touched = false;
     for (const m of this.machines) {
-      if (m.stopCause == null || m.stopCause === '') continue;
-      const label = formatStopCause(this.causesOf(m), m.stopCause);
-      if (label !== m.stopCauseLabel) {
-        m.stopCauseLabel = label;
-        this.scene?.updateMachineLive(m.id, { stopCauseLabel: label });
-        touched = true;
-      }
+      if (!this.liveInputs.has(m.id) && !this.liveCauses.has(m.id)) continue;
+      if (this.applyLiveState(m)) touched = true;
     }
     if (touched) this.machines = [...this.machines];
   }
@@ -1784,14 +1802,16 @@ export class MfAtelierView extends LitElement {
     this.dpSubscription = new Subscription();
     this.dpTargets = new Map();
 
+    this.liveInputs = new Map();
+    this.liveCauses = new Map();
     const dps: string[] = [];
     for (const m of this.machines) {
-      if (m.stateDp) {
-        // Key by normalized name: the server echoes a canonical DP name
-        // (system prefix, :_original.._value, trailing dot) that won't match
-        // the raw bound string otherwise.
-        this.addTarget(m.stateDp, { machineId: m.id, kind: 'state' });
-        dps.push(m.stateDp);
+      // The state from the inputs of the machine's mapping and its stop-cause sources, computed here as the
+      // recorder does (winccoa-fra-msp-stma#339). Keyed by normalized name: the server echoes a canonical DP
+      // name (system prefix, :_original.._value, trailing dot) that won't match the raw bound string otherwise.
+      for (const t of liveTargets(m)) {
+        this.addTarget(t.dpe, t.input !== undefined ? { machineId: m.id, kind: 'input', input: t.input } : { machineId: m.id, kind: 'cause', cause: t.cause });
+        dps.push(t.dpe);
       }
       const kpis = m.kpis ?? [];
       for (const [kpiIndex, k] of kpis.entries()) {
@@ -1807,7 +1827,6 @@ export class MfAtelierView extends LitElement {
         dps.push(dp);
       }
       const infoDps: [string | undefined, DpKind][] = [
-        [m.stopCauseDp, 'stopCause'],
         [m.workOrderDp, 'workOrder'],
         [m.operationDp, 'operation'],
         [m.alarmCodeDp, 'alarmCode'],
@@ -1876,19 +1895,15 @@ export class MfAtelierView extends LitElement {
   private applyDpValue(target: DpTarget, raw: unknown): boolean {
     const machine = this.machines.find((m) => m.id === target.machineId);
     if (!machine) return false;
-    if (target.kind === 'state') {
-      // Fall back to the assigned mapping, else the atelier's first mapping,
-      // else the built-in default — never leave the value unmapped (which would
-      // always resolve to "ok").
-      const mapping =
-        this.mappings.find((mp) => mp.id === machine.stateMappingId) ??
-        this.mappings[0] ??
-        DEFAULT_STATE_MAPPINGS[0];
-      // State codes are discrete: cast float datapoints to the nearest integer
-      // so e.g. 2.0 (or 1.999…) matches the mapping rule for 2.
-      machine.state = resolveState(mapping, Math.round(toNumber(raw)));
-      this.scene?.updateMachineLive(machine.id, { state: machine.state });
-      return true;
+    if (target.kind === 'input' && target.input !== undefined) {
+      this.liveInputs.set(machine.id, { ...this.liveInputs.get(machine.id), [target.input]: raw });
+      return this.applyLiveState(machine);
+    }
+    if (target.kind === 'cause' && target.cause !== undefined) {
+      const causes = [...(this.liveCauses.get(machine.id) ?? [])];
+      causes[target.cause] = raw;
+      this.liveCauses.set(machine.id, causes);
+      return this.applyLiveState(machine);
     }
     if (target.kind === 'kpi') {
       const kpis = machine.kpis ?? [];
@@ -1928,16 +1943,9 @@ export class MfAtelierView extends LitElement {
       this.scene?.updateMachineLive(machine.id, { tiltAngle: effective });
       return true;
     }
-    // Production tracking DPs (stop cause, work order, operation).
+    // Production tracking DPs (work order, operation, alarm code).
     const value = scalarValue(raw);
-    if (target.kind === 'stopCause') {
-      machine.stopCause = value;
-      machine.stopCauseLabel = formatStopCause(this.causesOf(machine), value);
-      this.scene?.updateMachineLive(machine.id, {
-        stopCause: value,
-        stopCauseLabel: machine.stopCauseLabel
-      });
-    } else if (target.kind === 'workOrder') {
+    if (target.kind === 'workOrder') {
       machine.workOrder = value;
       this.scene?.updateMachineLive(machine.id, { workOrder: value });
     } else if (target.kind === 'alarmCode') {

@@ -14,6 +14,7 @@ import { Subscription, firstValueFrom } from 'rxjs';
 import { normDp } from '../data/dp-utils.js';
 import {
   formatParamValue,
+  DEFAULT_STATE_MAPPINGS,
   DEFAULT_TRS_REFRESH_MIN,
   DEFAULT_TRS_WINDOW,
   DASHBOARD_LINK_ICONS,
@@ -301,6 +302,8 @@ export class MfMachineDialog extends LitElement {
       { label: localize(MSG.machineDialog.machineState), dp: m.stateDp },
       { label: localize(MSG.machineDialog.commLabel), dp: m.commDp },
       { label: localize(MSG.machineDialog.stopCauseLabel), dp: m.stopCauseDp },
+      ...(m.stopCauseDps ?? []).map((dp) => ({ label: localize(MSG.machineDialog.stopCauseLabel), dp })),
+      ...Object.entries(m.inputDps ?? {}).map(([key, dp]) => ({ label: key, dp })),
       { label: localize(MSG.machineDialog.workOrderLabel), dp: m.workOrderDp },
       { label: localize(MSG.machineDialog.operationLabel), dp: m.operationDp },
       { label: localize(MSG.machineDialog.alarmCodeLabel), dp: m.alarmCodeDp },
@@ -974,6 +977,16 @@ export class MfMachineDialog extends LitElement {
       <ix-button class="link" variant="secondary" @click=${this.openMappings}>
         <ix-icon name="cogwheel" slot="icon"></ix-icon>${localizeDir(MSG.machineDialog.manageStateMappings)}
       </ix-button>
+      ${this.renderMappingInputs()}
+      <label class="declared">
+        <input
+          type="checkbox"
+          .checked=${Boolean(m.declaredState)}
+          @change=${(e: Event) => this.setDeclaredState((e.target as HTMLInputElement).checked)}
+        />
+        ${localizeDir(MSG.machineDialog.declaredStateLabel)}
+      </label>
+      <div class="hint">${localizeDir(MSG.machineDialog.declaredStateHint)}</div>
       <mf-dp-field
         label=${localize(MSG.machineDialog.commDpLabel)}
         .value=${m.commDp ?? ''}
@@ -981,6 +994,47 @@ export class MfMachineDialog extends LitElement {
       ></mf-dp-field>
       ${this.renderAliLink()}
     `;
+  }
+
+  /** The mapping the machine uses: the one it names, else the atelier's first one, else the default (as the views). */
+  private selectedMapping(): StateMapping {
+    return this.mappings.find((mp) => mp.id === this.working.stateMappingId) ?? this.mappings[0] ?? DEFAULT_STATE_MAPPINGS[0];
+  }
+
+  /** A datapoint for each named input of the chosen mapping (winccoa-fra-msp-stma#339). */
+  private renderMappingInputs(): TemplateResult {
+    const inputs = this.selectedMapping().inputs ?? [];
+    if (inputs.length === 0) return html``;
+    const bound = this.working.inputDps ?? {};
+    return html`
+      <div class="hint">${localizeDir(MSG.machineDialog.mappingInputsHint)}</div>
+      <div class="grid2">
+        ${inputs.map(
+          (inp) => html`<mf-dp-field
+            label=${`${inp.label} (${inp.key})`}
+            .value=${bound[inp.key] ?? ''}
+            @wui:change=${(e: CustomEvent<{ value: string }>) => this.patchInputDp(inp.key, e.detail.value)}
+          ></mf-dp-field>`
+        )}
+      </div>
+    `;
+  }
+
+  /** The machine accepts a declared state, or no more (winccoa-fra-msp-stma#339). */
+  private setDeclaredState(on: boolean): void {
+    const m: MachineDef = { ...this.working, declaredState: on };
+    if (!on) delete m.declaredState;
+    this.working = m;
+  }
+
+  /** The datapoint of a named input (empty: unbound, removed from `inputDps`). */
+  private patchInputDp(key: string, dp: string): void {
+    const next = { ...(this.working.inputDps ?? {}) };
+    if (dp.trim()) next[key] = dp.trim();
+    else delete next[key];
+    const m: MachineDef = { ...this.working, inputDps: next };
+    if (Object.keys(next).length === 0) delete m.inputDps;
+    this.working = m;
   }
 
   /** Link this machine to an Asset Lifecycle Intelligence (ALI) asset, so its
@@ -1100,7 +1154,43 @@ export class MfMachineDialog extends LitElement {
           @valueChange=${(e: IxValueEvent) => this.patch({ minStopSec: Math.max(0, Number(e.detail) || 0) })}
         ></ix-number-input>
       </div>
+      ${this.renderCauseSources()}
     `;
+  }
+
+  /** Further stop-cause datapoints, by priority after the one above (winccoa-fra-msp-stma#339). */
+  private renderCauseSources(): TemplateResult {
+    const extra = this.working.stopCauseDps ?? [];
+    return html`
+      <div class="subhead">${localizeDir(MSG.machineDialog.causeSourcesLabel)}</div>
+      <div class="hint">${localizeDir(MSG.machineDialog.causeSourcesHint)}</div>
+      <div class="params">
+        ${extra.map(
+          (dp, i) => html`<div class="cause-row">
+            <mf-dp-field
+              .value=${dp}
+              @wui:change=${(e: CustomEvent<{ value: string }>) => this.setCauseSources(extra.map((d, j) => (j === i ? e.detail.value : d)))}
+            ></mf-dp-field>
+            <ix-icon-button
+              ghost
+              icon="trashcan"
+              title=${localize(MSG.machineDialog.removeCauseSource)}
+              @click=${() => this.setCauseSources(extra.filter((_, j) => j !== i))}
+            ></ix-icon-button>
+          </div>`
+        )}
+      </div>
+      <ix-button class="link" variant="secondary" @click=${() => this.setCauseSources([...extra, ''])}>
+        <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.machineDialog.addCauseSource)}
+      </ix-button>
+    `;
+  }
+
+  /** The further cause datapoints as listed (an empty row kept while edited, dropped at save). */
+  private setCauseSources(list: string[]): void {
+    const m: MachineDef = { ...this.working, stopCauseDps: list };
+    if (list.length === 0) delete m.stopCauseDps;
+    this.working = m;
   }
 
   private renderDashboard(): TemplateResult {
@@ -1384,9 +1474,14 @@ export class MfMachineDialog extends LitElement {
 
   private apply(): void {
     if (this.nameError) return;
+    // The further cause datapoints left empty are dropped (winccoa-fra-msp-stma#339).
+    const machine = { ...this.working };
+    const causes = (machine.stopCauseDps ?? []).map((d) => d.trim()).filter(Boolean);
+    if (causes.length) machine.stopCauseDps = causes;
+    else delete machine.stopCauseDps;
     this.dispatchEvent(
       new CustomEvent('wui:apply', {
-        detail: { machine: this.working },
+        detail: { machine },
         bubbles: true,
         composed: true
       })
@@ -1503,6 +1598,18 @@ function extraStyles(): ReturnType<typeof css> {
       display: flex;
       flex-direction: column;
       gap: 0.4rem;
+    }
+    .declared {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-top: 0.5rem;
+    }
+    .cause-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.4rem;
+      align-items: center;
     }
     .param-row {
       display: grid;

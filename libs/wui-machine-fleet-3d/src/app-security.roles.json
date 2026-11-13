@@ -1,6 +1,6 @@
 {
   "module": "machine-fleet-3d",
-  "title": { "en_US.utf8": "Machine Fleet", "fr.utf8": "Parc machine", "de.utf8": "Maschinenpark" },
+  "title": { "en_US.utf8": "Machine Fleet", "fr.utf8": "Machine Fleet", "de.utf8": "Maschinenpark" },
   "roles": [
     { "id": "view", "label": { "en_US.utf8": "View", "fr.utf8": "Consulter", "de.utf8": "Ansehen" } },
     {
@@ -28,6 +28,15 @@
         "en_US.utf8": "Change the settings common to every atelier, such as the default opening view.",
         "fr.utf8": "Modifier les réglages communs à tous les ateliers, comme la vue d’ouverture par défaut.",
         "de.utf8": "Die für alle Werkstätten gemeinsamen Einstellungen ändern, etwa die Standard-Eröffnungsansicht."
+      }
+    },
+    {
+      "id": "declare",
+      "label": { "en_US.utf8": "Declare a machine's state", "fr.utf8": "Déclarer l’état d’une machine", "de.utf8": "Maschinenzustand melden" },
+      "description": {
+        "en_US.utf8": "Set, from the machine dashboard, the state an operator declares for a machine that accepts one (a machine not connected, for instance); the reason is traced.",
+        "fr.utf8": "Choisir, depuis le tableau de bord de la machine, l’état déclaré d’une machine qui l’accepte (une machine non raccordée, par exemple) ; le motif est tracé.",
+        "de.utf8": "Im Maschinen-Dashboard den vom Bediener gemeldeten Zustand einer Maschine setzen, die ihn annimmt (etwa eine nicht angeschlossene); die Begründung wird protokolliert."
       }
     },
     {

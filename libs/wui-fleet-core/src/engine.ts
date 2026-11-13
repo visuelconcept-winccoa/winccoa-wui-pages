@@ -29,7 +29,6 @@ import {
   DEFAULT_STATE_MAPPINGS,
   isRunningState,
   isOutsideOpening,
-  resolveState,
   type Atelier,
   type StateMapping,
   type StopCause,
@@ -38,8 +37,13 @@ import {
 } from './types.js';
 import type { MsInterval } from './closures.js';
 import { catalogFor, defaultCatalog } from './stop-catalogs.js';
+import { isAnalysable, recordedState, stateRecordDpes } from './state-eval.js';
 
-/** A machine eligible for analysis (both histories bound). */
+/**
+ * A machine eligible for analysis: it binds an input of its mapping and a stop cause. Its histories are the ones
+ * Machine Fleet's state manager records (winccoa-fra-msp-stma#339): `stateDp` holds state keys of its mapping,
+ * `stopCauseDp` the cause in progress.
+ */
 export interface AnalysisMachine {
   atelierId: string;
   atelierName: string;
@@ -148,14 +152,15 @@ export function collectMachines(
     if (selectedAtelierIds.size > 0 && !selectedAtelierIds.has(atelier.id)) continue;
     for (const m of atelier.machines) {
       if (selectedMachineIds.size > 0 && !selectedMachineIds.has(m.id)) continue;
-      if (!m.stateDp || !m.stopCauseDp) continue;
+      if (!isAnalysable(m)) continue;
+      const record = stateRecordDpes(m.id);
       out.push({
         atelierId: atelier.id,
         atelierName: atelier.name,
         machineId: m.id,
         machineName: m.name,
-        stateDp: m.stateDp,
-        stopCauseDp: m.stopCauseDp,
+        stateDp: record.state,
+        stopCauseDp: record.cause,
         minStopMs: (m.minStopSec ?? 0) * 1000,
         // A machine on a catalogue other than the default one (#74) is analysed with it.
         ...(def && m.stopCatalogId && catalogFor(catalogs, m.stopCatalogId).id !== def.id
@@ -347,7 +352,10 @@ export function shortStopIntervals(
   );
 }
 
-/** Merged non-producing periods, unclipped at their start (the look-back included). */
+/**
+ * Merged non-producing periods, unclipped at their start (the look-back included). The samples are recorded
+ * states: state keys of the mapping (winccoa-fra-msp-stma#339).
+ */
 function wholeNonProduction(
   samples: Sample[],
   mapping: StateMapping | undefined,
@@ -358,7 +366,7 @@ function wholeNonProduction(
     const segStart = sample.t;
     const segEnd = Math.min(samples[i + 1]?.t ?? windowEnd, windowEnd);
     if (segEnd <= segStart) continue;
-    const state = resolveState(mapping, Math.round(toNumber(sample.v)));
+    const state = recordedState(sample.v);
     if (isRunningState(mapping, state) || isOutsideOpening(mapping, state)) continue;
     const last = intervals.at(-1);
     if (last && last.e >= segStart) last.e = Math.max(last.e, segEnd);
@@ -387,7 +395,7 @@ export function offOpeningIntervals(
     const segStart = Math.max(sample.t, windowStart);
     const segEnd = Math.min(samples[i + 1]?.t ?? windowEnd, windowEnd);
     if (segEnd <= segStart) continue;
-    if (!isOutsideOpening(mapping, resolveState(mapping, Math.round(toNumber(sample.v))))) continue;
+    if (!isOutsideOpening(mapping, recordedState(sample.v))) continue;
     const last = intervals.at(-1);
     if (last && last.e >= segStart) last.e = Math.max(last.e, segEnd);
     else intervals.push({ s: segStart, e: segEnd });
@@ -539,11 +547,6 @@ function codeAt(causeSamples: Sample[], t: number): string {
 
 function normCode(v: unknown): string {
   return v == null ? '' : String(v).trim();
-}
-
-function toNumber(v: unknown): number {
-  const n = typeof v === 'number' ? v : Number(v);
-  return Number.isFinite(n) ? n : 0;
 }
 
 /** Resolve a raw code to its grouping key/label (unknown → catalog default). */

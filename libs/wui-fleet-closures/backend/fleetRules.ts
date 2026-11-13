@@ -27,6 +27,20 @@ const EDIT_FLEET: FleetRole = { module: 'machine-fleet-3d', role: 'edit' };
 const EDIT_CLOSURES: FleetRole = { module: 'fleet-closures', role: 'edit' };
 const EDIT_MACHINE_CLOSURES: FleetRole = { module: 'fleet-closures', role: 'edit-machine' };
 const CONFIGURE_FLEET: FleetRole = { module: 'machine-fleet-3d', role: 'configure' };
+/** The state an operator declares for a machine (winccoa-fra-msp-stma#339). */
+const DECLARE_STATE: FleetRole = { module: 'machine-fleet-3d', role: 'declare' };
+/** Datapoints of the states Machine Fleet's state manager records, one per symbol. */
+export const STATE_PREFIX = 'MachineFleet3D_State_';
+
+/** Elements of a symbol's state datapoint the state manager alone writes. */
+const RECORDED_ELEMENTS = new Set(['state', 'cause', 'machineName', 'atelier', 'updatedAt']);
+
+/** Element of a DPE ("Dp.el:_config" → "el"), '' for a datapoint. */
+function stateElementOf(dpe: string): string {
+  const s = withoutSystem(dpe);
+  const at = s.indexOf('.');
+  return at < 0 ? '' : s.slice(at + 1).split(':')[0];
+}
 
 /** A DPE without its system name ("System1:Dp.el" → "Dp.el"); a config (":_…") is not a system. */
 function withoutSystem(dpe: string): string {
@@ -58,6 +72,12 @@ export function rolesForSet(dpe: string): FleetRole[] {
   const config = configOf(dpe);
   if (config) return config === '_archive' ? [EDIT_FLEET] : [];
   if (!isFleet(dp)) return [];
+  // A recorded state: written by the state manager only; the pages write the declared state alone.
+  if (dp.startsWith(STATE_PREFIX)) {
+    const el = stateElementOf(dpe);
+    if (el === 'declared') return [DECLARE_STATE];
+    if (RECORDED_ELEMENTS.has(el)) return [];
+  }
   if (dp === CLOSURES_DP) return [EDIT_CLOSURES, EDIT_MACHINE_CLOSURES];
   if (dp === SETTINGS_DP) return [CONFIGURE_FLEET];
   return [EDIT_FLEET];

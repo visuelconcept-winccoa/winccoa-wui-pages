@@ -185,6 +185,17 @@ export function resolveState(mapping, value) {
   return mp.fallback;
 }
 
+/**
+ * A history sample's state: a state key as Machine Fleet's state manager records it
+ * (`MachineFleet3D_State_<machine>.state`, winccoa-fra-msp-stma#339) taken as it is, else a raw state
+ * value (a datapoint bound by hand) through the mapping, rounded to the nearest code as before.
+ */
+export function sampleState(mapping, v) {
+  const x = Array.isArray(v) ? v[0] : v;
+  if (typeof x === 'string' && x.trim() !== '' && Number.isNaN(Number(x))) return x;
+  return resolveState(mapping, Math.round(toNumber(x)));
+}
+
 export function stateColor(mapping, key) {
   return (
     (mapping && mapping.colors && mapping.colors[key]) ||
@@ -283,7 +294,7 @@ export function buildSegments(
     const segEnd = Math.min(next ? next.t : we, we);
     if (segEnd <= segStart) continue;
     runs.push({
-      state: resolveState(mapping, Math.round(toNumber(s.v))),
+      state: sampleState(mapping, s.v),
       startMs: segStart,
       endMs: segEnd
     });
@@ -383,7 +394,7 @@ export function analyseStops(
     const segEnd = Math.min(next ? next.t : we, we);
     if (segEnd <= segStart) continue;
     coveredStart = Math.min(coveredStart, segStart);
-    const state = resolveState(mapping, Math.round(toNumber(s.v)));
+    const state = sampleState(mapping, s.v);
     if (state === 'ok') {
       okMs += segEnd - segStart;
       continue;

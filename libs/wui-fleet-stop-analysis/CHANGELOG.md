@@ -5,6 +5,8 @@
 
 ## 0.3.0 — 2026-11-05 (SDS 2.2)
 
+- **The machines analysed are those binding an input of their mapping and a stop cause** (winccoa-fra-msp-stma#339),
+  read on the history Machine Fleet's state manager records.
 - **The chart's tooltip stays inside the chart** (`confine`), never off screen near an edge (winccoa-fra-msp-stma#336).
 - Each machine analysed with its own stop-cause catalogue (#74); a catalogue's causes stay apart from
   another's reusing a code.

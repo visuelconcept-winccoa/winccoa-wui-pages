@@ -96,14 +96,15 @@ describe('atelier-wide states', () => {
   });
 });
 
+// The samples are the states Machine Fleet's state manager records: state keys (winccoa-fra-msp-stma#339).
 describe('the stop analysis follows the producing flag', () => {
   it('counts every non-producing state as downtime, and only those', () => {
     const t = (min: number): number => min * 60_000;
     const samples = [
-      { t: t(0), v: 0 }, // production
-      { t: t(10), v: 3 }, // hors production
-      { t: t(20), v: 0 }, // production
-      { t: t(30), v: 1 } // arrêt
+      { t: t(0), v: 'production' }, // production
+      { t: t(10), v: 'idle' }, // hors production
+      { t: t(20), v: 'production' }, // production
+      { t: t(30), v: 'stopped' } // arrêt
     ];
     expect(nonProductionIntervals(samples, FIVE, t(0), t(40))).toEqual([
       { s: t(10), e: t(20) },
@@ -119,10 +120,10 @@ describe('a state taken out of the opening time', () => {
   };
   const t = (min: number): number => min * 60_000;
   const samples = [
-    { t: t(0), v: 0 }, // production
-    { t: t(10), v: 3 }, // hors production, outside the opening time
-    { t: t(20), v: 0 }, // production
-    { t: t(30), v: 1 } // arrêt
+    { t: t(0), v: 'production' }, // production
+    { t: t(10), v: 'idle' }, // hors production, outside the opening time
+    { t: t(20), v: 'production' }, // production
+    { t: t(30), v: 'stopped' } // arrêt
   ];
 
   it('is neither downtime nor available', () => {
@@ -148,11 +149,11 @@ describe('the shortest stop that counts', () => {
 
   it('takes a shorter stop as production, and keeps the longer ones', () => {
     const samples = [
-      { t: t(0), v: 0 }, // production
-      { t: t(10), v: 1 }, // arrêt, 4 min
-      { t: t(14), v: 0 },
-      { t: t(20), v: 1 }, // arrêt, 6 min
-      { t: t(26), v: 0 }
+      { t: t(0), v: 'production' }, // production
+      { t: t(10), v: 'stopped' }, // arrêt, 4 min
+      { t: t(14), v: 'production' },
+      { t: t(20), v: 'stopped' }, // arrêt, 6 min
+      { t: t(26), v: 'production' }
     ];
     expect(nonProductionIntervals(samples, FIVE, t(0), t(30), FIVE_MIN)).toEqual([{ s: t(20), e: t(26) }]);
     expect(shortStopIntervals(samples, FIVE, t(0), t(30), FIVE_MIN)).toEqual([{ s: t(10), e: t(14) }]);
@@ -161,9 +162,9 @@ describe('the shortest stop that counts', () => {
 
   it('judges a period on its whole length, stop and maintenance together', () => {
     const samples = [
-      { t: t(0), v: 1 }, // arrêt started before the window
-      { t: t(8), v: 2 }, // then maintenance
-      { t: t(11), v: 0 }
+      { t: t(0), v: 'stopped' }, // arrêt started before the window
+      { t: t(8), v: 'maintenance' }, // then maintenance
+      { t: t(11), v: 'production' }
     ];
     // Only 3 min of it fall in the window, but it lasted 11: it counts.
     expect(nonProductionIntervals(samples, FIVE, t(8), t(20), FIVE_MIN)).toEqual([{ s: t(8), e: t(11) }]);

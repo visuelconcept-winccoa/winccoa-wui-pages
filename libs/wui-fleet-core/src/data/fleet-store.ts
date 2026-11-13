@@ -44,6 +44,7 @@ import {
 import { DEMO_ATELIER } from './demo-layout.js';
 import { guardedWritesBase, routedWriteUrl } from './write-routing.js';
 import { parseModuleSettings, type FleetModuleSettings } from '../opening-view.js';
+import { declaredStateDpe } from '../state-eval.js';
 
 const CONFIG_TYPE = 'MachineFleet3D_Config';
 const DP_PREFIX = 'MachineFleet3D_';
@@ -494,6 +495,22 @@ export class FleetStore {
    * redundancy peers (`*_2`). A group is usable only when its `.active` flag is
    * set (the backend group is enabled) — inactive groups can't archive. Returns
    * bare group names (system prefix stripped). */
+  /**
+   * The state an operator declares for a machine (winccoa-fra-msp-stma#339): written in Machine Fleet's datapoint
+   * of its state (`declared`, created by the state manager; the write needs the role `declare`), traced in the
+   * audit trail with the previous value and the reason. False when it could not be written.
+   */
+  async declareState(machineId: string, machineName: string, before: string, after: string, reason: string): Promise<boolean> {
+    if (this.offline) return false;
+    try {
+      await this.send(DP_SET_URL, jsonPost({ dpeName: declaredStateDpe(machineId), value: after }));
+    } catch {
+      return false;
+    }
+    this.trace({ action: 'UPDATE', item: machineName, itemType: 'DeclaredState', oldval: before, newval: after, reason });
+    return true;
+  }
+
   async listArchiveGroups(): Promise<string[]> {
     const api = this.api;
     if (!api) return [];

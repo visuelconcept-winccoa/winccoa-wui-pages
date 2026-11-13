@@ -33,6 +33,7 @@ import '@visuelconcept-winccoa/wui-fleet-core/fleet-settings-service.js';
 import '@visuelconcept-winccoa/wui-fleet-core/data/guarded-writes.js';
 import { PagePrefs, oneOf, restorePeriod, storePeriod } from '@visuelconcept-winccoa/wui-fleet-core/page-prefs.js';
 import { stringList } from '@visuelconcept-winccoa/wui-fleet-core/settings-cache.js';
+import { isAnalysable } from '@visuelconcept-winccoa/wui-fleet-core/state-eval.js';
 import {
   DEFAULT_TRS_THRESHOLDS,
   resolveTrsColor,
@@ -535,7 +536,7 @@ export class WuiFleetKpiAnalysis extends LitElement {
     for (const a of this.ateliers) {
       if (selected.size > 0 && !selected.has(a.id)) continue;
       for (const m of a.machines) {
-        if (!m.stateDp || !m.stopCauseDp) continue;
+        if (!isAnalysable(m)) continue;
         out.push({ id: m.id, label: this.ateliers.length > 1 ? `${m.name} · ${a.name}` : m.name });
       }
     }

@@ -385,7 +385,16 @@ export const MSG = {
     csvDowntimeSec: ml("Downtime (s)", "Temps d'arrêt (s)", 'Stillstandszeit (s)'),
     csvDowntime: ml("Downtime", "Temps d'arrêt", 'Stillstandszeit'),
     csvOccurrences: ml('Occurrences', 'Occurrences', 'Vorkommen'),
-    csvCumulPct: ml('Cumulative %', 'Cumul %', 'Kumuliert %')
+    csvCumulPct: ml('Cumulative %', 'Cumul %', 'Kumuliert %'),
+    declaredLabel: ml('Declared state', 'État déclaré', 'Gemeldeter Zustand'),
+    declaredNone: ml('None', 'Aucun', 'Keiner'),
+    declareHeading: ml("Declare the machine’s state", 'Déclarer l’état de la machine', 'Maschinenzustand melden'),
+    declareConfirm: ml('Declare', 'Déclarer', 'Melden'),
+    declareFailed: ml(
+      'The declared state could not be saved: the role "Declare a machine’s state" is needed, and the state manager (fleetState) must have created the machine’s datapoint.',
+      'L’état déclaré n’a pas pu être enregistré : il faut le rôle « Déclarer l’état d’une machine », et que le manager d’état (fleetState) ait créé le datapoint de la machine.',
+      'Der gemeldete Zustand konnte nicht gespeichert werden: Die Rolle „Maschinenzustand melden“ ist nötig, und der Zustandsmanager (fleetState) muss den Datenpunkt der Maschine angelegt haben.'
+    )
   },
   machineDialog: {
     importMachine: ml(
@@ -575,6 +584,17 @@ export const MSG = {
     tiltAngleLabel: ml('Tilt angle', 'Angle basculement', 'Kippwinkel'),
     stateDpLabel: ml('State datapoint', "Datapoint d'état", 'Zustands-Datenpunkt'),
     stateMappingLabel: ml('State mapping', "Mapping d'état", 'Zustandszuordnung'),
+    declaredStateLabel: ml('State declared by an operator', 'État déclaré par l’opérateur', 'Vom Bediener gemeldeter Zustand'),
+    declaredStateHint: ml(
+      'An operator holding the role "Declare a machine’s state" sets it from the machine dashboard (with a reason, traced); the rules of the mapping test it as the input "State declared by an operator".',
+      'Un opérateur qui a le rôle « Déclarer l’état d’une machine » le choisit depuis le tableau de bord de la machine (avec un motif, tracé) ; les règles de la mapping le testent comme l’entrée « État déclaré par l’opérateur ».',
+      'Ein Bediener mit der Rolle „Maschinenzustand melden“ setzt ihn im Maschinen-Dashboard (mit Begründung, protokolliert); die Regeln der Zuordnung prüfen ihn als Eingang „Vom Bediener gemeldeter Zustand“.'
+    ),
+    mappingInputsHint: ml(
+      'The datapoint of each input of the chosen mapping (its rules test them).',
+      'Le datapoint de chaque entrée de la mapping choisie (ses règles les testent).',
+      'Der Datenpunkt jedes Eingangs der gewählten Zuordnung (ihre Regeln prüfen sie).'
+    ),
     manageStateMappings: ml(
       "Manage state mappings…",
       "Gérer les mappings d'état…",
@@ -603,6 +623,14 @@ export const MSG = {
     aliLinkedAsset: ml('Linked ALI asset', 'Asset ALI lié', 'Verknüpftes ALI-Asset'),
     production: ml('Production tracking', 'Suivi production', 'Produktionsverfolgung'),
     stopCauseDpLabel: ml('Stop-cause DP', "DP cause d'arrêt", 'Stillstandsursache-DP'),
+    causeSourcesLabel: ml('Other stop-cause DPs, by priority', "Autres DP de cause d'arrêt, par priorité", 'Weitere Stillstandsursache-DPs, nach Priorität'),
+    causeSourcesHint: ml(
+      'The cause in progress is the first one that is not empty: the DP above, then these in order.',
+      'La cause en cours est la première non vide : le DP ci-dessus, puis ceux-ci dans l’ordre.',
+      'Die laufende Ursache ist die erste nicht leere: der DP oben, dann diese der Reihe nach.'
+    ),
+    addCauseSource: ml('Add a cause DP', 'Ajouter un DP de cause', 'Ursachen-DP hinzufügen'),
+    removeCauseSource: ml('Remove this cause DP', 'Retirer ce DP de cause', 'Diesen Ursachen-DP entfernen'),
     workOrderDpLabel: ml('Current work order DP', "DP OF en cours", 'DP aktueller Fertigungsauftrag'),
     alarmCodeDpLabel: ml('Alarm code DP', 'DP code alarme', 'DP Alarmcode'),
     operationDpLabel: ml('Current operation DP', "DP opération en cours", 'DP aktueller Vorgang'),
@@ -872,7 +900,47 @@ export const MSG = {
       'Weder verfügbar noch Stillstand: aus der Öffnungszeit herausgenommen, wie eine arbeitsfreie Zeit (OEE)'
     ),
     addState: ml('Add a state', 'Ajouter un état', 'Zustand hinzufügen'),
-    deleteState: ml('Delete this state', 'Supprimer cet état', 'Diesen Zustand löschen')
+    deleteState: ml('Delete this state', 'Supprimer cet état', 'Diesen Zustand löschen'),
+    inputsHeading: ml('Inputs', 'Entrées', 'Eingänge'),
+    inputsHint: ml(
+      'Each symbol binds a datapoint to every input. The main input is its state datapoint; min / max of a rule apply to it, as a code rounded to the nearest integer.',
+      'Chaque symbole lie un datapoint à chaque entrée. L’entrée principale est son datapoint d’état ; le min / max d’une règle s’y applique, en code arrondi à l’entier.',
+      'Jedes Symbol bindet an jeden Eingang einen Datenpunkt. Der Haupteingang ist sein Zustands-Datenpunkt; Min / Max einer Regel gelten für ihn, auf eine ganze Zahl gerundet.'
+    ),
+    mainInput: ml('State datapoint (main input)', 'Datapoint d’état (entrée principale)', 'Zustands-Datenpunkt (Haupteingang)'),
+    declaredInput: ml('State declared by an operator', 'État déclaré par l’opérateur', 'Vom Bediener gemeldeter Zustand'),
+    inputKey: ml('Key', 'Clé', 'Schlüssel'),
+    inputLabel: ml('Label', 'Libellé', 'Bezeichnung'),
+    addInput: ml('Add an input', 'Ajouter une entrée', 'Eingang hinzufügen'),
+    newInputLabel: ml('Input', 'Entrée', 'Eingang'),
+    deleteInput: ml('Delete this input and the conditions on it', 'Supprimer cette entrée et les conditions qui la testent', 'Diesen Eingang und seine Bedingungen löschen'),
+    inputKeyInvalid: ml(
+      'A key: a letter, then letters, digits or _ ; unique, not "state".',
+      'Une clé : une lettre, puis lettres, chiffres ou _ ; unique, pas « state ».',
+      'Ein Schlüssel: ein Buchstabe, dann Buchstaben, Ziffern oder _; eindeutig, nicht „state“.'
+    ),
+    causeState: ml('By the cause', 'Selon la cause', 'Nach der Ursache'),
+    causeStatesHeading: ml('States by the cause', 'États selon la cause', 'Zustände nach der Ursache'),
+    causeStatesHint: ml(
+      'A rule "By the cause" gives one of these states, by the class of the stop cause in progress (its catalogue): planned, or any other (unplanned, unknown, none).',
+      'Une règle « Selon la cause » donne l’un de ces états, d’après la classe de la cause d’arrêt en cours (son référentiel) : planifiée, ou toute autre (non planifiée, inconnue, aucune).',
+      'Eine Regel „Nach der Ursache“ ergibt einen dieser Zustände, je nach Klasse der laufenden Stillstandsursache: geplant oder jede andere.'
+    ),
+    causePlanned: ml('Planned cause', 'Cause planifiée', 'Geplante Ursache'),
+    causeUnplanned: ml('Other cause or none', 'Autre cause ou aucune', 'Andere oder keine Ursache'),
+    boundsHint: ml('empty: no bound', 'vide : sans borne', 'leer: keine Grenze'),
+    addCondition: ml('Add a condition', 'Ajouter une condition', 'Bedingung hinzufügen'),
+    conditionInput: ml('Input', 'Entrée', 'Eingang'),
+    opEq: ml('=', '=', '='),
+    opNe: ml('≠', '≠', '≠'),
+    opIn: ml('between', 'entre', 'zwischen'),
+    opOut: ml('outside', 'hors de', 'außerhalb'),
+    conditionValue: ml('Value (number, text, true / false)', 'Valeur (nombre, texte, vrai / faux)', 'Wert (Zahl, Text, wahr / falsch)'),
+    deleteCondition: ml('Delete this condition', 'Supprimer cette condition', 'Diese Bedingung löschen'),
+    moveUp: ml('Move up', 'Monter', 'Nach oben'),
+    moveDown: ml('Move down', 'Descendre', 'Nach unten'),
+    deleteRule: ml('Delete this rule', 'Supprimer cette règle', 'Diese Regel löschen'),
+    ruleAll: ml('and', 'et', 'und')
   },
   trsThresholds: {
     title: ml('TRS thresholds', 'Seuils TRS', 'OEE-Schwellenwerte'),
@@ -1037,4 +1105,9 @@ export function uploadGlbMsg(state: 'idle' | 'busy' | 'failed'): string {
   if (state === 'busy') return localize(ml('Uploading…', 'Téléversement…', 'Hochladen…'));
   if (state === 'failed') return localize(ml('Upload failed.', 'Le téléversement a échoué.', 'Hochladen fehlgeschlagen.'));
   return localize(ml('Upload a GLB…', 'Téléverser un GLB…', 'GLB hochladen…'));
+}
+
+/** Confirmation of a declared state (winccoa-fra-msp-stma#339): the machine, the state before and after. */
+export function declareStateMsg(machine: string, before: string, after: string): string {
+  return localize(ml(`${machine}: declared state ${before} → ${after}.`, `${machine} : état déclaré ${before} → ${after}.`, `${machine}: gemeldeter Zustand ${before} → ${after}.`));
 }

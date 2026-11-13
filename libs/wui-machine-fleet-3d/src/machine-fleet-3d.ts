@@ -26,7 +26,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
 import { templateSeed } from './machine-fleet-3d/data/atelier-templates.js';
-import { normDp, toNumber } from './machine-fleet-3d/data/dp-utils.js';
+import { normDp } from './machine-fleet-3d/data/dp-utils.js';
 import { MSG, localizeDir } from './machine-fleet-3d/i18n.js';
 import appSecurityRoles from './app-security.roles.json';
 import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
@@ -39,10 +39,12 @@ import '@visuelconcept-winccoa/wui-fleet-core/fleet-settings-service.js';
 import '@visuelconcept-winccoa/wui-fleet-core/data/guarded-writes.js';
 import {
   DEFAULT_STATE_MAPPINGS,
-  resolveState,
   type Atelier,
-  type MachineDef
+  type MachineDef,
+  type StopCauseCatalog
 } from '@visuelconcept-winccoa/wui-fleet-core/types.js';
+import { liveTargets, machineLiveState } from '@visuelconcept-winccoa/wui-fleet-core/state-eval.js';
+import { causesFor } from '@visuelconcept-winccoa/wui-fleet-core/stop-catalogs.js';
 import {
   AuditTrailWriter,
   auditDiff,
@@ -66,7 +68,7 @@ const MODULE_ID = 'machine-fleet-3d';
 const HEADER_CONFIG = {
   headerTitle: {
     context: 'translate',
-    config: { 'en_US.utf8': 'Machine Fleet', 'fr.utf8': 'Parc machine', 'de_AT.utf8': 'Maschinenpark' }
+    config: { 'en_US.utf8': 'Machine Fleet', 'fr.utf8': 'Machine Fleet', 'de_AT.utf8': 'Maschinenpark' }
   }
 } as const;
 /**
@@ -165,8 +167,12 @@ export class WuiMachineFleet3d extends LitElement {
   private landed = false;
   /** canPublish + Application-Security grant subscriptions. */
   private permSub = new Subscription();
-  /** normalized stateDp → machines (across ateliers) it drives, for the overview. */
+  /** normalized input or cause DPE → machines (across ateliers) it drives, for the overview (winccoa-fra-msp-stma#339). */
   private overviewTargets = new Map<string, { atelier: Atelier; machineIndex: number }[]>();
+  /** Last value of each of those DPEs. */
+  private overviewValues = new Map<string, unknown>();
+  /** Stop-cause catalogues: the class of a cause gives a state by cause. */
+  private overviewCatalogs: StopCauseCatalog[] = [];
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -310,28 +316,31 @@ export class WuiMachineFleet3d extends LitElement {
     }
   }
 
-  /** Live-bind every machine state datapoint across all ateliers (overview only). */
+  /** Live-bind every machine's state inputs and stop-cause sources across all ateliers (overview only). */
   private subscribeOverview(): void {
     this.overviewSub.unsubscribe();
     this.overviewSub = new Subscription();
     this.overviewTargets = new Map();
+    this.overviewValues = new Map();
+    void this.store.listCatalogs().then((c) => (this.overviewCatalogs = c)).catch(() => undefined);
 
     const dps: string[] = [];
     for (const atelier of this.ateliers) {
       for (const [machineIndex, m] of atelier.machines.entries()) {
-        if (!m.stateDp) continue;
-        const key = normDp(m.stateDp);
-        const list = this.overviewTargets.get(key) ?? [];
-        list.push({ atelier, machineIndex });
-        this.overviewTargets.set(key, list);
-        dps.push(m.stateDp);
+        for (const t of liveTargets(m)) {
+          const key = normDp(t.dpe);
+          const list = this.overviewTargets.get(key) ?? [];
+          list.push({ atelier, machineIndex });
+          this.overviewTargets.set(key, list);
+          dps.push(t.dpe);
+        }
       }
     }
     const api = this.api;
     if (!api || dps.length === 0) return;
     try {
       this.overviewSub.add(
-        api.dpConnect(dps, true).subscribe((data: DpEmission) => this.onOverviewDp(data))
+        api.dpConnect([...new Set(dps)], true).subscribe((data: DpEmission) => this.onOverviewDp(data))
       );
     } catch {
       // Backend not connected — keep persisted states.
@@ -339,20 +348,24 @@ export class WuiMachineFleet3d extends LitElement {
   }
 
   private onOverviewDp(data: DpEmission): void {
-    let touched = false;
+    const changed = new Set<{ atelier: Atelier; machineIndex: number }>();
     for (const [i, dp] of data.dp.entries()) {
-      const targets = this.overviewTargets.get(normDp(dp));
-      if (!targets) continue;
-      for (const t of targets) {
-        const machine = t.atelier.machines[t.machineIndex];
-        const mapping =
-          t.atelier.mappings.find((mp) => mp.id === machine.stateMappingId) ??
-          t.atelier.mappings[0] ??
-          DEFAULT_STATE_MAPPINGS[0];
-        // Cast float state datapoints to the nearest integer state code.
-        machine.state = resolveState(mapping, Math.round(toNumber(data.value[i])));
-        touched = true;
-      }
+      const key = normDp(dp);
+      this.overviewValues.set(key, data.value[i]);
+      for (const t of this.overviewTargets.get(key) ?? []) changed.add(t);
+    }
+    let touched = false;
+    for (const t of changed) {
+      const machine = t.atelier.machines[t.machineIndex];
+      const mapping =
+        t.atelier.mappings.find((mp) => mp.id === machine.stateMappingId) ??
+        t.atelier.mappings[0] ??
+        DEFAULT_STATE_MAPPINGS[0];
+      // The state from the machine's inputs through its mapping, as the atelier view and the recorder compute it.
+      const live = machineLiveState(machine, mapping, (dpe) => this.overviewValues.get(normDp(dpe)), causesFor(this.overviewCatalogs, machine.stopCatalogId));
+      if (live.state === null) continue;
+      machine.state = live.state;
+      touched = true;
     }
     if (touched) this.ateliers = [...this.ateliers];
   }

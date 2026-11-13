@@ -16,7 +16,7 @@ import { LitElement, css, html, svg, type PropertyValues, type TemplateResult } 
 import { customElement, property, state } from 'lit/decorators.js';
 import { firstValueFrom, type Subscription } from 'rxjs';
 import { container } from 'tsyringe';
-import { normDp, toNumber } from '../data/dp-utils.js';
+import { normDp } from '../data/dp-utils.js';
 import type { FleetStore } from '../data/fleet-store.js';
 import { hasRole$ } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import { MSG, localize, localizeDir, ml } from '../i18n.js';
@@ -35,11 +35,13 @@ import {
   DEFAULT_STATE_MAPPINGS,
   UNKNOWN_STATE_COLOR,
   atelierStates,
-  resolveState,
   type Atelier,
   type MachineDef,
-  type MachineState
+  type MachineState,
+  type StopCauseCatalog
 } from '../types.js';
+import { liveTargets, machineLiveState } from '@visuelconcept-winccoa/wui-fleet-core/state-eval.js';
+import { causesFor } from '@visuelconcept-winccoa/wui-fleet-core/stop-catalogs.js';
 import './mf-ai-prompt.js';
 import './mf-atelier-create-dialog.js';
 import './mf-filter-bar.js';
@@ -79,6 +81,8 @@ export class MfAtelierOverview extends LitElement {
   private settingsSub: Subscription | null = null;
   /** Live value of each machine's state datapoint (normalised name → raw value), for the cards' dots and counts. */
   @state() private liveStates = new Map<string, unknown>();
+  /** Stop-cause catalogues: the class of a cause gives a state by cause (winccoa-fra-msp-stma#339). */
+  @state() private catalogs: StopCauseCatalog[] = [];
   /** The state datapoints followed (sorted, joined): a new list of ateliers re-subscribes only when it changes. */
   private liveKey = '';
   private liveSub: Subscription | null = null;
@@ -102,14 +106,16 @@ export class MfAtelierOverview extends LitElement {
 
   protected override updated(changed: PropertyValues): void {
     if (changed.has('ateliers')) this.watchStates();
+    if (changed.has('store') && this.store) void this.store.listCatalogs().then((c) => (this.catalogs = c)).catch(() => undefined);
   }
 
   /**
-   * Follow the state datapoint of every machine of the ateliers, so that the cards' dots and counts show the
-   * state the machines are in now, as the atelier view does, and not the state stored with each machine.
+   * Follow the state inputs and stop-cause sources of every machine of the ateliers (winccoa-fra-msp-stma#339), so
+   * that the cards' dots and counts show the state the machines are in now, as the atelier view does, and not the
+   * state stored with each machine.
    */
   private watchStates(): void {
-    const dps = [...new Set(this.ateliers.flatMap((a) => a.machines.map((m) => m.stateDp ?? '')).filter(Boolean))].sort();
+    const dps = [...new Set(this.ateliers.flatMap((a) => a.machines.flatMap((m) => liveTargets(m).map((t) => t.dpe))))].sort();
     const key = dps.join('|');
     if (key === this.liveKey) return;
     this.liveKey = key;
@@ -156,12 +162,11 @@ export class MfAtelierOverview extends LitElement {
     }
   }
 
-  /** A machine's state now: its state datapoint read through its mapping, else the state stored with it. */
+  /** A machine's state now: its inputs read through its mapping (as the atelier view), else the state stored with it. */
   private stateOf(a: Atelier, m: MachineDef): MachineState {
-    const raw = m.stateDp ? this.liveStates.get(normDp(m.stateDp)) : undefined;
-    if (raw === undefined) return m.state;
     const mapping = a.mappings.find((mp) => mp.id === m.stateMappingId) ?? a.mappings[0] ?? DEFAULT_STATE_MAPPINGS[0];
-    return resolveState(mapping, Math.round(toNumber(raw)));
+    const live = machineLiveState(m, mapping, (dpe) => this.liveStates.get(normDp(dpe)), causesFor(this.catalogs, m.stopCatalogId));
+    return live.state ?? m.state;
   }
 
   /** Follow the grants of each settings page: listed when one of its roles is granted, or none asked. */

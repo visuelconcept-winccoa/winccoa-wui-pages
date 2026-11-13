@@ -8,8 +8,8 @@
 import type { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { of } from 'rxjs';
 import { describe, expect, it } from 'vitest';
-import { analyseStopCauses, type AnalysisMachine } from './engine.js';
-import { DEFAULT_STATE_MAPPINGS, type StopCause } from './types.js';
+import { analyseStopCauses, collectMachines, type AnalysisMachine } from './engine.js';
+import { DEFAULT_STATE_MAPPINGS, type Atelier, type StopCause } from './types.js';
 
 const MIN = 60_000;
 const T0 = Date.UTC(2026, 9, 12, 8, 0, 0);
@@ -32,7 +32,7 @@ const MACHINE: AnalysisMachine = {
   machineName: 'M1',
   stateDp: 'M1.state',
   stopCauseDp: 'M1.cause',
-  mapping: DEFAULT_STATE_MAPPINGS[0] // 0 = stop, 1 = ok
+  mapping: DEFAULT_STATE_MAPPINGS[0] // its states: stop, ok (recorded as such by Machine Fleet's state manager, #339)
 };
 
 const CATALOG: StopCause[] = [
@@ -43,7 +43,7 @@ const CATALOG: StopCause[] = [
 describe('the stop list', () => {
   it('lists every stop with the code read on the machine', async () => {
     const api = fakeApi({
-      'M1.state': [{ t: t(0), v: 1 }, { t: t(10), v: 0 }, { t: t(20), v: 1 }, { t: t(30), v: 0 }, { t: t(40), v: 1 }, { t: t(50), v: 0 }, { t: t(55), v: 1 }],
+      'M1.state': [{ t: t(0), v: 'ok' }, { t: t(10), v: 'stop' }, { t: t(20), v: 'ok' }, { t: t(30), v: 'stop' }, { t: t(40), v: 'ok' }, { t: t(50), v: 'stop' }, { t: t(55), v: 'ok' }],
       'M1.cause': [{ t: t(10), v: '10' }, { t: t(20), v: '' }, { t: t(30), v: '42' }, { t: t(40), v: '' }]
     });
     const r = await analyseStopCauses(api, [MACHINE], CATALOG, new Date(t(0)), new Date(t(60)));
@@ -56,7 +56,7 @@ describe('the stop list', () => {
   });
 
   it('a machine without a cause datapoint lists its stops too', async () => {
-    const api = fakeApi({ 'M1.state': [{ t: t(0), v: 1 }, { t: t(10), v: 0 }, { t: t(20), v: 1 }] });
+    const api = fakeApi({ 'M1.state': [{ t: t(0), v: 'ok' }, { t: t(10), v: 'stop' }, { t: t(20), v: 'ok' }] });
     const r = await analyseStopCauses(api, [{ ...MACHINE, stopCauseDp: '' }], [], new Date(t(0)), new Date(t(60)));
     expect(r.rawStops.map((s) => [s.durationMs / MIN, s.code, s.classification])).toEqual([[10, '', undefined]]);
   });
@@ -65,12 +65,31 @@ describe('the stop list', () => {
 describe('a machine with its own stop-cause catalogue (#74)', () => {
   it('names and classifies its stops from it, apart from the default catalogue', async () => {
     const api = fakeApi({
-      'M1.state': [{ t: t(0), v: 1 }, { t: t(10), v: 0 }, { t: t(20), v: 1 }],
+      'M1.state': [{ t: t(0), v: 'ok' }, { t: t(10), v: 'stop' }, { t: t(20), v: 'ok' }],
       'M1.cause': [{ t: t(10), v: '10' }]
     });
     const inox = { id: 'inox', name: 'Inox', causes: [{ code: '10', description: 'Décapage', classification: 'unplanned' as const }] };
     const r = await analyseStopCauses(api, [{ ...MACHINE, catalog: inox }], CATALOG, new Date(t(0)), new Date(t(60)));
     expect(r.rawStops.map((s) => [s.causeKey, s.causeLabel, s.classification])).toEqual([['inox:10', '10 — Décapage · Inox', 'unplanned']]);
     expect(r.rows.map((row) => [row.key, row.label])).toEqual([['inox:10', '10 — Décapage · Inox']]);
+  });
+});
+
+describe('the machines analysed (#339)', () => {
+  it('those binding an input and a cause, read on the histories Machine Fleet records', () => {
+    const atelier = {
+      id: 'a', name: 'A', mappings: [],
+      machines: [
+        { id: 'M1', name: 'M1', stateDp: 'M1.State', stopCauseDp: 'M1.Cause' },
+        { id: 'M2', name: 'M2', inputDps: { comm: 'M2.Comm' }, stopCauseDps: ['WC.Cause'] },
+        { id: 'M3', name: 'M3', stateDp: 'M3.State' },
+        { id: 'M4', name: 'M4', stopCauseDp: 'M4.Cause' }
+      ]
+    } as unknown as Atelier;
+    const machines = collectMachines([atelier], new Set(), new Set());
+    expect(machines.map((m) => [m.machineId, m.stateDp, m.stopCauseDp, m.mapping?.id])).toEqual([
+      ['M1', 'MachineFleet3D_State_M1.state', 'MachineFleet3D_State_M1.cause', 'default'],
+      ['M2', 'MachineFleet3D_State_M2.state', 'MachineFleet3D_State_M2.cause', 'default']
+    ]);
   });
 });

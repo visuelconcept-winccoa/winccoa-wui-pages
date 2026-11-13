@@ -80,7 +80,8 @@
         "@visuelconcept-winccoa/wui-app-security/appSecurityGuard.ts"
       ],
       "managers": [
-        "aiAssistant"
+        "aiAssistant",
+        "fleetState"
       ],
       "progs": [
         {
@@ -91,6 +92,7 @@
       "notes": [
         "/api/ai/chat (optional, AI assistant via wui-ai-kit's aiController; needs the aiAssistant manager, registered in config/progs as manual — start it when the assistant is enabled)",
         "/api/ai/fleet/workshops[/:id] (read only, role view: the ateliers for hosts that embed <wui-fleet-3d-view> — see docs/wui-machine-fleet-3d/EMBEDDING.md)",
+        "State history (Gantt, stops, Pareto, TRS): the fleetState manager, started with the project (config/progs, always) — it records each symbol's state and stop cause in MachineFleet3D_State_<symbol>, archived; the live views do not depend on it",
         "Live KPIs (TRS/MTBF/MTTR in the bubbles): the kpiCalc manager of wui-fleet-kpi-analysis — select that module",
         "Simulated production: the machineSim manager of wui-machine-sim — select that module (demo/commissioning only)"
       ]

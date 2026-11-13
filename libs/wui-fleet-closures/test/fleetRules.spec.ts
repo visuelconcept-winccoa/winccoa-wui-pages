@@ -36,6 +36,15 @@ describe('fleet write rules', () => {
     expect(rolesForType('MachineFleet3D_Settings')).toEqual([CONFIGURE]);
   });
 
+  it('a recorded state (#339): the declared state needs the declare role, the rest is the state manager’s', () => {
+    const DECLARE = { module: 'machine-fleet-3d', role: 'declare' };
+    expect(rolesForSet('System1:MachineFleet3D_State_CN_01.declared')).toEqual([DECLARE]);
+    for (const el of ['state', 'cause', 'machineName', 'atelier', 'updatedAt']) expect(rolesForSet(`MachineFleet3D_State_CN_01.${el}`)).toEqual([]);
+    expect(rolesForSet('MachineFleet3D_State_CN_01.state:_archive.._archive')).toEqual([FLEET]);
+    // An atelier whose id begins like a state datapoint keeps its own rule.
+    expect(rolesForSet('MachineFleet3D_State_x.json')).toEqual([FLEET]);
+  });
+
   it('anything else is refused', () => {
     expect(rolesForSet('WC_FOUR.Context.OF')).toEqual([]);
     expect(rolesForSet('M_01.Base.State:_alert_hdl.._ack')).toEqual([]);

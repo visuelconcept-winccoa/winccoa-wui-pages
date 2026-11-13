@@ -383,11 +383,57 @@ export function formatParamValue(value: number | string, decimals?: number): str
 /** Maximum number of KPI parameters bound per machine. */
 export const MAX_PARAMS = 10;
 
-/** One value→state rule of a state mapping (range bounds optional). */
+/**
+ * Main input of every state mapping: the value of the symbol's `stateDp` (winccoa-fra-msp-stma#339). The
+ * `min` / `max` of a rule apply to it.
+ */
+export const STATE_INPUT = 'state';
+
+/**
+ * State of a rule that depends on the class of the stop cause in progress (StateMapping.causeStates):
+ * a planned cause gives the mapping's planned state, any other — no cause, unknown or unplanned — its
+ * unplanned state, as the TRS classes a stop.
+ */
+export const CAUSE_STATE = '@cause';
+
+/**
+ * Input of the state declared by an operator (winccoa-fra-msp-stma#339, e.g. a machine not connected): bound to
+ * `MachineFleet3D_State_<symbol>.declared` when the symbol accepts it (`MachineDef.declaredState`), set from the
+ * machine dashboard (a state key of the mapping, '' none). The rules test it like any input.
+ */
+export const DECLARED_INPUT = 'declared';
+
+/** A named input of a state mapping besides {@link STATE_INPUT}: each symbol binds it to a datapoint. */
+export interface MappingInput {
+  /** Key the rules name (a letter, then letters, digits, `_`), unique in the mapping, never {@link STATE_INPUT}. */
+  key: string;
+  label: string;
+}
+
+/**
+ * A condition of a rule on one input (winccoa-fra-msp-stma#339): its value within `min`..`max` (bounds
+ * optional, numbers; a boolean counts 1 / 0), or equal to `equals` (a number, a text or a boolean); `not`
+ * inverts it (e.g. « no work order in progress »). An input without a value (not bound, not read yet) meets
+ * no condition, inverted or not.
+ */
+export interface RuleCondition {
+  input: string;
+  min?: number;
+  max?: number;
+  equals?: number | string | boolean;
+  not?: boolean;
+}
+
+/**
+ * One rule of a state mapping (first matching rule wins): `min` / `max` on the main input, and every
+ * condition of `when` on the named inputs; a rule with none of them always matches. Its `state` is a state
+ * key, or {@link CAUSE_STATE}.
+ */
 export interface StateRule {
   state: MachineState;
   min?: number;
   max?: number;
+  when?: RuleCondition[];
 }
 
 /**
@@ -460,6 +506,10 @@ export interface StateMapping {
    * built-in states (`BUILTIN_STATES`), exactly as before.
    */
   states?: StateDef[];
+  /** Named inputs besides the main one ({@link STATE_INPUT}), bound per symbol (`MachineDef.inputDps`). */
+  inputs?: MappingInput[];
+  /** States of a rule whose state is {@link CAUSE_STATE}: by the class of the cause in progress. */
+  causeStates?: { planned: MachineState; unplanned: MachineState };
 }
 
 export const DEFAULT_STATE_MAPPINGS: StateMapping[] = [
@@ -597,6 +647,18 @@ export interface MachineDef {
   display?: DisplayEntry[];
   /** Datapoint giving the stop-cause code. */
   stopCauseDp?: string;
+  /**
+   * Further stop-cause datapoints, by priority after {@link stopCauseDp} (winccoa-fra-msp-stma#339): the
+   * cause in progress is the first one that is not empty.
+   */
+  stopCauseDps?: string[];
+  /** Datapoint of each named input of the machine's mapping (`StateMapping.inputs`), by input key. */
+  inputDps?: Record<string, string>;
+  /**
+   * The machine accepts a state declared by an operator (winccoa-fra-msp-stma#339): input {@link DECLARED_INPUT}
+   * of its mapping, bound to Machine Fleet's own datapoint, set from the machine dashboard (role `declare`).
+   */
+  declaredState?: boolean;
   /**
    * Stop-cause catalogue of this machine (`StopCauseCatalog.id`, #74 of winccoa-wui-pages): its causes
    * name, colour and classify the machine's stops. Absent or unknown: the default catalogue. Usually

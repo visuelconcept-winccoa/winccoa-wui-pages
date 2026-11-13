@@ -5,6 +5,8 @@
 
 ## 0.3.0 — 2026-11-05 (SDS 2.2)
 
+- **A recorded state is written by Machine Fleet's state manager only** (winccoa-fra-msp-stma#339): the pages
+  may write its `declared` element alone, with the role `declare` of machine-fleet-3d.
 - `/api/fleet/dptype/change`: an existing Fleet type changed in place, its datapoints kept, with the
   roles of its creation (wui-fleet-core 0.3.0 adds `name` to the stop-cause catalogue type, #74).
 ## 0.2.1 — 2026-11-05

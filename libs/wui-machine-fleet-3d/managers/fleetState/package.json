@@ -1,0 +1,8 @@
+{
+  "name": "fleet-state",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Machine Fleet state recorder (WinCC OA JavaScript Manager): computes each symbol's state through its mapping and records the state and the stop cause in an archived datapoint of its own (MachineFleet3D_State_<symbol>), the history of the Gantt, the stops and the TRS. No dependency.",
+  "main": "index.js",
+  "type": "commonjs"
+}

@@ -9,6 +9,12 @@
 fleet-kpi-analysis and fleet-stop-analysis 0.3.0). A page that declares fleet-closures imports
 `data/guarded-writes.js` for its writes to go through `/api/fleet`.
 
+- **States from several inputs, recorded by Machine Fleet** (winccoa-fra-msp-stma#339): `StateMapping.inputs`,
+  `StateRule.when` (conditions with `not`), `CAUSE_STATE` / `causeStates`, `MachineDef.inputDps`, `stopCauseDps`,
+  `declaredState`; `state-eval.ts` (`evaluateState`, `liveTargets`, `liveState`, `machineLiveState`,
+  `stateRecordDpes`, `isAnalysable`…) with its shared cases `state-eval.cases.json`. The stop analysis
+  (`collectMachines`, `nonProductionIntervals`…) reads the recorded history (`MachineFleet3D_State_<symbol>`, state
+  keys). `FleetStore.declareState`: the declared state written and traced with its reason.
 - **Several stop-cause catalogues** (#74): `StopCauseCatalog { id, name, causes, isDefault }`, one
   datapoint each of type `MachineFleet3D_StopCauses` (`json`: the causes, a plain list; `name`, added to
   the type at the first save through `dptype/change`). The default one is `MachineFleet3D_StopCauses`
