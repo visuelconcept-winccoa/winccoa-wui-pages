@@ -12,6 +12,14 @@ role **`qualify`** of the 0.5.0 previews is gone (#75): remove it from the group
 - **The Parameters tab of the symbol dialog helps check the bindings**: each row shows its current value
   (read while the tab is open; '—' when its datapoint cannot be read); a row with a fixed value and no
   datapoint (machine, workcenter…) shows "Fixed value" instead of an empty datapoint field.
+- **"Add a symbol" reworked** (winccoa-fra-msp-stma#338): three sources. **From the site or an atelier**: one list,
+  the site's catalogue and the other ateliers' symbols, each with where it comes from. **Import**, as Node-RED
+  imports: choose a JSON file or paste the JSON; one symbol, a list, or a workcenter's `machine-fleet-symbols`
+  export (version 1, with its state mappings, added to the atelier when it has none of that id), checked before
+  anything is added (`symbol-import.ts`, the reason of a refusal shown); a symbol whose id is already in the
+  atelier is replaced or skipped, asked symbol by symbol, a replacement keeping its position; the others keep
+  the id of the file and are "à placer". **New symbol**: its name and representation only (no state datapoint
+  any more), and a 3D model can be uploaded on the spot ("Upload a GLB…", same 2 MB limit as the catalogue).
 - **The machine dashboard's Gantt tooltip stays on screen** (winccoa-fra-msp-stma#336): left of the pointer in
   the right half of the screen, above it in the bottom third (`tip-place.ts`), instead of going off screen.
 - **Each machine's stop-cause catalogue** (#74, wui-fleet-core 0.3.0): the bubble, the card and the

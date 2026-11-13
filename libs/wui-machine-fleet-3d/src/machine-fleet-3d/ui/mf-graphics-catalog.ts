@@ -32,8 +32,9 @@ interface IxValueEvent {
   detail: string;
 }
 
-const BYTES_PER_MB = 1_000_000;
-const MAX_BYTES = 2 * BYTES_PER_MB;
+export const BYTES_PER_MB = 1_000_000;
+/** Largest graphic file imported (catalogue, and the GLB uploaded from the "Add a symbol" wizard). */
+export const MAX_BYTES = 2 * BYTES_PER_MB;
 
 const KIND_CFG: Record<
   GraphicKind,

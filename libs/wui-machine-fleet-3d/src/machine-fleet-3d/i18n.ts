@@ -62,23 +62,29 @@ export const MSG = {
   },
   wizard: {
     title: ml('Add a symbol', 'Ajouter un symbole', 'Symbol hinzufügen'),
-    fromCatalog: ml('From the site', 'Depuis le site', 'Vom Standort'),
-    fromAtelier: ml('From another atelier', 'Depuis un autre atelier', 'Aus einer anderen Werkstatt'),
-    fromFile: ml('From a file (JSON)', 'Depuis un fichier (JSON)', 'Aus einer Datei (JSON)'),
+    fromExisting: ml('From the site or an atelier', 'Depuis le site ou un atelier', 'Vom Standort oder einer Werkstatt'),
+    importTab: ml('Import', 'Importer', 'Importieren'),
     create: ml('New symbol', 'Nouveau symbole', 'Neues Symbol'),
     search: ml('Search…', 'Rechercher…', 'Suchen…'),
     none: ml('Nothing to add.', 'Rien à ajouter.', 'Nichts hinzuzufügen.'),
-    siteNone: ml('The site declares no machine.', 'Le site ne déclare aucune machine.', 'Der Standort meldet keine Maschine.'),
-    siteAllPlaced: ml(
-      'Every machine of the site is already in this atelier.',
-      'Toutes les machines du site sont déjà dans cet atelier.',
-      'Alle Maschinen des Standorts sind bereits in dieser Werkstatt.'
+    existingNone: ml(
+      'Neither the site nor another atelier offers a symbol to add.',
+      'Ni le site ni un autre atelier ne propose de symbole à ajouter.',
+      'Weder der Standort noch eine andere Werkstatt bietet ein Symbol an.'
     ),
-    chooseFile: ml('Choose a JSON file', 'Choisir un fichier JSON', 'JSON-Datei auswählen'),
-    badFile: ml('Not a symbol file.', "Ce fichier n'est pas un symbole.", 'Keine Symboldatei.'),
+    site: ml('Site', 'Site', 'Standort'),
+    pasteLabel: ml('JSON of one or several symbols', 'JSON d’un ou de plusieurs symboles', 'JSON eines oder mehrerer Symbole'),
+    pastePlaceholder: ml(
+      'Paste here the JSON exported by a symbol or a workcenter, or choose a file.',
+      'Collez ici le JSON exporté par un symbole ou un workcenter, ou choisissez un fichier.',
+      'Fügen Sie hier das von einem Symbol oder Arbeitsplatz exportierte JSON ein oder wählen Sie eine Datei.'
+    ),
+    chooseFile: ml('Choose a file…', 'Choisir un fichier…', 'Datei auswählen…'),
+    importButton: ml('Import', 'Importer', 'Importieren'),
+    replaceYes: ml('Yes, replace', 'Oui, remplacer', 'Ja, ersetzen'),
+    replaceNo: ml('No', 'Non', 'Nein'),
     name: ml('Name', 'Nom', 'Name'),
     type: ml('Representation', 'Représentation', 'Darstellung'),
-    stateDp: ml('State datapoint (optional)', 'Datapoint d’état (optionnel)', 'Zustands-Datenpunkt (optional)'),
     add: ml('Add', 'Ajouter', 'Hinzufügen'),
     cancel: ml('Cancel', 'Annuler', 'Abbrechen'),
     later: ml(
@@ -261,13 +267,6 @@ export const MSG = {
       'Von aktueller Kameraansicht aktualisieren'
     ),
     rename: ml('Rename', 'Renommer', 'Umbenennen'),
-    paramFixed: ml('Fixed value', 'Valeur fixe', 'Fester Wert'),
-    paramFixedTitle: ml(
-      'This row shows a fixed value, not a datapoint',
-      "Cette ligne montre une valeur fixe, pas un datapoint",
-      'Diese Zeile zeigt einen festen Wert, keinen Datenpunkt'
-    ),
-    paramLiveTitle: ml('Current value', 'Valeur actuelle', 'Aktueller Wert'),
     delete: ml('Delete', 'Supprimer', 'Löschen'),
     edit: ml('Edit', 'Éditer', 'Bearbeiten'),
     viewOnly: ml('View', 'Visualiser', 'Anzeigen'),
@@ -687,6 +686,13 @@ export const MSG = {
     paramLabel: ml('Label', 'Libellé', 'Bezeichnung'),
     paramUnit: ml('Unit', 'Unité', 'Einheit'),
     defaultParamName: ml('Parameter', 'Paramètre', 'Parameter'),
+    paramFixed: ml('Fixed value', 'Valeur fixe', 'Fester Wert'),
+    paramFixedTitle: ml(
+      'This row shows a fixed value, not a datapoint',
+      "Cette ligne montre une valeur fixe, pas un datapoint",
+      'Diese Zeile zeigt einen festen Wert, keinen Datenpunkt'
+    ),
+    paramLiveTitle: ml('Current value', 'Valeur actuelle', 'Aktueller Wert'),
     delete: ml('Delete', 'Supprimer', 'Löschen'),
     editTitlePrefix: ml('Symbol', 'Symbole', 'Symbol')
   },
@@ -981,4 +987,54 @@ export function confirmDeleteAtelierMsg(name: string): string {
       `Werkstatt « ${name} » und ihren Datapoint endgültig löschen?`
     )
   );
+}
+
+/** What an import text holds, before it is added (winccoa-fra-msp-stma#338). */
+export function importSummaryMsg(symbols: number, conflicts: number, mappings: number, source: string): string {
+  const fr = `${symbols} symbole${symbols > 1 ? 's' : ''}${source ? ` (${source})` : ''}`
+    + `${conflicts ? `, dont ${conflicts} déjà dans cet atelier` : ''}`
+    + `${mappings ? ` ; ${mappings} mapping${mappings > 1 ? 's' : ''} d’états` : ''}.`;
+  const en = `${symbols} symbol${symbols > 1 ? 's' : ''}${source ? ` (${source})` : ''}`
+    + `${conflicts ? `, ${conflicts} already in this atelier` : ''}`
+    + `${mappings ? `; ${mappings} state mapping${mappings > 1 ? 's' : ''}` : ''}.`;
+  const de = `${symbols} Symbol${symbols > 1 ? 'e' : ''}${source ? ` (${source})` : ''}`
+    + `${conflicts ? `, davon ${conflicts} bereits in dieser Werkstatt` : ''}`
+    + `${mappings ? `; ${mappings} Zustandszuordnung${mappings > 1 ? 'en' : ''}` : ''}.`;
+  return localize(ml(en, fr, de));
+}
+
+/** Why an import text is refused (symbol-import.ts `ImportError`). */
+export function importErrorMsg(e: { reason: string; detail?: string; index?: number; value?: string }): string {
+  const n = e.index ?? 0;
+  const v = e.value ?? '';
+  switch (e.reason) {
+    case 'empty':
+      return localize(ml('Paste the JSON of one or several symbols, or choose a file.', 'Collez le JSON d’un ou de plusieurs symboles, ou choisissez un fichier.', 'Fügen Sie das JSON eines oder mehrerer Symbole ein oder wählen Sie eine Datei.'));
+    case 'json':
+      return localize(ml(`Invalid JSON: ${e.detail ?? ''}`, `JSON invalide : ${e.detail ?? ''}`, `Ungültiges JSON: ${e.detail ?? ''}`));
+    case 'format':
+      return localize(ml(`Not a Machine Fleet symbol file (${e.detail ?? ''}).`, `Ce n’est pas un fichier de symboles Machine Fleet (${e.detail ?? ''}).`, `Keine Machine-Fleet-Symboldatei (${e.detail ?? ''}).`));
+    case 'version':
+      return localize(ml(`File version ${e.detail ?? ''} not supported (1 at most).`, `Version ${e.detail ?? ''} du fichier non prise en charge (1 au plus).`, `Dateiversion ${e.detail ?? ''} nicht unterstützt (höchstens 1).`));
+    case 'noSymbol':
+      return localize(ml('No symbol in this text.', 'Aucun symbole dans ce texte.', 'Kein Symbol in diesem Text.'));
+    default:
+      break;
+  }
+  if (e.detail === 'notObject') return localize(ml(`Symbol ${n}: not an object.`, `Symbole n° ${n} : ce n’est pas un objet.`, `Symbol ${n}: kein Objekt.`));
+  if (e.detail === 'name') return localize(ml(`Symbol ${n}: no name.`, `Symbole n° ${n} : nom manquant.`, `Symbol ${n}: kein Name.`));
+  if (e.detail === 'type') return localize(ml(`Symbol ${n}: unknown representation "${v}".`, `Symbole n° ${n} : représentation « ${v} » inconnue.`, `Symbol ${n}: unbekannte Darstellung „${v}“.`));
+  return localize(ml(`Symbol ${n}: id "${v}" twice in the text.`, `Symbole n° ${n} : identifiant « ${v} » en double dans le texte.`, `Symbol ${n}: Kennung „${v}“ doppelt im Text.`));
+}
+
+/** Replace a symbol already in the atelier? (winccoa-fra-msp-stma#338). */
+export function replaceSymbolMsg(name: string): string {
+  return localize(ml(`"${name}" already exists in this atelier. Replace it?`, `« ${name} » existe déjà dans cet atelier. Le remplacer ?`, `„${name}“ existiert bereits in dieser Werkstatt. Ersetzen?`));
+}
+
+/** The 3D model uploaded in the wizard, and its failure. */
+export function uploadGlbMsg(state: 'idle' | 'busy' | 'failed'): string {
+  if (state === 'busy') return localize(ml('Uploading…', 'Téléversement…', 'Hochladen…'));
+  if (state === 'failed') return localize(ml('Upload failed.', 'Le téléversement a échoué.', 'Hochladen fehlgeschlagen.'));
+  return localize(ml('Upload a GLB…', 'Téléverser un GLB…', 'GLB hochladen…'));
 }

@@ -47,7 +47,8 @@ import type { FleetStore } from '../data/fleet-store.js';
 import { MSG, confirmDeleteAtelierMsg, localize, localizeDir, machineTypeLabel } from '../i18n.js';
 import { uniqueName } from '../symbol-names.js';
 import { SceneController } from '../scene/scene-controller.js';
-import type { OtherSymbol } from './mf-symbol-wizard.js';
+import type { OtherSymbol, SymbolImport } from './mf-symbol-wizard.js';
+import { applyImport } from '../symbol-import.js';
 import {
   loadDefaultPage,
   loadUserViews,
@@ -1002,13 +1003,15 @@ export class MfAtelierView extends LitElement {
       ${this.wizardOpen
         ? html`<mf-symbol-wizard
             .catalog=${this.catalog.filter((c) => !this.machines.some((m) => m.id === c.id))}
-            .siteCount=${this.catalog.length}
             .others=${this.otherSymbols}
+            .existing=${this.machines}
             .glbResources=${this.glbResources}
             .billboardResources=${this.billboardResources}
             .store=${this.store}
             @wui:resources=${() => (this.resourcesOpen = true)}
             @wui:addsymbol=${(e: CustomEvent<{ def: MachineDef; keepId: boolean }>) => this.onAddSymbol(e.detail.def, e.detail.keepId)}
+            @wui:importsymbols=${(e: CustomEvent<SymbolImport>) => this.onImportSymbols(e.detail)}
+            @wui:resourceadded=${() => void this.loadResources()}
             @wui:close=${() => (this.wizardOpen = false)}
           ></mf-symbol-wizard>`
         : ''}
@@ -1391,6 +1394,20 @@ export class MfAtelierView extends LitElement {
     this.wizardOpen = false;
     this.rebuildMachines();
     this.onFocus(def.id);
+  }
+
+  /** Symbols imported by the wizard (winccoa-fra-msp-stma#338), added by `applyImport` (symbol-import.ts); one save. */
+  private onImportSymbols(imp: SymbolImport): void {
+    if (!this.editable) return;
+    const r = applyImport(this.machines, this.mappings, imp, Date.now());
+    if (r.mappingsAdded) {
+      this.mappings = r.mappings;
+      this.applyStateColors();
+    }
+    this.machines = r.machines;
+    this.wizardOpen = false;
+    this.rebuildMachines();
+    if (r.focus) this.onFocus(r.focus);
   }
 
   private onEdit(id: string): void {

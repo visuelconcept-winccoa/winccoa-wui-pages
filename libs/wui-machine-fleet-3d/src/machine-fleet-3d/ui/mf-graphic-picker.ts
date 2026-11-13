@@ -7,7 +7,9 @@
  * wizard, so both show the same picker.
  *
  * Emits `wui:change` ({ value }, not bubbling: the URL / resource ref, undefined when cleared) and
- * `wui:resources` (bubbling: the page opens its graphics catalogue to import some).
+ * `wui:resources` (bubbling: the page opens its graphics catalogue to import some). With `upload`, a 3D model
+ * can also be uploaded on the spot (winccoa-fra-msp-stma#338): imported into the catalogue (same 2 MB limit),
+ * picked at once, and announced by `wui:resourceadded` (bubbling, { kind, resource }) for the page to reload it.
  */
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
@@ -15,8 +17,9 @@ import { customElement, property, state } from 'lit/decorators.js';
 import type { GlbResource } from '../types.js';
 import type { FleetStore } from '../data/fleet-store.js';
 import { SEMIFAB_ICONS } from '../data/semifab-icons.js';
-import { MSG, localize, localizeDir } from '../i18n.js';
+import { MSG, fileTooLargeMsg, localize, localizeDir, uploadGlbMsg } from '../i18n.js';
 import { dialogStyles } from './dialog-styles.js';
+import { BYTES_PER_MB, MAX_BYTES } from './mf-graphics-catalog.js';
 
 /** Built-in SemiFab icon library + the "no library" bucket (billboard picker). */
 const SEMIFAB_LIB = 'SemiFab';
@@ -92,6 +95,14 @@ export class MfGraphicPicker extends LitElement {
       .bb-toolbar ix-select {
         flex: 1;
       }
+      .upload-error {
+        margin-top: 0.35rem;
+        color: var(--theme-color-alarm);
+        font-size: 0.85rem;
+      }
+      .upload-input {
+        display: none;
+      }
     `
   ];
 
@@ -101,13 +112,20 @@ export class MfGraphicPicker extends LitElement {
   @property() value = '';
   @property({ attribute: false }) glbResources: GlbResource[] = [];
   @property({ attribute: false }) billboardResources: GlbResource[] = [];
-  /** Reads the imported icons for their thumbnails. */
+  /** Reads the imported icons for their thumbnails, and imports an uploaded model. */
   @property({ attribute: false }) store: FleetStore | null = null;
+  /** A 3D model can be uploaded on the spot (needs `store`). */
+  @property({ type: Boolean }) upload = false;
 
   /** Selected icon library ('' until set from the value). */
   @state() private bbLibrary = '';
   /** Resolved data URLs for imported icon previews, keyed by resource id. */
   @state() private bbPreviews: Record<string, string> = {};
+  /** Upload of a 3D model: under way, or its error ('' none). */
+  @state() private uploading = false;
+  @state() private uploadError = '';
+  /** Models uploaded here, shown before the page reloads its catalogue. */
+  @state() private uploaded: GlbResource[] = [];
 
   protected override willUpdate(changed: PropertyValues): void {
     // The library shown first: the picked icon's, else SemiFab.
@@ -122,6 +140,8 @@ export class MfGraphicPicker extends LitElement {
   }
 
   private renderGlb(): TemplateResult {
+    const models = [...this.glbResources, ...this.uploaded.filter((u) => !this.glbResources.some((r) => r.ref === u.ref))];
+    const canUpload = this.upload && !!this.store;
     return html`
       <div class="glb-row">
         <ix-select
@@ -131,15 +151,60 @@ export class MfGraphicPicker extends LitElement {
           .value=${this.value}
           @valueChange=${(e: IxValueEvent) => this.change(e.detail ? String(e.detail) : undefined)}
         >
-          ${this.glbResources.map((r) => html`<ix-select-item label=${r.name} value=${r.ref}></ix-select-item>`)}
+          ${models.map((r) => html`<ix-select-item label=${r.name} value=${r.ref}></ix-select-item>`)}
         </ix-select>
+        ${canUpload
+          ? html`<ix-button variant="secondary" ?disabled=${this.uploading} @click=${this.pickUpload}>
+              <ix-icon name="upload" slot="icon"></ix-icon>${uploadGlbMsg(this.uploading ? 'busy' : 'idle')}
+            </ix-button>`
+          : ''}
         <ix-button variant="secondary" @click=${this.openResources}>
           <ix-icon name="folder" slot="icon"></ix-icon>${localizeDir(MSG.machineDialog.manage)}
         </ix-button>
       </div>
-      ${this.glbResources.length === 0 ? html`<div class="hint">${localizeDir(MSG.machineDialog.glbEmpty)}</div>` : ''}
+      ${canUpload ? html`<input class="upload-input" type="file" accept=".glb,.gltf" @change=${this.onUpload} />` : ''}
+      ${this.uploadError ? html`<div class="upload-error">${this.uploadError}</div>` : ''}
+      ${models.length === 0 && !canUpload ? html`<div class="hint">${localizeDir(MSG.machineDialog.glbEmpty)}</div>` : ''}
     `;
   }
+
+  private pickUpload(): void {
+    this.uploadError = '';
+    this.renderRoot.querySelector<HTMLInputElement>('.upload-input')?.click();
+  }
+
+  /** A model uploaded: imported into the catalogue under its file name, then picked. */
+  private readonly onUpload = (e: Event): void => {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    const store = this.store;
+    if (!file || !store) return;
+    if (file.size > MAX_BYTES) {
+      this.uploadError = fileTooLargeMsg((file.size / BYTES_PER_MB).toFixed(1), MAX_BYTES / BYTES_PER_MB);
+      return;
+    }
+    this.uploading = true;
+    const reader = new FileReader();
+    reader.addEventListener('load', () => {
+      const name = file.name.replace(/\.(glb|gltf)$/i, '') || file.name;
+      void store.importResource('glb', name, String(reader.result)).then((resource) => {
+        this.uploading = false;
+        if (!resource) {
+          this.uploadError = uploadGlbMsg('failed');
+          return;
+        }
+        this.uploaded = [...this.uploaded, resource];
+        this.change(resource.ref);
+        this.dispatchEvent(new CustomEvent('wui:resourceadded', { detail: { kind: 'glb', resource }, bubbles: true, composed: true }));
+      });
+    });
+    reader.addEventListener('error', () => {
+      this.uploading = false;
+      this.uploadError = localize(MSG.graphicsCatalog.fileUnreadable);
+    });
+    reader.readAsDataURL(file);
+  };
 
   private renderBillboard(): TemplateResult {
     return html`
