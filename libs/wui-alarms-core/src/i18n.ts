@@ -81,6 +81,11 @@ export const MSG = {
       'Les alarmes n’ont pas pu être lues.',
       'Die Alarme konnten nicht gelesen werden.'
     ),
+    liveRetry: ml(
+      'update failed — retrying…',
+      'mise à jour impossible — nouvel essai…',
+      'Aktualisierung fehlgeschlagen — neuer Versuch…'
+    ),
     noScope: ml(
       'No datapoint is bound.',
       'Aucun datapoint n’est associé.',
