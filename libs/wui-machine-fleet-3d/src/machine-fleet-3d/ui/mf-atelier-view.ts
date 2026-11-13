@@ -44,7 +44,7 @@ import {
 import { AliAssetReader, type AliAssetInfo } from '../data/ali-assets.js';
 import { normDp, toNumber } from '../data/dp-utils.js';
 import type { FleetStore } from '../data/fleet-store.js';
-import { MSG, confirmDeleteAtelierMsg, localize, localizeDir } from '../i18n.js';
+import { MSG, confirmDeleteAtelierMsg, localize, localizeDir, machineTypeLabel } from '../i18n.js';
 import { uniqueName } from '../symbol-names.js';
 import { SceneController } from '../scene/scene-controller.js';
 import type { OtherSymbol } from './mf-symbol-wizard.js';
@@ -848,7 +848,7 @@ export class MfAtelierView extends LitElement {
         <div class="detail__head">
           <span class="dot" style="background:${headColor}"></span>
           <ix-typography class="name" format="h3" title=${m.name}>${m.name}</ix-typography>
-          <ix-chip outline>${m.loc ?? m.type}</ix-chip>
+          <ix-chip outline>${m.loc ?? machineTypeLabel(m.type)}</ix-chip>
           ${this.displayOnly
             ? nothing
             : html`<ix-icon-button ghost icon=${this.editable ? 'pen' : 'eye'} title=${this.editable ? localize(MSG.view.edit) : localize(MSG.view.viewOnly)} @click=${() => this.onEdit(m.id)}></ix-icon-button>`}
@@ -1002,7 +1002,12 @@ export class MfAtelierView extends LitElement {
       ${this.wizardOpen
         ? html`<mf-symbol-wizard
             .catalog=${this.catalog.filter((c) => !this.machines.some((m) => m.id === c.id))}
+            .siteCount=${this.catalog.length}
             .others=${this.otherSymbols}
+            .glbResources=${this.glbResources}
+            .billboardResources=${this.billboardResources}
+            .store=${this.store}
+            @wui:resources=${() => (this.resourcesOpen = true)}
             @wui:addsymbol=${(e: CustomEvent<{ def: MachineDef; keepId: boolean }>) => this.onAddSymbol(e.detail.def, e.detail.keepId)}
             @wui:close=${() => (this.wizardOpen = false)}
           ></mf-symbol-wizard>`

@@ -31,6 +31,7 @@ import {
   confirmDeleteMachineMsg,
   localize,
   localizeDir,
+  machineTypeLabel,
   machinesCountMsg
 } from '../i18n.js';
 
@@ -123,7 +124,7 @@ export class MfConfigPanel extends LitElement {
         <span class="dot" style="background:${color}"></span>
         <span class="row-text">
           <span class="row-name">${m.name}</span>
-          <span class="row-sub">${m.type}${m.loc ? ` · ${m.loc}` : ''}</span>
+          <span class="row-sub">${machineTypeLabel(m.type)}${m.loc ? ` · ${m.loc}` : ''}</span>
         </span>
         ${m.toPlace
           ? html`<span class="to-place" title=${localize(MSG.toPlace.hint)}>${localize(MSG.toPlace.label)}</span>`
@@ -177,7 +178,7 @@ export class MfConfigPanel extends LitElement {
     const q = this.query.trim().toLowerCase();
     const list = q
       ? this.machines.filter((m) =>
-          `${m.name} ${m.type} ${m.loc ?? ''}`.toLowerCase().includes(q)
+          `${m.name} ${machineTypeLabel(m.type)} ${m.loc ?? ''}`.toLowerCase().includes(q)
         )
       : this.machines;
     // Disconnected machines first (priority over every state), then by severity:

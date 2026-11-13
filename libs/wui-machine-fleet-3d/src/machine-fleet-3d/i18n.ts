@@ -17,6 +17,7 @@
  */
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { localize } from '@wincc-oa/wui-i18n-shared/localize-multilang.js';
+import { machineTypeText } from './machine-type-labels.js';
 
 export { localize, localizeDir } from '@wincc-oa/wui-i18n-shared/localize-multilang.js';
 
@@ -67,6 +68,12 @@ export const MSG = {
     create: ml('New symbol', 'Nouveau symbole', 'Neues Symbol'),
     search: ml('Search…', 'Rechercher…', 'Suchen…'),
     none: ml('Nothing to add.', 'Rien à ajouter.', 'Nichts hinzuzufügen.'),
+    siteNone: ml('The site declares no machine.', 'Le site ne déclare aucune machine.', 'Der Standort meldet keine Maschine.'),
+    siteAllPlaced: ml(
+      'Every machine of the site is already in this atelier.',
+      'Toutes les machines du site sont déjà dans cet atelier.',
+      'Alle Maschinen des Standorts sind bereits in dieser Werkstatt.'
+    ),
     chooseFile: ml('Choose a JSON file', 'Choisir un fichier JSON', 'JSON-Datei auswählen'),
     badFile: ml('Not a symbol file.', "Ce fichier n'est pas un symbole.", 'Keine Symboldatei.'),
     name: ml('Name', 'Nom', 'Name'),
@@ -879,6 +886,12 @@ export const MSG = {
     newConfigName: ml('New thresholds', 'Nouveaux seuils', 'Neue Schwellenwerte')
   }
 } as const;
+
+/** The label of a symbol's representation (MachineType); an unknown one as it is stored. */
+export function machineTypeLabel(type: string): string {
+  const label = machineTypeText(type);
+  return label ? localize(label) : type;
+}
 
 /** "from <start> to <end>" range label for the machine dashboard period. */
 export function rangeLabelMsg(start: string, end: string): string {

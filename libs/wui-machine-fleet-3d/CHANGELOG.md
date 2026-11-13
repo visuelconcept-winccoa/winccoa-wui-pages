@@ -65,6 +65,14 @@ role **`qualify`** of the 0.5.0 previews is gone (#75): remove it from the group
   parameter ticked in the new **"Tableau de bord"** column of the "Affichage" tab (**at most 10**,
   "Tableau de bord n / 10", in display order), then the TRS. Optional `inDashboard` on the
   `display` entries; absent, the first 10 process parameters in display order are shown.
+- **"Add a symbol" wizard**: a new symbol of type "3D model (GLB)" or "Icon (2D)" gets its model or its
+  icon at once, from the same picker as the symbol dialog (`mf-graphic-picker`, with "Manage" to import
+  some); the wizard opens on "From the site" only when the site offers a machine, else on "New symbol",
+  and an empty site list says why (no machine declared, or all already in the atelier).
+- **Representations named**: "Armoire", "Icône (2D)", "Modèle 3D (GLB)"… instead of the stored codes
+  (`cabinet`, `billboard`, `glb`…), in the wizard, the symbol dialog, the machine list, the popup and the
+  dashboard (`machine-type-labels.ts`).
+
 ## 0.5.1 — 2026-11-05
 
 - The opening view (#70) is framed again when the view is resized — the machine list or a

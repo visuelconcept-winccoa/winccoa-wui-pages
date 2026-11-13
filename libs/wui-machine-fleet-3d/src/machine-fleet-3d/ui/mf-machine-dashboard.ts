@@ -78,6 +78,7 @@ import {
   localize,
   localizeDir,
   ml,
+  machineTypeLabel,
   noStopOfClassMsg,
   rangeLabelMsg
 } from '../i18n.js';
@@ -256,7 +257,7 @@ export class MfMachineDashboard extends LitElement {
           <div class="panel-head">
             <span class="dot" style="background:${stateColor(this.mapping, this.liveState())}"></span>
             <ix-typography format="h3">${m.name}</ix-typography>
-            <ix-chip outline>${m.loc ?? m.type}</ix-chip>
+            <ix-chip outline>${m.loc ?? machineTypeLabel(m.type)}</ix-chip>
             <span class="grow"></span>
             ${m.ownerLink?.url
               ? html`<ix-button variant="secondary" @click=${() => window.location.assign(m.ownerLink?.url ?? '')}

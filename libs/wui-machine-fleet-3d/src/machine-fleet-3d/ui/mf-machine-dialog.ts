@@ -47,13 +47,13 @@ import {
   type TrsWindow
 } from '../types.js';
 import './mf-dp-field.js';
-import { SEMIFAB_ICONS } from '../data/semifab-icons.js';
+import './mf-graphic-picker.js';
 import type { AliAssetInfo } from '../data/ali-assets.js';
 import type { FleetStore } from '../data/fleet-store.js';
 import { dialogStyles } from './dialog-styles.js';
 import { overlayClicked, overlayDown } from '@visuelconcept-winccoa/wui-fleet-core/ui/overlay-dismiss.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
-import { MSG, localize, localizeDir, linkFallbackMsg, dashboardLinksHintMsg } from '../i18n.js';
+import { MSG, localize, localizeDir, linkFallbackMsg, dashboardLinksHintMsg, machineTypeLabel } from '../i18n.js';
 import { nameTaken } from '../symbol-names.js';
 import { dashboardTicks, isProcessSlot, type DashboardDisplayEntry } from '../dashboard-lines.js';
 import { SYMBOL_SCALE_MAX, SYMBOL_SCALE_MIN, storedScale, symbolScale, type ScaledMachineDef } from '../symbol-scale.js';
@@ -100,9 +100,6 @@ const TAB_LABELS: MultiLangString[] = [
 ];
 const TRS_WINDOWS = Object.keys(TRS_WINDOW_LABELS) as TrsWindow[];
 const KPI_TYPES = Object.keys(KPI_TYPE_INFO) as KpiType[];
-/** Built-in SemiFab icon library + the "no library" bucket (billboard picker). */
-const SEMIFAB_LIB = 'SemiFab';
-const UNCLASSIFIED_LIB = '__none__';
 const TRS_REFRESH_MIN_BOUND = 1;
 const TRS_REFRESH_MAX_BOUND = 1440;
 const ROTATIONS = [0, 45, 90, 135, 180, 225, 270, 315];
@@ -142,10 +139,6 @@ export class MfMachineDialog extends LitElement {
   @state() private iconPickerRow = -1;
   @state() private archiveGroups: string[] = [];
   @state() private archiveStatus = new Map<string, { enabled: boolean; group: string }>();
-  /** Selected billboard library filter ('' = SemiFab built-in, else a library). */
-  @state() private bbLibrary = '';
-  /** Resolved data URLs for imported billboard previews, keyed by resource id. */
-  @state() private bbPreviews: Record<string, string> = {};
 
   override render(): TemplateResult {
     if (!this.working) return html``;
@@ -218,28 +211,6 @@ export class MfMachineDialog extends LitElement {
       this.tab = 0;
       this.iconPickerRow = -1;
       this.archiveStatus = new Map();
-      this.bbLibrary = this.initialBbLibrary();
-    }
-    if (changed.has('billboardResources')) void this.loadBillboardPreviews();
-  }
-
-  /** Pick the library tab to open for the current billboard selection. */
-  private initialBbLibrary(): string {
-    const ref = this.machine?.billboardUrl ?? '';
-    const res = this.billboardResources.find((r) => r.ref === ref);
-    if (res) return res.library || UNCLASSIFIED_LIB;
-    return SEMIFAB_LIB;
-  }
-
-  /** Resolve imported billboards' data URLs for the picker thumbnails. */
-  private async loadBillboardPreviews(): Promise<void> {
-    const store = this.store;
-    if (!store) return;
-    for (const r of this.billboardResources) {
-      if (this.bbPreviews[r.id]) continue;
-      // eslint-disable-next-line no-await-in-loop -- a handful of resources
-      const url = await store.readResourceDataUrl(r.ref);
-      if (url) this.bbPreviews = { ...this.bbPreviews, [r.id]: url };
     }
   }
 
@@ -516,7 +487,7 @@ export class MfMachineDialog extends LitElement {
           .value=${m.type}
           @valueChange=${(e: IxValueEvent) => this.patch({ type: e.detail as MachineType })}
         >
-          ${MACHINE_TYPES.map((t) => html`<ix-select-item label=${t} value=${t}></ix-select-item>`)}
+          ${MACHINE_TYPES.map((t) => html`<ix-select-item label=${machineTypeLabel(t)} value=${t}></ix-select-item>`)}
         </ix-select>
         <ix-select
           label=${localize(MSG.machineDialog.processLabel)}
@@ -871,24 +842,13 @@ export class MfMachineDialog extends LitElement {
     const size = this.working.billboardW ?? 6;
     return html`
       <div class="subhead">${localizeDir(MSG.machineDialog.billboardTitle)}</div>
-      <div class="hint">
-        ${localizeDir(MSG.machineDialog.billboardHint)}
-      </div>
-      <div class="bb-toolbar">
-        <ix-select
-          label=${localize(MSG.machineDialog.library)}
-          .value=${this.bbLibrary}
-          @valueChange=${(e: IxValueEvent) => (this.bbLibrary = String(e.detail))}
-        >
-          ${this.billboardLibraryOptions().map(
-            (o) => html`<ix-select-item label=${o.label} value=${o.value}></ix-select-item>`
-          )}
-        </ix-select>
-        <ix-button class="link" variant="secondary" @click=${this.openResources}>
-          <ix-icon name="folder" slot="icon"></ix-icon>${localizeDir(MSG.machineDialog.manageCatalog)}
-        </ix-button>
-      </div>
-      ${this.renderBillboardGallery()}
+      <mf-graphic-picker
+        kind="billboard"
+        .value=${this.working.billboardUrl ?? ''}
+        .billboardResources=${this.billboardResources}
+        .store=${this.store}
+        @wui:change=${(e: CustomEvent<{ value?: string }>) => this.patch({ billboardUrl: e.detail.value })}
+      ></mf-graphic-picker>
       <div class="slider-field">
         <div class="slider-head"><span>${localizeDir(MSG.machineDialog.size)}</span><span class="slider-val">${size} m</span></div>
         <ix-slider
@@ -903,83 +863,17 @@ export class MfMachineDialog extends LitElement {
     `;
   }
 
-  /** Library options for the billboard picker: SemiFab built-in + imported. */
-  private billboardLibraryOptions(): { value: string; label: string }[] {
-    const opts = [{ value: SEMIFAB_LIB, label: localize(MSG.machineDialog.semifabBuiltin) }];
-    const libs = [...new Set(this.billboardResources.map((r) => r.library).filter(Boolean))].sort(
-      (a, b) => String(a).localeCompare(String(b))
-    );
-    for (const l of libs) opts.push({ value: String(l), label: String(l) });
-    if (this.billboardResources.some((r) => !r.library)) {
-      opts.push({ value: UNCLASSIFIED_LIB, label: localize(MSG.machineDialog.importedNoLibrary) });
-    }
-    return opts;
-  }
-
-  /** Icon cells for the selected library. */
-  private renderBillboardGallery(): TemplateResult {
-    const sel = this.working.billboardUrl ?? '';
-    if (this.bbLibrary === SEMIFAB_LIB) {
-      return html`<div class="icon-grid">
-        ${SEMIFAB_ICONS.map(
-          (url) => html`<button
-            type="button"
-            class="icon-cell ${sel === url ? 'icon-cell--active' : ''}"
-            title=${url.split('/').pop() ?? ''}
-            @click=${() => this.patch({ billboardUrl: url })}
-          >
-            <img src=${url} alt="" loading="lazy" />
-          </button>`
-        )}
-      </div>`;
-    }
-    const items = this.billboardResources.filter((r) =>
-      this.bbLibrary === UNCLASSIFIED_LIB ? !r.library : r.library === this.bbLibrary
-    );
-    if (items.length === 0) return html`<div class="hint">${localizeDir(MSG.machineDialog.noResourceInLibrary)}</div>`;
-    return html`<div class="icon-grid">
-      ${items.map((r) => {
-        const preview = this.bbPreviews[r.id];
-        return html`<button
-          type="button"
-          class="icon-cell ${sel === r.ref ? 'icon-cell--active' : ''}"
-          title=${r.name}
-          @click=${() => this.patch({ billboardUrl: r.ref })}
-        >
-          ${preview ? html`<img src=${preview} alt="" />` : html`<ix-icon name="image"></ix-icon>`}
-        </button>`;
-      })}
-    </div>`;
-  }
-
   private renderGlb(): TemplateResult {
     if (this.working.type !== 'glb') return html``;
     return html`
       <div class="subhead">${localizeDir(MSG.machineDialog.glbTitle)}</div>
-      <div class="glb-row">
-        <ix-select
-          class="glb-url"
-          label=${localize(MSG.machineDialog.glbResource)}
-          allow-clear
-          .value=${this.working.glbUrl ?? ''}
-          @valueChange=${(e: IxValueEvent) => this.patch({ glbUrl: e.detail ? String(e.detail) : undefined })}
-        >
-          ${this.glbResources.map(
-            (r) => html`<ix-select-item label=${r.name} value=${r.ref}></ix-select-item>`
-          )}
-        </ix-select>
-        <ix-button variant="secondary" @click=${this.openResources}>
-          <ix-icon name="folder" slot="icon"></ix-icon>${localizeDir(MSG.machineDialog.manage)}
-        </ix-button>
-      </div>
-      ${this.glbResources.length === 0
-        ? html`<div class="hint">${localizeDir(MSG.machineDialog.glbEmpty)}</div>`
-        : ''}
+      <mf-graphic-picker
+        kind="glb"
+        .value=${this.working.glbUrl ?? ''}
+        .glbResources=${this.glbResources}
+        @wui:change=${(e: CustomEvent<{ value?: string }>) => this.patch({ glbUrl: e.detail.value })}
+      ></mf-graphic-picker>
     `;
-  }
-
-  private openResources(): void {
-    this.dispatchEvent(new CustomEvent('wui:resources', { bubbles: true, composed: true }));
   }
 
   private renderState(): TemplateResult {
@@ -1545,14 +1439,6 @@ function extraStyles(): ReturnType<typeof css> {
       grid-template-columns: 1fr 1fr 1fr;
       gap: 0.5rem;
     }
-    .glb-row {
-      display: flex;
-      align-items: flex-end;
-      gap: 0.5rem;
-    }
-    .glb-row .glb-url {
-      flex: 1;
-    }
     .glb-err {
       margin-top: 0.4rem;
       color: var(--theme-color-alarm);
@@ -1627,55 +1513,6 @@ function extraStyles(): ReturnType<typeof css> {
       color: var(--theme-color-primary);
       border-bottom-color: var(--theme-color-primary);
       font-weight: 600;
-    }
-    .icon-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, 64px);
-      gap: 0.4rem;
-      max-height: 240px;
-      overflow-y: auto;
-      padding: 0.25rem;
-      border: 1px solid var(--theme-color-soft-bdr);
-      border-radius: var(--theme-default-border-radius);
-    }
-    .icon-cell {
-      width: 64px;
-      height: 64px;
-      padding: 0.2rem;
-      background: var(--theme-color-2);
-      border: 2px solid transparent;
-      border-radius: var(--theme-default-border-radius);
-      cursor: pointer;
-    }
-    .icon-cell:hover {
-      border-color: var(--theme-color-soft-bdr);
-    }
-    .icon-cell--active {
-      border-color: var(--theme-color-primary);
-      background: color-mix(in srgb, var(--theme-color-primary) 14%, transparent);
-    }
-    .icon-cell img {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      pointer-events: none;
-    }
-    .bb-toolbar {
-      display: flex;
-      align-items: flex-end;
-      gap: 0.5rem;
-      margin-bottom: 0.5rem;
-    }
-    .bb-toolbar ix-select {
-      flex: 1;
-    }
-    .icon-cell ix-icon {
-      width: 100%;
-      height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--theme-color-soft-text);
     }
     .toggle-row {
       display: flex;

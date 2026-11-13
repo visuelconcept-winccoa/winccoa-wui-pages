@@ -7,18 +7,22 @@
  *
  * A symbol is imported from the site's catalogue, copied from another atelier, read from a JSON
  * file (as the symbol dialog exports it), or created from a short form (name, representation,
- * state datapoint) — everything else is set later in the symbol's dialog. The wizard only builds
- * the definition and emits it (`wui:addsymbol`); the page places it ("à placer") and saves.
+ * state datapoint, and the 3D model or the icon when the representation needs one) — everything
+ * else is set later in the symbol's dialog. It opens on the site's catalogue when that offers a
+ * machine, on the short form otherwise. The wizard only builds the definition and emits it
+ * (`wui:addsymbol`); the page places it ("à placer") and saves.
  */
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import type { MachineDef, MachineType } from '../types.js';
-import { MSG, localize, localizeDir } from '../i18n.js';
+import type { GlbResource, MachineDef, MachineType } from '../types.js';
+import type { FleetStore } from '../data/fleet-store.js';
+import { MSG, localize, localizeDir, machineTypeLabel } from '../i18n.js';
 import { dialogStyles } from './dialog-styles.js';
 import { MACHINE_TYPES } from './mf-machine-dialog.js';
 import { overlayClicked, overlayDown } from '@visuelconcept-winccoa/wui-fleet-core/ui/overlay-dismiss.js';
 import './mf-dp-field.js';
+import './mf-graphic-picker.js';
 
 type Source = 'catalog' | 'atelier' | 'file' | 'create';
 
@@ -86,13 +90,27 @@ export class MfSymbolWizard extends LitElement {
   @property({ attribute: false }) catalog: MachineDef[] = [];
   /** Symbols of the other ateliers (loaded by the page when the wizard opens). */
   @property({ attribute: false }) others: OtherSymbol[] = [];
+  /** Machines the site's catalogue declares, this atelier's included (the empty list says why). */
+  @property({ type: Number }) siteCount = 0;
+  /** Graphics catalogue of the atelier: 3D models and icons for a new symbol. */
+  @property({ attribute: false }) glbResources: GlbResource[] = [];
+  @property({ attribute: false }) billboardResources: GlbResource[] = [];
+  @property({ attribute: false }) store: FleetStore | null = null;
 
   @state() private source: Source = 'catalog';
   @state() private query = '';
   @state() private name = '';
   @state() private type: MachineType = 'cabinet';
   @state() private stateDp = '';
+  /** The new symbol's 3D model (`glb`) or icon (`billboard`). */
+  @state() private glbUrl = '';
+  @state() private billboardUrl = '';
   @state() private fileError = false;
+
+  protected override willUpdate(): void {
+    // Opening source, chosen once: the site's catalogue when it offers a machine, the short form otherwise.
+    if (!this.hasUpdated) this.source = this.catalog.length > 0 ? 'catalog' : 'create';
+  }
 
   override render(): TemplateResult {
     const tab = (s: Source, label: Parameters<typeof localize>[0]): TemplateResult =>
@@ -124,7 +142,10 @@ export class MfSymbolWizard extends LitElement {
 
   private renderSource(): TemplateResult {
     if (this.source === 'catalog') {
-      return this.renderList(this.catalog.map((m) => ({ key: m.id, label: m.name, hint: m.type, def: m })));
+      if (this.catalog.length === 0) {
+        return html`<div class="muted">${localizeDir(this.siteCount > 0 ? MSG.wizard.siteAllPlaced : MSG.wizard.siteNone)}</div>`;
+      }
+      return this.renderList(this.catalog.map((m) => ({ key: m.id, label: m.name, hint: machineTypeLabel(m.type), def: m })));
     }
     if (this.source === 'atelier') {
       return this.renderList(
@@ -145,8 +166,25 @@ export class MfSymbolWizard extends LitElement {
           @valueChange=${(e: IxValueEvent) => (this.name = String(e.detail))}
         ></ix-input>
         <ix-select label=${localize(MSG.wizard.type)} .value=${this.type} @valueChange=${(e: IxValueEvent) => (this.type = e.detail as MachineType)}>
-          ${MACHINE_TYPES.map((t) => html`<ix-select-item label=${t} value=${t}></ix-select-item>`)}
+          ${MACHINE_TYPES.map((t) => html`<ix-select-item label=${machineTypeLabel(t)} value=${t}></ix-select-item>`)}
         </ix-select>
+        ${this.type === 'glb'
+          ? html`<mf-graphic-picker
+              kind="glb"
+              .value=${this.glbUrl}
+              .glbResources=${this.glbResources}
+              @wui:change=${(e: CustomEvent<{ value?: string }>) => (this.glbUrl = e.detail.value ?? '')}
+            ></mf-graphic-picker>`
+          : ''}
+        ${this.type === 'billboard'
+          ? html`<mf-graphic-picker
+              kind="billboard"
+              .value=${this.billboardUrl}
+              .billboardResources=${this.billboardResources}
+              .store=${this.store}
+              @wui:change=${(e: CustomEvent<{ value?: string }>) => (this.billboardUrl = e.detail.value ?? '')}
+            ></mf-graphic-picker>`
+          : ''}
         <mf-dp-field
           label=${localize(MSG.wizard.stateDp)}
           .value=${this.stateDp}
@@ -193,6 +231,8 @@ export class MfSymbolWizard extends LitElement {
   private create(): void {
     const def: MachineDef = { id: '', name: this.name.trim(), type: this.type, x: 0, z: 0, state: 'ok', kpis: [] };
     if (this.stateDp.trim()) def.stateDp = this.stateDp.trim();
+    if (this.type === 'glb' && this.glbUrl) def.glbUrl = this.glbUrl;
+    if (this.type === 'billboard' && this.billboardUrl) def.billboardUrl = this.billboardUrl;
     this.emit(def, false);
   }
 
