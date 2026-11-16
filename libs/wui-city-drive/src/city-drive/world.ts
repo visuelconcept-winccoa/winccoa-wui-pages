@@ -747,9 +747,13 @@ export class CityWorld {
     switch (this.cameraMode) {
       case 'chase': {
         // close enough to read the number plate when stopped; pulls back with speed
-        const back = 7.2 + Math.min(5, Math.abs(speed) * 0.1);
-        want.set(pos.x - fx * back, 2.5 + Math.min(1.8, Math.abs(speed) * 0.035), pos.z - fz * back);
+        // pulls back only a little with speed: the plate stays readable at ~100 km/h
+        const back = 7.2 + Math.min(2.5, Math.abs(speed) * 0.05);
+        want.set(pos.x - fx * back, 2.5 + Math.min(1, Math.abs(speed) * 0.02), pos.z - fz * back);
         look.set(pos.x + fx * 7, 1.3, pos.z + fz * 7);
+        // a stiffer follow: the smoothing lag (speed / stiffness) stays under 2 m at 100 km/h
+        stiffness = 14;
+        fov = 62 + Math.min(6, Math.abs(speed) * 0.2);
         break;
       }
       case 'street': {
