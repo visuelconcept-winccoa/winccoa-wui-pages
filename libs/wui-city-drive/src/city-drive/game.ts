@@ -14,7 +14,7 @@ import type { NeonPalette } from './palette.js';
 import { collide, collideCars, forwardSpeed, newCar, stepCar, type CarInput, type CarState } from './physics.js';
 import { carPose, spawnTraffic, stepTraffic, type LightOverrides, type TrafficCar } from './traffic.js';
 import { DEFAULT_PROFILE, vehicleById, type Profile, type Vehicle } from './vehicles.js';
-import { CityWorld, type CameraMode, type RemoteCar } from './world.js';
+import { CAMERA_MODES, CityWorld, type CameraMode, type RemoteCar } from './world.js';
 
 export type GameEvent = 'collision' | 'pickup' | 'mission-done' | 'mission-failed' | 'refuel' | 'empty';
 
@@ -136,9 +136,16 @@ export class CityGame {
     this.emitHud();
   }
 
+  /** Next camera view (C). */
   toggleCamera(): void {
-    this.camera = this.camera === 'chase' ? 'top' : 'chase';
+    this.camera = CAMERA_MODES[(CAMERA_MODES.indexOf(this.camera) + 1) % CAMERA_MODES.length];
     this.world.setCameraMode(this.camera);
+    this.emitHud();
+  }
+
+  setCamera(mode: CameraMode): void {
+    this.camera = mode;
+    this.world.setCameraMode(mode);
     this.emitHud();
   }
 

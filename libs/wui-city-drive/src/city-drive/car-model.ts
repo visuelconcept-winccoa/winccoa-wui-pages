@@ -37,6 +37,86 @@ export interface CarLook {
   glow: number;
   /** Tail light colour. */
   tail: number;
+  /** Registration, Eisenstadt style (`E` district): `WINCCOA 1`, `482 KT`… */
+  plate?: string;
+}
+
+const PLATES = new Map<string, CanvasTexture>();
+
+/**
+ * An Austrian number plate from Eisenstadt, the cradle of WinCC OA: white, red-white-red bands
+ * at the top and bottom, the EU strip with `A`, the district `E`, the coat of arms of
+ * Burgenland, then the registration.
+ */
+export function plateTexture(text: string): CanvasTexture {
+  const cached = PLATES.get(text);
+  if (cached) return cached;
+  const W = 520;
+  const H = 120;
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const g = c.getContext('2d') as CanvasRenderingContext2D;
+  g.fillStyle = '#ffffff';
+  g.fillRect(0, 0, W, H);
+  // red-white-red bands
+  g.fillStyle = '#c8102e';
+  g.fillRect(0, 0, W, 9);
+  g.fillRect(0, H - 9, W, 9);
+  // EU strip: blue, ring of stars, A
+  g.fillStyle = '#003399';
+  g.fillRect(0, 9, 46, H - 18);
+  g.fillStyle = '#ffcc00';
+  for (let k = 0; k < 12; k++) {
+    const a = (k / 12) * Math.PI * 2;
+    g.beginPath();
+    g.arc(23 + Math.cos(a) * 12, 42 + Math.sin(a) * 12, 2.2, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.fillStyle = '#ffffff';
+  g.font = '700 26px Arial, Helvetica, sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText('A', 23, 88);
+  // district E
+  g.fillStyle = '#111111';
+  g.font = '700 78px "DIN 1451", "Arial Narrow", Arial, sans-serif';
+  g.textAlign = 'left';
+  g.fillText('E', 60, 63);
+  // coat of arms of Burgenland: a gold shield with a red field
+  const sx = 118;
+  g.fillStyle = '#d4a017';
+  g.beginPath();
+  g.moveTo(sx, 30);
+  g.lineTo(sx + 30, 30);
+  g.lineTo(sx + 30, 66);
+  g.quadraticCurveTo(sx + 15, 92, sx, 66);
+  g.closePath();
+  g.fill();
+  g.fillStyle = '#c8102e';
+  g.fillRect(sx + 7, 38, 16, 20);
+  g.strokeStyle = '#111111';
+  g.lineWidth = 2;
+  g.stroke();
+  // registration, condensed to fit
+  g.fillStyle = '#111111';
+  g.font = '700 78px "DIN 1451", "Arial Narrow", Arial, sans-serif';
+  const room = W - 166 - 14;
+  const width = g.measureText(text).width;
+  g.save();
+  g.translate(166, 63);
+  if (width > room) g.scale(room / width, 1);
+  g.fillText(text, 0, 0);
+  g.restore();
+  // black rim
+  g.strokeStyle = '#111111';
+  g.lineWidth = 4;
+  g.strokeRect(2, 2, W - 4, H - 4);
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  t.anisotropy = 8;
+  PLATES.set(text, t);
+  return t;
 }
 
 const CLEARANCE = 0.32;
@@ -219,6 +299,18 @@ export function buildCar(b: Body, look: CarLook): Group {
     const t = new Mesh(new BoxGeometry(0.1, b.fins ? 0.42 : 0.2, 0.05), tail);
     t.position.set(Math.sign(sx) * (b.w / 2 - 0.12), b.fins ? belt - 0.02 : belt - 0.3, -L - 0.02);
     g.add(head, t);
+  }
+
+  // number plates, front and rear
+  if (look.plate) {
+    const plateMat = new MeshStandardMaterial({ map: plateTexture(look.plate), roughness: 0.4, metalness: 0.1 });
+    const geo = new PlaneGeometry(0.62, 0.143);
+    const front = new Mesh(geo, plateMat);
+    front.position.set(0, CLEARANCE + 0.33, L + 0.11);
+    const rear = new Mesh(geo, plateMat);
+    rear.position.set(0, belt - 0.5, -L - 0.07);
+    rear.rotation.y = Math.PI;
+    g.add(front, rear);
   }
 
   // wheels

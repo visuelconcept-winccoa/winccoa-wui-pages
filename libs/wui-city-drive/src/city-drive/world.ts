@@ -66,7 +66,13 @@ import { lightAt, type LightOverrides } from './traffic.js';
 import { StreetLife } from './street.js';
 import { asphaltMaps, beamTexture, facadeMaps, pavementMaps, type FacadeMaps } from './textures.js';
 
-export type CameraMode = 'chase' | 'top';
+/**
+ * Camera views, cycled with C: chase (behind), street (low, close, at the height of the
+ * pedestrians), hood (from the bonnet), drone (circling above the car), corner (a fixed camera
+ * at the next street corner, as on TV, changing corner when the car is gone), top (map view).
+ */
+export type CameraMode = 'chase' | 'street' | 'hood' | 'drone' | 'corner' | 'top';
+export const CAMERA_MODES: readonly CameraMode[] = ['chase', 'street', 'hood', 'drone', 'corner', 'top'];
 
 export interface CarPose {
   x: number;
@@ -111,9 +117,18 @@ const LIGHT_POST = 2.4;
 /** Size of the moonlight's shadow box around the player (m). */
 const SHADOW_SPAN = 110;
 const BEAM = beamTexture();
+/** The player's registration: Eisenstadt, the cradle of WinCC OA. */
+const PLAYER_PLATE = 'WINCCOA 1';
 
 function neon(color: number, opacity = 1): LineBasicMaterial {
   return new LineBasicMaterial({ color, transparent: opacity < 1, opacity });
+}
+
+/** A registration of the Eisenstadt district: three digits and two letters. */
+function randomPlate(k: number): string {
+  const letters = 'ABCDEFGHJKLMNPRSTUVWXYZ';
+  const n = (k * 7919 + 131) % 1000;
+  return `${String(n).padStart(3, '0')} ${letters[(k * 31) % letters.length]}${letters[(k * 17 + 5) % letters.length]}`;
 }
 
 /** The traffic's sedans: long, low, every other one with tail fins. */
@@ -121,8 +136,8 @@ const SEDAN: Body = { w: 2, h: 0.6, l: 5.1, cabinL: 2.1, cabinH: 0.5, cabinZ: -0
 const SEDAN_FINS: Body = { ...SEDAN, fins: true };
 
 /** A car of the game: the model, plus the visible beams of its headlights. */
-function makeCar(p: NeonPalette, glow: number, paint: number, b: Body = SEDAN): Group {
-  const g = buildCar(b, { paint, glow, tail: p.alarm });
+function makeCar(p: NeonPalette, glow: number, paint: number, b: Body = SEDAN, plate?: string): Group {
+  const g = buildCar(b, { paint, glow, tail: p.alarm, plate });
   for (const sx of [-b.w * 0.36, b.w * 0.36]) {
     const beam = new Mesh(
       new ConeGeometry(2.6, 16, 20, 1, true),
@@ -130,6 +145,7 @@ function makeCar(p: NeonPalette, glow: number, paint: number, b: Body = SEDAN): 
     );
     beam.rotation.x = -Math.PI / 2; // tip at the lamp, opening forward
     beam.position.set(sx, headlightY(b), b.l / 2 + 8);
+    beam.userData.beam = true;
     g.add(beam);
   }
   return g;
@@ -155,6 +171,8 @@ export class CityWorld {
   private readonly camPos = new Vector3();
   private readonly camLook = new Vector3();
   private cameraMode: CameraMode = 'chase';
+  private corner: Vector3 | null = null;
+  private playerBody: Body = SEDAN;
   private elapsed = 0;
 
   constructor(
@@ -203,7 +221,7 @@ export class CityWorld {
     this.street = new StreetLife(city, p);
     this.scene.add(this.street.group);
 
-    this.player = makeCar(p, p.primary, 0x14232a);
+    this.player = makeCar(p, p.primary, 0x14232a, SEDAN, PLAYER_PLATE);
     this.scene.add(this.player);
     this.attachHeadlights(SEDAN);
 
@@ -575,7 +593,7 @@ export class CityWorld {
       let entry = this.remotes.get(r.id);
       if (!entry || entry.key !== key) {
         if (entry) this.scene.remove(entry.car);
-        const car = makeCar(this.p, r.color, 0x2a2f33, vehicleById(r.vehicle).body);
+        const car = makeCar(this.p, r.color, 0x2a2f33, vehicleById(r.vehicle).body, randomPlate(r.id.length * 13 + r.nickname.length));
         const tag = nameTag(r.nickname || r.id, r.color);
         tag.position.y = 5;
         car.add(tag);
@@ -604,9 +622,13 @@ export class CityWorld {
   setPlayerVehicle(body: Body, glow: number): void {
     const pose = { x: this.player.position.x, z: this.player.position.z, heading: this.player.rotation.y };
     this.scene.remove(this.player);
-    this.player = makeCar(this.p, glow, 0x14232a, body);
+    this.player = makeCar(this.p, glow, 0x14232a, body, PLAYER_PLATE);
+    this.playerBody = body;
     this.scene.add(this.player);
     this.attachHeadlights(body);
+    this.player.traverse((o) => {
+      if (o.userData.beam) o.visible = this.cameraMode !== 'hood';
+    });
     this.setPlayer(pose);
   }
 
@@ -631,7 +653,7 @@ export class CityWorld {
     const glows = [this.p.dynamic, this.p.info, this.p.critical, this.p.success, this.p.warning];
     while (this.traffic.length < poses.length) {
       const k = this.traffic.length;
-      const car = makeCar(this.p, glows[k % glows.length], mix(poses[k].color, 0x000000, 0.35), k % 2 ? SEDAN_FINS : SEDAN);
+      const car = makeCar(this.p, glows[k % glows.length], mix(poses[k].color, 0x000000, 0.35), k % 2 ? SEDAN_FINS : SEDAN, randomPlate(k));
       this.traffic.push(car);
       this.scene.add(car);
     }
@@ -680,6 +702,21 @@ export class CityWorld {
 
   setCameraMode(mode: CameraMode): void {
     this.cameraMode = mode;
+    this.corner = null;
+    // from the bonnet, the player's own beams would veil the view
+    this.player.traverse((o) => {
+      if (o.userData.beam) o.visible = mode !== 'hood';
+    });
+  }
+
+  /** A street-corner camera ahead of the car: the next crossroads, on a sidewalk corner. */
+  private pickCorner(pos: Vector3, fx: number, fz: number): Vector3 {
+    const ahead = new Vector3(pos.x + fx * CELL * 0.6, 0, pos.z + fz * CELL * 0.6);
+    const cx = Math.round(ahead.x / CELL) * CELL;
+    const cz = Math.round(ahead.z / CELL) * CELL;
+    const side = ROAD_WIDTH / 2 + 2.5;
+    // the corner on the car's right, so the car passes in front of the lens
+    return new Vector3(cx + (fz >= 0 ? -side : side), 2.2, cz + (fx >= 0 ? side : -side));
   }
 
   /** Follows the player and renders one frame. */
@@ -705,15 +742,54 @@ export class CityWorld {
     const pos = this.player.position;
     const want = new Vector3();
     const look = new Vector3();
-    if (this.cameraMode === 'chase') {
-      const back = 11 + Math.min(6, Math.abs(speed) * 0.12);
-      want.set(pos.x - fx * back, 4.6 + Math.min(2, Math.abs(speed) * 0.04), pos.z - fz * back);
-      look.set(pos.x + fx * 6, 1.6, pos.z + fz * 6);
-    } else {
-      want.set(pos.x - fx * 0.1, 140, pos.z - fz * 0.1);
-      look.copy(pos);
+    let stiffness = 6;
+    let fov = 62 + Math.min(14, Math.abs(speed) * 0.3);
+    switch (this.cameraMode) {
+      case 'chase': {
+        const back = 11 + Math.min(6, Math.abs(speed) * 0.12);
+        want.set(pos.x - fx * back, 4.6 + Math.min(2, Math.abs(speed) * 0.04), pos.z - fz * back);
+        look.set(pos.x + fx * 6, 1.6, pos.z + fz * 6);
+        break;
+      }
+      case 'street': {
+        // low and close: the shops, signs and pedestrians fill the frame
+        const back = 6.5 + Math.min(3, Math.abs(speed) * 0.06);
+        want.set(pos.x - fx * back, 1.25, pos.z - fz * back);
+        look.set(pos.x + fx * 10, 2.4, pos.z + fz * 10);
+        fov += 8;
+        break;
+      }
+      case 'hood': {
+        // on the bonnet, in front of the windscreen
+        const ahead = this.playerBody.l / 2 - 1.1;
+        want.set(pos.x + fx * ahead, headlightY(this.playerBody) + 0.95, pos.z + fz * ahead);
+        look.set(pos.x + fx * 30, 1.6, pos.z + fz * 30);
+        stiffness = 30;
+        fov += 6;
+        break;
+      }
+      case 'drone': {
+        const a = this.elapsed * 0.25;
+        want.set(pos.x + Math.sin(a) * 22, 16, pos.z + Math.cos(a) * 22);
+        look.set(pos.x, 1.2, pos.z);
+        stiffness = 3;
+        fov = 55;
+        break;
+      }
+      case 'corner': {
+        if (!this.corner || this.corner.distanceTo(pos) > CELL * 0.9) this.corner = this.pickCorner(pos, fx, fz);
+        want.copy(this.corner);
+        look.set(pos.x, 1.2, pos.z);
+        stiffness = 40; // a fixed camera: no glide
+        fov = 50;
+        break;
+      }
+      default: {
+        want.set(pos.x - fx * 0.1, 140, pos.z - fz * 0.1);
+        look.copy(pos);
+      }
     }
-    const k = 1 - Math.exp(-dt * 6);
+    const k = 1 - Math.exp(-dt * stiffness);
     if (this.camPos.lengthSq() === 0) {
       this.camPos.copy(want);
       this.camLook.copy(look);
@@ -722,7 +798,7 @@ export class CityWorld {
     this.camLook.lerp(look, k);
     this.camera.position.copy(this.camPos);
     this.camera.lookAt(this.camLook);
-    this.camera.fov = 62 + Math.min(14, Math.abs(speed) * 0.3);
+    this.camera.fov = fov;
     this.camera.updateProjectionMatrix();
     this.composer.render(dt);
   }

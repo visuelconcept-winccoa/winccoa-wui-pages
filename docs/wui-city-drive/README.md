@@ -13,7 +13,7 @@ The game is in English only.
 - Vehicles: **Coupé de Ville** (fast), **Limousine** (long, heavy), **Pickup**, **Maintenance
   van** (best range). Each has its own physics (speed, grip, steering, fuel, size).
 - Keys: W/Z ↑ throttle · S ↓ brake / reverse · A/Q ← D → steer · Space handbrake (drift) ·
-  C camera (chase / top) · R back on the road · N new mission · Esc pause. Click the city first
+  C camera (chase, street level, bonnet, drone, street-corner cameras, map view) · R back on the road · N new mission · Esc pause. Click the city first
   so it gets the keyboard.
 - Missions: **delivery** (pick up, then drop, before the timer) and **intervention** (a machine
   in fault: drive to its hall; offered as soon as a machine fails, replaces a delivery).
@@ -59,6 +59,8 @@ Three.js, bundled into the page. Bloom; neon in the iX theme colours read from t
 `--theme-color-*` tokens; procedural textures (facades, asphalt, pavement, signs): no image file.
 Moonlight shadows around the player, real spot lights for the player's headlights. The Visuel
 Concept logo is drawn from its colours (signs on the roofs and at the top of the facades).
+Every car carries an Austrian number plate of Eisenstadt (district `E`), the cradle of WinCC OA;
+the player's reads `E · WINCCOA 1`.
 
 Needs a GPU: on a machine without one (software WebGL), the game runs but slowly.
 
