@@ -746,9 +746,10 @@ export class CityWorld {
     let fov = 62 + Math.min(14, Math.abs(speed) * 0.3);
     switch (this.cameraMode) {
       case 'chase': {
-        const back = 11 + Math.min(6, Math.abs(speed) * 0.12);
-        want.set(pos.x - fx * back, 4.6 + Math.min(2, Math.abs(speed) * 0.04), pos.z - fz * back);
-        look.set(pos.x + fx * 6, 1.6, pos.z + fz * 6);
+        // close enough to read the number plate when stopped; pulls back with speed
+        const back = 7.2 + Math.min(5, Math.abs(speed) * 0.1);
+        want.set(pos.x - fx * back, 2.5 + Math.min(1.8, Math.abs(speed) * 0.035), pos.z - fz * back);
+        look.set(pos.x + fx * 7, 1.3, pos.z + fz * 7);
         break;
       }
       case 'street': {
