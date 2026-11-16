@@ -1,0 +1,105 @@
+{
+  "name": "@visuelconcept-winccoa/wui-city-drive",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "City Drive — standalone WinCC OA WebUI page: an original 3D driving game in a neon city (Three.js, Siemens iX colours) whose plant is bound to datapoints: machine halls follow their state, a fault calls for an intervention mission, a datapoint can force a crossroads red; the player's telemetry is written to its own datapoint. Demo mode without a backend.",
+  "author": {
+    "name": "Visuel Concept"
+  },
+  "keywords": [
+    "OpenArchitecture",
+    "WinCCOA",
+    "dashboard",
+    "webcomponents",
+    "standalone-page",
+    "game",
+    "three.js"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0",
+    "@visuelconcept-winccoa/wui-para": "^0.1.0",
+    "@visuelconcept-winccoa/wui-app-security": "^0.1.0",
+    "three": "^0.169.0"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "tsyringe": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-i18n-shared": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-models": "*",
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-shared": "*",
+    "@wincc-oa/wui-iam-data": "*"
+  },
+  "exports": {
+    "./*": {
+      "types": "./types/*",
+      "import": "./*"
+    }
+  },
+  "wuiPage": {
+    "requires": [
+      "para",
+      "app-security"
+    ],
+    "route": "/city-drive",
+    "component": "wui-city-drive",
+    "module": "/data/dashboard-wc/pages/city-drive.js",
+    "permission": [
+      "connected"
+    ],
+    "icon": "truck",
+    "tier": 1
+  },
+  "peerDependenciesMeta": {
+    "lit": {
+      "optional": true
+    },
+    "rxjs": {
+      "optional": true
+    },
+    "tsyringe": {
+      "optional": true
+    },
+    "@etm-professional-control/oa-rx-js-api": {
+      "optional": true
+    },
+    "@wincc-oa/wui-i18n-shared": {
+      "optional": true
+    },
+    "@wincc-oa/wui-ix-wrappers": {
+      "optional": true
+    },
+    "@wincc-oa/wui-models": {
+      "optional": true
+    },
+    "@wincc-oa/wui-oarxjs-context": {
+      "optional": true
+    },
+    "@wincc-oa/wui-shared": {
+      "optional": true
+    },
+    "@wincc-oa/wui-iam-data": {
+      "optional": true
+    }
+  },
+  "files": [
+    "CHANGELOG.md",
+    "src",
+    "menu.fragment.jsonc",
+    "!**/*.spec.ts",
+    "!**/*.test.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/visuelconcept-winccoa/winccoa-wui-pages.git",
+    "directory": "libs/wui-city-drive"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  }
+}

@@ -1,0 +1,353 @@
+// SPDX-FileCopyrightText: 2026 VISUEL CONCEPT
+// SPDX-License-Identifier: AGPL-3.0-only
+
+/**
+ * The datapoints of City Drive (#79): the only file that talks to WinCC OA.
+ *
+ * - out: the player's telemetry in `CityDrive_Player_<user>` (type `CityDrive_Player`, created
+ *   through PARA when missing), written through `/api/para/dp/set` at most twice a second
+ *   (telemetry.ts). The game writes nothing else: no process datapoint.
+ * - in: `CityDrive_Config.json` (bindings.ts) and a `dpConnect` on the bound DPEs, turned into
+ *   machine states and forced crossroads.
+ * - demo: without a backend (`npx wui dev`), the machines change state on their own and one of
+ *   them breaks down from time to time.
+ */
+import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
+import { WuiUserService } from '@wincc-oa/wui-iam-data/user-service.js';
+import { DpSingleJsonStore } from '@visuelconcept-winccoa/wui-kit/data/dp-single-json-store.js';
+import { Subscription } from 'rxjs';
+import { container } from 'tsyringe';
+import { boundDpes, lightForced, machineState, parseConfig, type DriveConfig, type MachineState } from './bindings.js';
+import type { Telemetry } from './game.js';
+import { carPose, spawnTraffic, stepTraffic, type TrafficCar } from './traffic.js';
+import { rng } from './city.js';
+
+export const PLAYER_TYPE = 'CityDrive_Player';
+export const CONFIG_DP = 'CityDrive_Config';
+
+const TYPE_URL = '/api/para/dptype';
+const CREATE_DP_URL = '/api/para/dp/create';
+const DP_SET_URL = '/api/para/dp/set';
+const DEMO_MACHINES = ['machine-1', 'machine-2', 'machine-3', 'machine-4'];
+const DEMO_PERIOD_MS = 9000;
+const PLAYERS_REFRESH_MS = 15000;
+const DEMO_STEP_MS = 100;
+/** A player is shown as connected while its datapoint moved within this delay. */
+export const ONLINE_MS = 35000;
+
+/** Another player, as read from its `CityDrive_Player_<user>` datapoint. */
+export interface RemotePlayer {
+  dp: string;
+  nickname: string;
+  vehicle: string;
+  color: string;
+  x: number;
+  z: number;
+  /** Degrees, 0 = +Z. */
+  heading: number;
+  speed: number;
+  score: number;
+  mission: string;
+  /** Last change of any of its elements (ms, epoch). */
+  updatedAt: number;
+}
+
+const DEMO_PLAYERS = [
+  { user: 'lea.m', nickname: 'Léa', vehicle: 'coupe', color: 'warning' },
+  { user: 'maint02', nickname: 'Maint-02', vehicle: 'van', color: 'success' },
+  { user: 'op.nuit', nickname: 'OpNuit', vehicle: 'pickup', color: 'alarm' }
+];
+
+/** Telemetry field → element of the player datapoint. */
+const ELEMENT: Record<keyof Telemetry, string> = {
+  x: 'pos.x',
+  z: 'pos.z',
+  heading: 'heading',
+  speed: 'speed',
+  fuel: 'fuel',
+  score: 'score',
+  mission: 'mission',
+  event: 'event',
+  nickname: 'nickname',
+  vehicle: 'vehicle',
+  color: 'color'
+};
+
+const PLAYER_STRUCTURE = {
+  name: PLAYER_TYPE,
+  type: 'Struct',
+  children: [
+    { name: 'pos', type: 'Struct', children: [{ name: 'x', type: 'Float' }, { name: 'z', type: 'Float' }] },
+    { name: 'heading', type: 'Float' },
+    { name: 'speed', type: 'Float' },
+    { name: 'fuel', type: 'Float' },
+    { name: 'score', type: 'Int' },
+    { name: 'mission', type: 'String' },
+    { name: 'event', type: 'String' },
+    { name: 'nickname', type: 'String' },
+    { name: 'vehicle', type: 'String' },
+    { name: 'color', type: 'String' }
+  ]
+};
+
+interface DpEmission {
+  dp: string[];
+  value: unknown[];
+}
+
+/** A user name as a datapoint name suffix. */
+export function playerDp(user: string): string {
+  const safe = user.trim().replaceAll(/[^\w]+/g, '_');
+  return `${PLAYER_TYPE}_${safe || 'guest'}`;
+}
+
+/** `System1:Line.State.` → `Line.State` (system and trailing dot dropped). */
+export function normDpe(name: string): string {
+  const bare = name.includes(':') ? name.slice(name.indexOf(':') + 1) : name;
+  return bare.replace(/:_original\.\._value$/, '').replace(/\.$/, '');
+}
+
+/** The DPE names and values to write for a telemetry change. */
+export function telemetryWrite(dp: string, fields: Partial<Telemetry>): { dpeNames: string[]; values: unknown[] } {
+  const entries = Object.entries(fields) as [keyof Telemetry, unknown][];
+  return { dpeNames: entries.map(([k]) => `${dp}.${ELEMENT[k]}`), values: entries.map(([, v]) => v) };
+}
+
+function post(url: string, body: object): Promise<Response> {
+  return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+}
+
+export interface LinkState {
+  machines: Map<string, MachineState>;
+  allRed: Set<string>;
+}
+
+export class DriveLink {
+  /** True without a backend: simulated machines, nothing written. */
+  demo = false;
+  player = '';
+  private readonly api = resolve(OaRxJsApi);
+  private readonly configStore = new DpSingleJsonStore<DriveConfig>(CONFIG_DP, CONFIG_DP, () => ({ machines: [], lights: [] }));
+  private sub = new Subscription();
+  private playersSub = new Subscription();
+  private playersTimer = 0;
+  private demoBotsTimer = 0;
+  /** Telemetry writes done, and the time of the last one (ms) — shown in the players panel. */
+  writes = 0;
+  lastWriteAt = 0;
+  private demoTimer = 0;
+  private writing = false;
+
+  /** Prepares the player datapoint and reads the bindings; switches to demo without a backend. */
+  async open(onState: (s: LinkState) => void): Promise<void> {
+    const raw = await this.configStore.load();
+    const config = parseConfig(raw);
+    this.demo = !this.api || this.configStore.offline;
+    if (this.demo) {
+      this.startDemo(onState);
+      return;
+    }
+    this.player = playerDp(await userName());
+    await this.ensurePlayerDp().catch(() => {
+      this.player = ''; // cannot create it: play without telemetry
+    });
+    this.subscribe(config, onState);
+  }
+
+  close(): void {
+    this.sub.unsubscribe();
+    this.playersSub.unsubscribe();
+    window.clearInterval(this.demoTimer);
+    window.clearInterval(this.playersTimer);
+    window.clearInterval(this.demoBotsTimer);
+  }
+
+  /**
+   * The other players: every `CityDrive_Player_*` datapoint but one's own, followed by
+   * `dpConnect` (the list is read again every 15 s). In demo, three simulated players drive.
+   */
+  watchPlayers(onPlayers: (players: RemotePlayer[]) => void, blocks: number): void {
+    if (this.demo) {
+      this.demoPlayers(onPlayers, blocks);
+      return;
+    }
+    let current = '';
+    const refresh = (): void => {
+      if (!this.api) return;
+      this.playersSub.add(
+        this.api.dpNames(`${PLAYER_TYPE}_*`, PLAYER_TYPE).subscribe({
+          next: (names) => {
+            const others = (names as string[]).map(normDpe).filter((n) => n !== this.player).sort();
+            if (others.join('|') === current) return;
+            current = others.join('|');
+            this.followPlayers(others, onPlayers);
+          },
+          error: () => undefined
+        })
+      );
+    };
+    refresh();
+    this.playersTimer = window.setInterval(refresh, PLAYERS_REFRESH_MS);
+  }
+
+  private followPlayers(dps: string[], onPlayers: (players: RemotePlayer[]) => void): void {
+    this.playersSub.unsubscribe();
+    this.playersSub = new Subscription();
+    const players = new Map<string, RemotePlayer>(dps.map((dp) => [dp, emptyPlayer(dp)]));
+    onPlayers([...players.values()]);
+    if (dps.length === 0 || !this.api) return;
+    const fields = Object.entries(ELEMENT) as [keyof Telemetry, string][];
+    const dpes = dps.flatMap((dp) => fields.map(([, el]) => `${dp}.${el}`));
+    try {
+      this.playersSub.add(
+        this.api.dpConnect(dpes, true).subscribe((data: DpEmission) => {
+          const now = Date.now();
+          data.dp.forEach((name, i) => {
+            const dpe = normDpe(name);
+            const dp = dps.find((d) => dpe.startsWith(`${d}.`));
+            const field = fields.find(([, el]) => dp && dpe === `${dp}.${el}`)?.[0];
+            if (!dp || !field) return;
+            const p = players.get(dp) as RemotePlayer;
+            (p as unknown as Record<string, unknown>)[field] = data.value[i];
+            p.updatedAt = now;
+          });
+          onPlayers([...players.values()].map((p) => ({ ...p })));
+        })
+      );
+    } catch {
+      // a player datapoint deleted meanwhile: the next refresh drops it
+    }
+  }
+
+  private demoPlayers(onPlayers: (players: RemotePlayer[]) => void, blocks: number): void {
+    const cars: TrafficCar[] = spawnTraffic(DEMO_PLAYERS.length, blocks, 4242);
+    const rand = rng(77);
+    const scores = DEMO_PLAYERS.map((_, k) => 400 + k * 350);
+    let t = 0;
+    this.demoBotsTimer = window.setInterval(() => {
+      t += DEMO_STEP_MS / 1000;
+      stepTraffic(cars, blocks, t, DEMO_STEP_MS / 1000, null, rand);
+      const now = Date.now();
+      onPlayers(
+        cars.map((c, k) => {
+          if (rand() < 0.01) scores[k] += 150;
+          const pose = carPose(c);
+          const d = DEMO_PLAYERS[k];
+          return {
+            dp: playerDp(d.user),
+            nickname: d.nickname,
+            vehicle: d.vehicle,
+            color: d.color,
+            x: pose.x,
+            z: pose.z,
+            heading: (pose.heading * 180) / Math.PI,
+            speed: Math.round(c.speed * 3.6 * 1.4),
+            score: scores[k],
+            mission: k === 1 ? 'intervention:reach' : 'delivery:drop',
+            updatedAt: now
+          };
+        })
+      );
+    }, DEMO_STEP_MS);
+  }
+
+  /** Writes the changed telemetry fields (skips when a write is still running). */
+  async write(fields: Partial<Telemetry>): Promise<void> {
+    if (this.demo || !this.player || this.writing) return;
+    this.writing = true;
+    try {
+      const res = await post(DP_SET_URL, telemetryWrite(this.player, fields));
+      if (res.ok) {
+        this.writes++;
+        this.lastWriteAt = Date.now();
+      }
+    } catch {
+      // the next sample will try again
+    } finally {
+      this.writing = false;
+    }
+  }
+
+  private async ensurePlayerDp(): Promise<void> {
+    const type = await fetch(`${TYPE_URL}/${encodeURIComponent(PLAYER_TYPE)}`);
+    if (!type.ok) {
+      const res = await post(`${TYPE_URL}/create`, { typeName: PLAYER_TYPE, structure: PLAYER_STRUCTURE });
+      if (!res.ok && res.status !== 400) throw new Error(`type ${res.status}`);
+    }
+    const names = await new Promise<string[]>((ok) => {
+      this.sub.add(this.api!.dpNames(this.player, PLAYER_TYPE).subscribe({ next: (n) => ok(n as string[]), error: () => ok([]) }));
+    });
+    if (names.length === 0) {
+      const res = await post(CREATE_DP_URL, { dpName: this.player, dpType: PLAYER_TYPE });
+      if (!res.ok) throw new Error(`dp ${res.status}`);
+    }
+  }
+
+  private subscribe(config: DriveConfig, onState: (s: LinkState) => void): void {
+    const dpes = boundDpes(config);
+    const state: LinkState = { machines: new Map(), allRed: new Set() };
+    onState(state);
+    if (dpes.length === 0 || !this.api) return;
+    try {
+      this.sub.add(
+        this.api.dpConnect(dpes, true).subscribe((data: DpEmission) => {
+          const values = new Map(data.dp.map((dp, i) => [normDpe(dp), data.value[i]]));
+          for (const m of config.machines) {
+            if (values.has(m.dpe)) state.machines.set(m.building, machineState(values.get(m.dpe), m));
+          }
+          for (const l of config.lights) {
+            if (!values.has(l.dpe)) continue;
+            if (lightForced(values.get(l.dpe))) state.allRed.add(l.crossroads);
+            else state.allRed.delete(l.crossroads);
+          }
+          onState({ machines: new Map(state.machines), allRed: new Set(state.allRed) });
+        })
+      );
+    } catch {
+      // a DPE that does not exist: the city stays as it is
+    }
+  }
+
+  private startDemo(onState: (s: LinkState) => void): void {
+    const states: MachineState[] = ['run', 'run', 'stop', 'run'];
+    let tick = 0;
+    const emit = (): void => onState({ machines: new Map(DEMO_MACHINES.map((id, k) => [id, states[k]])), allRed: new Set() });
+    emit();
+    this.demoTimer = window.setInterval(() => {
+      tick++;
+      // machine-2 breaks down every fourth period and is repaired at the next one
+      states[1] = tick % 4 === 1 ? 'fault' : 'run';
+      states[2] = tick % 3 === 0 ? 'run' : 'stop';
+      emit();
+    }, DEMO_PERIOD_MS);
+  }
+}
+
+function emptyPlayer(dp: string): RemotePlayer {
+  return { dp, nickname: '', vehicle: 'coupe', color: 'info', x: 0, z: 0, heading: 0, speed: 0, score: 0, mission: '', updatedAt: 0 };
+}
+
+function resolve<T>(token: new (...args: never[]) => T): T | null {
+  try {
+    return container.resolve<T>(token);
+  } catch {
+    return null;
+  }
+}
+
+async function userName(): Promise<string> {
+  const svc = resolve(WuiUserService);
+  if (svc?.name) return svc.name;
+  try {
+    const u = await new Promise<unknown>((ok) => {
+      const s = svc?.getOaUser().subscribe({ next: ok, error: () => ok(null) });
+      window.setTimeout(() => {
+        s?.unsubscribe();
+        ok(null);
+      }, 4000);
+    });
+    return svc?.name ?? (typeof u === 'object' && u && 'name' in u ? String((u as { name: unknown }).name) : '');
+  } catch {
+    return '';
+  }
+}
