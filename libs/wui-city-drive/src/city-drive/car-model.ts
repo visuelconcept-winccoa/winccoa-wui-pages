@@ -129,7 +129,7 @@ const RUBBER = new MeshStandardMaterial({ color: 0x0b0b0b, roughness: 0.9 });
 const WHITEWALL = new MeshStandardMaterial({ color: 0xe9ecec, roughness: 0.6 });
 const GLASS = new MeshPhysicalMaterial({ color: 0x0b1418, metalness: 0.2, roughness: 0.05, transmission: 0, clearcoat: 1, opacity: 0.92, transparent: true });
 const HEAD = new MeshBasicMaterial({ color: 0xf4fbff, toneMapped: false });
-const PLATE_LAMP = new MeshBasicMaterial({ color: 0x8a8a8a, toneMapped: false }); // dim: no bloom over the plate
+const PLATE_LAMP = new MeshBasicMaterial({ color: 0x5a5a5a, toneMapped: false }); // under the bloom threshold: no halo
 
 /** A soft strip: bright in the middle of its width, fading out at both edges and ends. */
 function sideGlowTexture(): CanvasTexture {
@@ -308,7 +308,8 @@ export function buildCar(b: Body, look: CarLook): Group {
   // the bloom threshold so the characters stay sharp
   if (look.plate) {
     const plateMat = new MeshBasicMaterial({ map: plateTexture(look.plate), toneMapped: false });
-    plateMat.color.setScalar(0.5);
+    // under the bloom threshold (0.42): lit, but no halo over the characters
+    plateMat.color.setScalar(0.34);
     const geo = new PlaneGeometry(0.72, 0.166);
     const front = new Mesh(geo, plateMat);
     // on the outer surface: the profile, plus the bevel, plus a few millimetres
