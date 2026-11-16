@@ -120,6 +120,8 @@ export function plateTexture(text: string): CanvasTexture {
 }
 
 const CLEARANCE = 0.32;
+/** Bevel of the lower body: it pushes the outline out by this much all around. */
+const BODY_BEVEL = 0.16;
 
 /** Shared materials (one set per look would be wasteful: only the paint and glow change). */
 const CHROME = new MeshStandardMaterial({ color: 0xd8dde0, metalness: 1, roughness: 0.12 });
@@ -127,6 +129,7 @@ const RUBBER = new MeshStandardMaterial({ color: 0x0b0b0b, roughness: 0.9 });
 const WHITEWALL = new MeshStandardMaterial({ color: 0xe9ecec, roughness: 0.6 });
 const GLASS = new MeshPhysicalMaterial({ color: 0x0b1418, metalness: 0.2, roughness: 0.05, transmission: 0, clearcoat: 1, opacity: 0.92, transparent: true });
 const HEAD = new MeshBasicMaterial({ color: 0xf4fbff, toneMapped: false });
+const PLATE_LAMP = new MeshBasicMaterial({ color: 0x8a8a8a, toneMapped: false }); // dim: no bloom over the plate
 
 /** A soft strip: bright in the middle of its width, fading out at both edges and ends. */
 function sideGlowTexture(): CanvasTexture {
@@ -242,7 +245,7 @@ export function buildCar(b: Body, look: CarLook): Group {
   const L = b.l / 2;
   const belt = CLEARANCE + b.h;
 
-  g.add(extrude(lowerProfile(b), b.w, paint, 0.16, 0.1, CLEARANCE + b.h * 0.45, belt + 0.2));
+  g.add(extrude(lowerProfile(b), b.w, paint, BODY_BEVEL, 0.1, CLEARANCE + b.h * 0.45, belt + 0.2));
   if (b.cabinH > 0.05) {
     const glass = extrude(cabinProfile(b), b.w * 0.9, GLASS, 0.1, 0.22, belt, belt + b.cabinH);
     // painted roof skin: the top of the greenhouse, slightly proud of the glass
@@ -275,12 +278,12 @@ export function buildCar(b: Body, look: CarLook): Group {
 
   // chrome: grille, bumpers, side trim
   const grille = new Mesh(new BoxGeometry(b.w * 0.62, 0.32, 0.06), CHROME);
-  grille.position.set(0, belt - 0.42, L + 0.01);
+  grille.position.set(0, belt - 0.42, L + BODY_BEVEL + 0.01);
   const bumperF = new Mesh(new CapsuleGeometry(0.08, b.w * 0.9, 6, 16), CHROME);
   bumperF.rotation.z = Math.PI / 2;
-  bumperF.position.set(0, CLEARANCE + 0.2, L + 0.02);
+  bumperF.position.set(0, CLEARANCE + 0.2, L + BODY_BEVEL + 0.04);
   const bumperR = bumperF.clone();
-  bumperR.position.z = -L - 0.02;
+  bumperR.position.z = -L - BODY_BEVEL - 0.04;
   const trimGeo = new BoxGeometry(0.03, 0.04, b.l * 0.78);
   for (const sx of [-b.w / 2 - 0.005, b.w / 2 + 0.005]) {
     const trim = new Mesh(trimGeo, CHROME);
@@ -294,23 +297,30 @@ export function buildCar(b: Body, look: CarLook): Group {
   for (const sx of [-b.w * 0.36, b.w * 0.36]) {
     const head = new Mesh(new CylinderGeometry(0.13, 0.13, 0.05, 16), HEAD);
     head.rotation.x = Math.PI / 2;
-    head.position.set(sx, belt - 0.32, L + 0.02);
+    head.position.set(sx, belt - 0.32, L + BODY_BEVEL + 0.02);
     // vertical tail light, in the fin when there is one
     const t = new Mesh(new BoxGeometry(0.1, b.fins ? 0.42 : 0.2, 0.05), tail);
-    t.position.set(Math.sign(sx) * (b.w / 2 - 0.12), b.fins ? belt - 0.02 : belt - 0.3, -L - 0.02);
+    t.position.set(Math.sign(sx) * (b.w / 2 - 0.12), b.fins ? belt - 0.02 : belt - 0.3, -L - BODY_BEVEL - 0.02);
     g.add(head, t);
   }
 
-  // number plates, front and rear
+  // number plates, front and rear, lit by their plate lamps: readable at night, kept below
+  // the bloom threshold so the characters stay sharp
   if (look.plate) {
-    const plateMat = new MeshStandardMaterial({ map: plateTexture(look.plate), roughness: 0.4, metalness: 0.1 });
-    const geo = new PlaneGeometry(0.62, 0.143);
+    const plateMat = new MeshBasicMaterial({ map: plateTexture(look.plate), toneMapped: false });
+    plateMat.color.setScalar(0.5);
+    const geo = new PlaneGeometry(0.72, 0.166);
     const front = new Mesh(geo, plateMat);
-    front.position.set(0, CLEARANCE + 0.33, L + 0.11);
+    // on the outer surface: the profile, plus the bevel, plus a few millimetres
+    const skin = L + BODY_BEVEL + 0.03;
+    front.position.set(0, CLEARANCE + 0.36, skin);
     const rear = new Mesh(geo, plateMat);
-    rear.position.set(0, belt - 0.5, -L - 0.07);
+    rear.position.set(0, belt - 0.26, -skin);
     rear.rotation.y = Math.PI;
-    g.add(front, rear);
+    // plate lamp: a small white strip above the rear plate, and its glow on the plate
+    const lamp = new Mesh(new BoxGeometry(0.22, 0.02, 0.04), PLATE_LAMP);
+    lamp.position.set(0, rear.position.y + 0.13, -skin + 0.01);
+    g.add(front, rear, lamp);
   }
 
   // wheels
