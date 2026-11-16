@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-audit-trail",
   "type": "module",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Audit Trail — standalone WinCC OA WebUI page: pivot table of a datapoint's NGA-archived element history, with a config popup persisted in an AuditTrail_Config datapoint. Self-provisioning via the PARA REST API; offline fallback.",
   "author": {
     "name": "Visuel Concept"
@@ -80,6 +80,7 @@
     }
   },
   "files": [
+    "CHANGELOG.md",
     "src",
     "menu.fragment.jsonc",
     "!**/*.spec.ts",

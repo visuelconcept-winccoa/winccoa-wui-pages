@@ -9,7 +9,7 @@
  *   • lists the project's `_AuditTrail` datapoints and shows the archived (NGA)
  *     history of the selected one as a log table (one row per archived record);
  *   • defaults to the rolling last 24 h in live mode (auto-refresh) and offers a
- *     start/end datetime range for an arbitrary interval;
+ *     start/end range for an arbitrary interval (iX `ix-datetime-input` pickers, #77);
  *   • filters the log client-side: a global search across all columns, a text
  *     filter per column, and click-to-sort headers (asc → desc → default order).
  *     This view state is transient (NOT persisted to `AuditTrail_Config`);
@@ -36,7 +36,8 @@ import { AuditConfigStore } from './audit-trail/config-store.js';
 import { listAuditDps } from './audit-trail/dp-admin.js';
 import { auditColumns, buildMergedPivot, type PivotResult } from './audit-trail/engine.js';
 import { exportAuditCsv, exportAuditJson, printAudit } from './audit-trail/export.js';
-import { MSG, colLabel, liveSuffixMsg, localize, localizeDir, recordsMsg, shownOfMsg, truncatedMsg } from './audit-trail/i18n.js';
+import { PICKER_FORMAT, pickerDate, pickerToStored, resolveStoredRange, storedToPicker, toStoredBound } from './audit-trail/range.js';
+import { MSG, colLabel, dateLocale, liveSuffixMsg, localize, localizeDir, recordsMsg, shownOfMsg, truncatedMsg } from './audit-trail/i18n.js';
 import {
   AUDIT_DP_TYPE,
   AUDIT_FIELDS,
@@ -52,15 +53,6 @@ const SECONDS_THRESHOLD = 1e12;
 const MODULE_ID = 'audit-trail';
 /** Page title — a proper noun, identical in all three languages. */
 const PAGE_TITLE = 'Audit Trail';
-
-function pad(n: number): string {
-  return `${n}`.padStart(2, '0');
-}
-
-/** A `Date` → `datetime-local` input value (`YYYY-MM-DDTHH:mm`, local time). */
-function toLocalInput(d: Date): string {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 function formatDateTime(ms: number): string {
   return new Date(ms).toLocaleString('fr-FR', {
@@ -274,24 +266,44 @@ export class WuiAuditTrail extends LitElement {
           @checkedChange=${(e: CustomEvent<boolean>) => this.onLiveToggle(e.detail)}
         ></ix-toggle>
       </label>
-      ${this.config.live
-        ? ''
-        : html`<span class="range">
-            <input
-              class="dt"
-              type="datetime-local"
-              .value=${this.config.rangeStart}
-              @change=${(e: Event) => void this.patchConfig({ rangeStart: (e.target as HTMLInputElement).value })}
-            />
-            <span class="arrow">→</span>
-            <input
-              class="dt"
-              type="datetime-local"
-              .value=${this.config.rangeEnd}
-              @change=${(e: Event) => void this.patchConfig({ rangeEnd: (e.target as HTMLInputElement).value })}
-            />
-          </span>`}
+      ${this.config.live ? '' : this.renderRangePickers()}
     `;
+  }
+
+  /** Start / end of the custom interval: the standard iX pickers (calendar + time popup, #77). */
+  private renderRangePickers(): TemplateResult {
+    const start = storedToPicker(this.config.rangeStart);
+    const end = storedToPicker(this.config.rangeEnd);
+    return html`<span class="range">
+      <ix-datetime-input
+        class="dt"
+        format=${PICKER_FORMAT}
+        aria-label-calendar-button=${localize(MSG.toolbar.rangeStart)}
+        .value=${start}
+        .maxDate=${pickerDate(end)}
+        show-week-numbers
+        locale=${dateLocale()}
+        @valueChange=${(e: CustomEvent<string | undefined>) => this.onRangePicked('rangeStart', e.detail)}
+      ></ix-datetime-input>
+      <span class="arrow">→</span>
+      <ix-datetime-input
+        class="dt"
+        format=${PICKER_FORMAT}
+        aria-label-calendar-button=${localize(MSG.toolbar.rangeEnd)}
+        .value=${end}
+        .minDate=${pickerDate(start)}
+        show-week-numbers
+        locale=${dateLocale()}
+        @valueChange=${(e: CustomEvent<string | undefined>) => this.onRangePicked('rangeEnd', e.detail)}
+      ></ix-datetime-input>
+    </span>`;
+  }
+
+  /** A picker value: stored when complete; an unreadable or partial value waits for the next. */
+  private onRangePicked(bound: 'rangeStart' | 'rangeEnd', picked: string | undefined): void {
+    const stored = pickerToStored(picked);
+    if (stored === '' || stored === this.config[bound]) return;
+    void this.patchConfig({ [bound]: stored });
   }
 
   private renderOffline(): TemplateResult {
@@ -487,11 +499,7 @@ export class WuiAuditTrail extends LitElement {
   private resolveRange(): { start: Date; end: Date } {
     const now = new Date();
     if (this.config.live) return { start: new Date(now.getTime() - LIVE_WINDOW_MS), end: now };
-    const start = this.config.rangeStart ? new Date(this.config.rangeStart) : new Date(now.getTime() - LIVE_WINDOW_MS);
-    let end = this.config.rangeEnd ? new Date(this.config.rangeEnd) : now;
-    if (Number.isNaN(start.getTime())) return { start: new Date(now.getTime() - LIVE_WINDOW_MS), end: now };
-    if (Number.isNaN(end.getTime())) end = now;
-    return { start, end };
+    return resolveStoredRange(this.config.rangeStart, this.config.rangeEnd, now, LIVE_WINDOW_MS);
   }
 
   private rangeLabel(): string {
@@ -559,8 +567,8 @@ export class WuiAuditTrail extends LitElement {
     const patch: Partial<AuditConfig> = { live: on };
     if (!on && (this.config.rangeStart === '' || this.config.rangeEnd === '')) {
       const now = new Date();
-      patch.rangeEnd = toLocalInput(now);
-      patch.rangeStart = toLocalInput(new Date(now.getTime() - LIVE_WINDOW_MS));
+      patch.rangeEnd = toStoredBound(now);
+      patch.rangeStart = toStoredBound(new Date(now.getTime() - LIVE_WINDOW_MS));
     }
     void this.patchConfig(patch);
   }
@@ -654,6 +662,13 @@ function pageStyles(): ReturnType<typeof css> {
       border: 1px solid var(--theme-color-soft-bdr);
       border-radius: var(--theme-default-border-radius);
       padding: 0.25rem 0.4rem;
+    }
+    ix-datetime-input.dt {
+      /* the iX field draws its own border and background */
+      padding: 0;
+      border: none;
+      background: none;
+      min-width: 13rem;
     }
     .arrow {
       color: var(--theme-color-soft-text);

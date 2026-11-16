@@ -11,14 +11,14 @@ Standalone **GxP Audit Trail** page over the **fixed `_AuditTrail`** datapoint t
 
 The page has two jobs:
 1. **Manage** the project's `_AuditTrail` datapoints — create new ones (always NGA-archived), reassign the archive group, delete them — via the `at-manage-dialog` popup ("Gérer" / manage button).
-2. **View** the archived history of the selected `_AuditTrail` DPs as a **log table** (one row per archived record, newest first). **Several DPs can be selected** (multi-select): their records are **merged/interleaved by timestamp**, with a leading **Datapoint** column showing each record's source (also in CSV/JSON exports — key `datapoint` — and print). Default = rolling **last 24 h in live mode** (auto-refresh); a **start/end `datetime-local`** range selects an arbitrary interval. The table is refined **client-side**: a **global search** across all columns (toolbar), a **text filter per column** (input under each header) and **click-to-sort headers** (asc → desc → default newest-first). Export to **CSV / JSON** and **print**.
+2. **View** the archived history of the selected `_AuditTrail` DPs as a **log table** (one row per archived record, newest first). **Several DPs can be selected** (multi-select): their records are **merged/interleaved by timestamp**, with a leading **Datapoint** column showing each record's source (also in CSV/JSON exports — key `datapoint` — and print). Default = rolling **last 24 h in live mode** (auto-refresh); a **start/end** range (Siemens iX `ix-datetime-input` pickers, calendar + time popup, #77) selects an arbitrary interval. The table is refined **client-side**: a **global search** across all columns (toolbar), a **text filter per column** (input under each header) and **click-to-sort headers** (asc → desc → default newest-first). Export to **CSV / JSON** and **print**.
 
 > Records are **written by WinCC OA's audit mechanism / panels / scripts**, not by this page. The page only creates/archives the DPs and visualizes them.
 
 ## Data model (DPs)
 
 - **Audit DPs**: instances of the fixed type **`_AuditTrail`** (the system DP `_AuditTrail` plus user-created ones, prefixed `AuditTrail_…`). Listed via `OaRxJsApi.dpNames('*', '_AuditTrail')`.
-- **Config persistence**: a single DP `AuditTrail_Config` (Struct, String `json`) holding the serialized `AuditConfig`, via `AuditConfigStore` → shared `DpSingleJsonStore` (object mode merges over defaults, so the config-shape change is backward-safe). `AuditConfig` holds: selected `dpNames` (array — merged view), `live` flag, `rangeStart`/`rangeEnd` (`datetime-local`), `maxRows`. The legacy single `dpName` is kept: migrated into `dpNames` on load, mirrored (`dpNames[0]`) on save so configs written by older bundles keep working both ways.
+- **Config persistence**: a single DP `AuditTrail_Config` (Struct, String `json`) holding the serialized `AuditConfig`, via `AuditConfigStore` → shared `DpSingleJsonStore` (object mode merges over defaults, so the config-shape change is backward-safe). `AuditConfig` holds: selected `dpNames` (array — merged view), `live` flag, `rangeStart`/`rangeEnd` (local `YYYY-MM-DDTHH:mm[:ss]`, see `range.ts`), `maxRows`. The legacy single `dpName` is kept: migrated into `dpNames` on load, mirrored (`dpNames[0]`) on save so configs written by older bundles keep working both ways.
 
 ## DP management & archiving (`dp-admin.ts`, `at-manage-dialog.ts`)
 
@@ -59,7 +59,7 @@ The page feeds the **visible** rows (`visibleRows()` — formatted `string[][]`,
 
 - The audit DP **must be NGA archived** (the page enforces this on create); without archived data, the table is empty.
 - **Live**: `dpConnect` on the fixed leaves triggers a debounced re-query (dashboard pattern), gated by the **Live 24 h** toggle. Turning live off seeds the range to the last 24 h.
-- `datetime-local` values are **local time**; `new Date('YYYY-MM-DDTHH:mm')` parses them as local (matches the codebase pattern in report-builder / production-orders).
+- Range bounds are **local time**. `range.ts` converts between the stored `YYYY-MM-DDTHH:mm[:ss]` (the former `datetime-local` value, so configs stay readable both ways) and the picker's `yyyy/LL/dd HH:mm:ss`; an empty start falls back to end − 24 h, an empty end to now, an inverted range is put back in order (unit-tested in `range.spec.ts`).
 - The shared kit is a **dependency** (`@visuelconcept-winccoa/wui-kit`): `dp-single-json-store` (config) and `io` (export) are used; `wui-confirm-dialog` for delete confirmation. npm installs it with the page, and the build bundles what is imported.
 - Page entry `src/audit-trail.ts` (the page bundle `wui build` compiles).
 

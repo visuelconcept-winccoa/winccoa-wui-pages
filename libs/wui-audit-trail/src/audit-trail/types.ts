@@ -60,7 +60,7 @@ export interface AuditConfig {
   dpNames: string[];
   /** Live mode: rolling last-24h window with auto-refresh. */
   live: boolean;
-  /** `datetime-local` bounds for the custom interval (used when `live === false`). */
+  /** Local `YYYY-MM-DDTHH:mm[:ss]` bounds of the custom interval (used when `live === false`; see range.ts). */
   rangeStart: string;
   rangeEnd: string;
   /** Max rows rendered (most recent); guards huge histories. */
