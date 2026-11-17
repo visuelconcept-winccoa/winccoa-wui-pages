@@ -13,7 +13,12 @@
  * NB: exports include the stored RTSP password in clear text (same trade-off as
  * the datapoint storage — see the dialog warning).
  */
-import { DEFAULT_RECONNECT_DELAY_SEC, blankStream, type CameraStream } from '../types.js';
+import {
+  DEFAULT_RECONNECT_DELAY_SEC,
+  LOCAL_RESOLUTIONS,
+  blankStream,
+  type CameraStream
+} from '../types.js';
 import { JSON_INDENT, download, timestampSlug } from '@visuelconcept-winccoa/wui-kit/data/io.js';
 
 const KIND = 'rtsp-camera-streams';
@@ -56,7 +61,7 @@ export function parseStreams(text: string): CameraStream[] {
   } else if (raw && typeof raw === 'object') {
     const obj = raw as Record<string, unknown>;
     if (Array.isArray(obj['streams'])) list = obj['streams'];
-    else if ('url' in obj || 'name' in obj) list = [obj];
+    else if ('url' in obj || 'name' in obj || 'kind' in obj) list = [obj];
   }
   if (!Array.isArray(list)) {
     throw new TypeError('Format invalide : aucune caméra RTSP trouvée.');
@@ -71,6 +76,8 @@ function normalize(item: Partial<CameraStream>): CameraStream {
     keys.filter((key) => item[key] !== undefined && item[key] !== null).map((key) => [key, item[key]])
   ) as Partial<CameraStream>;
   const out: CameraStream = { ...base, ...defined };
+  out.kind = out.kind === 'local' ? 'local' : 'rtsp';
+  out.localResolution = LOCAL_RESOLUTIONS.includes(out.localResolution) ? out.localResolution : 'default';
   out.transport = out.transport === 'udp' ? 'udp' : 'tcp';
   out.audio = Boolean(out.audio);
   out.maxWidth = Math.max(0, Number(out.maxWidth) || 0);

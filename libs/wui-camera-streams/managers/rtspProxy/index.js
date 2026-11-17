@@ -155,11 +155,24 @@ function buildFlags(cam) {
   return flags;
 }
 
+/**
+ * A "USB camera of this PC" entry (kind 'local', page ≥ 0.2.0): captured by each
+ * browser with getUserMedia, never pulled, relayed nor probed here.
+ */
+function isLocalCamera(cam) {
+  return cam?.kind === 'local';
+}
+
 /** Resolve a camera id to the ffmpeg input URL + relay options, or null. */
 async function resolveStream(id) {
   if (!ID_RE.test(id)) return null;
   const cam = await readCamera(id);
-  if (!cam) return null;
+  if (!cam || isLocalCamera(cam)) return null;
+  return streamOf(id, cam);
+}
+
+/** The ffmpeg input URL + relay options of an RTSP camera, or null when its URL is invalid. */
+function streamOf(id, cam) {
   const baseUrl = String(cam.url ?? '').trim();
   if (!/^rtsps?:\/\//i.test(baseUrl)) return null;
   const url = withCredentials(baseUrl, String(cam.username ?? ''), String(cam.password ?? ''));
@@ -251,7 +264,13 @@ function probeCamera(stream) {
 async function probeOne(id) {
   let stream;
   try {
-    stream = await resolveStream(id);
+    const cam = ID_RE.test(id) ? await readCamera(id) : null;
+    if (isLocalCamera(cam)) {
+      // Local camera: no server-side reachability (the page shows no LED for it).
+      statusById.delete(id);
+      return;
+    }
+    stream = cam ? streamOf(id, cam) : null;
   } catch {
     stream = null;
   }

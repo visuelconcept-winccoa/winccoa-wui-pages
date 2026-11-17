@@ -13,7 +13,7 @@ Two menu entries: the list, and a hidden entry `/camera-streams/:streamid` (attr
 ## Data model (DPs)
 
 - **DP type** `RtspCamera_Stream` (Struct: `name` + `json`), instance prefix `RtspCamera_`. One camera = one DP (`RtspCamera_<id>.json`). Creation/reading via the PARA REST API, with an offline **DEMO** fallback (`DEMO_STREAMS`).
-- **`CameraStream` model**: `name`, `group`, `description`, `url`, `username`, `password`, `transport` (`'tcp'` | `'udp'`), `audio`, `maxWidth`, `frameRate`, `videoBitrate`, `autoReconnect`, `reconnectDelaySec`, `favorite`, `lastViewedAt`.
+- **`CameraStream` model**: `kind` (`'rtsp'` | `'local'`, absent before 0.2.0 → rtsp), `name`, `group`, `description`, `url`, `username`, `password`, `transport` (`'tcp'` | `'udp'`), `audio`, `maxWidth`, `frameRate`, `videoBitrate`, `localResolution` (`'default'` | `'480p'` | `'720p'` | `'1080p'`, local only), `autoReconnect`, `reconnectDelaySec`, `favorite`, `lastViewedAt`.
 - The store is an exact copy of the remote-vnc `ConnectionStore`.
 - **Credentials (username/password) are stored in clear text in the DP** (warning shown in the dialog). They are never exposed to the browser: the manager injects them into the RTSP URL server-side.
 
@@ -81,6 +81,56 @@ way (each module owns one `AuditTrail_<Module>` DP).
 - **Secrets**: the camera `password` is **redacted** (`••••`) in old/new
   snapshots — never written to the audit log in clear text (`REDACTED_FIELDS`).
 
+## USB camera of this PC — `kind: 'local'` (0.2.0)
+
+A second source kind, captured **by the browser** from a camera of its own PC
+(`getUserMedia`, video only) — no proxy, no relay, no ffmpeg. Same entry list,
+same DP type, same route `/camera-streams/<id>`; `camera-streams.ts` renders
+`cs-local-viewer` instead of `cs-viewer` for it.
+
+- **Storage split** (the design choice): the DP holds what is shared — name,
+  group, description, `kind`, `localResolution`. The **device** is per browser:
+  `deviceId`s are random per origin and browser profile, so a value written by
+  one PC means nothing on another. It is kept in `localStorage`
+  (`wui-camera-streams.local-device.<cameraId>` → `{ deviceId, label }`), chosen
+  in the viewer toolbar. `pickDevice` matches by id, then by label (ids rotate
+  when site data is cleared), then takes the first input. The dialog clears
+  `url` / credentials when saving a local entry.
+- **Pure helpers** in `data/local-camera.ts` (unit-tested in
+  `local-camera.spec.ts`): `captureSupport` (insecure context first — there
+  `navigator.mediaDevices` is undefined), `classifyMediaError` (spec names +
+  legacy aliases; Firefox reports a busy camera as `AbortError`),
+  `videoInputs` / `labelsHidden` / `pickDevice`, `buildVideoConstraints`
+  (device `exact`, resolution `ideal`, `audio: false`), load/save of the choice
+  (never throw — storage may be blocked), `stopMediaStream`.
+- **Viewer state machine** (`ui/cs-local-viewer.ts`): idle → (labels hidden or
+  no input listed → `permission`, "Allow camera access" button; else) `starting`
+  → `live` | `error` (cause: insecure / unsupported / denied / notFound / busy /
+  overconstrained / unknown / ended) ; Stop → `stopped`. A `generation` counter
+  drops a getUserMedia result that arrives after a release (prompt still open
+  when the user leaves) and stops its tracks. `OverconstrainedError` on the
+  chosen device → forget it, retry once **without** a device (the browser
+  picks). `devicechange` re-lists the inputs (USB plug/unplug); a track `ended`
+  event (unplugged while live) → error "camera stopped".
+- **No camera left on**: `release()` (all tracks stopped, `srcObject` null) on
+  `disconnectedCallback` (route change, page left, Back), Stop, and before any
+  new start (other entry, device or resolution — `updated()` compares
+  `id|localResolution`).
+- `muted` is bound as attribute **and** property: autoplay policies read the
+  property, which a cloned template's attribute does not reliably set.
+- **Table**: endpoint "USB camera of this PC", a USB chip, a camera icon instead
+  of the reachability LED, "—" for clients (not relayed, not counted).
+- **Manager**: `rtspProxy` `resolveStream` returns null for `kind: 'local'`
+  and the probe skips it (no "configuration invalide" status).
+- **Mosaic**: a local entry is listed by the Mosaic camera catalog like any
+  `RtspCamera_Stream` DP and embedded as `/camera-streams/<id>` in a
+  same-origin iframe — camera capture is allowed there by the default
+  Permissions Policy (`camera` allowlist `self`). The tile is read-only
+  (toolbar hidden, no pointer events), so it relies on the device remembered
+  and on a permission granted earlier on the page itself.
+- **Not verifiable in CI**: real capture needs a browser with a camera; the
+  unit tests cover the pure parts only.
+
 ## Pitfalls / things to know
 
 - **Do NOT pass `-rw_timeout` before `-i`** for an RTSP input → ffmpeg "Error opening input files: Option not found". Rely on the process kill timeout instead.
@@ -109,6 +159,10 @@ assigns groups in `/app-security` (docs/wui-app-security/INTEGRATION.md).
   pattern). If the grant drops while the editor dialog / delete confirm is
   open, it closes. Viewing/opening a stream and export (all / per-row) stay
   open — they only read.
+- **USB camera of this PC (0.2.0)**: no new role. Creating / editing a local
+  entry goes through the same dialog, hence `edit`; viewing it is `view`. A
+  dedicated role was not added: the video never leaves the viewer's own PC,
+  and the browser's camera permission prompt already guards the device.
 - No server-side guard yet: the camera CRUD goes through the SHARED PARA
   persistence API (deliberately not gated per module — see the para notes);
   the `/api/rtsp/*` bridge is read/relay only.
@@ -117,8 +171,10 @@ assigns groups in `/app-security` (docs/wui-app-security/INTEGRATION.md).
 
 The package ships a mock of the HTTP side of `/api/rtsp`, merged by wui-toolkit into any site that
 selects the module (`wui dev`, screenshots; wui-toolkit ≥ 0.20). `clients` answers that nobody is
-watching, `status` gives the four demo cameras (`DEMO_STREAMS`) a fresh probe result — three reachable,
-the nitriding oven unreachable ("délai dépassé") — and `health` names the manager endpoint.
+watching, `status` gives the four RTSP demo cameras (`DEMO_STREAMS`) a fresh probe result — three reachable,
+the nitriding oven unreachable ("délai dépassé") — and `health` names the manager endpoint. The fifth demo
+entry, "Webcam de ce PC" (`kind: 'local'`), has no status, like the manager: it opens the webcam of the PC
+running `wui dev` (localhost is a secure context).
 
 Not mocked: the stream itself, a WebSocket (`/api/rtsp/ws`) relayed to ffmpeg — the viewer reports that
 it cannot connect. The camera list still comes from the page's in-memory demo: the para mock knows no

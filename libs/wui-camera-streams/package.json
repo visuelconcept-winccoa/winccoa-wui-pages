@@ -1,8 +1,8 @@
 {
   "name": "@visuelconcept-winccoa/wui-camera-streams",
   "type": "module",
-  "version": "0.1.2",
-  "description": "Camera Streams (RTSP) — standalone WinCC OA WebUI page: manage RTSP IP cameras (one RtspCamera_Stream datapoint each) and view a stream in-browser via bundled JSMpeg over a same-origin /api/rtsp/ws relay to a shared ffmpeg pull.",
+  "version": "0.2.0",
+  "description": "Camera Streams (RTSP) — standalone WinCC OA WebUI page: manage RTSP IP cameras (one RtspCamera_Stream datapoint each) and view a stream in-browser via bundled JSMpeg over a same-origin /api/rtsp/ws relay to a shared ffmpeg pull; or view a USB camera / webcam of the viewer's own PC, captured by the browser (getUserMedia).",
   "author": {
     "name": "Visuel Concept"
   },
@@ -97,6 +97,7 @@
     }
   },
   "files": [
+    "CHANGELOG.md",
     "src",
     "backend",
     "managers",

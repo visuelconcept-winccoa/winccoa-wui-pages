@@ -13,10 +13,26 @@
  * ffmpeg, transcodes it to MPEG1-TS and fans it out to every connected client.
  * See {@link ./data/stream-store.ts} and `javascript/rtspProxy/index.js`.
  *
+ * A second source kind, `local`, is a camera plugged into the PC running the
+ * browser (webcam / USB camera): it is captured in the browser with
+ * `getUserMedia` and never goes through the proxy. The datapoint only holds
+ * the shared definition (name, group, resolution preset); which physical
+ * device to open is a per-browser choice kept in localStorage (device ids
+ * differ from one PC to the next) — see {@link ./data/local-camera.ts}.
+ *
  * The credentials (when stored) stay server-side: they are injected into the
  * rtsp URL by the manager and never sent to the browser. They ARE persisted in
  * clear text in the datapoint though — see the security notice in the dialog.
  */
+
+/** Where the video comes from: an RTSP IP camera (via the proxy) or a camera of this PC. */
+export type CameraSourceKind = 'rtsp' | 'local';
+
+/** Requested capture resolution of a local camera (an `ideal` hint, never a hard requirement). */
+export type LocalResolution = 'default' | '480p' | '720p' | '1080p';
+
+/** Resolution presets offered for a local camera, in display order. */
+export const LOCAL_RESOLUTIONS: readonly LocalResolution[] = ['default', '480p', '720p', '1080p'];
 
 /** RTSP transport (over TCP is the most reliable; UDP can have lower latency). */
 export type RtspTransport = 'tcp' | 'udp';
@@ -27,6 +43,9 @@ export interface CameraStream {
   id: string;
   /** Full backing DP name (e.g. "System1:RtspCamera_x"); absent until persisted. */
   dp?: string;
+
+  /** Source kind; absent on records created before 0.2.0 → `rtsp`. */
+  kind: CameraSourceKind;
 
   /** Display name. */
   name: string;
@@ -52,6 +71,9 @@ export interface CameraStream {
   frameRate: number;
   /** Target video bitrate in kbps (0 = ffmpeg automatic). */
   videoBitrate: number;
+
+  /** Local camera only: requested capture resolution (the device itself is chosen per browser). */
+  localResolution: LocalResolution;
 
   /** Automatically reconnect the WebSocket after a drop. */
   autoReconnect: boolean;
@@ -84,6 +106,7 @@ export const DEFAULT_FRAME_RATE = 30;
 export function blankStream(): CameraStream {
   return {
     id: '',
+    kind: 'rtsp',
     name: '',
     group: '',
     description: '',
@@ -95,11 +118,17 @@ export function blankStream(): CameraStream {
     maxWidth: 0,
     frameRate: 0,
     videoBitrate: 0,
+    localResolution: 'default',
     autoReconnect: true,
     reconnectDelaySec: DEFAULT_RECONNECT_DELAY_SEC,
     favorite: false,
     lastViewedAt: ''
   };
+}
+
+/** Whether this entry is a camera of the PC running the browser (captured with getUserMedia). */
+export function isLocalCamera(c: Pick<CameraStream, 'kind'>): boolean {
+  return c.kind === 'local';
 }
 
 /** Extract the `host[:port]` from the rtsp URL for display (without credentials). */
