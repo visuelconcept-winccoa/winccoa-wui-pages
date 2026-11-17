@@ -313,3 +313,50 @@ describe('settings and gamepad (#79)', () => {
     expect(readPad({ axes: [1, 0], buttons }, { ...DEFAULT_SETTINGS, gamepad: { ...DEFAULT_SETTINGS.gamepad, invertSteer: true } }, prev).steer).toBe(-1);
   });
 });
+
+describe('local multiplayer (#83)', () => {
+  it('seats devices in order, once each, and frees them on leave or unplug', async () => {
+    const { JoinSlots, padDevice } = await import('./local-play.js');
+    const slots = new JoinSlots(2);
+    expect(slots.ready).toBe(false);
+    expect(slots.join(padDevice(1))).toBe(0);
+    expect(slots.join(padDevice(1))).toBe(-1); // already seated
+    expect(slots.join('keyboard')).toBe(1);
+    expect(slots.ready).toBe(true);
+    expect(slots.join(padDevice(0))).toBe(-1); // full
+    expect(slots.drop(padDevice(1))).toBe(0);
+    expect(slots.join(padDevice(0))).toBe(0); // the next pad takes the free seat
+    expect(slots.resize(1).devices).toEqual([padDevice(0)]);
+    expect(new JoinSlots(9).count).toBe(2); // capped
+  });
+
+  it('runs a match: countdown, clock, end; ranks by score then logos, ties share a rank', async () => {
+    const { Match, standings, clock, COUNTDOWN_S } = await import('./local-play.js');
+    const m = new Match(120);
+    expect(m.live).toBe(false);
+    expect(m.step(COUNTDOWN_S)).toBe('running');
+    expect(m.remaining).toBe(120);
+    expect(m.step(60)).toBeNull();
+    expect(clock(m.remaining)).toBe('1:00');
+    expect(m.step(61)).toBe('over');
+    expect(m.step(1)).toBeNull();
+    const r = standings([{ score: 300, logos: 3 }, { score: 500, logos: 4 }, { score: 300, logos: 3 }]);
+    expect(r.map((x) => [x.player, x.rank])).toEqual([[1, 1], [0, 2], [2, 2]]);
+  });
+
+  it('shares the logos but keeps a combo per player', async () => {
+    const { LogoHunt, newHunter, TOKEN_POINTS } = await import('./collectibles.js');
+    const hunt = new LogoHunt(generateCity(7));
+    const a = newHunter();
+    const b = newHunter();
+    const [t1, t2, t3] = hunt.tokens;
+    hunt.step(t1.x, t1.z, 10, a);
+    expect(hunt.step(t2.x, t2.z, 11, b).points).toBe(TOKEN_POINTS); // b starts its own combo
+    expect(hunt.step(t3.x, t3.z, 12, a).points).toBe(2 * TOKEN_POINTS); // a chains
+    expect(hunt.step(t1.x, t1.z, 12, b).pickups).toHaveLength(0); // taken by a
+    expect([a.logos, b.logos]).toEqual([2, 1]);
+    const firstIds = hunt.tokens.map((t) => t.id);
+    hunt.reset(5);
+    expect(hunt.tokens.some((t) => firstIds.includes(t.id))).toBe(false); // new ids after a reset
+  });
+});
