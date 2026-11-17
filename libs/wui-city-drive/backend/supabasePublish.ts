@@ -193,6 +193,20 @@ function readPending(id: string): PendingPhoto | null {
   }
 }
 
+/** The publication queue for the admin page: waiting photos (and the last error), published ones. */
+export function publishStats(): { configured: boolean; pending: number; lastError: string; published: number } {
+  const dir = pendingDir();
+  const pending = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.json')).map((f) => readPending(f.slice(0, -5))) : [];
+  const lastError = pending.filter((p): p is PendingPhoto => p !== null && p.lastError !== '').map((p) => p.lastError)[0] ?? '';
+  let published = 0;
+  try {
+    published = readFileSync(resolve(photoRoot(), 'published.jsonl'), 'utf8').split('\n').filter((l) => l.trim()).length;
+  } catch {
+    // nothing published yet
+  }
+  return { configured: readSupabaseConfig() !== null, pending: pending.length, lastError, published };
+}
+
 /** One upload with Supabase Storage's HTTP API; a 409 (already there) counts as done. */
 async function upload(cfg: SupabaseConfig, item: PendingPhoto, jpeg: Buffer): Promise<void> {
   const res = await fetch(`${cfg.url}/storage/v1/object/${encodeURIComponent(cfg.bucket)}/${item.path}`, {

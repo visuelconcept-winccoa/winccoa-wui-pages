@@ -67,6 +67,8 @@ import { StreetLife } from './street.js';
 import { TrafficSignals } from './traffic-signals.js';
 import { LogoFx } from './explosion.js';
 import { TensionFx } from './tension-fx.js';
+import { AtmosphereFx } from './atmosphere-fx.js';
+import type { Weather } from './weather.js';
 import { applyPose, makeCube, makeFigure, setFigureWeapon } from './figure-model.js';
 import { gaitPose, type Pose } from './figure.js';
 import { FUSE_S, type Bolt, type WeaponId } from './weapons.js';
@@ -154,6 +156,8 @@ interface View {
   damage: number;
   /** Skin tone of the player's character (garage). */
   skin: number;
+  /** Its horn is sounding (the pedestrians jump aside). */
+  horn: boolean;
 }
 
 function neon(color: number, opacity = 1): LineBasicMaterial {
@@ -214,6 +218,10 @@ export class CityWorld {
   private readonly street: StreetLife;
   private readonly fx: LogoFx;
   private readonly tension: TensionFx;
+  /** Rain and skid marks (#95); the weather shown; the roads (wet = glossier). */
+  private readonly atmosphere: AtmosphereFx;
+  private weather: Weather = { rain: 0, fog: 0 };
+  private readonly roadMats: MeshStandardMaterial[] = [];
   /** The crossbow's cubes in flight, by id. */
   private readonly bolts = new Map<number, Mesh>();
   /** Chase camera distance factor (settings). */
@@ -282,6 +290,7 @@ export class CityWorld {
     this.scene.add(this.street.group);
     this.fx = new LogoFx(this.scene, p);
     this.tension = new TensionFx(this.scene, p);
+    this.atmosphere = new AtmosphereFx(this.scene);
 
 
     this.marker = new Mesh(
@@ -323,7 +332,8 @@ export class CityWorld {
       speed: 0,
       rect: { x: 0, y: 0, w: 1, h: 1 },
       damage: 0,
-      skin: 0
+      skin: 0,
+      horn: false
     };
     this.attachHeadlights(view);
     return view;
@@ -379,7 +389,9 @@ export class CityWorld {
     const roadMat = (alongZ: boolean): MeshStandardMaterial => {
       const a = asphaltMaps(this.p);
       for (const t of [a.map, a.roughnessMap, a.bumpMap]) t.repeat.set(alongZ ? ROAD_WIDTH / 16 : len / 16, alongZ ? len / 16 : ROAD_WIDTH / 16);
-      return new MeshStandardMaterial({ map: a.map, roughnessMap: a.roughnessMap, bumpMap: a.bumpMap, bumpScale: 0.35, roughness: 1, metalness: 0.15 });
+      const m = new MeshStandardMaterial({ map: a.map, roughnessMap: a.roughnessMap, bumpMap: a.bumpMap, bumpScale: 0.35, roughness: 1, metalness: 0.15 });
+      this.roadMats.push(m);
+      return m;
     };
     const roadZ = roadMat(true);
     const roadX = roadMat(false);
@@ -682,6 +694,37 @@ export class CityWorld {
     this.fx.explode(x, z);
   }
 
+  /** The weather (#95): rain streaks, thicker fog, wet glossy roads. */
+  setWeather(w: Weather): void {
+    const changed = Math.abs(w.rain - this.weather.rain) > 0.01 || Math.abs(w.fog - this.weather.fog) > 0.01;
+    this.weather = w;
+    this.atmosphere.setRain(w.rain);
+    if (changed) this.applyWeather();
+  }
+
+  private applyWeather(): void {
+    const day = this.timeOfDay === 'day';
+    const fog = this.scene.fog;
+    if (fog instanceof FogExp2) fog.density = (day ? 0.0014 : 0.0019) * (1 + 6 * this.weather.fog + 1.5 * this.weather.rain);
+    // a wet road mirrors the lights: less rough, a little more reflection
+    for (const m of this.roadMats) {
+      m.roughness = 1 - 0.65 * this.weather.rain;
+      m.metalness = 0.15 + 0.25 * this.weather.rain;
+    }
+    this.scene.environmentIntensity = (day ? 0.55 : 0.12) * (1 + 1.5 * this.weather.rain);
+  }
+
+  /** A skid mark under a rear wheel (#95). */
+  addSkid(x: number, z: number, heading: number): void {
+    this.atmosphere.addSkid(x, z, heading);
+  }
+
+  /** Player i sounds its horn: the pedestrians around jump aside. */
+  setHorn(i: number, on: boolean): void {
+    const v = this.views[i];
+    if (v) v.horn = on;
+  }
+
   /** The speed cameras of the city (#85). */
   setCameras(cameras: readonly SpeedCamera[]): void {
     this.tension.setCameras(cameras);
@@ -913,6 +956,7 @@ export class CityWorld {
     this.lightOffset.set(day ? 90 : -120, day ? 260 : 220, day ? -140 : -80);
     this.scene.environmentIntensity = day ? 0.55 : 0.12;
     this.renderer.toneMappingExposure = day ? 1 : 1.1;
+    this.applyWeather();
     for (const v of this.views) {
       v.bloom.strength = day ? 0.22 : 0.75;
       v.bloom.threshold = day ? 0.92 : 0.42;
@@ -991,7 +1035,11 @@ export class CityWorld {
   /** Updates the shared scene, then renders every view in its part of the screen. */
   render(dt: number): void {
     this.elapsed += dt;
-    this.street.update(dt);
+    // the pedestrians react to the players' cars (fast ones, and horns)
+    this.street.update(
+      dt,
+      this.views.filter((v) => !v.walker).map((v) => ({ x: v.car.position.x, z: v.car.position.z, speed: Math.abs(v.speed), horn: v.horn }))
+    );
     this.fx.update(dt);
     this.tension.update(
       dt,
@@ -1017,6 +1065,7 @@ export class CityWorld {
     for (const v of this.views) mid.add((v.walker ?? v.car).position);
     mid.divideScalar(Math.max(1, this.views.length));
     this.shadowFollow.set(Math.round(mid.x), 0, Math.round(mid.z));
+    this.atmosphere.update(dt, mid.x, mid.z);
     this.moon.position.copy(this.shadowFollow).add(this.lightOffset);
     this.moon.target.position.copy(this.shadowFollow);
 

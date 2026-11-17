@@ -18,6 +18,7 @@
  *   PHOTO_PUBLISHED     the photo is online (Supabase object path, never the link)
  *   ALERT_ACKNOWLEDGED  the control room acknowledged a player's WinCC OA alert
  *   SETTINGS_UPDATE     the station's settings changed (old → new of the changed fields)
+ *   RESULTS_EXPORT / RESULTS_RESET   the admin page exported (emails included) / emptied the results
  *
  * Personal data: no email ever goes into the audit (only whether one was given), nor the
  * photo's link (it would give the face to whoever reads the audit). Pure: the page writes the
@@ -42,7 +43,9 @@ export type CityDriveAction =
   | 'PHOTO_FAILED'
   | 'PHOTO_PUBLISHED'
   | 'ALERT_ACKNOWLEDGED'
-  | 'SETTINGS_UPDATE';
+  | 'SETTINGS_UPDATE'
+  | 'RESULTS_EXPORT'
+  | 'RESULTS_RESET';
 
 /** A player as the audit sees it. */
 export interface AuditPlayer {

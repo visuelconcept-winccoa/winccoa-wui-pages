@@ -9,7 +9,7 @@
  * pads are reported this way). See {@link GAMEPAD_LEGEND}.
  */
 
-export type Action = 'up' | 'down' | 'left' | 'right' | 'brake' | 'run' | 'foot' | 'attack' | 'weapon' | 'camera' | 'time' | 'reset' | 'mission' | 'pause';
+export type Action = 'up' | 'down' | 'left' | 'right' | 'brake' | 'run' | 'foot' | 'attack' | 'weapon' | 'horn' | 'radio' | 'camera' | 'time' | 'reset' | 'mission' | 'pause';
 
 export const ACTIONS: readonly { id: Action; label: string }[] = [
   { id: 'up', label: 'Throttle / walk forward' },
@@ -21,6 +21,8 @@ export const ACTIONS: readonly { id: Action; label: string }[] = [
   { id: 'foot', label: 'Get out / get in' },
   { id: 'attack', label: 'Strike / shoot (on foot)' },
   { id: 'weapon', label: 'Next weapon (on foot)' },
+  { id: 'horn', label: 'Horn (hold)' },
+  { id: 'radio', label: 'Next radio station' },
   { id: 'camera', label: 'Next camera' },
   { id: 'time', label: 'Day / night' },
   { id: 'reset', label: 'Back on the road' },
@@ -53,6 +55,10 @@ export interface Settings {
   showPlayers: boolean;
   /** Photo booth camera (#91): '' off, 'webcam' (this PC's default webcam) or a Camera Streams id. */
   photoBooth: string;
+  /** Sound (#95): effects and engines, music and radio (0..1), and the station on the radio. */
+  sfxVolume: number;
+  musicVolume: number;
+  radio: 'off' | 'neon' | 'lofi' | 'talk';
 }
 
 export const DEFAULT_KEYS: Record<Action, string[]> = {
@@ -65,6 +71,8 @@ export const DEFAULT_KEYS: Record<Action, string[]> = {
   foot: ['KeyF', 'Enter'],
   attack: ['KeyE'],
   weapon: ['KeyX'],
+  horn: ['KeyH'],
+  radio: ['KeyM'],
   camera: ['KeyC'],
   time: ['KeyT'],
   reset: ['KeyR'],
@@ -82,7 +90,10 @@ export const DEFAULT_SETTINGS: Settings = {
   units: 'kmh',
   showMinimap: true,
   showPlayers: true,
-  photoBooth: ''
+  photoBooth: '',
+  sfxVolume: 0.7,
+  musicVolume: 0.4,
+  radio: 'neon'
 };
 
 const clamp = (v: unknown, lo: number, hi: number, d: number): number => {
@@ -117,6 +128,9 @@ export function parseSettings(raw: unknown): Settings {
     units: o.units === 'mph' ? 'mph' : 'kmh',
     showMinimap: o.showMinimap !== false,
     showPlayers: o.showPlayers !== false,
+    sfxVolume: clamp(o.sfxVolume, 0, 1, DEFAULT_SETTINGS.sfxVolume),
+    musicVolume: clamp(o.musicVolume, 0, 1, DEFAULT_SETTINGS.musicVolume),
+    radio: o.radio === 'off' || o.radio === 'lofi' || o.radio === 'talk' ? o.radio : 'neon',
     photoBooth: typeof o.photoBooth === 'string' && /^[\w-]{0,64}$/.test(o.photoBooth) ? o.photoBooth : ''
   };
 }
@@ -157,7 +171,7 @@ export const speedIn = (kmh: number, units: Units): number => (units === 'mph' ?
 // --- gamepad (standard mapping) ----------------------------------------------------------
 
 /** Buttons of the standard mapping. */
-const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, BACK: 8, START: 9, LEFT: 14, RIGHT: 15 } as const;
+const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, BACK: 8, START: 9, L3: 10, LEFT: 14, RIGHT: 15 } as const;
 
 export const GAMEPAD_LEGEND: readonly { control: string; action: string }[] = [
   { control: 'RT', action: 'Throttle' },
@@ -168,6 +182,8 @@ export const GAMEPAD_LEGEND: readonly { control: string; action: string }[] = [
   { control: 'Y', action: 'Next camera' },
   { control: 'X', action: 'New mission · strike / shoot on foot' },
   { control: 'D-pad ◀ ▶', action: 'Next weapon (on foot)' },
+  { control: 'Left stick click', action: 'Horn (hold)' },
+  { control: 'Back', action: 'Next radio station' },
   { control: 'LB', action: 'Day / night' },
   { control: 'RB', action: 'Back on the road' },
   { control: 'Start', action: 'Pause' }
@@ -182,6 +198,8 @@ export interface PadState {
   /** -1 (back) .. 1 (forward), after dead zone (walking). */
   move: number;
   handbrake: boolean;
+  /** The horn button is held. */
+  horn: boolean;
   /** Buttons that went down since the previous reading, as actions. */
   pressed: Action[];
 }
@@ -211,6 +229,7 @@ export function readPad(pad: PadLike, s: Settings, previous: boolean[]): PadStat
   edge(BTN.B, 'foot');
   edge(BTN.Y, 'camera');
   edge(BTN.X, 'attack'); // on foot a blow, in the car a new mission (game.ts)
+  edge(BTN.BACK, 'radio');
   edge(BTN.LEFT, 'weapon');
   edge(BTN.RIGHT, 'weapon');
   edge(BTN.LB, 'time');
@@ -223,6 +242,7 @@ export function readPad(pad: PadLike, s: Settings, previous: boolean[]): PadStat
     steer,
     move: -deadzone(pad.axes[1] ?? 0, s.gamepad.deadzone),
     handbrake: b(BTN.A).pressed,
+    horn: b(BTN.L3).pressed,
     pressed: edges
   };
 }

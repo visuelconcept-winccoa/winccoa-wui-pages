@@ -609,3 +609,65 @@ describe('audit trail (#93)', () => {
     expect(JSON.parse(ch?.newval ?? '{}')).toEqual({ cameraHeight: 1.5, photoBooth: 'webcam' });
   });
 });
+
+describe('admin statistics (#94)', () => {
+  const r = (id: string, at: string, nickname: string, logos: number, email = ''): GameResult => ({ id, nickname, email, logos, score: logos * 100, at, duration: 60 });
+  const log = [
+    r('1', '2026-11-18T09:05:00', 'Léa', 12, 'lea@x.io'),
+    r('2', '2026-11-18T09:05:00', 'Max', 4),
+    r('3', '2026-11-18T10:30:00', 'Léa', 15, 'LEA@x.io'),
+    r('4', '2026-11-19T14:00:00', 'Tom', 22, 'tom@x.io')
+  ];
+
+  it('counts matches by their end time, people, emails, logos', async () => {
+    const { gameStats } = await import('./stats.js');
+    const s = gameStats(log);
+    expect(s).toMatchObject({ matches: 3, duo: 1, players: 3, withEmail: 3, emails: 2, logos: 53, bestLogos: 22, avgLogos: 13.3 });
+    expect(s.byHour[9]).toBe(1);
+    expect(s.byDay).toEqual([
+      { day: '2026-11-18', matches: 2 },
+      { day: '2026-11-19', matches: 1 }
+    ]);
+    expect(s.logoBands.map((b) => b.count)).toEqual([1, 0, 1, 1, 1]); // 4 · 12 · 15 · 22
+  });
+
+  it('exports CSV with the emails, no formula injection', async () => {
+    const { resultsCsv } = await import('./stats.js');
+    const csv = resultsCsv([...log, r('5', '2026-11-19T15:00:00', '=HYPERLINK("x")', 1)]);
+    expect(csv.split('\r\n')[0]).toBe('﻿date;nickname;email;logos;score;match_s');
+    expect(csv).toContain('lea@x.io');
+    expect(csv).toContain(`"'=HYPERLINK(""x"")"`);
+  });
+});
+
+describe('atmosphere (#95)', () => {
+  it('turns a DPE value into a weather level', async () => {
+    const { weatherLevel, parseWeatherBinding, gripFactor, demoWeather } = await import('./weather.js');
+    expect(weatherLevel(true)).toBe(1);
+    expect(weatherLevel(0.4)).toBe(0.4);
+    expect(weatherLevel(60)).toBe(0.6); // a percentage
+    expect(weatherLevel(5, 10)).toBe(0.5); // mm/h with rainMax 10
+    expect(weatherLevel(2000, 10000, true)).toBeCloseTo(0.8); // a visibility in m
+    expect(weatherLevel('n/a')).toBe(0);
+    expect(parseWeatherBinding({ rain: 'Meteo.Rain', rainMax: 10 })).toMatchObject({ rain: 'Meteo.Rain', rainMax: 10 });
+    expect(parseWeatherBinding({})).toBeNull();
+    expect(gripFactor({ rain: 1, fog: 0 })).toBe(0.75);
+    expect(demoWeather(30).rain).toBe(0);
+    expect(demoWeather(150).rain).toBeGreaterThan(0.9);
+  });
+
+  it('binds the weather in the config and follows its DPEs', async () => {
+    const { parseConfig, boundDpes } = await import('./bindings.js');
+    const cfg = parseConfig({ machines: [], lights: [], weather: { rain: 'Meteo.Rain', fog: 'Meteo.Vis', fogInverse: true } });
+    expect(boundDpes(cfg)).toEqual(['Meteo.Rain', 'Meteo.Vis']);
+  });
+
+  it('pitches the engine with the speed, gear by gear, and screeches in a slide', async () => {
+    const { enginePitch, screechLevel } = await import('./audio.js');
+    expect(enginePitch(0, 0)).toBe(48);
+    expect(enginePitch(12, 1)).toBeGreaterThan(enginePitch(12, 0));
+    expect(enginePitch(13.5, 0)).toBeLessThan(enginePitch(12.9, 0)); // a gear change drops the revs
+    expect(screechLevel(1)).toBe(0);
+    expect(screechLevel(20)).toBe(1);
+  });
+});

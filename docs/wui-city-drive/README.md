@@ -74,6 +74,24 @@ The game is in English only.
 - **The control room**: from level 2 the player is *wanted*, a real WinCC OA alert (see
   below). An operator who acknowledges it in the alarm list clears the player's alert level.
 
+### Atmosphere (≥ 0.12.0)
+
+- **Sound** (WebAudio, no file): engines, tyre screech, horn (**H** held; pad: left stick
+  click), crash, logo chime, speed camera, siren. It starts at the first click or key of the
+  page (a gamepad press does not unlock audio in browsers).
+- **Radio** (**M**; pad: **Back**): *Neon FM*, *Lo-Fi Plant*, *WinCC OA Talk* (the plant's news,
+  read aloud), off. Volumes and station in **Settings → Sound**.
+- **Weather** from datapoints, in `CityDrive_Config.json`:
+
+  ```json
+  { "weather": { "rain": "Meteo.RainRate", "rainMax": 10, "fog": "Meteo.Visibility", "fogMax": 10000, "fogInverse": true } }
+  ```
+
+  A value becomes a level 0..1 (a boolean 0 / 1; a number over `rainMax` / `fogMax`, else
+  0..1, or a percentage when above 1; `fogInverse` for a visibility). Rain: streaks, wet
+  glossy roads, less grip; fog: thicker. Without a binding the weather turns on its own.
+- **Skid marks** while sliding; **pedestrians** jump aside from a fast car or a horn.
+
 ## Photo booth (≥ 0.10.0)
 
 Settings → **Photo booth**: Off (default), *This PC's webcam*, or a camera of the
@@ -139,6 +157,15 @@ player who opens the page with the `para:edit-types` role changes the type in pl
 Until then, the new elements are not written and the alert is not configured; the rest of the
 telemetry and the game play the same. The other players are read on the elements of 0.4.
 
+## Admin page
+
+`/city-drive/admin` (menu **City Drive · Admin**, role **`admin`**): the statistics of the game
+for the event's organisers — matches, players, emails collected, logos, best / average, photos
+kept / waiting for Supabase / published; matches per hour and per day, logos per result; the
+top 10. **Export CSV** gives every result **with the emails** (hence the role); **Reset the
+ranking** empties `CityDrive_Results` for a new event. Both are written to the audit trail. The
+3D game does not start on this page.
+
 ## Audit trail
 
 The game station's actions go to the module's own `_AuditTrail` datapoint
@@ -156,6 +183,7 @@ active archive group exists — see it in the **Audit Trail** page (select that 
 | `PHOTO_PUBLISHED` | players | the object path in the bucket (`<date>/<uuid>.jpg`), never its link |
 | `ALERT_ACKNOWLEDGED` | the player (item type `CityDrivePlayer`) | its `….wanted` DPE: the control room acknowledged its alert |
 | `SETTINGS_UPDATE` | `Settings` | the changed settings, old → new |
+| `RESULTS_EXPORT` / `RESULTS_RESET` | `CityDrive_Results` | admin page: results exported (emails included) / ranking emptied (how many results) |
 
 Personal data stays out: never an email (only whether one was given), never a photo link. The
 user of each row is the WinCC OA user logged on at the game station.
@@ -164,6 +192,7 @@ user of each row is the WinCC OA user logged on at the game station.
 
 - `play`: the page (and one's own telemetry). Without it, a notice replaces the game.
 - `configure`: declared for `CityDrive_Config` (edited in PARA in V1).
+- `admin`: the admin page — statistics, CSV export with the players' emails, ranking reset.
 - The photo booth saves with `play` (`POST /api/city-drive/photo`); an IP camera's snapshot
   also needs `camera-streams/view`.
 - The alert of a wanted player is acknowledged in the alarm list, with the operators' own
