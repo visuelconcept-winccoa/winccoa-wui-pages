@@ -194,8 +194,9 @@ describe('vehicles and profile (#79)', () => {
 
   it('repairs a stored profile and cleans the nickname', async () => {
     const { parseProfile, cleanNickname, NICKNAME_MAX } = await import('./vehicles.js');
-    expect(parseProfile({ nickname: '  Aurel ', vehicle: 'limousine', color: 'alarm' })).toEqual({ nickname: 'Aurel', vehicle: 'limousine', color: 'alarm' });
-    expect(parseProfile({ vehicle: 'tank', color: 'pink' })).toEqual({ nickname: '', vehicle: 'coupe', color: 'primary' });
+    expect(parseProfile({ nickname: '  Aurel ', vehicle: 'limousine', color: 'alarm' })).toEqual({ nickname: 'Aurel', vehicle: 'limousine', color: 'alarm', time: 'night' });
+    expect(parseProfile({ vehicle: 'tank', color: 'pink' })).toEqual({ nickname: '', vehicle: 'coupe', color: 'primary', time: 'night' });
+    expect(parseProfile({ time: 'day' }).time).toBe('day');
     expect(parseProfile(null).vehicle).toBe('coupe');
     expect(cleanNickname('a\u0000b'.padEnd(40, 'x'))).toHaveLength(NICKNAME_MAX);
   });
