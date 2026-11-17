@@ -11,6 +11,15 @@
     "permission": ["connected"]
   },
   {
+    "title": { "en_US": "City Drive · Control room", "fr": "City Drive · Salle de contrôle", "de_AT": "City Drive · Leitstand" },
+    "icon": "monitor",
+    "path": "/city-drive/control",
+    "module": "/data/dashboard-wc/pages/city-drive.js",
+    "routeId": "city-drive-control",
+    "component": "wui-city-drive",
+    "permission": ["connected"]
+  },
+  {
     "title": { "en_US": "City Drive · Admin", "fr": "City Drive · Administration", "de_AT": "City Drive · Verwaltung" },
     "icon": "barchart",
     "path": "/city-drive/admin",

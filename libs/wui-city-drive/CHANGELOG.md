@@ -3,6 +3,23 @@
 
 # Changelog — @visuelconcept-winccoa/wui-city-drive
 
+## 0.13.0 — 2026-11-18
+
+- **Control room** `/city-drive/control` (menu "City Drive · Control room"), new role
+  **`control`**, for a second screen of the stand: the live map of the city (every player
+  online from its `CityDrive_Player_*` datapoint, the plant's halls in their machine colour,
+  wanted players ringed in red); the **alerts** of the wanted players with **Acknowledge** —
+  `dpSet <dp>.wanted:_alert_hdl.._ack = 2` on the operator's own session, as the alarm list
+  does (shown only with the WinCC OA write permission) — after which the game clears the
+  player's level; the players online (car, speed, score), the plant, the weather (its DPEs or
+  the game's cycle), today's matches; a clock. It does not play: no player datapoint.
+- **Fix: `/city-drive/admin` showed the game's start screen.** The shell's router reuses the
+  same element between `/city-drive` and its sub-pages and pushes the route through
+  `onBeforeEnter(location)`; the page read `location.pathname` once. The route is now the
+  router's pushed state, and the game is stopped (renderer, datapoint links, sound, camera)
+  when the element switches to the admin page or the control room, and started again when it
+  comes back.
+
 ## 0.12.0 — 2026-11-18
 
 - **Atmosphere** (lot 3, #95):
