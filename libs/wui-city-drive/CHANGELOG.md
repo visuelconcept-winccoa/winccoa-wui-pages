@@ -3,6 +3,42 @@
 
 # Changelog — @visuelconcept-winccoa/wui-city-drive
 
+## 0.10.0 — 2026-11-18
+
+**Upgrade.** City Drive now has a backend (`/api/city-drive`): rebuild the site
+(`npx wui build prod`) and restart the webserver. For an IP camera, Camera Streams ≥ 0.3.0.
+
+- **Photo booth**: when a match starts, a 3-2-1 countdown over the live camera, a flash, and
+  a souvenir photo of the players, shown for a moment, then the game. Saved on the WinCC OA
+  server in `<project>/data/city-drive/photos/` (or `$CITY_DRIVE_PHOTOS`), **one file per
+  player named after their email**: `<email>_<YYYYMMDD-HHmmss>.jpg` (no email:
+  `no-email_<nickname>_<date>.jpg`; the date keeps a second match from overwriting the first).
+- **Settings → Photo booth**: Off (default), *This PC's webcam*, or any camera of the Camera
+  Streams module: a USB camera of this PC (opened by the browser, on the device chosen in
+  Camera Streams) or an IP camera (one frame from `/api/rtsp/snapshot`).
+- The start screen says so when the booth is on (a face linked to an email is personal data).
+- Backend: `POST /api/city-drive/photo` (role `city-drive/play`): JPEG only, 8 MB at most,
+  names sanitised (never outside the folder), written aside then renamed.
+- **Start screen in two steps**, nothing to scroll (checked down to 1280 × 720), everything
+  with a gamepad: **1 · Players** (how many, the match, each player's seat, nickname and
+  email side by side) → **2 · Garage** (each player's turning car and the garage lines, side
+  by side for two players). **A / Enter**: next step, then start (photo booth first);
+  **B / Esc** on the garage: back. The email's explanation moved into its placeholder.
+- Lobby fix: a gamepad that already had a seat was ignored there, so its B ("leave") did
+  nothing; every pad's A / Start / B now reaches the lobby.
+- **Skip photo** in the booth (button, B on the pad, Esc): no picture, nothing saved, the game
+  starts.
+- **Souvenir photo on Supabase + QR code** (docs/wui-city-drive/supabase/README.md): City
+  Drive's backend publishes the match photo (≤ 1600 px) to a Supabase Storage bucket as
+  `<YYYY-MM-DD>/<uuid>.jpg`; the podium shows a large QR code of its link ("Scan to get your
+  photo") with the upload state, until a new game. Offline: queued in `photos/pending/`,
+  retried in the background (5 s … 60 s, survives a restart), said on screen. Credentials in
+  the project's `config/config`, section `[cityDriveSupabase]` (`url`, `key`, `bucket`,
+  `signedDays`): public bucket (publishable key, INSERT-only policy) or private bucket with
+  signed links. Supabase's HTTP Storage API with Node's `fetch` (the webserver has no room for
+  supabase-js); new dependency `qrcode` (page). After the event: `download-all.mjs` /
+  `empty-bucket.mjs` (supabase-js, secret key, operator's computer).
+
 ## 0.9.0 — 2026-11-18
 
 - **Garage** on the start screen, one per player card: five lines under the turntable — **Car**,

@@ -581,10 +581,12 @@ export class CityGame {
         this.navPrevious.set(g.index, dir);
       }
     }
-    // pads that drive nobody: join (A / Start) or leave (B) presses
+    // join (A / Start) and leave (B) presses: of the free pads in the game, of every pad in the lobby
     for (const g of pads) {
       const device = padDevice(g.index);
-      if (this.players.some((p) => p.device === device || (p.device === null && this.players.length === 1 && !this.lobby))) continue;
+      // in the game, a pad that plays is read above; in the lobby every pad's A / Start / B is
+      // reported (the page seats a free pad, launches for a seated one, frees it on B)
+      if (!this.lobby && this.players.some((p) => p.device === device || (p.device === null && this.players.length === 1))) continue;
       const prev = this.joinPrevious.get(g.index) ?? [];
       const down = (b: number): boolean => g.buttons[b]?.pressed === true;
       if (JOIN_BUTTONS.some((b) => down(b) && !prev[b])) this.onDevice(device, 'join');

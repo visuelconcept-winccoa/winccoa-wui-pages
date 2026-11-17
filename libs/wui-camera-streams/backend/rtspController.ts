@@ -25,6 +25,8 @@ import { Request, Response } from 'ultimate-express';
 const MANAGER_HOST = process.env.RTSP_PROXY_HOST || '127.0.0.1';
 const MANAGER_PORT = Number(process.env.RTSP_PROXY_PORT) || 9999;
 const STATUS_TIMEOUT_MS = 4000;
+/** The manager has 10 s to pull a frame; the relay waits a little longer. */
+const SNAPSHOT_TIMEOUT_MS = 12_000;
 /** Camera ids are slugs created by the page — guard before building the URL. */
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -96,6 +98,35 @@ export class RtspController {
   /** GET /api/rtsp/clients -> { "<cameraId>": <connectedClients>, ... }. */
   public clients = (_req: Request, res: Response): void => {
     res.status(200).json(getClientCounts());
+  };
+
+  /**
+   * GET /api/rtsp/snapshot/:id -> one JPEG frame of an RTSP camera, pulled by the rtspProxy
+   * manager (the photo booth of City Drive). 400 bad id, 404 unknown / local camera, 502 the
+   * camera gave no frame, 503 the manager is not running.
+   */
+  public snapshot = (req: Request, res: Response): void => {
+    const id = String(req.params.id ?? '');
+    if (!ID_RE.test(id)) {
+      res.status(400).json({ error: 'invalid camera id' });
+      return;
+    }
+    const url = `http://${MANAGER_HOST}:${MANAGER_PORT}/api/rtsp/snapshot/${encodeURIComponent(id)}`;
+    const upstream = http.get(url, { timeout: SNAPSHOT_TIMEOUT_MS }, (m) => {
+      res.status(m.statusCode ?? 502);
+      res.set('Content-Type', String(m.headers['content-type'] ?? 'application/octet-stream'));
+      res.set('Cache-Control', 'no-store');
+      const chunks: Buffer[] = [];
+      m.on('data', (c: Buffer) => chunks.push(c));
+      m.on('end', () => res.send(Buffer.concat(chunks)));
+    });
+    upstream.on('error', () => {
+      if (!res.headersSent) res.status(503).json({ error: 'rtspProxy manager not reachable' });
+    });
+    upstream.on('timeout', () => {
+      upstream.destroy();
+      if (!res.headersSent) res.status(504).json({ error: 'snapshot timed out' });
+    });
   };
 
   /** GET /api/rtsp/status -> { "<cameraId>": { reachable, checkedAt, detail }, ... }. */

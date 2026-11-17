@@ -50,6 +50,7 @@ No requirement: agv-fleet, diagnosis, dp-watch, eng-studio.
 | `/api/ai/fleet` (`machine-fleet-3d`) | `wui-machine-fleet-3d/src/machine-fleet-3d/data/fleet-api.ts` (`<wui-fleet-3d-view>`, `listAteliers`) | none in this repository — a site module that embeds one atelier's 3D view ([EMBEDDING.md](wui-machine-fleet-3d/EMBEDDING.md)) | the element shows "data unavailable" |
 | `/api/fleet` (`fleet-closures`) | `wui-fleet-core/src/data/fleet-store.ts` | production-orders, thermal-reports | their writes to the Fleet's datapoints go through `/api/para`, without the server-side role check |
 | `/api/ai/fleet/settings` (`machine-fleet-3d`) | `wui-fleet-core/src/user-settings.ts` (through `fleet-settings-service.ts`) | fleet-closures, fleet-kpi-analysis, fleet-stop-analysis | the user's selections are not kept in their WinCC OA user settings |
+| `/api/rtsp/snapshot` (`camera-streams`) | `wui-city-drive/src/city-drive/photo-booth.ts` (and `dp-link.ts` reads its `RtspCamera_*` datapoints) | city-drive | the photo booth offers only "This PC's webcam" |
 | `/api/vnc` (`remote-vnc`) | `wui-remote-vnc/src/vnc-viewer.ts` (`<wui-vnc-viewer>`) | none in this repository — a site module that embeds a VNC session ([EMBEDDING.md](wui-remote-vnc/EMBEDDING.md)) | the element shows "relay unavailable" |
 
 "Frontend-only" / "no backend module" in a module's README means it **owns** no

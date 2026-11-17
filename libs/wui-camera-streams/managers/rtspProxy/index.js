@@ -78,6 +78,10 @@ const AUDIO_SAMPLE_RATE = 44_100;
 // live "joignable / injoignable" indicator at all times.
 const PROBE_CYCLE_MS = 25_000;
 const PROBE_TIMEOUT_MS = 8000;
+/** A snapshot (one JPEG frame) must come within this delay. */
+const SNAPSHOT_TIMEOUT_MS = 10_000;
+/** Largest snapshot accepted from ffmpeg (bytes). */
+const SNAPSHOT_MAX_BYTES = 8 * 1024 * 1024;
 /** Max simultaneous probes per cycle (keeps CPU/handles bounded). */
 const PROBE_CONCURRENCY = 6;
 /** Last reachability result per camera id: { reachable, checkedAt, detail }. */
@@ -308,6 +312,61 @@ function scheduleProbe() {
     .finally(() => setTimeout(scheduleProbe, PROBE_CYCLE_MS));
 }
 
+/**
+ * One JPEG frame of an RTSP camera (photo booth of City Drive, ≥ 0.3.0): a short ffmpeg pull
+ * that writes the first decoded frame as JPEG to stdout. Resolves the JPEG bytes, or rejects
+ * with a reason (timeout, ffmpeg error). A hard kill timeout guarantees termination.
+ */
+function snapshotCamera(stream) {
+  return new Promise((resolve, reject) => {
+    const args = ['-rtsp_transport', stream.transport, '-loglevel', 'error', '-i', stream.url, '-frames:v', '1', '-q:v', '3', '-an', '-f', 'image2', '-vcodec', 'mjpeg', 'pipe:1'];
+    const chunks = [];
+    let size = 0;
+    let stderr = '';
+    let settled = false;
+    let child;
+    const finish = (error, data) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) reject(error);
+      else resolve(data);
+    };
+    const timer = setTimeout(() => {
+      try {
+        child?.kill('SIGKILL');
+      } catch {
+        // already gone
+      }
+      finish(new Error('délai dépassé'));
+    }, SNAPSHOT_TIMEOUT_MS);
+    try {
+      child = spawn(ffmpegPath, args, { windowsHide: true });
+    } catch (e) {
+      finish(e instanceof Error ? e : new Error(String(e)));
+      return;
+    }
+    child.stdout.on('data', (d) => {
+      size += d.length;
+      if (size > SNAPSHOT_MAX_BYTES) {
+        child.kill('SIGKILL');
+        finish(new Error('image trop grande'));
+        return;
+      }
+      chunks.push(d);
+    });
+    child.stderr.on('data', (d) => {
+      stderr += d.toString();
+    });
+    child.on('error', (e) => finish(e));
+    child.on('exit', (code) => {
+      const data = Buffer.concat(chunks);
+      if (code === 0 && data.length > 0) finish(null, data);
+      else finish(new Error(lastErrLine(stderr) || `ffmpeg a quitté (code ${code})`));
+    });
+  });
+}
+
 function run() {
   const port = resolvePort();
   const host = process.env.RTSP_PROXY_HOST || DEFAULT_HOST;
@@ -324,6 +383,29 @@ function run() {
   // Cyclic RTSP reachability of every camera (independent of connected clients).
   app.get('/api/rtsp/status', (_req, res) => {
     res.json(Object.fromEntries(statusById));
+  });
+
+  // One JPEG frame of an RTSP camera (the dashboard webserver relays it as
+  // GET /api/rtsp/snapshot/<id>). 404 for an unknown or local (USB) camera.
+  app.get('/api/rtsp/snapshot/:id', async (req, res) => {
+    const id = String(req.params.id ?? '').trim();
+    let stream = null;
+    try {
+      stream = await resolveStream(id);
+    } catch (error) {
+      log(`Résolution échouée pour « ${id} » : ${error?.message ?? error}`);
+    }
+    if (!stream) {
+      res.status(404).json({ error: 'unknown or local camera' });
+      return;
+    }
+    try {
+      const jpeg = await snapshotCamera(stream);
+      res.set('Content-Type', 'image/jpeg').set('Cache-Control', 'no-store').send(jpeg);
+    } catch (error) {
+      log(`Instantané impossible pour ${stream.name} (${id}) : ${error?.message ?? error}`);
+      res.status(502).json({ error: String(error?.message ?? error) });
+    }
   });
 
   // The live camera stream. The dashboard webserver proxies the browser's

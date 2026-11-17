@@ -21,11 +21,12 @@
 import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { WuiUserService } from '@wincc-oa/wui-iam-data/user-service.js';
 import { DpSingleJsonStore } from '@visuelconcept-winccoa/wui-kit/data/dp-single-json-store.js';
-import { Subscription } from 'rxjs';
+import { Subscription, firstValueFrom } from 'rxjs';
 import { container } from 'tsyringe';
 import { boundDpes, lightForced, machineState, parseConfig, type DriveConfig, type MachineState } from './bindings.js';
 import type { Telemetry } from './game.js';
 import { carPose, spawnTraffic, stepTraffic, type TrafficCar } from './traffic.js';
+import { parseBoothCamera, type BoothCamera } from './photo-booth.js';
 import { rng } from './city.js';
 
 export const PLAYER_TYPE = 'CityDrive_Player';
@@ -341,6 +342,27 @@ export class DriveLink {
         })
       );
     }, DEMO_STEP_MS);
+  }
+
+  /**
+   * The cameras of the Camera Streams module (#91), for the photo booth setting: every
+   * `RtspCamera_<id>` datapoint, its name and kind. Empty without a backend or without the module.
+   */
+  async listCameras(): Promise<BoothCamera[]> {
+    if (this.demo || !this.api) return [];
+    try {
+      const names = (await firstValueFrom(this.api.dpNames('RtspCamera_*', 'RtspCamera_Stream'))) as string[];
+      const dps = names.map(normDpe).filter((n) => /^RtspCamera_[\w-]+$/.test(n));
+      if (dps.length === 0) return [];
+      const raw = (await firstValueFrom(this.api.dpGet(dps.map((dp) => `${dp}.json`)))) as unknown;
+      const values = Array.isArray(raw) ? raw : [raw];
+      return dps
+        .map((dp, k) => parseBoothCamera(dp.slice('RtspCamera_'.length), String((Array.isArray(values[k]) ? values[k][0] : values[k]) ?? '')))
+        .filter((c): c is BoothCamera => c !== null)
+        .sort((a, b) => a.name.localeCompare(b.name));
+    } catch {
+      return [];
+    }
   }
 
   /** Writes player i's changed telemetry fields; while a write runs, the next fields wait, merged. */

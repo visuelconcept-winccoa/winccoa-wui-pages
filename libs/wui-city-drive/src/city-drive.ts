@@ -51,6 +51,20 @@ import {
 } from './city-drive/settings.js';
 import { TelemetryThrottle } from './city-drive/telemetry.js';
 import { CarPreview } from './city-drive/car-preview.js';
+import {
+  BOOTH_COUNTDOWN_S,
+  boothSource,
+  closePreview,
+  fitWidth,
+  openPreview,
+  publicationStatus,
+  publishPhoto,
+  qrSvg,
+  savePhoto,
+  takePhoto,
+  type BoothCamera,
+  type Publication
+} from './city-drive/photo-booth.js';
 import { DpSingleJsonStore } from '@visuelconcept-winccoa/wui-kit/data/dp-single-json-store.js';
 import { addResults, leaderboard, ordinal, playerCount, resultId, validEmail, type BoardRow, type GameResult } from './city-drive/results.js';
 import {
@@ -190,6 +204,19 @@ export class WuiCityDrive extends LitElement {
   @state() private board: BoardRow[] | null = null;
   /** People in the ranking (one per email, else per nickname). */
   @state() private boardPlayers = 0;
+  /** Photo booth (#91): the cameras of Camera Streams, and the booth on screen while it shoots. */
+  @state() private boothCameras: BoothCamera[] = [];
+  @state() private booth: { count: number; flash: boolean; note: string; image: string } | null = null;
+  private boothStream: MediaStream | null = null;
+  /** "Skip photo" (button, B, Esc): the booth stops at its next step and the game starts. */
+  private boothSkipped = false;
+  /** The match photo on Supabase (#92): its link, its upload state, the QR code of the link. */
+  @state() private publication: Publication | null = null;
+  @state() private publicationQr = '';
+  private publicationTimer = 0;
+  @query('video.booth-preview') private boothVideo?: HTMLVideoElement;
+  /** The start screen's step: 1 players, 2 garage (#91). */
+  @state() private setupStep: 1 | 2 = 1;
   /** The garage line each player's controls are on. */
   @state() private garageRow: number[] = [];
   /** The turning cars of the start screen, one per player card. */
@@ -230,6 +257,9 @@ export class WuiCityDrive extends LitElement {
     super.disconnectedCallback();
     window.removeEventListener('keydown', this.onRebindKey, true);
     window.removeEventListener('keydown', this.onLobbyKey);
+    closePreview(this.boothStream);
+    this.boothStream = null;
+    window.clearInterval(this.publicationTimer);
     this.previews.forEach((pv) => pv.dispose());
     this.previews.clear();
     this.roleSub.unsubscribe();
@@ -284,6 +314,7 @@ export class WuiCityDrive extends LitElement {
       ${this.rolePlay
         ? html`<div class="stage" @click=${() => this.stage.focus()}></div>
             ${this.started ? this.renderHud() : this.renderSetup()} ${this.settingsOpen ? this.renderSettings() : nothing}
+            ${this.booth ? this.renderBooth() : nothing}
             ${this.results ? this.renderPodium(this.results) : nothing} ${this.lostSlot !== null ? this.renderLost(this.lostSlot) : nothing}`
         : html`<div class="center muted">${MSG.hud.roleForbidden}</div>`}
     `;
@@ -291,13 +322,26 @@ export class WuiCityDrive extends LitElement {
 
   // --- start screen ---------------------------------------------------------------
 
+  /**
+   * The start screen, in two steps (#91) — no scrolling, everything reachable with a gamepad:
+   * 1 · Players: how many, the match, each player's seat (device), nickname and email;
+   * 2 · Garage: each player's car on its turntable and the garage lines.
+   * A / Enter: next step, then start (photo booth first); B / Esc on the garage: back.
+   */
   private renderSetup(): TemplateResult {
     const two = this.local.players === 2;
     const ready = !two || this.slots.ready;
+    const step = this.setupStep;
     return html`<div class="overlay">
-      <div class="setup ${two ? 'wide' : ''}">
+      <div class="setup start ${two ? 'wide' : ''}">
         ${this.renderBanner(false)}
-        <div class="row-opts">
+        <div class="steps">
+          <span class=${step === 1 ? 'on' : 'done'}>1 · Players</span>
+          <span class="sep"></span>
+          <span class=${step === 2 ? 'on' : ''}>2 · Garage</span>
+        </div>
+        ${step === 1
+          ? html`<div class="row-opts">
           <div>
             <div class="label">Players</div>
             <div class="times">
@@ -319,8 +363,8 @@ export class WuiCityDrive extends LitElement {
             </div>
           </div>
         </div>
-        <div class="slots">${this.profiles.map((pr, k) => this.renderSlot(pr, k, two))}</div>
-        ${this.local.match === 0
+              <div class="slots">${this.profiles.map((pr, k) => this.renderSeat(pr, k, two))}</div>
+              ${this.local.match === 0
           ? html`<div class="label">${MSG.hud.mode}</div>
               <div class="times">
                 ${(['logos', 'missions'] as const).map(
@@ -335,28 +379,38 @@ export class WuiCityDrive extends LitElement {
               <div class="hint">${this.profile.mode === 'logos' ? MSG.hud.logosHint : MSG.hud.missionsHint}</div>`
           : html`<div class="hint">
               ${two ? 'Race for the WinCC OA logos' : 'Time attack on the WinCC OA logos'}: ${minutes(this.local.match)}, the highest score wins. Chain logos within 6 s for a combo.
-            </div>`}
+            </div>`}`
+          : html`<div class="slots ${two ? 'duo' : ''}">${this.profiles.map((pr, k) => this.renderGarage(pr, k, two))}</div>
+              ${this.settings.photoBooth
+          ? html`<div class="booth-notice"><ix-icon name="photo-camera" size="16"></ix-icon>A souvenir photo is taken when the match starts; it is saved on the server with your email.</div>`
+          : nothing}`}
         <div class="setup-actions">
-          <div class="times">
+          ${step === 1
+            ? html`<div class="times">
             ${(['night', 'day'] as const).map(
               (tm) => html`<ix-button size="16" variant=${this.profile.time === tm ? 'primary' : 'secondary'} icon=${tm === 'day' ? 'sun' : 'moon'} @click=${() => this.pickTime(tm)}
                 >${tm === 'day' ? MSG.hud.day : MSG.hud.night}</ix-button
               >`
             )}
           </div>
-          <ix-button variant="secondary" icon="cogwheel" @click=${() => this.openSettings()}>Settings</ix-button>
+                <ix-button variant="secondary" icon="cogwheel" @click=${() => this.openSettings()}>Settings</ix-button>`
+            : html`<ix-button variant="secondary" icon="chevron-left" @click=${() => (this.setupStep = 1)}>Back · B / Esc</ix-button>`}
           <span class="grow"></span>
-          <ix-button class="go" ?disabled=${!this.game || !ready || !this.emailsValid} @click=${() => this.startGame()}>
-            ${ready ? (this.local.match ? 'Start the match' : 'Drive') : 'Waiting for the players…'}
-          </ix-button>
+          ${step === 1
+            ? html`<ix-button class="go" icon="chevron-right" ?disabled=${!ready || !this.emailsValid} @click=${() => this.confirmStart()}>
+                ${ready ? 'Next: garage · A / Enter' : 'Waiting for the players…'}
+              </ix-button>`
+            : html`<ix-button class="go" ?disabled=${!this.game} @click=${() => this.confirmStart()}>
+                ${this.local.match ? 'Start the match' : 'Drive'} · A / Enter
+              </ix-button>`}
         </div>
-        <div class="keys">${two ? 'Gamepad: A or Start to join, B to leave · Keyboard (one player): Enter to join, Esc to leave' : MSG.hud.keys}</div>
+        ${step === 1 && two ? html`<div class="keys">Gamepad: A or Start to join, B to leave · Keyboard (one player): Enter to join, Esc to leave</div>` : nothing}
       </div>
     </div>`;
   }
 
-  /** A player's card: device ("press to join"), nickname, vehicle, neon colour. */
-  private renderSlot(pr: Profile, k: number, two: boolean): TemplateResult {
+  /** Step 1, a player's seat: device ("press to join"), nickname, email. */
+  private renderSeat(pr: Profile, k: number, two: boolean): TemplateResult {
     const p = this.palette;
     const device = this.slots.devices[k];
     return html`<div class="slot" style="--c:${hex(p ? p[pr.color] : 0x00bde3)}">
@@ -371,6 +425,7 @@ export class WuiCityDrive extends LitElement {
                     : html`<ix-button class="kb-join" variant="secondary" ghost icon="keyboard" @click=${() => this.joinKeyboardAt(k)}>Use the keyboard</ix-button>`}`}
           </div>`
         : nothing}
+      <div class="seat-fields">
       <ix-input
         label=${two ? `Nickname P${k + 1}` : 'Nickname'}
         maxlength=${NICKNAME_MAX}
@@ -380,42 +435,55 @@ export class WuiCityDrive extends LitElement {
       <ix-input
         type="email"
         label=${two ? `Email P${k + 1} (optional)` : 'Email (optional)'}
-        .helperText=${'Saved with your results; never shown in the ranking'}
+        placeholder="Saved with your results, never shown"
         .invalidText=${'Not a valid email address'}
         class=${validEmail(this.emails[k] ?? '') ? '' : 'ix-invalid'}
         .value=${this.emails[k] ?? ''}
         @valueChange=${(e: CustomEvent<string>) => this.setEmail(k, e.detail ?? '')}
       ></ix-input>
-      <div class="garage ${two ? 'compact' : ''}">
-        <canvas class="preview" data-k=${k}></canvas>
-        <ix-icon-button class="arrow prev" ghost icon="chevron-left" title="Previous vehicle" @click=${() => this.cycleVehicle(k, -1)}></ix-icon-button>
-        <ix-icon-button class="arrow next" ghost icon="chevron-right" title="Next vehicle" @click=${() => this.cycleVehicle(k, 1)}></ix-icon-button>
-        <div class="garage-info">
-          <ix-typography format="h4">${vehicleById(pr.vehicle).label}</ix-typography>
-          <div class="kind">${vehicleById(pr.vehicle).kind}</div>
-          ${two
-            ? nothing
-            : html`<div class="stat"><span>Speed</span>${bars(vehicleById(pr.vehicle).rating.speed)}</div>
-                <div class="stat"><span>Handling</span>${bars(vehicleById(pr.vehicle).rating.handling)}</div>
-                <div class="stat"><span>Range</span>${bars(vehicleById(pr.vehicle).rating.range)}</div>`}
+      </div>
+    </div>`;
+  }
+
+  /** Step 2, a player's garage: the car on its turntable, the garage lines. */
+  private renderGarage(pr: Profile, k: number, two: boolean): TemplateResult {
+    const p = this.palette;
+    return html`<div class="slot" style="--c:${hex(p ? p[pr.color] : 0x00bde3)}">
+      ${two ? html`<div class="slot-head"><span class="badge">P${k + 1}</span><strong>${pr.nickname || `Player ${k + 1}`}</strong></div>` : nothing}
+      <div class="slot-body ${two ? 'stacked' : ''}">
+        <div class="garage ${two ? 'compact' : ''}">
+          <canvas class="preview" data-k=${k}></canvas>
+          <ix-icon-button class="arrow prev" ghost icon="chevron-left" title="Previous vehicle" @click=${() => this.cycleVehicle(k, -1)}></ix-icon-button>
+          <ix-icon-button class="arrow next" ghost icon="chevron-right" title="Next vehicle" @click=${() => this.cycleVehicle(k, 1)}></ix-icon-button>
+          <div class="garage-info">
+            <ix-typography format="h4">${vehicleById(pr.vehicle).label}</ix-typography>
+            <div class="kind">${vehicleById(pr.vehicle).kind}</div>
+            ${two
+              ? nothing
+              : html`<div class="stat"><span>Speed</span>${bars(vehicleById(pr.vehicle).rating.speed)}</div>
+                  <div class="stat"><span>Handling</span>${bars(vehicleById(pr.vehicle).rating.handling)}</div>
+                  <div class="stat"><span>Range</span>${bars(vehicleById(pr.vehicle).rating.range)}</div>`}
+          </div>
+          <div class="garage-dots">
+            ${VEHICLES.map(
+              (v) => html`<button class="vdot ${pr.vehicle === v.id ? 'on' : ''}" title=${v.label} aria-label=${v.label} @click=${() => this.setProfileOf(k, { ...pr, vehicle: v.id })}></button>`
+            )}
+          </div>
         </div>
-        <div class="garage-dots">
-          ${VEHICLES.map(
-            (v) => html`<button class="vdot ${pr.vehicle === v.id ? 'on' : ''}" title=${v.label} aria-label=${v.label} @click=${() => this.setProfileOf(k, { ...pr, vehicle: v.id })}></button>`
-          )}
+        <div class="slot-fields">
+          <div class="rows">
+            ${GARAGE_ROWS.map(
+              (row, r) => html`<div class="grow-row ${(this.garageRow[k] ?? 0) === r ? 'on' : ''}" @click=${() => this.setGarageRow(k, r)}>
+                <span class="row-label">${ROW_LABEL[row]}</span>
+                <ix-icon-button ghost size="16" icon="chevron-left" title="Previous" @click=${(e: Event) => this.garageStep(k, row, -1, e)}></ix-icon-button>
+                <span class="row-value">${this.garageValue(k, row)}</span>
+                <ix-icon-button ghost size="16" icon="chevron-right" title="Next" @click=${(e: Event) => this.garageStep(k, row, 1, e)}></ix-icon-button>
+              </div>`
+            )}
+          </div>
+          <div class="hint">▲ ▼ choose a line · ◀ ▶ change it · A / Enter to start (${this.navHint(k)})</div>
         </div>
       </div>
-      <div class="rows">
-        ${GARAGE_ROWS.map(
-          (row, r) => html`<div class="grow-row ${(this.garageRow[k] ?? 0) === r ? 'on' : ''}" @click=${() => this.setGarageRow(k, r)}>
-            <span class="row-label">${ROW_LABEL[row]}</span>
-            <ix-icon-button ghost size="16" icon="chevron-left" title="Previous" @click=${(e: Event) => this.garageStep(k, row, -1, e)}></ix-icon-button>
-            <span class="row-value">${this.garageValue(k, row)}</span>
-            <ix-icon-button ghost size="16" icon="chevron-right" title="Next" @click=${(e: Event) => this.garageStep(k, row, 1, e)}></ix-icon-button>
-          </div>`
-        )}
-      </div>
-      <div class="hint">▲ ▼ choose a line · ◀ ▶ change it (${this.navHint(k)})</div>
     </div>`;
   }
 
@@ -424,7 +492,7 @@ export class WuiCityDrive extends LitElement {
     const pr = this.profiles[k];
     if (!pr) return '';
     const pal = this.palette;
-    if (row === 'vehicle') return `${vehicleById(pr.vehicle).label} · ${vehicleById(pr.vehicle).kind}`;
+    if (row === 'vehicle') return vehicleById(pr.vehicle).label;
     if (row === 'wheels') return wheelById(pr.wheels).label;
     if (row === 'paint') return html`<span class="chip" style="--chip:${hex(paintById(pr.paint).color)}"></span>${paintById(pr.paint).label}`;
     if (row === 'color') return html`<span class="chip neon" style="--chip:${hex(pal ? pal[pr.color] : 0x00bde3)}"></span>${NEON_LABEL[pr.color]}`;
@@ -453,7 +521,7 @@ export class WuiCityDrive extends LitElement {
 
   /** The keyboard's or a gamepad's arrows on player k's garage. */
   private navigate(k: number, dir: 'up' | 'down' | 'left' | 'right'): void {
-    if (this.started || this.settingsOpen || !this.profiles[k]) return;
+    if (this.started || this.settingsOpen || this.setupStep !== 2 || !this.profiles[k]) return;
     const r = this.garageRow[k] ?? 0;
     if (dir === 'up' || dir === 'down') this.setGarageRow(k, r + (dir === 'down' ? 1 : -1));
     else this.garageStep(k, GARAGE_ROWS[r], dir === 'right' ? 1 : -1);
@@ -645,6 +713,7 @@ export class WuiCityDrive extends LitElement {
           <ix-button icon="refresh" @click=${() => this.rematch()}>Play again</ix-button>
         </div>
       </div>
+      ${this.renderPhotoCard()}
     </div>`;
   }
 
@@ -689,6 +758,7 @@ export class WuiCityDrive extends LitElement {
 
   private openSettings(): void {
     this.settingsOpen = true;
+    void this.link.listCameras().then((c) => (this.boothCameras = c));
     if (this.started) this.game?.setPaused(true);
   }
 
@@ -781,6 +851,19 @@ export class WuiCityDrive extends LitElement {
             <ix-slider label="Steering sensitivity" min="0.5" max="1.5" step="0.05" .value=${st.steering} @valueChange=${(e: CustomEvent<number>) => set({ steering: e.detail })}></ix-slider>
             <ix-slider label="Chase camera distance" min="0.7" max="1.6" step="0.05" .value=${st.cameraDistance} @valueChange=${(e: CustomEvent<number>) => set({ cameraDistance: e.detail })}></ix-slider>
             <ix-slider label="Chase camera height (low → high)" min="0" max="2" step="0.1" .value=${st.cameraHeight} @valueChange=${(e: CustomEvent<number>) => set({ cameraHeight: e.detail })}></ix-slider>
+          </section>
+          <section>
+            <div class="sec-title">Photo booth</div>
+            <div class="hint">A souvenir photo when a match starts, saved on the server, one file per player named after their email.</div>
+            ${choice(
+              st.photoBooth,
+              [
+                ['', 'Off'],
+                ['webcam', "This PC's webcam"],
+                ...this.boothCameras.map((c) => [c.id, `${c.name}${c.kind === 'local' ? ' (USB)' : ' (IP)'}`] as [string, string])
+              ],
+              (v) => set({ photoBooth: v })
+            )}
           </section>
           <section>
             <div class="sec-title">Graphics and display</div>
@@ -921,6 +1004,7 @@ export class WuiCityDrive extends LitElement {
     this.telemetryOn = !this.link.demo && this.link.player !== '';
     this.link.watchPlayers((players) => this.onPlayers(players), this.game.city.blocks);
     this.link.watchAlerts((i) => this.game?.clearHeat(i));
+    this.boothCameras = await this.link.listCameras();
   }
 
   /**
@@ -943,8 +1027,7 @@ export class WuiCityDrive extends LitElement {
       }
       return;
     }
-    if (this.local.players < 2 || e.repeat) return;
-    if (target === this.stage) return; // the game handles its own keys
+    if (e.repeat || target === this.stage) return; // the game handles its own keys
     if (e.code === 'Enter' || e.code === 'NumpadEnter') {
       e.preventDefault();
       this.onDevice('keyboard', 'join');
@@ -952,6 +1035,17 @@ export class WuiCityDrive extends LitElement {
       this.onDevice('keyboard', 'leave');
     }
   };
+
+  /** A / Enter on the start screen: to the garage once every seat is taken and the emails are valid, then start. */
+  private confirmStart(): void {
+    const ready = this.local.players < 2 || this.slots.ready;
+    if (this.started || this.settingsOpen || this.booth || !this.game || !ready || !this.emailsValid) return;
+    if (this.setupStep === 1) {
+      this.setupStep = 2;
+      return;
+    }
+    this.startGame();
+  }
 
   /** "Use the keyboard" on a free seat: the keyboard takes that very seat. */
   private joinKeyboardAt(k: number): void {
@@ -975,7 +1069,22 @@ export class WuiCityDrive extends LitElement {
       this.game.setPaused(false);
       return;
     }
-    if (this.started || this.local.players < 2) return;
+    if (this.started) return;
+    // A / Start / Enter from a device that already plays (alone: any device): next step, then start
+    if (press === 'join' && (this.local.players < 2 || this.slots.slotOf(device) !== -1)) {
+      this.confirmStart();
+      return;
+    }
+    // B / Esc: skips the photo booth; on the garage, back to the players (a seat is only freed on step 1)
+    if (press === 'leave' && this.booth) {
+      this.skipBooth();
+      return;
+    }
+    if (press === 'leave' && this.setupStep === 2) {
+      if (!this.settingsOpen) this.setupStep = 1;
+      return;
+    }
+    if (this.local.players < 2) return;
     const slots = this.slots.resize(this.slots.count);
     const k = press === 'join' ? slots.join(device) : slots.leave(device);
     if (k === -1) return;
@@ -996,9 +1105,142 @@ export class WuiCityDrive extends LitElement {
     }
   }
 
+  /** Start: the photo booth first when a camera is set (#91), then the game. */
   private startGame(): void {
-    if (!this.game) return;
+    if (!this.game || this.booth) return;
     this.profiles = this.profiles.map((pr) => ({ ...pr, nickname: cleanNickname(pr.nickname) }));
+    const src = boothSource(this.settings.photoBooth, this.boothCameras);
+    if (src.kind === 'off') {
+      this.launch();
+      return;
+    }
+    void this.runBooth(src).finally(() => this.launch());
+  }
+
+  /**
+   * The photo booth: 3-2-1 over the live preview (webcam / USB camera), a flash, the photo; then
+   * it is saved once per player (file named after the email) and shown for a moment.
+   */
+  private async runBooth(src: ReturnType<typeof boothSource>): Promise<void> {
+    const wait = (ms: number): Promise<void> => new Promise((ok) => window.setTimeout(ok, ms));
+    this.boothSkipped = false;
+    this.booth = { count: BOOTH_COUNTDOWN_S, flash: false, note: '', image: '' };
+    try {
+      this.boothStream = await openPreview(src);
+      if (this.boothSkipped) return;
+      await this.updateComplete;
+      const video = this.boothVideo;
+      if (video && this.boothStream) {
+        video.muted = true;
+        video.srcObject = this.boothStream;
+        await video.play().catch(() => undefined);
+      }
+      for (let n = BOOTH_COUNTDOWN_S; n > 0; n--) {
+        this.booth = { ...this.booth, count: n };
+        await wait(1000);
+        if (this.boothSkipped) return;
+      }
+      this.booth = { ...this.booth, count: 0, flash: true };
+      const image = await takePhoto(src, this.boothVideo ?? null);
+      closePreview(this.boothStream);
+      this.boothStream = null;
+      this.booth = { ...this.booth, flash: false, image, note: 'Saving the photo…' };
+      void this.startPublication(image);
+      const saved = await Promise.allSettled(this.profiles.map((pr, k) => savePhoto(image, this.emails[k] ?? '', pr.nickname || `Player ${k + 1}`)));
+      const ok = saved.filter((r) => r.status === 'fulfilled').length;
+      this.booth = { ...this.booth, note: ok === saved.length ? 'Souvenir photo saved!' : ok > 0 ? 'Photo saved for some players only' : 'The photo could not be saved' };
+      await wait(1600);
+    } catch (error) {
+      this.booth = { ...(this.booth ?? { count: 0, flash: false, image: '' }), note: `No photo: ${error instanceof Error ? error.message : String(error)}` };
+      await wait(2200);
+    } finally {
+      closePreview(this.boothStream);
+      this.boothStream = null;
+      this.booth = null;
+    }
+  }
+
+  /**
+   * The match photo goes to Supabase through the backend (at most 1600 px wide); its state is
+   * followed every 3 s until it is online, and its link turned into the podium's QR code.
+   */
+  private async startPublication(image: string): Promise<void> {
+    window.clearInterval(this.publicationTimer);
+    this.publicationQr = '';
+    try {
+      this.publication = await publishPhoto(await fitWidth(image));
+    } catch (error) {
+      this.publication = { id: null, url: null, state: 'failed', error: error instanceof Error ? error.message : String(error) };
+      return;
+    }
+    await this.refreshQr();
+    if (this.publication.state === 'off') return;
+    this.publicationTimer = window.setInterval(() => void this.followPublication(), 3000);
+  }
+
+  private async followPublication(): Promise<void> {
+    if (!this.publication) return;
+    this.publication = await publicationStatus(this.publication).catch(() => this.publication as Publication);
+    await this.refreshQr();
+    if (this.publication.state === 'published') window.clearInterval(this.publicationTimer);
+  }
+
+  private async refreshQr(): Promise<void> {
+    const url = this.publication?.url;
+    if (!url || this.publicationQr) return;
+    const svg = await qrSvg(url).catch(() => '');
+    this.publicationQr = svg ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}` : '';
+  }
+
+  /** The podium's photo panel: the QR code of the link, and where the upload stands. */
+  private renderPhotoCard(): TemplateResult {
+    const pub = this.publication;
+    if (!pub || pub.state === 'off') return html``;
+    const busy = pub.state === 'uploading' || (pub.state === 'pending' && !pub.error);
+    const note =
+      pub.state === 'failed'
+        ? 'The photo could not be handed over for publication.'
+        : pub.state === 'published'
+          ? 'Your photo is online.'
+          : pub.state === 'pending' && pub.error
+            ? `No connection yet: the photo will be uploaded automatically${pub.url ? ', the QR code works as soon as it is' : ''}.`
+            : 'Uploading your photo…';
+    return html`<div class="setup small photo-card">
+      <div class="kicker"><span class="bar"></span>YOUR PHOTO<span class="bar"></span></div>
+      ${this.publicationQr
+        ? html`<img class="qr" src=${this.publicationQr} alt="QR code of the photo's link" />
+            <div class="qr-title">Scan to get your photo</div>`
+        : html`<div class="qr qr-wait"><ix-spinner size="large"></ix-spinner></div>
+            <div class="qr-title">Preparing your link…</div>`}
+      <div class="photo-state ${pub.state}">${busy ? html`<ix-spinner size="small"></ix-spinner>` : nothing}${note}</div>
+      ${pub.state === 'pending' && pub.error ? html`<div class="hint">${pub.error}</div>` : nothing}
+    </div>`;
+  }
+
+  private renderBooth(): TemplateResult {
+    const b = this.booth;
+    if (!b) return html``;
+    return html`<div class="overlay booth">
+      <div class="booth-frame">
+        ${b.image ? html`<img class="booth-shot" src=${b.image} alt="Souvenir photo" />` : html`<video class="booth-preview" autoplay muted playsinline></video>`}
+        ${b.count > 0 ? html`<div class="booth-count">${b.count}</div>` : nothing}
+        ${b.flash ? html`<div class="booth-flash"></div>` : nothing}
+      </div>
+      <div class="booth-note">${b.note || 'Smile! Souvenir photo'}</div>
+      ${b.image ? nothing : html`<ix-button variant="secondary" icon="close" @click=${() => this.skipBooth()}>Skip photo · B / Esc</ix-button>`}
+    </div>`;
+  }
+
+  /** Skips the photo: no picture, nothing saved nor published; the game starts. */
+  private skipBooth(): void {
+    if (!this.booth || this.booth.image) return;
+    this.boothSkipped = true;
+    this.booth = { ...this.booth, count: 0, note: 'Photo skipped' };
+  }
+
+  /** The game itself, after the photo booth. */
+  private launch(): void {
+    if (!this.game) return;
     this.profiles.forEach((pr, k) => {
       saveProfileOf(k, pr);
       this.game?.setProfile(k, pr);
@@ -1068,6 +1310,11 @@ export class WuiCityDrive extends LitElement {
 
   private backToMenu(): void {
     this.results = null;
+    // a new game for new people: the previous photo and its QR code go away
+    window.clearInterval(this.publicationTimer);
+    this.publication = null;
+    this.publicationQr = '';
+    this.setupStep = 1;
     this.board = null;
     // the next people at the booth start with empty emails
     this.emails = [];
@@ -1382,8 +1629,63 @@ function pageStyles(): ReturnType<typeof css> {
       text-shadow: 0 0 30px var(--theme-color-warning), 0 6px 0 rgba(0, 0, 0, 0.8);
       pointer-events: none;
     }
-    .setup.wide {
-      width: min(68rem, 96%);
+    /* the start screen: wide enough for two-column cards, so nothing needs a scroll (#91) */
+    .setup.start {
+      width: min(76rem, 96%);
+      max-height: calc(100% - 1rem);
+      overflow-y: auto; /* last resort on a very small screen */
+      gap: 0.6rem;
+      padding: 1rem 1.25rem;
+    }
+    .setup.start .banner {
+      padding: 0;
+    }
+    .setup.start .banner .headline {
+      font-size: 1.9rem;
+    }
+    .setup.start .banner .tagline {
+      display: none;
+    }
+    .steps {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: var(--theme-color-soft-text);
+    }
+    .steps .on {
+      color: var(--theme-color-primary);
+      text-shadow: 0 0 8px var(--theme-color-primary);
+    }
+    .steps .done {
+      color: var(--theme-color-std-text);
+    }
+    .steps .sep {
+      width: 3rem;
+      height: 2px;
+      background: var(--theme-color-soft-bdr);
+    }
+    .seat-fields {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+    .slot-body.stacked {
+      grid-template-columns: 1fr;
+    }
+    .slot-body {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+      gap: 0.75rem;
+      align-items: start;
+    }
+    .slot-fields {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      min-width: 0;
     }
     .row-opts {
       display: flex;
@@ -1430,11 +1732,11 @@ function pageStyles(): ReturnType<typeof css> {
     }
     .garage .preview {
       width: 100%;
-      height: 15rem;
+      height: 17rem;
       display: block;
     }
     .garage.compact .preview {
-      height: 10rem;
+      height: 14.5rem;
     }
     .garage .arrow {
       position: absolute;
@@ -1526,12 +1828,123 @@ function pageStyles(): ReturnType<typeof css> {
       background: var(--c, var(--theme-color-primary));
       box-shadow: 0 0 6px var(--c, var(--theme-color-primary));
     }
+    .booth-notice {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.85rem;
+      color: var(--theme-color-warning);
+    }
+    .booth {
+      flex-direction: column;
+      gap: 1rem;
+      z-index: 6;
+    }
+    .booth-frame {
+      position: relative;
+      width: min(70vw, 52rem);
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      border: 2px solid var(--theme-color-primary);
+      border-radius: var(--theme-default-border-radius);
+      box-shadow: 0 0 30px color-mix(in srgb, var(--theme-color-primary) 50%, transparent);
+      background: var(--theme-color-1);
+    }
+    .booth-preview,
+    .booth-shot {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .booth-preview {
+      transform: scaleX(-1); /* a mirror, as people expect to see themselves */
+    }
+    .booth-count {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9rem;
+      font-weight: 900;
+      color: var(--theme-color-warning);
+      text-shadow: 0 0 30px var(--theme-color-warning);
+    }
+    .booth-flash {
+      position: absolute;
+      inset: 0;
+      background: var(--theme-color-std-text);
+      animation: booth-flash 0.5s ease-out forwards;
+    }
+    @keyframes booth-flash {
+      to {
+        opacity: 0;
+      }
+    }
+    .booth-note {
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      color: var(--theme-color-dynamic);
+      text-shadow: 0 0 10px var(--theme-color-dynamic);
+    }
     .kb-join {
       margin-left: auto;
     }
     .device.wait {
       color: var(--theme-color-warning);
       animation: pulse 1.4s ease-in-out infinite;
+    }
+    .podium-overlay {
+      gap: 1rem;
+    }
+    .photo-card {
+      align-items: center;
+      text-align: center;
+      gap: 0.6rem;
+    }
+    .photo-card .kicker {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-weight: 700;
+      letter-spacing: 0.4em;
+      color: var(--theme-color-dynamic);
+    }
+    .photo-card .bar {
+      width: 2rem;
+      height: 2px;
+      background: var(--theme-color-dynamic);
+    }
+    .qr {
+      width: min(20rem, 60vh);
+      height: min(20rem, 60vh);
+      border-radius: var(--theme-default-border-radius);
+    }
+    .qr-wait {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px dashed var(--theme-color-soft-bdr);
+    }
+    .qr-title {
+      font-size: 1.4rem;
+      font-weight: 800;
+      color: var(--theme-color-primary);
+      text-shadow: 0 0 10px var(--theme-color-primary);
+    }
+    .photo-state {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .photo-state.published {
+      color: var(--theme-color-success);
+    }
+    .photo-state.pending,
+    .photo-state.failed {
+      color: var(--theme-color-warning);
     }
     .podium {
       align-items: center;

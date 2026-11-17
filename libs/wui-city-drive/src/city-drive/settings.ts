@@ -51,6 +51,8 @@ export interface Settings {
   units: Units;
   showMinimap: boolean;
   showPlayers: boolean;
+  /** Photo booth camera (#91): '' off, 'webcam' (this PC's default webcam) or a Camera Streams id. */
+  photoBooth: string;
 }
 
 export const DEFAULT_KEYS: Record<Action, string[]> = {
@@ -79,7 +81,8 @@ export const DEFAULT_SETTINGS: Settings = {
   quality: 'high',
   units: 'kmh',
   showMinimap: true,
-  showPlayers: true
+  showPlayers: true,
+  photoBooth: ''
 };
 
 const clamp = (v: unknown, lo: number, hi: number, d: number): number => {
@@ -113,7 +116,8 @@ export function parseSettings(raw: unknown): Settings {
     quality: o.quality === 'low' ? 'low' : 'high',
     units: o.units === 'mph' ? 'mph' : 'kmh',
     showMinimap: o.showMinimap !== false,
-    showPlayers: o.showPlayers !== false
+    showPlayers: o.showPlayers !== false,
+    photoBooth: typeof o.photoBooth === 'string' && /^[\w-]{0,64}$/.test(o.photoBooth) ? o.photoBooth : ''
   };
 }
 

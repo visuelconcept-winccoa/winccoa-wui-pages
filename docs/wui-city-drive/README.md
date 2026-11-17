@@ -8,6 +8,11 @@ The game is in English only.
 
 ## Play
 
+- **Start screen, two steps** (no scrolling; all with a gamepad): **1 · Players** — number of
+  players, match length, each player's seat (device), nickname, optional email; **A / Enter**
+  → **2 · Garage** — each player's car and garage lines; **A / Enter** starts (photo booth
+  first when set), **B / Esc** goes back.
+
 - **1 or 2 players on one computer** (split screen). With two players, each one joins with
   its device on the start screen: A or Start on a USB gamepad, Enter on the keyboard (the
   keyboard serves one player at most); B or Escape to leave. Then **Start the match**.
@@ -69,6 +74,39 @@ The game is in English only.
 - **The control room**: from level 2 the player is *wanted*, a real WinCC OA alert (see
   below). An operator who acknowledges it in the alarm list clears the player's alert level.
 
+## Photo booth (≥ 0.10.0)
+
+Settings → **Photo booth**: Off (default), *This PC's webcam*, or a camera of the
+**Camera Streams** module (optional dependency): a USB camera of this PC (the browser opens
+it, on the device chosen for it in Camera Streams) or an IP camera (one JPEG frame from
+`GET /api/rtsp/snapshot/<id>`, Camera Streams ≥ 0.3.0 with its rtspProxy manager running).
+
+When a match starts: 3-2-1 over the live image (USB / webcam; none for an IP camera), a flash,
+the photo shown for a moment, then the game. The photo is posted to City Drive's backend once
+per player and saved on the WinCC OA server:
+
+```
+<project>/data/city-drive/photos/          (or $CITY_DRIVE_PHOTOS)
+  aurel@example.com_20261118-093012.jpg    email given
+  no-email_lea_20261118-093455.jpg         email left empty: the nickname
+```
+
+- The date keeps a second match of the same person from overwriting the first photo; two
+  players with the same email in the same second get `_2`.
+- `POST /api/city-drive/photo` `{ email, nickname, image }` (role `city-drive/play`): a JPEG
+  (base64 or data URL) of 8 MB at most; names are sanitised (letters, digits, `@ . _ -`), so a
+  request can never write outside the folder.
+- **Personal data**: a face linked to an email. The start screen says a photo will be taken
+  when the booth is on; the folder is never served back by the module. Delete the photos when
+  the event is over.
+- The webcam needs HTTPS (or localhost) and the browser's camera permission.
+
+### Photo on Supabase and QR code
+
+The match photo is also published to Supabase Storage by the backend, and the podium shows a
+QR code of its link. Setup, config section `[cityDriveSupabase]`, public / private bucket,
+after-event scripts: [supabase/README.md](supabase/README.md).
+
 ## Datapoints
 
 | Datapoint | Direction | Content |
@@ -105,6 +143,8 @@ telemetry and the game play the same. The other players are read on the elements
 
 - `play`: the page (and one's own telemetry). Without it, a notice replaces the game.
 - `configure`: declared for `CityDrive_Config` (edited in PARA in V1).
+- The photo booth saves with `play` (`POST /api/city-drive/photo`); an IP camera's snapshot
+  also needs `camera-streams/view`.
 - The alert of a wanted player is acknowledged in the alarm list, with the operators' own
   rights; the game adds no role for it.
 

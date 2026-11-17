@@ -12,6 +12,7 @@
 
 import { Router } from 'ultimate-express';
 
+import { requireRole } from './appSecurityGuard';
 import { RtspController } from './rtspController';
 
 /**
@@ -21,6 +22,7 @@ import { RtspController } from './rtspController';
  *   GET /health   -> { ok, service, manager }
  *   GET /clients  -> { "<cameraId>": <connectedClients>, ... }
  *   GET /status   -> { "<cameraId>": { reachable, checkedAt, detail }, ... }
+ *   GET /snapshot/:id -> one JPEG frame of an RTSP camera (role camera-streams/view)
  *   (WebSocket /ws?id= -> MPEG-TS relay, registered separately on the uWS app)
  */
 export class RtspRoute {
@@ -31,6 +33,7 @@ export class RtspRoute {
     router.get('/health', controller.health);
     router.get('/clients', controller.clients);
     router.get('/status', controller.status);
+    router.get('/snapshot/:id', requireRole('camera-streams', 'view'), controller.snapshot);
 
     return router;
   }
