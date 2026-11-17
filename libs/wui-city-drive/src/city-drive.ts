@@ -51,7 +51,20 @@ import {
 } from './city-drive/settings.js';
 import { TelemetryThrottle } from './city-drive/telemetry.js';
 import { CarPreview } from './city-drive/car-preview.js';
-import { BOOTH_COUNTDOWN_S, boothSource, closePreview, openPreview, savePhoto, takePhoto, type BoothCamera } from './city-drive/photo-booth.js';
+import {
+  BOOTH_COUNTDOWN_S,
+  boothSource,
+  closePreview,
+  fitWidth,
+  openPreview,
+  publicationStatus,
+  publishPhoto,
+  qrSvg,
+  savePhoto,
+  takePhoto,
+  type BoothCamera,
+  type Publication
+} from './city-drive/photo-booth.js';
 import { DpSingleJsonStore } from '@visuelconcept-winccoa/wui-kit/data/dp-single-json-store.js';
 import { addResults, leaderboard, ordinal, playerCount, resultId, validEmail, type BoardRow, type GameResult } from './city-drive/results.js';
 import {
@@ -195,6 +208,12 @@ export class WuiCityDrive extends LitElement {
   @state() private boothCameras: BoothCamera[] = [];
   @state() private booth: { count: number; flash: boolean; note: string; image: string } | null = null;
   private boothStream: MediaStream | null = null;
+  /** "Skip photo" (button, B, Esc): the booth stops at its next step and the game starts. */
+  private boothSkipped = false;
+  /** The match photo on Supabase (#92): its link, its upload state, the QR code of the link. */
+  @state() private publication: Publication | null = null;
+  @state() private publicationQr = '';
+  private publicationTimer = 0;
   @query('video.booth-preview') private boothVideo?: HTMLVideoElement;
   /** The start screen's step: 1 players, 2 garage (#91). */
   @state() private setupStep: 1 | 2 = 1;
@@ -240,6 +259,7 @@ export class WuiCityDrive extends LitElement {
     window.removeEventListener('keydown', this.onLobbyKey);
     closePreview(this.boothStream);
     this.boothStream = null;
+    window.clearInterval(this.publicationTimer);
     this.previews.forEach((pv) => pv.dispose());
     this.previews.clear();
     this.roleSub.unsubscribe();
@@ -693,6 +713,7 @@ export class WuiCityDrive extends LitElement {
           <ix-button icon="refresh" @click=${() => this.rematch()}>Play again</ix-button>
         </div>
       </div>
+      ${this.renderPhotoCard()}
     </div>`;
   }
 
@@ -1054,9 +1075,13 @@ export class WuiCityDrive extends LitElement {
       this.confirmStart();
       return;
     }
-    // B / Esc on the garage: back to the players (a seat is only freed on the first step)
+    // B / Esc: skips the photo booth; on the garage, back to the players (a seat is only freed on step 1)
+    if (press === 'leave' && this.booth) {
+      this.skipBooth();
+      return;
+    }
     if (press === 'leave' && this.setupStep === 2) {
-      if (!this.settingsOpen && !this.booth) this.setupStep = 1;
+      if (!this.settingsOpen) this.setupStep = 1;
       return;
     }
     if (this.local.players < 2) return;
@@ -1098,9 +1123,11 @@ export class WuiCityDrive extends LitElement {
    */
   private async runBooth(src: ReturnType<typeof boothSource>): Promise<void> {
     const wait = (ms: number): Promise<void> => new Promise((ok) => window.setTimeout(ok, ms));
+    this.boothSkipped = false;
     this.booth = { count: BOOTH_COUNTDOWN_S, flash: false, note: '', image: '' };
     try {
       this.boothStream = await openPreview(src);
+      if (this.boothSkipped) return;
       await this.updateComplete;
       const video = this.boothVideo;
       if (video && this.boothStream) {
@@ -1111,12 +1138,14 @@ export class WuiCityDrive extends LitElement {
       for (let n = BOOTH_COUNTDOWN_S; n > 0; n--) {
         this.booth = { ...this.booth, count: n };
         await wait(1000);
+        if (this.boothSkipped) return;
       }
       this.booth = { ...this.booth, count: 0, flash: true };
       const image = await takePhoto(src, this.boothVideo ?? null);
       closePreview(this.boothStream);
       this.boothStream = null;
       this.booth = { ...this.booth, flash: false, image, note: 'Saving the photo…' };
+      void this.startPublication(image);
       const saved = await Promise.allSettled(this.profiles.map((pr, k) => savePhoto(image, this.emails[k] ?? '', pr.nickname || `Player ${k + 1}`)));
       const ok = saved.filter((r) => r.status === 'fulfilled').length;
       this.booth = { ...this.booth, note: ok === saved.length ? 'Souvenir photo saved!' : ok > 0 ? 'Photo saved for some players only' : 'The photo could not be saved' };
@@ -1131,6 +1160,63 @@ export class WuiCityDrive extends LitElement {
     }
   }
 
+  /**
+   * The match photo goes to Supabase through the backend (at most 1600 px wide); its state is
+   * followed every 3 s until it is online, and its link turned into the podium's QR code.
+   */
+  private async startPublication(image: string): Promise<void> {
+    window.clearInterval(this.publicationTimer);
+    this.publicationQr = '';
+    try {
+      this.publication = await publishPhoto(await fitWidth(image));
+    } catch (error) {
+      this.publication = { id: null, url: null, state: 'failed', error: error instanceof Error ? error.message : String(error) };
+      return;
+    }
+    await this.refreshQr();
+    if (this.publication.state === 'off') return;
+    this.publicationTimer = window.setInterval(() => void this.followPublication(), 3000);
+  }
+
+  private async followPublication(): Promise<void> {
+    if (!this.publication) return;
+    this.publication = await publicationStatus(this.publication).catch(() => this.publication as Publication);
+    await this.refreshQr();
+    if (this.publication.state === 'published') window.clearInterval(this.publicationTimer);
+  }
+
+  private async refreshQr(): Promise<void> {
+    const url = this.publication?.url;
+    if (!url || this.publicationQr) return;
+    const svg = await qrSvg(url).catch(() => '');
+    this.publicationQr = svg ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}` : '';
+  }
+
+  /** The podium's photo panel: the QR code of the link, and where the upload stands. */
+  private renderPhotoCard(): TemplateResult {
+    const pub = this.publication;
+    if (!pub || pub.state === 'off') return html``;
+    const busy = pub.state === 'uploading' || (pub.state === 'pending' && !pub.error);
+    const note =
+      pub.state === 'failed'
+        ? 'The photo could not be handed over for publication.'
+        : pub.state === 'published'
+          ? 'Your photo is online.'
+          : pub.state === 'pending' && pub.error
+            ? `No connection yet: the photo will be uploaded automatically${pub.url ? ', the QR code works as soon as it is' : ''}.`
+            : 'Uploading your photo…';
+    return html`<div class="setup small photo-card">
+      <div class="kicker"><span class="bar"></span>YOUR PHOTO<span class="bar"></span></div>
+      ${this.publicationQr
+        ? html`<img class="qr" src=${this.publicationQr} alt="QR code of the photo's link" />
+            <div class="qr-title">Scan to get your photo</div>`
+        : html`<div class="qr qr-wait"><ix-spinner size="large"></ix-spinner></div>
+            <div class="qr-title">Preparing your link…</div>`}
+      <div class="photo-state ${pub.state}">${busy ? html`<ix-spinner size="small"></ix-spinner>` : nothing}${note}</div>
+      ${pub.state === 'pending' && pub.error ? html`<div class="hint">${pub.error}</div>` : nothing}
+    </div>`;
+  }
+
   private renderBooth(): TemplateResult {
     const b = this.booth;
     if (!b) return html``;
@@ -1141,7 +1227,15 @@ export class WuiCityDrive extends LitElement {
         ${b.flash ? html`<div class="booth-flash"></div>` : nothing}
       </div>
       <div class="booth-note">${b.note || 'Smile! Souvenir photo'}</div>
+      ${b.image ? nothing : html`<ix-button variant="secondary" icon="close" @click=${() => this.skipBooth()}>Skip photo · B / Esc</ix-button>`}
     </div>`;
+  }
+
+  /** Skips the photo: no picture, nothing saved nor published; the game starts. */
+  private skipBooth(): void {
+    if (!this.booth || this.booth.image) return;
+    this.boothSkipped = true;
+    this.booth = { ...this.booth, count: 0, note: 'Photo skipped' };
   }
 
   /** The game itself, after the photo booth. */
@@ -1216,6 +1310,10 @@ export class WuiCityDrive extends LitElement {
 
   private backToMenu(): void {
     this.results = null;
+    // a new game for new people: the previous photo and its QR code go away
+    window.clearInterval(this.publicationTimer);
+    this.publication = null;
+    this.publicationQr = '';
     this.setupStep = 1;
     this.board = null;
     // the next people at the booth start with empty emails
@@ -1797,6 +1895,56 @@ function pageStyles(): ReturnType<typeof css> {
     .device.wait {
       color: var(--theme-color-warning);
       animation: pulse 1.4s ease-in-out infinite;
+    }
+    .podium-overlay {
+      gap: 1rem;
+    }
+    .photo-card {
+      align-items: center;
+      text-align: center;
+      gap: 0.6rem;
+    }
+    .photo-card .kicker {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-weight: 700;
+      letter-spacing: 0.4em;
+      color: var(--theme-color-dynamic);
+    }
+    .photo-card .bar {
+      width: 2rem;
+      height: 2px;
+      background: var(--theme-color-dynamic);
+    }
+    .qr {
+      width: min(20rem, 60vh);
+      height: min(20rem, 60vh);
+      border-radius: var(--theme-default-border-radius);
+    }
+    .qr-wait {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px dashed var(--theme-color-soft-bdr);
+    }
+    .qr-title {
+      font-size: 1.4rem;
+      font-weight: 800;
+      color: var(--theme-color-primary);
+      text-shadow: 0 0 10px var(--theme-color-primary);
+    }
+    .photo-state {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .photo-state.published {
+      color: var(--theme-color-success);
+    }
+    .photo-state.pending,
+    .photo-state.failed {
+      color: var(--theme-color-warning);
     }
     .podium {
       align-items: center;

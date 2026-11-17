@@ -15,7 +15,12 @@
  *
  * Optional: without Camera Streams, the webcam source still works; without City Drive's
  * backend, the photo is taken and the page says it was not saved.
+ *
+ * Publication (#92): the match's photo, at most 1600 px wide, is also sent to City Drive's
+ * backend, which publishes it to Supabase Storage (backend/supabasePublish.ts) and answers
+ * its link; the podium shows it as a QR code ("Scan to get your photo") with the upload state.
  */
+import { toString as qrToString } from 'qrcode';
 
 export type BoothSource = { kind: 'off' } | { kind: 'webcam' } | { kind: 'local'; id: string; width?: number; height?: number } | { kind: 'rtsp'; id: string };
 
@@ -29,6 +34,9 @@ export interface BoothCamera {
 }
 
 export const PHOTO_URL = '/api/city-drive/photo';
+export const PUBLISH_URL = '/api/city-drive/publish';
+/** Width of the published photo, at most (px). */
+export const PUBLISH_MAX_W = 1600;
 const SNAPSHOT_URL = '/api/rtsp/snapshot';
 const DEVICE_KEY = 'wui-camera-streams.local-device.';
 export const BOOTH_COUNTDOWN_S = 3;
@@ -102,6 +110,59 @@ export async function takePhoto(src: BoothSource, video: HTMLVideoElement | null
   // a selfie is mirrored on screen, not in the souvenir
   g.drawImage(video, 0, 0);
   return canvas.toDataURL('image/jpeg', 0.9);
+}
+
+/** The image re-encoded as JPEG at most `maxW` px wide (smaller ones are kept as they are). */
+export function fitWidth(image: string, maxW = PUBLISH_MAX_W): Promise<string> {
+  return new Promise((ok) => {
+    const img = new Image();
+    img.onload = () => {
+      if (img.naturalWidth <= maxW) {
+        ok(image);
+        return;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = maxW;
+      canvas.height = Math.round((img.naturalHeight * maxW) / img.naturalWidth);
+      (canvas.getContext('2d') as CanvasRenderingContext2D).drawImage(img, 0, 0, canvas.width, canvas.height);
+      ok(canvas.toDataURL('image/jpeg', 0.88));
+    };
+    img.onerror = () => ok(image);
+    img.src = image;
+  });
+}
+
+/** Where the published photo stands (backend `GET /publish/:id`). */
+export interface Publication {
+  id: string | null;
+  /** The link the QR code carries (known at once for a public bucket, after the upload for a private one). */
+  url: string | null;
+  state: 'uploading' | 'published' | 'pending' | 'unknown' | 'off' | 'failed';
+  error: string;
+}
+
+/** Hands the match's photo to the backend for Supabase; `off` when the backend has no Supabase set. */
+export async function publishPhoto(image: string): Promise<Publication> {
+  const res = await fetch(PUBLISH_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image }) });
+  if (!res.ok) throw new Error(`photo not published (${res.status})`);
+  const body = (await res.json()) as { id?: string | null; url?: string | null };
+  if (!body.id) return { id: null, url: null, state: 'off', error: '' };
+  return { id: body.id, url: body.url ?? null, state: 'uploading', error: '' };
+}
+
+/** The upload state of a published photo. */
+export async function publicationStatus(p: Publication): Promise<Publication> {
+  if (!p.id) return p;
+  const res = await fetch(`${PUBLISH_URL}/${encodeURIComponent(p.id)}`, { cache: 'no-store' });
+  if (!res.ok) return p;
+  const s = (await res.json()) as { state?: Publication['state']; error?: string; url?: string | null };
+  return { ...p, state: s.state ?? p.state, error: s.error ?? '', url: s.url ?? p.url };
+}
+
+/** A QR code of `text` as an SVG string (dark on light, for any phone to read it). */
+export function qrSvg(text: string): Promise<string> {
+  // black on white whatever the theme: what every phone camera reads best
+  return qrToString(text, { type: 'svg', errorCorrectionLevel: 'M', margin: 2, color: { dark: '#000000', light: '#ffffff' } });
 }
 
 /** Saves the photo for one player (file named after the email); returns the file name. */

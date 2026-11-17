@@ -26,6 +26,18 @@
   **B / Esc** on the garage: back. The email's explanation moved into its placeholder.
 - Lobby fix: a gamepad that already had a seat was ignored there, so its B ("leave") did
   nothing; every pad's A / Start / B now reaches the lobby.
+- **Skip photo** in the booth (button, B on the pad, Esc): no picture, nothing saved, the game
+  starts.
+- **Souvenir photo on Supabase + QR code** (docs/wui-city-drive/supabase/README.md): City
+  Drive's backend publishes the match photo (≤ 1600 px) to a Supabase Storage bucket as
+  `<YYYY-MM-DD>/<uuid>.jpg`; the podium shows a large QR code of its link ("Scan to get your
+  photo") with the upload state, until a new game. Offline: queued in `photos/pending/`,
+  retried in the background (5 s … 60 s, survives a restart), said on screen. Credentials in
+  the project's `config/config`, section `[cityDriveSupabase]` (`url`, `key`, `bucket`,
+  `signedDays`): public bucket (publishable key, INSERT-only policy) or private bucket with
+  signed links. Supabase's HTTP Storage API with Node's `fetch` (the webserver has no room for
+  supabase-js); new dependency `qrcode` (page). After the event: `download-all.mjs` /
+  `empty-bucket.mjs` (supabase-js, secret key, operator's computer).
 
 ## 0.9.0 — 2026-11-18
 

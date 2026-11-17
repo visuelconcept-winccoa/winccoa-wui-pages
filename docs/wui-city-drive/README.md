@@ -101,6 +101,12 @@ per player and saved on the WinCC OA server:
   the event is over.
 - The webcam needs HTTPS (or localhost) and the browser's camera permission.
 
+### Photo on Supabase and QR code
+
+The match photo is also published to Supabase Storage by the backend, and the podium shows a
+QR code of its link. Setup, config section `[cityDriveSupabase]`, public / private bucket,
+after-event scripts: [supabase/README.md](supabase/README.md).
+
 ## Datapoints
 
 | Datapoint | Direction | Content |
