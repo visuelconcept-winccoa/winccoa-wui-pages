@@ -150,20 +150,29 @@ export interface LinkState {
 export class DriveLink {
   /** True without a backend: simulated machines, nothing written. */
   demo = false;
-  player = '';
+  /** The datapoint of each local player ('' when it could not be created): P1 keeps the name of
+   * 0.3.0 (`…_<user>_<id>`), P2 gets `…_<user>_<id>p2` (#83). */
+  players: string[] = [];
+  private user = '';
+  private client = '';
   private readonly api = resolve(OaRxJsApi);
   private readonly configStore = new DpSingleJsonStore<DriveConfig>(CONFIG_DP, CONFIG_DP, () => ({ machines: [], lights: [] }));
   private sub = new Subscription();
   private playersSub = new Subscription();
   private playersTimer = 0;
   private demoBotsTimer = 0;
-  /** Telemetry writes done, and the time of the last one (ms) — shown in the players panel. */
-  writes = 0;
-  lastWriteAt = 0;
+  /** Telemetry writes done per local player, and the time of the last one (ms) — players panel. */
+  writes: number[] = [];
+  lastWriteAt: number[] = [];
   private demoTimer = 0;
-  private writing = false;
+  private readonly writing: boolean[] = [];
   /** Fields changed while a write was running: sent right after it, merged, never dropped. */
-  private pending: Partial<Telemetry> = {};
+  private readonly pending: Partial<Telemetry>[] = [];
+
+  /** P1's datapoint (the 0.3.0 name). */
+  get player(): string {
+    return this.players[0] ?? '';
+  }
 
   /** Prepares the player datapoint and reads the bindings; switches to demo without a backend. */
   async open(onState: (s: LinkState) => void): Promise<void> {
@@ -174,11 +183,25 @@ export class DriveLink {
       this.startDemo(onState);
       return;
     }
-    this.player = playerDp(await userName(), clientId());
-    await this.ensurePlayerDp().catch(() => {
-      this.player = ''; // cannot create it: play without telemetry
-    });
+    this.user = await userName();
+    this.client = clientId();
+    await this.setLocalPlayers(1);
     this.subscribe(config, onState);
+  }
+
+  /** One datapoint per local player, created when missing (P2 only once two play). */
+  async setLocalPlayers(n: number): Promise<void> {
+    if (this.demo) {
+      this.players = Array.from({ length: n }, (_, k) => playerDp('demo', `${k + 1}`));
+      return;
+    }
+    const names = Array.from({ length: n }, (_, k) => playerDp(this.user, k === 0 ? this.client : `${this.client}p${k + 1}`));
+    for (const [k, dp] of names.entries()) {
+      if (this.players[k] === dp) continue;
+      // cannot create it: that player plays without telemetry
+      this.players[k] = await this.ensurePlayerDp(dp).then(() => dp, () => '');
+    }
+    this.players.length = n;
   }
 
   close(): void {
@@ -204,7 +227,8 @@ export class DriveLink {
       this.playersSub.add(
         this.api.dpNames(`${PLAYER_TYPE}_*`, PLAYER_TYPE).subscribe({
           next: (names) => {
-            const others = (names as string[]).map(normDpe).filter((n) => n !== this.player).sort();
+            // the others: every player datapoint but this computer's own players
+            const others = (names as string[]).map(normDpe).filter((n) => !this.players.includes(n)).sort();
             if (others.join('|') === current) return;
             current = others.join('|');
             this.followPlayers(others, onPlayers);
@@ -283,42 +307,43 @@ export class DriveLink {
     }, DEMO_STEP_MS);
   }
 
-  /** Writes the changed telemetry fields; while a write runs, the next fields wait, merged. */
-  async write(fields: Partial<Telemetry>): Promise<void> {
-    if (this.demo || !this.player) return;
-    this.pending = { ...this.pending, ...fields };
-    if (this.writing) return;
-    this.writing = true;
+  /** Writes player i's changed telemetry fields; while a write runs, the next fields wait, merged. */
+  async write(i: number, fields: Partial<Telemetry>): Promise<void> {
+    const dp = this.players[i];
+    if (this.demo || !dp) return;
+    this.pending[i] = { ...(this.pending[i] ?? {}), ...fields };
+    if (this.writing[i]) return;
+    this.writing[i] = true;
     try {
-      while (Object.keys(this.pending).length > 0) {
-        const batch = this.pending;
-        this.pending = {};
+      while (Object.keys(this.pending[i] ?? {}).length > 0) {
+        const batch = this.pending[i];
+        this.pending[i] = {};
         try {
-          const res = await post(DP_SET_URL, telemetryWrite(this.player, batch));
+          const res = await post(DP_SET_URL, telemetryWrite(dp, batch));
           if (res.ok) {
-            this.writes++;
-            this.lastWriteAt = Date.now();
+            this.writes[i] = (this.writes[i] ?? 0) + 1;
+            this.lastWriteAt[i] = Date.now();
           }
         } catch {
           // the next sample will try again
         }
       }
     } finally {
-      this.writing = false;
+      this.writing[i] = false;
     }
   }
 
-  private async ensurePlayerDp(): Promise<void> {
+  private async ensurePlayerDp(dp: string): Promise<void> {
     const type = await fetch(`${TYPE_URL}/${encodeURIComponent(PLAYER_TYPE)}`);
     if (!type.ok) {
       const res = await post(`${TYPE_URL}/create`, { typeName: PLAYER_TYPE, structure: PLAYER_STRUCTURE });
       if (!res.ok && res.status !== 400) throw new Error(`type ${res.status}`);
     }
     const names = await new Promise<string[]>((ok) => {
-      this.sub.add(this.api!.dpNames(this.player, PLAYER_TYPE).subscribe({ next: (n) => ok(n as string[]), error: () => ok([]) }));
+      this.sub.add(this.api!.dpNames(dp, PLAYER_TYPE).subscribe({ next: (n) => ok(n as string[]), error: () => ok([]) }));
     });
     if (names.length === 0) {
-      const res = await post(CREATE_DP_URL, { dpName: this.player, dpType: PLAYER_TYPE });
+      const res = await post(CREATE_DP_URL, { dpName: dp, dpType: PLAYER_TYPE });
       if (!res.ok) throw new Error(`dp ${res.status}`);
     }
   }

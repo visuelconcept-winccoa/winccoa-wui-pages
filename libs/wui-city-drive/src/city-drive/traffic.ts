@@ -105,7 +105,9 @@ export function spawnTraffic(count: number, blocks: number, seed = 11): TrafficC
 }
 
 /** Distance free ahead of `c` before it must stop (light, car ahead, player), or Infinity. */
-function freeAhead(c: TrafficCar, all: readonly TrafficCar[], player: { x: number; z: number } | null, t: number, ov: LightOverrides): number {
+type Obstacle = { x: number; z: number };
+
+function freeAhead(c: TrafficCar, all: readonly TrafficCar[], players: readonly Obstacle[], t: number, ov: LightOverrides): number {
   let free = Infinity;
   if (c.s < STOP_LINE + 0.5) {
     const ni = c.i + DX[c.dir];
@@ -117,7 +119,7 @@ function freeAhead(c: TrafficCar, all: readonly TrafficCar[], player: { x: numbe
     if (o === c || o.i !== c.i || o.j !== c.j || o.dir !== c.dir || o.s <= c.s) continue;
     free = Math.min(free, o.s - c.s - GAP);
   }
-  if (player) {
+  for (const player of players) {
     const p = carPose(c);
     const fx = DX[c.dir];
     const fz = DZ[c.dir];
@@ -134,12 +136,14 @@ export function stepTraffic(
   blocks: number,
   t: number,
   dt: number,
-  player: { x: number; z: number } | null,
+  /** The player(s) in the way: one, several (local multiplayer), or none. */
+  player: Obstacle | readonly Obstacle[] | null,
   rand: () => number,
   overrides: LightOverrides = NO_OVERRIDES
 ): TrafficCar[] {
+  const players: readonly Obstacle[] = player === null ? [] : Array.isArray(player) ? player : [player as Obstacle];
   for (const c of cars) {
-    const free = freeAhead(c, cars, player, t, overrides);
+    const free = freeAhead(c, cars, players, t, overrides);
     // speed that still lets the car stop within `free`
     const safe = free === Infinity ? CRUISE : Math.sqrt(Math.max(0, 2 * DECEL * Math.max(0, free)));
     const target = Math.min(CRUISE, safe);

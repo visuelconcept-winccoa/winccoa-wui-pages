@@ -123,8 +123,28 @@ function nameTag(text: string, color: number): Sprite {
 /** Size of the moonlight's shadow box around the player (m). */
 const SHADOW_SPAN = 110;
 const BEAM = beamTexture();
-/** The player's registration: Eisenstadt, the cradle of WinCC OA. */
-const PLAYER_PLATE = 'WINCCOA 1';
+/** The players' registrations: Eisenstadt, the cradle of WinCC OA — WINCCOA 1, WINCCOA 2… */
+const plateOf = (k: number): string => `WINCCOA ${k + 1}`;
+
+/** A local player's part of the scene and of the screen (#83). */
+interface View {
+  car: Group;
+  body: Body;
+  headlights: SpotLight[];
+  walker: Group | null;
+  walkerColor: number;
+  camera: PerspectiveCamera;
+  composer: EffectComposer;
+  bloom: UnrealBloomPass;
+  camPos: Vector3;
+  camLook: Vector3;
+  mode: CameraMode;
+  corner: Vector3 | null;
+  /** m/s, for the camera. */
+  speed: number;
+  /** Viewport in CSS pixels, from the bottom left (WebGL). */
+  rect: { x: number; y: number; w: number; h: number };
+}
 
 function neon(color: number, opacity = 1): LineBasicMaterial {
   return new LineBasicMaterial({ color, transparent: opacity < 1, opacity });
@@ -223,18 +243,12 @@ function makeCar(p: NeonPalette, glow: number, paint: number, b: Body = SEDAN, p
 export class CityWorld {
   readonly renderer: WebGLRenderer;
   private readonly scene = new Scene();
-  private readonly camera = new PerspectiveCamera(62, 1, 0.5, 2400);
-  private readonly composer: EffectComposer;
-  private readonly bloom: UnrealBloomPass;
-  private player: Group;
+  /** One view per local player (#83): its car, camera and bloom pipeline, side by side. */
+  private readonly views: View[] = [];
   private readonly moon: DirectionalLight;
-  private readonly headlights: SpotLight[] = [];
   private readonly shadowFollow = new Vector3();
   private readonly street: StreetLife;
   private readonly fx: LogoFx;
-  /** The player on foot (hidden while driving). */
-  private walker: Group | null = null;
-  private walkerColor = -1;
   /** Chase camera distance factor (settings). */
   private camDistance = 1;
   private readonly hemi: HemisphereLight;
@@ -247,12 +261,9 @@ export class CityWorld {
   private signals: TrafficSignals | null = null;
   private readonly marker: Mesh;
   private readonly remotes = new Map<string, { car: Group; key: string }>();
-  private readonly camPos = new Vector3();
-  private readonly camLook = new Vector3();
-  private cameraMode: CameraMode = 'chase';
-  private corner: Vector3 | null = null;
-  private playerBody: Body = SEDAN;
   private elapsed = 0;
+  /** Quality asked in the settings; the effective one drops with two views. */
+  private quality: 'high' | 'low' = 'high';
 
   constructor(
     private readonly host: HTMLElement,
@@ -302,9 +313,6 @@ export class CityWorld {
     this.scene.add(this.street.group);
     this.fx = new LogoFx(this.scene, p);
 
-    this.player = makeCar(p, p.primary, 0x14232a, SEDAN, PLAYER_PLATE);
-    this.scene.add(this.player);
-    this.attachHeadlights(SEDAN);
 
     this.marker = new Mesh(
       new CylinderGeometry(4, 4, 60, 32, 1, true),
@@ -313,15 +321,57 @@ export class CityWorld {
     this.marker.visible = false;
     this.scene.add(this.marker);
 
+    this.setPlayerCount(1);
+  }
+
+  /** A view: a car with its headlights, a camera and its own composer (bloom per view). */
+  private makeView(k: number): View {
+    const camera = new PerspectiveCamera(62, 1, 0.5, 2400);
     // multisampled target: the composer would otherwise lose the antialiasing
     const target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: 4 });
-    this.composer = new EffectComposer(this.renderer, target);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    const composer = new EffectComposer(this.renderer, target);
+    composer.addPass(new RenderPass(this.scene, camera));
     // strength, radius, threshold: a tight glow on the bright neon only, walls stay sharp
-    this.bloom = new UnrealBloomPass(new Vector2(256, 256), 0.75, 0.3, 0.42);
-    this.composer.addPass(this.bloom);
-    this.composer.addPass(new OutputPass());
-    this.resize();
+    const bloom = new UnrealBloomPass(new Vector2(256, 256), 0.75, 0.3, 0.42);
+    composer.addPass(bloom);
+    composer.addPass(new OutputPass());
+    const car = makeCar(this.p, this.p.primary, 0x14232a, SEDAN, plateOf(k));
+    this.scene.add(car);
+    const view: View = {
+      car,
+      body: SEDAN,
+      headlights: [],
+      walker: null,
+      walkerColor: -1,
+      camera,
+      composer,
+      bloom,
+      camPos: new Vector3(),
+      camLook: new Vector3(),
+      mode: 'chase',
+      corner: null,
+      speed: 0,
+      rect: { x: 0, y: 0, w: 1, h: 1 }
+    };
+    this.attachHeadlights(view);
+    return view;
+  }
+
+  /** 1 or 2 local players: one view each, side by side (#83). */
+  setPlayerCount(n: number): void {
+    while (this.views.length < n) this.views.push(this.makeView(this.views.length));
+    while (this.views.length > n) {
+      const v = this.views.pop() as View;
+      this.scene.remove(v.car);
+      if (v.walker) this.scene.remove(v.walker);
+      v.composer.dispose();
+    }
+    this.setTimeOfDay(this.timeOfDay);
+    this.applyQuality();
+  }
+
+  get playerCount(): number {
+    return this.views.length;
   }
 
   // --- static city --------------------------------------------------------------
@@ -660,22 +710,24 @@ export class CityWorld {
     this.fx.explode(x, z);
   }
 
-  /** The player on foot (a figure in its neon colour), or null when driving. */
-  setWalker(w: WalkerState | null, color: number): void {
+  /** Player i on foot (a figure in its neon colour), or null when driving. */
+  setWalker(i: number, w: WalkerState | null, color: number): void {
+    const v = this.views[i];
+    if (!v) return;
     if (!w) {
-      if (this.walker) this.scene.remove(this.walker);
-      this.walker = null;
+      if (v.walker) this.scene.remove(v.walker);
+      v.walker = null;
       return;
     }
-    if (!this.walker || this.walkerColor !== color) {
-      if (this.walker) this.scene.remove(this.walker);
-      this.walker = makeWalker(color);
-      this.walkerColor = color;
-      this.scene.add(this.walker);
+    if (!v.walker || v.walkerColor !== color) {
+      if (v.walker) this.scene.remove(v.walker);
+      v.walker = makeWalker(color);
+      v.walkerColor = color;
+      this.scene.add(v.walker);
     }
-    this.walker.position.set(w.x, 0, w.z);
-    this.walker.rotation.y = w.heading;
-    animateWalker(this.walker, w.phase, w.speed);
+    v.walker.position.set(w.x, 0, w.z);
+    v.walker.rotation.y = w.heading;
+    animateWalker(v.walker, w.phase, w.speed);
   }
 
   setRemotePlayers(players: readonly RemoteCar[]): void {
@@ -715,33 +767,43 @@ export class CityWorld {
   }
 
 
-  /** The player's vehicle: its silhouette and its neon colour. */
-  setPlayerVehicle(body: Body, glow: number): void {
-    const pose = { x: this.player.position.x, z: this.player.position.z, heading: this.player.rotation.y };
-    this.scene.remove(this.player);
-    this.player = makeCar(this.p, glow, 0x14232a, body, PLAYER_PLATE);
-    this.playerBody = body;
-    this.scene.add(this.player);
-    this.attachHeadlights(body);
+  /** Player i's vehicle: its silhouette and its neon colour. */
+  setPlayerVehicle(i: number, body: Body, glow: number): void {
+    const v = this.views[i];
+    if (!v) return;
+    const pose = { x: v.car.position.x, z: v.car.position.z, heading: v.car.rotation.y };
+    this.scene.remove(v.car);
+    v.car = makeCar(this.p, glow, 0x14232a, body, plateOf(i));
+    v.body = body;
+    this.scene.add(v.car);
+    this.attachHeadlights(v);
     this.setTimeOfDay(this.timeOfDay);
-    this.setPlayer(pose);
+    this.setPlayer(i, pose);
   }
 
-  /** Two real spot lights on the player's car: they light the road and cast shadows. */
-  private attachHeadlights(b: Body): void {
-    this.headlights.length = 0;
-    for (const sx of [-b.w * 0.36, b.w * 0.36]) {
+  /** Two real spot lights on a player's car: they light the road. */
+  private attachHeadlights(v: View): void {
+    v.headlights = [];
+    for (const sx of [-v.body.w * 0.36, v.body.w * 0.36]) {
       const spot = new SpotLight(0xeaf6ff, 260, 95, 0.42, 0.55, 1.4);
-      spot.position.set(sx, headlightY(b), b.l / 2);
-      spot.target.position.set(sx * 1.6, 0, b.l / 2 + 30);
-      this.player.add(spot, spot.target);
-      this.headlights.push(spot);
+      spot.position.set(sx, headlightY(v.body), v.body.l / 2);
+      spot.target.position.set(sx * 1.6, 0, v.body.l / 2 + 30);
+      v.car.add(spot, spot.target);
+      v.headlights.push(spot);
     }
   }
 
-  setPlayer(pose: CarPose): void {
-    this.player.position.set(pose.x, 0, pose.z);
-    this.player.rotation.y = pose.heading;
+  setPlayer(i: number, pose: CarPose & { speed?: number }): void {
+    const v = this.views[i];
+    if (!v) return;
+    v.car.position.set(pose.x, 0, pose.z);
+    v.car.rotation.y = pose.heading;
+  }
+
+  /** Speed of player i (m/s), for its camera (pull-back, field of view). */
+  setSpeed(i: number, speed: number): void {
+    const v = this.views[i];
+    if (v) v.speed = speed;
   }
 
   setTraffic(poses: readonly (CarPose & { color: number })[]): void {
@@ -808,10 +870,12 @@ export class CityWorld {
     this.lightOffset.set(day ? 90 : -120, day ? 260 : 220, day ? -140 : -80);
     this.scene.environmentIntensity = day ? 0.55 : 0.12;
     this.renderer.toneMappingExposure = day ? 1 : 1.1;
-    this.bloom.strength = day ? 0.22 : 0.75;
-    this.bloom.threshold = day ? 0.92 : 0.42;
+    for (const v of this.views) {
+      v.bloom.strength = day ? 0.22 : 0.75;
+      v.bloom.threshold = day ? 0.92 : 0.42;
+      for (const h of v.headlights) h.intensity = day ? 0 : 260;
+    }
     for (const m of this.facadeMats) m.emissiveIntensity = day ? 0.04 : 0.42;
-    for (const h of this.headlights) h.intensity = day ? 0 : 260;
     this.street.setDay(day);
     this.applyBeams();
   }
@@ -822,8 +886,9 @@ export class CityWorld {
     this.scene.traverse((o) => {
       if (o.userData.beam) o.visible = night;
     });
-    if (this.cameraMode === 'hood') {
-      this.player.traverse((o) => {
+    for (const v of this.views) {
+      if (v.mode !== 'hood') continue;
+      v.car.traverse((o) => {
         if (o.userData.beam) o.visible = false;
       });
     }
@@ -836,21 +901,32 @@ export class CityWorld {
 
   /** high: shadows, full resolution, bloom; low: no shadows, resolution 1, lighter bloom. */
   setQuality(q: 'high' | 'low'): void {
-    const high = q === 'high';
+    this.quality = q;
+    this.applyQuality();
+  }
+
+  /** The quality in effect: with two views (the scene drawn twice), shadows off and resolution 1. */
+  private applyQuality(): void {
+    const high = this.quality === 'high' && this.views.length < 2;
+    const shadows = this.renderer.shadowMap.enabled;
     this.renderer.setPixelRatio(high ? Math.min(window.devicePixelRatio, 2) : 1);
     this.renderer.shadowMap.enabled = high;
     this.moon.castShadow = high;
-    this.bloom.enabled = high || this.timeOfDay === 'night';
-    this.scene.traverse((o) => {
-      const m = (o as Mesh).material as Material | Material[] | undefined;
-      (Array.isArray(m) ? m : m ? [m] : []).forEach((x) => (x.needsUpdate = true));
-    });
+    for (const v of this.views) v.bloom.enabled = this.quality === 'high' || this.timeOfDay === 'night';
+    if (shadows !== high) {
+      this.scene.traverse((o) => {
+        const m = (o as Mesh).material as Material | Material[] | undefined;
+        (Array.isArray(m) ? m : m ? [m] : []).forEach((x) => (x.needsUpdate = true));
+      });
+    }
     this.resize();
   }
 
-  setCameraMode(mode: CameraMode): void {
-    this.cameraMode = mode;
-    this.corner = null;
+  setCameraMode(i: number, mode: CameraMode): void {
+    const v = this.views[i];
+    if (!v) return;
+    v.mode = mode;
+    v.corner = null;
     // from the bonnet, the player's own beams would veil the view
     this.applyBeams();
   }
@@ -865,8 +941,8 @@ export class CityWorld {
     return new Vector3(cx + (fz >= 0 ? -side : side), 2.2, cz + (fx >= 0 ? side : -side));
   }
 
-  /** Follows the player and renders one frame. */
-  render(dt: number, speed: number): void {
+  /** Updates the shared scene, then renders every view in its part of the screen. */
+  render(dt: number): void {
     this.elapsed += dt;
     this.street.update(dt);
     this.fx.update(dt);
@@ -879,13 +955,32 @@ export class CityWorld {
     (this.marker.material as MeshBasicMaterial).opacity = 0.18 + 0.15 * pulse;
     this.marker.rotation.y += dt;
 
-    // the shadow box follows the player, snapped to whole metres (no shimmering)
-    this.shadowFollow.set(Math.round(this.player.position.x), 0, Math.round(this.player.position.z));
+    // the shadow box follows the players (their middle), snapped to whole metres (no shimmering)
+    const mid = new Vector3();
+    for (const v of this.views) mid.add((v.walker ?? v.car).position);
+    mid.divideScalar(Math.max(1, this.views.length));
+    this.shadowFollow.set(Math.round(mid.x), 0, Math.round(mid.z));
     this.moon.position.copy(this.shadowFollow).add(this.lightOffset);
     this.moon.target.position.copy(this.shadowFollow);
+
+    const split = this.views.length > 1;
+    this.renderer.setScissorTest(split);
+    for (const v of this.views) {
+      this.placeCamera(v, dt);
+      const r = v.rect;
+      this.renderer.setViewport(r.x, r.y, r.w, r.h);
+      this.renderer.setScissor(r.x, r.y, r.w, r.h);
+      v.composer.render(dt);
+    }
+    this.fx.shake *= Math.exp(-dt * 6);
+  }
+
+  /** A view's camera, after its player and its camera mode. */
+  private placeCamera(v: View, dt: number): void {
+    const speed = v.speed;
     // the camera follows the player: the walker when on foot, else the car
-    const focus = this.walker ?? this.player;
-    const onFoot = this.walker !== null;
+    const focus = v.walker ?? v.car;
+    const onFoot = v.walker !== null;
     const h = focus.rotation.y;
     const fx = Math.sin(h);
     const fz = Math.cos(h);
@@ -894,7 +989,7 @@ export class CityWorld {
     const look = new Vector3();
     let stiffness = 6;
     let fov = 62 + Math.min(14, Math.abs(speed) * 0.3);
-    switch (onFoot && (this.cameraMode === 'chase' || this.cameraMode === 'street' || this.cameraMode === 'hood') ? `foot-${this.cameraMode}` : this.cameraMode) {
+    switch (onFoot && (v.mode === 'chase' || v.mode === 'street' || v.mode === 'hood') ? `foot-${v.mode}` : v.mode) {
       case 'foot-chase':
       case 'foot-street': {
         // over the shoulder
@@ -914,8 +1009,7 @@ export class CityWorld {
         break;
       }
       case 'chase': {
-        // close enough to read the number plate when stopped; pulls back with speed
-        // pulls back only a little with speed: the plate stays readable at ~100 km/h
+        // close enough to read the number plate; pulls back only a little with speed
         const back = (4.1 + Math.min(1.2, Math.abs(speed) * 0.03)) * this.camDistance;
         want.set(pos.x - fx * back, 1.6 + Math.min(0.4, Math.abs(speed) * 0.01), pos.z - fz * back);
         look.set(pos.x + fx * 9, 1.05, pos.z + fz * 9);
@@ -934,8 +1028,8 @@ export class CityWorld {
       }
       case 'hood': {
         // on the bonnet, in front of the windscreen
-        const ahead = this.playerBody.l / 2 - 1.1;
-        want.set(pos.x + fx * ahead, headlightY(this.playerBody) + 0.95, pos.z + fz * ahead);
+        const ahead = v.body.l / 2 - 1.1;
+        want.set(pos.x + fx * ahead, headlightY(v.body) + 0.95, pos.z + fz * ahead);
         look.set(pos.x + fx * 30, 1.6, pos.z + fz * 30);
         stiffness = 30;
         fov += 6;
@@ -950,8 +1044,8 @@ export class CityWorld {
         break;
       }
       case 'corner': {
-        if (!this.corner || this.corner.distanceTo(pos) > CELL * 0.9) this.corner = this.pickCorner(pos, fx, fz);
-        want.copy(this.corner);
+        if (!v.corner || v.corner.distanceTo(pos) > CELL * 0.9) v.corner = this.pickCorner(pos, fx, fz);
+        want.copy(v.corner);
         look.set(pos.x, 1.2, pos.z);
         stiffness = 40; // a fixed camera: no glide
         fov = 50;
@@ -962,37 +1056,44 @@ export class CityWorld {
         look.copy(pos);
       }
     }
+    // a narrow (split) view: a wider vertical field so as much road shows ahead
+    if (this.views.length > 1) fov = Math.min(80, fov + 8);
     const k = 1 - Math.exp(-dt * stiffness);
-    if (this.camPos.lengthSq() === 0) {
-      this.camPos.copy(want);
-      this.camLook.copy(look);
+    if (v.camPos.lengthSq() === 0) {
+      v.camPos.copy(want);
+      v.camLook.copy(look);
     }
-    this.camPos.lerp(want, k);
-    this.camLook.lerp(look, k);
-    this.camera.position.copy(this.camPos);
+    v.camPos.lerp(want, k);
+    v.camLook.lerp(look, k);
+    v.camera.position.copy(v.camPos);
     // a blast nearby shakes the camera, decaying quickly
     if (this.fx.shake > 0.01) {
       const a = this.fx.shake;
-      this.camera.position.x += (Math.random() - 0.5) * a;
-      this.camera.position.y += (Math.random() - 0.5) * a * 0.6;
-      this.camera.position.z += (Math.random() - 0.5) * a;
-      this.fx.shake *= Math.exp(-dt * 6);
+      v.camera.position.x += (Math.random() - 0.5) * a;
+      v.camera.position.y += (Math.random() - 0.5) * a * 0.6;
+      v.camera.position.z += (Math.random() - 0.5) * a;
     }
-    this.camera.lookAt(this.camLook);
-    this.camera.fov = fov;
-    this.camera.updateProjectionMatrix();
-    this.composer.render(dt);
+    v.camera.lookAt(v.camLook);
+    v.camera.fov = fov;
+    v.camera.updateProjectionMatrix();
   }
 
+  /** Splits the screen: one view, or two side by side (a 2 px gutter between them). */
   resize(): void {
     const w = Math.max(1, this.host.clientWidth);
     const h = Math.max(1, this.host.clientHeight);
     this.renderer.setSize(w, h);
-    this.composer.setPixelRatio(this.renderer.getPixelRatio());
-    this.composer.setSize(w, h);
-    this.bloom.resolution.set(w, h);
-    this.camera.aspect = w / h;
-    this.camera.updateProjectionMatrix();
+    const n = Math.max(1, this.views.length);
+    const gutter = n > 1 ? 2 : 0;
+    const vw = Math.floor((w - gutter * (n - 1)) / n);
+    this.views.forEach((v, k) => {
+      v.rect = { x: k * (vw + gutter), y: 0, w: vw, h };
+      v.composer.setPixelRatio(this.renderer.getPixelRatio());
+      v.composer.setSize(vw, h);
+      v.bloom.resolution.set(vw, h);
+      v.camera.aspect = vw / h;
+      v.camera.updateProjectionMatrix();
+    });
   }
 
   dispose(): void {
@@ -1002,7 +1103,7 @@ export class CityWorld {
       const mat = m.material as Material | Material[] | undefined;
       (Array.isArray(mat) ? mat : mat ? [mat] : []).forEach((x) => x.dispose());
     });
-    this.composer.dispose();
+    for (const v of this.views) v.composer.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }
