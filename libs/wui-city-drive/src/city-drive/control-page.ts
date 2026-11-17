@@ -17,7 +17,7 @@
  *
  * It does not play: no player datapoint is created (DriveLink.openViewer).
  */
-import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
+import { LitElement, css, html, nothing, svg, type TemplateResult } from 'lit';
 import { customElement, query, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
@@ -26,7 +26,7 @@ import { canWriteDatapoints$ } from '@visuelconcept-winccoa/wui-kit/data/permiss
 import { DpSingleJsonStore } from '@visuelconcept-winccoa/wui-kit/data/dp-single-json-store.js';
 import type { MachineState } from './bindings.js';
 import { generateCity, type City } from './city.js';
-import { drawCityMap } from './control-map.js';
+import { drawCityMap, mapPoint, pushSample } from './control-map.js';
 import { DriveLink, ONLINE_MS, type LinkState, type RemotePlayer } from './dp-link.js';
 import { readPalette, type NeonPalette } from './palette.js';
 import type { GameResult } from './results.js';
@@ -50,6 +50,10 @@ export class WuiCityDriveControl extends LitElement {
   @state() private clock = '';
   @state() private acking = new Set<string>();
   @state() private note = '';
+  /** The player whose speed trend is shown, and the last 2 min of every player's speed DPE. */
+  @state() private selected: string | null = null;
+  @state() private series = new Map<string, { t: number; v: number }[]>();
+  private sampler = 0;
   @query('canvas.map') private canvas?: HTMLCanvasElement;
   private readonly link = new DriveLink();
   private readonly city: City = generateCity();
@@ -81,6 +85,7 @@ export class WuiCityDriveControl extends LitElement {
     this.link.close();
     cancelAnimationFrame(this.frame);
     window.clearInterval(this.timer);
+    window.clearInterval(this.sampler);
   }
 
   private async start(): Promise<void> {
@@ -97,6 +102,14 @@ export class WuiCityDriveControl extends LitElement {
       this.drawMap(now / 1000);
     };
     this.frame = requestAnimationFrame(draw);
+    // the speed DPE of every player online, sampled twice a second (the trend of a player
+    // selected later starts with its last 2 minutes)
+    this.sampler = window.setInterval(() => {
+      const now = Date.now();
+      const next = new Map<string, { t: number; v: number }[]>();
+      for (const pl of this.online) next.set(pl.dp, pushSample(this.series.get(pl.dp) ?? [], now, Number(pl.speed) || 0));
+      this.series = next;
+    }, 500);
   }
 
   private onState(s: LinkState): void {
@@ -147,10 +160,59 @@ export class WuiCityDriveControl extends LitElement {
         color: color(pl.color),
         label: pl.nickname || pl.dp,
         wanted: pl.wanted === true,
-        onFoot: pl.vehicle === 'foot'
+        onFoot: pl.vehicle === 'foot',
+        selected: pl.dp === this.selected
       })),
       t
     );
+  }
+
+  /** A click on the map selects the player under it (its arrow), or clears the selection. */
+  private onMapClick(e: MouseEvent): void {
+    const c = this.canvas;
+    if (!c) return;
+    const r = c.getBoundingClientRect();
+    const sx = ((e.clientX - r.left) / r.width) * c.width;
+    const sy = ((e.clientY - r.top) / r.height) * c.height;
+    let best: { dp: string; d: number } | null = null;
+    for (const pl of this.online) {
+      const q = mapPoint(this.city, c.width, c.height, pl.x, pl.z);
+      const d = Math.hypot(q.x - sx, q.y - sy);
+      if (d < 28 * Math.min(2, devicePixelRatio) && (!best || d < best.d)) best = { dp: pl.dp, d };
+    }
+    this.selected = best ? best.dp : null;
+  }
+
+  /** The speed trend of the selected player: its `….speed` DPE (km/h) over the last 2 minutes. */
+  private renderTrend(): TemplateResult {
+    const pl = this.online.find((p) => p.dp === this.selected);
+    if (!pl) return html``;
+    const pts = this.series.get(pl.dp) ?? [];
+    const w = 600;
+    const h = 150;
+    const now = Date.now();
+    const peak = Math.max(0, ...pts.map((p) => p.v));
+    const top = Math.max(60, Math.ceil(peak / 20) * 20);
+    const x = (t: number): number => w - ((now - t) / 120_000) * w;
+    const y = (v: number): number => h - (v / top) * h;
+    const line = pts.map((p) => `${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ');
+    const grid = [0.25, 0.5, 0.75].map((f) => Math.round(top * f));
+    return html`<section class="card trend">
+      <div class="card-title">
+        <ix-icon name="trend" size="16"></ix-icon>Speed · ${pl.nickname || pl.dp}
+        <span class="grow"></span>
+        <ix-icon-button ghost size="16" icon="close" title="Close" @click=${() => (this.selected = null)}></ix-icon-button>
+      </div>
+      <div class="trend-now"><strong>${Number(pl.speed) || 0}</strong> km/h <span class="muted small">peak ${peak} km/h · last 2 min</span></div>
+      <svg class="trend-chart" viewBox="0 0 ${w} ${h + 18}" preserveAspectRatio="none" role="img">
+        ${grid.map((g) => svg`<line class="grid" x1="0" x2=${w} y1=${y(g)} y2=${y(g)}></line><text class="tick" x="4" y=${y(g) - 3}>${g}</text>`)}
+        <line class="base" x1="0" x2=${w} y1=${h} y2=${h}></line>
+        ${pts.length > 1 ? svg`<polygon class="area" points=${`${x(pts[0].t)},${h} ${line} ${x(pts[pts.length - 1].t)},${h}`}></polygon><polyline class="speed" points=${line}></polyline>` : nothing}
+        <text class="tick" x="4" y=${h + 14}>-2 min</text>
+        <text class="tick" x=${w - 4} y=${h + 14} text-anchor="end">now</text>
+      </svg>
+      <div class="muted small">DPE ${pl.dp}.speed (dpConnect)</div>
+    </section>`;
   }
 
   /** Acknowledges a wanted player's alert (operator's session); the game clears its level. */
@@ -179,8 +241,9 @@ export class WuiCityDriveControl extends LitElement {
         <span class="clock">${this.clock}</span>
       </div>
       <div class="body">
-        <div class="map-card"><canvas class="map"></canvas></div>
+        <div class="map-card"><canvas class="map" @click=${(e: MouseEvent) => this.onMapClick(e)}></canvas></div>
         <div class="side">
+          ${this.renderTrend()}
           <section class="card ${wanted.length ? 'hot' : ''}">
             <div class="card-title"><ix-icon name="alarm-bell" size="16"></ix-icon>Alerts · wanted players</div>
             ${wanted.length === 0
@@ -205,7 +268,11 @@ export class WuiCityDriveControl extends LitElement {
               ? html`<div class="muted">Nobody is driving.</div>`
               : html`<table class="players">
                   ${online.map(
-                    (pl) => html`<tr class=${pl.wanted ? 'wanted' : ''}>
+                    (pl) => html`<tr
+                      class="${pl.wanted ? 'wanted' : ''} ${pl.dp === this.selected ? 'selected' : ''}"
+                      title="Show the speed trend"
+                      @click=${() => (this.selected = pl.dp === this.selected ? null : pl.dp)}
+                    >
                       <td>${pl.nickname || pl.dp}</td>
                       <td class="muted">${pl.vehicle === 'foot' ? 'on foot' : vehicleById(pl.vehicle).label}</td>
                       <td class="n">${pl.speed} km/h</td>
@@ -363,6 +430,51 @@ function controlStyles(): ReturnType<typeof css> {
     .players td {
       padding: 0.25rem 0.3rem;
       border-bottom: 1px solid var(--theme-color-soft-bdr);
+    }
+    .map {
+      cursor: crosshair;
+    }
+    .players tr {
+      cursor: pointer;
+    }
+    .players tr:hover td {
+      background: color-mix(in srgb, var(--theme-color-primary) 8%, transparent);
+    }
+    .players tr.selected td {
+      background: color-mix(in srgb, var(--theme-color-dynamic) 16%, transparent);
+    }
+    .trend {
+      border-color: var(--theme-color-dynamic);
+    }
+    .trend-now strong {
+      font-size: 1.6rem;
+      color: var(--theme-color-dynamic);
+    }
+    .trend-chart {
+      width: 100%;
+      height: 9rem;
+      display: block;
+      margin: 0.3rem 0;
+    }
+    .trend-chart .grid {
+      stroke: var(--theme-color-soft-bdr);
+      stroke-dasharray: 3 4;
+    }
+    .trend-chart .base {
+      stroke: var(--theme-color-soft-bdr);
+    }
+    .trend-chart .tick {
+      font-size: 11px;
+      fill: var(--theme-color-soft-text);
+    }
+    .trend-chart .speed {
+      fill: none;
+      stroke: var(--theme-color-dynamic);
+      stroke-width: 2.5;
+      vector-effect: non-scaling-stroke;
+    }
+    .trend-chart .area {
+      fill: color-mix(in srgb, var(--theme-color-dynamic) 18%, transparent);
     }
     .players tr.wanted td {
       color: var(--theme-color-alarm);

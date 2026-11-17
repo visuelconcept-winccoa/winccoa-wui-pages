@@ -299,24 +299,36 @@ export class DriveLink {
     // the control room also reads the alert elements; a 0.4 type lacks them: then without
     const keys = tension ? [...REMOTE_FIELDS, 'alert', 'wanted', 'damage'] : REMOTE_FIELDS;
     const fields = keys.map((k) => [k, ELEMENT[k as keyof Telemetry]] as [keyof Telemetry, string]);
+    // Online = this player's OWN writes, not "an emission arrived": dpConnect over many
+    // DPEs hands back ALL of them whenever ONE changes, so a stale player looked online as long
+    // as anybody played. The server's write time (`_online.._stime`) of pos.x / pos.z moves on
+    // each of its writes — its moves and its 10 s heartbeat (which rewrites every field).
+    const STAMPS = ['pos.x', 'pos.z'];
+    const stampOf = new Map<string, string>();
     let primed = false;
-    const dpes = dps.flatMap((dp) => fields.map(([, el]) => `${dp}.${el}`));
+    const dpes = [...dps.flatMap((dp) => fields.map(([, el]) => `${dp}.${el}`)), ...dps.flatMap((dp) => STAMPS.map((el) => `${dp}.${el}:_online.._stime`))];
     try {
       this.playersSub.add(
         this.api.dpConnect(dpes, true).subscribe((data: DpEmission) => {
           const now = Date.now();
-          // the first emission is dpConnect's answer with the current values: it says
-          // nothing about the player being here; only later changes (or heartbeats) do
+          // the first emission is dpConnect's answer with the current values: it says nothing
+          // about a player being here now; a later change of its own write time does
           const live = primed;
           primed = true;
           data.dp.forEach((name, i) => {
             const dpe = normDpe(name);
             const dp = dps.find((d) => dpe.startsWith(`${d}.`));
-            const field = fields.find(([, el]) => dp && dpe === `${dp}.${el}`)?.[0];
-            if (!dp || !field) return;
+            if (!dp) return;
             const p = players.get(dp) as RemotePlayer;
-            (p as unknown as Record<string, unknown>)[field] = data.value[i];
-            if (live) p.updatedAt = now;
+            if (name.includes('_stime')) {
+              const stamp = String(stampTime(data.value[i]));
+              const key = `${dp}|${dpe}`;
+              if (live && stampOf.has(key) && stampOf.get(key) !== stamp) p.updatedAt = now;
+              stampOf.set(key, stamp);
+              return;
+            }
+            const field = fields.find(([, el]) => dpe === `${dp}.${el}`)?.[0];
+            if (field) (p as unknown as Record<string, unknown>)[field] = data.value[i];
           });
           onPlayers([...players.values()].map((p) => ({ ...p })));
         }, () => {
@@ -569,6 +581,15 @@ export class DriveLink {
       emit();
     }, DEMO_PERIOD_MS);
   }
+}
+
+/** A write time as handed by dpConnect (Date, ms, ISO text…), comparable as a number. */
+export function stampTime(v: unknown): number {
+  const raw = Array.isArray(v) ? v[0] : v;
+  if (raw instanceof Date) return raw.getTime();
+  if (typeof raw === 'number') return raw;
+  const t = Date.parse(String(raw ?? ''));
+  return Number.isNaN(t) ? 0 : t;
 }
 
 function emptyPlayer(dp: string): RemotePlayer {

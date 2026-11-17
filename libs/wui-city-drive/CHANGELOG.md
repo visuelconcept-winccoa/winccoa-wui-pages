@@ -3,6 +3,19 @@
 
 # Changelog — @visuelconcept-winccoa/wui-city-drive
 
+## 0.14.0 — 2026-11-18
+
+- **Visuel Concept**: its symbol (official artwork) on the four sides of the plant's machine
+  halls, lit; at the end of the match a light card "This game is brought to you by Visuel
+  Concept" with the full logo turning, the pitch "Your plant. Live. Anywhere." and a QR code
+  that opens a mail to contact@visuelconcept.com.
+- **Control room: speed trend.** Click a player on the map or in the list: a chart of its speed
+  over the last 2 minutes, read live from its DPE `CityDrive_Player_<…>.speed`, with the peak;
+  the selected player is ringed on the map.
+- **Fix: a player shown twice in the control room.** `dpConnect` gives back every DPE of a
+  player when any of them changes, so a player of an old session looked live. A player is now
+  online when its `pos.x` or `pos.z` really changed (their `_online.._stime`) within 30 s.
+
 ## 0.13.1 — 2026-11-18
 
 - Control room: the players' arrows pointed the wrong way (rotation π − heading instead of
