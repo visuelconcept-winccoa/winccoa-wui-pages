@@ -22,7 +22,7 @@ export const MSG = {
     reset: 'Back on the road',
     paused: 'Paused',
     clickToPlay: 'Click the city to drive',
-    keys: 'W/Z ↑ throttle · S ↓ brake · A/Q ← D → steer · Space handbrake · F get out / in (Shift: run) · C camera · T day / night · R reset · N mission · Esc pause',
+    keys: 'W/Z ↑ throttle · S ↓ brake · A/Q ← D → steer · Space handbrake · F get out / in (Shift: run, E strike, X weapon) · C camera · T day / night · R reset · N mission · Esc pause',
     day: 'Day',
     night: 'Night',
     time: 'Time of day',
@@ -67,7 +67,8 @@ export const MSG = {
     caught: 'Stopped by security: −20 % score',
     respray: 'Fresh respray: alert cleared',
     repaired: 'Car repaired',
-    acknowledged: 'The control room acknowledged your alert: level cleared'
+    acknowledged: 'The control room acknowledged your alert: level cleared',
+    smash: 'Smash! Alert level up'
   },
   tension: {
     alert: 'Alert level',

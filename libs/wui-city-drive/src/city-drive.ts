@@ -496,6 +496,7 @@ export class WuiCityDrive extends LitElement {
               ${[1, 2, 3, 4, 5].map((n) => html`<span class=${n <= h.alert ? 'on' : ''}></span>`)}
             </div>`
           : nothing}
+        ${h?.onFoot ? html`<div class="weapon"><span>${h.weapon}</span><span class="hint-key">E strike · X next</span></div>` : nothing}
         ${h && h.damage > 0.02
           ? html`<div class="damage ${h.damage > 0.6 ? 'bad' : ''}">${MSG.tension.damage} <strong>${Math.round(h.damage * 100)} %</strong></div>`
           : nothing}
@@ -707,6 +708,7 @@ export class WuiCityDrive extends LitElement {
             <div class="sec-title">Driving and camera</div>
             <ix-slider label="Steering sensitivity" min="0.5" max="1.5" step="0.05" .value=${st.steering} @valueChange=${(e: CustomEvent<number>) => set({ steering: e.detail })}></ix-slider>
             <ix-slider label="Chase camera distance" min="0.7" max="1.6" step="0.05" .value=${st.cameraDistance} @valueChange=${(e: CustomEvent<number>) => set({ cameraDistance: e.detail })}></ix-slider>
+            <ix-slider label="Chase camera height (low → high)" min="0" max="2" step="0.1" .value=${st.cameraHeight} @valueChange=${(e: CustomEvent<number>) => set({ cameraHeight: e.detail })}></ix-slider>
           </section>
           <section>
             <div class="sec-title">Graphics and display</div>
@@ -1769,6 +1771,20 @@ function pageStyles(): ReturnType<typeof css> {
       50% {
         background: var(--theme-color-info);
       }
+    }
+    .weapon {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+      font-weight: 700;
+      color: var(--c, var(--theme-color-primary));
+      text-shadow: 0 0 6px var(--c, var(--theme-color-primary));
+    }
+    .weapon .hint-key {
+      font-size: 0.75rem;
+      font-weight: 400;
+      color: var(--theme-color-soft-text);
+      text-shadow: none;
     }
     .damage {
       font-size: 0.85rem;

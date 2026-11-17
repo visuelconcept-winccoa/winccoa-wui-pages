@@ -9,7 +9,7 @@
  * pads are reported this way). See {@link GAMEPAD_LEGEND}.
  */
 
-export type Action = 'up' | 'down' | 'left' | 'right' | 'brake' | 'run' | 'foot' | 'camera' | 'time' | 'reset' | 'mission' | 'pause';
+export type Action = 'up' | 'down' | 'left' | 'right' | 'brake' | 'run' | 'foot' | 'attack' | 'weapon' | 'camera' | 'time' | 'reset' | 'mission' | 'pause';
 
 export const ACTIONS: readonly { id: Action; label: string }[] = [
   { id: 'up', label: 'Throttle / walk forward' },
@@ -19,6 +19,8 @@ export const ACTIONS: readonly { id: Action; label: string }[] = [
   { id: 'brake', label: 'Handbrake (drift)' },
   { id: 'run', label: 'Run (on foot)' },
   { id: 'foot', label: 'Get out / get in' },
+  { id: 'attack', label: 'Strike / shoot (on foot)' },
+  { id: 'weapon', label: 'Next weapon (on foot)' },
   { id: 'camera', label: 'Next camera' },
   { id: 'time', label: 'Day / night' },
   { id: 'reset', label: 'Back on the road' },
@@ -42,6 +44,8 @@ export interface Settings {
   steering: number;
   /** Chase camera distance, 0.7..1.6 (×). */
   cameraDistance: number;
+  /** Chase camera height, 0 (low, at the roof) .. 2 (high, looking down on the car); 1 by default. */
+  cameraHeight: number;
   /** high: shadows, full resolution, bloom; low: for machines without a strong GPU. */
   quality: Quality;
   units: Units;
@@ -57,6 +61,8 @@ export const DEFAULT_KEYS: Record<Action, string[]> = {
   brake: ['Space'],
   run: ['ShiftLeft', 'ShiftRight'],
   foot: ['KeyF', 'Enter'],
+  attack: ['KeyE'],
+  weapon: ['KeyX'],
   camera: ['KeyC'],
   time: ['KeyT'],
   reset: ['KeyR'],
@@ -69,6 +75,7 @@ export const DEFAULT_SETTINGS: Settings = {
   gamepad: { enabled: true, deadzone: 0.15, invertSteer: false },
   steering: 1,
   cameraDistance: 1,
+  cameraHeight: 1,
   quality: 'high',
   units: 'kmh',
   showMinimap: true,
@@ -102,6 +109,7 @@ export function parseSettings(raw: unknown): Settings {
     },
     steering: clamp(o.steering, 0.5, 1.5, 1),
     cameraDistance: clamp(o.cameraDistance, 0.7, 1.6, 1),
+    cameraHeight: clamp(o.cameraHeight, 0, 2, 1),
     quality: o.quality === 'low' ? 'low' : 'high',
     units: o.units === 'mph' ? 'mph' : 'kmh',
     showMinimap: o.showMinimap !== false,
@@ -145,7 +153,7 @@ export const speedIn = (kmh: number, units: Units): number => (units === 'mph' ?
 // --- gamepad (standard mapping) ----------------------------------------------------------
 
 /** Buttons of the standard mapping. */
-const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, BACK: 8, START: 9 } as const;
+const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, BACK: 8, START: 9, LEFT: 14, RIGHT: 15 } as const;
 
 export const GAMEPAD_LEGEND: readonly { control: string; action: string }[] = [
   { control: 'RT', action: 'Throttle' },
@@ -154,7 +162,8 @@ export const GAMEPAD_LEGEND: readonly { control: string; action: string }[] = [
   { control: 'A', action: 'Handbrake · run on foot' },
   { control: 'B', action: 'Get out / get in' },
   { control: 'Y', action: 'Next camera' },
-  { control: 'X', action: 'New mission' },
+  { control: 'X', action: 'New mission · strike / shoot on foot' },
+  { control: 'D-pad ◀ ▶', action: 'Next weapon (on foot)' },
   { control: 'LB', action: 'Day / night' },
   { control: 'RB', action: 'Back on the road' },
   { control: 'Start', action: 'Pause' }
@@ -197,7 +206,9 @@ export function readPad(pad: PadLike, s: Settings, previous: boolean[]): PadStat
   };
   edge(BTN.B, 'foot');
   edge(BTN.Y, 'camera');
-  edge(BTN.X, 'mission');
+  edge(BTN.X, 'attack'); // on foot a blow, in the car a new mission (game.ts)
+  edge(BTN.LEFT, 'weapon');
+  edge(BTN.RIGHT, 'weapon');
   edge(BTN.LB, 'time');
   edge(BTN.RB, 'reset');
   edge(BTN.START, 'pause');

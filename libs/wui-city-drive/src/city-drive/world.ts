@@ -67,10 +67,13 @@ import { StreetLife } from './street.js';
 import { TrafficSignals } from './traffic-signals.js';
 import { LogoFx } from './explosion.js';
 import { TensionFx } from './tension-fx.js';
+import { applyPose, makeCube, makeFigure, setFigureWeapon } from './figure-model.js';
+import { gaitPose, type Pose } from './figure.js';
+import type { Bolt, WeaponId } from './weapons.js';
 import type { CarState } from './physics.js';
 import type { SpeedCamera } from './tension.js';
 import type { Token } from './collectibles.js';
-import type { WalkerState } from './walker.js';
+import { strideOf, type WalkerState } from './walker.js';
 import { asphaltMaps, beamTexture, facadeMaps, pavementMaps, type FacadeMaps } from './textures.js';
 
 /**
@@ -155,52 +158,6 @@ function neon(color: number, opacity = 1): LineBasicMaterial {
   return new LineBasicMaterial({ color, transparent: opacity < 1, opacity });
 }
 
-/** A pedestrian figure: legs, torso, arms, head, a neon belt in its colour. */
-function makeWalker(color: number): Group {
-  const g = new Group();
-  const cloth = new MeshStandardMaterial({ color: 0x1c2328, roughness: 0.8 });
-  const skin = new MeshStandardMaterial({ color: 0xd9b49a, roughness: 0.7 });
-  const neonBelt = new MeshBasicMaterial({ color, toneMapped: false });
-  for (const [name, x] of [['legL', -0.13], ['legR', 0.13]] as const) {
-    const leg = new Mesh(new BoxGeometry(0.17, 0.85, 0.2), cloth);
-    leg.geometry.translate(0, -0.425, 0); // pivot at the hip
-    leg.position.set(x, 0.88, 0);
-    leg.name = name;
-    leg.castShadow = true;
-    g.add(leg);
-  }
-  const torso = new Mesh(new BoxGeometry(0.46, 0.62, 0.26), new MeshStandardMaterial({ color: mix(color, 0x000000, 0.55), roughness: 0.6 }));
-  torso.position.y = 1.2;
-  torso.castShadow = true;
-  const belt = new Mesh(new BoxGeometry(0.48, 0.05, 0.28), neonBelt);
-  belt.position.y = 0.92;
-  for (const [name, x] of [['armL', -0.3], ['armR', 0.3]] as const) {
-    const arm = new Mesh(new BoxGeometry(0.12, 0.6, 0.14), cloth);
-    arm.geometry.translate(0, -0.3, 0); // pivot at the shoulder
-    arm.position.set(x, 1.48, 0);
-    arm.name = name;
-    g.add(arm);
-  }
-  const head = new Mesh(new SphereGeometry(0.15, 14, 10), skin);
-  head.position.y = 1.68;
-  g.add(torso, belt, head);
-  return g;
-}
-
-/** Legs and arms swing with the stride. */
-function animateWalker(g: Group, phase: number, speed: number): void {
-  const amp = Math.min(0.75, Math.abs(speed) * 0.18);
-  const sw = Math.sin(phase * 2) * amp;
-  const set = (name: string, a: number): void => {
-    const o = g.getObjectByName(name);
-    if (o) o.rotation.x = a;
-  };
-  set('legL', sw);
-  set('legR', -sw);
-  set('armL', -sw * 0.8);
-  set('armR', sw * 0.8);
-}
-
 /** A daylight sky: deep blue at the zenith, pale haze at the horizon. */
 function skyTexture(): CanvasTexture {
   const c = document.createElement('canvas');
@@ -255,8 +212,12 @@ export class CityWorld {
   private readonly street: StreetLife;
   private readonly fx: LogoFx;
   private readonly tension: TensionFx;
+  /** The crossbow's cubes in flight, by id. */
+  private readonly bolts = new Map<number, Mesh>();
   /** Chase camera distance factor (settings). */
   private camDistance = 1;
+  /** Chase camera height (settings): 0 low … 1 default … 2 high. */
+  private camHeight = 1;
   private readonly hemi: HemisphereLight;
   private readonly facadeMats: MeshStandardMaterial[] = [];
   private timeOfDay: TimeOfDay = 'night';
@@ -266,7 +227,7 @@ export class CityWorld {
   private readonly machineEdges = new Map<string, { lines: LineSegments; roof: Mesh; beacon: Mesh }>();
   private signals: TrafficSignals | null = null;
   private readonly marker: Mesh;
-  private readonly remotes = new Map<string, { car: Group; key: string }>();
+  private readonly remotes = new Map<string, { car: Group; key: string; phase: number }>();
   private elapsed = 0;
   /** Quality asked in the settings; the effective one drops with two views. */
   private quality: 'high' | 'low' = 'high';
@@ -739,8 +700,8 @@ export class CityWorld {
     if (v) v.damage = damage;
   }
 
-  /** Player i on foot (a figure in its neon colour), or null when driving. */
-  setWalker(i: number, w: WalkerState | null, color: number): void {
+  /** Player i on foot (a jointed figure in its neon colour), or null when driving; its pose and weapon (#89). */
+  setWalker(i: number, w: WalkerState | null, color: number, look?: { pose: Pose; weapon: WeaponId | null }): void {
     const v = this.views[i];
     if (!v) return;
     if (!w) {
@@ -750,13 +711,40 @@ export class CityWorld {
     }
     if (!v.walker || v.walkerColor !== color) {
       if (v.walker) this.scene.remove(v.walker);
-      v.walker = makeWalker(color);
+      v.walker = makeFigure(color, 0.21 + i * 0.37);
       v.walkerColor = color;
       this.scene.add(v.walker);
     }
     v.walker.position.set(w.x, 0, w.z);
     v.walker.rotation.y = w.heading;
-    animateWalker(v.walker, w.phase, w.speed);
+    applyPose(v.walker, look?.pose ?? gaitPose(w.phase, w.speed));
+    setFigureWeapon(v.walker, look?.weapon ?? null);
+  }
+
+  /** The crossbow's cubes in flight: spinning WinCC OA logo cubes. */
+  setBolts(bolts: readonly Bolt[]): void {
+    const seen = new Set<number>();
+    for (const b of bolts) {
+      seen.add(b.id);
+      let m = this.bolts.get(b.id);
+      if (!m) {
+        m = makeCube(0.32);
+        this.bolts.set(b.id, m);
+        this.scene.add(m);
+      }
+      m.position.set(b.x, b.y, b.z);
+      m.rotation.set(b.age * 9, b.age * 7, 0);
+    }
+    for (const [id, m] of this.bolts) {
+      if (seen.has(id)) continue;
+      this.scene.remove(m);
+      this.bolts.delete(id);
+    }
+  }
+
+  /** A blow or a cube hit something at (x, z): a burst of sparks. */
+  burst(x: number, y: number, z: number): void {
+    this.tension.burst(x, y, z);
   }
 
   setRemotePlayers(players: readonly RemoteCar[]): void {
@@ -768,7 +756,7 @@ export class CityWorld {
       if (!entry || entry.key !== key) {
         if (entry) this.scene.remove(entry.car);
         // on foot (vehicle 'foot'): a pedestrian in its colour; otherwise its car
-        const car = r.vehicle === 'foot' ? makeWalker(r.color) : makeCar(this.p, r.color, 0x2a2f33, vehicleById(r.vehicle).body, randomPlate(r.id.length * 13 + r.nickname.length));
+        const car = r.vehicle === 'foot' ? makeFigure(r.color, ([...r.id].reduce((h, c) => h * 31 + c.charCodeAt(0), 7) % 997) / 997) : makeCar(this.p, r.color, 0x2a2f33, vehicleById(r.vehicle).body, randomPlate(r.id.length * 13 + r.nickname.length));
         const tag = nameTag(r.nickname || r.id, r.color);
         tag.position.y = 5;
         car.add(tag);
@@ -777,13 +765,20 @@ export class CityWorld {
         car.traverse((o) => {
           if (o.userData.beam) o.visible = this.timeOfDay === 'night';
         });
-        entry = { car, key };
+        entry = { car, key, phase: 0 };
         this.remotes.set(r.id, entry);
       }
       const car = entry.car;
       // updates arrive a few times per second: glide towards them
+      const step = Math.hypot(r.x - car.position.x, r.z - car.position.z) * 0.2;
       car.position.x += (r.x - car.position.x) * 0.2;
       car.position.z += (r.z - car.position.z) * 0.2;
+      if (r.vehicle === 'foot') {
+        // a person walking: the stride follows the distance glided (about one call per frame)
+        const speed = Math.min(6, step * 60);
+        entry.phase += (step / strideOf(speed)) * Math.PI * 2;
+        applyPose(car, gaitPose(entry.phase, speed, (r.id.length % 7) / 7));
+      }
       let dh = r.heading - car.rotation.y;
       dh = Math.atan2(Math.sin(dh), Math.cos(dh));
       car.rotation.y += dh * 0.2;
@@ -926,6 +921,10 @@ export class CityWorld {
   }
 
   /** Chase camera distance factor (0.7..1.6). */
+  setCameraHeight(k: number): void {
+    this.camHeight = k;
+  }
+
   setCameraDistance(k: number): void {
     this.camDistance = k;
   }
@@ -1050,10 +1049,14 @@ export class CityWorld {
         break;
       }
       case 'chase': {
-        // close enough to read the number plate; pulls back only a little with speed
-        const back = (4.1 + Math.min(1.2, Math.abs(speed) * 0.03)) * this.camDistance;
-        want.set(pos.x - fx * back, 1.6 + Math.min(0.4, Math.abs(speed) * 0.01), pos.z - fz * back);
-        look.set(pos.x + fx * 9, 1.05, pos.z + fz * 9);
+        // above the roof, so the road ahead shows over the car (it hid most of the view at
+        // 1.6 m); the height is a setting: 1.4 m (roof level) … 2.7 m (default) … 4 m
+        const back = (4.6 + Math.min(1.2, Math.abs(speed) * 0.03)) * this.camDistance;
+        const height = 1.4 + 1.3 * this.camHeight;
+        want.set(pos.x - fx * back, height + Math.min(0.4, Math.abs(speed) * 0.01), pos.z - fz * back);
+        // aim further ahead when higher: the car sits in the lower part of the frame
+        const ahead = 9 + 4 * this.camHeight;
+        look.set(pos.x + fx * ahead, 0.9 + 0.2 * this.camHeight, pos.z + fz * ahead);
         // a stiffer follow: the smoothing lag (speed / stiffness) stays under 2 m at 100 km/h
         stiffness = 14;
         fov = 62 + Math.min(6, Math.abs(speed) * 0.2);

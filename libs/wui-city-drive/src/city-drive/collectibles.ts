@@ -95,12 +95,12 @@ export class LogoHunt {
     return this.solo.combo;
   }
 
-  /** Takes the tokens within reach of (x, z) at time `t` (s), for `who` (its own combo). */
-  step(x: number, z: number, t: number, who: Hunter = this.solo): HuntStep {
+  /** Takes the tokens within `reach` of (x, z) at time `t` (s), for `who` (its own combo). */
+  step(x: number, z: number, t: number, who: Hunter = this.solo, reach = PICK_RADIUS): HuntStep {
     const pickups: Pickup[] = [];
     let points = 0;
     for (const token of this.tokens) {
-      if (token.taken || Math.hypot(token.x - x, token.z - z) > PICK_RADIUS) continue;
+      if (token.taken || Math.hypot(token.x - x, token.z - z) > reach) continue;
       token.taken = true;
       who.combo = t - who.lastPickAt <= COMBO_WINDOW_S ? Math.min(COMBO_MAX, who.combo + 1) : 1;
       who.lastPickAt = t;
