@@ -711,7 +711,7 @@ export class CityWorld {
     }
     if (!v.walker || v.walkerColor !== color) {
       if (v.walker) this.scene.remove(v.walker);
-      v.walker = makeFigure(color, 0.21 + i * 0.37);
+      v.walker = makeFigure(color, 0.21 + i * 0.37, 0);
       v.walkerColor = color;
       this.scene.add(v.walker);
     }

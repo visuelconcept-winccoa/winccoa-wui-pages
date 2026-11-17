@@ -18,7 +18,9 @@
     body sways over the standing foot, the head stays level; the arms swing against the legs
     with a lag, across the body, and not as mirror images. Running: longer strides, the trunk
     leaning, the elbows pumping. A real stride length (~1.45 m walking, up to ~3.6 m running);
-  - the other players on foot walk the same way.
+  - the other players on foot walk the same way;
+  - the players' own characters have a light skin tone (a choice will come with the profile);
+    the passers-by and the other players' characters keep varied tones.
 - **Weapons on foot**: the **WebUI hammer** (an overhead blow), the **star sword** (a wide
   slash; an original eight-ray star on the guard, a glowing blade) and the **cube crossbow**
   (it shoots spinning WinCC OA logo cubes, ~40 m/s, that stop against the walls). E strikes /

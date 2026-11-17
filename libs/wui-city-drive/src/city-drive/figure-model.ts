@@ -135,15 +135,16 @@ function makeShoe(mat: Material, sole: Material): Group {
 
 /**
  * A person in the player's neon colour. `seed` (0..1) varies the build, the skin and the hair,
- * so that two people are not the same doll.
+ * so that two people are not the same doll; `skinTone` (index in SKINS) sets the skin instead —
+ * the local players' own characters (0, light, until the profile offers the choice).
  */
-export function makeFigure(color: number, seed = 0.37): Group {
+export function makeFigure(color: number, seed = 0.37, skinTone?: number): Group {
   const root = new Group();
   const rnd = (k: number): number => {
     const x = Math.sin((seed + 1) * 9301 + k * 49297) * 233280;
     return x - Math.floor(x);
   };
-  const skin = new MeshStandardMaterial({ color: SKINS[Math.floor(rnd(1) * SKINS.length)], roughness: 0.62 });
+  const skin = new MeshStandardMaterial({ color: SKINS[skinTone ?? Math.floor(rnd(1) * SKINS.length)] ?? SKINS[0], roughness: 0.62 });
   const trousers = new MeshStandardMaterial({ color: mix(0x1c2328, 0x2a3a52, rnd(2)), roughness: 0.85 });
   const jacket = new MeshStandardMaterial({ color: mix(color, 0x000000, 0.62), roughness: 0.55 });
   const shoes = new MeshStandardMaterial({ color: 0x14181b, roughness: 0.45 });
