@@ -3,6 +3,12 @@
 
 # Changelog — @visuelconcept-winccoa/wui-city-drive
 
+## 0.10.1 — 2026-11-18
+
+- Fix the webserver build (`tsc`: "Buffer is not assignable to BodyInit" in
+  `supabasePublish.ts`): the photo is sent as a `Uint8Array`, accepted by every version of the
+  fetch types (TypeScript ≥ 5.7 with the DOM library refused a Node `Buffer`).
+
 ## 0.10.0 — 2026-11-18
 
 **Upgrade.** City Drive now has a backend (`/api/city-drive`): rebuild the site

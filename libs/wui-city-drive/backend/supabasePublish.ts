@@ -198,7 +198,9 @@ async function upload(cfg: SupabaseConfig, item: PendingPhoto, jpeg: Buffer): Pr
   const res = await fetch(`${cfg.url}/storage/v1/object/${encodeURIComponent(cfg.bucket)}/${item.path}`, {
     method: 'POST',
     headers: uploadHeaders(cfg.key),
-    body: jpeg,
+    // a Uint8Array over its own ArrayBuffer: what every version of the fetch types takes as a
+    // body (the webserver's refuse a Node Buffer: "not assignable to BodyInit")
+    body: Uint8Array.from(jpeg),
     signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS)
   });
   if (res.ok || res.status === 409) return;
