@@ -830,10 +830,8 @@ export class WuiCityDrive extends LitElement {
       </div>
       <div class="vc-body">
         <div class="vc-pitch">
-          <div class="vc-headline">Your plant. Live. Anywhere.</div>
-          <div>
-            Next-generation <strong>supervision</strong> — WinCC OA, web and mobile — built for today's <strong>hyperconnected</strong> industry.
-          </div>
+          <div class="vc-headline">You just played on WinCC OA.</div>
+          <div>Imagine what we can build for <strong>your plant</strong>.</div>
           <a class="vc-mail" href=${`mailto:${VC_CONTACT}`}>Let's build yours → ${VC_CONTACT}</a>
         </div>
         ${this.contactQr ? html`<div class="vc-qr"><img src=${this.contactQr} alt=${`QR code: email ${VC_CONTACT}`} /><span>Scan to email us</span></div>` : nothing}

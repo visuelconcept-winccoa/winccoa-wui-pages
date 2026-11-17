@@ -7,7 +7,7 @@
 
 - **Visuel Concept**: its symbol (official artwork) on the four sides of the plant's machine
   halls, lit; at the end of the match a light card "This game is brought to you by Visuel
-  Concept" with the full logo turning, the pitch "Your plant. Live. Anywhere." and a QR code
+  Concept" with the full logo turning, the pitch "You just played on WinCC OA. Imagine what we can build for your plant." and a QR code
   that opens a mail to contact@visuelconcept.com.
 - **Control room: speed trend.** Click a player on the map or in the list: a chart of its speed
   over the last 2 minutes, read live from its DPE `CityDrive_Player_<…>.speed`, with the peak;

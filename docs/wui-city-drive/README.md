@@ -220,8 +220,10 @@ regularly), three simulated players drive around, nothing is written.
 
 Three.js, bundled into the page. Bloom; neon in the iX theme colours read from the page's
 `--theme-color-*` tokens; procedural textures (facades, asphalt, pavement, signs): no image file.
-Moonlight shadows around the player, real spot lights for the player's headlights. The Visuel
-Concept symbol (its official artwork, `vc-logo.ts`) lights the four sides of each machine hall;
+Moonlight shadows around the player, real spot lights for the player's headlights. The
+WinCC OA 4 × 4 cube logo is drawn from its colours (signs on the roofs and at the top of the
+facades, the crossbow's cubes). The Visuel Concept symbol (its official artwork, `vc-logo.ts`)
+lights the four sides of each machine hall;
 the end of the match shows the full Visuel Concept logo turning, with a short pitch and a QR
 code that opens a mail to contact@visuelconcept.com.
 Every car carries an Austrian number plate of Eisenstadt (district `E`), the cradle of WinCC OA;
