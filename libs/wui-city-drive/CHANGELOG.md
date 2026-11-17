@@ -3,6 +3,14 @@
 
 # Changelog — @visuelconcept-winccoa/wui-city-drive
 
+## 0.7.0 — 2026-11-18
+
+- **Start screen: the car turns on a turntable** instead of the four vehicle cards: the chosen
+  vehicle (the game's own model) in the player's neon colour, on a dark plate with a neon ring;
+  ◀ ▶ to change vehicle, one dot per vehicle, name and ratings over it. One turntable per
+  player card (split screen: two). Each has its own small WebGL view, drawn only while the
+  card is on screen and released when the game starts.
+
 ## 0.6.0 — 2026-11-18
 
 - **Matches of 1 minute by default** (1, 2, 3 or 5 minutes, or Free drive alone). The choice is

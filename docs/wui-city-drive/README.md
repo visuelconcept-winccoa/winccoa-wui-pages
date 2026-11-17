@@ -24,6 +24,8 @@ The game is in English only.
   day (neon night or day); **Settings** (also in game): keys, gamepad, steering, camera,
   graphics, units, minimap / players panel. (the iX theme colours), kept in the browser
   (`localStorage`) and written to the player's datapoint.
+- Vehicle choice on a **turntable**: the car turns in the player's colour; ◀ ▶ or the dots to
+  change it.
 - Vehicles: **Coupé de Ville** (fast), **Limousine** (long, heavy), **Pickup**, **Maintenance
   van** (best range). Each has its own physics (speed, grip, steering, fuel, size).
 - Keys: W/Z ↑ throttle · S ↓ brake / reverse · A/Q ← D → steer · Space handbrake (drift) ·

@@ -50,6 +50,7 @@ import {
   type Settings
 } from './city-drive/settings.js';
 import { TelemetryThrottle } from './city-drive/telemetry.js';
+import { CarPreview } from './city-drive/car-preview.js';
 import { DpSingleJsonStore } from '@visuelconcept-winccoa/wui-kit/data/dp-single-json-store.js';
 import { addResults, leaderboard, ordinal, playerCount, resultId, validEmail, type BoardRow, type GameResult } from './city-drive/results.js';
 import { NEON_COLORS, NICKNAME_MAX, type NeonColor, VEHICLES, cleanNickname, parseProfile, vehicleById, type Profile } from './city-drive/vehicles.js';
@@ -165,6 +166,8 @@ export class WuiCityDrive extends LitElement {
   @state() private board: BoardRow[] | null = null;
   /** People in the ranking (one per email, else per nickname). */
   @state() private boardPlayers = 0;
+  /** The turning cars of the start screen, one per player card. */
+  private readonly previews = new Map<number, CarPreview>();
   private readonly resultsStore = new DpSingleJsonStore<GameResult[]>(RESULTS_DP, RESULTS_DP, () => [], { isArray: true });
   /** A player lost its gamepad during the game. */
   @state() private lostSlot: number | null = null;
@@ -201,12 +204,44 @@ export class WuiCityDrive extends LitElement {
     super.disconnectedCallback();
     window.removeEventListener('keydown', this.onRebindKey, true);
     window.removeEventListener('keydown', this.onLobbyKey);
+    this.previews.forEach((pv) => pv.dispose());
+    this.previews.clear();
     this.roleSub.unsubscribe();
     window.clearInterval(this.telemetryTimer);
     this.eventTimers.forEach((t) => window.clearTimeout(t));
     this.link.close();
     this.game?.stop();
     this.game = null;
+  }
+
+  /** After each render: one turntable per card on screen, showing that player's vehicle. */
+  protected override updated(): void {
+    const canvases = new Map<number, HTMLCanvasElement>();
+    this.renderRoot.querySelectorAll<HTMLCanvasElement>('canvas.preview').forEach((c) => canvases.set(Number(c.dataset.k), c));
+    for (const [k, pv] of this.previews) {
+      if (canvases.get(k) === pv.canvas) continue;
+      pv.dispose(); // the card went away (game started) or was redrawn
+      this.previews.delete(k);
+    }
+    if (!this.palette) return;
+    for (const [k, canvas] of canvases) {
+      let pv = this.previews.get(k);
+      if (!pv) {
+        pv = new CarPreview(canvas, this.palette);
+        this.previews.set(k, pv);
+      }
+      const pr = this.profiles[k];
+      if (pr) pv.show(vehicleById(pr.vehicle).body, this.palette[pr.color], `WINCCOA ${k + 1}`);
+    }
+  }
+
+  /** ◀ ▶ on a card: the previous / next vehicle. */
+  private cycleVehicle(k: number, step: number): void {
+    const pr = this.profiles[k];
+    if (!pr) return;
+    const i = VEHICLES.findIndex((v) => v.id === pr.vehicle);
+    const next = VEHICLES[(i + step + VEHICLES.length) % VEHICLES.length];
+    this.setProfileOf(k, { ...pr, vehicle: next.id });
   }
 
   protected override firstUpdated(): void {
@@ -325,19 +360,23 @@ export class WuiCityDrive extends LitElement {
         .value=${this.emails[k] ?? ''}
         @valueChange=${(e: CustomEvent<string>) => this.setEmail(k, e.detail ?? '')}
       ></ix-input>
-      <div class="vehicles ${two ? 'compact' : ''}">
-        ${VEHICLES.map(
-          (v) => html`<ix-card class="vehicle" variant="outline" ?selected=${pr.vehicle === v.id} @click=${() => this.setProfileOf(k, { ...pr, vehicle: v.id })}>
-            <ix-card-content>
-              <ix-typography format="label-lg">${v.label}</ix-typography>
-              ${two
-                ? nothing
-                : html`<div class="stat"><span>Speed</span>${bars(v.rating.speed)}</div>
-                    <div class="stat"><span>Handling</span>${bars(v.rating.handling)}</div>
-                    <div class="stat"><span>Range</span>${bars(v.rating.range)}</div>`}
-            </ix-card-content>
-          </ix-card>`
-        )}
+      <div class="garage ${two ? 'compact' : ''}">
+        <canvas class="preview" data-k=${k}></canvas>
+        <ix-icon-button class="arrow prev" ghost icon="chevron-left" title="Previous vehicle" @click=${() => this.cycleVehicle(k, -1)}></ix-icon-button>
+        <ix-icon-button class="arrow next" ghost icon="chevron-right" title="Next vehicle" @click=${() => this.cycleVehicle(k, 1)}></ix-icon-button>
+        <div class="garage-info">
+          <ix-typography format="h4">${vehicleById(pr.vehicle).label}</ix-typography>
+          ${two
+            ? nothing
+            : html`<div class="stat"><span>Speed</span>${bars(vehicleById(pr.vehicle).rating.speed)}</div>
+                <div class="stat"><span>Handling</span>${bars(vehicleById(pr.vehicle).rating.handling)}</div>
+                <div class="stat"><span>Range</span>${bars(vehicleById(pr.vehicle).rating.range)}</div>`}
+        </div>
+        <div class="garage-dots">
+          ${VEHICLES.map(
+            (v) => html`<button class="vdot ${pr.vehicle === v.id ? 'on' : ''}" title=${v.label} aria-label=${v.label} @click=${() => this.setProfileOf(k, { ...pr, vehicle: v.id })}></button>`
+          )}
+        </div>
       </div>
       <div class="colors">
         ${p
@@ -1138,17 +1177,6 @@ function pageStyles(): ReturnType<typeof css> {
       font-size: 0.85rem;
       color: var(--theme-color-soft-text);
     }
-    .vehicles {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 0.5rem;
-    }
-    .vehicle {
-      cursor: pointer;
-      width: 100%;
-      min-width: 0;
-      height: auto;
-    }
     .stat {
       display: flex;
       justify-content: space-between;
@@ -1318,15 +1346,75 @@ function pageStyles(): ReturnType<typeof css> {
     .device.on {
       color: var(--theme-color-success);
     }
+    .garage {
+      position: relative;
+      display: grid;
+      grid-template-columns: 1fr;
+      border: 1px solid var(--theme-color-soft-bdr);
+      border-radius: var(--theme-default-border-radius);
+      background: radial-gradient(ellipse at 50% 70%, color-mix(in srgb, var(--c, var(--theme-color-primary)) 18%, transparent), transparent 70%);
+      overflow: hidden;
+    }
+    .garage .preview {
+      width: 100%;
+      height: 15rem;
+      display: block;
+    }
+    .garage.compact .preview {
+      height: 10rem;
+    }
+    .garage .arrow {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    .garage .prev {
+      left: 0.25rem;
+    }
+    .garage .next {
+      right: 0.25rem;
+    }
+    .garage-info {
+      position: absolute;
+      top: 0.5rem;
+      left: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+      pointer-events: none;
+      text-shadow: 0 0 8px var(--theme-color-1);
+    }
+    .garage-info .stat {
+      width: 11rem;
+      gap: 0.5rem;
+    }
+    .garage-dots {
+      position: absolute;
+      bottom: 0.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 0.4rem;
+    }
+    .vdot {
+      width: 0.6rem;
+      height: 0.6rem;
+      padding: 0;
+      border: 1px solid var(--c, var(--theme-color-primary));
+      border-radius: 50%;
+      background: transparent;
+      cursor: pointer;
+    }
+    .vdot.on {
+      background: var(--c, var(--theme-color-primary));
+      box-shadow: 0 0 6px var(--c, var(--theme-color-primary));
+    }
     .kb-join {
       margin-left: auto;
     }
     .device.wait {
       color: var(--theme-color-warning);
       animation: pulse 1.4s ease-in-out infinite;
-    }
-    .vehicles.compact {
-      grid-template-columns: repeat(2, 1fr);
     }
     .podium {
       align-items: center;
