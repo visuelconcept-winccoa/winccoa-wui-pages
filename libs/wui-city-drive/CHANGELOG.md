@@ -3,6 +3,18 @@
 
 # Changelog — @visuelconcept-winccoa/wui-city-drive
 
+## 0.11.0 — 2026-11-18
+
+- **Audit trail** of the game station in the module's own `_AuditTrail` datapoint
+  **`AuditTrail_CityDrive`** (created on first use through PARA, NGA-archived when an active
+  archive group exists; shown by the Audit Trail page): `GAME_START` (players, cars, devices,
+  duration, photo), `GAME_END` (ranking), `REMATCH`, `GAME_EXIT` (after the podium / match
+  left / free drive), `SEAT_JOIN` / `SEAT_LEAVE`, `PHOTO_TAKEN` / `PHOTO_SKIPPED` /
+  `PHOTO_FAILED` / `PHOTO_PUBLISHED` (object path only), `ALERT_ACKNOWLEDGED` (the control room
+  acknowledged a player's alert), `SETTINGS_UPDATE` (old → new of the changed settings). No
+  email nor photo link ever goes into it (only whether an email was given). A failed audit
+  write never stops the game.
+
 ## 0.10.1 — 2026-11-18
 
 - Fix the webserver build (`tsc`: "Buffer is not assignable to BodyInit" in

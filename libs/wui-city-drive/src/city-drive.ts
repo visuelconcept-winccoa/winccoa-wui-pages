@@ -51,6 +51,8 @@ import {
 } from './city-drive/settings.js';
 import { TelemetryThrottle } from './city-drive/telemetry.js';
 import { CarPreview } from './city-drive/car-preview.js';
+import { AuditTrailWriter } from '@visuelconcept-winccoa/wui-kit/data/audit-trail.js';
+import * as audit from './city-drive/audit.js';
 import {
   BOOTH_COUNTDOWN_S,
   boothSource,
@@ -116,6 +118,9 @@ const NEON_LABEL: Record<NeonColor, string> = { primary: 'Cyan', dynamic: 'Elect
 /** The skin tones of figure-model.ts, for the swatch. */
 const SKIN_SWATCH = [0xe8c4a8, 0xd9a882, 0xb98462, 0x8d5a3b, 0x613f2b];
 const ARROWS: Record<string, 'up' | 'down' | 'left' | 'right'> = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+
+/** The object path of a photo's link (public or signed): `<YYYY-MM-DD>/<uuid>.jpg`. */
+const objectPathOf = (url: string): string => /\/object\/(?:public|sign)\/[^/]+\/([^?]+)/.exec(url)?.[1] ?? '';
 
 const minutes = (s: number): string => (s === 60 ? '1 minute' : `${s / 60} minutes`);
 
@@ -208,6 +213,12 @@ export class WuiCityDrive extends LitElement {
   @state() private boothCameras: BoothCamera[] = [];
   @state() private booth: { count: number; flash: boolean; note: string; image: string } | null = null;
   private boothStream: MediaStream | null = null;
+  /** The module's audit trail (#93): AuditTrail_CityDrive. */
+  private readonly audit = new AuditTrailWriter({ dpName: audit.AUDIT_DP, itemType: audit.AUDIT_ITEM_TYPE });
+  /** What the photo booth did for the match being started (audited with GAME_START). */
+  private lastPhoto: 'taken' | 'skipped' | 'failed' | 'off' = 'off';
+  /** The settings when the dialog opened (SETTINGS_UPDATE on close). */
+  private settingsBefore: Settings | null = null;
   /** "Skip photo" (button, B, Esc): the booth stops at its next step and the game starts. */
   private boothSkipped = false;
   /** The match photo on Supabase (#92): its link, its upload state, the QR code of the link. */
@@ -758,11 +769,15 @@ export class WuiCityDrive extends LitElement {
 
   private openSettings(): void {
     this.settingsOpen = true;
+    this.settingsBefore = this.settings;
     void this.link.listCameras().then((c) => (this.boothCameras = c));
     if (this.started) this.game?.setPaused(true);
   }
 
   private closeSettings(): void {
+    const change = this.settingsBefore ? audit.settingsUpdate(this.settingsBefore, this.settings) : null;
+    if (change) void this.audit.write(change);
+    this.settingsBefore = null;
     this.settingsOpen = false;
     this.listening = null;
     this.stage?.focus();
@@ -991,6 +1006,7 @@ export class WuiCityDrive extends LitElement {
     this.game.onDeviceLost = (device) => this.onDeviceLost(device);
     this.game.onMatchEnd = (results) => {
       this.results = results;
+      void this.audit.write(audit.gameEnd(this.profiles, results, this.local.match));
       void this.recordResults(results);
     };
     this.game.onFlash = (f, k) => this.onFlash(f, k);
@@ -1005,6 +1021,7 @@ export class WuiCityDrive extends LitElement {
     this.link.watchPlayers((players) => this.onPlayers(players), this.game.city.blocks);
     this.link.watchAlerts((i) => this.game?.clearHeat(i));
     this.boothCameras = await this.link.listCameras();
+    if (!this.link.demo) void this.audit.ensure();
   }
 
   /**
@@ -1054,6 +1071,7 @@ export class WuiCityDrive extends LitElement {
     slots.devices[k] = 'keyboard';
     this.slots = slots;
     this.game.setDevice(k, 'keyboard');
+    void this.audit.write(audit.seat(true, k, 'keyboard'));
   }
 
   /** A device pressed join or leave: the lobby seats it, or it takes the seat of an unplugged pad. */
@@ -1088,6 +1106,7 @@ export class WuiCityDrive extends LitElement {
     const slots = this.slots.resize(this.slots.count);
     const k = press === 'join' ? slots.join(device) : slots.leave(device);
     if (k === -1) return;
+    void this.audit.write(audit.seat(press === 'join', k, device));
     this.slots = slots;
     this.game.setDevice(k, press === 'join' ? device : null);
   }
@@ -1111,6 +1130,7 @@ export class WuiCityDrive extends LitElement {
     this.profiles = this.profiles.map((pr) => ({ ...pr, nickname: cleanNickname(pr.nickname) }));
     const src = boothSource(this.settings.photoBooth, this.boothCameras);
     if (src.kind === 'off') {
+      this.lastPhoto = 'off';
       this.launch();
       return;
     }
@@ -1148,9 +1168,13 @@ export class WuiCityDrive extends LitElement {
       void this.startPublication(image);
       const saved = await Promise.allSettled(this.profiles.map((pr, k) => savePhoto(image, this.emails[k] ?? '', pr.nickname || `Player ${k + 1}`)));
       const ok = saved.filter((r) => r.status === 'fulfilled').length;
+      this.lastPhoto = 'taken';
+      void this.audit.write(audit.photo('taken', this.profiles, `saved for ${ok} of ${saved.length} player(s)`));
       this.booth = { ...this.booth, note: ok === saved.length ? 'Souvenir photo saved!' : ok > 0 ? 'Photo saved for some players only' : 'The photo could not be saved' };
       await wait(1600);
     } catch (error) {
+      this.lastPhoto = 'failed';
+      void this.audit.write(audit.photo('failed', this.profiles, error instanceof Error ? error.message : String(error)));
       this.booth = { ...(this.booth ?? { count: 0, flash: false, image: '' }), note: `No photo: ${error instanceof Error ? error.message : String(error)}` };
       await wait(2200);
     } finally {
@@ -1182,7 +1206,10 @@ export class WuiCityDrive extends LitElement {
     if (!this.publication) return;
     this.publication = await publicationStatus(this.publication).catch(() => this.publication as Publication);
     await this.refreshQr();
-    if (this.publication.state === 'published') window.clearInterval(this.publicationTimer);
+    if (this.publication.state === 'published') {
+      window.clearInterval(this.publicationTimer);
+      void this.audit.write(audit.photoPublished(this.profiles, objectPathOf(this.publication.url ?? '')));
+    }
   }
 
   private async refreshQr(): Promise<void> {
@@ -1235,12 +1262,25 @@ export class WuiCityDrive extends LitElement {
   private skipBooth(): void {
     if (!this.booth || this.booth.image) return;
     this.boothSkipped = true;
+    this.lastPhoto = 'skipped';
+    void this.audit.write(audit.photo('skipped', this.profiles));
     this.booth = { ...this.booth, count: 0, note: 'Photo skipped' };
+  }
+
+  /** The players as the audit sees them: nickname, car, device, email given or not. */
+  private auditPlayers(): audit.AuditPlayer[] {
+    return this.profiles.map((pr, k) => ({
+      nickname: pr.nickname,
+      vehicle: vehicleById(pr.vehicle).label,
+      device: this.profiles.length > 1 ? (this.slots.devices[k] ?? '') : 'any',
+      email: (this.emails[k] ?? '') !== ''
+    }));
   }
 
   /** The game itself, after the photo booth. */
   private launch(): void {
     if (!this.game) return;
+    void this.audit.write(audit.gameStart(this.auditPlayers(), this.local.match, this.local.match > 0 ? 'logos' : this.profile.mode, this.lastPhoto));
     this.profiles.forEach((pr, k) => {
       saveProfileOf(k, pr);
       this.game?.setProfile(k, pr);
@@ -1302,6 +1342,7 @@ export class WuiCityDrive extends LitElement {
   }
 
   private rematch(): void {
+    void this.audit.write(audit.rematch(this.profiles, this.local.match));
     this.results = null;
     this.board = null;
     this.game?.startMatch(this.local.match);
@@ -1309,6 +1350,7 @@ export class WuiCityDrive extends LitElement {
   }
 
   private backToMenu(): void {
+    if (this.started) void this.audit.write(audit.gameExit(this.profiles, this.results ? 'after-podium' : this.local.match > 0 ? 'abandoned' : 'free-drive'));
     this.results = null;
     // a new game for new people: the previous photo and its QR code go away
     window.clearInterval(this.publicationTimer);
@@ -1385,6 +1427,7 @@ export class WuiCityDrive extends LitElement {
   }
 
   private onEvent(e: GameEvent, k: number): void {
+    if (e === 'acknowledged') void this.audit.write(audit.alertAcknowledged(this.profiles[k]?.nickname ?? '', this.link.players[k] ?? ''));
     const next = [...this.eventText];
     next[k] = MSG.event[e];
     this.eventText = next;

@@ -139,6 +139,27 @@ player who opens the page with the `para:edit-types` role changes the type in pl
 Until then, the new elements are not written and the alert is not configured; the rest of the
 telemetry and the game play the same. The other players are read on the elements of 0.4.
 
+## Audit trail
+
+The game station's actions go to the module's own `_AuditTrail` datapoint
+**`AuditTrail_CityDrive`** (item type `CityDrive`), created on first use and NGA-archived when an
+active archive group exists — see it in the **Audit Trail** page (select that datapoint).
+
+| Action | Item | Old → new |
+| --- | --- | --- |
+| `GAME_START` | the players' nicknames | match length or free drive, mode, photo (taken / skipped / failed / off), each player's car, device, email given (yes / no) |
+| `GAME_END` | players | ranking: rank, nickname, score, logos |
+| `REMATCH` | players | match length ("Play again") |
+| `GAME_EXIT` | players | `after-podium`, `abandoned` (left before the end) or `free-drive` |
+| `SEAT_JOIN` / `SEAT_LEAVE` | `Seat P1` / `P2` | the device (`keyboard`, `pad:0`…) |
+| `PHOTO_TAKEN` / `PHOTO_SKIPPED` / `PHOTO_FAILED` | players | how many players it was saved for / — / the error |
+| `PHOTO_PUBLISHED` | players | the object path in the bucket (`<date>/<uuid>.jpg`), never its link |
+| `ALERT_ACKNOWLEDGED` | the player (item type `CityDrivePlayer`) | its `….wanted` DPE: the control room acknowledged its alert |
+| `SETTINGS_UPDATE` | `Settings` | the changed settings, old → new |
+
+Personal data stays out: never an email (only whether one was given), never a photo link. The
+user of each row is the WinCC OA user logged on at the game station.
+
 ## Roles (Application Security)
 
 - `play`: the page (and one's own telemetry). Without it, a notice replaces the game.
