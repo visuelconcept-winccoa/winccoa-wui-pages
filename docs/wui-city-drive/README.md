@@ -8,6 +8,12 @@ The game is in English only.
 
 ## Play
 
+- **1 or 2 players on one computer** (split screen). With two players, each one joins with
+  its device on the start screen: A or Start on a USB gamepad, Enter on the keyboard (the
+  keyboard serves one player at most); B or Escape to leave. Then **Start the match**.
+- **Match** (logo hunt, timed): 2, 3 or 5 minutes; the logos are shared, first come first
+  served; the highest score wins (logos break a tie). Alone, *Free drive* keeps the missions.
+
 - Start screen: nickname, vehicle, neon colour, game mode (Logo hunt or Missions) and time of
   day (neon night or day); **Settings** (also in game): keys, gamepad, steering, camera,
   graphics, units, minimap / players panel. (the iX theme colours), kept in the browser

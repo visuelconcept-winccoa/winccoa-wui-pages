@@ -3,6 +3,23 @@
 
 # Changelog — @visuelconcept-winccoa/wui-city-drive
 
+## 0.4.0 — 2026-11-17
+
+- **Two players on one computer** (#83), split screen side by side: on the start screen,
+  1 or 2 players; each player's card (nickname, vehicle, neon colour) shows its device —
+  "press to join": A / Start on a USB gamepad, Enter on the keyboard (one keyboard player
+  at most); B / Escape to leave. Two identical gamepads are told apart by their index.
+  A gamepad unplugged during the game pauses it until a pad presses Start for that seat.
+- **Timed match** (logo hunt): 2, 3 or 5 minutes, 3-2-1-GO, a clock (red in the last 10 s),
+  the logos shared — first come, first served — and a combo per player; a podium at the end
+  (score, then logos), Play again or Menu. Alone: a time attack; Free drive keeps the
+  missions and the endless logo hunt.
+- One view per player: its car, headlights, camera and bloom, drawn side by side; with two
+  views the shadows are off and the resolution 1. The players' cars bump into each other;
+  the traffic yields to both.
+- Network kept: one datapoint per local player (P1 keeps its 0.3.0 name, P2 `…p2`); the local
+  players of other computers still show as remote players.
+
 ## 0.3.0 — 2026-11-17
 
 - **Logo hunt** (new default game mode; Missions stays): WinCC OA tokens float over the roads,
