@@ -56,6 +56,8 @@ const MODULE_ID = 'city-drive';
 const PROFILE_KEY = 'wui-city-drive.profile';
 const TELEMETRY_MS = 250;
 const EVENT_SHOW_MS = 2500;
+/** iX has no gamepad icon (`controller-device` is a PLC): a small one in the text colour. */
+const GAMEPAD_ICON = html`<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M7 6h10a5 5 0 0 1 4.9 6l-.9 4.4a2.6 2.6 0 0 1-4.6 1.1L14.6 15H9.4l-1.8 2.5A2.6 2.6 0 0 1 3 16.4L2.1 12A5 5 0 0 1 7 6Zm0 3v1.5H5.5v1.5H7v1.5h1.5V12H10v-1.5H8.5V9H7Zm9.5 0a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2Zm-2 2.6a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2Z"/></svg>`;
 const MINIMAP_PX = 180;
 
 function loadProfile(): Profile {
@@ -173,6 +175,7 @@ export class WuiCityDrive extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
+    window.addEventListener('keydown', this.onLobbyKey);
     registerModuleRoles(appSecurityRoles as AppModuleRoles);
     this.roleSub = hasRole$(MODULE_ID, 'play').subscribe((granted) => {
       this.rolePlay = granted;
@@ -183,6 +186,7 @@ export class WuiCityDrive extends LitElement {
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     window.removeEventListener('keydown', this.onRebindKey, true);
+    window.removeEventListener('keydown', this.onLobbyKey);
     this.roleSub.unsubscribe();
     window.clearInterval(this.telemetryTimer);
     this.eventTimers.forEach((t) => window.clearTimeout(t));
@@ -284,7 +288,12 @@ export class WuiCityDrive extends LitElement {
       ${two
         ? html`<div class="slot-head">
             <span class="badge">P${k + 1}</span>
-            ${device ? html`<span class="device on"><ix-icon name=${device === 'keyboard' ? 'keyboard' : 'controller'} size="16"></ix-icon>${this.deviceName(device)}</span>` : html`<span class="device wait">Press A / Start${this.slots.devices.includes('keyboard') ? '' : ' (or Enter)'} to join</span>`}
+            ${device
+              ? html`<span class="device on">${device === 'keyboard' ? html`<ix-icon name="keyboard" size="16"></ix-icon>` : GAMEPAD_ICON}${this.deviceName(device)}</span>`
+              : html`<span class="device wait">Press A / Start${this.slots.devices.includes('keyboard') ? '' : ' (or Enter)'} to join</span>
+                  ${this.slots.devices.includes('keyboard')
+                    ? nothing
+                    : html`<ix-button class="kb-join" variant="secondary" ghost icon="keyboard" @click=${() => this.joinKeyboardAt(k)}>Use the keyboard</ix-button>`}`}
           </div>`
         : nothing}
       <ix-input
@@ -458,7 +467,7 @@ export class WuiCityDrive extends LitElement {
         <ix-progress-indicator class="fuel" label=${MSG.hud.fuel} .value=${fuel} status=${fuel < 15 ? 'error' : fuel < 35 ? 'warning' : 'default'}></ix-progress-indicator>
       </div>
       ${this.eventText[k] ? html`<div class="toast">${this.eventText[k]}</div>` : nothing}
-      ${this.tickets[k] ? html`<div class="ticket"><ix-icon name="camera"></ix-icon>${this.tickets[k]}</div>` : nothing}
+      ${this.tickets[k] ? html`<div class="ticket"><ix-icon name="photo-camera"></ix-icon>${this.tickets[k]}</div>` : nothing}
       ${this.flashing[k] ? html`<div class="cam-flash"></div>` : nothing}
       ${h && h.caught > 0
         ? html`<div class="caught">
@@ -744,6 +753,31 @@ export class WuiCityDrive extends LitElement {
     this.telemetryOn = !this.link.demo && this.link.player !== '';
     this.link.watchPlayers((players) => this.onPlayers(players), this.game.city.blocks);
     this.link.watchAlerts((i) => this.game?.clearHeat(i));
+  }
+
+  /**
+   * Enter / Escape in the lobby, wherever the focus is (#83 fix): the game only hears the keys
+   * while its stage has the focus, and the setup screen (nickname, buttons) takes it — Enter
+   * then pressed the focused button instead of seating the keyboard.
+   */
+  private readonly onLobbyKey = (e: KeyboardEvent): void => {
+    if (this.started || this.local.players < 2 || this.settingsOpen || this.listening || e.repeat) return;
+    if (e.composedPath()[0] === this.stage) return; // the game handles its own keys
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+      e.preventDefault();
+      this.onDevice('keyboard', 'join');
+    } else if (e.code === 'Escape') {
+      this.onDevice('keyboard', 'leave');
+    }
+  };
+
+  /** "Use the keyboard" on a free seat: the keyboard takes that very seat. */
+  private joinKeyboardAt(k: number): void {
+    if (!this.game || this.slots.devices[k] || this.slots.devices.includes('keyboard')) return;
+    const slots = this.slots.resize(this.slots.count);
+    slots.devices[k] = 'keyboard';
+    this.slots = slots;
+    this.game.setDevice(k, 'keyboard');
   }
 
   /** A device pressed join or leave: the lobby seats it, or it takes the seat of an unplugged pad. */
@@ -1188,6 +1222,9 @@ function pageStyles(): ReturnType<typeof css> {
     }
     .device.on {
       color: var(--theme-color-success);
+    }
+    .kb-join {
+      margin-left: auto;
     }
     .device.wait {
       color: var(--theme-color-warning);

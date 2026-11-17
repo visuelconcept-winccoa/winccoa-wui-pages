@@ -21,6 +21,11 @@
 - Two players: player 2 starts on the next avenue (behind player 1, the first player's camera
   sat in its headlights: a washed-out view); player 2's HUD is mirrored to the right edge
   (it was under the banner, the clock and the minimap).
+- Two players, keyboard + gamepad: in the lobby, Enter seats the keyboard wherever the focus
+  is (it was heard only by the 3D view: once the nickname field or a button had the focus,
+  Enter pressed that button instead); a free seat also offers **Use the keyboard**.
+- Icons: the gamepad of the player cards and the speed camera ticket showed iX's "missing
+  icon" (no `controller` / `camera` in iX): a gamepad drawn in the page, `photo-camera`.
 
 ## 0.4.0 — 2026-11-17
 
