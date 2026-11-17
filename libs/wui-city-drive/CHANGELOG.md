@@ -3,6 +3,16 @@
 
 # Changelog — @visuelconcept-winccoa/wui-city-drive
 
+## 0.13.1 — 2026-11-18
+
+- Control room: the players' arrows pointed the wrong way (rotation π − heading instead of
+  −heading on a map with +Z up and +X to the left); checked against the players' actual
+  movement.
+- A station kept sending its telemetry heartbeat after the match (podium, menu), so its
+  player stayed "online" in the control room and the players panel. The heartbeat now stops at
+  the end of the match and at the menu, and starts again with "Play again" or a new game: the
+  player goes offline 30 s later.
+
 ## 0.13.0 — 2026-11-18
 
 - **Control room** `/city-drive/control` (menu "City Drive · Control room"), new role
