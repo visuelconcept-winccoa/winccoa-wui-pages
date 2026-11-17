@@ -54,6 +54,7 @@ import { CarPreview } from './city-drive/car-preview.js';
 import { AuditTrailWriter } from '@visuelconcept-winccoa/wui-kit/data/audit-trail.js';
 import * as audit from './city-drive/audit.js';
 import './city-drive/admin-page.js';
+import { VC_CONTACT, VC_LOGO_SVG, svgDataUrl } from './city-drive/vc-logo.js';
 import './city-drive/control-page.js';
 import { GameAudio, STATIONS, type StationId } from './city-drive/audio.js';
 import {
@@ -124,6 +125,9 @@ const ARROWS: Record<string, 'up' | 'down' | 'left' | 'right'> = { ArrowUp: 'up'
 
 /** The object path of a photo's link (public or signed): `<YYYY-MM-DD>/<uuid>.jpg`. */
 const objectPathOf = (url: string): string => /\/object\/(?:public|sign)\/[^/]+\/([^?]+)/.exec(url)?.[1] ?? '';
+
+/** The Visuel Concept logos (supplied as SVG), for the end-of-match screen. */
+const VC_LOGO = svgDataUrl(VC_LOGO_SVG);
 
 const minutes = (s: number): string => (s === 60 ? '1 minute' : `${s / 60} minutes`);
 
@@ -239,6 +243,8 @@ export class WuiCityDrive extends LitElement {
   /** The match photo on Supabase (#92): its link, its upload state, the QR code of the link. */
   @state() private publication: Publication | null = null;
   @state() private publicationQr = '';
+  /** The QR code of Visuel Concept's contact email (the end-of-match card). */
+  @state() private contactQr = '';
   private publicationTimer = 0;
   @query('video.booth-preview') private boothVideo?: HTMLVideoElement;
   /** The start screen's step: 1 players, 2 garage (#91). */
@@ -279,6 +285,7 @@ export class WuiCityDrive extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
+    void qrSvg(`mailto:${VC_CONTACT}?subject=${encodeURIComponent('City Drive · supervision')}`).then((svg) => (this.contactQr = svgDataUrl(svg)), () => undefined);
     window.addEventListener('keydown', this.onLobbyKey);
     window.addEventListener('pointerdown', this.unlockAudio);
     window.addEventListener('keydown', this.unlockAudio);
@@ -804,8 +811,31 @@ export class WuiCityDrive extends LitElement {
           <ix-button variant="secondary" @click=${() => this.backToMenu()}>Menu</ix-button>
           <ix-button icon="refresh" @click=${() => this.rematch()}>Play again</ix-button>
         </div>
+        ${this.renderSponsor()}
       </div>
       ${this.renderPhotoCard()}
+    </div>`;
+  }
+
+  /**
+   * End of the match: the Visuel Concept card — on a light card, as the logo is meant to be shown
+   * (on the dark podium it was dull): its symbol turning, the logo, what Visuel Concept does, and
+   * how to reach it (the address, and a QR code that opens an email to it).
+   */
+  private renderSponsor(): TemplateResult {
+    return html`<div class="vc-card">
+      <div class="vc-head">
+        <span class="vc-by">This game is brought to you by</span>
+        <div class="vc-stage"><img class="vc-logo" src=${VC_LOGO} alt="Visuel Concept" /></div>
+      </div>
+      <div class="vc-body">
+        <div class="vc-pitch">
+          <div class="vc-headline">You just played on WinCC OA.</div>
+          <div>Imagine what we can build for <strong>your plant</strong>.</div>
+          <a class="vc-mail" href=${`mailto:${VC_CONTACT}`}>Let's build yours → ${VC_CONTACT}</a>
+        </div>
+        ${this.contactQr ? html`<div class="vc-qr"><img src=${this.contactQr} alt=${`QR code: email ${VC_CONTACT}`} /><span>Scan to email us</span></div>` : nothing}
+      </div>
     </div>`;
   }
 
@@ -2091,6 +2121,97 @@ function pageStyles(): ReturnType<typeof css> {
     .device.wait {
       color: var(--theme-color-warning);
       animation: pulse 1.4s ease-in-out infinite;
+    }
+    /* The Visuel Concept card: a light card in the brand's own colours (its logo is drawn for a
+       light background; on the dark podium it was dull). Brand colours are the logo's own. */
+    .vc-card {
+      --vc-paper: #ffffff;
+      --vc-ink: #122d60;
+      --vc-blue: #009fde;
+      --vc-purple: #593a88;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      width: 100%;
+      margin-top: 0.4rem;
+      padding: 0.8rem 1rem;
+      border-radius: var(--theme-default-border-radius);
+      background: var(--vc-paper);
+      color: var(--vc-ink);
+      text-align: left;
+      box-shadow: 0 0 22px color-mix(in srgb, var(--vc-blue) 45%, transparent);
+    }
+    .vc-head {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .vc-by {
+      font-size: 0.8rem;
+      letter-spacing: 0.04em;
+    }
+    .vc-stage {
+      perspective: 600px;
+    }
+    /* the logo turns on itself every few seconds */
+    .vc-logo {
+      height: 3rem;
+      display: block;
+      animation: vc-turn 6s ease-in-out infinite;
+    }
+    @keyframes vc-turn {
+      0%,
+      70% {
+        transform: rotateY(0deg);
+      }
+      100% {
+        transform: rotateY(360deg);
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .vc-logo {
+        animation: none;
+      }
+    }
+    .vc-headline {
+      margin-bottom: 0.25rem;
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: var(--vc-purple);
+    }
+    .vc-body {
+      display: flex;
+      align-items: center;
+      gap: 0.9rem;
+      padding-top: 0.6rem;
+      border-top: 1px solid color-mix(in srgb, var(--vc-ink) 15%, transparent);
+    }
+    .vc-pitch {
+      flex: 1;
+      font-size: 0.85rem;
+      line-height: 1.35;
+    }
+    .vc-pitch strong {
+      color: var(--vc-purple);
+    }
+    .vc-mail {
+      display: block;
+      margin-top: 0.35rem;
+      font-weight: 700;
+      color: var(--vc-blue);
+      text-decoration: none;
+    }
+    .vc-qr {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.15rem;
+      font-size: 0.7rem;
+    }
+    .vc-qr img {
+      width: 5.6rem;
+      height: 5.6rem;
     }
     .podium-overlay {
       gap: 1rem;

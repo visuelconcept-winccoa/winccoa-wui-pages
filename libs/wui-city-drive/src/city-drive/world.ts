@@ -67,6 +67,7 @@ import { StreetLife } from './street.js';
 import { TrafficSignals } from './traffic-signals.js';
 import { LogoFx } from './explosion.js';
 import { TensionFx } from './tension-fx.js';
+import { vcSymbolTexture } from './vc-logo.js';
 import { AtmosphereFx } from './atmosphere-fx.js';
 import type { Weather } from './weather.js';
 import { applyPose, makeCube, makeFigure, setFigureWeapon } from './figure-model.js';
@@ -517,6 +518,9 @@ export class CityWorld {
     });
   }
 
+  /** The Visuel Concept symbol, shared by the four machine halls. */
+  private readonly vcSymbol = vcSymbolTexture();
+
   private buildMachine(b: Building): void {
     const w = b.x1 - b.x0;
     const d = b.z1 - b.z0;
@@ -537,6 +541,23 @@ export class CityWorld {
     beacon.position.set(hall.position.x, b.height + 3, hall.position.z);
     this.scene.add(hall, lines, roof, beacon);
     this.machineEdges.set(b.id, { lines, roof, beacon });
+    // the Visuel Concept symbol on each of the four walls, in its own colours, lit like the
+    // city's neon signs (a white panel behind it bloomed at night and washed it out)
+    const side = Math.min(w, d, b.height) * 0.66;
+    const panel = new MeshBasicMaterial({ map: this.vcSymbol, transparent: true, depthWrite: false, toneMapped: false });
+    panel.color.setScalar(1.35);
+    const walls: [number, number, number][] = [
+      [0, d / 2, 0],
+      [0, -d / 2, Math.PI],
+      [w / 2, 0, Math.PI / 2],
+      [-w / 2, 0, -Math.PI / 2]
+    ];
+    for (const [dx, dz, ry] of walls) {
+      const logo = new Mesh(new PlaneGeometry(side, side), panel);
+      logo.position.set(hall.position.x + dx * 1.004 + Math.sin(ry) * 0.06, b.height * 0.55, hall.position.z + dz * 1.004 + Math.cos(ry) * 0.06);
+      logo.rotation.y = ry;
+      this.scene.add(logo);
+    }
   }
 
   private buildTrees(): void {

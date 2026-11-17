@@ -21,6 +21,8 @@ export interface MapPlayer {
   wanted: boolean;
   /** On foot: a dot, not an arrow. */
   onFoot: boolean;
+  /** Selected in the control room (its trend is shown): a white ring. */
+  selected?: boolean;
 }
 
 const css = (c: number): string => `#${c.toString(16).padStart(6, '0')}`;
@@ -31,6 +33,22 @@ const css = (c: number): string => `#${c.toString(16).padStart(6, '0')}`;
  * on screen; rotating "up" (0, -1) by a gives (sin a, -cos a): a = -h.
  */
 export const arrowAngle = (heading: number): number => -heading;
+
+/** Where a city point (x, z) lands on a w × h map (the same layout as drawCityMap). */
+export function mapPoint(city: City, w: number, h: number, x: number, z: number): { x: number; y: number } {
+  const pad = 24;
+  const k = Math.min(w - 2 * pad, h - 2 * pad) / (city.size + ROAD_WIDTH);
+  const ox = (w - (city.size + ROAD_WIDTH) * k) / 2;
+  const oy = (h - (city.size + ROAD_WIDTH) * k) / 2;
+  return { x: w - ox - (x + ROAD_WIDTH / 2) * k, y: h - oy - (z + ROAD_WIDTH / 2) * k };
+}
+
+/** A rolling series of samples for the trend: at most `keepS` seconds, oldest first. */
+export function pushSample(series: { t: number; v: number }[], t: number, v: number, keepS = 120): { t: number; v: number }[] {
+  const next = [...series, { t, v }];
+  const from = t - keepS * 1000;
+  return next.filter((p) => p.t >= from);
+}
 
 export function drawCityMap(
   canvas: HTMLCanvasElement,
@@ -100,6 +118,15 @@ export function drawCityMap(
       g.arc(x, y, 14 + 8 * pulse, 0, Math.PI * 2);
       g.stroke();
       g.globalAlpha = 1;
+    }
+    if (pl.selected) {
+      g.strokeStyle = css(p.dynamic);
+      g.lineWidth = 2;
+      g.setLineDash([4, 3]);
+      g.beginPath();
+      g.arc(x, y, 18, 0, Math.PI * 2);
+      g.stroke();
+      g.setLineDash([]);
     }
     g.fillStyle = css(pl.color);
     g.shadowColor = css(pl.color);

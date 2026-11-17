@@ -687,3 +687,27 @@ describe('control room map (#96)', () => {
     close(screen(-Math.PI / 2), [1, 0]); // heading -X: right
   });
 });
+
+describe('players online (#97)', () => {
+  it('counts a player online from its own write times, not from other players emissions', async () => {
+    const { DriveLink } = await import('./dp-link.js');
+    const { Subject } = await import('rxjs');
+    const feed = new Subject<{ dp: string[]; value: unknown[] }>();
+    const link = new DriveLink() as unknown as { api: unknown; followPlayers: (dps: string[], cb: (p: { dp: string; updatedAt: number }[]) => void, t?: boolean) => void };
+    link.api = { dpConnect: () => feed };
+    let seen: { dp: string; updatedAt: number }[] = [];
+    const live = 'CityDrive_Player_sps_5yc0qp2';
+    const stale = 'CityDrive_Player_para_5yc0qp2';
+    link.followPlayers([live, stale], (p) => (seen = p), false);
+    const emit = (liveX: number, liveStamp: string, staleStamp: string): void =>
+      feed.next({
+        dp: [`System1:${live}.pos.x:_online.._value`, `System1:${stale}.pos.x:_online.._value`, `System1:${live}.pos.x:_online.._stime`, `System1:${stale}.pos.x:_online.._stime`],
+        value: [liveX, 40, liveStamp, staleStamp]
+      });
+    emit(10, '2026-11-18T10:00:00Z', '2026-11-17T08:00:00Z'); // dpConnect's first answer
+    emit(12, '2026-11-18T10:00:01Z', '2026-11-17T08:00:00Z'); // the live player moves; the stale one comes along
+    const at = (dp: string): number => seen.find((p) => p.dp === dp)?.updatedAt ?? 0;
+    expect(at(live)).toBeGreaterThan(0);
+    expect(at(stale)).toBe(0);
+  });
+});

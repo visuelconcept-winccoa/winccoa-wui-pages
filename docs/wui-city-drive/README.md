@@ -131,7 +131,7 @@ after-event scripts: [supabase/README.md](supabase/README.md).
 | --- | --- | --- |
 | `CityDrive_Player_<user>_<id>` (type `CityDrive_Player`, created through PARA; `<id>` identifies the browser, so each session has its own) | written | `pos.x`, `pos.z`, `heading` (°), `speed` (km/h), `fuel` (%), `score`, `mission`, `event`, `nickname`, `vehicle` (`foot` when walking), `color`, and since 0.5.0 `alert` (0..5), `wanted` (bool, carries the alert), `damage` (%), `ticket` (last speed camera ticket), `fines` (count) — at most 2 writes/s, dead bands, a heartbeat every 10 s; a change of the alert is written at once |
 | `CityDrive_Player_<…>.wanted:_alert_hdl` | configured once, then read (`_act_state`) | binary alert, class `alert.`, alarm on TRUE: it comes while the player is wanted; its acknowledgement (`_act_state` 1 → 2) clears the alert level |
-| `CityDrive_Player_*` of the other players | read (`dpConnect`) | multiplayer: their cars (or pedestrians) in the city, the **Players online** panel (online = a real change within 30 s) |
+| `CityDrive_Player_*` of the other players | read (`dpConnect`) | multiplayer: their cars (or pedestrians) in the city, the **Players online** panel (online = a change of `pos.x` or `pos.z` — their `_online.._stime` — within 30 s) |
 | `CityDrive_Config` (`.json`, created on first load) | read | the bindings below |
 | `CityDrive_Results` (`.json`, created on first match) | read, appended | the results of the matches: `[{ id, nickname, email, logos, score, at, duration }]`, 1000 at most. **Personal data**: the emails are readable by whoever can read this datapoint (PARA); to start a new ranking (a new event), set `.json` to `[]` in PARA |
 | the bound DPEs | read (`dpConnect`) | machine states, forced crossroads |
@@ -164,7 +164,9 @@ screen next to the game: the live map (players from their datapoints, machines i
 wanted players ringed in red), the **alerts** of the wanted players with **Acknowledge** (the
 WinCC OA alert of `….wanted`, acknowledged with the operator's own session — the button shows
 only with the write permission; the game then clears the player's level), the players online,
-the plant, the weather and today's matches. It creates no player datapoint. Demo: one
+the plant, the weather and today's matches. Click a player (map or list) to see the **trend of
+its speed** over the last 2 minutes, read live from its DPE `CityDrive_Player_<…>.speed`
+(`dpConnect`, sampled every 0.5 s, with the peak). It creates no player datapoint. Demo: one
 simulated player becomes wanted every 90 s.
 
 ## Admin page
@@ -218,8 +220,12 @@ regularly), three simulated players drive around, nothing is written.
 
 Three.js, bundled into the page. Bloom; neon in the iX theme colours read from the page's
 `--theme-color-*` tokens; procedural textures (facades, asphalt, pavement, signs): no image file.
-Moonlight shadows around the player, real spot lights for the player's headlights. The Visuel
-Concept logo is drawn from its colours (signs on the roofs and at the top of the facades).
+Moonlight shadows around the player, real spot lights for the player's headlights. The
+WinCC OA 4 × 4 cube logo is drawn from its colours (signs on the roofs and at the top of the
+facades, the crossbow's cubes). The Visuel Concept symbol (its official artwork, `vc-logo.ts`)
+lights the four sides of each machine hall;
+the end of the match shows the full Visuel Concept logo turning, with a short pitch and a QR
+code that opens a mail to contact@visuelconcept.com.
 Every car carries an Austrian number plate of Eisenstadt (district `E`), the cradle of WinCC OA;
 the player's reads `E · WINCCOA 1`.
 
