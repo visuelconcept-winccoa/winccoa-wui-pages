@@ -1101,6 +1101,8 @@ export class WuiCityDrive extends LitElement {
     this.game.onDeviceLost = (device) => this.onDeviceLost(device);
     this.game.onMatchEnd = (results) => {
       this.results = results;
+      // the match is over: the station stops its heartbeat (the control room drops the players)
+      window.clearInterval(this.telemetryTimer);
       void this.audit.write(audit.gameEnd(this.profiles, results, this.local.match));
       void this.recordResults(results);
     };
@@ -1444,6 +1446,8 @@ export class WuiCityDrive extends LitElement {
   }
 
   private rematch(): void {
+    window.clearInterval(this.telemetryTimer);
+    this.telemetryTimer = window.setInterval(() => this.sendTelemetry(), TELEMETRY_MS);
     void this.audit.write(audit.rematch(this.profiles, this.local.match));
     this.results = null;
     this.board = null;
@@ -1477,6 +1481,8 @@ export class WuiCityDrive extends LitElement {
   }
 
   private backToMenu(): void {
+    // nobody plays at the menu: no more telemetry (the players go offline after 30 s)
+    window.clearInterval(this.telemetryTimer);
     this.audio.setStation('off');
     this.audio.setSiren(false);
     if (this.started) void this.audit.write(audit.gameExit(this.profiles, this.results ? 'after-podium' : this.local.match > 0 ? 'abandoned' : 'free-drive'));

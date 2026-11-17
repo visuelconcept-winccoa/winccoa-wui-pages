@@ -671,3 +671,19 @@ describe('atmosphere (#95)', () => {
     expect(screechLevel(20)).toBe(1);
   });
 });
+
+describe('control room map (#96)', () => {
+  it('points the arrow where the car goes', async () => {
+    const { arrowAngle } = await import('./control-map.js');
+    // canvas rotation of the "up" arrow (0, -1): (sin a, -cos a); the map has +Z up and +X to the left
+    const screen = (h: number): [number, number] => [Math.sin(arrowAngle(h)), -Math.cos(arrowAngle(h))];
+    const close = (a: [number, number], b: [number, number]): void => {
+      expect(a[0]).toBeCloseTo(b[0]);
+      expect(a[1]).toBeCloseTo(b[1]);
+    };
+    close(screen(0), [0, -1]); // heading +Z: up
+    close(screen(Math.PI / 2), [-1, 0]); // heading +X: left on the map
+    close(screen(Math.PI), [0, 1]); // heading -Z: down
+    close(screen(-Math.PI / 2), [1, 0]); // heading -X: right
+  });
+});

@@ -25,6 +25,13 @@ export interface MapPlayer {
 
 const css = (c: number): string => `#${c.toString(16).padStart(6, '0')}`;
 
+/**
+ * The canvas rotation of an arrow (drawn pointing up) for a heading (radians, 0 = +Z, forward =
+ * (sin h, cos h)). On the map +Z is up and +X is to the left, so forward is (-sin h, -cos h)
+ * on screen; rotating "up" (0, -1) by a gives (sin a, -cos a): a = -h.
+ */
+export const arrowAngle = (heading: number): number => -heading;
+
 export function drawCityMap(
   canvas: HTMLCanvasElement,
   city: City,
@@ -103,7 +110,7 @@ export function drawCityMap(
       g.fill();
     } else {
       // an arrow along the heading (+Z up, +X left on the map)
-      const a = Math.PI - pl.heading;
+      const a = arrowAngle(pl.heading);
       g.save();
       g.translate(x, y);
       g.rotate(a);
