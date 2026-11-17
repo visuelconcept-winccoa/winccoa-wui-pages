@@ -35,11 +35,30 @@ The game is in English only.
   in fault: drive to its hall; offered as soon as a machine fails, replaces a delivery).
 - Fuel: refill at the station (north-east corner of the minimap).
 
+### Tension (0.5.0)
+
+- **Alert level** (five chevrons under the score): running a red light, crashing into the
+  traffic, a speed camera, ramming a security car each add heat. It cools down after 10 s
+  without an offence, but not while a security car sees you (140 m).
+- **Security cars** from level 2 (one per level above 1, four at most): dark saloons with a
+  red / blue light bar. They cut you off (they aim where you will be) and back up when stuck.
+  Lose them (all farther than 220 m for 6 s) and the level falls to 1; stay nearly still with
+  one within 6 m for 2.5 s and you are **stopped**: −20 % score, level cleared. The screen
+  edges flash red / blue while you are chased.
+- **Speed cameras**: eight posts on the kerbs with their limit (50, 70 or 90 km/h). Drive past
+  faster: a white flash, a ticket (speed, limit, fine) and the fine off your score.
+- **Damage**: hard hits damage the car (top speed down to 65 %, less pull); from 30 % it smokes,
+  from 60 % it sags and a headlight flickers, near 100 % it burns.
+- **The station's garage**: driving in repairs the car and resprays it (alert level cleared).
+- **The control room**: from level 2 the player is *wanted*, a real WinCC OA alert (see
+  below). An operator who acknowledges it in the alarm list clears the player's alert level.
+
 ## Datapoints
 
 | Datapoint | Direction | Content |
 | --- | --- | --- |
-| `CityDrive_Player_<user>_<id>` (type `CityDrive_Player`, created through PARA; `<id>` identifies the browser, so each session has its own) | written | `pos.x`, `pos.z`, `heading` (°), `speed` (km/h), `fuel` (%), `score`, `mission`, `event`, `nickname`, `vehicle` (`foot` when walking), `color` — at most 2 writes/s, dead bands, a heartbeat every 10 s |
+| `CityDrive_Player_<user>_<id>` (type `CityDrive_Player`, created through PARA; `<id>` identifies the browser, so each session has its own) | written | `pos.x`, `pos.z`, `heading` (°), `speed` (km/h), `fuel` (%), `score`, `mission`, `event`, `nickname`, `vehicle` (`foot` when walking), `color`, and since 0.5.0 `alert` (0..5), `wanted` (bool, carries the alert), `damage` (%), `ticket` (last speed camera ticket), `fines` (count) — at most 2 writes/s, dead bands, a heartbeat every 10 s; a change of the alert is written at once |
+| `CityDrive_Player_<…>.wanted:_alert_hdl` | configured once, then read (`_act_state`) | binary alert, class `alert.`, alarm on TRUE: it comes while the player is wanted; its acknowledgement (`_act_state` 1 → 2) clears the alert level |
 | `CityDrive_Player_*` of the other players | read (`dpConnect`) | multiplayer: their cars (or pedestrians) in the city, the **Players online** panel (online = a real change within 30 s) |
 | `CityDrive_Config` (`.json`, created on first load) | read | the bindings below |
 | the bound DPEs | read (`dpConnect`) | machine states, forced crossroads |
@@ -59,10 +78,18 @@ The game is in English only.
 - A crossroads `i-j` (grid indices 0..6) is forced red while its DPE is true.
 - The game writes nothing but its own `CityDrive_Player_<user>`: never a process datapoint.
 
+**Upgrading from 0.4**: the existing `CityDrive_Player` type lacks the 0.5.0 elements. The first
+player who opens the page with the `para:edit-types` role changes the type in place
+(`/api/para/dptype/change`: existing datapoints keep their values and get the new elements).
+Until then, the new elements are not written and the alert is not configured; the rest of the
+telemetry and the game play the same. The other players are read on the elements of 0.4.
+
 ## Roles (Application Security)
 
 - `play`: the page (and one's own telemetry). Without it, a notice replaces the game.
 - `configure`: declared for `CityDrive_Config` (edited in PARA in V1).
+- The alert of a wanted player is acknowledged in the alarm list, with the operators' own
+  rights; the game adds no role for it.
 
 ## Demo mode
 
@@ -88,5 +115,5 @@ deleted in PARA.
 
 ## Not in V1
 
-Bindings editor UI, walking, writing to process datapoints (future `drive-process` role with a
-server-side check), collisions between players.
+Bindings editor UI, writing to process datapoints (future `drive-process` role with a
+server-side check).

@@ -7,6 +7,12 @@
  * - out: the player's telemetry in `CityDrive_Player_<user>` (type `CityDrive_Player`, created
  *   through PARA when missing), written through `/api/para/dp/set` at most twice a second
  *   (telemetry.ts). The game writes nothing else: no process datapoint.
+ * - alert (#85): `.wanted` carries a binary WinCC OA alert (class `alert.`, alarm on TRUE): it
+ *   comes in the alarm list of the control room while the player is wanted. An operator who
+ *   acknowledges it (`_alert_hdl.._act_state` 1 → 2) clears the player's alert level. The tension
+ *   elements (alert, wanted, damage, ticket, fines) came with 0.5.0: an older type is changed in
+ *   place (`dptype/change`, role `para:edit-types`); when that is refused they are not written,
+ *   and the rest of the telemetry goes on as before.
  * - in: `CityDrive_Config.json` (bindings.ts) and a `dpConnect` on the bound DPEs, turned into
  *   machine states and forced crossroads.
  * - demo: without a backend (`npx wui dev`), the machines change state on their own and one of
@@ -28,6 +34,10 @@ export const CONFIG_DP = 'CityDrive_Config';
 const TYPE_URL = '/api/para/dptype';
 const CREATE_DP_URL = '/api/para/dp/create';
 const DP_SET_URL = '/api/para/dp/set';
+/** Verified `_alert_hdl` values (as wui-para's alarm tab): binary signal, `_act_state` came acknowledged. */
+const ALERT_BINARY = 12; // DPCONFIG_ALERT_BINARYSIGNAL
+const ACT_CAME_UNACK = 1;
+const ACT_CAME_ACK = 2;
 const DEMO_MACHINES = ['machine-1', 'machine-2', 'machine-3', 'machine-4'];
 const DEMO_PERIOD_MS = 9000;
 const PLAYERS_REFRESH_MS = 15000;
@@ -70,8 +80,18 @@ const ELEMENT: Record<keyof Telemetry, string> = {
   event: 'event',
   nickname: 'nickname',
   vehicle: 'vehicle',
-  color: 'color'
+  color: 'color',
+  alert: 'alert',
+  wanted: 'wanted',
+  damage: 'damage',
+  ticket: 'ticket',
+  fines: 'fines'
 };
+
+/** Elements added by 0.5.0 (#85): written only once the deployed type has them. */
+export const TENSION_FIELDS: readonly (keyof Telemetry)[] = ['alert', 'wanted', 'damage', 'ticket', 'fines'];
+/** What is read of the other players: the elements every version of the type has. */
+const REMOTE_FIELDS = (Object.keys(ELEMENT) as (keyof Telemetry)[]).filter((k) => !TENSION_FIELDS.includes(k));
 
 const PLAYER_STRUCTURE = {
   name: PLAYER_TYPE,
@@ -86,7 +106,12 @@ const PLAYER_STRUCTURE = {
     { name: 'event', type: 'String' },
     { name: 'nickname', type: 'String' },
     { name: 'vehicle', type: 'String' },
-    { name: 'color', type: 'String' }
+    { name: 'color', type: 'String' },
+    { name: 'alert', type: 'Int' },
+    { name: 'wanted', type: 'Bool' },
+    { name: 'damage', type: 'Int' },
+    { name: 'ticket', type: 'String' },
+    { name: 'fines', type: 'Int' }
   ]
 };
 
@@ -132,6 +157,12 @@ export function normDpe(name: string): string {
   return s.replace(/\.$/, '');
 }
 
+/** The fields that can be written: without the tension elements while the type lacks them. */
+export function writableFields(fields: Partial<Telemetry>, tension: boolean): Partial<Telemetry> {
+  if (tension) return fields;
+  return Object.fromEntries(Object.entries(fields).filter(([k]) => !TENSION_FIELDS.includes(k as keyof Telemetry))) as Partial<Telemetry>;
+}
+
 /** The DPE names and values to write for a telemetry change. */
 export function telemetryWrite(dp: string, fields: Partial<Telemetry>): { dpeNames: string[]; values: unknown[] } {
   const entries = Object.entries(fields) as [keyof Telemetry, unknown][];
@@ -168,6 +199,10 @@ export class DriveLink {
   private readonly writing: boolean[] = [];
   /** Fields changed while a write was running: sent right after it, merged, never dropped. */
   private readonly pending: Partial<Telemetry>[] = [];
+  /** The deployed type has the tension elements (#85). */
+  tension = false;
+  private typeReady: Promise<void> | null = null;
+  private alertSub = new Subscription();
 
   /** P1's datapoint (the 0.3.0 name). */
   get player(): string {
@@ -207,6 +242,7 @@ export class DriveLink {
   close(): void {
     this.sub.unsubscribe();
     this.playersSub.unsubscribe();
+    this.alertSub.unsubscribe();
     window.clearInterval(this.demoTimer);
     window.clearInterval(this.playersTimer);
     window.clearInterval(this.demoBotsTimer);
@@ -247,7 +283,7 @@ export class DriveLink {
     const players = new Map<string, RemotePlayer>(dps.map((dp) => [dp, emptyPlayer(dp)]));
     onPlayers([...players.values()]);
     if (dps.length === 0 || !this.api) return;
-    const fields = Object.entries(ELEMENT) as [keyof Telemetry, string][];
+    const fields = REMOTE_FIELDS.map((k) => [k, ELEMENT[k]] as [keyof Telemetry, string]);
     let primed = false;
     const dpes = dps.flatMap((dp) => fields.map(([, el]) => `${dp}.${el}`));
     try {
@@ -311,7 +347,7 @@ export class DriveLink {
   async write(i: number, fields: Partial<Telemetry>): Promise<void> {
     const dp = this.players[i];
     if (this.demo || !dp) return;
-    this.pending[i] = { ...(this.pending[i] ?? {}), ...fields };
+    this.pending[i] = { ...(this.pending[i] ?? {}), ...writableFields(fields, this.tension) };
     if (this.writing[i]) return;
     this.writing[i] = true;
     try {
@@ -333,12 +369,70 @@ export class DriveLink {
     }
   }
 
-  private async ensurePlayerDp(dp: string): Promise<void> {
-    const type = await fetch(`${TYPE_URL}/${encodeURIComponent(PLAYER_TYPE)}`);
-    if (!type.ok) {
-      const res = await post(`${TYPE_URL}/create`, { typeName: PLAYER_TYPE, structure: PLAYER_STRUCTURE });
-      if (!res.ok && res.status !== 400) throw new Error(`type ${res.status}`);
+  /**
+   * Player i's WinCC OA alert: follows `.wanted:_alert_hdl.._act_state` of each local player and
+   * calls `onAck(i)` when an operator acknowledges it while it is still there (1 → 2).
+   */
+  watchAlerts(onAck: (i: number) => void): void {
+    this.alertSub.unsubscribe();
+    this.alertSub = new Subscription();
+    if (this.demo || !this.api || !this.tension) return;
+    const dpes = this.players.map((dp) => (dp ? `${dp}.wanted:_alert_hdl.._act_state` : '')).filter(Boolean);
+    if (dpes.length === 0) return;
+    const last = new Map<string, number>();
+    try {
+      this.alertSub.add(
+        this.api.dpConnect(dpes, true).subscribe((data: DpEmission) => {
+          data.dp.forEach((name, k) => {
+            const dp = normDpe(name).replace(/\.wanted$/, '');
+            const state = Number(data.value[k]);
+            if (last.get(dp) === ACT_CAME_UNACK && state === ACT_CAME_ACK) {
+              const i = this.players.indexOf(dp);
+              if (i !== -1) onAck(i);
+            }
+            last.set(dp, state);
+          });
+        })
+      );
+    } catch {
+      // no alert config: the alert level only falls on its own
     }
+  }
+
+  /** The player type, created, or changed in place when it predates the tension elements (once). */
+  private ensureType(): Promise<void> {
+    this.typeReady ??= (async () => {
+      const url = `${TYPE_URL}/${encodeURIComponent(PLAYER_TYPE)}`;
+      const type = await fetch(url);
+      if (!type.ok) {
+        const res = await post(`${TYPE_URL}/create`, { typeName: PLAYER_TYPE, structure: PLAYER_STRUCTURE });
+        if (!res.ok && res.status !== 400) throw new Error(`type ${res.status}`);
+        this.tension = res.ok;
+        return;
+      }
+      if (JSON.stringify(await type.json().catch(() => ({}))).includes('"wanted"')) {
+        this.tension = true;
+        return;
+      }
+      // a 0.4 type: add the elements (refused without para:edit-types — then they are not written)
+      const res = await post(`${TYPE_URL}/change`, { typeName: PLAYER_TYPE, structure: PLAYER_STRUCTURE }).catch(() => null);
+      this.tension = !!res?.ok;
+    })();
+    return this.typeReady;
+  }
+
+  /** The binary alert on `.wanted` (best effort: without it, the game plays the same). */
+  private async ensureAlert(dp: string): Promise<void> {
+    if (!this.tension) return;
+    const dpe = `${dp}.wanted`;
+    await post(DP_SET_URL, {
+      dpeNames: [`${dpe}:_alert_hdl.._type`, `${dpe}:_alert_hdl.._class`, `${dpe}:_alert_hdl.._ok_range`, `${dpe}:_alert_hdl.._active`],
+      values: [ALERT_BINARY, 'alert.', false, true]
+    }).catch(() => undefined);
+  }
+
+  private async ensurePlayerDp(dp: string): Promise<void> {
+    await this.ensureType();
     const names = await new Promise<string[]>((ok) => {
       this.sub.add(this.api!.dpNames(dp, PLAYER_TYPE).subscribe({ next: (n) => ok(n as string[]), error: () => ok([]) }));
     });
@@ -346,6 +440,7 @@ export class DriveLink {
       const res = await post(CREATE_DP_URL, { dpName: dp, dpType: PLAYER_TYPE });
       if (!res.ok) throw new Error(`dp ${res.status}`);
     }
+    await this.ensureAlert(dp);
   }
 
   private subscribe(config: DriveConfig, onState: (s: LinkState) => void): void {

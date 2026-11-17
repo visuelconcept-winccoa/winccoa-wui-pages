@@ -33,7 +33,8 @@ export class TelemetryThrottle {
   /** The fields to write now (only the changed ones), or null. `now` in seconds. */
   offer(sample: Telemetry, now: number): Partial<Telemetry> | null {
     const prev = this.last;
-    const discrete = !prev || prev.event !== sample.event || prev.mission !== sample.mission;
+    const discrete =
+      !prev || prev.event !== sample.event || prev.mission !== sample.mission || prev.wanted !== sample.wanted || prev.alert !== sample.alert || prev.ticket !== sample.ticket;
     if (!discrete && now - this.lastAt < 1 / this.opts.maxHz) return null;
     const changed: Partial<Telemetry> = {};
     for (const key of Object.keys(sample) as (keyof Telemetry)[]) {
