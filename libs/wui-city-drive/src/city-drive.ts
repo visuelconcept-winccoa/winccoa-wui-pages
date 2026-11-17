@@ -196,6 +196,8 @@ export class WuiCityDrive extends LitElement {
   @state() private booth: { count: number; flash: boolean; note: string; image: string } | null = null;
   private boothStream: MediaStream | null = null;
   @query('video.booth-preview') private boothVideo?: HTMLVideoElement;
+  /** The start screen's step: 1 players, 2 garage (#91). */
+  @state() private setupStep: 1 | 2 = 1;
   /** The garage line each player's controls are on. */
   @state() private garageRow: number[] = [];
   /** The turning cars of the start screen, one per player card. */
@@ -300,13 +302,26 @@ export class WuiCityDrive extends LitElement {
 
   // --- start screen ---------------------------------------------------------------
 
+  /**
+   * The start screen, in two steps (#91) — no scrolling, everything reachable with a gamepad:
+   * 1 · Players: how many, the match, each player's seat (device), nickname and email;
+   * 2 · Garage: each player's car on its turntable and the garage lines.
+   * A / Enter: next step, then start (photo booth first); B / Esc on the garage: back.
+   */
   private renderSetup(): TemplateResult {
     const two = this.local.players === 2;
     const ready = !two || this.slots.ready;
+    const step = this.setupStep;
     return html`<div class="overlay">
-      <div class="setup ${two ? 'wide' : ''}">
+      <div class="setup start ${two ? 'wide' : ''}">
         ${this.renderBanner(false)}
-        <div class="row-opts">
+        <div class="steps">
+          <span class=${step === 1 ? 'on' : 'done'}>1 · Players</span>
+          <span class="sep"></span>
+          <span class=${step === 2 ? 'on' : ''}>2 · Garage</span>
+        </div>
+        ${step === 1
+          ? html`<div class="row-opts">
           <div>
             <div class="label">Players</div>
             <div class="times">
@@ -328,8 +343,8 @@ export class WuiCityDrive extends LitElement {
             </div>
           </div>
         </div>
-        <div class="slots">${this.profiles.map((pr, k) => this.renderSlot(pr, k, two))}</div>
-        ${this.local.match === 0
+              <div class="slots">${this.profiles.map((pr, k) => this.renderSeat(pr, k, two))}</div>
+              ${this.local.match === 0
           ? html`<div class="label">${MSG.hud.mode}</div>
               <div class="times">
                 ${(['logos', 'missions'] as const).map(
@@ -344,31 +359,38 @@ export class WuiCityDrive extends LitElement {
               <div class="hint">${this.profile.mode === 'logos' ? MSG.hud.logosHint : MSG.hud.missionsHint}</div>`
           : html`<div class="hint">
               ${two ? 'Race for the WinCC OA logos' : 'Time attack on the WinCC OA logos'}: ${minutes(this.local.match)}, the highest score wins. Chain logos within 6 s for a combo.
-            </div>`}
-        ${this.settings.photoBooth
+            </div>`}`
+          : html`<div class="slots ${two ? 'duo' : ''}">${this.profiles.map((pr, k) => this.renderGarage(pr, k, two))}</div>
+              ${this.settings.photoBooth
           ? html`<div class="booth-notice"><ix-icon name="photo-camera" size="16"></ix-icon>A souvenir photo is taken when the match starts; it is saved on the server with your email.</div>`
-          : nothing}
+          : nothing}`}
         <div class="setup-actions">
-          <div class="times">
+          ${step === 1
+            ? html`<div class="times">
             ${(['night', 'day'] as const).map(
               (tm) => html`<ix-button size="16" variant=${this.profile.time === tm ? 'primary' : 'secondary'} icon=${tm === 'day' ? 'sun' : 'moon'} @click=${() => this.pickTime(tm)}
                 >${tm === 'day' ? MSG.hud.day : MSG.hud.night}</ix-button
               >`
             )}
           </div>
-          <ix-button variant="secondary" icon="cogwheel" @click=${() => this.openSettings()}>Settings</ix-button>
+                <ix-button variant="secondary" icon="cogwheel" @click=${() => this.openSettings()}>Settings</ix-button>`
+            : html`<ix-button variant="secondary" icon="chevron-left" @click=${() => (this.setupStep = 1)}>Back · B / Esc</ix-button>`}
           <span class="grow"></span>
-          <ix-button class="go" ?disabled=${!this.game || !ready || !this.emailsValid} @click=${() => this.startGame()}>
-            ${ready ? (this.local.match ? 'Start the match' : 'Drive') : 'Waiting for the players…'}
-          </ix-button>
+          ${step === 1
+            ? html`<ix-button class="go" icon="chevron-right" ?disabled=${!ready || !this.emailsValid} @click=${() => this.confirmStart()}>
+                ${ready ? 'Next: garage · A / Enter' : 'Waiting for the players…'}
+              </ix-button>`
+            : html`<ix-button class="go" ?disabled=${!this.game} @click=${() => this.confirmStart()}>
+                ${this.local.match ? 'Start the match' : 'Drive'} · A / Enter
+              </ix-button>`}
         </div>
-        <div class="keys">${two ? 'Gamepad: A or Start to join, B to leave · Keyboard (one player): Enter to join, Esc to leave' : MSG.hud.keys}</div>
+        ${step === 1 && two ? html`<div class="keys">Gamepad: A or Start to join, B to leave · Keyboard (one player): Enter to join, Esc to leave</div>` : nothing}
       </div>
     </div>`;
   }
 
-  /** A player's card: device ("press to join"), nickname, vehicle, neon colour. */
-  private renderSlot(pr: Profile, k: number, two: boolean): TemplateResult {
+  /** Step 1, a player's seat: device ("press to join"), nickname, email. */
+  private renderSeat(pr: Profile, k: number, two: boolean): TemplateResult {
     const p = this.palette;
     const device = this.slots.devices[k];
     return html`<div class="slot" style="--c:${hex(p ? p[pr.color] : 0x00bde3)}">
@@ -383,6 +405,7 @@ export class WuiCityDrive extends LitElement {
                     : html`<ix-button class="kb-join" variant="secondary" ghost icon="keyboard" @click=${() => this.joinKeyboardAt(k)}>Use the keyboard</ix-button>`}`}
           </div>`
         : nothing}
+      <div class="seat-fields">
       <ix-input
         label=${two ? `Nickname P${k + 1}` : 'Nickname'}
         maxlength=${NICKNAME_MAX}
@@ -392,42 +415,55 @@ export class WuiCityDrive extends LitElement {
       <ix-input
         type="email"
         label=${two ? `Email P${k + 1} (optional)` : 'Email (optional)'}
-        .helperText=${'Saved with your results; never shown in the ranking'}
+        placeholder="Saved with your results, never shown"
         .invalidText=${'Not a valid email address'}
         class=${validEmail(this.emails[k] ?? '') ? '' : 'ix-invalid'}
         .value=${this.emails[k] ?? ''}
         @valueChange=${(e: CustomEvent<string>) => this.setEmail(k, e.detail ?? '')}
       ></ix-input>
-      <div class="garage ${two ? 'compact' : ''}">
-        <canvas class="preview" data-k=${k}></canvas>
-        <ix-icon-button class="arrow prev" ghost icon="chevron-left" title="Previous vehicle" @click=${() => this.cycleVehicle(k, -1)}></ix-icon-button>
-        <ix-icon-button class="arrow next" ghost icon="chevron-right" title="Next vehicle" @click=${() => this.cycleVehicle(k, 1)}></ix-icon-button>
-        <div class="garage-info">
-          <ix-typography format="h4">${vehicleById(pr.vehicle).label}</ix-typography>
-          <div class="kind">${vehicleById(pr.vehicle).kind}</div>
-          ${two
-            ? nothing
-            : html`<div class="stat"><span>Speed</span>${bars(vehicleById(pr.vehicle).rating.speed)}</div>
-                <div class="stat"><span>Handling</span>${bars(vehicleById(pr.vehicle).rating.handling)}</div>
-                <div class="stat"><span>Range</span>${bars(vehicleById(pr.vehicle).rating.range)}</div>`}
+      </div>
+    </div>`;
+  }
+
+  /** Step 2, a player's garage: the car on its turntable, the garage lines. */
+  private renderGarage(pr: Profile, k: number, two: boolean): TemplateResult {
+    const p = this.palette;
+    return html`<div class="slot" style="--c:${hex(p ? p[pr.color] : 0x00bde3)}">
+      ${two ? html`<div class="slot-head"><span class="badge">P${k + 1}</span><strong>${pr.nickname || `Player ${k + 1}`}</strong></div>` : nothing}
+      <div class="slot-body ${two ? 'stacked' : ''}">
+        <div class="garage ${two ? 'compact' : ''}">
+          <canvas class="preview" data-k=${k}></canvas>
+          <ix-icon-button class="arrow prev" ghost icon="chevron-left" title="Previous vehicle" @click=${() => this.cycleVehicle(k, -1)}></ix-icon-button>
+          <ix-icon-button class="arrow next" ghost icon="chevron-right" title="Next vehicle" @click=${() => this.cycleVehicle(k, 1)}></ix-icon-button>
+          <div class="garage-info">
+            <ix-typography format="h4">${vehicleById(pr.vehicle).label}</ix-typography>
+            <div class="kind">${vehicleById(pr.vehicle).kind}</div>
+            ${two
+              ? nothing
+              : html`<div class="stat"><span>Speed</span>${bars(vehicleById(pr.vehicle).rating.speed)}</div>
+                  <div class="stat"><span>Handling</span>${bars(vehicleById(pr.vehicle).rating.handling)}</div>
+                  <div class="stat"><span>Range</span>${bars(vehicleById(pr.vehicle).rating.range)}</div>`}
+          </div>
+          <div class="garage-dots">
+            ${VEHICLES.map(
+              (v) => html`<button class="vdot ${pr.vehicle === v.id ? 'on' : ''}" title=${v.label} aria-label=${v.label} @click=${() => this.setProfileOf(k, { ...pr, vehicle: v.id })}></button>`
+            )}
+          </div>
         </div>
-        <div class="garage-dots">
-          ${VEHICLES.map(
-            (v) => html`<button class="vdot ${pr.vehicle === v.id ? 'on' : ''}" title=${v.label} aria-label=${v.label} @click=${() => this.setProfileOf(k, { ...pr, vehicle: v.id })}></button>`
-          )}
+        <div class="slot-fields">
+          <div class="rows">
+            ${GARAGE_ROWS.map(
+              (row, r) => html`<div class="grow-row ${(this.garageRow[k] ?? 0) === r ? 'on' : ''}" @click=${() => this.setGarageRow(k, r)}>
+                <span class="row-label">${ROW_LABEL[row]}</span>
+                <ix-icon-button ghost size="16" icon="chevron-left" title="Previous" @click=${(e: Event) => this.garageStep(k, row, -1, e)}></ix-icon-button>
+                <span class="row-value">${this.garageValue(k, row)}</span>
+                <ix-icon-button ghost size="16" icon="chevron-right" title="Next" @click=${(e: Event) => this.garageStep(k, row, 1, e)}></ix-icon-button>
+              </div>`
+            )}
+          </div>
+          <div class="hint">▲ ▼ choose a line · ◀ ▶ change it · A / Enter to start (${this.navHint(k)})</div>
         </div>
       </div>
-      <div class="rows">
-        ${GARAGE_ROWS.map(
-          (row, r) => html`<div class="grow-row ${(this.garageRow[k] ?? 0) === r ? 'on' : ''}" @click=${() => this.setGarageRow(k, r)}>
-            <span class="row-label">${ROW_LABEL[row]}</span>
-            <ix-icon-button ghost size="16" icon="chevron-left" title="Previous" @click=${(e: Event) => this.garageStep(k, row, -1, e)}></ix-icon-button>
-            <span class="row-value">${this.garageValue(k, row)}</span>
-            <ix-icon-button ghost size="16" icon="chevron-right" title="Next" @click=${(e: Event) => this.garageStep(k, row, 1, e)}></ix-icon-button>
-          </div>`
-        )}
-      </div>
-      <div class="hint">▲ ▼ choose a line · ◀ ▶ change it (${this.navHint(k)})</div>
     </div>`;
   }
 
@@ -436,7 +472,7 @@ export class WuiCityDrive extends LitElement {
     const pr = this.profiles[k];
     if (!pr) return '';
     const pal = this.palette;
-    if (row === 'vehicle') return `${vehicleById(pr.vehicle).label} · ${vehicleById(pr.vehicle).kind}`;
+    if (row === 'vehicle') return vehicleById(pr.vehicle).label;
     if (row === 'wheels') return wheelById(pr.wheels).label;
     if (row === 'paint') return html`<span class="chip" style="--chip:${hex(paintById(pr.paint).color)}"></span>${paintById(pr.paint).label}`;
     if (row === 'color') return html`<span class="chip neon" style="--chip:${hex(pal ? pal[pr.color] : 0x00bde3)}"></span>${NEON_LABEL[pr.color]}`;
@@ -465,7 +501,7 @@ export class WuiCityDrive extends LitElement {
 
   /** The keyboard's or a gamepad's arrows on player k's garage. */
   private navigate(k: number, dir: 'up' | 'down' | 'left' | 'right'): void {
-    if (this.started || this.settingsOpen || !this.profiles[k]) return;
+    if (this.started || this.settingsOpen || this.setupStep !== 2 || !this.profiles[k]) return;
     const r = this.garageRow[k] ?? 0;
     if (dir === 'up' || dir === 'down') this.setGarageRow(k, r + (dir === 'down' ? 1 : -1));
     else this.garageStep(k, GARAGE_ROWS[r], dir === 'right' ? 1 : -1);
@@ -970,8 +1006,7 @@ export class WuiCityDrive extends LitElement {
       }
       return;
     }
-    if (this.local.players < 2 || e.repeat) return;
-    if (target === this.stage) return; // the game handles its own keys
+    if (e.repeat || target === this.stage) return; // the game handles its own keys
     if (e.code === 'Enter' || e.code === 'NumpadEnter') {
       e.preventDefault();
       this.onDevice('keyboard', 'join');
@@ -979,6 +1014,17 @@ export class WuiCityDrive extends LitElement {
       this.onDevice('keyboard', 'leave');
     }
   };
+
+  /** A / Enter on the start screen: to the garage once every seat is taken and the emails are valid, then start. */
+  private confirmStart(): void {
+    const ready = this.local.players < 2 || this.slots.ready;
+    if (this.started || this.settingsOpen || this.booth || !this.game || !ready || !this.emailsValid) return;
+    if (this.setupStep === 1) {
+      this.setupStep = 2;
+      return;
+    }
+    this.startGame();
+  }
 
   /** "Use the keyboard" on a free seat: the keyboard takes that very seat. */
   private joinKeyboardAt(k: number): void {
@@ -1002,7 +1048,18 @@ export class WuiCityDrive extends LitElement {
       this.game.setPaused(false);
       return;
     }
-    if (this.started || this.local.players < 2) return;
+    if (this.started) return;
+    // A / Start / Enter from a device that already plays (alone: any device): next step, then start
+    if (press === 'join' && (this.local.players < 2 || this.slots.slotOf(device) !== -1)) {
+      this.confirmStart();
+      return;
+    }
+    // B / Esc on the garage: back to the players (a seat is only freed on the first step)
+    if (press === 'leave' && this.setupStep === 2) {
+      if (!this.settingsOpen && !this.booth) this.setupStep = 1;
+      return;
+    }
+    if (this.local.players < 2) return;
     const slots = this.slots.resize(this.slots.count);
     const k = press === 'join' ? slots.join(device) : slots.leave(device);
     if (k === -1) return;
@@ -1159,6 +1216,7 @@ export class WuiCityDrive extends LitElement {
 
   private backToMenu(): void {
     this.results = null;
+    this.setupStep = 1;
     this.board = null;
     // the next people at the booth start with empty emails
     this.emails = [];
@@ -1473,8 +1531,63 @@ function pageStyles(): ReturnType<typeof css> {
       text-shadow: 0 0 30px var(--theme-color-warning), 0 6px 0 rgba(0, 0, 0, 0.8);
       pointer-events: none;
     }
-    .setup.wide {
-      width: min(68rem, 96%);
+    /* the start screen: wide enough for two-column cards, so nothing needs a scroll (#91) */
+    .setup.start {
+      width: min(76rem, 96%);
+      max-height: calc(100% - 1rem);
+      overflow-y: auto; /* last resort on a very small screen */
+      gap: 0.6rem;
+      padding: 1rem 1.25rem;
+    }
+    .setup.start .banner {
+      padding: 0;
+    }
+    .setup.start .banner .headline {
+      font-size: 1.9rem;
+    }
+    .setup.start .banner .tagline {
+      display: none;
+    }
+    .steps {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: var(--theme-color-soft-text);
+    }
+    .steps .on {
+      color: var(--theme-color-primary);
+      text-shadow: 0 0 8px var(--theme-color-primary);
+    }
+    .steps .done {
+      color: var(--theme-color-std-text);
+    }
+    .steps .sep {
+      width: 3rem;
+      height: 2px;
+      background: var(--theme-color-soft-bdr);
+    }
+    .seat-fields {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+    .slot-body.stacked {
+      grid-template-columns: 1fr;
+    }
+    .slot-body {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+      gap: 0.75rem;
+      align-items: start;
+    }
+    .slot-fields {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      min-width: 0;
     }
     .row-opts {
       display: flex;
@@ -1521,11 +1634,11 @@ function pageStyles(): ReturnType<typeof css> {
     }
     .garage .preview {
       width: 100%;
-      height: 15rem;
+      height: 17rem;
       display: block;
     }
     .garage.compact .preview {
-      height: 10rem;
+      height: 14.5rem;
     }
     .garage .arrow {
       position: absolute;

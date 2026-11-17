@@ -8,6 +8,11 @@ The game is in English only.
 
 ## Play
 
+- **Start screen, two steps** (no scrolling; all with a gamepad): **1 · Players** — number of
+  players, match length, each player's seat (device), nickname, optional email; **A / Enter**
+  → **2 · Garage** — each player's car and garage lines; **A / Enter** starts (photo booth
+  first when set), **B / Esc** goes back.
+
 - **1 or 2 players on one computer** (split screen). With two players, each one joins with
   its device on the start screen: A or Start on a USB gamepad, Enter on the keyboard (the
   keyboard serves one player at most); B or Escape to leave. Then **Start the match**.

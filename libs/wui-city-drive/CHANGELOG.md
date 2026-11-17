@@ -19,6 +19,13 @@
 - The start screen says so when the booth is on (a face linked to an email is personal data).
 - Backend: `POST /api/city-drive/photo` (role `city-drive/play`): JPEG only, 8 MB at most,
   names sanitised (never outside the folder), written aside then renamed.
+- **Start screen in two steps**, nothing to scroll (checked down to 1280 × 720), everything
+  with a gamepad: **1 · Players** (how many, the match, each player's seat, nickname and
+  email side by side) → **2 · Garage** (each player's turning car and the garage lines, side
+  by side for two players). **A / Enter**: next step, then start (photo booth first);
+  **B / Esc** on the garage: back. The email's explanation moved into its placeholder.
+- Lobby fix: a gamepad that already had a seat was ignored there, so its B ("leave") did
+  nothing; every pad's A / Start / B now reaches the lobby.
 
 ## 0.9.0 — 2026-11-18
 
