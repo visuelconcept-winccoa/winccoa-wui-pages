@@ -3,6 +3,14 @@
 
 # Changelog — @visuelconcept-winccoa/wui-city-drive
 
+## 0.2.0 — 2026-11-17
+
+- **Day mode** next to the neon night: a sky, a warm sun casting the shadows, windows unlit, a
+  light bloom, no light pools or headlight beams; the neon outlines, signs and logos stay.
+  Chosen on the start screen (Night / Day), toggled in game with **T** or the sun / moon button,
+  kept in the profile.
+- Chase camera closer to the car (number plate readable, also at speed).
+
 ## 0.1.0 — 2026-11-16
 
 First version (#79): see `docs/wui-city-drive/README.md`.

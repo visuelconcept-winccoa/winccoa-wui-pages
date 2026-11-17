@@ -171,6 +171,8 @@ export class StreetLife {
   private readonly bodies: InstancedMesh;
   private readonly heads: InstancedMesh;
   private readonly o = new Object3D();
+  /** What only shows at night: the pools of light under the street lights. */
+  private readonly nightOnly: Object3D[] = [];
 
   constructor(
     private readonly city: City,
@@ -239,6 +241,7 @@ export class StreetLife {
       place(pools, 0, 0.06, 3.2, -Math.PI / 2);
     });
     for (const m of [pole, arms, heads]) m.castShadow = true;
+    this.nightOnly.push(pools);
     this.group.add(pole, arms, heads, leds, pools);
   }
 
@@ -451,6 +454,11 @@ export class StreetLife {
       this.bodies.setColorAt(k, new Color(colors[Math.floor(rand() * colors.length)]));
     }
     if (this.bodies.instanceColor) this.bodies.instanceColor.needsUpdate = true;
+  }
+
+  /** Day or night: the street lights' pools only at night. */
+  setDay(day: boolean): void {
+    for (const o of this.nightOnly) o.visible = !day;
   }
 
   /** Moves the pedestrians by `dt` seconds. */

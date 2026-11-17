@@ -72,9 +72,11 @@ export interface Profile {
   nickname: string;
   vehicle: VehicleId;
   color: NeonColor;
+  /** Night (the neon city) or day. */
+  time: 'night' | 'day';
 }
 
-export const DEFAULT_PROFILE: Profile = { nickname: '', vehicle: 'coupe', color: 'primary' };
+export const DEFAULT_PROFILE: Profile = { nickname: '', vehicle: 'coupe', color: 'primary', time: 'night' };
 export const NICKNAME_MAX = 20;
 
 export const vehicleById = (id: string): Vehicle => VEHICLES.find((v) => v.id === id) ?? VEHICLES[0];
@@ -89,5 +91,6 @@ export function parseProfile(raw: unknown): Profile {
   const o = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {};
   const vehicle = VEHICLES.some((v) => v.id === o.vehicle) ? (o.vehicle as VehicleId) : DEFAULT_PROFILE.vehicle;
   const color = NEON_COLORS.includes(o.color as NeonColor) ? (o.color as NeonColor) : DEFAULT_PROFILE.color;
-  return { nickname: typeof o.nickname === 'string' ? cleanNickname(o.nickname) : '', vehicle, color };
+  const time = o.time === 'day' ? 'day' : 'night';
+  return { nickname: typeof o.nickname === 'string' ? cleanNickname(o.nickname) : '', vehicle, color, time };
 }

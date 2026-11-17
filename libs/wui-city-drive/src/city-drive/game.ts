@@ -71,6 +71,7 @@ export class CityGame {
   remotes: RemoteCar[] = [];
   onHud: (hud: HudState) => void = () => {};
   onEvent: (event: GameEvent) => void = () => {};
+  onProfile: (profile: Profile) => void = () => {};
 
   private readonly keys = new Set<string>();
   private readonly rand = rng(97);
@@ -128,11 +129,19 @@ export class CityGame {
     this.profile = profile;
     this.vehicle = vehicleById(profile.vehicle);
     this.world.setPlayerVehicle(this.vehicle.body, this.palette[profile.color]);
+    this.world.setTimeOfDay(profile.time);
   }
 
   setPaused(paused: boolean): void {
     this.paused = paused;
     this.keys.clear();
+    this.emitHud();
+  }
+
+  /** Night ↔ day (T); the page keeps the choice in the profile through `onProfile`. */
+  toggleTimeOfDay(): void {
+    this.setProfile({ ...this.profile, time: this.profile.time === 'day' ? 'night' : 'day' });
+    this.onProfile(this.profile);
     this.emitHud();
   }
 
@@ -270,6 +279,7 @@ export class CityGame {
   private readonly onKeyDown = (e: KeyboardEvent): void => {
     if (e.code === 'Escape' || e.code === 'KeyP') this.setPaused(!this.paused);
     else if (e.code === 'KeyC') this.toggleCamera();
+    else if (e.code === 'KeyT') this.toggleTimeOfDay();
     else if (e.code === 'KeyR') this.resetCar();
     else if (e.code === 'KeyN' && (!this.mission || this.mission.stage === 'done' || this.mission.stage === 'failed')) this.newMission();
     else this.keys.add(e.code);

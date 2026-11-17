@@ -166,6 +166,17 @@ export class WuiCityDrive extends LitElement {
               )
             : nothing}
         </div>
+        <div class="label">${MSG.hud.time}</div>
+        <div class="times">
+          ${(['night', 'day'] as const).map(
+            (tm) => html`<ix-button
+              variant=${this.profile.time === tm ? 'primary' : 'secondary'}
+              icon=${tm === 'day' ? 'sun' : 'moon'}
+              @click=${() => this.pickTime(tm)}
+              >${tm === 'day' ? MSG.hud.day : MSG.hud.night}</ix-button
+            >`
+          )}
+        </div>
         <ix-button class="go" ?disabled=${!this.game} @click=${() => this.startGame()}>
           ${'Drive'}
         </ix-button>
@@ -177,6 +188,12 @@ export class WuiCityDrive extends LitElement {
   private pickVehicle(id: Profile['vehicle']): void {
     this.profile = { ...this.profile, vehicle: id };
     this.game?.setProfile(this.profile);
+  }
+
+  private pickTime(time: Profile['time']): void {
+    this.profile = { ...this.profile, time };
+    this.game?.setProfile(this.profile);
+    saveProfile(this.profile);
   }
 
   private pickColor(color: Profile['color']): void {
@@ -211,6 +228,12 @@ export class WuiCityDrive extends LitElement {
         <canvas class="minimap" width=${MINIMAP_PX} height=${MINIMAP_PX}></canvas>
         <div class="tools">
           <ix-icon-button ghost icon=${h?.paused ? 'play' : 'pause'} title=${h?.paused ? MSG.hud.resume : MSG.hud.pause} @click=${() => this.act(() => this.game?.setPaused(!h?.paused))}></ix-icon-button>
+          <ix-icon-button
+            ghost
+            icon=${this.profile.time === 'day' ? 'moon' : 'sun'}
+            title=${this.profile.time === 'day' ? MSG.hud.night : MSG.hud.day}
+            @click=${() => this.act(() => this.game?.toggleTimeOfDay())}
+          ></ix-icon-button>
           <ix-icon-button ghost icon="eye" title=${MSG.hud.camera} @click=${() => this.act(() => this.game?.toggleCamera())}></ix-icon-button>
           <ix-icon-button ghost icon="refresh" title=${MSG.hud.reset} @click=${() => this.act(() => this.game?.resetCar())}></ix-icon-button>
         </div>
@@ -327,6 +350,10 @@ export class WuiCityDrive extends LitElement {
     this.game.setPaused(true);
     this.game.onHud = (hud) => this.onHud(hud);
     this.game.onEvent = (e) => this.onEvent(e);
+    this.game.onProfile = (pr) => {
+      this.profile = pr;
+      saveProfile(pr);
+    };
     this.game.start();
     this.requestUpdate();
     await this.link.open((s) => this.onLink(s));
@@ -545,6 +572,10 @@ function pageStyles(): ReturnType<typeof css> {
     }
     .go {
       align-self: flex-end;
+    }
+    .times {
+      display: flex;
+      gap: 0.5rem;
     }
     .keys {
       font-size: 0.75rem;

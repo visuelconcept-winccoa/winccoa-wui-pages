@@ -71,6 +71,9 @@ import { asphaltMaps, beamTexture, facadeMaps, pavementMaps, type FacadeMaps } f
  * pedestrians), hood (from the bonnet), drone (circling above the car), corner (a fixed camera
  * at the next street corner, as on TV, changing corner when the car is gone), top (map view).
  */
+/** Time of day of the city (#79): the neon night, or daylight. */
+export type TimeOfDay = 'night' | 'day';
+
 export type CameraMode = 'chase' | 'street' | 'hood' | 'drone' | 'corner' | 'top';
 export const CAMERA_MODES: readonly CameraMode[] = ['chase', 'street', 'hood', 'drone', 'corner', 'top'];
 
@@ -124,6 +127,23 @@ function neon(color: number, opacity = 1): LineBasicMaterial {
   return new LineBasicMaterial({ color, transparent: opacity < 1, opacity });
 }
 
+/** A daylight sky: deep blue at the zenith, pale haze at the horizon. */
+function skyTexture(): CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 4;
+  c.height = 256;
+  const g = c.getContext('2d') as CanvasRenderingContext2D;
+  const grad = g.createLinearGradient(0, 0, 0, 256);
+  grad.addColorStop(0, '#4f8fc4');
+  grad.addColorStop(0.6, '#9fc6df');
+  grad.addColorStop(1, '#dfe9ee');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 4, 256);
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  return t;
+}
+
 /** A registration of the Eisenstadt district: three digits and two letters. */
 function randomPlate(k: number): string {
   const letters = 'ABCDEFGHJKLMNPRSTUVWXYZ';
@@ -162,6 +182,11 @@ export class CityWorld {
   private readonly headlights: SpotLight[] = [];
   private readonly shadowFollow = new Vector3();
   private readonly street: StreetLife;
+  private readonly hemi: HemisphereLight;
+  private readonly facadeMats: MeshStandardMaterial[] = [];
+  private timeOfDay: TimeOfDay = 'night';
+  /** Where the moon (or the sun) stands, relative to the player. */
+  private readonly lightOffset = new Vector3(-120, 220, -80);
   private readonly traffic: Group[] = [];
   private readonly machineEdges = new Map<string, { lines: LineSegments; roof: Mesh; beacon: Mesh }>();
   private readonly lightHeads: { mesh: InstancedMesh; axis: 0 | 1 }[] = [];
@@ -189,7 +214,8 @@ export class CityWorld {
     host.appendChild(this.renderer.domElement);
     this.scene.background = new Color(mix(p.night, 0x000000, 0.35));
     this.scene.fog = new FogExp2(mix(p.night, 0x000000, 0.2), 0.0019);
-    this.scene.add(new HemisphereLight(mix(p.info, 0xffffff, 0.3), p.night, 0.45));
+    this.hemi = new HemisphereLight(mix(p.info, 0xffffff, 0.3), p.night, 0.45);
+    this.scene.add(this.hemi);
     // faint reflections on glass, paint and wet asphalt
     const pmrem = new PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -360,7 +386,7 @@ export class CityWorld {
         c.needsUpdate = true;
         return c;
       };
-      return new MeshStandardMaterial({
+      const mat = new MeshStandardMaterial({
         map: rep2(style.map as CanvasTexture),
         emissive: 0xffffff,
         emissiveMap: rep2(style.emissiveMap as CanvasTexture),
@@ -369,6 +395,8 @@ export class CityWorld {
         roughness: 1,
         metalness: 0.35
       });
+      this.facadeMats.push(mat);
+      return mat;
     };
     const roofMat = new MeshStandardMaterial({ color: mix(this.p.surface, 0x000000, 0.7), roughness: 0.8 });
     for (const b of this.city.buildings) {
@@ -599,6 +627,9 @@ export class CityWorld {
         car.add(tag);
         car.position.set(r.x, 0, r.z);
         this.scene.add(car);
+        car.traverse((o) => {
+          if (o.userData.beam) o.visible = this.timeOfDay === 'night';
+        });
         entry = { car, key };
         this.remotes.set(r.id, entry);
       }
@@ -626,9 +657,7 @@ export class CityWorld {
     this.playerBody = body;
     this.scene.add(this.player);
     this.attachHeadlights(body);
-    this.player.traverse((o) => {
-      if (o.userData.beam) o.visible = this.cameraMode !== 'hood';
-    });
+    this.setTimeOfDay(this.timeOfDay);
     this.setPlayer(pose);
   }
 
@@ -656,6 +685,9 @@ export class CityWorld {
       const car = makeCar(this.p, glows[k % glows.length], mix(poses[k].color, 0x000000, 0.35), k % 2 ? SEDAN_FINS : SEDAN, randomPlate(k));
       this.traffic.push(car);
       this.scene.add(car);
+      car.traverse((o) => {
+        if (o.userData.beam) o.visible = this.timeOfDay === 'night';
+      });
     }
     poses.forEach((pose, k) => {
       const car = this.traffic[k];
@@ -700,13 +732,50 @@ export class CityWorld {
     (this.marker.material as MeshBasicMaterial).color.setHex(color);
   }
 
+  /**
+   * Night: the neon city (dark sky, lit windows, bloom, headlights, light pools). Day: a sky,
+   * a strong warm sun with its shadows, windows unlit, a light bloom — the neon outlines stay.
+   */
+  setTimeOfDay(time: TimeOfDay): void {
+    this.timeOfDay = time;
+    const day = time === 'day';
+    const p = this.p;
+    this.scene.background = day ? skyTexture() : new Color(mix(p.night, 0x000000, 0.35));
+    this.scene.fog = day ? new FogExp2(0xb9cdd8, 0.0014) : new FogExp2(mix(p.night, 0x000000, 0.2), 0.0019);
+    this.hemi.color.setHex(day ? 0xdcefff : mix(p.info, 0xffffff, 0.3));
+    this.hemi.groundColor.setHex(day ? 0x5a666b : p.night);
+    this.hemi.intensity = day ? 1.3 : 0.45;
+    this.moon.color.setHex(day ? 0xfff1dc : mix(p.info, 0xffffff, 0.55));
+    this.moon.intensity = day ? 3.2 : 1.1;
+    this.lightOffset.set(day ? 90 : -120, day ? 260 : 220, day ? -140 : -80);
+    this.scene.environmentIntensity = day ? 0.55 : 0.12;
+    this.renderer.toneMappingExposure = day ? 1 : 1.1;
+    this.bloom.strength = day ? 0.22 : 0.75;
+    this.bloom.threshold = day ? 0.92 : 0.42;
+    for (const m of this.facadeMats) m.emissiveIntensity = day ? 0.04 : 0.42;
+    for (const h of this.headlights) h.intensity = day ? 0 : 260;
+    this.street.setDay(day);
+    this.applyBeams();
+  }
+
+  /** The visible headlight beams: at night only, and never from the bonnet view. */
+  private applyBeams(): void {
+    const night = this.timeOfDay === 'night';
+    this.scene.traverse((o) => {
+      if (o.userData.beam) o.visible = night;
+    });
+    if (this.cameraMode === 'hood') {
+      this.player.traverse((o) => {
+        if (o.userData.beam) o.visible = false;
+      });
+    }
+  }
+
   setCameraMode(mode: CameraMode): void {
     this.cameraMode = mode;
     this.corner = null;
     // from the bonnet, the player's own beams would veil the view
-    this.player.traverse((o) => {
-      if (o.userData.beam) o.visible = mode !== 'hood';
-    });
+    this.applyBeams();
   }
 
   /** A street-corner camera ahead of the car: the next crossroads, on a sidewalk corner. */
@@ -734,7 +803,7 @@ export class CityWorld {
 
     // the shadow box follows the player, snapped to whole metres (no shimmering)
     this.shadowFollow.set(Math.round(this.player.position.x), 0, Math.round(this.player.position.z));
-    this.moon.position.set(this.shadowFollow.x - 120, 220, this.shadowFollow.z - 80);
+    this.moon.position.copy(this.shadowFollow).add(this.lightOffset);
     this.moon.target.position.copy(this.shadowFollow);
     const h = this.player.rotation.y;
     const fx = Math.sin(h);

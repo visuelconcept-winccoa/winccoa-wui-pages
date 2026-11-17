@@ -8,12 +8,13 @@ The game is in English only.
 
 ## Play
 
-- Start screen: nickname, vehicle and neon colour (the iX theme colours), kept in the browser
+- Start screen: nickname, vehicle, neon colour and time of day (neon night or day) (the iX theme colours), kept in the browser
   (`localStorage`) and written to the player's datapoint.
 - Vehicles: **Coupé de Ville** (fast), **Limousine** (long, heavy), **Pickup**, **Maintenance
   van** (best range). Each has its own physics (speed, grip, steering, fuel, size).
 - Keys: W/Z ↑ throttle · S ↓ brake / reverse · A/Q ← D → steer · Space handbrake (drift) ·
-  C camera (chase, street level, bonnet, drone, street-corner cameras, map view) · R back on the road · N new mission · Esc pause. Click the city first
+  C camera (chase, street level, bonnet, drone, street-corner cameras, map view) · T day / night ·
+  R back on the road · N new mission · Esc pause. Click the city first
   so it gets the keyboard.
 - Missions: **delivery** (pick up, then drop, before the timer) and **intervention** (a machine
   in fault: drive to its hall; offered as soon as a machine fails, replaces a delivery).

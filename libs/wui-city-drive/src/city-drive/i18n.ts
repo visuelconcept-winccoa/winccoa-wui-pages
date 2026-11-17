@@ -22,7 +22,10 @@ export const MSG = {
     reset: 'Back on the road',
     paused: 'Paused',
     clickToPlay: 'Click the city to drive',
-    keys: 'W/Z ↑ throttle · S ↓ brake · A/Q ← D → steer · Space handbrake · C camera · R reset · N mission · Esc pause',
+    keys: 'W/Z ↑ throttle · S ↓ brake · A/Q ← D → steer · Space handbrake · C camera · T day / night · R reset · N mission · Esc pause',
+    day: 'Day',
+    night: 'Night',
+    time: 'Time of day',
     telemetry: 'Telemetry',
     noTelemetry: 'Telemetry off',
     roleForbidden: 'Your groups do not hold the “Play” role of this page.'
