@@ -13,8 +13,12 @@
  * it to MPEG1-TS and fans it out to every connected client (one RTSP connection
  * shared across all WebUI clients).
  *
- * The page is a master/detail: a sortable CRUD table, and the JSMpeg viewer when
- * a camera is opened. Built as a separate entry point (auto-discovered by
+ * A camera can also be a **USB camera of this PC** (`kind: 'local'`): captured by
+ * the browser itself (getUserMedia) and shown by `cs-local-viewer` — no proxy,
+ * the video never leaves the browser; the device is chosen per browser.
+ *
+ * The page is a master/detail: a sortable CRUD table, and the JSMpeg viewer (or
+ * the local-camera viewer) when a camera is opened. Built as a separate entry point (auto-discovered by
  * build:pages) and loaded at runtime via dynamic import.
  */
 import '@wincc-oa/wui-ix-wrappers/wui-content-header/wui-content-header.js';
@@ -29,7 +33,7 @@ import appSecurityRoles from './app-security.roles.json';
 import { StreamStore } from './camera-streams/data/stream-store.js';
 import { DEMO_STREAMS } from './camera-streams/data/demo-streams.js';
 import { exportJson, exportStream, parseStreams } from './camera-streams/data/io.js';
-import type { CameraStatus, CameraStream } from './camera-streams/types.js';
+import { isLocalCamera, type CameraStatus, type CameraStream } from './camera-streams/types.js';
 import { MSG, cameraCountMsg, confirmDeleteCameraMsg, localize, localizeDir } from './camera-streams/i18n.js';
 import {
   AuditTrailWriter,
@@ -41,6 +45,7 @@ import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
 import './camera-streams/ui/cs-stream-dialog.js';
 import './camera-streams/ui/cs-stream-table.js';
 import './camera-streams/ui/cs-viewer.js';
+import './camera-streams/ui/cs-local-viewer.js';
 
 const PAD_LEN = 2;
 /** How often to refresh the per-camera connected-client counts. */
@@ -53,6 +58,7 @@ const MODULE_ID = 'camera-streams';
 const AUDIT_DP = 'AuditTrail_CameraStreams';
 /** Camera fields traced in the audit trail (old → new); volatile id/dp/lastViewedAt excluded. */
 const AUDITED_FIELDS = [
+  'kind',
   'name',
   'group',
   'description',
@@ -64,6 +70,7 @@ const AUDITED_FIELDS = [
   'maxWidth',
   'frameRate',
   'videoBitrate',
+  'localResolution',
   'autoReconnect',
   'reconnectDelaySec',
   'favorite'
@@ -201,7 +208,9 @@ export class WuiCameraStreams extends LitElement {
     if (this.loading) return html`<div class="center"><ix-spinner></ix-spinner></div>`;
     const selected = this.selectedStream();
     if (selected) {
-      return html`<cs-viewer .stream=${selected} @wui:back=${this.goToList}></cs-viewer>`;
+      return isLocalCamera(selected)
+        ? html`<cs-local-viewer .stream=${selected} @wui:back=${this.goToList}></cs-local-viewer>`
+        : html`<cs-viewer .stream=${selected} @wui:back=${this.goToList}></cs-viewer>`;
     }
     return html`
       <div class="toolbar">
@@ -534,7 +543,8 @@ function pageStyles(): ReturnType<typeof css> {
       flex: 1;
       min-height: 0;
     }
-    cs-viewer {
+    cs-viewer,
+    cs-local-viewer {
       flex: 1;
       min-height: 0;
     }

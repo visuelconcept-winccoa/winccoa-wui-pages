@@ -10,8 +10,13 @@
  * The first entry is a public RTSP test stream (Big Buck Bunny) so the pipeline
  * (proxy + ffmpeg + JSMpeg) can be verified end-to-end without a real camera —
  * it works only if the WinCC OA host has outbound internet access.
+ *
+ * The last entry is a USB camera of this PC (`kind: 'local'`): it opens the
+ * webcam of whoever views it (getUserMedia — `wui dev` on localhost qualifies
+ * as a secure context), so the local mode can be tried without any camera
+ * infrastructure.
  */
-import { blankStream, type CameraStream, type RtspTransport } from '../types.js';
+import { blankStream, type CameraSourceKind, type CameraStream, type RtspTransport } from '../types.js';
 
 interface DemoSeed {
   id: string;
@@ -21,6 +26,7 @@ interface DemoSeed {
   description: string;
   transport: RtspTransport;
   favorite: boolean;
+  kind?: CameraSourceKind;
 }
 
 const SEEDS: DemoSeed[] = [
@@ -59,6 +65,17 @@ const SEEDS: DemoSeed[] = [
     description: 'Vue de la porte du four de nitruration (Dahua, flux secondaire basse résolution).',
     transport: 'udp',
     favorite: false
+  },
+  {
+    id: 'cam-demo-webcam-local',
+    name: 'Webcam de ce PC',
+    url: '',
+    group: 'Démonstration',
+    description:
+      'Caméra USB / webcam du PC qui affiche la page, captée par le navigateur (rien ne passe par le serveur).',
+    transport: 'tcp',
+    favorite: false,
+    kind: 'local'
   }
 ];
 
@@ -70,5 +87,6 @@ export const DEMO_STREAMS: CameraStream[] = SEEDS.map((s) => ({
   group: s.group,
   description: s.description,
   transport: s.transport,
-  favorite: s.favorite
+  favorite: s.favorite,
+  kind: s.kind ?? 'rtsp'
 }));

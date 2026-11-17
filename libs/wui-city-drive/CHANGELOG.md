@@ -3,6 +3,33 @@
 
 # Changelog — @visuelconcept-winccoa/wui-city-drive
 
+## 0.8.0 — 2026-11-18
+
+- **Chase camera higher by default** (2.7 m instead of 1.6 m, a little further back, aiming
+  further ahead): the road shows over the car, which hid most of the view. New setting
+  **Chase camera height** (low = roof level … high = looking down on the car), beside the
+  distance one.
+- **People that look and move like people** (#89):
+  - a body turned from anatomical profiles (thighs fuller at the top, calves, a waist and a
+    chest, deltoids), a face (jaw, nose, ears, eyes, brows), hands with a thumb, shoes on a
+    sole, a jacket in the player's colour; build, skin and hair vary from one person to another;
+  - the human walking cycle: the knee gives a little at the heel strike and folds in the swing,
+    the ankle rolls from heel to toe, the pelvis turns and drops, the chest counter-rotates, the
+    body sways over the standing foot, the head stays level; the arms swing against the legs
+    with a lag, across the body, and not as mirror images. Running: longer strides, the trunk
+    leaning, the elbows pumping. A real stride length (~1.45 m walking, up to ~3.6 m running);
+  - the other players on foot walk the same way;
+  - the players' own characters have a light skin tone (a choice will come with the profile);
+    the passers-by and the other players' characters keep varied tones.
+- **Weapons on foot**: the **WebUI hammer** (an overhead blow), the **star sword** (a wide
+  slash; an original eight-ray star on the guard, a glowing blade) and the **cube crossbow**
+  (it shoots spinning WinCC OA logo cubes, ~40 m/s, that stop against the walls). E strikes /
+  shoots, X changes weapon (pad: X strikes on foot, D-pad changes weapon); the weapon in hand is
+  shown in the HUD.
+- They break the logo tokens (scored as if driven through, combo included) and the cars: a hit
+  on the traffic or a security car raises the alert level, with sparks. They never touch the
+  pedestrians.
+
 ## 0.7.0 — 2026-11-18
 
 - **Start screen: the car turns on a turntable** instead of the four vehicle cards: the chosen

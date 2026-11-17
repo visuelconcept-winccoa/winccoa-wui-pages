@@ -493,3 +493,56 @@ describe('ranking size', () => {
     expect([1, 2, 3, 4, 11, 12, 13, 21, 22].map(ordinal)).toEqual(['1st', '2nd', '3rd', '4th', '11th', '12th', '13th', '21st', '22nd']);
   });
 });
+
+describe('figure and weapons (#89)', () => {
+  it('walks with opposite legs and arms, runs with wider strides and bent elbows', async () => {
+    const { gaitPose } = await import('./figure.js');
+    const walk = gaitPose(0.05, 1.8); // the left heel strikes: left thigh forward, right one back
+    expect(walk.hipL).toBeGreaterThan(0.3);
+    expect(walk.hipR).toBeLessThan(0);
+    expect(walk.shoulderL).toBeLessThan(0); // the left arm back while the left leg is forward
+    expect(walk.shoulderR).toBeGreaterThan(0);
+    expect(Math.abs(walk.shoulderL)).not.toBeCloseTo(Math.abs(walk.shoulderR), 2); // not mirror images
+    const swing = gaitPose(Math.PI * 2 * 0.73, 1.8); // the left leg in mid-swing: its knee folds
+    expect(swing.kneeL).toBeGreaterThan(0.8);
+    expect(swing.kneeR).toBeLessThan(0.4);
+    const run = gaitPose(0.05, 6);
+    expect(run.hipL).toBeGreaterThan(walk.hipL * 1.6);
+    expect(run.elbowL).toBeGreaterThan(1.2);
+    expect(run.lean).toBeGreaterThan(walk.lean);
+    const still = gaitPose(1, 0);
+    expect(Math.abs(still.hipL) + Math.abs(still.kneeL)).toBeLessThan(0.01);
+  });
+
+  it('raises the hammer, then brings it down in front', async () => {
+    const { gaitPose, attackPose } = await import('./figure.js');
+    const base = gaitPose(0, 0);
+    expect(attackPose(base, 'hammer', 0.18).shoulderR).toBeGreaterThan(2.2);
+    expect(attackPose(base, 'hammer', 0.34).shoulderR).toBeLessThan(1);
+  });
+
+  it('lands a blow once, hits in front only, and stops a cube against a wall', async () => {
+    const { lands, inArc, weaponById, fireBolt, stepBolt, canAttack, nextWeapon } = await import('./weapons.js');
+    const a = { weapon: 'hammer' as const, t0: 10, landed: false };
+    expect(lands(a, 10.1)).toBe(false);
+    expect(lands(a, 10.31)).toBe(true);
+    expect(lands(a, 10.4)).toBe(false);
+    expect(canAttack(a, 10.4)).toBe(false);
+    expect(canAttack(a, 10.6)).toBe(true);
+    const hammer = weaponById('hammer');
+    expect(inArc(0, 0, 0, hammer, 0, 2)).toBe(true); // ahead (+Z)
+    expect(inArc(0, 0, 0, hammer, 0, -2)).toBe(false); // behind
+    expect(nextWeapon('crossbow')).toBe('hammer');
+    let b = fireBolt(0, 0, 0, 0);
+    const wall = { x0: -5, x1: 5, z0: 10, z1: 12 };
+    let steps = 0;
+    while (b && steps < 100) {
+      const n = stepBolt(b, 0.02, [wall]);
+      if (!n) break;
+      b = n;
+      steps++;
+    }
+    expect(b.z).toBeLessThan(10.5);
+    expect(b.z).toBeGreaterThan(8);
+  });
+});

@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Sortable table of RTSP cameras. Shows favourite, name, endpoint (host), group,
- * transport and last-viewed time. Each row opens the JSMpeg viewer, edits, or
+ * Sortable table of cameras. Shows favourite, name, endpoint (host), group,
+ * transport and last-viewed time. A USB camera of this PC (`kind: 'local'`)
+ * shows "USB camera of this PC" as endpoint, a USB chip, and neither a
+ * reachability LED nor a client count: the server never sees it. Each row opens the JSMpeg viewer, edits, or
  * deletes; the star toggles favourite.
  *
  * Emits: `wui:open` / `wui:edit` / `wui:delete` / `wui:export` / `wui:fav` (all `{ id }`).
@@ -13,7 +15,7 @@ import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
-import { streamHost, type CameraStatus, type CameraStream } from '../types.js';
+import { isLocalCamera, streamHost, type CameraStatus, type CameraStream } from '../types.js';
 import { MSG, checkedAtMsg, clientsConnectedMsg, localize, localizeDir } from '../i18n.js';
 
 type SortKey = 'name' | 'host' | 'group' | 'lastViewedAt';
@@ -88,18 +90,15 @@ export class CsStreamTable extends LitElement {
             ${cam.favorite ? '★' : '☆'}
           </button>
         </td>
-        <td class="led-col">${this.renderStatus(cam.id)}</td>
+        <td class="led-col">${this.renderStatus(cam)}</td>
         <td>
           <div class="strong">${cam.name || '—'}</div>
           <div class="muted">${cam.description}</div>
         </td>
-        <td class="mono">${streamHost(cam)}</td>
+        <td class=${isLocalCamera(cam) ? '' : 'mono'}>${this.hostLabel(cam)}</td>
         <td>${cam.group || '—'}</td>
-        <td>
-          <span class="chip ${cam.transport === 'tcp' ? 'solid' : ''}">${cam.transport.toUpperCase()}</span>
-          ${cam.audio ? html`<span class="chip">${localizeDir(MSG.table.audioChip)}</span>` : null}
-        </td>
-        <td class="clients-col">${this.renderClients(cam.id)}</td>
+        <td>${this.renderTransport(cam)}</td>
+        <td class="clients-col">${this.renderClients(cam)}</td>
         <td class="mono">${this.fmtDate(cam.lastViewedAt)}</td>
         <td class="actions-col" @click=${(e: Event) => e.stopPropagation()}>
           <ix-icon-button
@@ -139,8 +138,29 @@ export class CsStreamTable extends LitElement {
     `;
   }
 
-  private renderStatus(id: string): TemplateResult {
-    const st = this.statusById[id];
+  private renderTransport(cam: CameraStream): TemplateResult {
+    if (isLocalCamera(cam)) return html`<span class="chip">${localizeDir(MSG.table.localChip)}</span>`;
+    return html`
+      <span class="chip ${cam.transport === 'tcp' ? 'solid' : ''}">${cam.transport.toUpperCase()}</span>
+      ${cam.audio ? html`<span class="chip">${localizeDir(MSG.table.audioChip)}</span>` : null}
+    `;
+  }
+
+  /** Endpoint column: the RTSP host, or "USB camera of this PC". */
+  private hostLabel(cam: CameraStream): string {
+    return isLocalCamera(cam) ? localize(MSG.table.localHost) : streamHost(cam);
+  }
+
+  private renderStatus(cam: CameraStream): TemplateResult {
+    if (isLocalCamera(cam)) {
+      return html`<ix-icon
+        class="local-icon"
+        name="video-camera"
+        size="16"
+        title=${localize(MSG.table.localStateTitle)}
+      ></ix-icon>`;
+    }
+    const st = this.statusById[cam.id];
     if (!st) {
       return html`<span class="led unknown" title=${localize(MSG.table.statusUnknownTitle)}></span>`;
     }
@@ -165,8 +185,11 @@ export class CsStreamTable extends LitElement {
     return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   }
 
-  private renderClients(id: string): TemplateResult {
-    const count = this.clientsById[id] ?? 0;
+  private renderClients(cam: CameraStream): TemplateResult {
+    if (isLocalCamera(cam)) {
+      return html`<span class="muted" title=${localize(MSG.table.localClientsTitle)}>—</span>`;
+    }
+    const count = this.clientsById[cam.id] ?? 0;
     if (count <= 0) return html`<span class="muted">0</span>`;
     return html`<span class="live" title=${clientsConnectedMsg(count)}>
       <span class="pulse"></span>${count}
@@ -206,7 +229,7 @@ export class CsStreamTable extends LitElement {
         return a.name.localeCompare(b.name);
       }
       case 'host': {
-        return streamHost(a).localeCompare(streamHost(b));
+        return this.hostLabel(a).localeCompare(this.hostLabel(b));
       }
       case 'group': {
         return a.group.localeCompare(b.group);
@@ -367,6 +390,10 @@ function tableStyles(): ReturnType<typeof css> {
     .led.ko {
       background: #ef4444;
       box-shadow: 0 0 6px rgba(239, 68, 68, 0.7);
+    }
+    .local-icon {
+      color: var(--theme-color-soft-text);
+      vertical-align: middle;
     }
     .led.unknown {
       background: #94a3b8;

@@ -36,7 +36,10 @@ The game is in English only.
   (sparks, shards, shockwave) and scores 100 × combo (within 6 s, up to ×5); a cleared wave
   of 24 adds a bonus and lays a new one.
 - **On foot**: F to get out of the car (once stopped) and back in when within 4.5 m of it;
-  Shift to run.
+  Shift to run. A jointed figure walks and runs with a real stride.
+- **Weapons on foot**: WebUI hammer, star sword, cube crossbow (WinCC OA logo cubes). E strikes
+  or shoots, X changes weapon (pad: X, D-pad). They break logos (scored) and cars (alert level
+  up); never the pedestrians.
 - **USB gamepad** (standard mapping): RT / LT throttle and brake, left stick, A handbrake /
   run, B get out / in, Y camera, X mission, LB day / night, RB reset, Start pause.
 - Missions: **delivery** (pick up, then drop, before the timer) and **intervention** (a machine

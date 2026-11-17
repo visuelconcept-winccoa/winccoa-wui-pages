@@ -77,11 +77,40 @@ export const MSG = {
     ),
     statusReachable: ml('RTSP stream reachable', 'Flux RTSP joignable', 'RTSP-Stream erreichbar'),
     statusUnreachable: ml('RTSP stream unreachable', 'Flux RTSP injoignable', 'RTSP-Stream nicht erreichbar'),
-    never: ml('never', 'jamais', 'nie')
+    never: ml('never', 'jamais', 'nie'),
+    localHost: ml('USB camera of this PC', 'Caméra USB de ce PC', 'USB-Kamera dieses PCs'),
+    localChip: ml('USB', 'USB', 'USB'),
+    localStateTitle: ml(
+      'Local camera: opened by each browser on its own PC (no server-side probe)',
+      'Caméra locale : ouverte par chaque navigateur sur son propre PC (pas de test serveur)',
+      'Lokale Kamera: von jedem Browser auf seinem eigenen PC geöffnet (kein serverseitiger Test)'
+    ),
+    localClientsTitle: ml(
+      'Not relayed by the server — viewers are not counted',
+      'Non relayée par le serveur — spectateurs non comptés',
+      'Nicht über den Server übertragen — Zuschauer werden nicht gezählt'
+    )
   },
   dialog: {
     newCamera: ml('New RTSP camera', 'Nouvelle caméra RTSP', 'Neue RTSP-Kamera'),
     editPrefix: ml('Edit', 'Édition', 'Bearbeiten'),
+    fSourceKind: ml('Source', 'Source', 'Quelle'),
+    kindRtsp: ml('RTSP IP camera (via the server)', 'Caméra IP RTSP (via le serveur)', 'RTSP-IP-Kamera (über den Server)'),
+    kindLocal: ml(
+      'USB camera of this PC (webcam)',
+      'Caméra USB de ce PC (webcam)',
+      'USB-Kamera dieses PCs (Webcam)'
+    ),
+    localInfo: ml(
+      'The video is captured by each browser from a camera plugged into its own PC and never leaves it. The camera to use is chosen in the viewer and remembered by each browser.',
+      'La vidéo est captée par chaque navigateur depuis une caméra branchée sur son propre PC et n’en sort pas. La caméra à utiliser se choisit dans la visionneuse et est mémorisée par chaque navigateur.',
+      'Das Video wird von jedem Browser von einer an seinen eigenen PC angeschlossenen Kamera aufgenommen und verlässt diesen nicht. Die Kamera wird im Viewer gewählt und von jedem Browser gespeichert.'
+    ),
+    fResolution: ml('Resolution', 'Résolution', 'Auflösung'),
+    resDefault: ml('Default (camera’s choice)', 'Par défaut (choix de la caméra)', 'Standard (Wahl der Kamera)'),
+    res480p: ml('640 × 480', '640 × 480', '640 × 480'),
+    res720p: ml('1280 × 720 (HD)', '1280 × 720 (HD)', '1280 × 720 (HD)'),
+    res1080p: ml('1920 × 1080 (Full HD)', '1920 × 1080 (Full HD)', '1920 × 1080 (Full HD)'),
     fName: ml('Name', 'Nom', 'Name'),
     fGroup: ml('Group', 'Groupe', 'Gruppe'),
     fUrl: ml('RTSP URL', 'URL RTSP', 'RTSP-URL'),
@@ -145,6 +174,57 @@ export const MSG = {
       'Stream interrupted — reconnecting…',
       'Flux interrompu — reconnexion…',
       'Stream unterbrochen — Wiederverbinden…'
+    )
+  },
+  local: {
+    endpoint: ml('USB camera of this PC', 'Caméra USB de ce PC', 'USB-Kamera dieses PCs'),
+    device: ml('Camera', 'Caméra', 'Kamera'),
+    unnamed: ml('Camera', 'Caméra', 'Kamera'),
+    allow: ml('Allow camera access', 'Autoriser l’accès à la caméra', 'Kamerazugriff erlauben'),
+    retry: ml('Retry', 'Réessayer', 'Erneut versuchen'),
+    statusStarting: ml('Opening camera…', 'Ouverture de la caméra…', 'Kamera wird geöffnet…'),
+    statusLive: ml('Live (local)', 'En direct (local)', 'Live (lokal)'),
+    statusPermission: ml('Permission needed', 'Autorisation requise', 'Berechtigung erforderlich'),
+    needPermission: ml(
+      'The browser needs your permission to use a camera of this PC. Nothing is sent to the server: the video stays in this browser.',
+      'Le navigateur a besoin de votre autorisation pour utiliser une caméra de ce PC. Rien n’est envoyé au serveur : la vidéo reste dans ce navigateur.',
+      'Der Browser benötigt Ihre Erlaubnis, eine Kamera dieses PCs zu verwenden. Nichts wird an den Server gesendet: das Video bleibt in diesem Browser.'
+    ),
+    errInsecure: ml(
+      'Camera capture needs a secure page: open the dashboard over HTTPS (or on http://localhost). Browsers block cameras on plain HTTP.',
+      'La capture caméra exige une page sécurisée : ouvrez le tableau de bord en HTTPS (ou sur http://localhost). Les navigateurs bloquent les caméras en HTTP simple.',
+      'Kameraaufnahme erfordert eine sichere Seite: Öffnen Sie das Dashboard über HTTPS (oder auf http://localhost). Browser blockieren Kameras bei reinem HTTP.'
+    ),
+    errUnsupported: ml(
+      'This browser cannot capture a camera (no getUserMedia).',
+      'Ce navigateur ne sait pas capter une caméra (pas de getUserMedia).',
+      'Dieser Browser kann keine Kamera aufnehmen (kein getUserMedia).'
+    ),
+    errDenied: ml(
+      'Camera access was denied. Click the camera (or padlock) icon in the address bar, set Camera to "Allow" for this site, then click Retry. If it stays blocked, check the operating system privacy settings (camera access for the browser).',
+      'L’accès à la caméra a été refusé. Cliquez sur l’icône caméra (ou cadenas) de la barre d’adresse, passez Caméra sur « Autoriser » pour ce site, puis cliquez sur Réessayer. Si l’accès reste bloqué, vérifiez les paramètres de confidentialité du système (accès caméra du navigateur).',
+      'Der Kamerazugriff wurde verweigert. Klicken Sie auf das Kamera- (oder Schloss-)Symbol in der Adressleiste, setzen Sie Kamera für diese Website auf „Zulassen“ und klicken Sie auf Erneut versuchen. Bleibt er blockiert, prüfen Sie die Datenschutzeinstellungen des Betriebssystems (Kamerazugriff des Browsers).'
+    ),
+    errNotFound: ml(
+      'No camera found on this PC. Plug in a USB camera (or enable the built-in webcam), then click Retry.',
+      'Aucune caméra trouvée sur ce PC. Branchez une caméra USB (ou activez la webcam intégrée), puis cliquez sur Réessayer.',
+      'Keine Kamera an diesem PC gefunden. Schließen Sie eine USB-Kamera an (oder aktivieren Sie die eingebaute Webcam) und klicken Sie auf Erneut versuchen.'
+    ),
+    errBusy: ml(
+      'The camera is busy: another application (video call, camera app) or another browser is using it. Close it, then click Retry.',
+      'La caméra est occupée : une autre application (visio, appli caméra) ou un autre navigateur l’utilise. Fermez-la, puis cliquez sur Réessayer.',
+      'Die Kamera ist belegt: eine andere Anwendung (Videoanruf, Kamera-App) oder ein anderer Browser verwendet sie. Schließen Sie diese und klicken Sie auf Erneut versuchen.'
+    ),
+    errOverconstrained: ml(
+      'The selected camera is no longer available. Pick another one in the list.',
+      'La caméra sélectionnée n’est plus disponible. Choisissez-en une autre dans la liste.',
+      'Die gewählte Kamera ist nicht mehr verfügbar. Wählen Sie eine andere in der Liste.'
+    ),
+    errUnknown: ml('The camera could not be opened.', 'La caméra n’a pas pu être ouverte.', 'Die Kamera konnte nicht geöffnet werden.'),
+    ended: ml(
+      'The camera stopped (unplugged or released by the system). Click Retry.',
+      'La caméra s’est arrêtée (débranchée ou libérée par le système). Cliquez sur Réessayer.',
+      'Die Kamera wurde gestoppt (abgesteckt oder vom System freigegeben). Klicken Sie auf Erneut versuchen.'
     )
   }
 } as const;

@@ -15,7 +15,7 @@ export interface WalkerState {
   heading: number;
   /** m/s, signed (backwards < 0). */
   speed: number;
-  /** Stride phase, for the legs' swing. */
+  /** Stride phase: one full stride (two steps) = 2π. */
   phase: number;
 }
 
@@ -33,6 +33,12 @@ export const TURN_RATE = 2.6;
 export const WALKER_RADIUS = 0.45;
 /** How close to the car the player must be to get in (m). */
 export const ENTER_DISTANCE = 4.5;
+
+/** Length of a full stride (two steps, m): ~1.45 m walking, up to ~3.6 m running. */
+export function strideOf(speed: number): number {
+  const run = Math.max(0, Math.min(1, (Math.abs(speed) - WALK_SPEED) / (RUN_SPEED - WALK_SPEED)));
+  return 1.45 + 2.15 * run;
+}
 
 /** Out of the car: standing by the driver's door (left side), facing as the car. */
 export function leaveCar(car: CarState, halfWidth: number): WalkerState {
@@ -55,6 +61,6 @@ export function stepWalker(w: WalkerState, input: WalkInput, dt: number, walls: 
   const speed = w.speed + (target - w.speed) * Math.min(1, dt * 10);
   const moved = newCar(w.x + Math.sin(heading) * speed * dt, w.z + Math.cos(heading) * speed * dt, heading);
   const out = collide(moved, walls, bounds, 0, WALKER_RADIUS).car;
-  const phase = w.phase + Math.abs(speed) * dt * 3.2;
+  const phase = w.phase + ((Math.abs(speed) * dt) / strideOf(speed)) * Math.PI * 2;
   return { x: out.x, z: out.z, heading, speed, phase };
 }
