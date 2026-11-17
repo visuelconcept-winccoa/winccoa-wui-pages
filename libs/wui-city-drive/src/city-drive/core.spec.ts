@@ -152,7 +152,7 @@ describe('bindings (#79)', () => {
 });
 
 describe('telemetry throttle (#79)', () => {
-  const sample = { x: 0, z: 0, heading: 0, speed: 0, fuel: 100, score: 0, mission: '', event: '', nickname: 'Aurel', vehicle: 'coupe', color: 'primary' };
+  const sample = { x: 0, z: 0, heading: 0, speed: 0, fuel: 100, score: 0, mission: '', event: '', nickname: 'Aurel', vehicle: 'coupe', color: 'primary', alert: 0, wanted: false, damage: 0, ticket: '', fines: 0 };
   it('sends the first sample whole, then only moved fields, at most maxHz', () => {
     const th = new TelemetryThrottle();
     expect(th.offer(sample, 0)).toEqual(sample);
@@ -358,5 +358,89 @@ describe('local multiplayer (#83)', () => {
     const firstIds = hunt.tokens.map((t) => t.id);
     hunt.reset(5);
     expect(hunt.tokens.some((t) => firstIds.includes(t.id))).toBe(false); // new ids after a reset
+  });
+});
+
+describe('tension (#85)', () => {
+  it('heat raises the alert level, cools only when unseen and after a while, drops a level, clears', async () => {
+    const { Heat, LEVEL_HEAT, COOL_AFTER_S } = await import('./tension.js');
+    const h = new Heat();
+    h.offence('red-light', 0);
+    expect(h.level).toBe(1);
+    h.offence('ram-security', 1);
+    h.offence('crash', 1);
+    expect(h.level).toBe(2);
+    h.step(5, 5, false);
+    expect(h.level).toBe(2); // too soon to cool
+    h.step(50, 1 + COOL_AFTER_S + 1, true);
+    expect(h.level).toBe(2); // seen: no cooling
+    h.step(1, 1 + COOL_AFTER_S + 1, false);
+    expect(h.heat).toBeLessThan(45);
+    h.heat = LEVEL_HEAT[2] + 5;
+    h.dropLevel();
+    expect(h.level).toBe(2);
+    h.clear();
+    expect(h.level).toBe(0);
+  });
+
+  it('a car entering a crossroads on red ran the light; on green, or crawling, it did not', async () => {
+    const { ranRedLight } = await import('./tension.js');
+    // crossroads (2, 2) forced red: entering it along Z at speed
+    const allRed = { allRed: new Set(['2-2']) };
+    const prev = { x: 2 * CELL - 4, z: 2 * CELL - ROAD_WIDTH / 2 - 1 };
+    const now = { ...newCar(2 * CELL - 4, 2 * CELL - ROAD_WIDTH / 2 + 1, 0), vz: 15 };
+    expect(ranRedLight(prev, now, 0, 6, allRed)).toEqual({ i: 2, j: 2 });
+    expect(ranRedLight(prev, { ...now, vz: 1 }, 0, 6, allRed)).toBeNull();
+    expect(ranRedLight(now, now, 0, 6, allRed)).toBeNull(); // already inside
+  });
+
+  it('speed cameras flash over the limit, once per pass, and fine by the excess', async () => {
+    const { placeCameras, flashedBy, fineOf } = await import('./tension.js');
+    const cams = placeCameras(generateCity(7), 6);
+    expect(cams.length).toBe(6);
+    const c = cams[0];
+    const last = new Map<number, number>();
+    expect(flashedBy(cams, c.x, c.z, c.limit - 1, 0, last)).toBeNull();
+    expect(flashedBy(cams, c.x, c.z, c.limit + 30, 0, last)?.id).toBe(c.id);
+    expect(flashedBy(cams, c.x, c.z, c.limit + 30, 1, last)).toBeNull(); // same pass
+    expect(fineOf(100, 70)).toBe(200);
+  });
+
+  it('damage grows with hard hits only and lowers the top speed', async () => {
+    const { applyImpact, damagedSpec } = await import('./tension.js');
+    expect(applyImpact(0, 2)).toBe(0);
+    const d = applyImpact(0, 40);
+    expect(d).toBeGreaterThan(0.4);
+    expect(applyImpact(0.99, 80)).toBe(1);
+    expect(damagedSpec(CAR, 1).maxSpeed).toBeCloseTo(CAR.maxSpeed * 0.65, 5);
+    expect(damagedSpec(CAR, 0)).toBe(CAR);
+  });
+
+  it('a chaser steers towards a point ahead of its target, and backs up when stuck', async () => {
+    const { chaserInput, chasersFor } = await import('./tension.js');
+    const chaser = { car: newCar(0, 0, 0), target: 0, stuck: 0, reversing: 0 };
+    // target ahead and to the right (-X when facing +Z): steer right (> 0)
+    expect(chaserInput(chaser, { ...newCar(-30, 30, 0), vx: 0, vz: 0 }, 0.1).steer).toBeGreaterThan(0);
+    expect(chaserInput(chaser, newCar(0, 50, 0), 0.1).throttle).toBe(1);
+    for (let k = 0; k < 20; k++) chaserInput(chaser, newCar(0, 50, 0), 0.1);
+    expect(chaserInput(chaser, newCar(0, 50, 0), 0.1).throttle).toBe(-1);
+    expect([0, 1, 2, 3, 5, 9].map(chasersFor)).toEqual([0, 0, 1, 2, 4, 4]);
+  });
+});
+
+describe('tension telemetry (#85)', () => {
+  const base = { x: 0, z: 0, heading: 0, speed: 0, fuel: 100, score: 0, mission: '', event: '', nickname: 'A', vehicle: 'coupe', color: 'primary', alert: 0, wanted: false, damage: 0, ticket: '', fines: 0 };
+
+  it('holds the tension elements back while the deployed type lacks them', async () => {
+    const { TENSION_FIELDS, writableFields } = await import('./dp-link.js');
+    expect(writableFields({ x: 3, wanted: true, fines: 2 }, false)).toEqual({ x: 3 });
+    expect(writableFields({ x: 3, wanted: true }, true)).toEqual({ x: 3, wanted: true });
+    expect(TENSION_FIELDS).toContain('wanted');
+  });
+
+  it('sends a change of the alert at once, between two samples', () => {
+    const th = new TelemetryThrottle();
+    th.offer(base, 0);
+    expect(th.offer({ ...base, wanted: true, alert: 2 }, 0.05)).toEqual({ wanted: true, alert: 2 });
   });
 });

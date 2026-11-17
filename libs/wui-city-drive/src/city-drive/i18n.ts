@@ -58,7 +58,22 @@ export const MSG = {
     'wave-done': 'Wave cleared! Bonus',
     'on-foot': 'On foot: F to get back in',
     'in-car': 'Back behind the wheel',
-    'too-far': 'Walk back to your car to get in'
+    'too-far': 'Walk back to your car to get in',
+    'red-light': 'Red light! Alert level up',
+    'speed-camera': 'Flashed by a speed camera',
+    'ram-security': 'You rammed a security car!',
+    chase: 'Security is on your tail: lose them, or get a respray at the station',
+    escaped: 'You lost them',
+    caught: 'Stopped by security: −20 % score',
+    respray: 'Fresh respray: alert cleared',
+    repaired: 'Car repaired',
+    acknowledged: 'The control room acknowledged your alert: level cleared'
+  },
+  tension: {
+    alert: 'Alert level',
+    damage: 'Damage',
+    pullOver: 'Pull over!',
+    fine: 'Fine'
   },
   machine: {
     run: 'running',

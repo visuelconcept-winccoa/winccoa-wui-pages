@@ -66,6 +66,9 @@ import type { LightOverrides } from './traffic.js';
 import { StreetLife } from './street.js';
 import { TrafficSignals } from './traffic-signals.js';
 import { LogoFx } from './explosion.js';
+import { TensionFx } from './tension-fx.js';
+import type { CarState } from './physics.js';
+import type { SpeedCamera } from './tension.js';
 import type { Token } from './collectibles.js';
 import type { WalkerState } from './walker.js';
 import { asphaltMaps, beamTexture, facadeMaps, pavementMaps, type FacadeMaps } from './textures.js';
@@ -144,6 +147,8 @@ interface View {
   speed: number;
   /** Viewport in CSS pixels, from the bottom left (WebGL). */
   rect: { x: number; y: number; w: number; h: number };
+  /** Damage 0..1 (#85): smoke, a flickering headlight, a sagging body. */
+  damage: number;
 }
 
 function neon(color: number, opacity = 1): LineBasicMaterial {
@@ -249,6 +254,7 @@ export class CityWorld {
   private readonly shadowFollow = new Vector3();
   private readonly street: StreetLife;
   private readonly fx: LogoFx;
+  private readonly tension: TensionFx;
   /** Chase camera distance factor (settings). */
   private camDistance = 1;
   private readonly hemi: HemisphereLight;
@@ -312,6 +318,7 @@ export class CityWorld {
     this.street = new StreetLife(city, p);
     this.scene.add(this.street.group);
     this.fx = new LogoFx(this.scene, p);
+    this.tension = new TensionFx(this.scene, p);
 
 
     this.marker = new Mesh(
@@ -351,7 +358,8 @@ export class CityWorld {
       mode: 'chase',
       corner: null,
       speed: 0,
-      rect: { x: 0, y: 0, w: 1, h: 1 }
+      rect: { x: 0, y: 0, w: 1, h: 1 },
+      damage: 0
     };
     this.attachHeadlights(view);
     return view;
@@ -710,6 +718,27 @@ export class CityWorld {
     this.fx.explode(x, z);
   }
 
+  /** The speed cameras of the city (#85). */
+  setCameras(cameras: readonly SpeedCamera[]): void {
+    this.tension.setCameras(cameras);
+  }
+
+  /** A speed camera flashes. */
+  flashCamera(id: number): void {
+    this.tension.flash(id);
+  }
+
+  /** The security cars giving chase. */
+  setChasers(cars: readonly CarState[]): void {
+    this.tension.setChasers(cars);
+  }
+
+  /** Damage of player i's car, 0..1. */
+  setDamage(i: number, damage: number): void {
+    const v = this.views[i];
+    if (v) v.damage = damage;
+  }
+
   /** Player i on foot (a figure in its neon colour), or null when driving. */
   setWalker(i: number, w: WalkerState | null, color: number): void {
     const v = this.views[i];
@@ -798,6 +827,8 @@ export class CityWorld {
     if (!v) return;
     v.car.position.set(pose.x, 0, pose.z);
     v.car.rotation.y = pose.heading;
+    // a wrecked car sags on one side
+    v.car.rotation.z = v.damage > 0.6 ? (v.damage - 0.6) * 0.12 : 0;
   }
 
   /** Speed of player i (m/s), for its camera (pull-back, field of view). */
@@ -946,6 +977,16 @@ export class CityWorld {
     this.elapsed += dt;
     this.street.update(dt);
     this.fx.update(dt);
+    this.tension.update(
+      dt,
+      this.views.filter((v) => !v.walker).map((v) => ({ x: v.car.position.x, z: v.car.position.z, heading: v.car.rotation.y, length: v.body.l, damage: v.damage }))
+    );
+    // a badly damaged car: its left headlight flickers
+    for (const v of this.views) {
+      const left = v.headlights[0];
+      if (!left || this.timeOfDay === 'day') continue;
+      left.intensity = v.damage > 0.5 && Math.sin(this.elapsed * 37) * Math.sin(this.elapsed * 13) > 0.4 ? 40 : 260;
+    }
     const pulse = 0.5 + 0.5 * Math.sin(this.elapsed * 6);
     for (const { beacon, roof } of this.machineEdges.values()) {
       const fault = beacon.userData.fault === true;

@@ -3,6 +3,25 @@
 
 # Changelog — @visuelconcept-winccoa/wui-city-drive
 
+## 0.5.0 — 2026-11-17
+
+- **Tension** (#85): an alert level (five chevrons) raised by red lights, crashes into the
+  traffic, speed cameras and ramming security cars; it cools down when nobody sees you.
+- **Security cars** from level 2 (dark saloons, red / blue light bar): they cut you off and
+  back up when stuck; lose them (220 m, 6 s) or get stopped (−20 % score). Red / blue edges
+  while chased.
+- **Speed cameras**: eight posts with their limit sign; a white flash, a ticket, a fine.
+- **Damage**: top speed and pull fall with it; smoke from 30 %, a sagging body and a flickering
+  headlight from 60 %, flames near 100 %. The station's garage repairs and resprays (level
+  cleared).
+- **A real WinCC OA alert**: from level 2 the player's `.wanted` raises a binary alert (class
+  `alert.`, configured by the game); an operator's acknowledgement in the alarm list clears the
+  level. New elements `alert`, `wanted`, `damage`, `ticket`, `fines` (an older type is changed
+  in place with `para:edit-types`; without it they are left out and the rest goes on).
+- Two players: player 2 starts on the next avenue (behind player 1, the first player's camera
+  sat in its headlights: a washed-out view); player 2's HUD is mirrored to the right edge
+  (it was under the banner, the clock and the minimap).
+
 ## 0.4.0 — 2026-11-17
 
 - **Two players on one computer** (#83), split screen side by side: on the start screen,

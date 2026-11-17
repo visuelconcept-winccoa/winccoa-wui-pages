@@ -12,6 +12,9 @@
  *   and its device ("press to join": the keyboard or a USB gamepad); game mode, time of day,
  *   timed match; kept in the browser and written to each player's datapoint;
  * - two players: split screen, one HUD per half, a 3-2-1 countdown, a clock and a podium;
+ * - tension (#85, city-drive/tension.ts): alert chevrons, damage, a ticket on a speed camera
+ *   flash, red / blue edges while chased, "Pull over!" while being stopped; a wanted player's
+ *   WinCC OA alert, once acknowledged in the alarm list, clears its level;
  * - game: three.js + bloom (city-drive/world.ts), driven by city-drive/game.ts; HUD in iX;
  * - datapoints: city-drive/dp-link.ts only; demo mode without a backend (`npx wui dev`).
  *
@@ -29,7 +32,7 @@ import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconce
 import appSecurityRoles from './app-security.roles.json';
 import type { MachineState } from './city-drive/bindings.js';
 import { DriveLink, ONLINE_MS, type LinkState, type RemotePlayer } from './city-drive/dp-link.js';
-import { CityGame, type GameEvent, type GameHud } from './city-drive/game.js';
+import { CityGame, type Flash, type GameEvent, type GameHud } from './city-drive/game.js';
 import { JoinSlots, MATCH_DURATIONS, MAX_LOCAL_PLAYERS, clock, padIndexOf, type DeviceId, type Standing } from './city-drive/local-play.js';
 import { MSG } from './city-drive/i18n.js';
 import { drawMinimap } from './city-drive/minimap.js';
@@ -131,6 +134,10 @@ export class WuiCityDrive extends LitElement {
   @state() private hud: GameHud | null = null;
   /** Last event of each player, shown in its view. */
   @state() private eventText: string[] = [];
+  /** Per player: the last speed camera ticket shown, and the white flash of the camera (#85). */
+  @state() private tickets: string[] = [];
+  @state() private flashing: boolean[] = [];
+  private ticketTimers: number[] = [];
   @state() private demo = false;
   @state() private telemetryOn = false;
   @state() private remotes: RemotePlayer[] = [];
@@ -409,10 +416,18 @@ export class WuiCityDrive extends LitElement {
     const fuel = Math.round((h?.fuel ?? 1) * 100);
     const color = hex(this.palette ? this.palette[pr.color] : 0x00bde3);
     const inMatch = this.hud?.match != null;
-    return html`<div class="view ${two ? `half v${k}` : ''}" style="--c:${color}">
+    return html`<div class="view ${two ? `half v${k}` : ''} ${h && h.chasers > 0 ? 'sirens' : ''}" style="--c:${color}">
       <div class="hud top-left">
         <div class="player">${two ? html`<span class="badge">P${k + 1}</span>` : nothing}${pr.nickname || '—'} · ${vehicleById(pr.vehicle).label}</div>
         <div class="score"><span>${MSG.hud.score}</span> <strong>${h?.score ?? 0}</strong></div>
+        ${h && h.alert > 0
+          ? html`<div class="alert-level ${h.chasers > 0 ? 'chased' : ''}" title=${MSG.tension.alert}>
+              ${[1, 2, 3, 4, 5].map((n) => html`<span class=${n <= h.alert ? 'on' : ''}></span>`)}
+            </div>`
+          : nothing}
+        ${h && h.damage > 0.02
+          ? html`<div class="damage ${h.damage > 0.6 ? 'bad' : ''}">${MSG.tension.damage} <strong>${Math.round(h.damage * 100)} %</strong></div>`
+          : nothing}
         ${h?.hunt
           ? html`<div class="hunt">
               <span class="logo-dot"></span><strong>${inMatch ? h.hunt.collected : h.hunt.left}</strong> ${inMatch ? 'logos' : MSG.hud.logosLeft}${inMatch ? nothing : html` · ${MSG.hud.wave} ${h.hunt.wave}`}
@@ -443,6 +458,14 @@ export class WuiCityDrive extends LitElement {
         <ix-progress-indicator class="fuel" label=${MSG.hud.fuel} .value=${fuel} status=${fuel < 15 ? 'error' : fuel < 35 ? 'warning' : 'default'}></ix-progress-indicator>
       </div>
       ${this.eventText[k] ? html`<div class="toast">${this.eventText[k]}</div>` : nothing}
+      ${this.tickets[k] ? html`<div class="ticket"><ix-icon name="camera"></ix-icon>${this.tickets[k]}</div>` : nothing}
+      ${this.flashing[k] ? html`<div class="cam-flash"></div>` : nothing}
+      ${h && h.caught > 0
+        ? html`<div class="caught">
+            <div>${MSG.tension.pullOver}</div>
+            <div class="bar"><div style="width:${Math.round(h.caught * 100)}%"></div></div>
+          </div>`
+        : nothing}
       ${this.popups
         .filter((pp) => pp.player === k)
         .map((pp) => html`<div class="popup ${pp.combo > 2 ? 'hot' : ''}" style="--dx:${pp.dx}px">+${pp.points}${pp.combo > 1 ? html` <span>×${pp.combo}</span>` : nothing}</div>`)}
@@ -711,6 +734,7 @@ export class WuiCityDrive extends LitElement {
     this.game.onDevice = (device, press) => this.onDevice(device, press);
     this.game.onDeviceLost = (device) => this.onDeviceLost(device);
     this.game.onMatchEnd = (results) => (this.results = results);
+    this.game.onFlash = (f, k) => this.onFlash(f, k);
     this.pickPlayers(this.local.players);
     this.game.setProfile(0, this.profile);
     this.game.start();
@@ -719,6 +743,7 @@ export class WuiCityDrive extends LitElement {
     this.demo = this.link.demo;
     this.telemetryOn = !this.link.demo && this.link.player !== '';
     this.link.watchPlayers((players) => this.onPlayers(players), this.game.city.blocks);
+    this.link.watchAlerts((i) => this.game?.clearHeat(i));
   }
 
   /** A device pressed join or leave: the lobby seats it, or it takes the seat of an unplugged pad. */
@@ -764,7 +789,10 @@ export class WuiCityDrive extends LitElement {
       // a lone player answers to any device; two players each to their own
       this.game?.setDevice(k, this.profiles.length > 1 ? this.slots.devices[k] : null);
     });
-    void this.link.setLocalPlayers(this.profiles.length).then(() => (this.telemetryOn = !this.link.demo && this.link.player !== ''));
+    void this.link.setLocalPlayers(this.profiles.length).then(() => {
+      this.telemetryOn = !this.link.demo && this.link.player !== '';
+      this.link.watchAlerts((i) => this.game?.clearHeat(i));
+    });
     this.started = true;
     this.results = null;
     this.game.lobby = false;
@@ -829,6 +857,27 @@ export class WuiCityDrive extends LitElement {
     // the other local players show as dots in their colour, like the remote ones
     const locals = this.game.players.slice(1).map((pl, k) => ({ ...this.game!.positionOf(k + 1), color: pal[pl.profile.color] }));
     drawMinimap(canvas, this.game.city, pal, this.game.positionOf(0), pal[this.profile.color], this.game.traffic, this.machines, target, tc, [...locals, ...this.game.remotes], tokens, p1?.walker ? p1.car : null);
+  }
+
+  /** A speed camera flashed player k: a white flash over its view, and the ticket for 4 s. */
+  private onFlash(f: Flash, k: number): void {
+    const flashing = [...this.flashing];
+    flashing[k] = true;
+    this.flashing = flashing;
+    window.setTimeout(() => {
+      const off = [...this.flashing];
+      off[k] = false;
+      this.flashing = off;
+    }, 180);
+    const tickets = [...this.tickets];
+    tickets[k] = `${speedIn(f.kmh, this.settings.units)} ${this.settings.units === 'mph' ? 'mph' : 'km/h'} · limit ${speedIn(f.camera.limit, this.settings.units)} · ${MSG.tension.fine} −${f.fine}`;
+    this.tickets = tickets;
+    window.clearTimeout(this.ticketTimers[k]);
+    this.ticketTimers[k] = window.setTimeout(() => {
+      const clear = [...this.tickets];
+      clear[k] = '';
+      this.tickets = clear;
+    }, 4000);
   }
 
   private onEvent(e: GameEvent, k: number): void {
@@ -1034,6 +1083,18 @@ function pageStyles(): ReturnType<typeof css> {
     }
     .view.half .top-left {
       top: 5.5rem;
+    }
+    /* player 2 mirrored to the right edge: the banner, the clock and the minimap sit in the middle */
+    .view.half.v1 .top-left {
+      left: auto;
+      right: 1rem;
+      align-items: flex-end;
+      text-align: right;
+    }
+    .view.half.v1 .bottom-left {
+      left: auto;
+      right: 1rem;
+      align-items: flex-end;
     }
     .badge {
       display: inline-block;
@@ -1426,6 +1487,92 @@ function pageStyles(): ReturnType<typeof css> {
     }
     .fuel {
       width: 100%;
+    }
+    /* tension (#85): alert chevrons, damage, sirens on the edges, camera flash, ticket, pull over */
+    .alert-level {
+      display: flex;
+      gap: 0.2rem;
+    }
+    .alert-level span {
+      width: 0.95rem;
+      height: 0.75rem;
+      clip-path: polygon(0 0, 50% 45%, 100% 0, 100% 55%, 50% 100%, 0 55%);
+      background: color-mix(in srgb, var(--theme-color-std-text) 25%, transparent);
+    }
+    .alert-level span.on {
+      background: var(--theme-color-alarm);
+      filter: drop-shadow(0 0 4px var(--theme-color-alarm));
+    }
+    .alert-level.chased span.on {
+      animation: blink 0.6s steps(2, jump-none) infinite;
+    }
+    @keyframes blink {
+      50% {
+        background: var(--theme-color-info);
+      }
+    }
+    .damage {
+      font-size: 0.85rem;
+      color: var(--theme-color-warning);
+    }
+    .damage.bad {
+      color: var(--theme-color-alarm);
+    }
+    .view.sirens {
+      animation: sirens 0.8s linear infinite;
+    }
+    @keyframes sirens {
+      0%,
+      49% {
+        box-shadow: inset 0 0 40px -10px var(--theme-color-alarm);
+      }
+      50%,
+      100% {
+        box-shadow: inset 0 0 40px -10px var(--theme-color-info);
+      }
+    }
+    .cam-flash {
+      position: absolute;
+      inset: 0;
+      background: color-mix(in srgb, var(--theme-color-std-text) 60%, transparent);
+    }
+    .ticket {
+      position: absolute;
+      top: 11.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.3rem 0.8rem;
+      white-space: nowrap;
+      font-weight: 600;
+      color: var(--theme-color-warning);
+      border: 1px solid var(--theme-color-warning);
+      border-radius: var(--theme-default-border-radius);
+      background: color-mix(in srgb, var(--theme-color-2) 85%, transparent);
+    }
+    .caught {
+      position: absolute;
+      top: 40%;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      color: var(--theme-color-alarm);
+      text-shadow: 0 0 14px var(--theme-color-alarm);
+    }
+    .caught .bar {
+      width: 12rem;
+      height: 0.4rem;
+      margin-top: 0.4rem;
+      background: color-mix(in srgb, var(--theme-color-std-text) 20%, transparent);
+    }
+    .caught .bar div {
+      height: 100%;
+      background: var(--theme-color-alarm);
     }
     .toast {
       position: absolute;
