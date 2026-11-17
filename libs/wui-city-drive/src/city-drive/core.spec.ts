@@ -5,6 +5,7 @@ import { cancelIfRepaired, newDelivery, newIntervention, stepMission } from './m
 import { CLASSIC_DARK, mix, parseCssColor } from './palette.js';
 import { CAR, collide, forwardSpeed, newCar, stepCar } from './physics.js';
 import { TelemetryThrottle } from './telemetry.js';
+import { addResults, leaderboard, validEmail, type GameResult } from './results.js';
 import { carPose, lightAt, spawnTraffic, stepTraffic } from './traffic.js';
 
 const GO = { throttle: 1, steer: 0, handbrake: false };
@@ -442,5 +443,53 @@ describe('tension telemetry (#85)', () => {
     const th = new TelemetryThrottle();
     th.offer(base, 0);
     expect(th.offer({ ...base, wanted: true, alert: 2 }, 0.05)).toEqual({ wanted: true, alert: 2 });
+  });
+});
+
+describe('empty tank', () => {
+  it('crawls to the station instead of staying stuck', () => {
+    let car = { ...newCar(0, 0, 0), fuel: 0 };
+    for (let k = 0; k < 200; k++) car = stepCar(car, { throttle: 1, steer: 0, handbrake: false }, 0.05);
+    const v = forwardSpeed(car);
+    expect(v).toBeGreaterThan(4);
+    expect(v).toBeLessThanOrEqual(CAR.emptySpeed + 1e-9);
+  });
+});
+
+describe('logo leaderboard', () => {
+  const r = (id: string, nickname: string, logos: number, email = '', score = logos * 100): GameResult => ({ id, nickname, email, logos, score, at: `2026-11-18T09:${id.padStart(2, '0')}:00Z`, duration: 60 });
+
+  it('ranks each person once, by their best logos, without the emails', () => {
+    const log = [r('1', 'Léa', 8, 'lea@x.com'), r('2', 'Léa', 12, 'LEA@x.com'), r('3', 'Max', 12, '', 1300), r('4', 'Tom', 3)];
+    const board = leaderboard(log);
+    expect(board.map((b) => [b.rank, b.nickname, b.logos])).toEqual([
+      [1, 'Max', 12],
+      [2, 'Léa', 12],
+      [3, 'Tom', 3]
+    ]);
+    expect(JSON.stringify(board)).not.toContain('@');
+  });
+
+  it('shows the players of the match even below the top', () => {
+    const log = Array.from({ length: 12 }, (_, k) => r(String(k + 1), `P${k + 1}`, 20 - k));
+    const board = leaderboard(log, new Set(['12']), 10);
+    expect(board).toHaveLength(11);
+    expect(board[10]).toMatchObject({ rank: 12, nickname: 'P12', mine: true });
+  });
+
+  it('keeps the log bounded and accepts an empty email', () => {
+    expect(addResults([r('1', 'a', 1)], [r('2', 'b', 2), r('3', 'c', 3)], 2).map((x) => x.id)).toEqual(['2', '3']);
+    expect(validEmail('')).toBe(true);
+    expect(validEmail('aurel@visuel.fr')).toBe(true);
+    expect(validEmail('aurel@')).toBe(false);
+  });
+});
+
+describe('ranking size', () => {
+  it('counts each person once and says 1st, 2nd, 3rd, 11th', async () => {
+    const { playerCount, ordinal } = await import('./results.js');
+    const r = (id: string, nickname: string, email = ''): GameResult => ({ id, nickname, email, logos: 1, score: 1, at: '', duration: 60 });
+    expect(playerCount([r('1', 'Léa', 'l@x.io'), r('2', 'Lea', 'L@X.io'), r('3', 'Max'), r('4', 'max')])).toBe(2);
+    expect([1, 2, 3, 4, 11, 12, 13, 21, 22].map(ordinal)).toEqual(['1st', '2nd', '3rd', '4th', '11th', '12th', '13th', '21st', '22nd']);
   });
 });

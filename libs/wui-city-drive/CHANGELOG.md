@@ -3,6 +3,23 @@
 
 # Changelog — @visuelconcept-winccoa/wui-city-drive
 
+## 0.6.0 — 2026-11-18
+
+- **Matches of 1 minute by default** (1, 2, 3 or 5 minutes, or Free drive alone). The choice is
+  kept under a new browser key: the 3-minute default of 0.4 is not carried over.
+- **Optional email** per player on the start screen: saved with the results, never shown;
+  kept in memory only and cleared when going back to the menu (the next person at a booth
+  starts empty). A malformed address blocks the start until fixed or emptied.
+- **Logo ranking** after each match: the WinCC OA logos taken, one row per person (the email
+  when given, else the nickname) with their best match, the top 10 plus the players of the
+  match, the number of players in the ranking and each player's place ("9th of 12").
+  Nicknames only. The results are appended to the datapoint `CityDrive_Results` (created
+  through PARA; in memory without a backend), 1000 results at most.
+- Empty tank: the car crawls (up to ~20 km/h) to the station; it had no thrust at all and
+  stayed stuck.
+- Podium of two players: the logos and score cells no longer stack (a style of the players
+  panel applied to them).
+
 ## 0.5.0 — 2026-11-17
 
 - **Tension** (#85): an alert level (five chevrons) raised by red lights, crashes into the
