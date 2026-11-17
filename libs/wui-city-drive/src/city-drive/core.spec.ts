@@ -583,3 +583,29 @@ describe('photo booth', () => {
     expect(parseBoothCamera('x', 'not json')).toBeNull();
   });
 });
+
+describe('audit trail (#93)', () => {
+  const players = [
+    { nickname: 'Aurel', vehicle: 'Neon Specter', device: 'keyboard', email: true },
+    { nickname: '', vehicle: 'Kitsune GT', device: 'pad:0', email: false }
+  ];
+
+  it('records a game start without any email', async () => {
+    const a = await import('./audit.js');
+    const r = a.gameStart(players, 60, 'logos', 'taken');
+    expect(r).toMatchObject({ action: 'GAME_START', item: 'Aurel · Player 2', reason: 'Match of 1 min' });
+    expect(r.newval).toContain('"email":true');
+    expect(r.newval).not.toContain('@');
+  });
+
+  it('records the ranking at the end, and only the settings that changed', async () => {
+    const a = await import('./audit.js');
+    const { DEFAULT_SETTINGS } = await import('./settings.js');
+    const end = a.gameEnd(players, [{ player: 1, score: 900, logos: 7, rank: 1 }, { player: 0, score: 500, logos: 4, rank: 2 }], 120);
+    expect(JSON.parse(end.newval ?? '[]')[0]).toEqual({ rank: 1, nickname: 'Player 2', score: 900, logos: 7 });
+    expect(a.settingsUpdate(DEFAULT_SETTINGS, DEFAULT_SETTINGS)).toBeNull();
+    const ch = a.settingsUpdate(DEFAULT_SETTINGS, { ...DEFAULT_SETTINGS, photoBooth: 'webcam', cameraHeight: 1.5 });
+    expect(ch).toMatchObject({ action: 'SETTINGS_UPDATE', reason: 'cameraHeight, photoBooth' });
+    expect(JSON.parse(ch?.newval ?? '{}')).toEqual({ cameraHeight: 1.5, photoBooth: 'webcam' });
+  });
+});
