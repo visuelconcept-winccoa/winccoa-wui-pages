@@ -20,7 +20,7 @@
 // WinCC OA server only, never served back by this module.
 // -----------------------------------------------------------------------------
 
-import { existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 export const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
@@ -68,6 +68,15 @@ export function decodeJpeg(image: string): Buffer | null {
   if (data.length < 4 || data.length > MAX_PHOTO_BYTES) return null;
   if (data[0] !== 0xff || data[1] !== 0xd8) return null;
   return data;
+}
+
+/** The souvenir photos kept on the server (the folder, not pending/). */
+export function localPhotoCount(root = photoRoot()): number {
+  try {
+    return readdirSync(root).filter((f) => f.endsWith('.jpg')).length;
+  } catch {
+    return 0;
+  }
 }
 
 /** Saves the photo (written aside, then renamed: never a half file); returns its file name. */

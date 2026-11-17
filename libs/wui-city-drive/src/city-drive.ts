@@ -53,6 +53,7 @@ import { TelemetryThrottle } from './city-drive/telemetry.js';
 import { CarPreview } from './city-drive/car-preview.js';
 import { AuditTrailWriter } from '@visuelconcept-winccoa/wui-kit/data/audit-trail.js';
 import * as audit from './city-drive/audit.js';
+import './city-drive/admin-page.js';
 import {
   BOOTH_COUNTDOWN_S,
   boothSource,
@@ -312,10 +313,17 @@ export class WuiCityDrive extends LitElement {
   }
 
   protected override firstUpdated(): void {
+    if (this.adminView) return; // no game, no camera, no datapoint of a player on the admin page
     if (this.rolePlay) void this.boot();
   }
 
+  /** `/city-drive/admin`: the admin page (statistics) instead of the game (#94). */
+  private get adminView(): boolean {
+    return /\/city-drive\/admin\/?$/.test(globalThis.location?.pathname ?? '');
+  }
+
   override render(): TemplateResult {
+    if (this.adminView) return html`<wui-city-drive-admin></wui-city-drive-admin>`;
     return html`
       <wui-context-generator
         .config=${{ headerTitle: { context: 'translate', config: { 'en_US.utf8': 'City Drive', 'fr.utf8': 'City Drive', 'de.utf8': 'City Drive' } } }}

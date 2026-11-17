@@ -609,3 +609,33 @@ describe('audit trail (#93)', () => {
     expect(JSON.parse(ch?.newval ?? '{}')).toEqual({ cameraHeight: 1.5, photoBooth: 'webcam' });
   });
 });
+
+describe('admin statistics (#94)', () => {
+  const r = (id: string, at: string, nickname: string, logos: number, email = ''): GameResult => ({ id, nickname, email, logos, score: logos * 100, at, duration: 60 });
+  const log = [
+    r('1', '2026-11-18T09:05:00', 'Léa', 12, 'lea@x.io'),
+    r('2', '2026-11-18T09:05:00', 'Max', 4),
+    r('3', '2026-11-18T10:30:00', 'Léa', 15, 'LEA@x.io'),
+    r('4', '2026-11-19T14:00:00', 'Tom', 22, 'tom@x.io')
+  ];
+
+  it('counts matches by their end time, people, emails, logos', async () => {
+    const { gameStats } = await import('./stats.js');
+    const s = gameStats(log);
+    expect(s).toMatchObject({ matches: 3, duo: 1, players: 3, withEmail: 3, emails: 2, logos: 53, bestLogos: 22, avgLogos: 13.3 });
+    expect(s.byHour[9]).toBe(1);
+    expect(s.byDay).toEqual([
+      { day: '2026-11-18', matches: 2 },
+      { day: '2026-11-19', matches: 1 }
+    ]);
+    expect(s.logoBands.map((b) => b.count)).toEqual([1, 0, 1, 1, 1]); // 4 · 12 · 15 · 22
+  });
+
+  it('exports CSV with the emails, no formula injection', async () => {
+    const { resultsCsv } = await import('./stats.js');
+    const csv = resultsCsv([...log, r('5', '2026-11-19T15:00:00', '=HYPERLINK("x")', 1)]);
+    expect(csv.split('\r\n')[0]).toBe('﻿date;nickname;email;logos;score;match_s');
+    expect(csv).toContain('lea@x.io');
+    expect(csv).toContain(`"'=HYPERLINK(""x"")"`);
+  });
+});

@@ -139,6 +139,15 @@ player who opens the page with the `para:edit-types` role changes the type in pl
 Until then, the new elements are not written and the alert is not configured; the rest of the
 telemetry and the game play the same. The other players are read on the elements of 0.4.
 
+## Admin page
+
+`/city-drive/admin` (menu **City Drive · Admin**, role **`admin`**): the statistics of the game
+for the event's organisers — matches, players, emails collected, logos, best / average, photos
+kept / waiting for Supabase / published; matches per hour and per day, logos per result; the
+top 10. **Export CSV** gives every result **with the emails** (hence the role); **Reset the
+ranking** empties `CityDrive_Results` for a new event. Both are written to the audit trail. The
+3D game does not start on this page.
+
 ## Audit trail
 
 The game station's actions go to the module's own `_AuditTrail` datapoint
@@ -156,6 +165,7 @@ active archive group exists — see it in the **Audit Trail** page (select that 
 | `PHOTO_PUBLISHED` | players | the object path in the bucket (`<date>/<uuid>.jpg`), never its link |
 | `ALERT_ACKNOWLEDGED` | the player (item type `CityDrivePlayer`) | its `….wanted` DPE: the control room acknowledged its alert |
 | `SETTINGS_UPDATE` | `Settings` | the changed settings, old → new |
+| `RESULTS_EXPORT` / `RESULTS_RESET` | `CityDrive_Results` | admin page: results exported (emails included) / ranking emptied (how many results) |
 
 Personal data stays out: never an email (only whether one was given), never a photo link. The
 user of each row is the WinCC OA user logged on at the game station.
@@ -164,6 +174,7 @@ user of each row is the WinCC OA user logged on at the game station.
 
 - `play`: the page (and one's own telemetry). Without it, a notice replaces the game.
 - `configure`: declared for `CityDrive_Config` (edited in PARA in V1).
+- `admin`: the admin page — statistics, CSV export with the players' emails, ranking reset.
 - The photo booth saves with `play` (`POST /api/city-drive/photo`); an IP camera's snapshot
   also needs `camera-streams/view`.
 - The alert of a wanted player is acknowledged in the alarm list, with the operators' own

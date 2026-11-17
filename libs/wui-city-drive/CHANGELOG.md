@@ -3,6 +3,17 @@
 
 # Changelog — @visuelconcept-winccoa/wui-city-drive
 
+## 0.12.0 — 2026-11-18
+
+- **Admin page** `/city-drive/admin` (menu "City Drive · Admin"), new role **`admin`**: the
+  game's statistics — matches (duos), players, emails collected, WinCC OA logos (total,
+  average, best), average score, photos kept / waiting for Supabase (with the last error) /
+  published; charts of the matches per hour and per day and of the logos per result; the
+  ranking's top 10. **Export CSV** (every result, emails included; `;`, UTF-8 BOM, no formula
+  injection) and **Reset the ranking** (after a confirmation), both in the audit trail
+  (`RESULTS_EXPORT`, `RESULTS_RESET`). Refreshes every 30 s. Backend `GET /api/city-drive/stats`
+  (role `admin`).
+
 ## 0.11.0 — 2026-11-18
 
 - **Audit trail** of the game station in the module's own `_AuditTrail` datapoint

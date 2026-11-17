@@ -12,6 +12,15 @@
       }
     },
     {
+      "id": "admin",
+      "label": { "en_US.utf8": "Admin and statistics", "fr.utf8": "Administration et statistiques", "de.utf8": "Verwaltung und Statistiken" },
+      "description": {
+        "en_US.utf8": "Open the admin page (/city-drive/admin): statistics, export of the results with the players' emails, reset of the ranking.",
+        "fr.utf8": "Ouvrir la page d'administration (/city-drive/admin) : statistiques, export des résultats avec les emails des joueurs, remise à zéro du classement.",
+        "de.utf8": "Die Verwaltungsseite öffnen (/city-drive/admin): Statistiken, Export der Ergebnisse mit den E-Mails der Spieler, Zurücksetzen der Rangliste."
+      }
+    },
+    {
       "id": "configure",
       "label": { "en_US.utf8": "Configure the bindings", "fr.utf8": "Configurer les liaisons", "de.utf8": "Verknüpfungen konfigurieren" },
       "description": {

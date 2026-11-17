@@ -12,13 +12,14 @@
 //        queues the match's photo for Supabase Storage (supabasePublish.ts) and
 //        answers its public URL at once (null when [cityDriveSupabase] is not set).
 //   GET  /publish/:id -> { state: uploading | published | pending | unknown, error, attempts }
+//   GET  /stats -> { photos, pending, published, lastError, supabase }   (role city-drive/admin)
 // -----------------------------------------------------------------------------
 
 import { Request, Response, Router, json } from 'ultimate-express';
 
 import { requireRole } from './appSecurityGuard';
-import { decodeJpeg, photoRoot, savePhoto } from './photoStore';
-import { ensureWorker, photoStatus, queuePhoto, readSupabaseConfig } from './supabasePublish';
+import { decodeJpeg, localPhotoCount, photoRoot, savePhoto } from './photoStore';
+import { ensureWorker, photoStatus, publishStats, queuePhoto, readSupabaseConfig } from './supabasePublish';
 
 export class CityDriveRoute {
   static routes(): Router {
@@ -45,6 +46,11 @@ export class CityDriveRoute {
       } catch (error) {
         res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
       }
+    });
+
+    router.get('/stats', requireRole('city-drive', 'admin'), (_req: Request, res: Response) => {
+      const q = publishStats();
+      res.status(200).json({ photos: localPhotoCount(), pending: q.pending, published: q.published, lastError: q.lastError, supabase: q.configured });
     });
 
     router.get('/publish/:id', requireRole('city-drive', 'play'), (req: Request, res: Response) => {
