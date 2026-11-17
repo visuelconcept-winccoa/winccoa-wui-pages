@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The Visuel Concept logo — a 4 × 4 grid of squares — drawn from its colours rather than from an
+ * The WinCC OA logo — a 4 × 4 grid of squares — drawn from its colours rather than from an
  * image: sharp at any distance in the city (billboards, plaza, station) and in the HUD.
  */
 
@@ -48,5 +48,5 @@ export function logoSvg(size: number): string {
   const rects = LOGO_GRID.flatMap((row, r) =>
     row.map((c, k) => `<rect x="${k * cell + 6}" y="${r * cell + 6}" width="${cell - 12}" height="${cell - 12}" fill="${css(c)}"/>`)
   ).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="${size}" height="${size}" aria-label="Visuel Concept">${rects}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="${size}" height="${size}" aria-label="WinCC OA">${rects}</svg>`;
 }

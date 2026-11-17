@@ -599,7 +599,7 @@ export class CityWorld {
   }
 
   /**
-   * The logo, high on the towers: a large lit sign on the roofs of the tallest towers, turned
+   * The WinCC OA logo, high on the towers: a large lit sign on the roofs of the tallest towers, turned
    * towards the streets, and the logo set at the top of their facades. Brighter than white
    * (HDR colour), so the bloom makes it glow.
    */
