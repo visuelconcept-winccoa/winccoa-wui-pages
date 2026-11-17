@@ -1,0 +1,13 @@
+// Menu fragment for @visuelconcept-winccoa/wui-city-drive.
+// Merge these object(s) into the host dashboard's `entries` array. Idempotent by `routeId`.
+[
+  {
+    "title": { "en_US": "City Drive", "fr": "City Drive", "de_AT": "City Drive" },
+    "icon": "truck",
+    "path": "/city-drive",
+    "module": "/data/dashboard-wc/pages/city-drive.js",
+    "routeId": "city-drive",
+    "component": "wui-city-drive",
+    "permission": ["connected"]
+  }
+]

@@ -36,7 +36,7 @@ a role that an admin assigned is denied (fail closed).
 
 | Route | Called from | Pages that require the module |
 | --- | --- | --- |
-| `/api/para` (`para`) | `wui-kit/src/data/{dp-json-store,dp-single-json-store,app-security,audit-trail}.ts`, `wui-ai-kit/src/data/ai-store.ts`, `wui-fleet-core/src/data/fleet-store.ts`, `wui-audit-trail/src/audit-trail/dp-admin.ts`, `wui-production-orders/src/production-orders/data/fleet-link.ts` | alarms, ampere, app-security, audit-trail, auth-badge, camera-streams, fleet-closures, fleet-kpi-analysis, fleet-stop-analysis, gis, gis-plants, machine-fleet-3d, machine-sim, mosaic, process-monitor, production-orders, remote-vnc, report-builder, report-templates, tag-importer, thermal-reports, users |
+| `/api/para` (`para`) | `wui-kit/src/data/{dp-json-store,dp-single-json-store,app-security,audit-trail}.ts`, `wui-ai-kit/src/data/ai-store.ts`, `wui-fleet-core/src/data/fleet-store.ts`, `wui-audit-trail/src/audit-trail/dp-admin.ts`, `wui-production-orders/src/production-orders/data/fleet-link.ts` | alarms, ampere, app-security, audit-trail, auth-badge, camera-streams, city-drive, fleet-closures, fleet-kpi-analysis, fleet-stop-analysis, gis, gis-plants, machine-fleet-3d, machine-sim, mosaic, process-monitor, production-orders, remote-vnc, report-builder, report-templates, tag-importer, thermal-reports, users |
 | `/api/app-security` (`app-security`) | `wui-kit/src/data/app-security.ts` | the same pages, app-security excepted, plus para |
 | `/api/fleet` (`fleet-closures`) | `wui-fleet-core/src/data/fleet-store.ts` (the Fleet's writes, each checked on the server against its role; `/api/para` when `/api/fleet` does not answer) | fleet-kpi-analysis, fleet-stop-analysis, machine-fleet-3d |
 
