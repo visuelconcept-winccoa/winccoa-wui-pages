@@ -3,20 +3,33 @@
 
 /**
  * The game loop of City Drive (#79): keyboard input, car physics, collisions, traffic,
- * missions, fuel, score; draws through {@link CityWorld} and reports a {@link HudState} to the
+ * missions or logo hunt, on foot (F), fuel, score; draws through {@link CityWorld} and reports a {@link HudState} to the
  * page a few times per second. Datapoints never reach this file: the page feeds the machine
  * states and the forced lights in, and reads the telemetry out (dp-link.ts).
  */
 import type { MachineState } from './bindings.js';
 import { CELL, ROAD_WIDTH, generateCity, rng, type City } from './city.js';
+import { LogoHunt, type Pickup } from './collectibles.js';
 import { cancelIfRepaired, newDelivery, newIntervention, stepMission, type Mission } from './missions.js';
 import type { NeonPalette } from './palette.js';
 import { collide, collideCars, forwardSpeed, newCar, stepCar, type CarInput, type CarState } from './physics.js';
 import { carPose, spawnTraffic, stepTraffic, type LightOverrides, type TrafficCar } from './traffic.js';
+import { DEFAULT_SETTINGS, actionOf, readPad, type Action, type PadState, type Settings } from './settings.js';
+import { canEnter, leaveCar, stepWalker, type WalkerState } from './walker.js';
 import { DEFAULT_PROFILE, vehicleById, type Profile, type Vehicle } from './vehicles.js';
 import { CAMERA_MODES, CityWorld, type CameraMode, type RemoteCar } from './world.js';
 
-export type GameEvent = 'collision' | 'pickup' | 'mission-done' | 'mission-failed' | 'refuel' | 'empty';
+export type GameEvent =
+  | 'collision'
+  | 'pickup'
+  | 'mission-done'
+  | 'mission-failed'
+  | 'refuel'
+  | 'empty'
+  | 'wave-done'
+  | 'on-foot'
+  | 'in-car'
+  | 'too-far';
 
 export interface HudState {
   /** km/h. */
@@ -28,6 +41,10 @@ export interface HudState {
   paused: boolean;
   camera: CameraMode;
   lastEvent: GameEvent | null;
+  /** The player walks (out of the car). */
+  onFoot: boolean;
+  /** Logo hunt: tokens left in the wave, wave number, logos taken, running combo; null in missions mode. */
+  hunt: { left: number; wave: number; collected: number; combo: number } | null;
 }
 
 export interface Telemetry {
@@ -49,13 +66,7 @@ export interface Telemetry {
 const TRAFFIC = 26;
 const MAX_DT = 1 / 20;
 const HUD_HZ = 8;
-const KEYS = {
-  up: ['KeyW', 'KeyZ', 'ArrowUp'],
-  down: ['KeyS', 'ArrowDown'],
-  left: ['KeyA', 'KeyQ', 'ArrowLeft'],
-  right: ['KeyD', 'ArrowRight'],
-  brake: ['Space']
-};
+const NO_PAD: PadState = { throttle: 0, brake: 0, steer: 0, move: 0, handbrake: false, pressed: [] };
 
 export class CityGame {
   readonly city: City;
@@ -72,6 +83,18 @@ export class CityGame {
   onHud: (hud: HudState) => void = () => {};
   onEvent: (event: GameEvent) => void = () => {};
   onProfile: (profile: Profile) => void = () => {};
+  /** A logo token was blown up (logo hunt). */
+  onLogo: (pickup: Pickup) => void = () => {};
+  /** Logo hunt (mode `logos`), or null in missions mode. */
+  hunt: LogoHunt | null = null;
+  /** The player on foot, or null when driving. */
+  walker: WalkerState | null = null;
+  /** Key bindings, gamepad and the other settings (settings.ts). */
+  settings: Settings = DEFAULT_SETTINGS;
+  /** Name of the gamepad in use, or '' when none is connected. */
+  padName = '';
+  private pad: PadState = NO_PAD;
+  private readonly padPrevious: boolean[] = [];
 
   private readonly keys = new Set<string>();
   private readonly rand = rng(97);
@@ -124,8 +147,20 @@ export class CityGame {
     this.world.dispose();
   }
 
+  /** Applies the settings: bindings and gamepad at once, camera distance and graphics in the world. */
+  setSettings(settings: Settings): void {
+    this.settings = settings;
+    this.keys.clear();
+    this.world.setCameraDistance(settings.cameraDistance);
+    this.world.setQuality(settings.quality);
+  }
+
   /** The player's nickname, vehicle and neon colour. */
   setProfile(profile: Profile): void {
+    if (profile.mode !== this.profile.mode || (profile.mode === 'logos') !== (this.hunt !== null)) {
+      this.hunt = profile.mode === 'logos' ? new LogoHunt(this.city) : null;
+      this.world.setTokens(this.hunt?.tokens ?? []);
+    }
     this.profile = profile;
     this.vehicle = vehicleById(profile.vehicle);
     this.world.setPlayerVehicle(this.vehicle.body, this.palette[profile.color]);
@@ -158,6 +193,27 @@ export class CityGame {
     this.emitHud();
   }
 
+  /** Out of the car, or back in when close enough to it (F). */
+  toggleFoot(): void {
+    if (!this.walker) {
+      if (Math.abs(forwardSpeed(this.car)) > 3) return; // stop first
+      this.walker = leaveCar(this.car, this.vehicle.body.w / 2);
+      this.event('on-foot');
+    } else if (canEnter(this.walker, this.car)) {
+      this.walker = null;
+      this.event('in-car');
+    } else {
+      this.event('too-far');
+    }
+    this.world.setWalker(this.walker, this.palette[this.profile.color]);
+    this.emitHud();
+  }
+
+  /** Where the player is: on foot, or in the car. */
+  get position(): { x: number; z: number; heading: number } {
+    return this.walker ?? this.car;
+  }
+
   /** Puts the car back on the nearest road, facing along it. */
   resetCar(): void {
     const kx = Math.round(this.car.x / CELL);
@@ -174,44 +230,94 @@ export class CityGame {
     const faulted = [...this.machineStates].filter(([, s]) => s === 'fault').map(([id]) => id);
     this.mission =
       (faulted.length > 0 ? newIntervention(this.city, faulted[0], this.missionCount) : null) ??
-      newDelivery(this.city, this.car, this.missionCount, 1000 + this.missionCount * 31);
+      (this.hunt ? null : newDelivery(this.city, this.position, this.missionCount, 1000 + this.missionCount * 31));
     this.emitHud();
   }
 
   telemetry(): Telemetry {
+    const at = this.position;
     return {
-      x: Math.round(this.car.x * 10) / 10,
-      z: Math.round(this.car.z * 10) / 10,
-      heading: Math.round((((this.car.heading * 180) / Math.PI) % 360 + 360) % 360),
-      speed: Math.round(Math.abs(forwardSpeed(this.car)) * 3.6),
+      x: Math.round(at.x * 10) / 10,
+      z: Math.round(at.z * 10) / 10,
+      heading: Math.round((((at.heading * 180) / Math.PI) % 360 + 360) % 360),
+      speed: this.speedKmh(),
       fuel: Math.round(this.car.fuel * 1000) / 10,
       score: this.score,
       mission: this.mission ? `${this.mission.kind}:${this.mission.stage}` : '',
       event: this.lastEvent ?? '',
       nickname: this.profile.nickname,
-      vehicle: this.profile.vehicle,
+      // on foot, the others see a pedestrian
+      vehicle: this.walker ? 'foot' : this.profile.vehicle,
       color: this.profile.color
     };
   }
 
+  /** km/h of the player: walking or driving. */
+  speedKmh(): number {
+    return Math.round(Math.abs(this.walker ? this.walker.speed : forwardSpeed(this.car)) * 3.6);
+  }
+
+  /** A held action: one of its keys is down. */
+  private on(action: Action): boolean {
+    return this.settings.keys[action].some((code) => this.keys.has(code));
+  }
+
+  /** Keyboard and gamepad merged; the stronger of the two wins on each axis. */
+  private axes(): { throttle: number; steer: number; move: number } {
+    const kbThrottle = (this.on('up') ? 1 : 0) - (this.on('down') ? 1 : 0);
+    const kbSteer = (this.on('right') ? 1 : 0) - (this.on('left') ? 1 : 0);
+    const padThrottle = this.pad.throttle - this.pad.brake;
+    const pick = (a: number, b: number): number => (Math.abs(a) >= Math.abs(b) ? a : b);
+    const steer = Math.max(-1, Math.min(1, pick(kbSteer, this.pad.steer) * this.settings.steering));
+    return { throttle: pick(kbThrottle, padThrottle), steer, move: pick(kbThrottle, this.pad.move) };
+  }
+
   private input(): CarInput {
-    const on = (names: string[]): boolean => names.some((n) => this.keys.has(n));
-    return {
-      throttle: (on(KEYS.up) ? 1 : 0) - (on(KEYS.down) ? 1 : 0),
-      steer: (on(KEYS.right) ? 1 : 0) - (on(KEYS.left) ? 1 : 0),
-      handbrake: on(KEYS.brake)
-    };
+    if (this.walker) return { throttle: 0, steer: 0, handbrake: true }; // parked: the car rolls to a stop
+    const a = this.axes();
+    return { throttle: a.throttle, steer: a.steer, handbrake: this.on('brake') || this.pad.handbrake };
+  }
+
+  /** Reads the first connected gamepad and runs the buttons just pressed. */
+  private pollPad(): void {
+    if (!this.settings.gamepad.enabled || typeof navigator === 'undefined' || !navigator.getGamepads) {
+      this.pad = NO_PAD;
+      this.padName = '';
+      return;
+    }
+    const pad = [...navigator.getGamepads()].find((g) => g && g.connected) ?? null;
+    if (!pad) {
+      this.pad = NO_PAD;
+      this.padName = '';
+      return;
+    }
+    this.padName = pad.id;
+    this.pad = readPad(pad, this.settings, this.padPrevious);
+    for (const action of this.pad.pressed) this.run(action);
+  }
+
+  /** A one-shot action (key or gamepad button). */
+  private run(action: Action): void {
+    if (action === 'pause') this.setPaused(!this.paused);
+    else if (this.paused) return;
+    else if (action === 'camera') this.toggleCamera();
+    else if (action === 'time') this.toggleTimeOfDay();
+    else if (action === 'reset') this.resetCar();
+    else if (action === 'foot') this.toggleFoot();
+    else if (action === 'mission' && (!this.mission || this.mission.stage === 'done' || this.mission.stage === 'failed')) this.newMission();
   }
 
   private tick(dt: number): void {
+    this.pollPad();
     if (!this.paused) this.step(dt);
     this.world.setPlayer(this.car);
+    if (this.walker) this.world.setWalker(this.walker, this.palette[this.profile.color]);
     this.world.setTraffic(this.traffic.map((c) => ({ ...carPose(c), color: c.color })));
     this.world.setMachineStates(this.machineStates);
     this.world.setRemotePlayers(this.remotes);
     this.world.setLights(this.t, this.overrides);
     this.world.setMarker(this.mission && ['pickup', 'drop', 'reach'].includes(this.mission.stage) ? this.mission.target : null, this.mission?.kind ?? null, this.mission?.stage ?? null);
-    this.world.render(this.paused ? 0 : dt, forwardSpeed(this.car));
+    this.world.render(this.paused ? 0 : dt, this.walker ? this.walker.speed : forwardSpeed(this.car));
     this.hudClock += dt;
     if (this.hudClock >= 1 / HUD_HZ) {
       this.hudClock = 0;
@@ -243,15 +349,41 @@ export class CityGame {
     if (car.fuel === 0 && !this.wasEmpty) this.event('empty');
     this.wasEmpty = car.fuel === 0;
     this.car = car;
-    stepTraffic(this.traffic, this.city.blocks, this.t, dt, this.car, this.rand, this.overrides);
+    if (this.walker) {
+      const a = this.axes();
+      this.walker = stepWalker(
+        this.walker,
+        { move: a.move, turn: a.steer, run: this.on('run') || this.pad.handbrake },
+        dt,
+        this.city.buildings,
+        bounds
+      );
+    }
+    stepTraffic(this.traffic, this.city.blocks, this.t, dt, this.position, this.rand, this.overrides);
     this.stepMissions(dt);
+    this.stepHunt();
+  }
+
+  private stepHunt(): void {
+    if (!this.hunt) return;
+    const at = this.position;
+    const step = this.hunt.step(at.x, at.z, this.t);
+    if (step.pickups.length === 0) return;
+    this.score += step.points;
+    for (const p of step.pickups) {
+      this.world.explodeToken(p.token.x, p.token.z);
+      this.onLogo(p);
+    }
+    if (step.waveDone) this.event('wave-done');
+    this.world.setTokens(this.hunt.tokens);
+    this.emitHud();
   }
 
   private stepMissions(dt: number): void {
     if (!this.mission) return;
     const faulted = new Set([...this.machineStates].filter(([, st]) => st === 'fault').map(([id]) => id));
     const m = cancelIfRepaired(this.mission, faulted);
-    const step = stepMission(m, this.car, dt);
+    const step = stepMission(m, this.position, dt);
     this.mission = step.mission;
     this.score += step.gained;
     if (step.event === 'pickup') this.event('pickup');
@@ -266,24 +398,26 @@ export class CityGame {
 
   private emitHud(): void {
     this.onHud({
-      speed: Math.round(Math.abs(forwardSpeed(this.car)) * 3.6),
+      speed: this.speedKmh(),
       fuel: this.car.fuel,
       score: this.score,
       mission: this.mission,
       paused: this.paused,
       camera: this.camera,
-      lastEvent: this.lastEvent
+      lastEvent: this.lastEvent,
+      onFoot: this.walker !== null,
+      hunt: this.hunt ? { left: this.hunt.left, wave: this.hunt.wave, collected: this.hunt.collected, combo: this.hunt.comboAt(this.t) } : null
     });
   }
 
   private readonly onKeyDown = (e: KeyboardEvent): void => {
-    if (e.code === 'Escape' || e.code === 'KeyP') this.setPaused(!this.paused);
-    else if (e.code === 'KeyC') this.toggleCamera();
-    else if (e.code === 'KeyT') this.toggleTimeOfDay();
-    else if (e.code === 'KeyR') this.resetCar();
-    else if (e.code === 'KeyN' && (!this.mission || this.mission.stage === 'done' || this.mission.stage === 'failed')) this.newMission();
-    else this.keys.add(e.code);
-    if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
+    const action = actionOf(this.settings, e.code);
+    if (action && ['pause', 'camera', 'time', 'reset', 'foot', 'mission'].includes(action)) {
+      if (!e.repeat) this.run(action);
+    } else {
+      this.keys.add(e.code);
+    }
+    if (action || e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
   };
 
   private readonly onKeyUp = (e: KeyboardEvent): void => {

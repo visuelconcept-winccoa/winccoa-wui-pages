@@ -194,8 +194,9 @@ describe('vehicles and profile (#79)', () => {
 
   it('repairs a stored profile and cleans the nickname', async () => {
     const { parseProfile, cleanNickname, NICKNAME_MAX } = await import('./vehicles.js');
-    expect(parseProfile({ nickname: '  Aurel ', vehicle: 'limousine', color: 'alarm' })).toEqual({ nickname: 'Aurel', vehicle: 'limousine', color: 'alarm', time: 'night' });
-    expect(parseProfile({ vehicle: 'tank', color: 'pink' })).toEqual({ nickname: '', vehicle: 'coupe', color: 'primary', time: 'night' });
+    expect(parseProfile({ nickname: '  Aurel ', vehicle: 'limousine', color: 'alarm' })).toEqual({ nickname: 'Aurel', vehicle: 'limousine', color: 'alarm', time: 'night', mode: 'logos' });
+    expect(parseProfile({ vehicle: 'tank', color: 'pink' })).toEqual({ nickname: '', vehicle: 'coupe', color: 'primary', time: 'night', mode: 'logos' });
+    expect(parseProfile({ mode: 'missions' }).mode).toBe('missions');
     expect(parseProfile({ time: 'day' }).time).toBe('day');
     expect(parseProfile(null).vehicle).toBe('coupe');
     expect(cleanNickname('a\u0000b'.padEnd(40, 'x'))).toHaveLength(NICKNAME_MAX);
@@ -209,6 +210,106 @@ describe('dp link helpers (#79)', () => {
     expect(playerDp('  ')).toBe('CityDrive_Player_guest');
     expect(normDpe('System1:Line1.State.')).toBe('Line1.State');
     expect(normDpe('System1:A.b:_original.._value')).toBe('A.b');
+    // dpConnect hands the names back with the config attribute: the cause of the empty player list
+    expect(normDpe('System1:CityDrive_Player_a_x1.pos.x:_online.._value')).toBe('CityDrive_Player_a_x1.pos.x');
+    expect(normDpe('CityDrive_Player_a.score:_online.._value')).toBe('CityDrive_Player_a.score');
+    // one datapoint per session: two windows of one user never share it
+    expect(playerDp('root', 'k3f9a')).toBe('CityDrive_Player_root_k3f9a');
+    expect(playerDp('root', 'b2')).not.toBe(playerDp('root', 'k3f9a'));
     expect(telemetryWrite('P', { x: 1, speed: 50, nickname: 'Aurel' })).toEqual({ dpeNames: ['P.pos.x', 'P.speed', 'P.nickname'], values: [1, 50, 'Aurel'] });
+  });
+});
+
+describe('logo hunt (#79)', () => {
+  it('lays the tokens on the roads, apart, out of the crossroads', async () => {
+    const { placeTokens, TOKENS_PER_WAVE } = await import('./collectibles.js');
+    const city = generateCity(7);
+    const tokens = placeTokens(city, TOKENS_PER_WAVE, 3);
+    expect(tokens).toHaveLength(TOKENS_PER_WAVE);
+    for (const t of tokens) {
+      expect(onRoad(city, t.x, t.z)).toBe(true);
+      for (const o of tokens) if (o !== t) expect(Math.hypot(o.x - t.x, o.z - t.z)).toBeGreaterThanOrEqual(30);
+    }
+  });
+
+  it('scores a token once, chains a combo within the window, resets it after', async () => {
+    const { LogoHunt, TOKEN_POINTS } = await import('./collectibles.js');
+    const hunt = new LogoHunt(generateCity(7));
+    const [a, b, c] = hunt.tokens;
+    expect(hunt.step(a.x, a.z, 10).points).toBe(TOKEN_POINTS);
+    expect(hunt.step(a.x, a.z, 10.5).pickups).toHaveLength(0); // taken already
+    const second = hunt.step(b.x, b.z, 13);
+    expect(second.pickups[0].combo).toBe(2);
+    expect(second.points).toBe(2 * TOKEN_POINTS);
+    expect(hunt.step(c.x, c.z, 30).pickups[0].combo).toBe(1); // window over
+    expect(hunt.comboAt(100)).toBe(1);
+  });
+
+  it('a cleared wave adds its bonus and lays a new wave', async () => {
+    const { LogoHunt, TOKENS_PER_WAVE, WAVE_BONUS } = await import('./collectibles.js');
+    const hunt = new LogoHunt(generateCity(7));
+    let last = { waveDone: false, points: 0 };
+    hunt.tokens.forEach((t, k) => (last = hunt.step(t.x, t.z, k * 100)));
+    expect(last.waveDone).toBe(true);
+    expect(last.points).toBeGreaterThanOrEqual(WAVE_BONUS);
+    expect(hunt.wave).toBe(2);
+    expect(hunt.left).toBe(TOKENS_PER_WAVE);
+    expect(hunt.collected).toBe(TOKENS_PER_WAVE);
+  });
+});
+
+describe('on foot (#79)', () => {
+  it('steps out by the driver door, walks, runs, and gets back in only when close', async () => {
+    const { leaveCar, stepWalker, canEnter, RUN_SPEED } = await import('./walker.js');
+    const car = newCar(100, 100, 0);
+    const w0 = leaveCar(car, 1);
+    expect(w0.x).toBeGreaterThan(car.x); // facing +Z, the driver's left is +X
+    const bounds = { x0: -1000, z0: -1000, x1: 1000, z1: 1000 };
+    let w = w0;
+    for (let k = 0; k < 120; k++) w = stepWalker(w, { move: 1, turn: 0, run: true }, 1 / 60, [], bounds);
+    expect(w.speed).toBeCloseTo(RUN_SPEED, 1);
+    expect(w.z).toBeGreaterThan(w0.z + 8);
+    expect(canEnter(w, car)).toBe(false);
+    expect(canEnter(w0, car)).toBe(true);
+  });
+
+  it('walls stop the walker', async () => {
+    const { stepWalker, WALKER_RADIUS } = await import('./walker.js');
+    let w = { x: 0, z: -2, heading: 0, speed: 0, phase: 0 };
+    for (let k = 0; k < 300; k++) w = stepWalker(w, { move: 1, turn: 0, run: false }, 1 / 60, [{ x0: -5, z0: 0, x1: 5, z1: 10 }], { x0: -99, z0: -99, x1: 99, z1: 99 });
+    expect(w.z).toBeLessThanOrEqual(-WALKER_RADIUS + 1e-6);
+  });
+});
+
+describe('settings and gamepad (#79)', () => {
+  it('repairs stored settings and rebinds a key, removing it from another action', async () => {
+    const { parseSettings, rebind, actionOf, keyLabel, DEFAULT_SETTINGS } = await import('./settings.js');
+    const st = parseSettings({ steering: 9, quality: 'low', keys: { up: ['KeyI', 42], brake: [] }, gamepad: { deadzone: -1 } });
+    expect(st.steering).toBe(1.5);
+    expect(st.quality).toBe('low');
+    expect(st.keys.up).toEqual(['KeyI']);
+    expect(st.keys.brake).toEqual(DEFAULT_SETTINGS.keys.brake);
+    expect(st.gamepad.deadzone).toBe(0);
+    const re = rebind(DEFAULT_SETTINGS, 'camera', 'KeyF');
+    expect(actionOf(re, 'KeyF')).toBe('camera');
+    expect(re.keys.foot).not.toContain('KeyF');
+    expect(re.keys.foot.length).toBeGreaterThan(0);
+    expect(keyLabel('KeyW')).toBe('W');
+    expect(keyLabel('ArrowUp')).toBe('↑');
+  });
+
+  it('reads a standard gamepad: triggers, stick with dead zone, button edges', async () => {
+    const { readPad, DEFAULT_SETTINGS, deadzone } = await import('./settings.js');
+    const buttons = Array.from({ length: 17 }, () => ({ pressed: false, value: 0 }));
+    buttons[7] = { pressed: true, value: 0.8 }; // RT
+    buttons[1] = { pressed: true, value: 1 }; // B
+    const prev: boolean[] = [];
+    const a = readPad({ axes: [0.1, -0.6], buttons }, DEFAULT_SETTINGS, prev);
+    expect(a.throttle).toBe(0.8);
+    expect(a.steer).toBe(0); // inside the dead zone
+    expect(a.move).toBeCloseTo(-deadzone(-0.6, 0.15), 6);
+    expect(a.pressed).toEqual(['foot']);
+    expect(readPad({ axes: [1, 0], buttons }, DEFAULT_SETTINGS, prev).pressed).toEqual([]); // held: no new edge
+    expect(readPad({ axes: [1, 0], buttons }, { ...DEFAULT_SETTINGS, gamepad: { ...DEFAULT_SETTINGS.gamepad, invertSteer: true } }, prev).steer).toBe(-1);
   });
 });

@@ -20,7 +20,9 @@ export function drawMinimap(
   machines: ReadonlyMap<string, MachineState>,
   target: Point | null,
   targetColor: number,
-  others: readonly { x: number; z: number; color: number }[] = []
+  others: readonly { x: number; z: number; color: number }[] = [],
+  tokens: readonly { x: number; z: number }[] = [],
+  parked: { x: number; z: number } | null = null
 ): void {
   const g = canvas.getContext('2d');
   if (!g) return;
@@ -63,6 +65,19 @@ export function drawMinimap(
   for (const c of traffic) {
     const q = carPose(c);
     g.fillRect(mx(q.x) - 1.5, mz(q.z) - 1.5, 3, 3);
+  }
+  // logo tokens still to take
+  g.fillStyle = css(p.warning);
+  for (const t of tokens) {
+    g.beginPath();
+    g.arc(mx(t.x), mz(t.z), 2.4, 0, Math.PI * 2);
+    g.fill();
+  }
+  // the parked car while on foot
+  if (parked) {
+    g.strokeStyle = css(playerColor);
+    g.lineWidth = 2;
+    g.strokeRect(mx(parked.x) - 4, mz(parked.z) - 4, 8, 8);
   }
   // other players
   for (const o of others) {

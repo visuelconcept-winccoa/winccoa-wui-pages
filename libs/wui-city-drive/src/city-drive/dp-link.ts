@@ -33,7 +33,7 @@ const DEMO_PERIOD_MS = 9000;
 const PLAYERS_REFRESH_MS = 15000;
 const DEMO_STEP_MS = 100;
 /** A player is shown as connected while its datapoint moved within this delay. */
-export const ONLINE_MS = 35000;
+export const ONLINE_MS = 30000;
 
 /** Another player, as read from its `CityDrive_Player_<user>` datapoint. */
 export interface RemotePlayer {
@@ -95,16 +95,41 @@ interface DpEmission {
   value: unknown[];
 }
 
-/** A user name as a datapoint name suffix. */
-export function playerDp(user: string): string {
-  const safe = user.trim().replaceAll(/[^\w]+/g, '_');
-  return `${PLAYER_TYPE}_${safe || 'guest'}`;
+/**
+ * The player's datapoint: the WinCC OA user and a short id of this browser, so that two
+ * sessions — two windows, or two people sharing an account — never share one datapoint (they
+ * would each take the other for themselves and see nobody).
+ */
+export function playerDp(user: string, client = ''): string {
+  const safe = user.trim().replaceAll(/[^\w]+/g, '_') || 'guest';
+  const id = client.replaceAll(/[^\w]+/g, '');
+  return id ? `${PLAYER_TYPE}_${safe}_${id}` : `${PLAYER_TYPE}_${safe}`;
 }
 
-/** `System1:Line.State.` → `Line.State` (system and trailing dot dropped). */
+const CLIENT_KEY = 'wui-city-drive.client';
+
+/** A short id of this browser, kept in localStorage (a new one per visit when it is not available). */
+export function clientId(): string {
+  const fresh = Math.random().toString(36).slice(2, 7);
+  try {
+    const kept = localStorage.getItem(CLIENT_KEY);
+    if (kept && /^\w{3,12}$/.test(kept)) return kept;
+    localStorage.setItem(CLIENT_KEY, fresh);
+  } catch {
+    // private window: one id for this visit
+  }
+  return fresh;
+}
+
+/**
+ * `System1:Line.State.:_online.._value` → `Line.State`: the system, the config attribute
+ * (`dpConnect` hands the names back with `:_online.._value`) and a trailing dot dropped.
+ */
 export function normDpe(name: string): string {
-  const bare = name.includes(':') ? name.slice(name.indexOf(':') + 1) : name;
-  return bare.replace(/:_original\.\._value$/, '').replace(/\.$/, '');
+  let s = name.replace(/^[^:.]+:(?!_)/, '');
+  const cfg = s.indexOf(':');
+  if (cfg !== -1) s = s.slice(0, cfg);
+  return s.replace(/\.$/, '');
 }
 
 /** The DPE names and values to write for a telemetry change. */
@@ -137,6 +162,8 @@ export class DriveLink {
   lastWriteAt = 0;
   private demoTimer = 0;
   private writing = false;
+  /** Fields changed while a write was running: sent right after it, merged, never dropped. */
+  private pending: Partial<Telemetry> = {};
 
   /** Prepares the player datapoint and reads the bindings; switches to demo without a backend. */
   async open(onState: (s: LinkState) => void): Promise<void> {
@@ -147,7 +174,7 @@ export class DriveLink {
       this.startDemo(onState);
       return;
     }
-    this.player = playerDp(await userName());
+    this.player = playerDp(await userName(), clientId());
     await this.ensurePlayerDp().catch(() => {
       this.player = ''; // cannot create it: play without telemetry
     });
@@ -197,11 +224,16 @@ export class DriveLink {
     onPlayers([...players.values()]);
     if (dps.length === 0 || !this.api) return;
     const fields = Object.entries(ELEMENT) as [keyof Telemetry, string][];
+    let primed = false;
     const dpes = dps.flatMap((dp) => fields.map(([, el]) => `${dp}.${el}`));
     try {
       this.playersSub.add(
         this.api.dpConnect(dpes, true).subscribe((data: DpEmission) => {
           const now = Date.now();
+          // the first emission is dpConnect's answer with the current values: it says
+          // nothing about the player being here; only later changes (or heartbeats) do
+          const live = primed;
+          primed = true;
           data.dp.forEach((name, i) => {
             const dpe = normDpe(name);
             const dp = dps.find((d) => dpe.startsWith(`${d}.`));
@@ -209,7 +241,7 @@ export class DriveLink {
             if (!dp || !field) return;
             const p = players.get(dp) as RemotePlayer;
             (p as unknown as Record<string, unknown>)[field] = data.value[i];
-            p.updatedAt = now;
+            if (live) p.updatedAt = now;
           });
           onPlayers([...players.values()].map((p) => ({ ...p })));
         })
@@ -251,18 +283,26 @@ export class DriveLink {
     }, DEMO_STEP_MS);
   }
 
-  /** Writes the changed telemetry fields (skips when a write is still running). */
+  /** Writes the changed telemetry fields; while a write runs, the next fields wait, merged. */
   async write(fields: Partial<Telemetry>): Promise<void> {
-    if (this.demo || !this.player || this.writing) return;
+    if (this.demo || !this.player) return;
+    this.pending = { ...this.pending, ...fields };
+    if (this.writing) return;
     this.writing = true;
     try {
-      const res = await post(DP_SET_URL, telemetryWrite(this.player, fields));
-      if (res.ok) {
-        this.writes++;
-        this.lastWriteAt = Date.now();
+      while (Object.keys(this.pending).length > 0) {
+        const batch = this.pending;
+        this.pending = {};
+        try {
+          const res = await post(DP_SET_URL, telemetryWrite(this.player, batch));
+          if (res.ok) {
+            this.writes++;
+            this.lastWriteAt = Date.now();
+          }
+        } catch {
+          // the next sample will try again
+        }
       }
-    } catch {
-      // the next sample will try again
     } finally {
       this.writing = false;
     }
