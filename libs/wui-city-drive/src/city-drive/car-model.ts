@@ -39,6 +39,8 @@ export interface CarLook {
   tail: number;
   /** Registration, Eisenstadt style (`E` district): `WINCCOA 1`, `482 KT`… */
   plate?: string;
+  /** Wheel size, × the stock wheel (garage); bigger wheels lift the body. */
+  wheelScale?: number;
 }
 
 const PLATES = new Map<string, CanvasTexture>();
@@ -324,14 +326,16 @@ export function buildCar(b: Body, look: CarLook): Group {
     g.add(front, rear, lamp);
   }
 
-  // wheels
-  const r = 0.4;
+  // wheels: bigger ones lift everything else (the body sits on them)
+  const r = 0.4 * (look.wheelScale ?? 1);
+  const lift = Math.max(0, r - 0.4) * 0.9;
   const axleF = L - Math.max(0.85, b.l * 0.16);
   const axleR = -L + Math.max(0.9, b.l * 0.17);
   for (const z of [axleF, axleR]) {
     for (const sx of [-b.w / 2 + 0.12, b.w / 2 - 0.12]) {
-      const w = wheel(r, 0.28);
+      const w = wheel(r, 0.28 * Math.max(1, (look.wheelScale ?? 1) * 0.9));
       w.position.set(sx, r, z);
+      w.userData.wheel = true;
       g.add(w);
     }
   }
@@ -360,6 +364,7 @@ export function buildCar(b: Body, look: CarLook): Group {
     strip.position.set(sx * (b.w / 2 - 0.05), 0.05, 0);
     g.add(strip);
   }
+  if (lift > 0) for (const c of g.children) if (!c.userData.wheel) c.position.y += lift;
   return g;
 }
 

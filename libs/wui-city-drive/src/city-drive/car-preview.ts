@@ -84,12 +84,12 @@ export class CarPreview {
   }
 
   /** The vehicle shown, in the player's neon colour (rebuilt only when one of them changes). */
-  show(body: Body, glow: number, plate: string): void {
-    const key = `${JSON.stringify(body)}|${glow}|${plate}`;
+  show(body: Body, glow: number, plate: string, paint = PAINT, wheelScale = 1): void {
+    const key = `${JSON.stringify(body)}|${glow}|${plate}|${paint}|${wheelScale}`;
     if (key === this.key) return;
     this.key = key;
     if (this.car) this.turntable.remove(this.car);
-    this.car = buildCar(body, { paint: PAINT, glow, tail: this.p.alarm, plate });
+    this.car = buildCar(body, { paint, glow, tail: this.p.alarm, plate, wheelScale });
     this.turntable.add(this.car);
     this.ring.color.setHex(glow);
     this.rim.color = new Color(glow);

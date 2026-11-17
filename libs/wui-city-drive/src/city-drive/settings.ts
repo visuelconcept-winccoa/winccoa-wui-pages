@@ -223,6 +223,20 @@ export function readPad(pad: PadLike, s: Settings, previous: boolean[]): PadStat
   };
 }
 
+export type NavDir = 'up' | 'down' | 'left' | 'right';
+
+/** The direction a pad points to on its D-pad or left stick (standard mapping), or null. */
+export function padDirection(pad: PadLike): NavDir | null {
+  const b = (i: number): boolean => pad.buttons[i]?.pressed === true;
+  const x = pad.axes[0] ?? 0;
+  const y = pad.axes[1] ?? 0;
+  if (b(12) || y < -0.6) return 'up';
+  if (b(13) || y > 0.6) return 'down';
+  if (b(14) || x < -0.6) return 'left';
+  if (b(15) || x > 0.6) return 'right';
+  return null;
+}
+
 const SETTINGS_KEY = 'wui-city-drive.settings';
 
 export function loadSettings(): Settings {

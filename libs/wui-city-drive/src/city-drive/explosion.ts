@@ -148,8 +148,7 @@ export class LogoFx {
   }
 
   /** Blows a token up at (x, z): sparks, shards, shockwave, flash, camera shake. */
-  explode(x: number, z: number): void {
-    const y = TOKEN_Y;
+  explode(x: number, z: number, y = TOKEN_Y): void {
     // sparks
     const pos = new Float32Array(SPARKS * 3);
     const col = new Float32Array(SPARKS * 3);

@@ -6,8 +6,9 @@
  *
  * - the **WebUI hammer**: a heavy overhead blow, short reach, wide;
  * - the **sword** (an original star mark on the blade): a fast slash, a wide arc;
- * - the **cube crossbow**: shoots WinCC OA logo cubes that fly ~40 m/s, drop a little and
- *   stop against the walls.
+ * - the **cube crossbow**: shoots WinCC OA logo cubes that fly ~40 m/s and drop a little;
+ *   a cube sticks where it lands (a wall, the ground, a car, a logo), stays there
+ *   {@link FUSE_S} s, then blows up: the blast takes the logos and hits the cars around it.
  *
  * They break the logo tokens (they score as if driven through) and the cars — a hit on the
  * traffic or a security car raises the alert level. They never touch the pedestrians.
@@ -82,10 +83,17 @@ export interface Bolt {
   age: number;
   /** Local player who shot it. */
   owner: number;
+  /** Seconds left before it blows up, once stuck (null while flying). */
+  fuse: number | null;
 }
 
 export const BOLT_SPEED = 40;
-export const BOLT_LIFE = 1.4;
+/** Seconds a stuck cube waits before it blows up. */
+export const FUSE_S = 1;
+/** Reach of its blast (m): logos and cars within it. */
+export const BLAST_M = 4;
+/** Height of the ground under a cube resting on it. */
+const REST_Y = 0.16;
 const GRAVITY = 5;
 /** Height of the shot: the crossbow at the shoulder. */
 const BOLT_Y = 1.4;
@@ -95,13 +103,24 @@ let nextBoltId = 1;
 export function fireBolt(x: number, z: number, heading: number, owner: number): Bolt {
   const fx = Math.sin(heading);
   const fz = Math.cos(heading);
-  return { id: nextBoltId++, x: x + fx * 0.9, y: BOLT_Y, z: z + fz * 0.9, vx: fx * BOLT_SPEED, vy: 0.6, vz: fz * BOLT_SPEED, age: 0, owner };
+  return { id: nextBoltId++, x: x + fx * 0.9, y: BOLT_Y, z: z + fz * 0.9, vx: fx * BOLT_SPEED, vy: 0.6, vz: fz * BOLT_SPEED, age: 0, owner, fuse: null };
 }
 
-/** One step of a cube; null once it hit a wall, the ground, or flew too long. */
-export function stepBolt(b: Bolt, dt: number, walls: readonly Box[]): Bolt | null {
-  const next = { ...b, x: b.x + b.vx * dt, y: b.y + b.vy * dt, z: b.z + b.vz * dt, vy: b.vy - GRAVITY * dt, age: b.age + dt };
-  if (next.age > BOLT_LIFE || next.y < 0.1) return null;
-  if (walls.some((w) => next.x > w.x0 && next.x < w.x1 && next.z > w.z0 && next.z < w.z1)) return null;
-  return next;
+/** The cube stops where it is and its fuse starts. */
+export const stick = (b: Bolt): Bolt => ({ ...b, vx: 0, vy: 0, vz: 0, fuse: b.fuse ?? FUSE_S });
+
+/**
+ * One step of a cube: in flight it moves and drops; against a wall it stops at the wall, on the
+ * ground it rests on it — and its fuse starts. A stuck cube burns its fuse; `blows` is true at
+ * the step it reaches 0 (the caller makes it explode and drops it).
+ */
+export function stepBolt(b: Bolt, dt: number, walls: readonly Box[]): { bolt: Bolt; blows: boolean } {
+  if (b.fuse !== null) {
+    const fuse = b.fuse - dt;
+    return { bolt: { ...b, fuse, age: b.age + dt }, blows: fuse <= 0 };
+  }
+  const next: Bolt = { ...b, x: b.x + b.vx * dt, y: b.y + b.vy * dt, z: b.z + b.vz * dt, vy: b.vy - GRAVITY * dt, age: b.age + dt };
+  if (walls.some((w) => next.x > w.x0 && next.x < w.x1 && next.z > w.z0 && next.z < w.z1)) return { bolt: stick({ ...b, age: next.age }), blows: false };
+  if (next.y <= REST_Y) return { bolt: stick({ ...next, y: REST_Y }), blows: false };
+  return { bolt: next, blows: false };
 }

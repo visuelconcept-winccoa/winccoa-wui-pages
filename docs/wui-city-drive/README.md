@@ -24,10 +24,13 @@ The game is in English only.
   day (neon night or day); **Settings** (also in game): keys, gamepad, steering, camera,
   graphics, units, minimap / players panel. (the iX theme colours), kept in the browser
   (`localStorage`) and written to the player's datapoint.
-- Vehicle choice on a **turntable**: the car turns in the player's colour; ◀ ▶ or the dots to
-  change it.
-- Vehicles: **Coupé de Ville** (fast), **Limousine** (long, heavy), **Pickup**, **Maintenance
-  van** (best range). Each has its own physics (speed, grip, steering, fuel, size).
+- **Garage** on a **turntable**: the car turns in its paint and neon colour. Lines Car, Wheels,
+  Paint, Neon, Driver: ▲ ▼ picks a line, ◀ ▶ changes it — arrow keys (keyboard player), D-pad or
+  left stick (each gamepad on its own player's card), or the mouse.
+- Cars: **Neon Specter** (finned coupé), **Kitsune GT** (roadster, the most agile), **Thunder
+  Ronin** (muscle car, the strongest pull), **Grand Duchess** (limousine), **Night Courier**
+  (estate), **Shinjuku Cab** (taxi), **Iron Mule** (pickup), **Hard Hat** (maintenance van, best
+  range). Each has its own physics (speed, grip, steering, fuel, size).
 - Keys: W/Z ↑ throttle · S ↓ brake / reverse · A/Q ← D → steer · Space handbrake (drift) ·
   C camera (chase, street level, bonnet, drone, street-corner cameras, map view) · T day / night ·
   R back on the road · N new mission · Esc pause. Click the city first
@@ -37,7 +40,8 @@ The game is in English only.
   of 24 adds a bonus and lays a new one.
 - **On foot**: F to get out of the car (once stopped) and back in when within 4.5 m of it;
   Shift to run. A jointed figure walks and runs with a real stride.
-- **Weapons on foot**: WebUI hammer, star sword, cube crossbow (WinCC OA logo cubes). E strikes
+- **Weapons on foot**: WebUI hammer, star sword, cube crossbow (WinCC OA logo cubes that stick
+  where they land and blow up 1 s later, 4 m blast). E strikes
   or shoots, X changes weapon (pad: X, D-pad). They break logos (scored) and cars (alert level
   up); never the pedestrians.
 - **USB gamepad** (standard mapping): RT / LT throttle and brake, left stick, A handbrake /

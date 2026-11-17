@@ -69,7 +69,7 @@ import { LogoFx } from './explosion.js';
 import { TensionFx } from './tension-fx.js';
 import { applyPose, makeCube, makeFigure, setFigureWeapon } from './figure-model.js';
 import { gaitPose, type Pose } from './figure.js';
-import type { Bolt, WeaponId } from './weapons.js';
+import { FUSE_S, type Bolt, type WeaponId } from './weapons.js';
 import type { CarState } from './physics.js';
 import type { SpeedCamera } from './tension.js';
 import type { Token } from './collectibles.js';
@@ -152,6 +152,8 @@ interface View {
   rect: { x: number; y: number; w: number; h: number };
   /** Damage 0..1 (#85): smoke, a flickering headlight, a sagging body. */
   damage: number;
+  /** Skin tone of the player's character (garage). */
+  skin: number;
 }
 
 function neon(color: number, opacity = 1): LineBasicMaterial {
@@ -187,8 +189,8 @@ const SEDAN: Body = { w: 2, h: 0.6, l: 5.1, cabinL: 2.1, cabinH: 0.5, cabinZ: -0
 const SEDAN_FINS: Body = { ...SEDAN, fins: true };
 
 /** A car of the game: the model, plus the visible beams of its headlights. */
-function makeCar(p: NeonPalette, glow: number, paint: number, b: Body = SEDAN, plate?: string): Group {
-  const g = buildCar(b, { paint, glow, tail: p.alarm, plate });
+function makeCar(p: NeonPalette, glow: number, paint: number, b: Body = SEDAN, plate?: string, wheelScale = 1): Group {
+  const g = buildCar(b, { paint, glow, tail: p.alarm, plate, wheelScale });
   for (const sx of [-b.w * 0.36, b.w * 0.36]) {
     const beam = new Mesh(
       new ConeGeometry(2.6, 16, 20, 1, true),
@@ -320,7 +322,8 @@ export class CityWorld {
       corner: null,
       speed: 0,
       rect: { x: 0, y: 0, w: 1, h: 1 },
-      damage: 0
+      damage: 0,
+      skin: 0
     };
     this.attachHeadlights(view);
     return view;
@@ -711,7 +714,7 @@ export class CityWorld {
     }
     if (!v.walker || v.walkerColor !== color) {
       if (v.walker) this.scene.remove(v.walker);
-      v.walker = makeFigure(color, 0.21 + i * 0.37, 0);
+      v.walker = makeFigure(color, 0.21 + i * 0.37, v.skin);
       v.walkerColor = color;
       this.scene.add(v.walker);
     }
@@ -733,13 +736,22 @@ export class CityWorld {
         this.scene.add(m);
       }
       m.position.set(b.x, b.y, b.z);
-      m.rotation.set(b.age * 9, b.age * 7, 0);
+      // in flight it spins; stuck, it stops and pulses faster and faster until it blows up
+      const flight = b.fuse === null ? b.age : b.age - (FUSE_S - b.fuse);
+      m.rotation.set(flight * 9, flight * 7, 0);
+      const lit = b.fuse === null ? 0 : 1 - b.fuse / FUSE_S;
+      m.scale.setScalar(1 + (b.fuse === null ? 0 : 0.12 + 0.12 * lit) * Math.abs(Math.sin(lit * lit * 40)));
     }
     for (const [id, m] of this.bolts) {
       if (seen.has(id)) continue;
       this.scene.remove(m);
       this.bolts.delete(id);
     }
+  }
+
+  /** A crossbow cube blows up at (x, y, z): the logo explosion. */
+  explodeCube(x: number, y: number, z: number): void {
+    this.fx.explode(x, z, Math.max(0.4, y));
   }
 
   /** A blow or a cube hit something at (x, z): a burst of sparks. */
@@ -792,12 +804,17 @@ export class CityWorld {
 
 
   /** Player i's vehicle: its silhouette and its neon colour. */
-  setPlayerVehicle(i: number, body: Body, glow: number): void {
+  setPlayerVehicle(i: number, body: Body, glow: number, look: { paint: number; wheelScale: number; skin: number } = { paint: 0x14232a, wheelScale: 1, skin: 0 }): void {
     const v = this.views[i];
     if (!v) return;
     const pose = { x: v.car.position.x, z: v.car.position.z, heading: v.car.rotation.y };
     this.scene.remove(v.car);
-    v.car = makeCar(this.p, glow, 0x14232a, body, plateOf(i));
+    v.car = makeCar(this.p, glow, look.paint, body, plateOf(i), look.wheelScale);
+    // the character's skin: a new figure when it changed
+    if (v.skin !== look.skin) {
+      v.skin = look.skin;
+      v.walkerColor = -1;
+    }
     v.body = body;
     this.scene.add(v.car);
     this.attachHeadlights(v);

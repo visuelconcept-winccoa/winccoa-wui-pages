@@ -53,7 +53,22 @@ import { TelemetryThrottle } from './city-drive/telemetry.js';
 import { CarPreview } from './city-drive/car-preview.js';
 import { DpSingleJsonStore } from '@visuelconcept-winccoa/wui-kit/data/dp-single-json-store.js';
 import { addResults, leaderboard, ordinal, playerCount, resultId, validEmail, type BoardRow, type GameResult } from './city-drive/results.js';
-import { NEON_COLORS, NICKNAME_MAX, type NeonColor, VEHICLES, cleanNickname, parseProfile, vehicleById, type Profile } from './city-drive/vehicles.js';
+import {
+  NEON_COLORS,
+  NICKNAME_MAX,
+  PAINTS,
+  SKIN_TONES,
+  VEHICLES,
+  WHEELS,
+  cleanNickname,
+  cycle,
+  paintById,
+  parseProfile,
+  vehicleById,
+  wheelById,
+  type NeonColor,
+  type Profile
+} from './city-drive/vehicles.js';
 
 const MODULE_ID = 'city-drive';
 const PROFILE_KEY = 'wui-city-drive.profile';
@@ -78,6 +93,15 @@ function saveProfile(p: Profile): void {
     // private window: the profile lives for this visit only
   }
 }
+
+/** The garage's lines, in order (▲ ▼ moves between them). */
+const GARAGE_ROWS = ['vehicle', 'wheels', 'paint', 'color', 'skin'] as const;
+type GarageRow = (typeof GARAGE_ROWS)[number];
+const ROW_LABEL: Record<GarageRow, string> = { vehicle: 'Car', wheels: 'Wheels', paint: 'Paint', color: 'Neon', skin: 'Driver' };
+const NEON_LABEL: Record<NeonColor, string> = { primary: 'Cyan', dynamic: 'Electric blue', info: 'Blue', success: 'Green', warning: 'Amber', alarm: 'Red', critical: 'Orange' };
+/** The skin tones of figure-model.ts, for the swatch. */
+const SKIN_SWATCH = [0xe8c4a8, 0xd9a882, 0xb98462, 0x8d5a3b, 0x613f2b];
+const ARROWS: Record<string, 'up' | 'down' | 'left' | 'right'> = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
 
 const minutes = (s: number): string => (s === 60 ? '1 minute' : `${s / 60} minutes`);
 
@@ -166,6 +190,8 @@ export class WuiCityDrive extends LitElement {
   @state() private board: BoardRow[] | null = null;
   /** People in the ranking (one per email, else per nickname). */
   @state() private boardPlayers = 0;
+  /** The garage line each player's controls are on. */
+  @state() private garageRow: number[] = [];
   /** The turning cars of the start screen, one per player card. */
   private readonly previews = new Map<number, CarPreview>();
   private readonly resultsStore = new DpSingleJsonStore<GameResult[]>(RESULTS_DP, RESULTS_DP, () => [], { isArray: true });
@@ -231,7 +257,7 @@ export class WuiCityDrive extends LitElement {
         this.previews.set(k, pv);
       }
       const pr = this.profiles[k];
-      if (pr) pv.show(vehicleById(pr.vehicle).body, this.palette[pr.color], `WINCCOA ${k + 1}`);
+      if (pr) pv.show(vehicleById(pr.vehicle).body, this.palette[pr.color], `WINCCOA ${k + 1}`, paintById(pr.paint).color, wheelById(pr.wheels).scale);
     }
   }
 
@@ -366,6 +392,7 @@ export class WuiCityDrive extends LitElement {
         <ix-icon-button class="arrow next" ghost icon="chevron-right" title="Next vehicle" @click=${() => this.cycleVehicle(k, 1)}></ix-icon-button>
         <div class="garage-info">
           <ix-typography format="h4">${vehicleById(pr.vehicle).label}</ix-typography>
+          <div class="kind">${vehicleById(pr.vehicle).kind}</div>
           ${two
             ? nothing
             : html`<div class="stat"><span>Speed</span>${bars(vehicleById(pr.vehicle).rating.speed)}</div>
@@ -378,20 +405,65 @@ export class WuiCityDrive extends LitElement {
           )}
         </div>
       </div>
-      <div class="colors">
-        ${p
-          ? NEON_COLORS.map(
-              (c) => html`<button
-                class="swatch ${pr.color === c ? 'on' : ''}"
-                style="--c:${hex(p[c])}"
-                title=${c}
-                aria-pressed=${pr.color === c}
-                @click=${() => this.setProfileOf(k, { ...pr, color: c })}
-              ></button>`
-            )
-          : nothing}
+      <div class="rows">
+        ${GARAGE_ROWS.map(
+          (row, r) => html`<div class="grow-row ${(this.garageRow[k] ?? 0) === r ? 'on' : ''}" @click=${() => this.setGarageRow(k, r)}>
+            <span class="row-label">${ROW_LABEL[row]}</span>
+            <ix-icon-button ghost size="16" icon="chevron-left" title="Previous" @click=${(e: Event) => this.garageStep(k, row, -1, e)}></ix-icon-button>
+            <span class="row-value">${this.garageValue(k, row)}</span>
+            <ix-icon-button ghost size="16" icon="chevron-right" title="Next" @click=${(e: Event) => this.garageStep(k, row, 1, e)}></ix-icon-button>
+          </div>`
+        )}
       </div>
+      <div class="hint">▲ ▼ choose a line · ◀ ▶ change it (${this.navHint(k)})</div>
     </div>`;
+  }
+
+  /** What a garage line shows: the value's name, with a swatch for the colours. */
+  private garageValue(k: number, row: GarageRow): TemplateResult | string {
+    const pr = this.profiles[k];
+    if (!pr) return '';
+    const pal = this.palette;
+    if (row === 'vehicle') return `${vehicleById(pr.vehicle).label} · ${vehicleById(pr.vehicle).kind}`;
+    if (row === 'wheels') return wheelById(pr.wheels).label;
+    if (row === 'paint') return html`<span class="chip" style="--chip:${hex(paintById(pr.paint).color)}"></span>${paintById(pr.paint).label}`;
+    if (row === 'color') return html`<span class="chip neon" style="--chip:${hex(pal ? pal[pr.color] : 0x00bde3)}"></span>${NEON_LABEL[pr.color]}`;
+    return html`<span class="chip" style="--chip:${hex(SKIN_SWATCH[pr.skin] ?? SKIN_SWATCH[0])}"></span>Tone ${pr.skin + 1}`;
+  }
+
+  /** ◀ ▶ on a garage line. */
+  private garageStep(k: number, row: GarageRow, step: number, e?: Event): void {
+    e?.stopPropagation();
+    const pr = this.profiles[k];
+    if (!pr) return;
+    this.setGarageRow(k, GARAGE_ROWS.indexOf(row));
+    const ids = <T extends { id: string }>(list: readonly T[]): T['id'][] => list.map((x) => x.id);
+    if (row === 'vehicle') this.setProfileOf(k, { ...pr, vehicle: cycle(ids(VEHICLES), pr.vehicle, step) });
+    else if (row === 'wheels') this.setProfileOf(k, { ...pr, wheels: cycle(ids(WHEELS), pr.wheels, step) });
+    else if (row === 'paint') this.setProfileOf(k, { ...pr, paint: cycle(ids(PAINTS), pr.paint, step) });
+    else if (row === 'color') this.setProfileOf(k, { ...pr, color: cycle(NEON_COLORS, pr.color, step) });
+    else this.setProfileOf(k, { ...pr, skin: (pr.skin + step + SKIN_TONES) % SKIN_TONES });
+  }
+
+  private setGarageRow(k: number, r: number): void {
+    const next = [...this.garageRow];
+    next[k] = (r + GARAGE_ROWS.length) % GARAGE_ROWS.length;
+    this.garageRow = next;
+  }
+
+  /** The keyboard's or a gamepad's arrows on player k's garage. */
+  private navigate(k: number, dir: 'up' | 'down' | 'left' | 'right'): void {
+    if (this.started || this.settingsOpen || !this.profiles[k]) return;
+    const r = this.garageRow[k] ?? 0;
+    if (dir === 'up' || dir === 'down') this.setGarageRow(k, r + (dir === 'down' ? 1 : -1));
+    else this.garageStep(k, GARAGE_ROWS[r], dir === 'right' ? 1 : -1);
+  }
+
+  /** Which controls move player k's garage. */
+  private navHint(k: number): string {
+    if (this.profiles.length === 1) return 'arrow keys or gamepad';
+    const d = this.slots.devices[k];
+    return d === 'keyboard' ? 'arrow keys' : d ? 'D-pad or stick' : 'join first';
   }
 
   private deviceName(device: DeviceId): string {
@@ -839,6 +911,7 @@ export class WuiCityDrive extends LitElement {
       void this.recordResults(results);
     };
     this.game.onFlash = (f, k) => this.onFlash(f, k);
+    this.game.onNav = (k, dir) => this.navigate(k, dir);
     this.pickPlayers(this.local.players);
     this.game.setProfile(0, this.profile);
     this.game.start();
@@ -856,8 +929,22 @@ export class WuiCityDrive extends LitElement {
    * then pressed the focused button instead of seating the keyboard.
    */
   private readonly onLobbyKey = (e: KeyboardEvent): void => {
-    if (this.started || this.local.players < 2 || this.settingsOpen || this.listening || e.repeat) return;
-    if (e.composedPath()[0] === this.stage) return; // the game handles its own keys
+    if (this.started || this.settingsOpen || this.listening) return;
+    // the garage: the arrows move the keyboard player's card (alone: the only card) —
+    // not while typing in a field (the arrows move the caret there)
+    const arrow = ARROWS[e.code];
+    const target = e.composedPath()[0];
+    const typing = target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
+    if (arrow && !typing) {
+      const k = this.profiles.length === 1 ? 0 : this.slots.slotOf('keyboard');
+      if (k !== -1) {
+        e.preventDefault();
+        this.navigate(k, arrow);
+      }
+      return;
+    }
+    if (this.local.players < 2 || e.repeat) return;
+    if (target === this.stage) return; // the game handles its own keys
     if (e.code === 'Enter' || e.code === 'NumpadEnter') {
       e.preventDefault();
       this.onDevice('keyboard', 'join');
@@ -1199,22 +1286,6 @@ function pageStyles(): ReturnType<typeof css> {
       background: var(--theme-color-primary);
       box-shadow: 0 0 4px var(--theme-color-primary);
     }
-    .colors {
-      display: flex;
-      gap: 0.5rem;
-    }
-    .swatch {
-      width: 2rem;
-      height: 2rem;
-      border-radius: 50%;
-      border: 2px solid transparent;
-      background: var(--c);
-      box-shadow: 0 0 10px var(--c);
-      cursor: pointer;
-    }
-    .swatch.on {
-      border-color: var(--theme-color-std-text);
-    }
     .go {
       align-self: flex-end;
     }
@@ -1389,6 +1460,50 @@ function pageStyles(): ReturnType<typeof css> {
     .garage-info .stat {
       width: 11rem;
       gap: 0.5rem;
+    }
+    .garage-info .kind {
+      font-size: 0.8rem;
+      color: var(--theme-color-soft-text);
+    }
+    .rows {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .grow-row {
+      display: grid;
+      grid-template-columns: 5rem auto 1fr auto;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0 0.25rem;
+      border: 1px solid transparent;
+      border-radius: var(--theme-default-border-radius);
+      cursor: pointer;
+    }
+    .grow-row.on {
+      border-color: var(--c, var(--theme-color-primary));
+      background: color-mix(in srgb, var(--c, var(--theme-color-primary)) 12%, transparent);
+    }
+    .row-label {
+      font-size: 0.8rem;
+      color: var(--theme-color-soft-text);
+    }
+    .row-value {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      font-weight: 600;
+    }
+    .chip {
+      width: 0.85rem;
+      height: 0.85rem;
+      border-radius: 50%;
+      background: var(--chip);
+      border: 1px solid var(--theme-color-soft-bdr);
+    }
+    .chip.neon {
+      box-shadow: 0 0 6px var(--chip);
     }
     .garage-dots {
       position: absolute;
