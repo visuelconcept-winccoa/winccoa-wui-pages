@@ -148,7 +148,25 @@ interface Walker {
   dir: 1 | -1;
   speed: number;
   phase: number;
+  /** Seconds of panic left (a fast car or a horn nearby, #95), and how far it stepped aside (0..1). */
+  panic: number;
+  dodge: number;
 }
+
+/** A car the pedestrians watch: where it is, how fast it goes, whether it honks. */
+export interface StreetThreat {
+  x: number;
+  z: number;
+  speed: number;
+  horn: boolean;
+}
+
+/** A car faster than this (m/s) within PANIC_M scares the pedestrians; a horn within HORN_M. */
+const PANIC_SPEED = 5;
+const PANIC_M = 10;
+const HORN_M = 25;
+/** How far a scared pedestrian jumps aside, towards the buildings (m). */
+const DODGE_M = 1.7;
 
 /** A point on a block's sidewalk loop at distance `s` (perimeter of the box). */
 function perimeterPoint(w: Walker, s: number): { x: number; z: number; heading: number } {
@@ -449,7 +467,9 @@ export class StreetLife {
         s: rand() * 4 * CELL,
         dir: rand() < 0.5 ? 1 : -1,
         speed: WALK_SPEED * (0.7 + rand() * 0.6),
-        phase: rand() * 10
+        phase: rand() * 10,
+        panic: 0,
+        dodge: 0
       });
       this.bodies.setColorAt(k, new Color(colors[Math.floor(rand() * colors.length)]));
     }
@@ -462,18 +482,46 @@ export class StreetLife {
   }
 
   /** Moves the pedestrians by `dt` seconds. */
-  update(dt: number): void {
+  /**
+   * Moves the pedestrians. Those near a fast car or a horn (#95) panic for a moment: they jump
+   * aside towards the buildings with a hop, then run off along the sidewalk, away from the car,
+   * and calm down.
+   */
+  update(dt: number, threats: readonly StreetThreat[] = []): void {
     this.walkers.forEach((w, k) => {
-      w.s += w.dir * w.speed * dt;
-      w.phase += dt * w.speed * 5;
+      const here = perimeterPoint(w, w.s);
+      for (const t of threats) {
+        const d = Math.hypot(t.x - here.x, t.z - here.z);
+        if ((t.speed > PANIC_SPEED && d < PANIC_M) || (t.horn && d < HORN_M)) {
+          if (w.panic <= 0) {
+            // run away from the car: the direction along the sidewalk that opens the distance
+            const ahead = perimeterPoint(w, w.s + 1);
+            const away = Math.hypot(t.x - ahead.x, t.z - ahead.z) > d ? 1 : -1;
+            w.dir = away as 1 | -1;
+          }
+          w.panic = 1.6;
+        }
+      }
+      w.panic = Math.max(0, w.panic - dt);
+      w.dodge += ((w.panic > 0 ? 1 : 0) - w.dodge) * Math.min(1, dt * (w.panic > 0 ? 9 : 1.2));
+      const pace = w.speed * (1 + 2.2 * Math.min(1, w.panic));
+      w.s += w.dir * pace * dt;
+      w.phase += dt * pace * 5;
       const pt = perimeterPoint(w, w.s);
-      const bob = Math.abs(Math.sin(w.phase)) * 0.05;
+      // aside: towards the middle of the block (the shopfronts)
+      const cx = (w.x0 + w.x1) / 2 - pt.x;
+      const cz = (w.z0 + w.z1) / 2 - pt.z;
+      const n = Math.hypot(cx, cz) || 1;
+      const px = pt.x + (cx / n) * DODGE_M * w.dodge;
+      const pz = pt.z + (cz / n) * DODGE_M * w.dodge;
+      const scared = w.panic > 0;
+      const bob = Math.abs(Math.sin(w.phase)) * (scared ? 0.16 : 0.05);
       this.o.scale.set(1, 1, 1);
-      this.o.rotation.set(0, pt.heading + (w.dir < 0 ? Math.PI : 0), Math.sin(w.phase) * 0.04);
-      this.o.position.set(pt.x, 0.72 + bob, pt.z);
+      this.o.rotation.set(scared ? 0.25 : 0, pt.heading + (w.dir < 0 ? Math.PI : 0), Math.sin(w.phase) * (scared ? 0.12 : 0.04), 'YXZ');
+      this.o.position.set(px, 0.72 + bob, pz);
       this.o.updateMatrix();
       this.bodies.setMatrixAt(k, this.o.matrix);
-      this.o.position.set(pt.x, 1.55 + bob, pt.z);
+      this.o.position.set(px, 1.55 + bob, pz);
       this.o.updateMatrix();
       this.heads.setMatrixAt(k, this.o.matrix);
     });

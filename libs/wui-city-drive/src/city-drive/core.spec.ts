@@ -639,3 +639,35 @@ describe('admin statistics (#94)', () => {
     expect(csv).toContain(`"'=HYPERLINK(""x"")"`);
   });
 });
+
+describe('atmosphere (#95)', () => {
+  it('turns a DPE value into a weather level', async () => {
+    const { weatherLevel, parseWeatherBinding, gripFactor, demoWeather } = await import('./weather.js');
+    expect(weatherLevel(true)).toBe(1);
+    expect(weatherLevel(0.4)).toBe(0.4);
+    expect(weatherLevel(60)).toBe(0.6); // a percentage
+    expect(weatherLevel(5, 10)).toBe(0.5); // mm/h with rainMax 10
+    expect(weatherLevel(2000, 10000, true)).toBeCloseTo(0.8); // a visibility in m
+    expect(weatherLevel('n/a')).toBe(0);
+    expect(parseWeatherBinding({ rain: 'Meteo.Rain', rainMax: 10 })).toMatchObject({ rain: 'Meteo.Rain', rainMax: 10 });
+    expect(parseWeatherBinding({})).toBeNull();
+    expect(gripFactor({ rain: 1, fog: 0 })).toBe(0.75);
+    expect(demoWeather(30).rain).toBe(0);
+    expect(demoWeather(150).rain).toBeGreaterThan(0.9);
+  });
+
+  it('binds the weather in the config and follows its DPEs', async () => {
+    const { parseConfig, boundDpes } = await import('./bindings.js');
+    const cfg = parseConfig({ machines: [], lights: [], weather: { rain: 'Meteo.Rain', fog: 'Meteo.Vis', fogInverse: true } });
+    expect(boundDpes(cfg)).toEqual(['Meteo.Rain', 'Meteo.Vis']);
+  });
+
+  it('pitches the engine with the speed, gear by gear, and screeches in a slide', async () => {
+    const { enginePitch, screechLevel } = await import('./audio.js');
+    expect(enginePitch(0, 0)).toBe(48);
+    expect(enginePitch(12, 1)).toBeGreaterThan(enginePitch(12, 0));
+    expect(enginePitch(13.5, 0)).toBeLessThan(enginePitch(12.9, 0)); // a gear change drops the revs
+    expect(screechLevel(1)).toBe(0);
+    expect(screechLevel(20)).toBe(1);
+  });
+});

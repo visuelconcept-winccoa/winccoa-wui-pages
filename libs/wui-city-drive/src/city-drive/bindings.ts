@@ -19,6 +19,8 @@
  * while its boolean datapoint is true.
  */
 
+import { parseWeatherBinding, type WeatherBinding } from './weather.js';
+
 export type MachineState = 'run' | 'stop' | 'fault' | 'unknown';
 
 export interface MachineBinding {
@@ -38,6 +40,8 @@ export interface LightBinding {
 export interface DriveConfig {
   machines: MachineBinding[];
   lights: LightBinding[];
+  /** Rain and fog bound to DPEs (#95), or null: the weather then turns on its own. */
+  weather?: WeatherBinding | null;
 }
 
 export const EMPTY_CONFIG: DriveConfig = { machines: [], lights: [] };
@@ -70,7 +74,7 @@ export function parseConfig(raw: unknown): DriveConfig {
     .filter(isRecord)
     .map((l) => ({ crossroads: str(l.crossroads), dpe: str(l.dpe) }))
     .filter((l) => /^\d+-\d+$/.test(l.crossroads) && l.dpe !== '');
-  return { machines, lights };
+  return { machines, lights, weather: parseWeatherBinding(v.weather) };
 }
 
 function same(a: unknown, b: unknown): boolean {
@@ -103,5 +107,6 @@ export function lightForced(value: unknown): boolean {
 
 /** Every DPE to subscribe to, without duplicates. */
 export function boundDpes(cfg: DriveConfig): string[] {
-  return [...new Set([...cfg.machines.map((m) => m.dpe), ...cfg.lights.map((l) => l.dpe)])];
+  const weather = [cfg.weather?.rain, cfg.weather?.fog].filter((d): d is string => !!d);
+  return [...new Set([...cfg.machines.map((m) => m.dpe), ...cfg.lights.map((l) => l.dpe), ...weather])];
 }

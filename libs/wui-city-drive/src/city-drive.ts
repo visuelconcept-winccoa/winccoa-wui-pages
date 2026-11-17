@@ -54,6 +54,7 @@ import { CarPreview } from './city-drive/car-preview.js';
 import { AuditTrailWriter } from '@visuelconcept-winccoa/wui-kit/data/audit-trail.js';
 import * as audit from './city-drive/audit.js';
 import './city-drive/admin-page.js';
+import { GameAudio, STATIONS, type StationId } from './city-drive/audio.js';
 import {
   BOOTH_COUNTDOWN_S,
   boothSource,
@@ -214,6 +215,18 @@ export class WuiCityDrive extends LitElement {
   @state() private boothCameras: BoothCamera[] = [];
   @state() private booth: { count: number; flash: boolean; note: string; image: string } | null = null;
   private boothStream: MediaStream | null = null;
+  /** Sound and radio (#95): created on the first click / key (a gamepad press does not unlock audio). */
+  private readonly audio = new GameAudio();
+  @state() private radioText = '';
+  private radioTimer = 0;
+  private readonly unlockAudio = (): void => {
+    if (this.audio.unlocked) return;
+    this.audio.unlock();
+    this.audio.setVolumes(this.settings.sfxVolume, this.settings.musicVolume);
+    this.audio.setPlayers(this.profiles.length);
+    if (this.started) this.audio.setStation(this.settings.radio);
+    if (this.game) this.game.audio = this.audio;
+  };
   /** The module's audit trail (#93): AuditTrail_CityDrive. */
   private readonly audit = new AuditTrailWriter({ dpName: audit.AUDIT_DP, itemType: audit.AUDIT_ITEM_TYPE });
   /** What the photo booth did for the match being started (audited with GAME_START). */
@@ -258,6 +271,8 @@ export class WuiCityDrive extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     window.addEventListener('keydown', this.onLobbyKey);
+    window.addEventListener('pointerdown', this.unlockAudio);
+    window.addEventListener('keydown', this.unlockAudio);
     registerModuleRoles(appSecurityRoles as AppModuleRoles);
     this.roleSub = hasRole$(MODULE_ID, 'play').subscribe((granted) => {
       this.rolePlay = granted;
@@ -269,6 +284,9 @@ export class WuiCityDrive extends LitElement {
     super.disconnectedCallback();
     window.removeEventListener('keydown', this.onRebindKey, true);
     window.removeEventListener('keydown', this.onLobbyKey);
+    window.removeEventListener('pointerdown', this.unlockAudio);
+    window.removeEventListener('keydown', this.unlockAudio);
+    this.audio.dispose();
     closePreview(this.boothStream);
     this.boothStream = null;
     window.clearInterval(this.publicationTimer);
@@ -622,6 +640,7 @@ export class WuiCityDrive extends LitElement {
       ${match && match.phase !== 'over'
         ? html`<div class="match-clock ${match.phase === 'running' && match.remaining <= 10 ? 'hurry' : ''}">${match.phase === 'countdown' ? 'Get ready' : clock(match.remaining)}</div>`
         : nothing}
+      ${this.radioText ? html`<div class="radio-toast"><ix-icon name="music-note" size="16"></ix-icon>${this.radioText}</div>` : nothing}
       ${match?.phase === 'countdown' ? html`<div class="countdown">${Math.ceil(match.remaining) || 'GO!'}</div>` : nothing}
       ${hud?.paused && !this.settingsOpen && this.lostSlot === null
         ? html`<div class="overlay">
@@ -794,6 +813,7 @@ export class WuiCityDrive extends LitElement {
   /** Stores and applies new settings. */
   private applySettings(next: Settings): void {
     this.settings = next;
+    this.audio.setVolumes(next.sfxVolume, next.musicVolume);
     saveSettings(next);
     this.game?.setSettings(next);
   }
@@ -874,6 +894,19 @@ export class WuiCityDrive extends LitElement {
             <ix-slider label="Steering sensitivity" min="0.5" max="1.5" step="0.05" .value=${st.steering} @valueChange=${(e: CustomEvent<number>) => set({ steering: e.detail })}></ix-slider>
             <ix-slider label="Chase camera distance" min="0.7" max="1.6" step="0.05" .value=${st.cameraDistance} @valueChange=${(e: CustomEvent<number>) => set({ cameraDistance: e.detail })}></ix-slider>
             <ix-slider label="Chase camera height (low → high)" min="0" max="2" step="0.1" .value=${st.cameraHeight} @valueChange=${(e: CustomEvent<number>) => set({ cameraHeight: e.detail })}></ix-slider>
+          </section>
+          <section>
+            <div class="sec-title">Sound</div>
+            <ix-slider label="Effects and engines" min="0" max="1" step="0.05" .value=${st.sfxVolume} @valueChange=${(e: CustomEvent<number>) => set({ sfxVolume: e.detail })}></ix-slider>
+            <ix-slider label="Music and radio" min="0" max="1" step="0.05" .value=${st.musicVolume} @valueChange=${(e: CustomEvent<number>) => set({ musicVolume: e.detail })}></ix-slider>
+            ${choice(
+              st.radio,
+              STATIONS.map((x) => [x.id, x.label] as [StationId, string]),
+              (v) => {
+                set({ radio: v });
+                if (this.started) this.audio.setStation(v);
+              }
+            )}
           </section>
           <section>
             <div class="sec-title">Photo booth</div>
@@ -1019,6 +1052,8 @@ export class WuiCityDrive extends LitElement {
     };
     this.game.onFlash = (f, k) => this.onFlash(f, k);
     this.game.onNav = (k, dir) => this.navigate(k, dir);
+    this.game.onRadio = () => this.nextStation();
+    this.audio.news = () => this.radioNews();
     this.pickPlayers(this.local.players);
     this.game.setProfile(0, this.profile);
     this.game.start();
@@ -1288,6 +1323,11 @@ export class WuiCityDrive extends LitElement {
   /** The game itself, after the photo booth. */
   private launch(): void {
     if (!this.game) return;
+    if (this.audio.unlocked) {
+      this.audio.setPlayers(this.profiles.length);
+      this.audio.setStation(this.settings.radio);
+      this.game.audio = this.audio;
+    }
     void this.audit.write(audit.gameStart(this.auditPlayers(), this.local.match, this.local.match > 0 ? 'logos' : this.profile.mode, this.lastPhoto));
     this.profiles.forEach((pr, k) => {
       saveProfileOf(k, pr);
@@ -1357,7 +1397,34 @@ export class WuiCityDrive extends LitElement {
     this.stage.focus();
   }
 
+  /** The next radio station (M / Back), remembered in the settings, shown for 2.5 s. */
+  private nextStation(): void {
+    if (!this.audio.unlocked) return;
+    const label = this.audio.nextStation();
+    this.applySettings({ ...this.settings, radio: this.audio.stationId });
+    this.radioText = label;
+    window.clearTimeout(this.radioTimer);
+    this.radioTimer = window.setTimeout(() => (this.radioText = ''), 2500);
+  }
+
+  /** WinCC OA Talk: a news item made of the plant's live state and the game. */
+  private radioNews(): string {
+    const faults = [...this.machines].filter(([, st]) => st === 'fault').map(([id]) => id.replace('machine-', 'machine '));
+    const running = [...this.machines].filter(([, st]) => st === 'run').length;
+    const wanted = (this.hud?.players ?? []).map((h, k) => (h.alert >= 2 ? this.profiles[k]?.nickname || `player ${k + 1}` : '')).filter(Boolean);
+    const w = this.game?.weather;
+    const items = [
+      faults.length ? `Plant news: ${faults.join(' and ')} reports a fault. Maintenance, please head to the plant.` : `Plant news: ${running} machines running, no fault reported.`,
+      wanted.length ? `Security bulletin: ${wanted.join(' and ')} wanted downtown. Drivers, keep clear.` : 'Traffic: the streets are calm. The speed cameras are watching.',
+      w && w.rain > 0.3 ? 'Weather: rain over the city, roads are slippery.' : w && w.fog > 0.4 ? 'Weather: fog in the streets, drive with your lights on.' : 'Weather: clear skies over the plant.',
+      'You are listening to WinCC OA Talk, live from the control room.'
+    ];
+    return items[Math.floor(Math.random() * items.length)];
+  }
+
   private backToMenu(): void {
+    this.audio.setStation('off');
+    this.audio.setSiren(false);
     if (this.started) void this.audit.write(audit.gameExit(this.profiles, this.results ? 'after-podium' : this.local.match > 0 ? 'abandoned' : 'free-drive'));
     this.results = null;
     // a new game for new people: the previous photo and its QR code go away
@@ -1391,6 +1458,7 @@ export class WuiCityDrive extends LitElement {
     this.machines = s.machines;
     this.game.machineStates = s.machines;
     this.game.overrides = { allRed: s.allRed };
+    this.game.weatherBound = s.weather;
     if (this.game.match) return; // no mission during a match
     const m = this.game.players[0]?.mission;
     const idle = !m || m.stage === 'done' || m.stage === 'failed' || m.kind === 'delivery';
@@ -1878,6 +1946,23 @@ function pageStyles(): ReturnType<typeof css> {
     .vdot.on {
       background: var(--c, var(--theme-color-primary));
       box-shadow: 0 0 6px var(--c, var(--theme-color-primary));
+    }
+    .radio-toast {
+      position: absolute;
+      top: 4.6rem;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 3;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.3rem 0.9rem;
+      font-weight: 700;
+      color: var(--theme-color-dynamic);
+      border: 1px solid var(--theme-color-dynamic);
+      border-radius: var(--theme-default-border-radius);
+      background: color-mix(in srgb, var(--theme-color-2) 85%, transparent);
+      pointer-events: none;
     }
     .booth-notice {
       display: flex;

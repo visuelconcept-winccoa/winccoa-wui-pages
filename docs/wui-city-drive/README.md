@@ -74,6 +74,24 @@ The game is in English only.
 - **The control room**: from level 2 the player is *wanted*, a real WinCC OA alert (see
   below). An operator who acknowledges it in the alarm list clears the player's alert level.
 
+### Atmosphere (≥ 0.12.0)
+
+- **Sound** (WebAudio, no file): engines, tyre screech, horn (**H** held; pad: left stick
+  click), crash, logo chime, speed camera, siren. It starts at the first click or key of the
+  page (a gamepad press does not unlock audio in browsers).
+- **Radio** (**M**; pad: **Back**): *Neon FM*, *Lo-Fi Plant*, *WinCC OA Talk* (the plant's news,
+  read aloud), off. Volumes and station in **Settings → Sound**.
+- **Weather** from datapoints, in `CityDrive_Config.json`:
+
+  ```json
+  { "weather": { "rain": "Meteo.RainRate", "rainMax": 10, "fog": "Meteo.Visibility", "fogMax": 10000, "fogInverse": true } }
+  ```
+
+  A value becomes a level 0..1 (a boolean 0 / 1; a number over `rainMax` / `fogMax`, else
+  0..1, or a percentage when above 1; `fogInverse` for a visibility). Rain: streaks, wet
+  glossy roads, less grip; fog: thicker. Without a binding the weather turns on its own.
+- **Skid marks** while sliding; **pedestrians** jump aside from a fast car or a horn.
+
 ## Photo booth (≥ 0.10.0)
 
 Settings → **Photo booth**: Off (default), *This PC's webcam*, or a camera of the

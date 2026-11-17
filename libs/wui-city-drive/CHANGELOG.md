@@ -5,6 +5,25 @@
 
 ## 0.12.0 — 2026-11-18
 
+- **Atmosphere** (lot 3, #95):
+  - **Sound**, all WebAudio, no audio file: per player an engine (pitch with the speed, gear
+    by gear; growl with the throttle), the tyre screech of a slide, the horn (**H**, held; pad:
+    left stick click) — two players panned left / right; a crash thud, the logo chime, the
+    speed camera's shutter, a two-tone siren while chased. Starts at the first click or key
+    (browsers do not count a gamepad press as a gesture).
+  - **Radio** (**M**; pad: **Back**): original stations from a small sequencer — *Neon FM*
+    (synthwave), *Lo-Fi Plant* (slow chords) — and *WinCC OA Talk*, the plant's news read by
+    the browser's speech synthesis (machines in fault, wanted players, weather), or off.
+  - **Weather bound to datapoints**: `CityDrive_Config.json` → `"weather": { "rain": "<dpe>",
+    "fog": "<dpe>", "rainMax": …, "fogMax": …, "fogInverse": true }` (booleans, 0..1, %
+    or a value over its max; `fogInverse` for a visibility). Rain streaks around the players,
+    thicker fog, wet glossy roads, **less grip** (down to 75 %). Without a binding, a shower
+    every ~3 minutes and a light mist.
+  - **Skid marks** laid by the rear wheels while sliding (the last 900).
+  - **Pedestrians react**: a car faster than 18 km/h within 10 m, or a horn within 25 m, and
+    they jump aside towards the shops, hop and run off, then calm down.
+  - Settings: effects volume, music volume, radio station (kept in the browser).
+
 - **Admin page** `/city-drive/admin` (menu "City Drive · Admin"), new role **`admin`**: the
   game's statistics — matches (duos), players, emails collected, WinCC OA logos (total,
   average, best), average score, photos kept / waiting for Supabase (with the last error) /

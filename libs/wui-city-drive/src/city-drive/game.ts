@@ -41,6 +41,8 @@ import {
   type SpeedCamera
 } from './tension.js';
 import { carPose, spawnTraffic, stepTraffic, type LightOverrides, type TrafficCar } from './traffic.js';
+import type { GameAudio } from './audio.js';
+import { CLEAR, demoWeather, easeWeather, gripFactor, type Weather } from './weather.js';
 import { DEFAULT_PROFILE, paintById, vehicleById, wheelById, type Profile, type Vehicle } from './vehicles.js';
 import { canEnter, leaveCar, stepWalker, type WalkerState } from './walker.js';
 import { ATTACK_DURATION, attackPose, gaitPose, holdPose, type Pose } from './figure.js';
@@ -162,6 +164,8 @@ export interface LocalPlayer {
   escapeFor: number;
   caughtFor: number;
   inStation: boolean;
+  /** Metres slid since the last skid mark (#95). */
+  skidFor: number;
   /** On foot (#89): the weapon in hand and the blow under way. */
   weapon: WeaponId;
   attack: Attack | null;
@@ -170,8 +174,10 @@ export interface LocalPlayer {
 const TRAFFIC = 26;
 const MAX_DT = 1 / 20;
 const HUD_HZ = 8;
-const NO_PAD: PadState = { throttle: 0, brake: 0, steer: 0, move: 0, handbrake: false, pressed: [] };
-const ONE_SHOT: readonly Action[] = ['pause', 'camera', 'time', 'reset', 'foot', 'mission', 'attack', 'weapon'];
+const NO_PAD: PadState = { throttle: 0, brake: 0, steer: 0, move: 0, handbrake: false, horn: false, pressed: [] };
+const ONE_SHOT: readonly Action[] = ['pause', 'camera', 'time', 'reset', 'foot', 'mission', 'attack', 'weapon', 'radio'];
+/** A skid mark every this many metres of slide. */
+const SKID_STEP_M = 0.55;
 type Pad = PadLike & { index: number; id: string };
 
 
@@ -207,6 +213,12 @@ export class CityGame {
   /** Speed cameras of the city, and the security cars giving chase (#85). */
   readonly cameras: SpeedCamera[];
   chasers: Chaser[] = [];
+  /** Sound (#95), set by the page once the browser allows it. */
+  audio: GameAudio | null = null;
+  /** Rain and fog from their DPEs, or null: the demo weather turns on its own (#95). */
+  weatherBound: Weather | null = null;
+  /** The weather shown (eased towards its target). */
+  weather: Weather = CLEAR;
   /** The crossbow's cubes in flight (#89). */
   bolts: Bolt[] = [];
 
@@ -224,6 +236,8 @@ export class CityGame {
   /** Lobby (#garage): a pad moved through player i's garage (D-pad or left stick). */
   onNav: (i: number, dir: NavDir) => void = () => {};
   private readonly navPrevious = new Map<number, NavDir | null>();
+  /** The radio button / key (the page changes the station). */
+  onRadio: () => void = () => {};
   /** Player i was flashed by a speed camera. */
   onFlash: (flash: Flash, player: number) => void = () => {};
 
@@ -299,6 +313,7 @@ export class CityGame {
         hunter: newHunter(),
         weapon: 'hammer',
         attack: null,
+        skidFor: 0,
         pad: NO_PAD,
         padPrevious: [],
         wasEmpty: false,
@@ -613,6 +628,7 @@ export class CityGame {
     else if (action === 'time') this.toggleTimeOfDay();
     else if (action === 'reset') this.resetCar(p.index);
     else if (action === 'foot') this.toggleFoot(p.index);
+    else if (action === 'radio') this.onRadio();
     else if (action === 'attack' && p.walker) this.strike(p);
     else if (action === 'weapon' && p.walker) {
       p.weapon = nextWeapon(p.weapon);
@@ -633,6 +649,7 @@ export class CityGame {
       if (p.walker) this.world.setWalker(k, p.walker, this.palette[p.profile.color], { pose: this.poseOf(p), weapon: p.weapon });
     });
     this.world.setBolts(this.bolts);
+    this.atmosphere(dt);
     this.world.setTraffic(this.traffic.map((c) => ({ ...carPose(c), color: c.color })));
     this.world.setChasers(this.chasers.map((c) => c.car));
     this.world.setMachineStates(this.machineStates);
@@ -687,7 +704,9 @@ export class CityGame {
   }
 
   private stepPlayer(p: LocalPlayer, dt: number, bounds: { x0: number; z0: number; x1: number; z1: number }): void {
-    const spec = damagedSpec(p.vehicle.spec, p.damage);
+    const hurt = damagedSpec(p.vehicle.spec, p.damage);
+    // wet roads hold less (#95)
+    const spec = this.weather.rain > 0.02 ? { ...hurt, grip: hurt.grip * gripFactor(this.weather) } : hurt;
     let car = stepCar(p.car, this.input(p), dt, spec);
     const hit = collide(car, this.city.buildings, bounds, 0.25, spec.radius);
     car = hit.car;
@@ -738,6 +757,7 @@ export class CityGame {
         p.ticket = `Camera ${cam.id + 1}: ${Math.round(kmh)} km/h (limit ${cam.limit})`;
         this.world.flashCamera(cam.id);
         this.onFlash({ camera: cam, kmh: Math.round(kmh), fine }, p.index);
+        this.audio?.play('flash');
         this.offence(p, 'speed-camera');
       }
     }
@@ -750,6 +770,34 @@ export class CityGame {
       p.walker = stepWalker(p.walker, { move: a.move, turn: a.steer, run: this.on(p, 'run') || p.pad.handbrake }, dt, this.city.buildings, bounds);
       if (p.attack && lands(p.attack, this.t)) this.blowLands(p);
     }
+  }
+
+  // --- atmosphere (#95) -----------------------------------------------------------------------
+
+  /** Per player: engine, screech, horn; skid marks while sliding; the siren; the weather. */
+  private atmosphere(dt: number): void {
+    const live = !this.paused && !this.lobby;
+    this.players.forEach((p, k) => {
+      const horn = live && (this.on(p, 'horn') || p.pad.horn);
+      this.world.setHorn(k, horn);
+      const c = p.car;
+      const slip = Math.abs(c.vx * Math.cos(c.heading) - c.vz * Math.sin(c.heading));
+      const speed = Math.hypot(c.vx, c.vz);
+      this.audio?.voice(k, { speed: live ? speed : 0, throttle: live ? Math.max(0, this.input(p).throttle) : 0, slip: live ? slip : 0, horn, onFoot: p.walker !== null });
+      if (!live || p.walker || slip < 3 || speed < 6) return;
+      p.skidFor += speed * dt;
+      if (p.skidFor < SKID_STEP_M) return;
+      p.skidFor = 0;
+      // the two rear wheels: back along the car, either side of it
+      const back = -p.vehicle.body.l * 0.32;
+      const side = p.vehicle.body.w * 0.38;
+      const fx = Math.sin(c.heading);
+      const fz = Math.cos(c.heading);
+      for (const s of [-1, 1]) this.world.addSkid(c.x + fx * back + fz * side * s, c.z + fz * back - fx * side * s, c.heading);
+    });
+    this.audio?.setSiren(live && this.chasers.length > 0);
+    this.weather = easeWeather(this.weather, this.weatherBound ?? demoWeather(this.t), dt);
+    this.world.setWeather(this.weather);
   }
 
   // --- weapons (#89) -------------------------------------------------------------------------
@@ -935,6 +983,7 @@ export class CityGame {
     for (const pk of step.pickups) {
       this.world.explodeToken(pk.token.x, pk.token.z);
       this.onLogo(pk, p.index);
+      this.audio?.play('logo');
     }
     if (step.waveDone) this.event(p, 'wave-done');
     this.world.setTokens(this.hunt.tokens);
@@ -956,6 +1005,7 @@ export class CityGame {
 
   private event(p: LocalPlayer, e: GameEvent): void {
     p.lastEvent = e;
+    if (e === 'collision' || e === 'smash') this.audio?.play('crash');
     this.onEvent(e, p.index);
   }
 

@@ -27,6 +27,7 @@ import { boundDpes, lightForced, machineState, parseConfig, type DriveConfig, ty
 import type { Telemetry } from './game.js';
 import { carPose, spawnTraffic, stepTraffic, type TrafficCar } from './traffic.js';
 import { parseBoothCamera, type BoothCamera } from './photo-booth.js';
+import { weatherLevel, type Weather } from './weather.js';
 import { rng } from './city.js';
 
 export const PLAYER_TYPE = 'CityDrive_Player';
@@ -177,6 +178,8 @@ function post(url: string, body: object): Promise<Response> {
 export interface LinkState {
   machines: Map<string, MachineState>;
   allRed: Set<string>;
+  /** Rain and fog from their DPEs (#95); null when not bound (the game's own weather). */
+  weather: Weather | null;
 }
 
 export class DriveLink {
@@ -467,7 +470,8 @@ export class DriveLink {
 
   private subscribe(config: DriveConfig, onState: (s: LinkState) => void): void {
     const dpes = boundDpes(config);
-    const state: LinkState = { machines: new Map(), allRed: new Set() };
+    const wb = config.weather ?? null;
+    const state: LinkState = { machines: new Map(), allRed: new Set(), weather: wb ? { rain: 0, fog: 0 } : null };
     onState(state);
     if (dpes.length === 0 || !this.api) return;
     try {
@@ -482,7 +486,11 @@ export class DriveLink {
             if (lightForced(values.get(l.dpe))) state.allRed.add(l.crossroads);
             else state.allRed.delete(l.crossroads);
           }
-          onState({ machines: new Map(state.machines), allRed: new Set(state.allRed) });
+          if (wb && state.weather) {
+            if (wb.rain && values.has(wb.rain)) state.weather = { ...state.weather, rain: weatherLevel(values.get(wb.rain), wb.rainMax) };
+            if (wb.fog && values.has(wb.fog)) state.weather = { ...state.weather, fog: weatherLevel(values.get(wb.fog), wb.fogMax, wb.fogInverse) };
+          }
+          onState({ machines: new Map(state.machines), allRed: new Set(state.allRed), weather: state.weather });
         })
       );
     } catch {
@@ -493,7 +501,7 @@ export class DriveLink {
   private startDemo(onState: (s: LinkState) => void): void {
     const states: MachineState[] = ['run', 'run', 'stop', 'run'];
     let tick = 0;
-    const emit = (): void => onState({ machines: new Map(DEMO_MACHINES.map((id, k) => [id, states[k]])), allRed: new Set() });
+    const emit = (): void => onState({ machines: new Map(DEMO_MACHINES.map((id, k) => [id, states[k]])), allRed: new Set(), weather: null });
     emit();
     this.demoTimer = window.setInterval(() => {
       tick++;
