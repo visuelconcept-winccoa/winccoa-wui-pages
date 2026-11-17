@@ -62,8 +62,9 @@ import { logoCanvas } from './logo.js';
 import { buildCar, headlightY } from './car-model.js';
 import { vehicleById, type Body } from './vehicles.js';
 import { mix, type NeonPalette } from './palette.js';
-import { lightAt, type LightOverrides } from './traffic.js';
+import type { LightOverrides } from './traffic.js';
 import { StreetLife } from './street.js';
+import { TrafficSignals } from './traffic-signals.js';
 import { LogoFx } from './explosion.js';
 import type { Token } from './collectibles.js';
 import type { WalkerState } from './walker.js';
@@ -119,7 +120,6 @@ function nameTag(text: string, color: number): Sprite {
   return s;
 }
 
-const LIGHT_POST = 2.4;
 /** Size of the moonlight's shadow box around the player (m). */
 const SHADOW_SPAN = 110;
 const BEAM = beamTexture();
@@ -244,8 +244,7 @@ export class CityWorld {
   private readonly lightOffset = new Vector3(-120, 220, -80);
   private readonly traffic: Group[] = [];
   private readonly machineEdges = new Map<string, { lines: LineSegments; roof: Mesh; beacon: Mesh }>();
-  private readonly lightHeads: { mesh: InstancedMesh; axis: 0 | 1 }[] = [];
-  private readonly lightNodes: { i: number; j: number }[] = [];
+  private signals: TrafficSignals | null = null;
   private readonly marker: Mesh;
   private readonly remotes = new Map<string, { car: Group; key: string }>();
   private readonly camPos = new Vector3();
@@ -538,28 +537,10 @@ export class CityWorld {
     this.scene.add(pad, canopy, glow);
   }
 
+  /** Real signals: pole, mast arm, horizontal head per approach (traffic-signals.ts). */
   private buildTrafficLights(): void {
-    const n = this.city.blocks;
-    for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) this.lightNodes.push({ i, j });
-    const geo = new SphereGeometry(0.55, 10, 8);
-    for (const axis of [0, 1] as const) {
-      const mesh = new InstancedMesh(geo, new MeshBasicMaterial({ color: 0xffffff }), this.lightNodes.length * 2);
-      const o = new Object3D();
-      const r = ROAD_WIDTH / 2 + 1.2;
-      this.lightNodes.forEach(({ i, j }, k) => {
-        const x = roadAxis(i);
-        const z = roadAxis(j);
-        // axis Z: lights on the two corners facing the Z traffic; axis X: the two others
-        const corners = axis === 0 ? [[r, r], [-r, -r]] : [[r, -r], [-r, r]];
-        corners.forEach(([cx, cz], c) => {
-          o.position.set(x + cx, LIGHT_POST + 2.2, z + cz);
-          o.updateMatrix();
-          mesh.setMatrixAt(k * 2 + c, o.matrix);
-        });
-      });
-      this.lightHeads.push({ mesh, axis });
-      this.scene.add(mesh);
-    }
+    this.signals = new TrafficSignals(this.city, this.p);
+    this.scene.add(this.signals.group);
   }
 
   /**
@@ -798,15 +779,7 @@ export class CityWorld {
   }
 
   setLights(t: number, overrides: LightOverrides): void {
-    const colors = { green: new Color(this.p.success), yellow: new Color(this.p.warning), red: new Color(this.p.alarm) };
-    for (const { mesh, axis } of this.lightHeads) {
-      this.lightNodes.forEach(({ i, j }, k) => {
-        const c = colors[lightAt(i, j, axis, t, overrides)];
-        mesh.setColorAt(k * 2, c);
-        mesh.setColorAt(k * 2 + 1, c);
-      });
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    }
+    this.signals?.update(t, overrides);
   }
 
   setMarker(target: Point | null, kind: MissionKind | null, stage: MissionStage | null): void {

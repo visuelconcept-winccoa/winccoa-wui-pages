@@ -19,6 +19,9 @@
 - **Settings**: rebind every key, gamepad on / off with dead zone and inverted steering,
   steering sensitivity, chase camera distance, graphics quality (Low: no shadows), km/h or
   mph, minimap and players panel on / off. Kept in the browser.
+- **Traffic signals** with real poles: on every approach, a galvanised pole on the corner, a
+  mast arm with its brace over the lanes, and a horizontal Japanese-style head (green, amber,
+  red from left to right) with backplate and visors; only the lamp of the phase is lit.
 - **Multiplayer fixed**: the other players never showed up. `dpConnect` hands the element
   names back with `:_online.._value`, which the game did not strip, so no value of another
   player was ever recognised (the machine bindings had the same bug). Also: one player

@@ -197,7 +197,7 @@ export class LogoFx {
     }
     // shockwave on the ground
     const ring = new Mesh(
-      new RingGeometry(0.8, 1.4, 48),
+      new RingGeometry(1.32, 1.4, 64), // thin: it stays a line as it grows
       new MeshBasicMaterial({ color: this.p.dynamic, transparent: true, opacity: 0.9, blending: AdditiveBlending, depthWrite: false, side: DoubleSide, toneMapped: false })
     );
     ring.rotation.x = -Math.PI / 2;
@@ -206,7 +206,7 @@ export class LogoFx {
     this.bursts.push({ points, shards, ring, vel, shardVel, shardSpin, shardPos, age: 0 });
     this.flash.position.set(x, y + 1, z);
     this.flash.color.setHex(this.p.dynamic);
-    this.flash.intensity = 160;
+    this.flash.intensity = 35;
     this.shake = Math.min(0.8, this.shake + 0.5);
   }
 
@@ -267,7 +267,7 @@ export class LogoFx {
       (burst.shards.material as MeshBasicMaterial).opacity = 1 - life;
       const r = 1 + burst.age * 22;
       burst.ring.scale.setScalar(r);
-      (burst.ring.material as MeshBasicMaterial).opacity = 0.9 * (1 - life) ** 2;
+      (burst.ring.material as MeshBasicMaterial).opacity = 0.75 * Math.max(0, 1 - life * 2) ** 2;
     }
   }
 }
