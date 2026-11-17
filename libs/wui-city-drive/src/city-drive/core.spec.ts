@@ -181,9 +181,9 @@ describe('palette (#79)', () => {
 });
 
 describe('vehicles and profile (#79)', () => {
-  it('offers four vehicles with distinct performance', async () => {
+  it('offers the vehicles with distinct performance', async () => {
     const { VEHICLES, vehicleById } = await import('./vehicles.js');
-    expect(VEHICLES.map((v) => v.id)).toEqual(['coupe', 'limousine', 'pickup', 'van']);
+    expect(VEHICLES.map((v) => v.id)).toEqual(['coupe', 'roadster', 'muscle', 'limousine', 'estate', 'cab', 'pickup', 'van']);
     expect(vehicleById('limousine').spec.radius).toBeGreaterThan(vehicleById('coupe').spec.radius);
     expect(vehicleById('nope').id).toBe('coupe');
     const fast = drive(GO, 20, newCar(0, 0));
@@ -195,8 +195,8 @@ describe('vehicles and profile (#79)', () => {
 
   it('repairs a stored profile and cleans the nickname', async () => {
     const { parseProfile, cleanNickname, NICKNAME_MAX } = await import('./vehicles.js');
-    expect(parseProfile({ nickname: '  Aurel ', vehicle: 'limousine', color: 'alarm' })).toEqual({ nickname: 'Aurel', vehicle: 'limousine', color: 'alarm', time: 'night', mode: 'logos' });
-    expect(parseProfile({ vehicle: 'tank', color: 'pink' })).toEqual({ nickname: '', vehicle: 'coupe', color: 'primary', time: 'night', mode: 'logos' });
+    expect(parseProfile({ nickname: '  Aurel ', vehicle: 'limousine', color: 'alarm' })).toEqual({ nickname: 'Aurel', vehicle: 'limousine', color: 'alarm', paint: 'midnight', wheels: 'stock', skin: 0, time: 'night', mode: 'logos' });
+    expect(parseProfile({ vehicle: 'tank', color: 'pink' })).toEqual({ nickname: '', vehicle: 'coupe', color: 'primary', paint: 'midnight', wheels: 'stock', skin: 0, time: 'night', mode: 'logos' });
     expect(parseProfile({ mode: 'missions' }).mode).toBe('missions');
     expect(parseProfile({ time: 'day' }).time).toBe('day');
     expect(parseProfile(null).vehicle).toBe('coupe');
@@ -535,14 +535,38 @@ describe('figure and weapons (#89)', () => {
     expect(nextWeapon('crossbow')).toBe('hammer');
     let b = fireBolt(0, 0, 0, 0);
     const wall = { x0: -5, x1: 5, z0: 10, z1: 12 };
-    let steps = 0;
-    while (b && steps < 100) {
-      const n = stepBolt(b, 0.02, [wall]);
-      if (!n) break;
-      b = n;
-      steps++;
+    let blew = -1;
+    for (let k = 0; k < 200 && blew < 0; k++) {
+      const s = stepBolt(b, 0.02, [wall]);
+      b = s.bolt;
+      if (s.blows) blew = k;
     }
+    // it stuck on the wall face, stayed there ~1 s, then blew up
     expect(b.z).toBeLessThan(10.5);
     expect(b.z).toBeGreaterThan(8);
+    expect(b.fuse).not.toBeNull();
+    expect(blew * 0.02).toBeGreaterThan(1);
+    expect(blew * 0.02).toBeLessThan(1.4);
+  });
+});
+
+describe('garage', () => {
+  it('has eight models with distinct names, and repairs an old or bad profile', async () => {
+    const { VEHICLES, parseProfile, cycle, WHEELS } = await import('./vehicles.js');
+    expect(VEHICLES).toHaveLength(8);
+    expect(new Set(VEHICLES.map((v) => v.label)).size).toBe(8);
+    // a 0.7 profile: no paint, wheels, skin
+    expect(parseProfile({ nickname: 'A', vehicle: 'van', color: 'alarm' })).toMatchObject({ vehicle: 'van', paint: 'midnight', wheels: 'stock', skin: 0 });
+    expect(parseProfile({ vehicle: 'roadster', paint: 'ruby', wheels: 'monster', skin: 9 })).toMatchObject({ vehicle: 'roadster', paint: 'ruby', wheels: 'monster', skin: 0 });
+    expect(cycle(['a', 'b', 'c'], 'a', -1)).toBe('c');
+    expect(WHEELS.map((w) => w.scale)).toEqual([0.85, 1, 1.2, 1.5]);
+  });
+
+  it('reads a pad direction from the D-pad or the stick', async () => {
+    const { padDirection } = await import('./settings.js');
+    const pad = (axes: number[], pressed: number[] = []) => ({ axes, buttons: Array.from({ length: 17 }, (_, i) => ({ pressed: pressed.includes(i), value: 0 })) });
+    expect(padDirection(pad([0, 0], [15]))).toBe('right');
+    expect(padDirection(pad([0, -0.9]))).toBe('up');
+    expect(padDirection(pad([0.3, 0.2]))).toBeNull();
   });
 });

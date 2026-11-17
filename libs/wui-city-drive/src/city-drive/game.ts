@@ -16,7 +16,7 @@ import { JOIN_BUTTONS, LEAVE_BUTTON, Match, padDevice, padIndexOf, standings, ty
 import { cancelIfRepaired, newDelivery, newIntervention, stepMission, type Mission } from './missions.js';
 import type { NeonPalette } from './palette.js';
 import { collide, collideCars, forwardSpeed, newCar, stepCar, type CarInput, type CarState } from './physics.js';
-import { DEFAULT_SETTINGS, actionOf, readPad, type Action, type PadLike, type PadState, type Settings } from './settings.js';
+import { DEFAULT_SETTINGS, actionOf, padDirection, readPad, type Action, type NavDir, type PadLike, type PadState, type Settings } from './settings.js';
 import {
   CAUGHT_M,
   CAUGHT_S,
@@ -41,10 +41,10 @@ import {
   type SpeedCamera
 } from './tension.js';
 import { carPose, spawnTraffic, stepTraffic, type LightOverrides, type TrafficCar } from './traffic.js';
-import { DEFAULT_PROFILE, vehicleById, type Profile, type Vehicle } from './vehicles.js';
+import { DEFAULT_PROFILE, paintById, vehicleById, wheelById, type Profile, type Vehicle } from './vehicles.js';
 import { canEnter, leaveCar, stepWalker, type WalkerState } from './walker.js';
 import { ATTACK_DURATION, attackPose, gaitPose, holdPose, type Pose } from './figure.js';
-import { canAttack, fireBolt, inArc, lands, nextWeapon, stepBolt, weaponById, type Attack, type Bolt, type WeaponId } from './weapons.js';
+import { BLAST_M, canAttack, fireBolt, inArc, lands, nextWeapon, stepBolt, stick, weaponById, type Attack, type Bolt, type WeaponId } from './weapons.js';
 import { CAMERA_MODES, CityWorld, type CameraMode, type RemoteCar } from './world.js';
 
 export type GameEvent =
@@ -174,6 +174,7 @@ const NO_PAD: PadState = { throttle: 0, brake: 0, steer: 0, move: 0, handbrake: 
 const ONE_SHOT: readonly Action[] = ['pause', 'camera', 'time', 'reset', 'foot', 'mission', 'attack', 'weapon'];
 type Pad = PadLike & { index: number; id: string };
 
+
 /**
  * Start of player k: the right-hand lane facing +Z, the second player on the next avenue (one
  * behind the other on the same street, the first player's camera sat in the second car's
@@ -220,6 +221,9 @@ export class CityGame {
   /** A gamepad in use was unplugged. */
   onDeviceLost: (device: DeviceId) => void = () => {};
   onMatchEnd: (results: Standing[]) => void = () => {};
+  /** Lobby (#garage): a pad moved through player i's garage (D-pad or left stick). */
+  onNav: (i: number, dir: NavDir) => void = () => {};
+  private readonly navPrevious = new Map<number, NavDir | null>();
   /** Player i was flashed by a speed camera. */
   onFlash: (flash: Flash, player: number) => void = () => {};
 
@@ -344,7 +348,11 @@ export class CityGame {
 
   private applyProfile(p: LocalPlayer): void {
     p.vehicle = vehicleById(p.profile.vehicle);
-    this.world.setPlayerVehicle(p.index, p.vehicle.body, this.palette[p.profile.color]);
+    this.world.setPlayerVehicle(p.index, p.vehicle.body, this.palette[p.profile.color], {
+      paint: paintById(p.profile.paint).color,
+      wheelScale: wheelById(p.profile.wheels).scale,
+      skin: p.profile.skin
+    });
     this.world.setTimeOfDay(this.time);
     this.world.setCameraMode(p.index, p.camera);
   }
@@ -564,6 +572,15 @@ export class CityGame {
       p.pad = readPad(pad, this.settings, p.padPrevious);
       for (const action of p.pad.pressed) this.run(p, action);
     }
+    // the lobby: each pad moves through its own player's garage (alone: any pad)
+    if (this.lobby) {
+      for (const g of pads) {
+        const k = this.players.length === 1 ? 0 : this.players.findIndex((p) => p.device === padDevice(g.index));
+        const dir = padDirection(g);
+        if (k !== -1 && dir && this.navPrevious.get(g.index) !== dir) this.onNav(k, dir);
+        this.navPrevious.set(g.index, dir);
+      }
+    }
     // pads that drive nobody: join (A / Start) or leave (B) presses
     for (const g of pads) {
       const device = padDevice(g.index);
@@ -780,27 +797,47 @@ export class CityGame {
     else if (weapon.id === 'hammer') this.world.burst(fx, 0.2, fz); // the hammer hits the ground
   }
 
-  /** The cubes in flight: they break the logos and the cars they reach, stop against the walls. */
+  /**
+   * The crossbow's cubes: in flight, a cube that reaches a logo or a car sticks to it; stuck
+   * cubes (also on walls and the ground) wait their fuse, then blow up — the blast takes the
+   * logos and hits the cars within {@link BLAST_M}.
+   */
   private stepBolts(dt: number): void {
     const next: Bolt[] = [];
     for (const b of this.bolts) {
-      const moved = stepBolt(b, dt, this.city.buildings);
-      if (!moved) continue;
-      const p = this.players[moved.owner];
-      if (p && moved.y < 3.5 && this.takeLogos(p, moved.x, moved.z, 1.2)) {
-        continue; // the cube bursts with the logo
+      let { bolt, blows } = stepBolt(b, dt, this.city.buildings);
+      if (bolt.fuse === null) {
+        const onLogo = this.hunt?.tokens.some((t) => !t.taken && Math.hypot(t.x - bolt.x, t.z - bolt.z) < 1.2) && bolt.y < 3.5;
+        const onCar =
+          this.traffic.some((c) => {
+            const q = carPose(c);
+            return Math.hypot(q.x - bolt.x, q.z - bolt.z) < 2.4;
+          }) || this.chasers.some((c) => Math.hypot(c.car.x - bolt.x, c.car.z - bolt.z) < 2.4);
+        if (onLogo || onCar) bolt = stick(bolt);
       }
-      const car = this.traffic.map((c) => carPose(c)).find((q) => Math.hypot(q.x - moved.x, q.z - moved.z) < 2.4);
-      const chaser = this.chasers.find((c) => Math.hypot(c.car.x - moved.x, c.car.z - moved.z) < 2.4);
-      if (p && (car || chaser)) {
-        this.world.burst(moved.x, moved.y, moved.z);
-        this.offence(p, chaser ? 'ram-security' : 'crash');
-        this.event(p, 'smash');
+      if (blows) {
+        this.blowCube(bolt);
         continue;
       }
-      next.push(moved);
+      next.push(bolt);
     }
     this.bolts = next;
+  }
+
+  private blowCube(b: Bolt): void {
+    this.world.explodeCube(b.x, b.y, b.z);
+    const p = this.players[b.owner];
+    if (!p) return;
+    this.takeLogos(p, b.x, b.z, BLAST_M);
+    const carHit = this.traffic.some((c) => {
+      const q = carPose(c);
+      return Math.hypot(q.x - b.x, q.z - b.z) < BLAST_M;
+    });
+    const chaserHit = this.chasers.some((c) => Math.hypot(c.car.x - b.x, c.car.z - b.z) < BLAST_M);
+    if (carHit || chaserHit) {
+      this.offence(p, chaserHit ? 'ram-security' : 'crash');
+      this.event(p, 'smash');
+    }
   }
 
   private offence(p: LocalPlayer, kind: Offence): void {

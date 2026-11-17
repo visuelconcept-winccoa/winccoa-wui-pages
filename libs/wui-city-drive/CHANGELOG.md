@@ -3,6 +3,26 @@
 
 # Changelog — @visuelconcept-winccoa/wui-city-drive
 
+## 0.9.0 — 2026-11-18
+
+- **Garage** on the start screen, one per player card: five lines under the turntable — **Car**,
+  **Wheels**, **Paint**, **Neon**, **Driver** — each with ◀ ▶. ▲ ▼ picks the line, ◀ ▶ changes
+  it: the arrow keys for the keyboard player (not while typing in a field), the D-pad or the
+  left stick for each gamepad on its own player's card (alone: any pad).
+- **Eight cars** with original "legend" names (no real make or model): Neon Specter (finned
+  coupé), Kitsune GT (roadster), Thunder Ronin (muscle car), Grand Duchess (limousine), Night
+  Courier (estate), Shinjuku Cab (city taxi), Iron Mule (pickup), Hard Hat (maintenance van);
+  the four new ones with their own physics. Earlier profiles keep their car.
+- **Wheels**: low-profile, stock, large, monster (the body is lifted to match; looks only).
+- **Paint**: nine body colours (midnight teal, piano black, pearl white, liquid chrome, ruby,
+  sapphire, emerald, champagne gold, sunset orange), apart from the neon colour.
+- **Driver**: the skin tone of the character on foot (light by default).
+- The other players still see your car in its model and neon colour; paint and wheels are not
+  sent to them yet.
+- **Crossbow cubes** no longer vanish: a cube sticks where it lands (a wall, the ground, a car,
+  a logo), stops spinning and pulses for 1 second, then blows up in the logo explosion; the
+  blast (4 m) takes the logos and hits the cars around it.
+
 ## 0.8.0 — 2026-11-18
 
 - **Chase camera higher by default** (2.7 m instead of 1.6 m, a little further back, aiming
