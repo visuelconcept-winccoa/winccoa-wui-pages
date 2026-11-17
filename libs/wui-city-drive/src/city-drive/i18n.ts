@@ -22,10 +22,19 @@ export const MSG = {
     reset: 'Back on the road',
     paused: 'Paused',
     clickToPlay: 'Click the city to drive',
-    keys: 'W/Z ↑ throttle · S ↓ brake · A/Q ← D → steer · Space handbrake · C camera · T day / night · R reset · N mission · Esc pause',
+    keys: 'W/Z ↑ throttle · S ↓ brake · A/Q ← D → steer · Space handbrake · F get out / in (Shift: run) · C camera · T day / night · R reset · N mission · Esc pause',
     day: 'Day',
     night: 'Night',
     time: 'Time of day',
+    mode: 'Game mode',
+    logos: 'Logo hunt',
+    missions: 'Missions',
+    logosHint: 'Drive through the WinCC OA logos floating over the roads: each one blows up and scores; chain them for a combo.',
+    missionsHint: 'Deliver parcels against the clock, and rush to the plant when a machine breaks down.',
+    logosLeft: 'logos left',
+    wave: 'Wave',
+    exitCar: 'Get out',
+    enterCar: 'Get in',
     telemetry: 'Telemetry',
     noTelemetry: 'Telemetry off',
     roleForbidden: 'Your groups do not hold the “Play” role of this page.'
@@ -45,7 +54,11 @@ export const MSG = {
     'mission-done': 'Mission complete',
     'mission-failed': 'Mission failed',
     refuel: 'Tank full',
-    empty: 'Out of fuel: the fuel station is in the north-east corner of the map'
+    empty: 'Out of fuel: the fuel station is in the north-east corner of the map',
+    'wave-done': 'Wave cleared! Bonus',
+    'on-foot': 'On foot: F to get back in',
+    'in-car': 'Back behind the wheel',
+    'too-far': 'Walk back to your car to get in'
   },
   machine: {
     run: 'running',

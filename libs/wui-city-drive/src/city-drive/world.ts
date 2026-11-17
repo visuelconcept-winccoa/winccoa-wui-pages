@@ -62,8 +62,12 @@ import { logoCanvas } from './logo.js';
 import { buildCar, headlightY } from './car-model.js';
 import { vehicleById, type Body } from './vehicles.js';
 import { mix, type NeonPalette } from './palette.js';
-import { lightAt, type LightOverrides } from './traffic.js';
+import type { LightOverrides } from './traffic.js';
 import { StreetLife } from './street.js';
+import { TrafficSignals } from './traffic-signals.js';
+import { LogoFx } from './explosion.js';
+import type { Token } from './collectibles.js';
+import type { WalkerState } from './walker.js';
 import { asphaltMaps, beamTexture, facadeMaps, pavementMaps, type FacadeMaps } from './textures.js';
 
 /**
@@ -116,7 +120,6 @@ function nameTag(text: string, color: number): Sprite {
   return s;
 }
 
-const LIGHT_POST = 2.4;
 /** Size of the moonlight's shadow box around the player (m). */
 const SHADOW_SPAN = 110;
 const BEAM = beamTexture();
@@ -125,6 +128,52 @@ const PLAYER_PLATE = 'WINCCOA 1';
 
 function neon(color: number, opacity = 1): LineBasicMaterial {
   return new LineBasicMaterial({ color, transparent: opacity < 1, opacity });
+}
+
+/** A pedestrian figure: legs, torso, arms, head, a neon belt in its colour. */
+function makeWalker(color: number): Group {
+  const g = new Group();
+  const cloth = new MeshStandardMaterial({ color: 0x1c2328, roughness: 0.8 });
+  const skin = new MeshStandardMaterial({ color: 0xd9b49a, roughness: 0.7 });
+  const neonBelt = new MeshBasicMaterial({ color, toneMapped: false });
+  for (const [name, x] of [['legL', -0.13], ['legR', 0.13]] as const) {
+    const leg = new Mesh(new BoxGeometry(0.17, 0.85, 0.2), cloth);
+    leg.geometry.translate(0, -0.425, 0); // pivot at the hip
+    leg.position.set(x, 0.88, 0);
+    leg.name = name;
+    leg.castShadow = true;
+    g.add(leg);
+  }
+  const torso = new Mesh(new BoxGeometry(0.46, 0.62, 0.26), new MeshStandardMaterial({ color: mix(color, 0x000000, 0.55), roughness: 0.6 }));
+  torso.position.y = 1.2;
+  torso.castShadow = true;
+  const belt = new Mesh(new BoxGeometry(0.48, 0.05, 0.28), neonBelt);
+  belt.position.y = 0.92;
+  for (const [name, x] of [['armL', -0.3], ['armR', 0.3]] as const) {
+    const arm = new Mesh(new BoxGeometry(0.12, 0.6, 0.14), cloth);
+    arm.geometry.translate(0, -0.3, 0); // pivot at the shoulder
+    arm.position.set(x, 1.48, 0);
+    arm.name = name;
+    g.add(arm);
+  }
+  const head = new Mesh(new SphereGeometry(0.15, 14, 10), skin);
+  head.position.y = 1.68;
+  g.add(torso, belt, head);
+  return g;
+}
+
+/** Legs and arms swing with the stride. */
+function animateWalker(g: Group, phase: number, speed: number): void {
+  const amp = Math.min(0.75, Math.abs(speed) * 0.18);
+  const sw = Math.sin(phase * 2) * amp;
+  const set = (name: string, a: number): void => {
+    const o = g.getObjectByName(name);
+    if (o) o.rotation.x = a;
+  };
+  set('legL', sw);
+  set('legR', -sw);
+  set('armL', -sw * 0.8);
+  set('armR', sw * 0.8);
 }
 
 /** A daylight sky: deep blue at the zenith, pale haze at the horizon. */
@@ -182,6 +231,12 @@ export class CityWorld {
   private readonly headlights: SpotLight[] = [];
   private readonly shadowFollow = new Vector3();
   private readonly street: StreetLife;
+  private readonly fx: LogoFx;
+  /** The player on foot (hidden while driving). */
+  private walker: Group | null = null;
+  private walkerColor = -1;
+  /** Chase camera distance factor (settings). */
+  private camDistance = 1;
   private readonly hemi: HemisphereLight;
   private readonly facadeMats: MeshStandardMaterial[] = [];
   private timeOfDay: TimeOfDay = 'night';
@@ -189,8 +244,7 @@ export class CityWorld {
   private readonly lightOffset = new Vector3(-120, 220, -80);
   private readonly traffic: Group[] = [];
   private readonly machineEdges = new Map<string, { lines: LineSegments; roof: Mesh; beacon: Mesh }>();
-  private readonly lightHeads: { mesh: InstancedMesh; axis: 0 | 1 }[] = [];
-  private readonly lightNodes: { i: number; j: number }[] = [];
+  private signals: TrafficSignals | null = null;
   private readonly marker: Mesh;
   private readonly remotes = new Map<string, { car: Group; key: string }>();
   private readonly camPos = new Vector3();
@@ -246,6 +300,7 @@ export class CityWorld {
     this.buildLogos();
     this.street = new StreetLife(city, p);
     this.scene.add(this.street.group);
+    this.fx = new LogoFx(this.scene, p);
 
     this.player = makeCar(p, p.primary, 0x14232a, SEDAN, PLAYER_PLATE);
     this.scene.add(this.player);
@@ -482,28 +537,10 @@ export class CityWorld {
     this.scene.add(pad, canopy, glow);
   }
 
+  /** Real signals: pole, mast arm, horizontal head per approach (traffic-signals.ts). */
   private buildTrafficLights(): void {
-    const n = this.city.blocks;
-    for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) this.lightNodes.push({ i, j });
-    const geo = new SphereGeometry(0.55, 10, 8);
-    for (const axis of [0, 1] as const) {
-      const mesh = new InstancedMesh(geo, new MeshBasicMaterial({ color: 0xffffff }), this.lightNodes.length * 2);
-      const o = new Object3D();
-      const r = ROAD_WIDTH / 2 + 1.2;
-      this.lightNodes.forEach(({ i, j }, k) => {
-        const x = roadAxis(i);
-        const z = roadAxis(j);
-        // axis Z: lights on the two corners facing the Z traffic; axis X: the two others
-        const corners = axis === 0 ? [[r, r], [-r, -r]] : [[r, -r], [-r, r]];
-        corners.forEach(([cx, cz], c) => {
-          o.position.set(x + cx, LIGHT_POST + 2.2, z + cz);
-          o.updateMatrix();
-          mesh.setMatrixAt(k * 2 + c, o.matrix);
-        });
-      });
-      this.lightHeads.push({ mesh, axis });
-      this.scene.add(mesh);
-    }
+    this.signals = new TrafficSignals(this.city, this.p);
+    this.scene.add(this.signals.group);
   }
 
   /**
@@ -613,6 +650,34 @@ export class CityWorld {
   // --- dynamic -----------------------------------------------------------------------
 
   /** The other players (their datapoints): a car in their vehicle and colour, with a name tag. */
+  /** Logo hunt: the tokens still to take. */
+  setTokens(tokens: readonly Token[]): void {
+    this.fx.setTokens(tokens);
+  }
+
+  /** Logo hunt: a token blown up at (x, z). */
+  explodeToken(x: number, z: number): void {
+    this.fx.explode(x, z);
+  }
+
+  /** The player on foot (a figure in its neon colour), or null when driving. */
+  setWalker(w: WalkerState | null, color: number): void {
+    if (!w) {
+      if (this.walker) this.scene.remove(this.walker);
+      this.walker = null;
+      return;
+    }
+    if (!this.walker || this.walkerColor !== color) {
+      if (this.walker) this.scene.remove(this.walker);
+      this.walker = makeWalker(color);
+      this.walkerColor = color;
+      this.scene.add(this.walker);
+    }
+    this.walker.position.set(w.x, 0, w.z);
+    this.walker.rotation.y = w.heading;
+    animateWalker(this.walker, w.phase, w.speed);
+  }
+
   setRemotePlayers(players: readonly RemoteCar[]): void {
     const seen = new Set<string>();
     for (const r of players) {
@@ -621,7 +686,8 @@ export class CityWorld {
       let entry = this.remotes.get(r.id);
       if (!entry || entry.key !== key) {
         if (entry) this.scene.remove(entry.car);
-        const car = makeCar(this.p, r.color, 0x2a2f33, vehicleById(r.vehicle).body, randomPlate(r.id.length * 13 + r.nickname.length));
+        // on foot (vehicle 'foot'): a pedestrian in its colour; otherwise its car
+        const car = r.vehicle === 'foot' ? makeWalker(r.color) : makeCar(this.p, r.color, 0x2a2f33, vehicleById(r.vehicle).body, randomPlate(r.id.length * 13 + r.nickname.length));
         const tag = nameTag(r.nickname || r.id, r.color);
         tag.position.y = 5;
         car.add(tag);
@@ -713,15 +779,7 @@ export class CityWorld {
   }
 
   setLights(t: number, overrides: LightOverrides): void {
-    const colors = { green: new Color(this.p.success), yellow: new Color(this.p.warning), red: new Color(this.p.alarm) };
-    for (const { mesh, axis } of this.lightHeads) {
-      this.lightNodes.forEach(({ i, j }, k) => {
-        const c = colors[lightAt(i, j, axis, t, overrides)];
-        mesh.setColorAt(k * 2, c);
-        mesh.setColorAt(k * 2 + 1, c);
-      });
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    }
+    this.signals?.update(t, overrides);
   }
 
   setMarker(target: Point | null, kind: MissionKind | null, stage: MissionStage | null): void {
@@ -771,6 +829,25 @@ export class CityWorld {
     }
   }
 
+  /** Chase camera distance factor (0.7..1.6). */
+  setCameraDistance(k: number): void {
+    this.camDistance = k;
+  }
+
+  /** high: shadows, full resolution, bloom; low: no shadows, resolution 1, lighter bloom. */
+  setQuality(q: 'high' | 'low'): void {
+    const high = q === 'high';
+    this.renderer.setPixelRatio(high ? Math.min(window.devicePixelRatio, 2) : 1);
+    this.renderer.shadowMap.enabled = high;
+    this.moon.castShadow = high;
+    this.bloom.enabled = high || this.timeOfDay === 'night';
+    this.scene.traverse((o) => {
+      const m = (o as Mesh).material as Material | Material[] | undefined;
+      (Array.isArray(m) ? m : m ? [m] : []).forEach((x) => (x.needsUpdate = true));
+    });
+    this.resize();
+  }
+
   setCameraMode(mode: CameraMode): void {
     this.cameraMode = mode;
     this.corner = null;
@@ -792,6 +869,7 @@ export class CityWorld {
   render(dt: number, speed: number): void {
     this.elapsed += dt;
     this.street.update(dt);
+    this.fx.update(dt);
     const pulse = 0.5 + 0.5 * Math.sin(this.elapsed * 6);
     for (const { beacon, roof } of this.machineEdges.values()) {
       const fault = beacon.userData.fault === true;
@@ -805,19 +883,40 @@ export class CityWorld {
     this.shadowFollow.set(Math.round(this.player.position.x), 0, Math.round(this.player.position.z));
     this.moon.position.copy(this.shadowFollow).add(this.lightOffset);
     this.moon.target.position.copy(this.shadowFollow);
-    const h = this.player.rotation.y;
+    // the camera follows the player: the walker when on foot, else the car
+    const focus = this.walker ?? this.player;
+    const onFoot = this.walker !== null;
+    const h = focus.rotation.y;
     const fx = Math.sin(h);
     const fz = Math.cos(h);
-    const pos = this.player.position;
+    const pos = focus.position;
     const want = new Vector3();
     const look = new Vector3();
     let stiffness = 6;
     let fov = 62 + Math.min(14, Math.abs(speed) * 0.3);
-    switch (this.cameraMode) {
+    switch (onFoot && (this.cameraMode === 'chase' || this.cameraMode === 'street' || this.cameraMode === 'hood') ? `foot-${this.cameraMode}` : this.cameraMode) {
+      case 'foot-chase':
+      case 'foot-street': {
+        // over the shoulder
+        const backF = 3.4 * this.camDistance;
+        want.set(pos.x - fx * backF, 2.05, pos.z - fz * backF);
+        look.set(pos.x + fx * 6, 1.4, pos.z + fz * 6);
+        stiffness = 10;
+        fov = 60;
+        break;
+      }
+      case 'foot-hood': {
+        // through the player's eyes
+        want.set(pos.x + fx * 0.25, 1.68, pos.z + fz * 0.25);
+        look.set(pos.x + fx * 20, 1.6, pos.z + fz * 20);
+        stiffness = 30;
+        fov = 70;
+        break;
+      }
       case 'chase': {
         // close enough to read the number plate when stopped; pulls back with speed
         // pulls back only a little with speed: the plate stays readable at ~100 km/h
-        const back = 4.1 + Math.min(1.2, Math.abs(speed) * 0.03);
+        const back = (4.1 + Math.min(1.2, Math.abs(speed) * 0.03)) * this.camDistance;
         want.set(pos.x - fx * back, 1.6 + Math.min(0.4, Math.abs(speed) * 0.01), pos.z - fz * back);
         look.set(pos.x + fx * 9, 1.05, pos.z + fz * 9);
         // a stiffer follow: the smoothing lag (speed / stiffness) stays under 2 m at 100 km/h
@@ -827,7 +926,7 @@ export class CityWorld {
       }
       case 'street': {
         // low and close: the shops, signs and pedestrians fill the frame
-        const back = 6.5 + Math.min(3, Math.abs(speed) * 0.06);
+        const back = (6.5 + Math.min(3, Math.abs(speed) * 0.06)) * this.camDistance;
         want.set(pos.x - fx * back, 1.25, pos.z - fz * back);
         look.set(pos.x + fx * 10, 2.4, pos.z + fz * 10);
         fov += 8;
@@ -871,6 +970,14 @@ export class CityWorld {
     this.camPos.lerp(want, k);
     this.camLook.lerp(look, k);
     this.camera.position.copy(this.camPos);
+    // a blast nearby shakes the camera, decaying quickly
+    if (this.fx.shake > 0.01) {
+      const a = this.fx.shake;
+      this.camera.position.x += (Math.random() - 0.5) * a;
+      this.camera.position.y += (Math.random() - 0.5) * a * 0.6;
+      this.camera.position.z += (Math.random() - 0.5) * a;
+      this.fx.shake *= Math.exp(-dt * 6);
+    }
     this.camera.lookAt(this.camLook);
     this.camera.fov = fov;
     this.camera.updateProjectionMatrix();

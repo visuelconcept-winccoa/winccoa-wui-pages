@@ -3,6 +3,32 @@
 
 # Changelog — @visuelconcept-winccoa/wui-city-drive
 
+## 0.3.0 — 2026-11-17
+
+- **Logo hunt** (new default game mode; Missions stays): WinCC OA tokens float over the roads,
+  each with a beam of light and a glow ring; driving or walking through one blows it up — 1000
+  sparks and 140 tumbling shards in the logo colours, a shockwave, a flash, a camera shake —
+  and scores 100 × combo (chain logos within 6 s, up to ×5). A cleared wave of 24 earns a
+  bonus and lays a new wave. Tokens on the minimap, "+100 ×3" pop-ups.
+- **On foot**: F (or the button, or B on a gamepad) to get out of the car and back in when
+  close to it; walk, run with Shift; over-the-shoulder and first-person cameras. The other
+  players see you as a pedestrian.
+- **USB gamepad** (standard mapping): RT / LT throttle and brake, left stick steering and
+  walking, A handbrake / run, B get out / in, Y camera, X mission, LB day / night, RB reset,
+  Start pause.
+- **Settings**: rebind every key, gamepad on / off with dead zone and inverted steering,
+  steering sensitivity, chase camera distance, graphics quality (Low: no shadows), km/h or
+  mph, minimap and players panel on / off. Kept in the browser.
+- **Traffic signals** with real poles: on every approach, a galvanised pole on the corner, a
+  mast arm with its brace over the lanes, and a horizontal Japanese-style head (green, amber,
+  red from left to right) with backplate and visors; only the lamp of the phase is lit.
+- **Multiplayer fixed**: the other players never showed up. `dpConnect` hands the element
+  names back with `:_online.._value`, which the game did not strip, so no value of another
+  player was ever recognised (the machine bindings had the same bug). Also: one player
+  datapoint per session (`CityDrive_Player_<user>_<id>`), so two windows of one user, or
+  people sharing an account, no longer clash; writes are queued, never dropped; a player is
+  online from its first real change (heartbeat every 10 s), not from dpConnect's first answer.
+
 ## 0.2.0 — 2026-11-17
 
 - **Day mode** next to the neon night: a sky, a warm sun casting the shadows, windows unlit, a

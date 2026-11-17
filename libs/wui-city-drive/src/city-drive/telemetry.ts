@@ -20,7 +20,7 @@ export interface ThrottleOptions {
 
 export const DEFAULT_THROTTLE: ThrottleOptions = {
   maxHz: 2,
-  heartbeatS: 30,
+  heartbeatS: 10,
   deadband: { x: 1, z: 1, heading: 5, speed: 2, fuel: 0.5, score: 0 }
 };
 

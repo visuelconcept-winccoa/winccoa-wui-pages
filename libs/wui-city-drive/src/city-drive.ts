@@ -31,6 +31,18 @@ import { CityGame, type GameEvent, type HudState } from './city-drive/game.js';
 import { MSG } from './city-drive/i18n.js';
 import { drawMinimap } from './city-drive/minimap.js';
 import { readPalette, type NeonPalette } from './city-drive/palette.js';
+import {
+  ACTIONS,
+  DEFAULT_SETTINGS,
+  GAMEPAD_LEGEND,
+  keyLabel,
+  loadSettings,
+  rebind,
+  saveSettings,
+  speedIn,
+  type Action,
+  type Settings
+} from './city-drive/settings.js';
 import { TelemetryThrottle } from './city-drive/telemetry.js';
 import { NEON_COLORS, NICKNAME_MAX, type NeonColor, VEHICLES, cleanNickname, parseProfile, vehicleById, type Profile } from './city-drive/vehicles.js';
 
@@ -71,6 +83,14 @@ export class WuiCityDrive extends LitElement {
   @state() private demo = false;
   @state() private telemetryOn = false;
   @state() private remotes: RemotePlayer[] = [];
+  /** Player settings (keys, gamepad, camera, graphics, display) and the settings dialog. */
+  @state() private settings: Settings = loadSettings();
+  @state() private settingsOpen = false;
+  /** The action waiting for its new key in the settings, or null. */
+  @state() private listening: Action | null = null;
+  /** "+100 ×3" pop-ups of the logos just blown up. */
+  @state() private popups: { id: number; points: number; combo: number; dx: number }[] = [];
+  private popupId = 0;
 
   @query('.stage') private stage!: HTMLElement;
   @query('canvas.minimap') private minimap?: HTMLCanvasElement;
@@ -95,6 +115,7 @@ export class WuiCityDrive extends LitElement {
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
+    window.removeEventListener('keydown', this.onRebindKey, true);
     this.roleSub.unsubscribe();
     window.clearInterval(this.telemetryTimer);
     window.clearTimeout(this.eventTimer);
@@ -116,7 +137,7 @@ export class WuiCityDrive extends LitElement {
       </wui-context-generator>
       ${this.rolePlay
         ? html`<div class="stage" @click=${() => this.stage.focus()}></div>
-            ${this.started ? this.renderHud() : this.renderSetup()}`
+            ${this.started ? this.renderHud() : this.renderSetup()} ${this.settingsOpen ? this.renderSettings() : nothing}`
         : html`<div class="center muted">${MSG.hud.roleForbidden}</div>`}
     `;
   }
@@ -166,6 +187,18 @@ export class WuiCityDrive extends LitElement {
               )
             : nothing}
         </div>
+        <div class="label">${MSG.hud.mode}</div>
+        <div class="times">
+          ${(['logos', 'missions'] as const).map(
+            (md) => html`<ix-button
+              variant=${this.profile.mode === md ? 'primary' : 'secondary'}
+              icon=${md === 'logos' ? 'star' : 'package'}
+              @click=${() => this.pickMode(md)}
+              >${md === 'logos' ? MSG.hud.logos : MSG.hud.missions}</ix-button
+            >`
+          )}
+        </div>
+        <div class="hint">${this.profile.mode === 'logos' ? MSG.hud.logosHint : MSG.hud.missionsHint}</div>
         <div class="label">${MSG.hud.time}</div>
         <div class="times">
           ${(['night', 'day'] as const).map(
@@ -177,9 +210,13 @@ export class WuiCityDrive extends LitElement {
             >`
           )}
         </div>
+        <div class="setup-actions">
+          <ix-button variant="secondary" icon="cogwheel" @click=${() => this.openSettings()}>Settings</ix-button>
+          <span class="grow"></span>
         <ix-button class="go" ?disabled=${!this.game} @click=${() => this.startGame()}>
-          ${'Drive'}
+          Drive
         </ix-button>
+        </div>
         <div class="keys">${MSG.hud.keys}</div>
       </div>
     </div>`;
@@ -188,6 +225,12 @@ export class WuiCityDrive extends LitElement {
   private pickVehicle(id: Profile['vehicle']): void {
     this.profile = { ...this.profile, vehicle: id };
     this.game?.setProfile(this.profile);
+  }
+
+  private pickMode(mode: Profile['mode']): void {
+    this.profile = { ...this.profile, mode };
+    this.game?.setProfile(this.profile);
+    saveProfile(this.profile);
   }
 
   private pickTime(time: Profile['time']): void {
@@ -212,6 +255,12 @@ export class WuiCityDrive extends LitElement {
       <div class="hud top-left">
         <div class="player">${this.profile.nickname || '—'} · ${vehicleById(this.profile.vehicle).label}</div>
         <div class="score"><span>${MSG.hud.score}</span> <strong>${h?.score ?? 0}</strong></div>
+        ${h?.hunt
+          ? html`<div class="hunt">
+              <span class="logo-dot"></span><strong>${h.hunt.left}</strong> ${MSG.hud.logosLeft} · ${MSG.hud.wave} ${h.hunt.wave}
+              ${h.hunt.combo > 1 ? html`<span class="combo">×${h.hunt.combo}</span>` : nothing}
+            </div>`
+          : nothing}
         ${active
           ? html`<div class="mission ${m.kind}">
               <ix-icon name=${m.kind === 'intervention' ? 'maintenance' : 'package'}></ix-icon>
@@ -221,11 +270,16 @@ export class WuiCityDrive extends LitElement {
               </div>
               ${Number.isFinite(m.timeLeft) ? html`<div class="timer">${Math.ceil(m.timeLeft)} s</div>` : nothing}
             </div>`
-          : html`<ix-button variant="secondary" icon="add" @click=${() => this.act(() => this.game?.newMission())}>${MSG.hud.newMission}</ix-button>`}
+          : h?.hunt
+            ? nothing
+            : html`<ix-button variant="secondary" icon="add" @click=${() => this.act(() => this.game?.newMission())}>${MSG.hud.newMission}</ix-button>`}
+        <ix-button variant="secondary" icon=${h?.onFoot ? 'truck' : 'user'} @click=${() => this.act(() => this.game?.toggleFoot())}
+          >${h?.onFoot ? MSG.hud.enterCar : MSG.hud.exitCar} (F)</ix-button
+        >
         ${!this.demo ? html`<ix-pill variant=${this.telemetryOn ? 'success' : 'neutral'} outline>${this.telemetryOn ? MSG.hud.telemetry : MSG.hud.noTelemetry}</ix-pill>` : nothing}
       </div>
       <div class="hud top-right">
-        <canvas class="minimap" width=${MINIMAP_PX} height=${MINIMAP_PX}></canvas>
+        <canvas class="minimap" ?hidden=${!this.settings.showMinimap} width=${MINIMAP_PX} height=${MINIMAP_PX}></canvas>
         <div class="tools">
           <ix-icon-button ghost icon=${h?.paused ? 'play' : 'pause'} title=${h?.paused ? MSG.hud.resume : MSG.hud.pause} @click=${() => this.act(() => this.game?.setPaused(!h?.paused))}></ix-icon-button>
           <ix-icon-button
@@ -234,13 +288,14 @@ export class WuiCityDrive extends LitElement {
             title=${this.profile.time === 'day' ? MSG.hud.night : MSG.hud.day}
             @click=${() => this.act(() => this.game?.toggleTimeOfDay())}
           ></ix-icon-button>
+          <ix-icon-button ghost icon="cogwheel" title="Settings" @click=${() => this.openSettings()}></ix-icon-button>
           <ix-icon-button ghost icon="eye" title=${MSG.hud.camera} @click=${() => this.act(() => this.game?.toggleCamera())}></ix-icon-button>
           <ix-icon-button ghost icon="refresh" title=${MSG.hud.reset} @click=${() => this.act(() => this.game?.resetCar())}></ix-icon-button>
         </div>
-        ${this.renderPlayers()}
+        ${this.settings.showPlayers ? this.renderPlayers() : nothing}
       </div>
       <div class="hud bottom-left">
-        <div class="speed"><strong>${h?.speed ?? 0}</strong><span>${MSG.hud.speed}</span></div>
+        <div class="speed"><strong>${speedIn(h?.speed ?? 0, this.settings.units)}</strong><span>${this.settings.units === 'mph' ? 'mph' : 'km/h'}</span></div>
         <ix-progress-indicator
           class="fuel"
           label=${MSG.hud.fuel}
@@ -250,6 +305,7 @@ export class WuiCityDrive extends LitElement {
       </div>
       ${this.renderBanner(true)}
       ${this.eventText ? html`<div class="toast">${this.eventText}</div>` : nothing}
+      ${this.popups.map((pp) => html`<div class="popup ${pp.combo > 2 ? 'hot' : ''}" style="--dx:${pp.dx}px">+${pp.points}${pp.combo > 1 ? html` <span>×${pp.combo}</span>` : nothing}</div>`)}
       ${h?.paused
         ? html`<div class="overlay">
             <div class="setup small">
@@ -260,6 +316,124 @@ export class WuiCityDrive extends LitElement {
           </div>`
         : nothing}
     `;
+  }
+
+  // --- settings -------------------------------------------------------------------------
+
+  private openSettings(): void {
+    this.settingsOpen = true;
+    if (this.started) this.game?.setPaused(true);
+  }
+
+  private closeSettings(): void {
+    this.settingsOpen = false;
+    this.listening = null;
+    this.stage?.focus();
+  }
+
+  /** Stores and applies new settings. */
+  private applySettings(next: Settings): void {
+    this.settings = next;
+    saveSettings(next);
+    this.game?.setSettings(next);
+  }
+
+  /** While listening for a key: the next key pressed becomes the action's key (Esc cancels). */
+  private readonly onRebindKey = (e: KeyboardEvent): void => {
+    if (!this.listening) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.code !== 'Escape') this.applySettings(rebind(this.settings, this.listening, e.code));
+    this.listening = null;
+    window.removeEventListener('keydown', this.onRebindKey, true);
+  };
+
+  private listen(action: Action): void {
+    this.listening = action;
+    window.addEventListener('keydown', this.onRebindKey, true);
+  }
+
+  private renderSettings(): TemplateResult {
+    const st = this.settings;
+    const set = (patch: Partial<Settings>): void => this.applySettings({ ...st, ...patch });
+    const choice = <T extends string>(value: T, options: readonly [T, string][], pick: (v: T) => void): TemplateResult =>
+      html`<div class="times">
+        ${options.map(([v, label]) => html`<ix-button size="16" variant=${value === v ? 'primary' : 'secondary'} @click=${() => pick(v)}>${label}</ix-button>`)}
+      </div>`;
+    const pad = this.game?.padName ?? '';
+    return html`<div class="overlay settings-overlay" @click=${() => this.closeSettings()}>
+      <div class="settings" @click=${(e: Event) => e.stopPropagation()}>
+        <div class="settings-head">
+          <ix-typography format="h3">Settings</ix-typography>
+          <ix-icon-button ghost icon="close" @click=${() => this.closeSettings()}></ix-icon-button>
+        </div>
+        <div class="settings-body">
+          <section>
+            <div class="sec-title">Keyboard</div>
+            <table class="bindings">
+              ${ACTIONS.map(
+                (a) => html`<tr>
+                  <td>${a.label}</td>
+                  <td>${st.keys[a.id].map((c) => html`<kbd>${keyLabel(c)}</kbd>`)}</td>
+                  <td>
+                    <ix-button size="16" variant=${this.listening === a.id ? 'primary' : 'tertiary'} @click=${() => this.listen(a.id)}
+                      >${this.listening === a.id ? 'Press a key…' : 'Change'}</ix-button
+                    >
+                  </td>
+                </tr>`
+              )}
+            </table>
+            <ix-button size="16" variant="tertiary" icon="undo" @click=${() => set({ keys: DEFAULT_SETTINGS.keys })}>Default keys</ix-button>
+          </section>
+          <section>
+            <div class="sec-title">USB gamepad</div>
+            <label class="row">
+              <span>Use a gamepad</span>
+              <ix-toggle hide-text ?checked=${st.gamepad.enabled} @checkedChange=${(e: CustomEvent<boolean>) => set({ gamepad: { ...st.gamepad, enabled: e.detail } })}></ix-toggle>
+            </label>
+            <div class="pad-status ${pad ? 'on' : ''}">${pad ? `Connected: ${pad}` : 'No gamepad detected: plug it in and press any button.'}</div>
+            <ix-slider
+              label="Stick dead zone"
+              min="0"
+              max="0.5"
+              step="0.05"
+              .value=${st.gamepad.deadzone}
+              @valueChange=${(e: CustomEvent<number>) => set({ gamepad: { ...st.gamepad, deadzone: e.detail } })}
+            ></ix-slider>
+            <label class="row">
+              <span>Invert steering</span>
+              <ix-toggle hide-text ?checked=${st.gamepad.invertSteer} @checkedChange=${(e: CustomEvent<boolean>) => set({ gamepad: { ...st.gamepad, invertSteer: e.detail } })}></ix-toggle>
+            </label>
+            <table class="bindings legend">
+              ${GAMEPAD_LEGEND.map((l) => html`<tr><td><kbd>${l.control}</kbd></td><td>${l.action}</td></tr>`)}
+            </table>
+          </section>
+          <section>
+            <div class="sec-title">Driving and camera</div>
+            <ix-slider label="Steering sensitivity" min="0.5" max="1.5" step="0.05" .value=${st.steering} @valueChange=${(e: CustomEvent<number>) => set({ steering: e.detail })}></ix-slider>
+            <ix-slider label="Chase camera distance" min="0.7" max="1.6" step="0.05" .value=${st.cameraDistance} @valueChange=${(e: CustomEvent<number>) => set({ cameraDistance: e.detail })}></ix-slider>
+          </section>
+          <section>
+            <div class="sec-title">Graphics and display</div>
+            <div class="row"><span>Quality</span>${choice(st.quality, [['high', 'High'], ['low', 'Low (no shadows)']], (v) => set({ quality: v }))}</div>
+            <div class="row"><span>Speed</span>${choice(st.units, [['kmh', 'km/h'], ['mph', 'mph']], (v) => set({ units: v }))}</div>
+            <label class="row">
+              <span>Minimap</span>
+              <ix-toggle hide-text ?checked=${st.showMinimap} @checkedChange=${(e: CustomEvent<boolean>) => set({ showMinimap: e.detail })}></ix-toggle>
+            </label>
+            <label class="row">
+              <span>Players panel</span>
+              <ix-toggle hide-text ?checked=${st.showPlayers} @checkedChange=${(e: CustomEvent<boolean>) => set({ showPlayers: e.detail })}></ix-toggle>
+            </label>
+          </section>
+        </div>
+        <div class="settings-foot">
+          <ix-button variant="secondary" @click=${() => this.applySettings(DEFAULT_SETTINGS)}>Restore all defaults</ix-button>
+          <span class="grow"></span>
+          <ix-button @click=${() => this.closeSettings()}>Done</ix-button>
+        </div>
+      </div>
+    </div>`;
   }
 
   /** The title banner: big on the start screen, compact at the top of the game. */
@@ -347,9 +521,15 @@ export class WuiCityDrive extends LitElement {
     this.palette = readPalette(this);
     this.game = new CityGame(this.stage, this.palette);
     this.game.setProfile(this.profile);
+    this.game.setSettings(this.settings);
     this.game.setPaused(true);
     this.game.onHud = (hud) => this.onHud(hud);
     this.game.onEvent = (e) => this.onEvent(e);
+    this.game.onLogo = (pk) => {
+      const id = ++this.popupId;
+      this.popups = [...this.popups, { id, points: pk.points, combo: pk.combo, dx: Math.round((Math.random() - 0.5) * 120) }];
+      window.setTimeout(() => (this.popups = this.popups.filter((x) => x.id !== id)), 1300);
+    };
     this.game.onProfile = (pr) => {
       this.profile = pr;
       saveProfile(pr);
@@ -397,7 +577,8 @@ export class WuiCityDrive extends LitElement {
     const m = hud.mission;
     const target = m && ['pickup', 'drop', 'reach'].includes(m.stage) ? m.target : null;
     const tc = m?.kind === 'intervention' ? this.palette.alarm : m?.stage === 'drop' ? this.palette.success : this.palette.warning;
-    drawMinimap(canvas, this.game.city, this.palette, this.game.car, this.palette[this.profile.color], this.game.traffic, this.machines, target, tc, this.game.remotes);
+    const tokens = this.game.hunt ? this.game.hunt.tokens.filter((tk) => !tk.taken) : [];
+    drawMinimap(canvas, this.game.city, this.palette, this.game.position, this.palette[this.profile.color], this.game.traffic, this.machines, target, tc, this.game.remotes, tokens, this.game.walker ? this.game.car : null);
   }
 
   private onEvent(e: GameEvent): void {
@@ -576,6 +757,160 @@ function pageStyles(): ReturnType<typeof css> {
     .times {
       display: flex;
       gap: 0.5rem;
+    }
+    .setup-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .grow {
+      flex: 1;
+    }
+    .settings-overlay {
+      z-index: 5;
+    }
+    .settings {
+      display: flex;
+      flex-direction: column;
+      width: min(52rem, 94%);
+      max-height: 88%;
+      border: 1px solid var(--theme-color-primary);
+      border-radius: var(--theme-default-border-radius);
+      background: var(--theme-color-2);
+      box-shadow: 0 0 24px color-mix(in srgb, var(--theme-color-primary) 40%, transparent);
+    }
+    .settings-head,
+    .settings-foot {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1rem;
+    }
+    .settings-head {
+      justify-content: space-between;
+      border-bottom: 1px solid var(--theme-color-soft-bdr);
+    }
+    .settings-foot {
+      border-top: 1px solid var(--theme-color-soft-bdr);
+    }
+    .settings-body {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem 1.5rem;
+      padding: 1rem;
+      overflow-y: auto;
+    }
+    .settings-body section {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .sec-title {
+      font-weight: 700;
+      color: var(--theme-color-dynamic);
+      letter-spacing: 0.04em;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+    }
+    .bindings {
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    .bindings td {
+      padding: 0.2rem 0.3rem;
+      border-bottom: 1px solid var(--theme-color-soft-bdr);
+    }
+    kbd {
+      display: inline-block;
+      min-width: 1.2rem;
+      margin-right: 0.2rem;
+      padding: 0.05rem 0.35rem;
+      font-family: inherit;
+      font-size: 0.75rem;
+      text-align: center;
+      border: 1px solid var(--theme-color-primary);
+      border-radius: 3px;
+      color: var(--theme-color-std-text);
+      background: var(--theme-color-1);
+    }
+    .pad-status {
+      font-size: 0.75rem;
+      color: var(--theme-color-soft-text);
+    }
+    .pad-status.on {
+      color: var(--theme-color-success);
+    }
+    .hint {
+      font-size: 0.75rem;
+      color: var(--theme-color-soft-text);
+    }
+    .hunt {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.95rem;
+    }
+    .hunt strong {
+      color: var(--theme-color-warning);
+      text-shadow: 0 0 8px var(--theme-color-warning);
+    }
+    .logo-dot {
+      width: 0.7rem;
+      height: 0.7rem;
+      border-radius: 50%;
+      background: var(--theme-color-warning);
+      box-shadow: 0 0 8px var(--theme-color-warning);
+    }
+    .combo {
+      margin-left: 0.3rem;
+      padding: 0 0.4rem;
+      font-weight: 800;
+      color: var(--theme-color-1);
+      background: var(--theme-color-dynamic);
+      border-radius: var(--theme-default-border-radius);
+      box-shadow: 0 0 10px var(--theme-color-dynamic);
+    }
+    .popup {
+      position: absolute;
+      left: calc(50% + var(--dx));
+      top: 42%;
+      z-index: 3;
+      transform: translateX(-50%);
+      font-size: 2.6rem;
+      font-weight: 900;
+      font-style: italic;
+      color: var(--theme-color-warning);
+      text-shadow: 0 0 14px var(--theme-color-warning), 0 3px 0 rgba(0, 0, 0, 0.8);
+      pointer-events: none;
+      animation: pop 1.3s ease-out forwards;
+    }
+    .popup span {
+      color: var(--theme-color-dynamic);
+      text-shadow: 0 0 14px var(--theme-color-dynamic);
+    }
+    .popup.hot {
+      font-size: 3.4rem;
+    }
+    @keyframes pop {
+      0% {
+        opacity: 0;
+        transform: translate(-50%, 20px) scale(0.6);
+      }
+      15% {
+        opacity: 1;
+        transform: translate(-50%, 0) scale(1.25);
+      }
+      30% {
+        transform: translate(-50%, -10px) scale(1);
+      }
+      100% {
+        opacity: 0;
+        transform: translate(-50%, -120px) scale(0.9);
+      }
     }
     .keys {
       font-size: 0.75rem;
