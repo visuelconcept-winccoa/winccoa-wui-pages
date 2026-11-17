@@ -76,10 +76,15 @@ export function forwardSpeed(c: CarState): number {
   return c.vx * Math.sin(c.heading) + c.vz * Math.cos(c.heading);
 }
 
+/** Share of the engine left on an empty tank (it was none: the car stayed stuck). */
+const EMPTY_PULL = 0.3;
+
 function longitudinal(v: number, input: CarInput, fuel: number, spec: CarSpec): number {
   let a = 0;
-  if (input.throttle > 0) a = fuel > 0 ? input.throttle * spec.engine : 0;
-  else if (input.throttle < 0) a = v > 0.5 ? input.throttle * spec.brake : fuel > 0 ? input.throttle * spec.reverse : 0;
+  // an empty tank leaves a weak reserve: the car crawls (up to emptySpeed) to the station
+  const pull = fuel > 0 ? 1 : EMPTY_PULL;
+  if (input.throttle > 0) a = input.throttle * spec.engine * pull;
+  else if (input.throttle < 0) a = v > 0.5 ? input.throttle * spec.brake : input.throttle * spec.reverse * pull;
   a -= Math.sign(v) * (spec.rolling + spec.drag * v * v);
   if (input.handbrake) a -= Math.sign(v) * spec.brake * 0.35;
   return a;

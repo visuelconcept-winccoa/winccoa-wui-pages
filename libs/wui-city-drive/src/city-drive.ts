@@ -33,7 +33,7 @@ import appSecurityRoles from './app-security.roles.json';
 import type { MachineState } from './city-drive/bindings.js';
 import { DriveLink, ONLINE_MS, type LinkState, type RemotePlayer } from './city-drive/dp-link.js';
 import { CityGame, type Flash, type GameEvent, type GameHud } from './city-drive/game.js';
-import { JoinSlots, MATCH_DURATIONS, MAX_LOCAL_PLAYERS, clock, padIndexOf, type DeviceId, type Standing } from './city-drive/local-play.js';
+import { DEFAULT_MATCH, JoinSlots, MATCH_DURATIONS, MAX_LOCAL_PLAYERS, clock, padIndexOf, type DeviceId, type Standing } from './city-drive/local-play.js';
 import { MSG } from './city-drive/i18n.js';
 import { drawMinimap } from './city-drive/minimap.js';
 import { readPalette, type NeonPalette } from './city-drive/palette.js';
@@ -50,6 +50,8 @@ import {
   type Settings
 } from './city-drive/settings.js';
 import { TelemetryThrottle } from './city-drive/telemetry.js';
+import { DpSingleJsonStore } from '@visuelconcept-winccoa/wui-kit/data/dp-single-json-store.js';
+import { addResults, leaderboard, ordinal, playerCount, resultId, validEmail, type BoardRow, type GameResult } from './city-drive/results.js';
 import { NEON_COLORS, NICKNAME_MAX, type NeonColor, VEHICLES, cleanNickname, parseProfile, vehicleById, type Profile } from './city-drive/vehicles.js';
 
 const MODULE_ID = 'city-drive';
@@ -76,7 +78,12 @@ function saveProfile(p: Profile): void {
   }
 }
 
-const LOCAL_KEY = 'wui-city-drive.local';
+const minutes = (s: number): string => (s === 60 ? '1 minute' : `${s / 60} minutes`);
+
+/** v2 (0.6.0): the default match became 1 minute; the 3-minute choice of 0.4 is not kept. */
+const LOCAL_KEY = 'wui-city-drive.local.v2';
+/** The log of the match results (results.ts): nicknames, optional emails, logos, scores. */
+const RESULTS_DP = 'CityDrive_Results';
 
 /** Player k's stored profile: player 1 keeps the key of 0.3.0, player 2 its own. */
 function loadProfileOf(k: number): Profile {
@@ -103,10 +110,10 @@ function loadLocal(): { players: number; match: number } {
   try {
     const o = JSON.parse(localStorage.getItem(LOCAL_KEY) ?? '{}') as { players?: unknown; match?: unknown };
     const players = o.players === 2 ? 2 : 1;
-    const match = MATCH_DURATIONS.includes(o.match as 120) ? (o.match as number) : o.match === 0 ? 0 : 180;
+    const match = MATCH_DURATIONS.includes(o.match as 120) ? (o.match as number) : o.match === 0 ? 0 : DEFAULT_MATCH;
     return { players, match };
   } catch {
-    return { players: 1, match: 180 };
+    return { players: 1, match: DEFAULT_MATCH };
   }
 }
 
@@ -152,6 +159,13 @@ export class WuiCityDrive extends LitElement {
   @state() private popups: { id: number; player: number; points: number; combo: number; dx: number }[] = [];
   /** End of a match: the standings, shown on the podium. */
   @state() private results: Standing[] | null = null;
+  /** Each player's email (optional): kept in memory only, cleared when back at the menu. */
+  @state() private emails: string[] = [];
+  /** The logo leaderboard shown with the podium (null while it loads). */
+  @state() private board: BoardRow[] | null = null;
+  /** People in the ranking (one per email, else per nickname). */
+  @state() private boardPlayers = 0;
+  private readonly resultsStore = new DpSingleJsonStore<GameResult[]>(RESULTS_DP, RESULTS_DP, () => [], { isArray: true });
   /** A player lost its gamepad during the game. */
   @state() private lostSlot: number | null = null;
   private popupId = 0;
@@ -259,7 +273,7 @@ export class WuiCityDrive extends LitElement {
               </div>
               <div class="hint">${this.profile.mode === 'logos' ? MSG.hud.logosHint : MSG.hud.missionsHint}</div>`
           : html`<div class="hint">
-              ${two ? 'Race for the WinCC OA logos' : 'Time attack on the WinCC OA logos'}: ${this.local.match / 60} minutes, the highest score wins. Chain logos within 6 s for a combo.
+              ${two ? 'Race for the WinCC OA logos' : 'Time attack on the WinCC OA logos'}: ${minutes(this.local.match)}, the highest score wins. Chain logos within 6 s for a combo.
             </div>`}
         <div class="setup-actions">
           <div class="times">
@@ -271,7 +285,7 @@ export class WuiCityDrive extends LitElement {
           </div>
           <ix-button variant="secondary" icon="cogwheel" @click=${() => this.openSettings()}>Settings</ix-button>
           <span class="grow"></span>
-          <ix-button class="go" ?disabled=${!this.game || !ready} @click=${() => this.startGame()}>
+          <ix-button class="go" ?disabled=${!this.game || !ready || !this.emailsValid} @click=${() => this.startGame()}>
             ${ready ? (this.local.match ? 'Start the match' : 'Drive') : 'Waiting for the players…'}
           </ix-button>
         </div>
@@ -301,6 +315,15 @@ export class WuiCityDrive extends LitElement {
         maxlength=${NICKNAME_MAX}
         .value=${pr.nickname}
         @valueChange=${(e: CustomEvent<string>) => this.setProfileOf(k, { ...pr, nickname: cleanNickname(e.detail ?? '') }, false)}
+      ></ix-input>
+      <ix-input
+        type="email"
+        label=${two ? `Email P${k + 1} (optional)` : 'Email (optional)'}
+        .helperText=${'Saved with your results; never shown in the ranking'}
+        .invalidText=${'Not a valid email address'}
+        class=${validEmail(this.emails[k] ?? '') ? '' : 'ix-invalid'}
+        .value=${this.emails[k] ?? ''}
+        @valueChange=${(e: CustomEvent<string>) => this.setEmail(k, e.detail ?? '')}
       ></ix-input>
       <div class="vehicles ${two ? 'compact' : ''}">
         ${VEHICLES.map(
@@ -490,7 +513,7 @@ export class WuiCityDrive extends LitElement {
         <div class="kicker"><span class="bar"></span>${solo ? "TIME'S UP" : 'FINAL STANDINGS'}<span class="bar"></span></div>
         ${solo
           ? html`<div class="winner">${results[0].score}</div>
-              <div class="hint">${results[0].logos} logos in ${this.local.match / 60} minutes</div>`
+              <div class="hint">${results[0].logos} logos in ${minutes(this.local.match)}</div>`
           : html`<div class="winner" style="--c:${hex(p ? p[this.profiles[results[0].player].color] : 0x00bde3)}">
                 ${results[1] && results[1].rank === results[0].rank ? 'Draw!' : `${this.profiles[results[0].player].nickname || `Player ${results[0].player + 1}`} wins!`}
               </div>
@@ -504,11 +527,39 @@ export class WuiCityDrive extends LitElement {
                   </tr>`
                 )}
               </table>`}
+        ${this.renderBoard()}
         <div class="times">
           <ix-button variant="secondary" @click=${() => this.backToMenu()}>Menu</ix-button>
           <ix-button icon="refresh" @click=${() => this.rematch()}>Play again</ix-button>
         </div>
       </div>
+    </div>`;
+  }
+
+  /** The logo leaderboard: best match of each person, nicknames only; this match's rows lit. */
+  private renderBoard(): TemplateResult {
+    return html`<div class="board">
+      <div class="board-title">
+        <span class="logo-dot"></span>WinCC OA logos · ranking
+        <span class="grow"></span>
+        <span class="board-count">${this.boardPlayers} ${this.boardPlayers === 1 ? 'player' : 'players'}</span>
+      </div>
+      ${this.board
+        ?.filter((r) => r.mine)
+        .map((r) => html`<div class="board-mine">${r.nickname}: <strong>${ordinal(r.rank)}</strong> of ${this.boardPlayers}</div>`)}
+      ${this.board === null
+        ? html`<div class="hint">Loading the ranking…</div>`
+        : html`<table class="standings">
+            ${this.board.map(
+              (r, k) => html`${k > 0 && r.rank > this.board![k - 1].rank + 1 ? html`<tr class="gap"><td colspan="4">…</td></tr>` : nothing}
+                <tr class=${r.mine ? 'mine' : ''}>
+                  <td class="rank">${r.rank}</td>
+                  <td>${r.nickname}</td>
+                  <td class="num"><strong>${r.logos}</strong> logos</td>
+                  <td class="num">${r.score}</td>
+                </tr>`
+            )}
+          </table>`}
     </div>`;
   }
 
@@ -742,7 +793,10 @@ export class WuiCityDrive extends LitElement {
     };
     this.game.onDevice = (device, press) => this.onDevice(device, press);
     this.game.onDeviceLost = (device) => this.onDeviceLost(device);
-    this.game.onMatchEnd = (results) => (this.results = results);
+    this.game.onMatchEnd = (results) => {
+      this.results = results;
+      void this.recordResults(results);
+    };
     this.game.onFlash = (f, k) => this.onFlash(f, k);
     this.pickPlayers(this.local.players);
     this.game.setProfile(0, this.profile);
@@ -840,14 +894,55 @@ export class WuiCityDrive extends LitElement {
     this.telemetryTimer = window.setInterval(() => this.sendTelemetry(), TELEMETRY_MS);
   }
 
+  private get emailsValid(): boolean {
+    return this.profiles.every((_, k) => validEmail(this.emails[k] ?? ''));
+  }
+
+  private setEmail(k: number, email: string): void {
+    const next = [...this.emails];
+    next[k] = email.trim();
+    this.emails = next;
+  }
+
+  /**
+   * End of a match: one result per player appended to `CityDrive_Results`, then the leaderboard
+   * (nicknames only). Without a backend the log lives in memory for the session.
+   */
+  private async recordResults(standings: Standing[]): Promise<void> {
+    this.board = null;
+    const at = new Date().toISOString();
+    const mine: GameResult[] = standings.map((s) => ({
+      id: resultId(),
+      nickname: this.profiles[s.player]?.nickname || `Player ${s.player + 1}`,
+      email: this.emails[s.player] ?? '',
+      logos: s.logos,
+      score: s.score,
+      at,
+      duration: this.local.match
+    }));
+    let log: GameResult[] = [];
+    try {
+      log = addResults(await this.resultsStore.load(), mine);
+      await this.resultsStore.save(log);
+    } catch {
+      log = addResults(log, mine); // not saved: the ranking still shows this match
+    }
+    this.board = leaderboard(log, new Set(mine.map((r) => r.id)));
+    this.boardPlayers = playerCount(log);
+  }
+
   private rematch(): void {
     this.results = null;
+    this.board = null;
     this.game?.startMatch(this.local.match);
     this.stage.focus();
   }
 
   private backToMenu(): void {
     this.results = null;
+    this.board = null;
+    // the next people at the booth start with empty emails
+    this.emails = [];
     this.started = false;
     this.lostSlot = null;
     if (!this.game) return;
@@ -1272,8 +1367,47 @@ function pageStyles(): ReturnType<typeof css> {
       font-size: 1.3rem;
       color: var(--theme-color-warning);
     }
-    .standings .num {
+    /* a table cell, not the flex column of the players panel's .num */
+    .standings td.num {
+      display: table-cell;
       text-align: right;
+      white-space: nowrap;
+      font-size: inherit;
+      color: inherit;
+    }
+    .board {
+      width: 100%;
+      max-height: 45vh;
+      overflow-y: auto;
+    }
+    .board-title {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin: 0.5rem 0 0.25rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--theme-color-dynamic);
+    }
+    .board-count {
+      font-weight: 600;
+      letter-spacing: normal;
+      text-transform: none;
+      color: var(--theme-color-std-text);
+    }
+    .board-mine {
+      margin-bottom: 0.3rem;
+      text-align: left;
+      color: var(--theme-color-dynamic);
+    }
+    .standings tr.mine td {
+      color: var(--theme-color-dynamic);
+      background: color-mix(in srgb, var(--theme-color-dynamic) 12%, transparent);
+    }
+    .standings tr.gap td {
+      text-align: center;
+      color: var(--theme-color-soft-text);
     }
     .standings .dot {
       display: inline-block;

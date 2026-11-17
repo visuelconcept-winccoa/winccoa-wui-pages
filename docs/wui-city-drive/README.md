@@ -11,8 +11,14 @@ The game is in English only.
 - **1 or 2 players on one computer** (split screen). With two players, each one joins with
   its device on the start screen: A or Start on a USB gamepad, Enter on the keyboard (the
   keyboard serves one player at most); B or Escape to leave. Then **Start the match**.
-- **Match** (logo hunt, timed): 2, 3 or 5 minutes; the logos are shared, first come first
-  served; the highest score wins (logos break a tie). Alone, *Free drive* keeps the missions.
+- **Match** (logo hunt, timed): 1 minute by default, or 2, 3, 5; the logos are shared, first
+  come first served; the highest score wins (logos break a tie). Alone, *Free drive* keeps the
+  missions.
+- **Email (optional)** for each player: saved with the results in `CityDrive_Results`, never
+  shown; cleared when going back to the menu.
+- **Ranking** at the end of each match: the WinCC OA logos taken, one row per person (email,
+  else nickname) with their best match; top 10, plus the players of the match with their place
+  ("9th of 12") and the number of players. Nicknames only.
 
 - Start screen: nickname, vehicle, neon colour, game mode (Logo hunt or Missions) and time of
   day (neon night or day); **Settings** (also in game): keys, gamepad, steering, camera,
@@ -33,7 +39,8 @@ The game is in English only.
   run, B get out / in, Y camera, X mission, LB day / night, RB reset, Start pause.
 - Missions: **delivery** (pick up, then drop, before the timer) and **intervention** (a machine
   in fault: drive to its hall; offered as soon as a machine fails, replaces a delivery).
-- Fuel: refill at the station (north-east corner of the minimap).
+- Fuel: refill at the station (north-east corner of the minimap: the orange square); on an
+  empty tank the car still crawls to it.
 
 ### Tension (0.5.0)
 
@@ -61,6 +68,7 @@ The game is in English only.
 | `CityDrive_Player_<…>.wanted:_alert_hdl` | configured once, then read (`_act_state`) | binary alert, class `alert.`, alarm on TRUE: it comes while the player is wanted; its acknowledgement (`_act_state` 1 → 2) clears the alert level |
 | `CityDrive_Player_*` of the other players | read (`dpConnect`) | multiplayer: their cars (or pedestrians) in the city, the **Players online** panel (online = a real change within 30 s) |
 | `CityDrive_Config` (`.json`, created on first load) | read | the bindings below |
+| `CityDrive_Results` (`.json`, created on first match) | read, appended | the results of the matches: `[{ id, nickname, email, logos, score, at, duration }]`, 1000 at most. **Personal data**: the emails are readable by whoever can read this datapoint (PARA); to start a new ranking (a new event), set `.json` to `[]` in PARA |
 | the bound DPEs | read (`dpConnect`) | machine states, forced crossroads |
 
 `CityDrive_Config.json` (edited in PARA in V1):

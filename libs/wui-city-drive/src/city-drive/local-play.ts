@@ -79,7 +79,9 @@ export class JoinSlots {
 
 export type MatchPhase = 'countdown' | 'running' | 'over';
 export const COUNTDOWN_S = 3;
-export const MATCH_DURATIONS = [120, 180, 300] as const;
+export const MATCH_DURATIONS = [60, 120, 180, 300] as const;
+/** Default match: one minute (a booth: one player after the other). */
+export const DEFAULT_MATCH = 60;
 
 export interface Standing {
   player: number;
