@@ -54,6 +54,7 @@ import { CarPreview } from './city-drive/car-preview.js';
 import { AuditTrailWriter } from '@visuelconcept-winccoa/wui-kit/data/audit-trail.js';
 import * as audit from './city-drive/audit.js';
 import './city-drive/admin-page.js';
+import './city-drive/control-page.js';
 import { GameAudio, STATIONS, type StationId } from './city-drive/audio.js';
 import {
   BOOTH_COUNTDOWN_S,
@@ -256,7 +257,15 @@ export class WuiCityDrive extends LitElement {
 
   private game: CityGame | null = null;
   private palette: NeonPalette | null = null;
-  private readonly link = new DriveLink();
+  /** Recreated when the game starts again (a closed link cannot reopen its subscriptions). */
+  private link = new DriveLink();
+  /**
+   * The route's path as the ROUTER pushed it ({@link onBeforeEnter}); null until it does. The
+   * shell's router reuses this very element between `/city-drive`, `/city-drive/admin` and
+   * `/city-drive/control` (same component), so the path must be pushed state, not read once.
+   */
+  @state() private routePath: string | null = null;
+  private booting = false;
   private throttles: TelemetryThrottle[] = [new TelemetryThrottle()];
   private machines = new Map<string, MachineState>();
   private roleSub = new Subscription();
@@ -302,6 +311,7 @@ export class WuiCityDrive extends LitElement {
 
   /** After each render: one turntable per card on screen, showing that player's vehicle. */
   protected override updated(): void {
+    this.syncGame();
     const canvases = new Map<number, HTMLCanvasElement>();
     this.renderRoot.querySelectorAll<HTMLCanvasElement>('canvas.preview').forEach((c) => canvases.set(Number(c.dataset.k), c));
     for (const [k, pv] of this.previews) {
@@ -331,17 +341,61 @@ export class WuiCityDrive extends LitElement {
   }
 
   protected override firstUpdated(): void {
-    if (this.adminView) return; // no game, no camera, no datapoint of a player on the admin page
-    if (this.rolePlay) void this.boot();
+    this.syncGame();
   }
 
-  /** `/city-drive/admin`: the admin page (statistics) instead of the game (#94). */
+  /**
+   * The game runs only on `/city-drive`: started when the page shows it, stopped (renderer,
+   * datapoint links, sound) when the same element switches to the admin page or the control
+   * room — which have no game, no camera, no player datapoint.
+   */
+  private syncGame(): void {
+    const wantGame = !this.adminView && this.rolePlay;
+    if (wantGame && !this.game && !this.booting) {
+      this.booting = true;
+      void this.boot().finally(() => (this.booting = false));
+    } else if (!wantGame && this.game) {
+      this.teardownGame();
+    }
+  }
+
+  private teardownGame(): void {
+    window.clearInterval(this.telemetryTimer);
+    window.clearInterval(this.publicationTimer);
+    this.audio.setStation('off');
+    this.audio.setSiren(false);
+    closePreview(this.boothStream);
+    this.boothStream = null;
+    this.link.close();
+    this.link = new DriveLink();
+    this.game?.stop();
+    this.game = null;
+    this.started = false;
+    this.results = null;
+    this.booth = null;
+    this.setupStep = 1;
+  }
+
+  /** The router hands the resolved route over here, before the first paint and on each change. */
+  onBeforeEnter(location: { readonly pathname?: string }): void {
+    this.routePath = location.pathname ?? '';
+  }
+
+  /** `/city-drive/admin` (statistics, #94) or `/city-drive/control` (control room, #96) instead of the game. */
+  private get subPage(): 'admin' | 'control' | null {
+    // the router's path; outside the router (an embedding host), the browser's location (or its hash)
+    const path = this.routePath ?? `${globalThis.location?.pathname ?? ''}${globalThis.location?.hash ?? ''}`;
+    const m = /\/city-drive\/(admin|control)\/?(?:[?#].*)?$/.exec(path);
+    return m ? (m[1] as 'admin' | 'control') : null;
+  }
+
   private get adminView(): boolean {
-    return /\/city-drive\/admin\/?$/.test(globalThis.location?.pathname ?? '');
+    return this.subPage !== null;
   }
 
   override render(): TemplateResult {
-    if (this.adminView) return html`<wui-city-drive-admin></wui-city-drive-admin>`;
+    if (this.subPage === 'admin') return html`<wui-city-drive-admin></wui-city-drive-admin>`;
+    if (this.subPage === 'control') return html`<wui-city-drive-control></wui-city-drive-control>`;
     return html`
       <wui-context-generator
         .config=${{ headerTitle: { context: 'translate', config: { 'en_US.utf8': 'City Drive', 'fr.utf8': 'City Drive', 'de.utf8': 'City Drive' } } }}

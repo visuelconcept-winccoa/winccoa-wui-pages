@@ -62,6 +62,10 @@ export interface RemotePlayer {
   mission: string;
   /** Last change of any of its elements (ms, epoch). */
   updatedAt: number;
+  /** Tension (0.5.0 elements, read by the control room only): alert level 0..5, wanted, damage %. */
+  alert?: number;
+  wanted?: boolean;
+  damage?: number;
 }
 
 const DEMO_PLAYERS = [
@@ -207,6 +211,10 @@ export class DriveLink {
   tension = false;
   private typeReady: Promise<void> | null = null;
   private alertSub = new Subscription();
+  /** watchPlayers reads the alert elements too (control room). */
+  private withTension = false;
+  /** Demo: simulated players whose alert the control room acknowledged. */
+  private readonly demoCalm = new Set<string>();
 
   /** P1's datapoint (the 0.3.0 name). */
   get player(): string {
@@ -256,7 +264,8 @@ export class DriveLink {
    * The other players: every `CityDrive_Player_*` datapoint but one's own, followed by
    * `dpConnect` (the list is read again every 15 s). In demo, three simulated players drive.
    */
-  watchPlayers(onPlayers: (players: RemotePlayer[]) => void, blocks: number): void {
+  watchPlayers(onPlayers: (players: RemotePlayer[]) => void, blocks: number, withTension = false): void {
+    this.withTension = withTension;
     if (this.demo) {
       this.demoPlayers(onPlayers, blocks);
       return;
@@ -281,13 +290,15 @@ export class DriveLink {
     this.playersTimer = window.setInterval(refresh, PLAYERS_REFRESH_MS);
   }
 
-  private followPlayers(dps: string[], onPlayers: (players: RemotePlayer[]) => void): void {
+  private followPlayers(dps: string[], onPlayers: (players: RemotePlayer[]) => void, tension = this.withTension): void {
     this.playersSub.unsubscribe();
     this.playersSub = new Subscription();
     const players = new Map<string, RemotePlayer>(dps.map((dp) => [dp, emptyPlayer(dp)]));
     onPlayers([...players.values()]);
     if (dps.length === 0 || !this.api) return;
-    const fields = REMOTE_FIELDS.map((k) => [k, ELEMENT[k]] as [keyof Telemetry, string]);
+    // the control room also reads the alert elements; a 0.4 type lacks them: then without
+    const keys = tension ? [...REMOTE_FIELDS, 'alert', 'wanted', 'damage'] : REMOTE_FIELDS;
+    const fields = keys.map((k) => [k, ELEMENT[k as keyof Telemetry]] as [keyof Telemetry, string]);
     let primed = false;
     const dpes = dps.flatMap((dp) => fields.map(([, el]) => `${dp}.${el}`));
     try {
@@ -308,10 +319,48 @@ export class DriveLink {
             if (live) p.updatedAt = now;
           });
           onPlayers([...players.values()].map((p) => ({ ...p })));
+        }, () => {
+          if (tension) this.followPlayers(dps, onPlayers, false);
         })
       );
     } catch {
       // a player datapoint deleted meanwhile: the next refresh drops it
+      if (tension) this.followPlayers(dps, onPlayers, false);
+    }
+  }
+
+  /**
+   * The control room (#96): the config and the plant, without a player datapoint of its own
+   * (it does not play). Demo without a backend.
+   */
+  async openViewer(onState: (s: LinkState) => void): Promise<void> {
+    const raw = await this.configStore.load();
+    const config = parseConfig(raw);
+    this.demo = !this.api || this.configStore.offline;
+    if (this.demo) {
+      this.startDemo(onState);
+      return;
+    }
+    this.subscribe(config, onState);
+  }
+
+  /**
+   * Acknowledges a player's WinCC OA alert from the control room: `dpSet` on
+   * `<dp>.wanted:_alert_hdl.._ack = 2` with the operator's own session (as the alarm list
+   * does), so WinCC OA records who acknowledged; the game then clears the player's level.
+   * Needs the WebUI user's write permission. In demo, the simulated player calms down.
+   */
+  async acknowledge(dp: string): Promise<boolean> {
+    if (this.demo) {
+      this.demoCalm.add(dp);
+      return true;
+    }
+    if (!this.api) return false;
+    try {
+      const ok = await firstValueFrom(this.api.dpSet([`${dp}.wanted:_alert_hdl.._ack`], [2]));
+      return ok === true;
+    } catch {
+      return false;
     }
   }
 
@@ -340,7 +389,16 @@ export class DriveLink {
             speed: Math.round(c.speed * 3.6 * 1.4),
             score: scores[k],
             mission: k === 1 ? 'intervention:reach' : 'delivery:drop',
-            updatedAt: now
+            updatedAt: now,
+            // demo: the third player gets wanted for 40 s every 90 s (until acknowledged)
+            ...(() => {
+              const dp = playerDp(d.user);
+              const wantedWindow = k === 2 && t % 90 > 50;
+              const hot = wantedWindow && !this.demoCalm.has(dp);
+              // acknowledged: calm until this wanted window is over
+              if (!wantedWindow) this.demoCalm.delete(dp);
+              return { alert: hot ? 3 : 0, wanted: hot, damage: hot ? 35 : 0 };
+            })()
           };
         })
       );

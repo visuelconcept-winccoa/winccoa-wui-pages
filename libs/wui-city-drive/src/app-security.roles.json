@@ -21,6 +21,15 @@
       }
     },
     {
+      "id": "control",
+      "label": { "en_US.utf8": "Control room", "fr.utf8": "Salle de contrôle", "de.utf8": "Leitstand" },
+      "description": {
+        "en_US.utf8": "Open the control room (/city-drive/control): the live map of the players, the plant, the weather, and the wanted players' alerts (acknowledging them also needs the WinCC OA write permission).",
+        "fr.utf8": "Ouvrir la salle de contrôle (/city-drive/control) : la carte des joueurs en direct, l'usine, la météo et les alertes des joueurs recherchés (les acquitter demande aussi le droit d'écriture WinCC OA).",
+        "de.utf8": "Den Leitstand öffnen (/city-drive/control): Live-Karte der Spieler, Anlage, Wetter und Alarme gesuchter Spieler (Quittieren erfordert zusätzlich das WinCC OA-Schreibrecht)."
+      }
+    },
+    {
       "id": "configure",
       "label": { "en_US.utf8": "Configure the bindings", "fr.utf8": "Configurer les liaisons", "de.utf8": "Verknüpfungen konfigurieren" },
       "description": {

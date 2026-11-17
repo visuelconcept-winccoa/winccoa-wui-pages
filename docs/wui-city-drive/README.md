@@ -157,6 +157,16 @@ player who opens the page with the `para:edit-types` role changes the type in pl
 Until then, the new elements are not written and the alert is not configured; the rest of the
 telemetry and the game play the same. The other players are read on the elements of 0.4.
 
+## Control room
+
+`/city-drive/control` (menu **City Drive · Control room**, role **`control`**), for a second
+screen next to the game: the live map (players from their datapoints, machines in colour,
+wanted players ringed in red), the **alerts** of the wanted players with **Acknowledge** (the
+WinCC OA alert of `….wanted`, acknowledged with the operator's own session — the button shows
+only with the write permission; the game then clears the player's level), the players online,
+the plant, the weather and today's matches. It creates no player datapoint. Demo: one
+simulated player becomes wanted every 90 s.
+
 ## Admin page
 
 `/city-drive/admin` (menu **City Drive · Admin**, role **`admin`**): the statistics of the game
@@ -193,6 +203,7 @@ user of each row is the WinCC OA user logged on at the game station.
 - `play`: the page (and one's own telemetry). Without it, a notice replaces the game.
 - `configure`: declared for `CityDrive_Config` (edited in PARA in V1).
 - `admin`: the admin page — statistics, CSV export with the players' emails, ranking reset.
+- `control`: the control room (acknowledging also needs the WinCC OA write permission).
 - The photo booth saves with `play` (`POST /api/city-drive/photo`); an IP camera's snapshot
   also needs `camera-streams/view`.
 - The alert of a wanted player is acknowledged in the alarm list, with the operators' own
