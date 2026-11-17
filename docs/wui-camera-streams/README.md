@@ -83,6 +83,13 @@ entries (no pull, no relay, no probe). Roles: creating/editing one is the existi
 role, viewing it the existing **`view`** role (no new role: nothing leaves the viewer's PC, and the
 browser's own permission prompt guards the device).
 
+## Snapshot (≥ 0.3.0)
+`GET /api/rtsp/snapshot/<id>` → one JPEG frame of an **RTSP** camera, pulled by the rtspProxy
+manager (ffmpeg, first decoded frame, 10 s limit) and relayed by the webserver. Role
+`camera-streams/view`. 404 for an unknown or USB camera, 502 no frame, 503 manager not running.
+City Drive's photo booth uses it; any page can (declare `camera-streams` in its
+`wuiPage.requires` or `optional`).
+
 ## Contents
 ```
 package.json                                                    npm package; wuiPage.backend (mount, routes, relayFn registerRtspRelay, manager)

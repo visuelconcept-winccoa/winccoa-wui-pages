@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-city-drive",
   "type": "module",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "City Drive — standalone WinCC OA WebUI page: an original 3D driving game in a neon city (Three.js, Siemens iX colours) whose plant is bound to datapoints: machine halls follow their state, a fault calls for an intervention mission, a datapoint can force a crossroads red; the player's telemetry is written to its own datapoint. Demo mode without a backend.",
   "author": {
     "name": "Visuel Concept"
@@ -45,6 +45,9 @@
       "para",
       "app-security"
     ],
+    "optional": [
+      "camera-streams"
+    ],
     "route": "/city-drive",
     "component": "wui-city-drive",
     "module": "/data/dashboard-wc/pages/city-drive.js",
@@ -52,7 +55,22 @@
       "connected"
     ],
     "icon": "truck",
-    "tier": 1
+    "tier": 1,
+    "backend": {
+      "mount": "/api/city-drive",
+      "routeClass": "CityDriveRoute",
+      "routeFile": "cityDriveRoute",
+      "files": [
+        "cityDriveRoute.ts",
+        "photoStore.ts"
+      ],
+      "shared": [
+        "@visuelconcept-winccoa/wui-app-security/appSecurityGuard.ts"
+      ],
+      "notes": [
+        "/api/city-drive/photo: the photo booth's souvenir photos, saved in <project>/data/city-drive/photos (or $CITY_DRIVE_PHOTOS), one file per player named after the email"
+      ]
+    }
   },
   "peerDependenciesMeta": {
     "lit": {
@@ -89,6 +107,7 @@
   "files": [
     "CHANGELOG.md",
     "src",
+    "backend",
     "menu.fragment.jsonc",
     "!**/*.spec.ts",
     "!**/*.test.ts"

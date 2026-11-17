@@ -3,6 +3,23 @@
 
 # Changelog — @visuelconcept-winccoa/wui-city-drive
 
+## 0.10.0 — 2026-11-18
+
+**Upgrade.** City Drive now has a backend (`/api/city-drive`): rebuild the site
+(`npx wui build prod`) and restart the webserver. For an IP camera, Camera Streams ≥ 0.3.0.
+
+- **Photo booth**: when a match starts, a 3-2-1 countdown over the live camera, a flash, and
+  a souvenir photo of the players, shown for a moment, then the game. Saved on the WinCC OA
+  server in `<project>/data/city-drive/photos/` (or `$CITY_DRIVE_PHOTOS`), **one file per
+  player named after their email**: `<email>_<YYYYMMDD-HHmmss>.jpg` (no email:
+  `no-email_<nickname>_<date>.jpg`; the date keeps a second match from overwriting the first).
+- **Settings → Photo booth**: Off (default), *This PC's webcam*, or any camera of the Camera
+  Streams module: a USB camera of this PC (opened by the browser, on the device chosen in
+  Camera Streams) or an IP camera (one frame from `/api/rtsp/snapshot`).
+- The start screen says so when the booth is on (a face linked to an email is personal data).
+- Backend: `POST /api/city-drive/photo` (role `city-drive/play`): JPEG only, 8 MB at most,
+  names sanitised (never outside the folder), written aside then renamed.
+
 ## 0.9.0 — 2026-11-18
 
 - **Garage** on the start screen, one per player card: five lines under the turntable — **Car**,

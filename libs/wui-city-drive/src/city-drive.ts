@@ -51,6 +51,7 @@ import {
 } from './city-drive/settings.js';
 import { TelemetryThrottle } from './city-drive/telemetry.js';
 import { CarPreview } from './city-drive/car-preview.js';
+import { BOOTH_COUNTDOWN_S, boothSource, closePreview, openPreview, savePhoto, takePhoto, type BoothCamera } from './city-drive/photo-booth.js';
 import { DpSingleJsonStore } from '@visuelconcept-winccoa/wui-kit/data/dp-single-json-store.js';
 import { addResults, leaderboard, ordinal, playerCount, resultId, validEmail, type BoardRow, type GameResult } from './city-drive/results.js';
 import {
@@ -190,6 +191,11 @@ export class WuiCityDrive extends LitElement {
   @state() private board: BoardRow[] | null = null;
   /** People in the ranking (one per email, else per nickname). */
   @state() private boardPlayers = 0;
+  /** Photo booth (#91): the cameras of Camera Streams, and the booth on screen while it shoots. */
+  @state() private boothCameras: BoothCamera[] = [];
+  @state() private booth: { count: number; flash: boolean; note: string; image: string } | null = null;
+  private boothStream: MediaStream | null = null;
+  @query('video.booth-preview') private boothVideo?: HTMLVideoElement;
   /** The garage line each player's controls are on. */
   @state() private garageRow: number[] = [];
   /** The turning cars of the start screen, one per player card. */
@@ -230,6 +236,8 @@ export class WuiCityDrive extends LitElement {
     super.disconnectedCallback();
     window.removeEventListener('keydown', this.onRebindKey, true);
     window.removeEventListener('keydown', this.onLobbyKey);
+    closePreview(this.boothStream);
+    this.boothStream = null;
     this.previews.forEach((pv) => pv.dispose());
     this.previews.clear();
     this.roleSub.unsubscribe();
@@ -284,6 +292,7 @@ export class WuiCityDrive extends LitElement {
       ${this.rolePlay
         ? html`<div class="stage" @click=${() => this.stage.focus()}></div>
             ${this.started ? this.renderHud() : this.renderSetup()} ${this.settingsOpen ? this.renderSettings() : nothing}
+            ${this.booth ? this.renderBooth() : nothing}
             ${this.results ? this.renderPodium(this.results) : nothing} ${this.lostSlot !== null ? this.renderLost(this.lostSlot) : nothing}`
         : html`<div class="center muted">${MSG.hud.roleForbidden}</div>`}
     `;
@@ -336,6 +345,9 @@ export class WuiCityDrive extends LitElement {
           : html`<div class="hint">
               ${two ? 'Race for the WinCC OA logos' : 'Time attack on the WinCC OA logos'}: ${minutes(this.local.match)}, the highest score wins. Chain logos within 6 s for a combo.
             </div>`}
+        ${this.settings.photoBooth
+          ? html`<div class="booth-notice"><ix-icon name="photo-camera" size="16"></ix-icon>A souvenir photo is taken when the match starts; it is saved on the server with your email.</div>`
+          : nothing}
         <div class="setup-actions">
           <div class="times">
             ${(['night', 'day'] as const).map(
@@ -689,6 +701,7 @@ export class WuiCityDrive extends LitElement {
 
   private openSettings(): void {
     this.settingsOpen = true;
+    void this.link.listCameras().then((c) => (this.boothCameras = c));
     if (this.started) this.game?.setPaused(true);
   }
 
@@ -781,6 +794,19 @@ export class WuiCityDrive extends LitElement {
             <ix-slider label="Steering sensitivity" min="0.5" max="1.5" step="0.05" .value=${st.steering} @valueChange=${(e: CustomEvent<number>) => set({ steering: e.detail })}></ix-slider>
             <ix-slider label="Chase camera distance" min="0.7" max="1.6" step="0.05" .value=${st.cameraDistance} @valueChange=${(e: CustomEvent<number>) => set({ cameraDistance: e.detail })}></ix-slider>
             <ix-slider label="Chase camera height (low → high)" min="0" max="2" step="0.1" .value=${st.cameraHeight} @valueChange=${(e: CustomEvent<number>) => set({ cameraHeight: e.detail })}></ix-slider>
+          </section>
+          <section>
+            <div class="sec-title">Photo booth</div>
+            <div class="hint">A souvenir photo when a match starts, saved on the server, one file per player named after their email.</div>
+            ${choice(
+              st.photoBooth,
+              [
+                ['', 'Off'],
+                ['webcam', "This PC's webcam"],
+                ...this.boothCameras.map((c) => [c.id, `${c.name}${c.kind === 'local' ? ' (USB)' : ' (IP)'}`] as [string, string])
+              ],
+              (v) => set({ photoBooth: v })
+            )}
           </section>
           <section>
             <div class="sec-title">Graphics and display</div>
@@ -921,6 +947,7 @@ export class WuiCityDrive extends LitElement {
     this.telemetryOn = !this.link.demo && this.link.player !== '';
     this.link.watchPlayers((players) => this.onPlayers(players), this.game.city.blocks);
     this.link.watchAlerts((i) => this.game?.clearHeat(i));
+    this.boothCameras = await this.link.listCameras();
   }
 
   /**
@@ -996,9 +1023,73 @@ export class WuiCityDrive extends LitElement {
     }
   }
 
+  /** Start: the photo booth first when a camera is set (#91), then the game. */
   private startGame(): void {
-    if (!this.game) return;
+    if (!this.game || this.booth) return;
     this.profiles = this.profiles.map((pr) => ({ ...pr, nickname: cleanNickname(pr.nickname) }));
+    const src = boothSource(this.settings.photoBooth, this.boothCameras);
+    if (src.kind === 'off') {
+      this.launch();
+      return;
+    }
+    void this.runBooth(src).finally(() => this.launch());
+  }
+
+  /**
+   * The photo booth: 3-2-1 over the live preview (webcam / USB camera), a flash, the photo; then
+   * it is saved once per player (file named after the email) and shown for a moment.
+   */
+  private async runBooth(src: ReturnType<typeof boothSource>): Promise<void> {
+    const wait = (ms: number): Promise<void> => new Promise((ok) => window.setTimeout(ok, ms));
+    this.booth = { count: BOOTH_COUNTDOWN_S, flash: false, note: '', image: '' };
+    try {
+      this.boothStream = await openPreview(src);
+      await this.updateComplete;
+      const video = this.boothVideo;
+      if (video && this.boothStream) {
+        video.muted = true;
+        video.srcObject = this.boothStream;
+        await video.play().catch(() => undefined);
+      }
+      for (let n = BOOTH_COUNTDOWN_S; n > 0; n--) {
+        this.booth = { ...this.booth, count: n };
+        await wait(1000);
+      }
+      this.booth = { ...this.booth, count: 0, flash: true };
+      const image = await takePhoto(src, this.boothVideo ?? null);
+      closePreview(this.boothStream);
+      this.boothStream = null;
+      this.booth = { ...this.booth, flash: false, image, note: 'Saving the photo…' };
+      const saved = await Promise.allSettled(this.profiles.map((pr, k) => savePhoto(image, this.emails[k] ?? '', pr.nickname || `Player ${k + 1}`)));
+      const ok = saved.filter((r) => r.status === 'fulfilled').length;
+      this.booth = { ...this.booth, note: ok === saved.length ? 'Souvenir photo saved!' : ok > 0 ? 'Photo saved for some players only' : 'The photo could not be saved' };
+      await wait(1600);
+    } catch (error) {
+      this.booth = { ...(this.booth ?? { count: 0, flash: false, image: '' }), note: `No photo: ${error instanceof Error ? error.message : String(error)}` };
+      await wait(2200);
+    } finally {
+      closePreview(this.boothStream);
+      this.boothStream = null;
+      this.booth = null;
+    }
+  }
+
+  private renderBooth(): TemplateResult {
+    const b = this.booth;
+    if (!b) return html``;
+    return html`<div class="overlay booth">
+      <div class="booth-frame">
+        ${b.image ? html`<img class="booth-shot" src=${b.image} alt="Souvenir photo" />` : html`<video class="booth-preview" autoplay muted playsinline></video>`}
+        ${b.count > 0 ? html`<div class="booth-count">${b.count}</div>` : nothing}
+        ${b.flash ? html`<div class="booth-flash"></div>` : nothing}
+      </div>
+      <div class="booth-note">${b.note || 'Smile! Souvenir photo'}</div>
+    </div>`;
+  }
+
+  /** The game itself, after the photo booth. */
+  private launch(): void {
+    if (!this.game) return;
     this.profiles.forEach((pr, k) => {
       saveProfileOf(k, pr);
       this.game?.setProfile(k, pr);
@@ -1525,6 +1616,67 @@ function pageStyles(): ReturnType<typeof css> {
     .vdot.on {
       background: var(--c, var(--theme-color-primary));
       box-shadow: 0 0 6px var(--c, var(--theme-color-primary));
+    }
+    .booth-notice {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.85rem;
+      color: var(--theme-color-warning);
+    }
+    .booth {
+      flex-direction: column;
+      gap: 1rem;
+      z-index: 6;
+    }
+    .booth-frame {
+      position: relative;
+      width: min(70vw, 52rem);
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      border: 2px solid var(--theme-color-primary);
+      border-radius: var(--theme-default-border-radius);
+      box-shadow: 0 0 30px color-mix(in srgb, var(--theme-color-primary) 50%, transparent);
+      background: var(--theme-color-1);
+    }
+    .booth-preview,
+    .booth-shot {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .booth-preview {
+      transform: scaleX(-1); /* a mirror, as people expect to see themselves */
+    }
+    .booth-count {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9rem;
+      font-weight: 900;
+      color: var(--theme-color-warning);
+      text-shadow: 0 0 30px var(--theme-color-warning);
+    }
+    .booth-flash {
+      position: absolute;
+      inset: 0;
+      background: var(--theme-color-std-text);
+      animation: booth-flash 0.5s ease-out forwards;
+    }
+    @keyframes booth-flash {
+      to {
+        opacity: 0;
+      }
+    }
+    .booth-note {
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      color: var(--theme-color-dynamic);
+      text-shadow: 0 0 10px var(--theme-color-dynamic);
     }
     .kb-join {
       margin-left: auto;

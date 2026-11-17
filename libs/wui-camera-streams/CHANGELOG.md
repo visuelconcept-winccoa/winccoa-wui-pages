@@ -3,6 +3,17 @@
 
 # Changelog — @visuelconcept-winccoa/wui-camera-streams
 
+## 0.3.0 — 2026-11-18
+
+**Upgrade.** Rebuild the site (`npx wui build prod`: the backend now ships the shared
+`appSecurityGuard.ts`), restart the webserver and the **`rtspProxy` manager**.
+
+- **Snapshot of an RTSP camera**: `GET /api/rtsp/snapshot/<id>` returns one JPEG frame,
+  pulled by the rtspProxy manager (ffmpeg, first decoded frame, 10 s limit, 8 MB max) and
+  relayed by the webserver; role `camera-streams/view`. 404 for an unknown or USB camera
+  (the browser captures those itself), 502 when the camera gives no frame, 503 when the
+  manager is not running. Used by the photo booth of City Drive.
+
 ## 0.2.0 — 2026-11-17
 
 **Upgrade.** Rebuild the site (`npx wui build prod`) and **restart the `rtspProxy` manager**

@@ -570,3 +570,16 @@ describe('garage', () => {
     expect(padDirection(pad([0.3, 0.2]))).toBeNull();
   });
 });
+
+describe('photo booth', () => {
+  it('picks its source from the setting and the cameras of Camera Streams', async () => {
+    const { boothSource, parseBoothCamera } = await import('./photo-booth.js');
+    const cams = [parseBoothCamera('desk', '{"name":"Desk","kind":"local","localResolution":"1280x720"}'), parseBoothCamera('gate', '{"name":"Gate","url":"rtsp://x"}')].filter((c) => c !== null);
+    expect(boothSource('', cams)).toEqual({ kind: 'off' });
+    expect(boothSource('webcam', cams)).toEqual({ kind: 'webcam' });
+    expect(boothSource('desk', cams)).toEqual({ kind: 'local', id: 'desk', width: 1280, height: 720 });
+    expect(boothSource('gate', cams)).toEqual({ kind: 'rtsp', id: 'gate' });
+    expect(boothSource('gone', cams)).toEqual({ kind: 'off' }); // a camera deleted since
+    expect(parseBoothCamera('x', 'not json')).toBeNull();
+  });
+});
