@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The person on foot, in 3D (#89): a jointed figure that figure.ts' poses move, and the weapons
- * held in its right hand.
+ * The person on foot, in 3D (#89): a jointed figure that figure.ts' poses move — a man or a
+ * woman — and the WinCC OA logo cube it throws.
  *
  * Joints: hips (bounce, sway) → pelvis (turn, drop) → thighs → knees → ankles; trunk (lean,
  * twist) → shoulders → elbows → hands; neck → head (kept level and facing ahead). Shapes are
@@ -12,9 +12,9 @@
  * sole. A jacket in the player's colour (neon zip, belt, sleeve stripes and cuffs); the build,
  * the skin and the hair vary from one person to the next.
  *
- * Weapons point along the hand (down when the arm hangs): the WebUI hammer, the star sword (an
- * original eight-ray star on the guard and a glowing blade), the cube crossbow (a WinCC OA logo
- * cube loaded). The cubes it shoots are drawn by world.ts with {@link makeCube}.
+ * A woman: narrower shoulders and waist, wider hips, a finer jaw, hair down to the shoulders.
+ * The cube shows in the right hand while a throw winds up ({@link setFigureHolding}); the cubes
+ * in flight are drawn by world.ts with {@link makeCube}.
  */
 import {
   BoxGeometry,
@@ -36,7 +36,7 @@ import {
 import type { Pose } from './figure.js';
 import { logoCanvas } from './logo.js';
 import { mix } from './palette.js';
-import type { WeaponId } from './weapons.js';
+import type { Gender } from './vehicles.js';
 
 const HIP_Y = 0.95;
 const THIGH = 0.44;
@@ -92,13 +92,13 @@ function makeHand(skin: Material, side: 1 | -1): Group {
   return hand;
 }
 
-/** A head: skull, jaw, nose, ears, eyes, hair. */
-function makeHead(skin: Material, hairColor: number): Group {
+/** A head: skull, jaw, nose, ears, eyes, hair (short, or down to the shoulders for a woman). */
+function makeHead(skin: Material, hairColor: number, woman: boolean): Group {
   const head = new Group();
   const skull = ball(0.105, skin, 0.92, 1.05, 1.0);
   skull.position.y = 0.11;
-  const jaw = ball(0.075, skin, 1.0, 0.85, 1.0);
-  jaw.position.set(0, 0.045, 0.025);
+  const jaw = woman ? ball(0.068, skin, 0.9, 0.85, 0.95) : ball(0.075, skin, 1.0, 0.85, 1.0);
+  jaw.position.set(0, woman ? 0.05 : 0.045, 0.025);
   const nose = new Mesh(new ConeGeometry(0.016, 0.045, 8), skin);
   nose.rotation.x = Math.PI / 2 + 0.3;
   nose.position.set(0, 0.095, 0.105);
@@ -114,11 +114,25 @@ function makeHead(skin: Material, hairColor: number): Group {
     eyebrow.position.set(sx * 0.036, 0.143, 0.097);
     head.add(ear, eye, eyebrow);
   }
-  const hair = new Mesh(new SphereGeometry(0.11, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.52), new MeshStandardMaterial({ color: hairColor, roughness: 0.95 }));
+  const hairMat = new MeshStandardMaterial({ color: hairColor, roughness: 0.9 });
+  const hair = new Mesh(new SphereGeometry(0.11, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.52), hairMat);
   hair.scale.set(0.95, 1.05, 1.05);
   hair.position.set(0, 0.125, -0.008);
   hair.rotation.x = -0.35;
   head.add(hair);
+  if (woman) {
+    // hair down to the shoulders, behind the face and over the ears
+    const back = ball(0.112, hairMat, 1.05, 1.5, 0.82);
+    back.position.set(0, 0.06, -0.035);
+    const lips = ball(0.016, new MeshStandardMaterial({ color: 0xb4545e, roughness: 0.5 }), 1.6, 0.6, 0.6);
+    lips.position.set(0, 0.052, 0.094);
+    head.add(back, lips);
+    for (const sx of [-1, 1]) {
+      const lock = ball(0.04, hairMat, 0.7, 2.1, 1);
+      lock.position.set(sx * 0.088, 0.04, 0.0);
+      head.add(lock);
+    }
+  }
   return head;
 }
 
@@ -135,23 +149,25 @@ function makeShoe(mat: Material, sole: Material): Group {
 
 /**
  * A person in the player's neon colour. `seed` (0..1) varies the build, the skin and the hair,
- * so that two people are not the same doll; `skinTone` (index in SKINS) sets the skin instead —
- * the local players' own characters (0, light, until the profile offers the choice).
+ * so that two people are not the same doll; `look` sets the skin (index in SKINS) and whether
+ * it is a man or a woman — the local players' own characters, from their garage (otherwise both
+ * come from the seed).
  */
-export function makeFigure(color: number, seed = 0.37, skinTone?: number): Group {
+export function makeFigure(color: number, seed = 0.37, look: { skin?: number; gender?: Gender } = {}): Group {
   const root = new Group();
   const rnd = (k: number): number => {
     const x = Math.sin((seed + 1) * 9301 + k * 49297) * 233280;
     return x - Math.floor(x);
   };
-  const skin = new MeshStandardMaterial({ color: SKINS[skinTone ?? Math.floor(rnd(1) * SKINS.length)] ?? SKINS[0], roughness: 0.62 });
+  const skin = new MeshStandardMaterial({ color: SKINS[look.skin ?? Math.floor(rnd(1) * SKINS.length)] ?? SKINS[0], roughness: 0.62 });
+  const woman = (look.gender ?? (rnd(6) < 0.5 ? 'man' : 'woman')) === 'woman';
   const trousers = new MeshStandardMaterial({ color: mix(0x1c2328, 0x2a3a52, rnd(2)), roughness: 0.85 });
   const jacket = new MeshStandardMaterial({ color: mix(color, 0x000000, 0.62), roughness: 0.55 });
   const shoes = new MeshStandardMaterial({ color: 0x14181b, roughness: 0.45 });
   const sole = new MeshStandardMaterial({ color: 0xd8dcdc, roughness: 0.7 });
   const neon = new MeshBasicMaterial({ color, toneMapped: false });
-  const build = 0.94 + rnd(3) * 0.12; // height
-  const broad = 0.93 + rnd(4) * 0.14; // shoulders, chest
+  const build = (woman ? 0.92 : 0.95) + rnd(3) * 0.1; // height
+  const broad = (woman ? 0.84 : 0.93) + rnd(4) * 0.12; // shoulders, chest
   root.scale.setScalar(build);
 
   const hips = joint('hips', 0, HIP_Y);
@@ -167,13 +183,13 @@ export function makeFigure(color: number, seed = 0.37, skinTone?: number): Group
       [0.001, 0.1]
     ],
     trousers,
-    1.1,
+    woman ? 1.2 : 1.1,
     0.75
   );
   pelvis.add(seat);
   for (const side of ['L', 'R'] as const) {
     const sx = side === 'L' ? 1 : -1;
-    const thigh = joint(`thigh${side}`, sx * 0.095, -0.03);
+    const thigh = joint(`thigh${side}`, sx * (woman ? 0.1 : 0.095), -0.03);
     // thigh: full at the top, slimmer to the knee
     thigh.add(
       limb(
@@ -218,10 +234,10 @@ export function makeFigure(color: number, seed = 0.37, skinTone?: number): Group
   const chest = lathe(
     [
       [0.001, 0.0],
-      [0.15, 0.0],
-      [0.142, 0.1],
-      [0.138, 0.18],
-      [0.158, 0.32],
+      [woman ? 0.155 : 0.15, 0.0],
+      [woman ? 0.132 : 0.142, 0.1],
+      [woman ? 0.125 : 0.138, 0.18],
+      [woman ? 0.155 : 0.158, 0.32],
       [0.172, 0.42],
       [0.165, 0.5],
       [0.12, 0.55],
@@ -245,7 +261,7 @@ export function makeFigure(color: number, seed = 0.37, skinTone?: number): Group
   neckMesh.position.y = 0.03;
   neck.add(neckMesh);
   const head = joint('head', 0, 0.06);
-  head.add(makeHead(skin, HAIRS[Math.floor(rnd(5) * HAIRS.length)]));
+  head.add(makeHead(skin, HAIRS[Math.floor(rnd(5) * HAIRS.length)], woman));
   neck.add(head);
   trunk.add(neck);
   for (const side of ['L', 'R'] as const) {
@@ -293,6 +309,7 @@ export function makeFigure(color: number, seed = 0.37, skinTone?: number): Group
     trunk.add(shoulder);
   }
   root.userData.color = color;
+  root.userData.gender = woman ? 'woman' : 'man';
   return root;
 }
 
@@ -328,7 +345,7 @@ export function applyPose(fig: Group, pose: Pose): void {
   if (neck) neck.rotation.set(pose.nod - pose.lean * 0.6, -pose.twist * 0.75, pose.pelvisRoll * 0.4);
 }
 
-// --- weapons ---------------------------------------------------------------------------------
+// --- the cube --------------------------------------------------------------------------------
 
 const TEXTURES = new Map<string, CanvasTexture>();
 
@@ -345,44 +362,7 @@ function texture(key: string, draw: (g: CanvasRenderingContext2D, c: HTMLCanvasE
   return t;
 }
 
-/** "WebUI" on the hammer's head. */
-const webuiLabel = (): CanvasTexture =>
-  texture('webui', (g, c) => {
-    g.fillStyle = '#0d1a20';
-    g.fillRect(0, 0, c.width, c.height);
-    g.fillStyle = '#00eaff';
-    g.font = 'bold 78px sans-serif';
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    g.fillText('WebUI', c.width / 2, c.height / 2 + 4);
-  });
-
-/** An original eight-ray star, warm orange, on the sword's guard. */
-const starMark = (): CanvasTexture =>
-  texture(
-    'star',
-    (g, c) => {
-      g.fillStyle = '#1a1310';
-      g.fillRect(0, 0, c.width, c.height);
-      g.translate(c.width / 2, c.height / 2);
-      g.fillStyle = '#e07a50';
-      for (let k = 0; k < 8; k++) {
-        g.rotate(Math.PI / 4);
-        g.beginPath();
-        g.moveTo(-7, 0);
-        g.quadraticCurveTo(0, -58, 7, 0);
-        g.closePath();
-        g.fill();
-      }
-      g.beginPath();
-      g.arc(0, 0, 9, 0, Math.PI * 2);
-      g.fill();
-    },
-    128,
-    128
-  );
-
-/** The WinCC OA logo cube of the crossbow (and of its shots). */
+/** The WinCC OA logo cube a player throws. */
 export function makeCube(size: number): Mesh {
   const map = texture('cube', (g, c) => g.drawImage(logoCanvas(256), 0, 0, c.width, c.height), 256, 256);
   const mat = new MeshBasicMaterial({ map, toneMapped: false });
@@ -390,69 +370,24 @@ export function makeCube(size: number): Mesh {
   return new Mesh(new BoxGeometry(size, size, size), mat);
 }
 
-/** A weapon, pointing along -Y from the hand that holds it. */
-export function makeWeapon(id: WeaponId, color: number): Group {
-  const g = new Group();
-  g.name = `weapon:${id}`;
-  const metal = new MeshStandardMaterial({ color: 0x9aa4a8, metalness: 0.85, roughness: 0.3 });
-  const grip = new MeshStandardMaterial({ color: 0x1a1d20, roughness: 0.8 });
-  const neon = new MeshBasicMaterial({ color, toneMapped: false });
-  if (id === 'hammer') {
-    const handle = new Mesh(new CylinderGeometry(0.025, 0.03, 0.7, 10), grip);
-    handle.position.y = -0.25;
-    const ring = new Mesh(new CylinderGeometry(0.033, 0.033, 0.03, 10), neon);
-    ring.position.y = -0.52;
-    const head = new Mesh(new BoxGeometry(0.34, 0.17, 0.17), [metal, metal, metal, metal, new MeshStandardMaterial({ map: webuiLabel(), roughness: 0.4 }), new MeshStandardMaterial({ map: webuiLabel(), roughness: 0.4 })]);
-    head.position.y = -0.62;
-    head.rotation.y = Math.PI / 2; // the label faces the side
-    const edge = new Mesh(new BoxGeometry(0.36, 0.02, 0.19), neon);
-    edge.position.y = -0.535;
-    edge.rotation.y = Math.PI / 2;
-    g.add(handle, ring, head, edge);
-  } else if (id === 'sword') {
-    const hilt = new Mesh(new CylinderGeometry(0.022, 0.022, 0.16, 10), grip);
-    hilt.position.y = 0.02;
-    const pommel = new Mesh(new SphereGeometry(0.035, 10, 8), metal);
-    pommel.position.y = 0.11;
-    const guard = new Mesh(new BoxGeometry(0.22, 0.05, 0.06), [metal, metal, metal, metal, new MeshStandardMaterial({ map: starMark(), roughness: 0.4 }), new MeshStandardMaterial({ map: starMark(), roughness: 0.4 })]);
-    guard.position.y = -0.08;
-    const bladeMat = new MeshBasicMaterial({ color: mix(color, 0xffffff, 0.65), toneMapped: false });
-    bladeMat.color.multiplyScalar(1.6);
-    const blade = new Mesh(new BoxGeometry(0.05, 0.85, 0.012), bladeMat);
-    blade.position.y = -0.53;
-    const tip = new Mesh(new CylinderGeometry(0, 0.035, 0.1, 4), bladeMat);
-    tip.rotation.y = Math.PI / 4;
-    tip.scale.z = 0.25;
-    tip.position.y = -1.0;
-    tip.rotation.x = Math.PI;
-    g.add(hilt, pommel, guard, blade, tip);
-    g.rotation.x = -1.0; // held forward of the forearm, as a real grip, not in line with it
-  } else {
-    const stock = new Mesh(new BoxGeometry(0.07, 0.62, 0.08), grip);
-    stock.position.y = -0.22;
-    const rail = new Mesh(new BoxGeometry(0.03, 0.5, 0.02), neon);
-    rail.position.set(0, -0.3, 0.05);
-    // the bow: half a ring across the front, its string
-    const bow = new Mesh(new TorusGeometry(0.3, 0.018, 8, 24, Math.PI), metal);
-    bow.position.y = -0.48;
-    bow.rotation.z = Math.PI;
-    const string = new Mesh(new CylinderGeometry(0.004, 0.004, 0.6, 4), neon);
-    string.rotation.z = Math.PI / 2;
-    string.position.y = -0.4;
-    const cube = makeCube(0.11);
-    cube.position.set(0, -0.36, 0.1);
-    cube.name = 'loaded';
-    g.add(stock, rail, bow, string, cube);
-  }
-  return g;
-}
-
-/** Puts weapon `id` in the figure's right hand (or none). */
-export function setFigureWeapon(fig: Group, id: WeaponId | null): void {
+/**
+ * Shows the cube of edge `size` (m) in the figure's right hand, from the start of a throw to its
+ * release, or hides it (null). A big cube rests on the palm, its centre away from the hand.
+ */
+export function setFigureHolding(fig: Group, size: number | null): void {
   const hand = fig.getObjectByName('handR');
   if (!hand) return;
-  const current = hand.children.find((c) => c.name.startsWith('weapon:'));
-  if (current?.name === `weapon:${id}`) return;
-  if (current) hand.remove(current);
-  if (id) hand.add(makeWeapon(id, fig.userData.color as number));
+  let cube = hand.getObjectByName('held');
+  if (cube && size !== null && cube.userData.size !== size) {
+    hand.remove(cube);
+    cube = undefined;
+  }
+  if (!cube && size !== null) {
+    cube = makeCube(size);
+    cube.name = 'held';
+    cube.userData.size = size;
+    cube.position.set(0, -0.06 - size / 2, 0.04 + size * 0.15);
+    hand.add(cube);
+  }
+  if (cube) cube.visible = size !== null;
 }

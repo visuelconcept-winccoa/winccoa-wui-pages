@@ -37,7 +37,7 @@ export interface VoiceInput {
   onFoot: boolean;
 }
 
-export type Sfx = 'crash' | 'logo' | 'flash' | 'explosion';
+export type Sfx = 'crash' | 'logo' | 'flash' | 'explosion' | 'throw';
 
 /** Engine pitch (Hz) for a speed and a throttle: idle ~48 Hz, ~4 "gears" up to ~190 Hz. */
 export function enginePitch(speed: number, throttle: number): number {
@@ -208,6 +208,21 @@ export class GameAudio {
       n.connect(lp).connect(g);
       n.start(t);
       n.stop(t + 0.8);
+    } else if (kind === 'throw') {
+      // a whoosh: band-passed noise sweeping down
+      const n = ctx.createBufferSource();
+      n.buffer = this.noise;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.Q.value = 1.2;
+      bp.frequency.setValueAtTime(2400, t);
+      bp.frequency.exponentialRampToValueAtTime(500, t + 0.25);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.22, t + 0.05);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+      n.connect(bp).connect(g);
+      n.start(t);
+      n.stop(t + 0.3);
     } else if (kind === 'logo') {
       // a bright two-note chime
       [988, 1319].forEach((f, k) => {

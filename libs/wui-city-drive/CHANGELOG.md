@@ -3,6 +3,22 @@
 
 # Changelog — @visuelconcept-winccoa/wui-city-drive
 
+## 0.15.0 — 2026-11-18
+
+- **No more weapons** (hammer, sword, crossbow removed): the only thing a player throws is a
+  **WinCC OA logo cube**, with the same key **on foot and from the car** — E (pad X). On foot
+  the arm winds up and throws it (the cube shows in the hand); from the car it flies forward
+  from above the windscreen, on top of the car's speed. The pad's D-pad ◀ ▶ now asks for a new
+  mission (X throws).
+- **The cube's blast**: it breaks into its **4 × 4 × 4 = 64 small cubes**, in the colours of the
+  logo's squares, flung out and bouncing on the asphalt (no more cloud of sparks); a whoosh when
+  thrown, a blast when it blows up.
+- **Setting "Thrown cube size"** (20–150 cm, 80 by default): the small cubes are always a quarter
+  of it. In the hand the cube shows at most 45 cm, so as not to hide the view.
+- **Garage: Driver — man or woman** (new line; the skin tone has its own line, Skin). The driver
+  stands by the car on the turntable. A woman: narrower shoulders and waist, wider hips, a finer
+  jaw, hair down to the shoulders. Other players on foot (multiplayer) vary at random.
+
 ## 0.14.0 — 2026-11-18
 
 - **Visuel Concept**: its symbol (official artwork) on the four sides of the plant's machine

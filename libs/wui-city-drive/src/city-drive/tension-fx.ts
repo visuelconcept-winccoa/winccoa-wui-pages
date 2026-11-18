@@ -262,28 +262,6 @@ export class TensionFx {
     }
   }
 
-  /** A hit (#89): a short burst of sparks at (x, y, z). */
-  burst(x: number, y: number, z: number): void {
-    for (let k = 0; k < 14; k++) {
-      const pf = this.puffs.find((q) => !q.sprite.visible);
-      if (!pf) return;
-      pf.sprite.position.set(x, y, z);
-      const a = Math.random() * Math.PI * 2;
-      const sp = 2 + Math.random() * 4;
-      pf.vx = Math.cos(a) * sp;
-      pf.vz = Math.sin(a) * sp;
-      pf.vy = 1 + Math.random() * 3;
-      pf.age = 0;
-      pf.life = 0.35 + Math.random() * 0.25;
-      pf.fire = true;
-      const m = pf.sprite.material as SpriteMaterial;
-      m.blending = AdditiveBlending;
-      m.color.setHex(k % 3 === 0 ? 0xffffff : 0xffb040).multiplyScalar(2);
-      m.needsUpdate = true;
-      pf.sprite.visible = true;
-    }
-  }
-
   /** Puffs from the bonnet of a damaged car: from 30 % damage, more and darker with it. */
   private emit(s: Smoker, k: number, dt: number): void {
     if (s.damage < 0.3) return;

@@ -60,7 +60,7 @@ import { CELL, ROAD_WIDTH, roadAxis, type Building, type City } from './city.js'
 import type { MissionKind, MissionStage, Point } from './missions.js';
 import { logoCanvas } from './logo.js';
 import { buildCar, headlightY } from './car-model.js';
-import { vehicleById, type Body } from './vehicles.js';
+import { vehicleById, type Body, type Gender } from './vehicles.js';
 import { mix, type NeonPalette } from './palette.js';
 import type { LightOverrides } from './traffic.js';
 import { StreetLife } from './street.js';
@@ -70,9 +70,9 @@ import { TensionFx } from './tension-fx.js';
 import { vcSymbolTexture } from './vc-logo.js';
 import { AtmosphereFx } from './atmosphere-fx.js';
 import type { Weather } from './weather.js';
-import { applyPose, makeCube, makeFigure, setFigureWeapon } from './figure-model.js';
+import { applyPose, makeCube, makeFigure, setFigureHolding } from './figure-model.js';
 import { gaitPose, type Pose } from './figure.js';
-import { FUSE_S, type Bolt, type WeaponId } from './weapons.js';
+import { FUSE_S, type ThrownCube } from './cubes.js';
 import type { CarState } from './physics.js';
 import type { SpeedCamera } from './tension.js';
 import type { Token } from './collectibles.js';
@@ -155,8 +155,9 @@ interface View {
   rect: { x: number; y: number; w: number; h: number };
   /** Damage 0..1 (#85): smoke, a flickering headlight, a sagging body. */
   damage: number;
-  /** Skin tone of the player's character (garage). */
+  /** Skin tone of the player's character, man or woman (garage). */
   skin: number;
+  gender: Gender;
   /** Its horn is sounding (the pedestrians jump aside). */
   horn: boolean;
 }
@@ -223,8 +224,8 @@ export class CityWorld {
   private readonly atmosphere: AtmosphereFx;
   private weather: Weather = { rain: 0, fog: 0 };
   private readonly roadMats: MeshStandardMaterial[] = [];
-  /** The crossbow's cubes in flight, by id. */
-  private readonly bolts = new Map<number, Mesh>();
+  /** The thrown cubes, by id. */
+  private readonly cubes = new Map<number, Mesh>();
   /** Chase camera distance factor (settings). */
   private camDistance = 1;
   /** Chase camera height (settings): 0 low … 1 default … 2 high. */
@@ -334,6 +335,7 @@ export class CityWorld {
       rect: { x: 0, y: 0, w: 1, h: 1 },
       damage: 0,
       skin: 0,
+      gender: 'man',
       horn: false
     };
     this.attachHeadlights(view);
@@ -599,7 +601,7 @@ export class CityWorld {
   }
 
   /**
-   * The logo, high on the towers: a large lit sign on the roofs of the tallest towers, turned
+   * The WinCC OA logo, high on the towers: a large lit sign on the roofs of the tallest towers, turned
    * towards the streets, and the logo set at the top of their facades. Brighter than white
    * (HDR colour), so the bloom makes it glow.
    */
@@ -767,8 +769,8 @@ export class CityWorld {
     if (v) v.damage = damage;
   }
 
-  /** Player i on foot (a jointed figure in its neon colour), or null when driving; its pose and weapon (#89). */
-  setWalker(i: number, w: WalkerState | null, color: number, look?: { pose: Pose; weapon: WeaponId | null }): void {
+  /** Player i on foot (a jointed figure in its neon colour), or null when driving; its pose, and the cube in its hand while it throws (its edge, m; null otherwise) (#89). */
+  setWalker(i: number, w: WalkerState | null, color: number, look?: { pose: Pose; holding: number | null }): void {
     const v = this.views[i];
     if (!v) return;
     if (!w) {
@@ -778,25 +780,25 @@ export class CityWorld {
     }
     if (!v.walker || v.walkerColor !== color) {
       if (v.walker) this.scene.remove(v.walker);
-      v.walker = makeFigure(color, 0.21 + i * 0.37, v.skin);
+      v.walker = makeFigure(color, 0.21 + i * 0.37, { skin: v.skin, gender: v.gender });
       v.walkerColor = color;
       this.scene.add(v.walker);
     }
     v.walker.position.set(w.x, 0, w.z);
     v.walker.rotation.y = w.heading;
     applyPose(v.walker, look?.pose ?? gaitPose(w.phase, w.speed));
-    setFigureWeapon(v.walker, look?.weapon ?? null);
+    setFigureHolding(v.walker, look?.holding ?? null);
   }
 
-  /** The crossbow's cubes in flight: spinning WinCC OA logo cubes. */
-  setBolts(bolts: readonly Bolt[]): void {
+  /** The thrown cubes: spinning WinCC OA logo cubes in flight, pulsing once stuck. */
+  setCubes(cubes: readonly ThrownCube[]): void {
     const seen = new Set<number>();
-    for (const b of bolts) {
+    for (const b of cubes) {
       seen.add(b.id);
-      let m = this.bolts.get(b.id);
+      let m = this.cubes.get(b.id);
       if (!m) {
-        m = makeCube(0.32);
-        this.bolts.set(b.id, m);
+        m = makeCube(b.size);
+        this.cubes.set(b.id, m);
         this.scene.add(m);
       }
       m.position.set(b.x, b.y, b.z);
@@ -806,21 +808,16 @@ export class CityWorld {
       const lit = b.fuse === null ? 0 : 1 - b.fuse / FUSE_S;
       m.scale.setScalar(1 + (b.fuse === null ? 0 : 0.12 + 0.12 * lit) * Math.abs(Math.sin(lit * lit * 40)));
     }
-    for (const [id, m] of this.bolts) {
+    for (const [id, m] of this.cubes) {
       if (seen.has(id)) continue;
       this.scene.remove(m);
-      this.bolts.delete(id);
+      this.cubes.delete(id);
     }
   }
 
-  /** A crossbow cube blows up at (x, y, z): the logo explosion. */
-  explodeCube(x: number, y: number, z: number): void {
-    this.fx.explode(x, z, Math.max(0.4, y));
-  }
-
-  /** A blow or a cube hit something at (x, z): a burst of sparks. */
-  burst(x: number, y: number, z: number): void {
-    this.tension.burst(x, y, z);
+  /** A thrown cube of edge `size` (m) blows up at (x, y, z): it breaks into its 4 × 4 × 4 small cubes. */
+  explodeCube(x: number, y: number, z: number, size: number): void {
+    this.fx.shatter(x, y, z, size);
   }
 
   setRemotePlayers(players: readonly RemoteCar[]): void {
@@ -868,15 +865,16 @@ export class CityWorld {
 
 
   /** Player i's vehicle: its silhouette and its neon colour. */
-  setPlayerVehicle(i: number, body: Body, glow: number, look: { paint: number; wheelScale: number; skin: number } = { paint: 0x14232a, wheelScale: 1, skin: 0 }): void {
+  setPlayerVehicle(i: number, body: Body, glow: number, look: { paint: number; wheelScale: number; skin: number; gender: Gender } = { paint: 0x14232a, wheelScale: 1, skin: 0, gender: 'man' }): void {
     const v = this.views[i];
     if (!v) return;
     const pose = { x: v.car.position.x, z: v.car.position.z, heading: v.car.rotation.y };
     this.scene.remove(v.car);
     v.car = makeCar(this.p, glow, look.paint, body, plateOf(i), look.wheelScale);
-    // the character's skin: a new figure when it changed
-    if (v.skin !== look.skin) {
+    // the character (skin, man or woman): a new figure when it changed
+    if (v.skin !== look.skin || v.gender !== look.gender) {
       v.skin = look.skin;
+      v.gender = look.gender;
       v.walkerColor = -1;
     }
     v.body = body;

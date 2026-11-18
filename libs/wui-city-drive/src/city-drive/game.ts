@@ -45,8 +45,8 @@ import type { GameAudio } from './audio.js';
 import { CLEAR, demoWeather, easeWeather, gripFactor, type Weather } from './weather.js';
 import { DEFAULT_PROFILE, paintById, vehicleById, wheelById, type Profile, type Vehicle } from './vehicles.js';
 import { canEnter, leaveCar, stepWalker, type WalkerState } from './walker.js';
-import { ATTACK_DURATION, attackPose, gaitPose, holdPose, type Pose } from './figure.js';
-import { BLAST_M, canAttack, fireBolt, inArc, lands, nextWeapon, stepBolt, stick, weaponById, type Attack, type Bolt, type WeaponId } from './weapons.js';
+import { THROW_DURATION, THROW_RELEASE_AT, gaitPose, throwPose, type Pose } from './figure.js';
+import { BLAST_M, canThrow, stepCube, stick, throwByHand, throwFromCar, type ThrownCube } from './cubes.js';
 import { CAMERA_MODES, CityWorld, type CameraMode, type RemoteCar } from './world.js';
 
 export type GameEvent =
@@ -83,8 +83,6 @@ export interface HudState {
   lastEvent: GameEvent | null;
   /** The player walks (out of the car). */
   onFoot: boolean;
-  /** The weapon in hand on foot (#89). */
-  weapon: string;
   /** Logo hunt: tokens left in the wave, wave number, this player's logos and running combo; null in missions mode. */
   hunt: { left: number; wave: number; collected: number; combo: number } | null;
   /** Alert level 0..5 (#85). */
@@ -166,16 +164,19 @@ export interface LocalPlayer {
   inStation: boolean;
   /** Metres slid since the last skid mark (#95). */
   skidFor: number;
-  /** On foot (#89): the weapon in hand and the blow under way. */
-  weapon: WeaponId;
-  attack: Attack | null;
+  /** The last throw (game time, s): on foot its wind-up, until the cube leaves the hand. */
+  throwAt: number | null;
+  /** On foot: the cube of the throw under way has left the hand. */
+  released: boolean;
 }
 
 const TRAFFIC = 26;
 const MAX_DT = 1 / 20;
 const HUD_HZ = 8;
 const NO_PAD: PadState = { throttle: 0, brake: 0, steer: 0, move: 0, handbrake: false, horn: false, pressed: [] };
-const ONE_SHOT: readonly Action[] = ['pause', 'camera', 'time', 'reset', 'foot', 'mission', 'attack', 'weapon', 'radio'];
+const ONE_SHOT: readonly Action[] = ['pause', 'camera', 'time', 'reset', 'foot', 'mission', 'throw', 'radio'];
+/** Largest cube shown in a hand (m); the thrown cube has the size of the setting. */
+const HELD_MAX_M = 0.45;
 /** A skid mark every this many metres of slide. */
 const SKID_STEP_M = 0.55;
 type Pad = PadLike & { index: number; id: string };
@@ -219,8 +220,8 @@ export class CityGame {
   weatherBound: Weather | null = null;
   /** The weather shown (eased towards its target). */
   weather: Weather = CLEAR;
-  /** The crossbow's cubes in flight (#89). */
-  bolts: Bolt[] = [];
+  /** The thrown cubes, flying or stuck (#89). */
+  cubes: ThrownCube[] = [];
 
   onHud: (hud: GameHud) => void = () => {};
   onEvent: (event: GameEvent, player: number) => void = () => {};
@@ -311,8 +312,8 @@ export class CityGame {
         camera: 'chase',
         lastEvent: null,
         hunter: newHunter(),
-        weapon: 'hammer',
-        attack: null,
+        throwAt: null,
+        released: true,
         skidFor: 0,
         pad: NO_PAD,
         padPrevious: [],
@@ -366,7 +367,8 @@ export class CityGame {
     this.world.setPlayerVehicle(p.index, p.vehicle.body, this.palette[p.profile.color], {
       paint: paintById(p.profile.paint).color,
       wheelScale: wheelById(p.profile.wheels).scale,
-      skin: p.profile.skin
+      skin: p.profile.skin,
+      gender: p.profile.driver
     });
     this.world.setTimeOfDay(this.time);
     this.world.setCameraMode(p.index, p.camera);
@@ -481,8 +483,11 @@ export class CityGame {
       this.world.setDamage(k, 0);
     });
     this.chasers = [];
-    this.bolts = [];
-    this.players.forEach((p) => (p.attack = null));
+    this.cubes = [];
+    this.players.forEach((p) => {
+      p.throwAt = null;
+      p.released = true;
+    });
     this.match = new Match(duration);
     this.setPaused(false);
   }
@@ -629,13 +634,8 @@ export class CityGame {
     else if (action === 'reset') this.resetCar(p.index);
     else if (action === 'foot') this.toggleFoot(p.index);
     else if (action === 'radio') this.onRadio();
-    else if (action === 'attack' && p.walker) this.strike(p);
-    else if (action === 'weapon' && p.walker) {
-      p.weapon = nextWeapon(p.weapon);
-      this.emitHud();
-    }
-    // X on the pad: a blow on foot, a new mission in the car
-    else if ((action === 'mission' || action === 'attack') && !p.walker && !this.match && (!p.mission || p.mission.stage === 'done' || p.mission.stage === 'failed')) this.newMission(p.index);
+    else if (action === 'throw') this.throwCube(p);
+    else if (action === 'mission' && !p.walker && !this.match && (!p.mission || p.mission.stage === 'done' || p.mission.stage === 'failed')) this.newMission(p.index);
   }
 
   // --- loop ------------------------------------------------------------------------------
@@ -646,9 +646,9 @@ export class CityGame {
     this.players.forEach((p, k) => {
       this.world.setPlayer(k, p.car);
       this.world.setSpeed(k, p.walker ? p.walker.speed : forwardSpeed(p.car));
-      if (p.walker) this.world.setWalker(k, p.walker, this.palette[p.profile.color], { pose: this.poseOf(p), weapon: p.weapon });
+      if (p.walker) this.world.setWalker(k, p.walker, this.palette[p.profile.color], { pose: this.poseOf(p), holding: this.holding(p) });
     });
-    this.world.setBolts(this.bolts);
+    this.world.setCubes(this.cubes);
     this.atmosphere(dt);
     this.world.setTraffic(this.traffic.map((c) => ({ ...carPose(c), color: c.color })));
     this.world.setChasers(this.chasers.map((c) => c.car));
@@ -678,7 +678,7 @@ export class CityGame {
     stepTraffic(this.traffic, this.city.blocks, this.t, dt, this.players.map((_, k) => this.positionOf(k)), this.rand, this.overrides);
     if (frozen) return;
     if (!this.match || this.match.live) this.stepTension(dt, bounds);
-    this.stepBolts(dt);
+    this.stepCubes(dt);
     for (const p of this.players) this.stepMissions(p, dt);
     if (!this.match || this.match.live) for (const p of this.players) this.stepHunt(p);
   }
@@ -768,7 +768,7 @@ export class CityGame {
     if (p.walker) {
       const a = this.axes(p);
       p.walker = stepWalker(p.walker, { move: a.move, turn: a.steer, run: this.on(p, 'run') || p.pad.handbrake }, dt, this.city.buildings, bounds);
-      if (p.attack && lands(p.attack, this.t)) this.blowLands(p);
+      if (!p.released && p.throwAt !== null && this.t - p.throwAt >= THROW_RELEASE_AT) this.release(p);
     }
   }
 
@@ -800,82 +800,85 @@ export class CityGame {
     this.world.setWeather(this.weather);
   }
 
-  // --- weapons (#89) -------------------------------------------------------------------------
+  // --- thrown cubes (#89) --------------------------------------------------------------------
 
-  /** The pose of a person on foot: the stride, the weapon held, the blow under way. */
+  /** The pose of a person on foot: the stride, and the throw under way. */
   private poseOf(p: LocalPlayer): Pose {
     const w = p.walker as WalkerState;
     const base = gaitPose(w.phase, w.speed);
-    const a = p.attack;
-    if (a && this.t - a.t0 < ATTACK_DURATION[a.weapon]) return attackPose(base, a.weapon, this.t - a.t0);
-    return holdPose(base, p.weapon);
-  }
-
-  /** Strike / shoot: a new blow once the previous one is over (not in the countdown). */
-  private strike(p: LocalPlayer): void {
-    if (!p.walker || (this.match && !this.match.live) || !canAttack(p.attack, this.t)) return;
-    p.attack = { weapon: p.weapon, t0: this.t, landed: false };
-  }
-
-  /** The blow lands: the crossbow shoots a cube; a hammer or a sword hits what is in its arc. */
-  private blowLands(p: LocalPlayer): void {
-    const w = p.walker as WalkerState;
-    const weapon = weaponById(p.weapon);
-    if (weapon.id === 'crossbow') {
-      this.bolts.push(fireBolt(w.x, w.z, w.heading, p.index));
-      return;
-    }
-    // the logos: a smash in front takes them as if driven through
-    const fx = w.x + Math.sin(w.heading) * 1.2;
-    const fz = w.z + Math.cos(w.heading) * 1.2;
-    this.takeLogos(p, fx, fz);
-    let hit = false;
-    for (const c of this.traffic) {
-      const q = carPose(c);
-      if (!inArc(w.x, w.z, w.heading, weapon, q.x, q.z, 2.2)) continue;
-      this.world.burst(q.x, 1, q.z);
-      this.offence(p, 'crash');
-      hit = true;
-    }
-    for (const c of this.chasers) {
-      if (!inArc(w.x, w.z, w.heading, weapon, c.car.x, c.car.z, 2.2)) continue;
-      this.world.burst(c.car.x, 1, c.car.z);
-      this.offence(p, 'ram-security');
-      hit = true;
-    }
-    if (hit) this.event(p, 'smash');
-    else if (weapon.id === 'hammer') this.world.burst(fx, 0.2, fz); // the hammer hits the ground
+    const since = p.throwAt === null ? Infinity : this.t - p.throwAt;
+    return since < THROW_DURATION ? throwPose(base, since) : base;
   }
 
   /**
-   * The crossbow's cubes: in flight, a cube that reaches a logo or a car sticks to it; stuck
-   * cubes (also on walls and the ground) wait their fuse, then blow up — the blast takes the
-   * logos and hits the cars within {@link BLAST_M}.
+   * The cube shows in the hand from the start of a throw to its release: its edge (m), at most
+   * {@link HELD_MAX_M} so that a big cube does not hide the view behind the player.
    */
-  private stepBolts(dt: number): void {
-    const next: Bolt[] = [];
-    for (const b of this.bolts) {
-      let { bolt, blows } = stepBolt(b, dt, this.city.buildings);
-      if (bolt.fuse === null) {
-        const onLogo = this.hunt?.tokens.some((t) => !t.taken && Math.hypot(t.x - bolt.x, t.z - bolt.z) < 1.2) && bolt.y < 3.5;
+  private holding(p: LocalPlayer): number | null {
+    return !p.released && p.throwAt !== null ? Math.min(this.cubeM(), HELD_MAX_M) : null;
+  }
+
+  /** Edge of a thrown cube (m), from the settings. */
+  private cubeM(): number {
+    return this.settings.cubeSizeCm / 100;
+  }
+
+  /**
+   * Throw (E, pad X): on foot the arm winds up and the cube leaves the hand a moment later;
+   * from the car it flies at once from above the windscreen, forward on top of the car's speed.
+   * Not in the countdown nor once the match is over.
+   */
+  private throwCube(p: LocalPlayer): void {
+    if ((this.match && !this.match.live) || !canThrow(p.throwAt, this.t, p.walker !== null)) return;
+    p.throwAt = this.t;
+    if (p.walker) {
+      p.released = false;
+      return;
+    }
+    const c = p.car;
+    this.cubes.push(throwFromCar(c.x, c.z, c.heading, c.vx, c.vz, p.vehicle.body.l / 2, p.index, this.cubeM()));
+    this.audio?.play('throw');
+  }
+
+  /** On foot: the cube leaves the hand. */
+  private release(p: LocalPlayer): void {
+    p.released = true;
+    const w = p.walker;
+    if (!w) return;
+    this.cubes.push(throwByHand(w.x, w.z, w.heading, p.index, this.cubeM()));
+    this.audio?.play('throw');
+  }
+
+  /**
+   * The thrown cubes: in flight, a cube that reaches a logo or a car sticks to it; stuck cubes
+   * (also on walls and the ground) wait their fuse, then blow up — the blast takes the logos and
+   * hits the cars within {@link BLAST_M}.
+   */
+  private stepCubes(dt: number): void {
+    const next: ThrownCube[] = [];
+    for (const b of this.cubes) {
+      let { cube, blows } = stepCube(b, dt, this.city.buildings);
+      if (cube.fuse === null) {
+        const onLogo = this.hunt?.tokens.some((t) => !t.taken && Math.hypot(t.x - cube.x, t.z - cube.z) < 1.2) && cube.y < 3.5;
         const onCar =
           this.traffic.some((c) => {
             const q = carPose(c);
-            return Math.hypot(q.x - bolt.x, q.z - bolt.z) < 2.4;
-          }) || this.chasers.some((c) => Math.hypot(c.car.x - bolt.x, c.car.z - bolt.z) < 2.4);
-        if (onLogo || onCar) bolt = stick(bolt);
+            return Math.hypot(q.x - cube.x, q.z - cube.z) < 2.4;
+          }) || this.chasers.some((c) => Math.hypot(c.car.x - cube.x, c.car.z - cube.z) < 2.4);
+        if (onLogo || onCar) cube = stick(cube);
       }
       if (blows) {
-        this.blowCube(bolt);
+        this.blowCube(cube);
         continue;
       }
-      next.push(bolt);
+      next.push(cube);
     }
-    this.bolts = next;
+    this.cubes = next;
   }
 
-  private blowCube(b: Bolt): void {
-    this.world.explodeCube(b.x, b.y, b.z);
+  private blowCube(b: ThrownCube): void {
+    this.world.explodeCube(b.x, b.y, b.z, b.size);
+    this.audio?.play('explosion');
     const p = this.players[b.owner];
     if (!p) return;
     this.takeLogos(p, b.x, b.z, BLAST_M);
@@ -974,7 +977,7 @@ export class CityGame {
     this.takeLogos(p, at.x, at.z);
   }
 
-  /** Logos within reach of (x, z) — by car, on foot or by a weapon — taken by player p; true when any. */
+  /** Logos within reach of (x, z) — by car, on foot or by a cube's blast — taken by player p; true when any. */
   private takeLogos(p: LocalPlayer, x: number, z: number, reach?: number): boolean {
     if (!this.hunt) return false;
     const step = this.hunt.step(x, z, this.t, p.hunter, reach);
@@ -1022,7 +1025,6 @@ export class CityGame {
         camera: p.camera,
         lastEvent: p.lastEvent,
         onFoot: p.walker !== null,
-        weapon: weaponById(p.weapon).label,
         hunt: this.hunt ? { left: this.hunt.left, wave: this.hunt.wave, collected: p.hunter.logos, combo: this.hunt.comboAt(this.t, p.hunter) } : null,
         alert: p.heat.level,
         damage: p.damage,

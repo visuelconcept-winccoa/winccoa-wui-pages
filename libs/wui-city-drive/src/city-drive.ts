@@ -41,6 +41,8 @@ import {
   ACTIONS,
   DEFAULT_SETTINGS,
   GAMEPAD_LEGEND,
+  CUBE_CM_MIN,
+  CUBE_CM_MAX,
   keyLabel,
   loadSettings,
   rebind,
@@ -78,6 +80,7 @@ import {
   NICKNAME_MAX,
   PAINTS,
   SKIN_TONES,
+  GENDERS,
   VEHICLES,
   WHEELS,
   cleanNickname,
@@ -115,9 +118,9 @@ function saveProfile(p: Profile): void {
 }
 
 /** The garage's lines, in order (▲ ▼ moves between them). */
-const GARAGE_ROWS = ['vehicle', 'wheels', 'paint', 'color', 'skin'] as const;
+const GARAGE_ROWS = ['vehicle', 'wheels', 'paint', 'color', 'driver', 'skin'] as const;
 type GarageRow = (typeof GARAGE_ROWS)[number];
-const ROW_LABEL: Record<GarageRow, string> = { vehicle: 'Car', wheels: 'Wheels', paint: 'Paint', color: 'Neon', skin: 'Driver' };
+const ROW_LABEL: Record<GarageRow, string> = { vehicle: 'Car', wheels: 'Wheels', paint: 'Paint', color: 'Neon', driver: 'Driver', skin: 'Skin' };
 const NEON_LABEL: Record<NeonColor, string> = { primary: 'Cyan', dynamic: 'Electric blue', info: 'Blue', success: 'Green', warning: 'Amber', alarm: 'Red', critical: 'Orange' };
 /** The skin tones of figure-model.ts, for the swatch. */
 const SKIN_SWATCH = [0xe8c4a8, 0xd9a882, 0xb98462, 0x8d5a3b, 0x613f2b];
@@ -334,7 +337,7 @@ export class WuiCityDrive extends LitElement {
         this.previews.set(k, pv);
       }
       const pr = this.profiles[k];
-      if (pr) pv.show(vehicleById(pr.vehicle).body, this.palette[pr.color], `WINCCOA ${k + 1}`, paintById(pr.paint).color, wheelById(pr.wheels).scale);
+      if (pr) pv.show(vehicleById(pr.vehicle).body, this.palette[pr.color], `WINCCOA ${k + 1}`, paintById(pr.paint).color, wheelById(pr.wheels).scale, { skin: pr.skin, gender: pr.driver });
     }
   }
 
@@ -594,6 +597,7 @@ export class WuiCityDrive extends LitElement {
     if (row === 'wheels') return wheelById(pr.wheels).label;
     if (row === 'paint') return html`<span class="chip" style="--chip:${hex(paintById(pr.paint).color)}"></span>${paintById(pr.paint).label}`;
     if (row === 'color') return html`<span class="chip neon" style="--chip:${hex(pal ? pal[pr.color] : 0x00bde3)}"></span>${NEON_LABEL[pr.color]}`;
+    if (row === 'driver') return GENDERS.find((g) => g.id === pr.driver)?.label ?? 'Man';
     return html`<span class="chip" style="--chip:${hex(SKIN_SWATCH[pr.skin] ?? SKIN_SWATCH[0])}"></span>Tone ${pr.skin + 1}`;
   }
 
@@ -608,6 +612,7 @@ export class WuiCityDrive extends LitElement {
     else if (row === 'wheels') this.setProfileOf(k, { ...pr, wheels: cycle(ids(WHEELS), pr.wheels, step) });
     else if (row === 'paint') this.setProfileOf(k, { ...pr, paint: cycle(ids(PAINTS), pr.paint, step) });
     else if (row === 'color') this.setProfileOf(k, { ...pr, color: cycle(NEON_COLORS, pr.color, step) });
+    else if (row === 'driver') this.setProfileOf(k, { ...pr, driver: cycle(ids(GENDERS), pr.driver, step) });
     else this.setProfileOf(k, { ...pr, skin: (pr.skin + step + SKIN_TONES) % SKIN_TONES });
   }
 
@@ -735,7 +740,7 @@ export class WuiCityDrive extends LitElement {
               ${[1, 2, 3, 4, 5].map((n) => html`<span class=${n <= h.alert ? 'on' : ''}></span>`)}
             </div>`
           : nothing}
-        ${h?.onFoot ? html`<div class="weapon"><span>${h.weapon}</span><span class="hint-key">E strike · X next</span></div>` : nothing}
+        ${h ? html`<div class="throw"><span>WinCC OA cube</span><span class="hint-key">${MSG.hud.throwHint}</span></div>` : nothing}
         ${h && h.damage > 0.02
           ? html`<div class="damage ${h.damage > 0.6 ? 'bad' : ''}">${MSG.tension.damage} <strong>${Math.round(h.damage * 100)} %</strong></div>`
           : nothing}
@@ -978,6 +983,14 @@ export class WuiCityDrive extends LitElement {
             <ix-slider label="Steering sensitivity" min="0.5" max="1.5" step="0.05" .value=${st.steering} @valueChange=${(e: CustomEvent<number>) => set({ steering: e.detail })}></ix-slider>
             <ix-slider label="Chase camera distance" min="0.7" max="1.6" step="0.05" .value=${st.cameraDistance} @valueChange=${(e: CustomEvent<number>) => set({ cameraDistance: e.detail })}></ix-slider>
             <ix-slider label="Chase camera height (low → high)" min="0" max="2" step="0.1" .value=${st.cameraHeight} @valueChange=${(e: CustomEvent<number>) => set({ cameraHeight: e.detail })}></ix-slider>
+            <ix-slider
+              label=${`Thrown cube size: ${st.cubeSizeCm} cm (breaks into 4 × 4 × 4 cubes of ${Math.round(st.cubeSizeCm / 4)} cm)`}
+              min=${CUBE_CM_MIN}
+              max=${CUBE_CM_MAX}
+              step="5"
+              .value=${st.cubeSizeCm}
+              @valueChange=${(e: CustomEvent<number>) => set({ cubeSizeCm: Math.round(e.detail) })}
+            ></ix-slider>
           </section>
           <section>
             <div class="sec-title">Sound</div>
@@ -2617,7 +2630,7 @@ function pageStyles(): ReturnType<typeof css> {
         background: var(--theme-color-info);
       }
     }
-    .weapon {
+    .throw {
       display: flex;
       align-items: baseline;
       gap: 0.5rem;
@@ -2625,7 +2638,7 @@ function pageStyles(): ReturnType<typeof css> {
       color: var(--c, var(--theme-color-primary));
       text-shadow: 0 0 6px var(--c, var(--theme-color-primary));
     }
-    .weapon .hint-key {
+    .throw .hint-key {
       font-size: 0.75rem;
       font-weight: 400;
       color: var(--theme-color-soft-text);

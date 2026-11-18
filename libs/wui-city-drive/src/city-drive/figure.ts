@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * How a person on foot moves (#89): the angles of the joints for a stride and for the weapons'
- * moves. Pure, no three.js; figure-model.ts turns a {@link Pose} into the rotations of the body.
+ * How a person on foot moves (#89): the angles of the joints for a stride and for throwing a
+ * cube. Pure, no three.js; figure-model.ts turns a {@link Pose} into the rotations of the body.
  *
  * Angles in radians, positive = forward: a hip flexed brings the thigh forward, a knee flexed
  * brings the shin back, an ankle flexed lifts the toes, a shoulder flexed raises the arm
@@ -41,7 +41,7 @@ export interface Pose {
   elbowR: number;
   /** Trunk leaning forward. */
   lean: number;
-  /** Chest turned to the left (a slash, the counter-rotation of the stride). */
+  /** Chest turned to the left (a throw, the counter-rotation of the stride). */
   twist: number;
   /** Pelvis turned to the left, and dropped on the left (+). */
   pelvisYaw: number;
@@ -53,8 +53,6 @@ export interface Pose {
   /** Height of the hips above standing (m). */
   bob: number;
 }
-
-export type AttackKind = 'hammer' | 'sword' | 'crossbow';
 
 const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
 const lerp = (a: number, b: number, k: number): number => a + (b - a) * k;
@@ -130,80 +128,31 @@ export function gaitPose(phase: number, speed: number, seed = 0.5): Pose {
   };
 }
 
-/** How each weapon is held between two blows (it replaces the swing of the right arm). */
-export function holdPose(base: Pose, weapon: AttackKind): Pose {
-  if (weapon === 'crossbow') {
-    // carried in both hands across the chest
-    return { ...base, shoulderR: 0.7, elbowR: 1.35, acrossR: 0.25, shoulderL: 0.85, elbowL: 1.5, acrossL: 0.35 };
-  }
-  // hammer, sword: carried in the right hand, the elbow bent so the head clears the ground,
-  // the arm swinging less and slightly out
-  return { ...base, shoulderR: base.shoulderR * 0.45 + 0.12, elbowR: weapon === 'hammer' ? 1.05 : 0.65, acrossR: -0.12 };
-}
-
 /**
- * A blow `t` seconds after it started (it lasts {@link ATTACK_DURATION}):
- * - hammer: both hands raise it over the head, then bring it down in front, knees bending
- *   (the hit at 0.3 s);
- * - sword: a wide slash from right to left, the chest and hips turning into it (hit at 0.18 s);
- * - crossbow: both arms up to aim, the shot at once, then the recoil.
+ * A cube thrown `t` seconds after the throw started (it lasts {@link THROW_DURATION}): the right
+ * arm draws back, the chest turning with it and the left arm coming forward for balance, then
+ * whips over the shoulder; the cube leaves the hand at {@link THROW_RELEASE_AT}; the arm follows
+ * through across the body and the stride takes over again.
  */
-export function attackPose(base: Pose, weapon: AttackKind, t: number): Pose {
-  const held = holdPose(base, weapon);
-  if (weapon === 'hammer') {
-    const up = smooth(0, 0.2, t) * (1 - smooth(0.2, 0.32, t));
-    const down = smooth(0.2, 0.32, t) * (1 - smooth(0.42, 0.55, t));
-    return {
-      ...held,
-      shoulderR: held.shoulderR + up * (2.75 - held.shoulderR) + down * (0.6 - held.shoulderR),
-      shoulderL: held.shoulderL + up * (2.55 - held.shoulderL) + down * (0.75 - held.shoulderL),
-      acrossL: held.acrossL + up * 0.3 + down * 0.35,
-      acrossR: held.acrossR + up * 0.25 + down * 0.3,
-      elbowL: lerp(held.elbowL, 1.1, up) + down * 0.1,
-      elbowR: lerp(held.elbowR, up > down ? 1.0 : 0.1, Math.max(up, down)),
-      lean: held.lean - up * 0.18 + down * 0.4,
-      nod: held.nod - up * 0.15 + down * 0.2,
-      kneeL: held.kneeL + down * 0.4,
-      kneeR: held.kneeR + down * 0.4,
-      hipL: held.hipL + down * 0.25,
-      hipR: held.hipR + down * 0.25,
-      bob: held.bob - down * 0.1
-    };
-  }
-  if (weapon === 'sword') {
-    const out = smooth(0, 0.08, t) * (1 - smooth(0.3, 0.4, t));
-    const across = smooth(0.06, 0.24, t);
-    const turn = out * lerp(-0.7, 0.8, across);
-    return {
-      ...held,
-      shoulderR: lerp(held.shoulderR, 1.4, out),
-      acrossR: lerp(held.acrossR, lerp(-0.9, 0.6, across), out),
-      elbowR: lerp(held.elbowR, 0.2, out),
-      shoulderL: held.shoulderL + out * 0.35,
-      acrossL: held.acrossL - out * 0.4,
-      twist: turn,
-      pelvisYaw: turn * 0.4,
-      lean: held.lean + out * 0.12,
-      kneeL: held.kneeL + out * 0.2,
-      kneeR: held.kneeR + out * 0.15
-    };
-  }
-  const aim = smooth(0, 0.06, t) * (1 - smooth(0.26, 0.35, t));
-  const recoil = smooth(0.06, 0.1, t) * (1 - smooth(0.1, 0.22, t));
+export function throwPose(base: Pose, t: number): Pose {
+  const back = smooth(0, 0.16, t) * (1 - smooth(0.16, 0.26, t));
+  const through = smooth(0.16, 0.26, t) * (1 - smooth(0.34, THROW_DURATION, t));
+  const on = Math.max(back, through);
   return {
-    ...held,
-    shoulderR: lerp(held.shoulderR, 1.5 + recoil * 0.25, aim),
-    elbowR: lerp(held.elbowR, 0.25, aim),
-    acrossR: lerp(held.acrossR, 0.15, aim),
-    shoulderL: lerp(held.shoulderL, 1.55 + recoil * 0.25, aim),
-    elbowL: lerp(held.elbowL, 0.45, aim),
-    acrossL: lerp(held.acrossL, 0.4, aim),
-    twist: held.twist + aim * 0.15,
-    lean: held.lean - recoil * 0.1,
-    nod: held.nod + aim * 0.1
+    ...base,
+    shoulderR: lerp(base.shoulderR, back > through ? 2.4 : 0.9, on),
+    elbowR: lerp(base.elbowR, back > through ? 1.6 : 0.25, on),
+    acrossR: lerp(base.acrossR, back > through ? -0.35 : 0.45, on),
+    shoulderL: lerp(base.shoulderL, 1.0, on * 0.8),
+    elbowL: lerp(base.elbowL, 0.6, on * 0.8),
+    acrossL: lerp(base.acrossL, 0.2, on),
+    twist: base.twist - back * 0.45 + through * 0.4,
+    pelvisYaw: base.pelvisYaw - back * 0.15 + through * 0.15,
+    lean: base.lean - back * 0.08 + through * 0.2,
+    nod: base.nod + through * 0.08
   };
 }
 
-/** Length of a blow (s), and when it lands (the shot for the crossbow). */
-export const ATTACK_DURATION: Record<AttackKind, number> = { hammer: 0.55, sword: 0.4, crossbow: 0.35 };
-export const ATTACK_HIT_AT: Record<AttackKind, number> = { hammer: 0.3, sword: 0.18, crossbow: 0.07 };
+/** Length of a throw (s), and when the cube leaves the hand. */
+export const THROW_DURATION = 0.5;
+export const THROW_RELEASE_AT = 0.2;
