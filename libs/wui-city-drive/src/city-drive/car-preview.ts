@@ -3,7 +3,8 @@
 
 /**
  * The turntable of the start screen: the chosen vehicle, in the player's neon colour, turning
- * on a lit plate — the same model as in the game (car-model.ts).
+ * on a lit plate — the same model as in the game (car-model.ts) — with its driver, a man or a
+ * woman, standing by the door (figure-model.ts).
  *
  * One small WebGL renderer per canvas (one per player card). It draws only while its canvas is
  * on screen, and is disposed when the card goes away (the game starts).
@@ -28,8 +29,10 @@ import {
 } from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { buildCar } from './car-model.js';
+import { applyPose, makeFigure } from './figure-model.js';
+import { gaitPose } from './figure.js';
 import { mix, type NeonPalette } from './palette.js';
-import type { Body } from './vehicles.js';
+import type { Body, Gender } from './vehicles.js';
 
 /** Turns per second. */
 const SPIN = 0.12;
@@ -43,6 +46,7 @@ export class CarPreview {
   private readonly ring: MeshBasicMaterial;
   private readonly rim: DirectionalLight;
   private car: Group | null = null;
+  private driver: Group | null = null;
   private key = '';
   private frame = 0;
   private last = 0;
@@ -84,13 +88,20 @@ export class CarPreview {
   }
 
   /** The vehicle shown, in the player's neon colour (rebuilt only when one of them changes). */
-  show(body: Body, glow: number, plate: string, paint = PAINT, wheelScale = 1): void {
-    const key = `${JSON.stringify(body)}|${glow}|${plate}|${paint}|${wheelScale}`;
+  show(body: Body, glow: number, plate: string, paint = PAINT, wheelScale = 1, driver: { skin: number; gender: Gender } = { skin: 0, gender: 'man' }): void {
+    const key = `${JSON.stringify(body)}|${glow}|${plate}|${paint}|${wheelScale}|${driver.skin}|${driver.gender}`;
     if (key === this.key) return;
     this.key = key;
     if (this.car) this.turntable.remove(this.car);
     this.car = buildCar(body, { paint, glow, tail: this.p.alarm, plate, wheelScale });
     this.turntable.add(this.car);
+    // the driver, standing by the door, facing forward
+    if (this.driver) this.turntable.remove(this.driver);
+    this.driver = makeFigure(glow, 0.21, driver);
+    applyPose(this.driver, gaitPose(0, 0));
+    this.driver.position.set(body.w / 2 + 0.75, 0, body.l * 0.05);
+    this.driver.rotation.y = 0.35;
+    this.turntable.add(this.driver);
     this.ring.color.setHex(glow);
     this.rim.color = new Color(glow);
     // frame the long cars (limousine) as well as the short ones

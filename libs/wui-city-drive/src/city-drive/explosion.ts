@@ -7,7 +7,10 @@
  * - token: a spinning neon disc with the WinCC OA wordmark, floating over the road, a glow ring
  *   on the asphalt and a faint beam of light rising from it, to be spotted from afar;
  * - explosion: 1000 sparks and 140 tumbling shards in the logo colours, a shockwave ring on the
- *   ground and a flash of light; everything falls under gravity and fades within ~2 s.
+ *   ground and a flash of light; everything falls under gravity and fades within ~2 s;
+ * - a thrown cube's blast ({@link LogoFx.shatter}): the cube breaks into the 4 × 4 × 4 small
+ *   cubes it is made of, in the colours of its logo's squares, flung out from its centre, a few
+ *   sparks, the ring and the flash.
  */
 import {
   AdditiveBlending,
@@ -39,6 +42,10 @@ const SHARDS = 140;
 const LIFE_S = 2;
 const GRAVITY = 14;
 const TOKEN_Y = 1.7;
+/** A thrown cube breaks into N × N × N small cubes, each 1/N of its edge. */
+export const SHATTER_N = 4;
+const SHATTER_SPARKS = 160;
+const SHATTER_LIFE_S = 2.6;
 
 const css = (c: number): string => `#${c.toString(16).padStart(6, '0')}`;
 
@@ -84,6 +91,12 @@ interface Burst {
   shardSpin: Float32Array;
   shardPos: Float32Array;
   age: number;
+  /** Seconds it lasts. */
+  life: number;
+  /** The pieces shrink as they fade (shards), or keep their size (a cube's pieces). */
+  shrink: boolean;
+  /** Height of a piece's centre resting on the ground. */
+  floor: number;
 }
 
 export class LogoFx {
@@ -147,17 +160,16 @@ export class LogoFx {
     }
   }
 
-  /** Blows a token up at (x, z): sparks, shards, shockwave, flash, camera shake. */
-  explode(x: number, z: number, y = TOKEN_Y): void {
-    // sparks
-    const pos = new Float32Array(SPARKS * 3);
-    const col = new Float32Array(SPARKS * 3);
-    const vel = new Float32Array(SPARKS * 3);
-    for (let k = 0; k < SPARKS; k++) {
+  /** `n` sparks flying out of (x, y, z) in the logo colours, and their velocities. */
+  private sparks(x: number, y: number, z: number, n: number, speedMax = 16): { points: Points; vel: Float32Array } {
+    const pos = new Float32Array(n * 3);
+    const col = new Float32Array(n * 3);
+    const vel = new Float32Array(n * 3);
+    for (let k = 0; k < n; k++) {
       const u = Math.random() * 2 - 1;
       const a = Math.random() * Math.PI * 2;
       const r = Math.sqrt(1 - u * u);
-      const speed = 6 + Math.random() * 16;
+      const speed = 6 + Math.random() * speedMax;
       vel[k * 3] = r * Math.cos(a) * speed;
       vel[k * 3 + 1] = Math.abs(u) * speed * 0.9 + 3;
       vel[k * 3 + 2] = r * Math.sin(a) * speed;
@@ -177,6 +189,30 @@ export class LogoFx {
       geo,
       new PointsMaterial({ size: 0.17, vertexColors: true, transparent: true, opacity: 0.9, blending: AdditiveBlending, depthWrite: false })
     );
+    return { points, vel };
+  }
+
+  /** The shockwave ring on the ground at (x, z). */
+  private ring(x: number, z: number): Mesh {
+    const ring = new Mesh(
+      new RingGeometry(1.32, 1.4, 64), // thin: it stays a line as it grows
+      new MeshBasicMaterial({ color: this.p.dynamic, transparent: true, opacity: 0.9, blending: AdditiveBlending, depthWrite: false, side: DoubleSide, toneMapped: false })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(x, 0.1, z);
+    return ring;
+  }
+
+  private flashAt(x: number, y: number, z: number, intensity: number, shake: number): void {
+    this.flash.position.set(x, y + 1, z);
+    this.flash.color.setHex(this.p.dynamic);
+    this.flash.intensity = intensity;
+    this.shake = Math.min(0.8, this.shake + shake);
+  }
+
+  /** Blows a token up at (x, z): sparks, shards, shockwave, flash, camera shake. */
+  explode(x: number, z: number, y = TOKEN_Y): void {
+    const { points, vel } = this.sparks(x, y, z, SPARKS);
     // shards: small tumbling squares of the logo
     const shards = new InstancedMesh(new BoxGeometry(0.22, 0.22, 0.05), new MeshBasicMaterial({ transparent: true }), SHARDS);
     const shardVel = new Float32Array(SHARDS * 3);
@@ -194,19 +230,51 @@ export class LogoFx {
       shardPos[k * 3 + 2] = z;
       shards.setColorAt(k, this.palette[k % this.palette.length]);
     }
-    // shockwave on the ground
-    const ring = new Mesh(
-      new RingGeometry(1.32, 1.4, 64), // thin: it stays a line as it grows
-      new MeshBasicMaterial({ color: this.p.dynamic, transparent: true, opacity: 0.9, blending: AdditiveBlending, depthWrite: false, side: DoubleSide, toneMapped: false })
-    );
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.set(x, 0.1, z);
+    const ring = this.ring(x, z);
     this.group.add(points, shards, ring);
-    this.bursts.push({ points, shards, ring, vel, shardVel, shardSpin, shardPos, age: 0 });
-    this.flash.position.set(x, y + 1, z);
-    this.flash.color.setHex(this.p.dynamic);
-    this.flash.intensity = 35;
-    this.shake = Math.min(0.8, this.shake + 0.5);
+    this.bursts.push({ points, shards, ring, vel, shardVel, shardSpin, shardPos, age: 0, life: LIFE_S, shrink: true, floor: 0.05 });
+    this.flashAt(x, y, z, 35, 0.5);
+  }
+
+  /**
+   * A thrown cube of edge `size` (m) blows up at (x, y, z): it breaks into the {@link SHATTER_N}³
+   * small cubes it is made of, each `size / N` — each in the colour of the logo square in front of it — flung out from the centre
+   * and up, tumbling, bouncing on the asphalt; a few sparks, the ring, the flash.
+   */
+  shatter(x: number, y: number, z: number, size: number): void {
+    const n = SHATTER_N;
+    const piece = size / n;
+    const count = n * n * n;
+    const { points, vel } = this.sparks(x, y, z, SHATTER_SPARKS, 8);
+    const shards = new InstancedMesh(new BoxGeometry(piece, piece, piece), new MeshBasicMaterial({ transparent: true, toneMapped: false }), count);
+    const shardVel = new Float32Array(count * 3);
+    const shardSpin = new Float32Array(count * 3);
+    const shardPos = new Float32Array(count * 3);
+    const step = piece * 1.05;
+    let k = 0;
+    for (let i = 0; i < n; i++)
+      for (let j = 0; j < n; j++)
+        for (let d = 0; d < n; d++, k++) {
+          // the piece's place in the cube, from its centre
+          const ox = (i - (n - 1) / 2) * step;
+          const oy = (j - (n - 1) / 2) * step;
+          const oz = (d - (n - 1) / 2) * step;
+          shardPos[k * 3] = x + ox;
+          shardPos[k * 3 + 1] = Math.max(size / 2, y) + oy;
+          shardPos[k * 3 + 2] = z + oz;
+          const len = Math.hypot(ox, oy, oz) || 1;
+          const speed = 5 + Math.random() * 6;
+          shardVel[k * 3] = (ox / len) * speed + (Math.random() - 0.5) * 2;
+          shardVel[k * 3 + 1] = (oy / len) * speed * 0.5 + 5 + Math.random() * 5;
+          shardVel[k * 3 + 2] = (oz / len) * speed + (Math.random() - 0.5) * 2;
+          for (let a = 0; a < 3; a++) shardSpin[k * 3 + a] = (Math.random() - 0.5) * 12;
+          // row from the top, column from the left, as on the logo's face
+          shards.setColorAt(k, new Color(LOGO_GRID[n - 1 - j][i]).multiplyScalar(1.15));
+        }
+    const ring = this.ring(x, z);
+    this.group.add(points, shards, ring);
+    this.bursts.push({ points, shards, ring, vel, shardVel, shardSpin, shardPos, age: 0, life: SHATTER_LIFE_S, shrink: false, floor: piece / 2 });
+    this.flashAt(x, y, z, 22, 0.3);
   }
 
   update(dt: number): void {
@@ -221,7 +289,7 @@ export class LogoFx {
     for (let b = this.bursts.length - 1; b >= 0; b--) {
       const burst = this.bursts[b];
       burst.age += dt;
-      const life = burst.age / LIFE_S;
+      const life = burst.age / burst.life;
       if (life >= 1) {
         this.group.remove(burst.points, burst.shards, burst.ring);
         burst.points.geometry.dispose();
@@ -233,7 +301,7 @@ export class LogoFx {
       const pos = burst.points.geometry.getAttribute('position') as BufferAttribute;
       const arr = pos.array as Float32Array;
       const drag = Math.exp(-dt * 1.6);
-      for (let k = 0; k < SPARKS; k++) {
+      for (let k = 0; k < burst.vel.length / 3; k++) {
         const i = k * 3;
         burst.vel[i] *= drag;
         burst.vel[i + 2] *= drag;
@@ -244,13 +312,14 @@ export class LogoFx {
       }
       pos.needsUpdate = true;
       (burst.points.material as PointsMaterial).opacity = 1 - life * life;
-      for (let k = 0; k < SHARDS; k++) {
+      const floor = burst.floor;
+      for (let k = 0; k < burst.shardPos.length / 3; k++) {
         const i = k * 3;
         burst.shardVel[i + 1] -= GRAVITY * dt;
         burst.shardPos[i] += burst.shardVel[i] * dt;
-        burst.shardPos[i + 1] = Math.max(0.05, burst.shardPos[i + 1] + burst.shardVel[i + 1] * dt);
+        burst.shardPos[i + 1] = Math.max(floor, burst.shardPos[i + 1] + burst.shardVel[i + 1] * dt);
         burst.shardPos[i + 2] += burst.shardVel[i + 2] * dt;
-        if (burst.shardPos[i + 1] <= 0.05) {
+        if (burst.shardPos[i + 1] <= floor) {
           // bounce and slide on the asphalt
           burst.shardVel[i + 1] = Math.abs(burst.shardVel[i + 1]) * 0.3;
           burst.shardVel[i] *= 0.7;
@@ -258,12 +327,13 @@ export class LogoFx {
         }
         this.o.position.set(burst.shardPos[i], burst.shardPos[i + 1], burst.shardPos[i + 2]);
         this.o.rotation.set(burst.shardSpin[i] * burst.age, burst.shardSpin[i + 1] * burst.age, burst.shardSpin[i + 2] * burst.age);
-        this.o.scale.setScalar(1 - life * 0.6);
+        this.o.scale.setScalar(burst.shrink ? 1 - life * 0.6 : 1);
         this.o.updateMatrix();
         burst.shards.setMatrixAt(k, this.o.matrix);
       }
       burst.shards.instanceMatrix.needsUpdate = true;
-      (burst.shards.material as MeshBasicMaterial).opacity = 1 - life;
+      // a cube's pieces stay whole, then fade in their last third
+      (burst.shards.material as MeshBasicMaterial).opacity = burst.shrink ? 1 - life : Math.min(1, 3 * (1 - life));
       const r = 1 + burst.age * 22;
       burst.ring.scale.setScalar(r);
       (burst.ring.material as MeshBasicMaterial).opacity = 0.75 * Math.max(0, 1 - life * 2) ** 2;

@@ -27,10 +27,10 @@ The game is in English only.
 
 - Start screen: nickname, vehicle, neon colour, game mode (Logo hunt or Missions) and time of
   day (neon night or day); **Settings** (also in game): keys, gamepad, steering, camera,
-  graphics, units, minimap / players panel. (the iX theme colours), kept in the browser
+  size of the thrown cube (cm), graphics, units, minimap / players panel. (the iX theme colours), kept in the browser
   (`localStorage`) and written to the player's datapoint.
-- **Garage** on a **turntable**: the car turns in its paint and neon colour. Lines Car, Wheels,
-  Paint, Neon, Driver: ▲ ▼ picks a line, ◀ ▶ changes it — arrow keys (keyboard player), D-pad or
+- **Garage** on a **turntable**: the car turns in its paint and neon colour, its driver standing
+  by the door. Lines Car, Wheels, Paint, Neon, Driver (man or woman), Skin: ▲ ▼ picks a line, ◀ ▶ changes it — arrow keys (keyboard player), D-pad or
   left stick (each gamepad on its own player's card), or the mouse.
 - Cars: **Neon Specter** (finned coupé), **Kitsune GT** (roadster, the most agile), **Thunder
   Ronin** (muscle car, the strongest pull), **Grand Duchess** (limousine), **Night Courier**
@@ -38,19 +38,21 @@ The game is in English only.
   range). Each has its own physics (speed, grip, steering, fuel, size).
 - Keys: W/Z ↑ throttle · S ↓ brake / reverse · A/Q ← D → steer · Space handbrake (drift) ·
   C camera (chase, street level, bonnet, drone, street-corner cameras, map view) · T day / night ·
-  R back on the road · N new mission · Esc pause. Click the city first
+  E throw a cube · R back on the road · N new mission · Esc pause. Click the city first
   so it gets the keyboard.
 - **Logo hunt**: WinCC OA tokens over the roads; drive or walk through them: each blows up
   (sparks, shards, shockwave) and scores 100 × combo (within 6 s, up to ×5); a cleared wave
   of 24 adds a bonus and lays a new one.
 - **On foot**: F to get out of the car (once stopped) and back in when within 4.5 m of it;
   Shift to run. A jointed figure walks and runs with a real stride.
-- **Weapons on foot**: WebUI hammer, star sword, cube crossbow (WinCC OA logo cubes that stick
-  where they land and blow up 1 s later, 4 m blast). E strikes
-  or shoots, X changes weapon (pad: X, D-pad). They break logos (scored) and cars (alert level
-  up); never the pedestrians.
+- **Thrown cubes** (no weapons): E (pad X) throws a WinCC OA logo cube — on foot the arm winds
+  up and throws it, from the car it flies forward from above the windscreen. A cube sticks
+  where it lands and blows up 1 s later into its **4 × 4 × 4 small cubes** (4 m blast): it breaks
+  logos (scored) and hits cars (alert level up); never the pedestrians. Its size is a setting
+  (20–150 cm, 80 by default); the small cubes are always a quarter of it.
 - **USB gamepad** (standard mapping): RT / LT throttle and brake, left stick, A handbrake /
-  run, B get out / in, Y camera, X mission, LB day / night, RB reset, Start pause.
+  run, B get out / in, Y camera, X throw a cube, D-pad ◀ ▶ new mission, LB day / night, RB reset,
+  Start pause.
 - Missions: **delivery** (pick up, then drop, before the timer) and **intervention** (a machine
   in fault: drive to its hall; offered as soon as a machine fails, replaces a delivery).
 - Fuel: refill at the station (north-east corner of the minimap: the orange square); on an
@@ -222,7 +224,7 @@ Three.js, bundled into the page. Bloom; neon in the iX theme colours read from t
 `--theme-color-*` tokens; procedural textures (facades, asphalt, pavement, signs): no image file.
 Moonlight shadows around the player, real spot lights for the player's headlights. The
 WinCC OA 4 × 4 cube logo is drawn from its colours (signs on the roofs and at the top of the
-facades, the crossbow's cubes). The Visuel Concept symbol (its official artwork, `vc-logo.ts`)
+facades, the thrown cubes). The Visuel Concept symbol (its official artwork, `vc-logo.ts`)
 lights the four sides of each machine hall;
 the end of the match shows the full Visuel Concept logo turning, with a short pitch and a QR
 code that opens a mail to contact@visuelconcept.com.

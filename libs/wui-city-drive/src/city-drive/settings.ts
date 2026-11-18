@@ -9,7 +9,7 @@
  * pads are reported this way). See {@link GAMEPAD_LEGEND}.
  */
 
-export type Action = 'up' | 'down' | 'left' | 'right' | 'brake' | 'run' | 'foot' | 'attack' | 'weapon' | 'horn' | 'radio' | 'camera' | 'time' | 'reset' | 'mission' | 'pause';
+export type Action = 'up' | 'down' | 'left' | 'right' | 'brake' | 'run' | 'foot' | 'throw' | 'horn' | 'radio' | 'camera' | 'time' | 'reset' | 'mission' | 'pause';
 
 export const ACTIONS: readonly { id: Action; label: string }[] = [
   { id: 'up', label: 'Throttle / walk forward' },
@@ -19,8 +19,7 @@ export const ACTIONS: readonly { id: Action; label: string }[] = [
   { id: 'brake', label: 'Handbrake (drift)' },
   { id: 'run', label: 'Run (on foot)' },
   { id: 'foot', label: 'Get out / get in' },
-  { id: 'attack', label: 'Strike / shoot (on foot)' },
-  { id: 'weapon', label: 'Next weapon (on foot)' },
+  { id: 'throw', label: 'Throw a cube (on foot or from the car)' },
   { id: 'horn', label: 'Horn (hold)' },
   { id: 'radio', label: 'Next radio station' },
   { id: 'camera', label: 'Next camera' },
@@ -48,6 +47,8 @@ export interface Settings {
   cameraDistance: number;
   /** Chase camera height, 0 (low, at the roof) .. 2 (high, looking down on the car); 1 by default. */
   cameraHeight: number;
+  /** Size of the thrown WinCC OA cube (cm), {@link CUBE_CM_MIN}..{@link CUBE_CM_MAX}: it always breaks into 4 × 4 × 4 small cubes of a quarter of it. */
+  cubeSizeCm: number;
   /** high: shadows, full resolution, bloom; low: for machines without a strong GPU. */
   quality: Quality;
   units: Units;
@@ -61,6 +62,10 @@ export interface Settings {
   radio: 'off' | 'neon' | 'lofi' | 'talk';
 }
 
+/** Bounds of the cube size setting (cm). */
+export const CUBE_CM_MIN = 20;
+export const CUBE_CM_MAX = 150;
+
 export const DEFAULT_KEYS: Record<Action, string[]> = {
   up: ['KeyW', 'KeyZ', 'ArrowUp'],
   down: ['KeyS', 'ArrowDown'],
@@ -69,8 +74,7 @@ export const DEFAULT_KEYS: Record<Action, string[]> = {
   brake: ['Space'],
   run: ['ShiftLeft', 'ShiftRight'],
   foot: ['KeyF', 'Enter'],
-  attack: ['KeyE'],
-  weapon: ['KeyX'],
+  throw: ['KeyE'],
   horn: ['KeyH'],
   radio: ['KeyM'],
   camera: ['KeyC'],
@@ -86,6 +90,7 @@ export const DEFAULT_SETTINGS: Settings = {
   steering: 1,
   cameraDistance: 1,
   cameraHeight: 1,
+  cubeSizeCm: 80,
   quality: 'high',
   units: 'kmh',
   showMinimap: true,
@@ -124,6 +129,7 @@ export function parseSettings(raw: unknown): Settings {
     steering: clamp(o.steering, 0.5, 1.5, 1),
     cameraDistance: clamp(o.cameraDistance, 0.7, 1.6, 1),
     cameraHeight: clamp(o.cameraHeight, 0, 2, 1),
+    cubeSizeCm: Math.round(clamp(o.cubeSizeCm, CUBE_CM_MIN, CUBE_CM_MAX, DEFAULT_SETTINGS.cubeSizeCm)),
     quality: o.quality === 'low' ? 'low' : 'high',
     units: o.units === 'mph' ? 'mph' : 'kmh',
     showMinimap: o.showMinimap !== false,
@@ -180,8 +186,8 @@ export const GAMEPAD_LEGEND: readonly { control: string; action: string }[] = [
   { control: 'A', action: 'Handbrake · run on foot' },
   { control: 'B', action: 'Get out / get in' },
   { control: 'Y', action: 'Next camera' },
-  { control: 'X', action: 'New mission · strike / shoot on foot' },
-  { control: 'D-pad ◀ ▶', action: 'Next weapon (on foot)' },
+  { control: 'X', action: 'Throw a cube' },
+  { control: 'D-pad ◀ ▶', action: 'New mission' },
   { control: 'Left stick click', action: 'Horn (hold)' },
   { control: 'Back', action: 'Next radio station' },
   { control: 'LB', action: 'Day / night' },
@@ -228,10 +234,10 @@ export function readPad(pad: PadLike, s: Settings, previous: boolean[]): PadStat
   };
   edge(BTN.B, 'foot');
   edge(BTN.Y, 'camera');
-  edge(BTN.X, 'attack'); // on foot a blow, in the car a new mission (game.ts)
+  edge(BTN.X, 'throw'); // a cube, on foot or from the car
   edge(BTN.BACK, 'radio');
-  edge(BTN.LEFT, 'weapon');
-  edge(BTN.RIGHT, 'weapon');
+  edge(BTN.LEFT, 'mission');
+  edge(BTN.RIGHT, 'mission');
   edge(BTN.LB, 'time');
   edge(BTN.RB, 'reset');
   edge(BTN.START, 'pause');

@@ -195,8 +195,8 @@ describe('vehicles and profile (#79)', () => {
 
   it('repairs a stored profile and cleans the nickname', async () => {
     const { parseProfile, cleanNickname, NICKNAME_MAX } = await import('./vehicles.js');
-    expect(parseProfile({ nickname: '  Aurel ', vehicle: 'limousine', color: 'alarm' })).toEqual({ nickname: 'Aurel', vehicle: 'limousine', color: 'alarm', paint: 'midnight', wheels: 'stock', skin: 0, time: 'night', mode: 'logos' });
-    expect(parseProfile({ vehicle: 'tank', color: 'pink' })).toEqual({ nickname: '', vehicle: 'coupe', color: 'primary', paint: 'midnight', wheels: 'stock', skin: 0, time: 'night', mode: 'logos' });
+    expect(parseProfile({ nickname: '  Aurel ', vehicle: 'limousine', color: 'alarm' })).toEqual({ nickname: 'Aurel', vehicle: 'limousine', color: 'alarm', paint: 'midnight', wheels: 'stock', driver: 'man', skin: 0, time: 'night', mode: 'logos' });
+    expect(parseProfile({ vehicle: 'tank', color: 'pink' })).toEqual({ nickname: '', vehicle: 'coupe', color: 'primary', paint: 'midnight', wheels: 'stock', driver: 'man', skin: 0, time: 'night', mode: 'logos' });
     expect(parseProfile({ mode: 'missions' }).mode).toBe('missions');
     expect(parseProfile({ time: 'day' }).time).toBe('day');
     expect(parseProfile(null).vehicle).toBe('coupe');
@@ -494,7 +494,7 @@ describe('ranking size', () => {
   });
 });
 
-describe('figure and weapons (#89)', () => {
+describe('figure and thrown cubes (#89)', () => {
   it('walks with opposite legs and arms, runs with wider strides and bent elbows', async () => {
     const { gaitPose } = await import('./figure.js');
     const walk = gaitPose(0.05, 1.8); // the left heel strikes: left thigh forward, right one back
@@ -514,31 +514,32 @@ describe('figure and weapons (#89)', () => {
     expect(Math.abs(still.hipL) + Math.abs(still.kneeL)).toBeLessThan(0.01);
   });
 
-  it('raises the hammer, then brings it down in front', async () => {
-    const { gaitPose, attackPose } = await import('./figure.js');
+  it('winds the arm back, then whips it forward to throw', async () => {
+    const { gaitPose, throwPose, THROW_RELEASE_AT, THROW_DURATION } = await import('./figure.js');
     const base = gaitPose(0, 0);
-    expect(attackPose(base, 'hammer', 0.18).shoulderR).toBeGreaterThan(2.2);
-    expect(attackPose(base, 'hammer', 0.34).shoulderR).toBeLessThan(1);
+    const back = throwPose(base, 0.15);
+    expect(back.shoulderR).toBeGreaterThan(2);
+    expect(back.elbowR).toBeGreaterThan(1.3);
+    expect(throwPose(base, THROW_RELEASE_AT + 0.05).shoulderR).toBeLessThan(back.shoulderR);
+    expect(throwPose(base, THROW_DURATION).shoulderR).toBeCloseTo(base.shoulderR, 2);
   });
 
-  it('lands a blow once, hits in front only, and stops a cube against a wall', async () => {
-    const { lands, inArc, weaponById, fireBolt, stepBolt, canAttack, nextWeapon } = await import('./weapons.js');
-    const a = { weapon: 'hammer' as const, t0: 10, landed: false };
-    expect(lands(a, 10.1)).toBe(false);
-    expect(lands(a, 10.31)).toBe(true);
-    expect(lands(a, 10.4)).toBe(false);
-    expect(canAttack(a, 10.4)).toBe(false);
-    expect(canAttack(a, 10.6)).toBe(true);
-    const hammer = weaponById('hammer');
-    expect(inArc(0, 0, 0, hammer, 0, 2)).toBe(true); // ahead (+Z)
-    expect(inArc(0, 0, 0, hammer, 0, -2)).toBe(false); // behind
-    expect(nextWeapon('crossbow')).toBe('hammer');
-    let b = fireBolt(0, 0, 0, 0);
+  it('throws by hand or from the car, and a cube sticks to a wall then blows up', async () => {
+    const { throwByHand, throwFromCar, stepCube, canThrow, CAR_SPEED, CAR_COOLDOWN_S } = await import('./cubes.js');
+    const { THROW_DURATION } = await import('./figure.js');
+    expect(canThrow(null, 5, true)).toBe(true);
+    expect(canThrow(5, 5 + THROW_DURATION - 0.01, true)).toBe(false);
+    expect(canThrow(5, 5 + CAR_COOLDOWN_S, false)).toBe(true);
+    // from a car at 20 m/s along +Z: ahead of it, faster than it
+    const fromCar = throwFromCar(0, 0, 0, 0, 20, 2, 0, 0.8);
+    expect(fromCar.z).toBeCloseTo(2.4);
+    expect(fromCar.vz).toBe(20 + CAR_SPEED);
+    let b = throwByHand(0, 0, 0, 0, 0.8);
     const wall = { x0: -5, x1: 5, z0: 10, z1: 12 };
     let blew = -1;
     for (let k = 0; k < 200 && blew < 0; k++) {
-      const s = stepBolt(b, 0.02, [wall]);
-      b = s.bolt;
+      const s = stepCube(b, 0.02, [wall]);
+      b = s.cube;
       if (s.blows) blew = k;
     }
     // it stuck on the wall face, stayed there ~1 s, then blew up
@@ -546,7 +547,15 @@ describe('figure and weapons (#89)', () => {
     expect(b.z).toBeGreaterThan(8);
     expect(b.fuse).not.toBeNull();
     expect(blew * 0.02).toBeGreaterThan(1);
-    expect(blew * 0.02).toBeLessThan(1.4);
+    expect(blew * 0.02).toBeLessThan(1.6);
+  });
+
+  it('keeps the cube size setting within bounds, in whole cm', async () => {
+    const { parseSettings, CUBE_CM_MIN, CUBE_CM_MAX } = await import('./settings.js');
+    expect(parseSettings({}).cubeSizeCm).toBe(80);
+    expect(parseSettings({ cubeSizeCm: 999 }).cubeSizeCm).toBe(CUBE_CM_MAX);
+    expect(parseSettings({ cubeSizeCm: 1 }).cubeSizeCm).toBe(CUBE_CM_MIN);
+    expect(parseSettings({ cubeSizeCm: 42.6 }).cubeSizeCm).toBe(43);
   });
 });
 
@@ -558,6 +567,9 @@ describe('garage', () => {
     // a 0.7 profile: no paint, wheels, skin
     expect(parseProfile({ nickname: 'A', vehicle: 'van', color: 'alarm' })).toMatchObject({ vehicle: 'van', paint: 'midnight', wheels: 'stock', skin: 0 });
     expect(parseProfile({ vehicle: 'roadster', paint: 'ruby', wheels: 'monster', skin: 9 })).toMatchObject({ vehicle: 'roadster', paint: 'ruby', wheels: 'monster', skin: 0 });
+    // the driver: a man or a woman, a man by default
+    expect(parseProfile({ driver: 'woman' }).driver).toBe('woman');
+    expect(parseProfile({ driver: 'robot' }).driver).toBe('man');
     expect(cycle(['a', 'b', 'c'], 'a', -1)).toBe('c');
     expect(WHEELS.map((w) => w.scale)).toEqual([0.85, 1, 1.2, 1.5]);
   });

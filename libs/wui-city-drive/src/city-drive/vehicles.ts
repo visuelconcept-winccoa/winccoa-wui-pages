@@ -3,7 +3,7 @@
 
 /**
  * The vehicles the player can choose (#79), their performance and their silhouette, the garage
- * (wheels, paint, the character's skin) and the player's profile. Pure.
+ * (wheels, paint, the character: man or woman, skin) and the player's profile. Pure.
  */
 import { CAR, type CarSpec } from './physics.js';
 
@@ -133,6 +133,13 @@ export const PAINTS: readonly { id: PaintId; label: string; color: number }[] = 
 /** Skin tones of the player's character on foot (index into figure-model.ts' SKINS). */
 export const SKIN_TONES = 5;
 
+/** The player's character on foot: a man or a woman (garage, "Driver"). */
+export type Gender = 'man' | 'woman';
+export const GENDERS: readonly { id: Gender; label: string }[] = [
+  { id: 'man', label: 'Man' },
+  { id: 'woman', label: 'Woman' }
+];
+
 export const wheelById = (id: string): (typeof WHEELS)[number] => WHEELS.find((w) => w.id === id) ?? WHEELS[1];
 export const paintById = (id: string): (typeof PAINTS)[number] => PAINTS.find((c) => c.id === id) ?? PAINTS[0];
 
@@ -142,9 +149,10 @@ export interface Profile {
   nickname: string;
   vehicle: VehicleId;
   color: NeonColor;
-  /** Garage: body paint, wheel size, the character's skin tone (0 light … 4 dark). */
+  /** Garage: body paint, wheel size, the character — a man or a woman — and its skin tone (0 light … 4 dark). */
   paint: PaintId;
   wheels: WheelId;
+  driver: Gender;
   skin: number;
   /** Night (the neon city) or day. */
   time: 'night' | 'day';
@@ -152,7 +160,7 @@ export interface Profile {
   mode: 'missions' | 'logos';
 }
 
-export const DEFAULT_PROFILE: Profile = { nickname: '', vehicle: 'coupe', color: 'primary', paint: 'midnight', wheels: 'stock', skin: 0, time: 'night', mode: 'logos' };
+export const DEFAULT_PROFILE: Profile = { nickname: '', vehicle: 'coupe', color: 'primary', paint: 'midnight', wheels: 'stock', driver: 'man', skin: 0, time: 'night', mode: 'logos' };
 export const NICKNAME_MAX = 20;
 
 export const vehicleById = (id: string): Vehicle => VEHICLES.find((v) => v.id === id) ?? VEHICLES[0];
@@ -172,7 +180,8 @@ export function parseProfile(raw: unknown): Profile {
   const paint = PAINTS.some((c) => c.id === o.paint) ? (o.paint as PaintId) : DEFAULT_PROFILE.paint;
   const wheels = WHEELS.some((w) => w.id === o.wheels) ? (o.wheels as WheelId) : DEFAULT_PROFILE.wheels;
   const skin = Number.isInteger(o.skin) && (o.skin as number) >= 0 && (o.skin as number) < SKIN_TONES ? (o.skin as number) : 0;
-  return { nickname: typeof o.nickname === 'string' ? cleanNickname(o.nickname) : '', vehicle, color, paint, wheels, skin, time, mode };
+  const driver: Gender = o.driver === 'woman' ? 'woman' : 'man';
+  return { nickname: typeof o.nickname === 'string' ? cleanNickname(o.nickname) : '', vehicle, color, paint, wheels, driver, skin, time, mode };
 }
 
 /** One step through a list (wraps): the garage's ◀ ▶. */
