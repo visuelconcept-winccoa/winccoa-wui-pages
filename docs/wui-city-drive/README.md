@@ -27,7 +27,7 @@ The game is in English only.
 
 - Start screen: nickname, vehicle, neon colour, game mode (Logo hunt or Missions) and time of
   day (neon night or day); **Settings** (also in game): keys, gamepad, steering, camera,
-  size of the thrown cube (cm), graphics, units, minimap / players panel. (the iX theme colours), kept in the browser
+  size of the thrown cube (cm), colour theme, graphics, units, minimap / players panel. (the iX theme colours), kept in the browser
   (`localStorage`) and written to the player's datapoint.
 - **Garage** on a **turntable**: the car turns in its paint and neon colour, its driver standing
   by the door. Lines Car, Wheels, Paint, Neon, Driver (man or woman), Skin: ▲ ▼ picks a line, ◀ ▶ changes it — arrow keys (keyboard player), D-pad or
@@ -217,6 +217,19 @@ user of each row is the WinCC OA user logged on at the game station.
 
 Without a backend (`npx wui dev`): the machines change state on their own (machine-2 breaks down
 regularly), three simulated players drive around, nothing is written.
+
+## Colour themes
+
+Settings → Graphics and display → **Theme** (from the start screen; the city is rebuilt in its
+colours):
+
+- **Classic**: the city in the colours of the active iX theme.
+- **Sunset Neon**: a retro sunset coast — hot pink, aqua, violet and orange neon under a sky from
+  deep purple to an orange horizon at night, a golden-hour sky by day; the page (frames,
+  buttons, sliders, switches) in the same colours.
+
+Colours only: the map, the buildings, the logos, the players' own neon colours and the meaning of
+the colours (a machine running green, in fault red; a wanted player red) do not change.
 
 ## Rendering
 

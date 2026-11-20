@@ -3,6 +3,15 @@
 
 # Changelog — @visuelconcept-winccoa/wui-city-drive
 
+## 0.16.0 — 2026-11-20
+
+- **Colour themes** (Settings → Graphics and display → Theme): **Classic** (the iX theme, as
+  before) or **Sunset Neon** — hot pink, aqua, violet and orange neon, a purple-to-orange sky at
+  night and a golden-hour sky by day, the page's frames, buttons, sliders and switches in the
+  same colours. Colours only: the map, the buildings, the logos, the players' neon colours and
+  the colours of the states (machine running / in fault, wanted player) are kept. Chosen from
+  the start screen (the city is rebuilt in its colours); kept in the browser with the settings.
+
 ## 0.15.0 — 2026-11-18
 
 - **No more weapons** (hammer, sword, crossbow removed): the only thing a player throws is a

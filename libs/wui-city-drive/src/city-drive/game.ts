@@ -14,7 +14,7 @@ import { CELL, ROAD_WIDTH, generateCity, rng, type City } from './city.js';
 import { LogoHunt, newHunter, type Hunter, type Pickup } from './collectibles.js';
 import { JOIN_BUTTONS, LEAVE_BUTTON, Match, padDevice, padIndexOf, standings, type DeviceId, type MatchPhase, type Standing } from './local-play.js';
 import { cancelIfRepaired, newDelivery, newIntervention, stepMission, type Mission } from './missions.js';
-import type { NeonPalette } from './palette.js';
+import { themePalette, type NeonPalette, type ThemeId } from './palette.js';
 import { collide, collideCars, forwardSpeed, newCar, stepCar, type CarInput, type CarState } from './physics.js';
 import { DEFAULT_SETTINGS, actionOf, padDirection, readPad, type Action, type NavDir, type PadLike, type PadState, type Settings } from './settings.js';
 import {
@@ -255,10 +255,12 @@ export class CityGame {
   constructor(
     private readonly host: HTMLElement,
     private readonly palette: NeonPalette,
+    /** The colour theme of the city (#99); the players keep their neon colours from `palette`. */
+    theme: ThemeId = 'classic',
     seed = 7
   ) {
     this.city = generateCity(seed);
-    this.world = new CityWorld(host, this.city, palette);
+    this.world = new CityWorld(host, this.city, themePalette(palette, theme), theme);
     this.traffic = spawnTraffic(TRAFFIC, this.city.blocks);
     this.cameras = placeCameras(this.city, 8);
     this.world.setCameras(this.cameras);

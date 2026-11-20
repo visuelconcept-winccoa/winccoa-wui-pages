@@ -61,7 +61,7 @@ import type { MissionKind, MissionStage, Point } from './missions.js';
 import { logoCanvas } from './logo.js';
 import { buildCar, headlightY } from './car-model.js';
 import { vehicleById, type Body, type Gender } from './vehicles.js';
-import { mix, type NeonPalette } from './palette.js';
+import { mix, themeSky, type NeonPalette, type ThemeId } from './palette.js';
 import type { LightOverrides } from './traffic.js';
 import { StreetLife } from './street.js';
 import { TrafficSignals } from './traffic-signals.js';
@@ -167,15 +167,20 @@ function neon(color: number, opacity = 1): LineBasicMaterial {
 }
 
 /** A daylight sky: deep blue at the zenith, pale haze at the horizon. */
-function skyTexture(): CanvasTexture {
+const DAY_SKY: readonly (readonly [number, string])[] = [
+  [0, '#4f8fc4'],
+  [0.6, '#9fc6df'],
+  [1, '#dfe9ee']
+];
+
+/** A sky: a vertical gradient (stops top first). */
+function skyTexture(stops: readonly (readonly [number, string])[] = DAY_SKY): CanvasTexture {
   const c = document.createElement('canvas');
   c.width = 4;
   c.height = 256;
   const g = c.getContext('2d') as CanvasRenderingContext2D;
   const grad = g.createLinearGradient(0, 0, 0, 256);
-  grad.addColorStop(0, '#4f8fc4');
-  grad.addColorStop(0.6, '#9fc6df');
-  grad.addColorStop(1, '#dfe9ee');
+  for (const [at, color] of stops) grad.addColorStop(at, color);
   g.fillStyle = grad;
   g.fillRect(0, 0, 4, 256);
   const t = new CanvasTexture(c);
@@ -247,7 +252,9 @@ export class CityWorld {
   constructor(
     private readonly host: HTMLElement,
     private readonly city: City,
-    private readonly p: NeonPalette
+    /** The city's palette, already in the colours of the theme (palette.ts' themePalette). */
+    private readonly p: NeonPalette,
+    private readonly theme: ThemeId = 'classic'
   ) {
     this.renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -965,12 +972,22 @@ export class CityWorld {
     this.timeOfDay = time;
     const day = time === 'day';
     const p = this.p;
-    this.scene.background = day ? skyTexture() : new Color(mix(p.night, 0x000000, 0.35));
-    this.scene.fog = day ? new FogExp2(0xb9cdd8, 0.0014) : new FogExp2(mix(p.night, 0x000000, 0.2), 0.0019);
-    this.hemi.color.setHex(day ? 0xdcefff : mix(p.info, 0xffffff, 0.3));
-    this.hemi.groundColor.setHex(day ? 0x5a666b : p.night);
+    const sky = themeSky(this.theme, day);
+    if (sky) {
+      // the theme's own sky, fog and lights
+      this.scene.background = skyTexture(sky.stops);
+      this.scene.fog = new FogExp2(sky.fog, day ? 0.0014 : 0.0019);
+      this.hemi.color.setHex(sky.hemi);
+      this.hemi.groundColor.setHex(sky.ground);
+      this.moon.color.setHex(sky.sun);
+    } else {
+      this.scene.background = day ? skyTexture() : new Color(mix(p.night, 0x000000, 0.35));
+      this.scene.fog = day ? new FogExp2(0xb9cdd8, 0.0014) : new FogExp2(mix(p.night, 0x000000, 0.2), 0.0019);
+      this.hemi.color.setHex(day ? 0xdcefff : mix(p.info, 0xffffff, 0.3));
+      this.hemi.groundColor.setHex(day ? 0x5a666b : p.night);
+      this.moon.color.setHex(day ? 0xfff1dc : mix(p.info, 0xffffff, 0.55));
+    }
     this.hemi.intensity = day ? 1.3 : 0.45;
-    this.moon.color.setHex(day ? 0xfff1dc : mix(p.info, 0xffffff, 0.55));
     this.moon.intensity = day ? 3.2 : 1.1;
     this.lightOffset.set(day ? 90 : -120, day ? 260 : 220, day ? -140 : -80);
     this.scene.environmentIntensity = day ? 0.55 : 0.12;

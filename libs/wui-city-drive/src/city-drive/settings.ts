@@ -9,6 +9,8 @@
  * pads are reported this way). See {@link GAMEPAD_LEGEND}.
  */
 
+import type { ThemeId } from './palette.js';
+
 export type Action = 'up' | 'down' | 'left' | 'right' | 'brake' | 'run' | 'foot' | 'throw' | 'horn' | 'radio' | 'camera' | 'time' | 'reset' | 'mission' | 'pause';
 
 export const ACTIONS: readonly { id: Action; label: string }[] = [
@@ -49,6 +51,8 @@ export interface Settings {
   cameraHeight: number;
   /** Size of the thrown WinCC OA cube (cm), {@link CUBE_CM_MIN}..{@link CUBE_CM_MAX}: it always breaks into 4 × 4 × 4 small cubes of a quarter of it. */
   cubeSizeCm: number;
+  /** Colour theme of the city and of the page (#99): Classic (the iX theme) or Sunset Neon. */
+  theme: ThemeId;
   /** high: shadows, full resolution, bloom; low: for machines without a strong GPU. */
   quality: Quality;
   units: Units;
@@ -91,6 +95,7 @@ export const DEFAULT_SETTINGS: Settings = {
   cameraDistance: 1,
   cameraHeight: 1,
   cubeSizeCm: 80,
+  theme: 'classic',
   quality: 'high',
   units: 'kmh',
   showMinimap: true,
@@ -130,6 +135,7 @@ export function parseSettings(raw: unknown): Settings {
     cameraDistance: clamp(o.cameraDistance, 0.7, 1.6, 1),
     cameraHeight: clamp(o.cameraHeight, 0, 2, 1),
     cubeSizeCm: Math.round(clamp(o.cubeSizeCm, CUBE_CM_MIN, CUBE_CM_MAX, DEFAULT_SETTINGS.cubeSizeCm)),
+    theme: o.theme === 'sunset' ? 'sunset' : 'classic',
     quality: o.quality === 'low' ? 'low' : 'high',
     units: o.units === 'mph' ? 'mph' : 'kmh',
     showMinimap: o.showMinimap !== false,
