@@ -3,6 +3,12 @@
 
 # Changelog — @visuelconcept-winccoa/wui-machine-fleet-3d
 
+## 0.6.1 — 2026-11-20
+
+- **Fix**: the published package ships `managers/` again. 0.6.0 left the `fleetState` manager out of its
+  `files`, so a site built from the npm package declared a manager it could not find (`wui test`: manager
+  "fleetState" is in no lib's managers/ folder) and never recorded the states.
+
 ## 0.6.0 — 2026-11-09 (SDS 2.2)
 
 **Upgrade.** Requires wui-fleet-core and fleet-closures `^0.3.0`. New roles, open to all until
