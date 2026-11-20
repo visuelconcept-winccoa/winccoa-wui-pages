@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-city-drive",
   "type": "module",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "City Drive — standalone WinCC OA WebUI page: an original 3D driving game in a neon city (Three.js, Siemens iX colours) whose plant is bound to datapoints: machine halls follow their state, a fault calls for an intervention mission, a datapoint can force a crossroads red; the player's telemetry is written to its own datapoint. Demo mode without a backend.",
   "author": {
     "name": "Visuel Concept"

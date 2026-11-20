@@ -75,6 +75,57 @@ export function readPalette(el: Element): NeonPalette {
   return p;
 }
 
+/**
+ * The colour themes of the city (#99), a setting: **Classic** follows the iX theme; **Sunset
+ * Neon** — a retro sunset coast — dresses the same city in hot pink, aqua, violet and orange
+ * under a purple-to-orange sky. Colours only: the map, the buildings, the logos and the
+ * meaning of the colours (a machine running is green, in fault red; a wanted player red) stay.
+ */
+export type ThemeId = 'classic' | 'sunset';
+
+export const THEMES: readonly { id: ThemeId; label: string }[] = [
+  { id: 'classic', label: 'Classic' },
+  { id: 'sunset', label: 'Sunset Neon' }
+];
+
+/** The city's accents in the Sunset Neon theme (the states — success, alarm, neutral — are kept). */
+const SUNSET: Partial<NeonPalette> = {
+  night: 0x1a0b2b,
+  surface: 0x2e1d45,
+  primary: 0xff3d9a,
+  dynamic: 0x2ee6e0,
+  info: 0x9b5cff,
+  warning: 0xffb347,
+  critical: 0xff8a3c
+};
+
+/** The palette of the city for a theme (the players keep their own neon colours). */
+export function themePalette(p: NeonPalette, theme: ThemeId): NeonPalette {
+  if (theme !== 'sunset') return p;
+  const t: NeonPalette = { ...p, ...SUNSET };
+  t.road = mix(t.night, t.surface, 0.35);
+  return t;
+}
+
+/** The sky of a theme: vertical gradient stops (top first), the fog, and the sky and sun lights. */
+export interface ThemeSky {
+  stops: readonly (readonly [number, string])[];
+  fog: number;
+  hemi: number;
+  ground: number;
+  sun: number;
+}
+
+/** The theme's own sky, or null for Classic (its sky is drawn by the world from the palette). */
+export function themeSky(theme: ThemeId, day: boolean): ThemeSky | null {
+  if (theme !== 'sunset') return null;
+  return day
+    ? // golden hour: violet overhead, pink, a peach horizon
+      { stops: [[0, '#5b4bb7'], [0.55, '#e783b8'], [1, '#ffc28a']], fog: 0xe3a3b4, hemi: 0xffd9e6, ground: 0x6a4a6e, sun: 0xffc9a0 }
+    : // dusk: deep purple overhead, magenta, an orange glow low on the horizon
+      { stops: [[0, '#140726'], [0.5, '#3d1157'], [0.8, '#a3276c'], [1, '#ff7a45']], fog: 0x3b1546, hemi: 0xc59bff, ground: 0x1a0b2b, sun: 0xff9ec8 };
+}
+
 /** Linear mix of two 0xrrggbb colours. */
 export function mix(a: number, b: number, t: number): number {
   const ch = (c: number, s: number): number => (c >> s) & 0xff;

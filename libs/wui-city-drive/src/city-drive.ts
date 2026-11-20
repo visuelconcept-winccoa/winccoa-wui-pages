@@ -36,7 +36,7 @@ import { CityGame, type Flash, type GameEvent, type GameHud } from './city-drive
 import { DEFAULT_MATCH, JoinSlots, MATCH_DURATIONS, MAX_LOCAL_PLAYERS, clock, padIndexOf, type DeviceId, type Standing } from './city-drive/local-play.js';
 import { MSG } from './city-drive/i18n.js';
 import { drawMinimap } from './city-drive/minimap.js';
-import { readPalette, type NeonPalette } from './city-drive/palette.js';
+import { THEMES, readPalette, type NeonPalette, type ThemeId } from './city-drive/palette.js';
 import {
   ACTIONS,
   DEFAULT_SETTINGS,
@@ -321,6 +321,8 @@ export class WuiCityDrive extends LitElement {
 
   /** After each render: one turntable per card on screen, showing that player's vehicle. */
   protected override updated(): void {
+    // the page's colours follow the theme (the CSS of :host([theme='sunset']))
+    if (this.getAttribute('theme') !== this.settings.theme) this.setAttribute('theme', this.settings.theme);
     this.syncGame();
     const canvases = new Map<number, HTMLCanvasElement>();
     this.renderRoot.querySelectorAll<HTMLCanvasElement>('canvas.preview').forEach((c) => canvases.set(Number(c.dataset.k), c));
@@ -901,10 +903,16 @@ export class WuiCityDrive extends LitElement {
 
   /** Stores and applies new settings. */
   private applySettings(next: Settings): void {
+    const rebuild = next.theme !== this.settings.theme && this.game !== null && !this.started;
     this.settings = next;
     this.audio.setVolumes(next.sfxVolume, next.musicVolume);
     saveSettings(next);
     this.game?.setSettings(next);
+    // a new theme: the city is rebuilt in its colours (only from the start screen)
+    if (rebuild) {
+      this.teardownGame();
+      this.requestUpdate();
+    }
   }
 
   /** While listening for a key: the next key pressed becomes the action's key (Esc cancels). */
@@ -1020,6 +1028,16 @@ export class WuiCityDrive extends LitElement {
           </section>
           <section>
             <div class="sec-title">Graphics and display</div>
+            <div class="row">
+              <span>Theme</span>
+              ${this.started
+                ? html`<span class="muted">${THEMES.find((t) => t.id === st.theme)?.label} — change it from the start screen</span>`
+                : choice(
+                    st.theme,
+                    THEMES.map((t) => [t.id, t.label] as [ThemeId, string]),
+                    (v) => set({ theme: v })
+                  )}
+            </div>
             <div class="row"><span>Quality</span>${choice(st.quality, [['high', 'High'], ['low', 'Low (no shadows)']], (v) => set({ quality: v }))}</div>
             <div class="row"><span>Speed</span>${choice(st.units, [['kmh', 'km/h'], ['mph', 'mph']], (v) => set({ units: v }))}</div>
             <label class="row">
@@ -1125,8 +1143,10 @@ export class WuiCityDrive extends LitElement {
 
   private async boot(): Promise<void> {
     await this.updateComplete;
-    this.palette = readPalette(this);
-    this.game = new CityGame(this.stage, this.palette);
+    // the iX theme's colours from above the page: the page itself may wear the Sunset Neon theme
+    const scope = this.parentElement ?? ((this.getRootNode() as ShadowRoot).host as Element | undefined) ?? document.documentElement;
+    this.palette = readPalette(scope);
+    this.game = new CityGame(this.stage, this.palette, this.settings.theme);
     this.game.setSettings(this.settings);
     this.game.lobby = true;
     this.game.onHud = (hud) => this.onHud(hud);
@@ -1629,6 +1649,55 @@ function pageStyles(): ReturnType<typeof css> {
       position: relative;
       color: var(--theme-color-std-text);
       background: var(--theme-color-1);
+    }
+    /*
+     * Sunset Neon (#99): the page's accents in the theme's colours. The iX components read
+     * tokens derived from the base colours at the theme's root, so the ones in use here are
+     * derived again from the new base colours (buttons, sliders, switches, inputs).
+     */
+    :host([theme='sunset']) {
+      --theme-color-1: #1a0b2b;
+      --theme-color-2: #2e1d45;
+      --theme-color-3: #3a2656;
+      --theme-color-primary: #ff3d9a;
+      --theme-color-primary--hover: #ff5fae;
+      --theme-color-primary--active: #e02f86;
+      --theme-color-primary--contrast: #1a0b2b;
+      --theme-color-dynamic: #2ee6e0;
+      --theme-color-dynamic--hover: #5cf0eb;
+      --theme-color-dynamic--active: #22c4bf;
+      --theme-color-info: #9b5cff;
+      --theme-color-warning: #ffb347;
+      --theme-color-critical: #ff8a3c;
+      --theme-btn-primary--background: var(--theme-color-primary);
+      --theme-btn-primary--background--hover: var(--theme-color-primary--hover);
+      --theme-btn-primary--background--active: var(--theme-color-primary--active);
+      --theme-btn-primary--background--pressed: var(--theme-color-dynamic);
+      --theme-btn-primary--background--pressed-hover: var(--theme-color-dynamic--hover);
+      --theme-btn-primary--background--pressed-active: var(--theme-color-dynamic--active);
+      --theme-btn-primary--color: var(--theme-color-primary--contrast);
+      --theme-btn-primary--color--hover: var(--theme-color-primary--contrast);
+      --theme-btn-primary--color--active: var(--theme-color-primary--contrast);
+      --theme-btn-primary--color--pressed: var(--theme-color-primary--contrast);
+      --theme-btn-secondary--border-color: var(--theme-color-primary);
+      --theme-btn-secondary--border-color--hover: var(--theme-color-primary--hover);
+      --theme-btn-secondary--border-color--active: var(--theme-color-primary--active);
+      --theme-btn-secondary--color: var(--theme-color-primary);
+      --theme-btn-secondary--color--hover: var(--theme-color-primary--hover);
+      --theme-btn-secondary--color--active: var(--theme-color-primary--active);
+      --theme-btn-tertiary--color: var(--theme-color-primary);
+      --theme-btn-tertiary--color--hover: var(--theme-color-primary--hover);
+      --theme-btn-tertiary--color--active: var(--theme-color-primary--active);
+      --theme-input--border-color--focus: var(--theme-color-dynamic);
+      --theme-input--border-color--hover: var(--theme-color-dynamic);
+      --theme-slider-thumb--background: var(--theme-color-dynamic);
+      --theme-slider-thumb--background--hover: var(--theme-color-dynamic--hover);
+      --theme-slider-thumb--background--active: var(--theme-color-dynamic--active);
+      --theme-slider-trace--background: var(--theme-color-dynamic);
+      --theme-slider-trace-marker--background: var(--theme-color-dynamic);
+      --theme-switch-on--background: var(--theme-color-dynamic);
+      --theme-switch-on--background--hover: var(--theme-color-dynamic--hover);
+      --theme-switch-on--background--active: var(--theme-color-dynamic--active);
     }
     .stage {
       position: relative;

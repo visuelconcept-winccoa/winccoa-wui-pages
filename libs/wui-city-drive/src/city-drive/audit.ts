@@ -113,7 +113,7 @@ export function alertAcknowledged(nickname: string, playerDp: string): AuditReco
 }
 
 /** The settings fields traced (old → new of the changed ones). */
-const SETTINGS_FIELDS: readonly (keyof Settings)[] = ['keys', 'gamepad', 'steering', 'cameraDistance', 'cameraHeight', 'cubeSizeCm', 'quality', 'units', 'showMinimap', 'showPlayers', 'photoBooth'];
+const SETTINGS_FIELDS: readonly (keyof Settings)[] = ['keys', 'gamepad', 'steering', 'cameraDistance', 'cameraHeight', 'cubeSizeCm', 'theme', 'quality', 'units', 'showMinimap', 'showPlayers', 'photoBooth'];
 
 /** The settings changed between `before` and `after`, or null when nothing did. */
 export function settingsUpdate(before: Settings, after: Settings): AuditRecord | null {

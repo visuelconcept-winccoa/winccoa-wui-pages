@@ -550,6 +550,23 @@ describe('figure and thrown cubes (#89)', () => {
     expect(blew * 0.02).toBeLessThan(1.6);
   });
 
+  it('dresses the city in the Sunset Neon theme, keeping the colours of the states', async () => {
+    const { themePalette, themeSky, CLASSIC_DARK } = await import('./palette.js');
+    const { parseSettings } = await import('./settings.js');
+    expect(themePalette(CLASSIC_DARK, 'classic')).toBe(CLASSIC_DARK);
+    const sunset = themePalette(CLASSIC_DARK, 'sunset');
+    expect(sunset.primary).not.toBe(CLASSIC_DARK.primary);
+    expect(sunset.night).not.toBe(CLASSIC_DARK.night);
+    // a machine running stays green, in fault red
+    expect(sunset.success).toBe(CLASSIC_DARK.success);
+    expect(sunset.alarm).toBe(CLASSIC_DARK.alarm);
+    expect(themeSky('classic', false)).toBeNull();
+    expect(themeSky('sunset', false)?.stops.length).toBeGreaterThan(2);
+    expect(parseSettings({}).theme).toBe('classic');
+    expect(parseSettings({ theme: 'sunset' }).theme).toBe('sunset');
+    expect(parseSettings({ theme: 'other' }).theme).toBe('classic');
+  });
+
   it('keeps the cube size setting within bounds, in whole cm', async () => {
     const { parseSettings, CUBE_CM_MIN, CUBE_CM_MAX } = await import('./settings.js');
     expect(parseSettings({}).cubeSizeCm).toBe(80);
