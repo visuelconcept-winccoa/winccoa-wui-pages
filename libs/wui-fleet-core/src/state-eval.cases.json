@@ -1,0 +1,434 @@
+{
+  "_": "Cas du calcul de l'état d'une machine par sa mapping (winccoa-fra-msp-stma#339), joués à l'identique par state-eval.spec.ts (navigateur) et par le manager d'état de Machine Fleet : un écart entre les deux fait échouer un test.",
+  "mappings": {
+    "simple": {
+      "id": "default",
+      "name": "Standard (0=arrêt, 1=ok, 2=défaut, 3=maint)",
+      "rules": [
+        {
+          "state": "stop",
+          "min": 0,
+          "max": 0
+        },
+        {
+          "state": "ok",
+          "min": 1,
+          "max": 1
+        },
+        {
+          "state": "warn",
+          "min": 2,
+          "max": 2
+        },
+        {
+          "state": "maint",
+          "min": 3,
+          "max": 3
+        }
+      ],
+      "fallback": "stop"
+    },
+    "mes": {
+      "id": "mes",
+      "name": "Quatre états du MES",
+      "inputs": [
+        {
+          "key": "comm",
+          "label": "Communication"
+        },
+        {
+          "key": "of",
+          "label": "OF en cours"
+        },
+        {
+          "key": "hs",
+          "label": "Hors service"
+        }
+      ],
+      "causeStates": {
+        "planned": "arret_planifie",
+        "unplanned": "arret_non_planifie"
+      },
+      "states": [
+        {
+          "key": "production",
+          "label": "Production",
+          "color": "#3d7023",
+          "running": true
+        },
+        {
+          "key": "arret_non_planifie",
+          "label": "Arrêt non planifié",
+          "color": "#d91832"
+        },
+        {
+          "key": "arret_planifie",
+          "label": "Arrêt planifié",
+          "color": "#004dcc"
+        },
+        {
+          "key": "non_charge",
+          "label": "Non charge",
+          "color": "#8289a3",
+          "outsideOpening": true
+        }
+      ],
+      "rules": [
+        {
+          "state": "arret_non_planifie",
+          "when": [
+            {
+              "input": "comm",
+              "equals": false
+            }
+          ]
+        },
+        {
+          "state": "non_charge",
+          "when": [
+            {
+              "input": "of",
+              "equals": 2,
+              "not": true
+            }
+          ]
+        },
+        {
+          "state": "arret_planifie",
+          "when": [
+            {
+              "input": "hs",
+              "equals": true
+            }
+          ]
+        },
+        {
+          "state": "production",
+          "min": 1,
+          "max": 1
+        },
+        {
+          "state": "@cause"
+        }
+      ],
+      "fallback": "arret_non_planifie"
+    },
+    "texte": {
+      "id": "texte",
+      "name": "État texte",
+      "inputs": [
+        {
+          "key": "mode",
+          "label": "Mode"
+        }
+      ],
+      "rules": [
+        {
+          "state": "ok",
+          "when": [
+            {
+              "input": "mode",
+              "equals": "AUTO"
+            }
+          ]
+        },
+        {
+          "state": "maint",
+          "when": [
+            {
+              "input": "mode",
+              "equals": "MAINT"
+            }
+          ]
+        },
+        {
+          "state": "@cause"
+        }
+      ],
+      "fallback": "stop"
+    },
+    "seuil": {
+      "id": "seuil",
+      "name": "Seuil de niveau",
+      "inputs": [
+        {
+          "key": "niveau",
+          "label": "Niveau"
+        }
+      ],
+      "rules": [
+        {
+          "state": "warn",
+          "when": [
+            {
+              "input": "niveau",
+              "min": 2.3
+            }
+          ]
+        }
+      ],
+      "fallback": "ok"
+    }
+  },
+  "cases": [
+    {
+      "name": "simple : valeur dans une règle",
+      "mapping": "simple",
+      "values": {
+        "state": 1
+      },
+      "expected": "ok"
+    },
+    {
+      "name": "simple : deuxième règle",
+      "mapping": "simple",
+      "values": {
+        "state": 2
+      },
+      "expected": "warn"
+    },
+    {
+      "name": "simple : hors des règles, état de repli",
+      "mapping": "simple",
+      "values": {
+        "state": 7
+      },
+      "expected": "stop"
+    },
+    {
+      "name": "simple : valeur absente, état de repli",
+      "mapping": "simple",
+      "values": {},
+      "expected": "stop"
+    },
+    {
+      "name": "simple : valeur en tableau (premier élément)",
+      "mapping": "simple",
+      "values": {
+        "state": [
+          3,
+          0
+        ]
+      },
+      "expected": "maint"
+    },
+    {
+      "name": "simple : texte numérique",
+      "mapping": "simple",
+      "values": {
+        "state": "2"
+      },
+      "expected": "warn"
+    },
+    {
+      "name": "simple : booléen vrai compte 1",
+      "mapping": "simple",
+      "values": {
+        "state": true
+      },
+      "expected": "ok"
+    },
+    {
+      "name": "simple : texte non numérique, état de repli",
+      "mapping": "simple",
+      "values": {
+        "state": "abc"
+      },
+      "expected": "stop"
+    },
+    {
+      "name": "simple : valeur décimale arrondie au code le plus proche",
+      "mapping": "simple",
+      "values": {
+        "state": 1.999
+      },
+      "expected": "warn"
+    },
+    {
+      "name": "simple : 0,4 arrondi à 0",
+      "mapping": "simple",
+      "values": {
+        "state": 0.4
+      },
+      "expected": "stop"
+    },
+    {
+      "name": "simple : texte décimal arrondi",
+      "mapping": "simple",
+      "values": {
+        "state": "2.6"
+      },
+      "expected": "maint"
+    },
+    {
+      "name": "seuil : une condition sur une entrée nommée n'est pas arrondie",
+      "mapping": "seuil",
+      "values": {
+        "niveau": 2.4
+      },
+      "expected": "warn"
+    },
+    {
+      "name": "seuil : sous le seuil",
+      "mapping": "seuil",
+      "values": {
+        "niveau": 2.2
+      },
+      "expected": "ok"
+    },
+    {
+      "name": "MES : communication perdue",
+      "mapping": "mes",
+      "values": {
+        "comm": false,
+        "of": 2,
+        "hs": false,
+        "state": 1
+      },
+      "expected": "arret_non_planifie"
+    },
+    {
+      "name": "MES : communication perdue (0)",
+      "mapping": "mes",
+      "values": {
+        "comm": 0,
+        "of": 2,
+        "state": 1
+      },
+      "expected": "arret_non_planifie"
+    },
+    {
+      "name": "MES : pas d'OF en cours",
+      "mapping": "mes",
+      "values": {
+        "comm": true,
+        "of": 0,
+        "hs": false,
+        "state": 1
+      },
+      "expected": "non_charge"
+    },
+    {
+      "name": "MES : hors service",
+      "mapping": "mes",
+      "values": {
+        "comm": true,
+        "of": 2,
+        "hs": true,
+        "state": 1
+      },
+      "expected": "arret_planifie"
+    },
+    {
+      "name": "MES : en production",
+      "mapping": "mes",
+      "values": {
+        "comm": true,
+        "of": 2,
+        "hs": false,
+        "state": 1
+      },
+      "expected": "production"
+    },
+    {
+      "name": "MES : arrêt, cause planifiée",
+      "mapping": "mes",
+      "values": {
+        "comm": true,
+        "of": 2,
+        "hs": false,
+        "state": 0
+      },
+      "cause": "planned",
+      "expected": "arret_planifie"
+    },
+    {
+      "name": "MES : arrêt, cause non planifiée",
+      "mapping": "mes",
+      "values": {
+        "comm": true,
+        "of": 2,
+        "hs": false,
+        "state": 0
+      },
+      "cause": "unplanned",
+      "expected": "arret_non_planifie"
+    },
+    {
+      "name": "MES : arrêt sans cause",
+      "mapping": "mes",
+      "values": {
+        "comm": true,
+        "of": 2,
+        "hs": false,
+        "state": 0
+      },
+      "cause": "",
+      "expected": "arret_non_planifie"
+    },
+    {
+      "name": "MES : machine non raccordée (communication non liée)",
+      "mapping": "mes",
+      "values": {
+        "of": 2,
+        "hs": false,
+        "state": 1
+      },
+      "expected": "production"
+    },
+    {
+      "name": "MES : OF non lu, la condition inversée n'est pas remplie",
+      "mapping": "mes",
+      "values": {
+        "comm": true,
+        "hs": false,
+        "state": 1
+      },
+      "expected": "production"
+    },
+    {
+      "name": "MES : hors service en texte « true »",
+      "mapping": "mes",
+      "values": {
+        "comm": true,
+        "of": 2,
+        "hs": "true",
+        "state": 0
+      },
+      "expected": "arret_planifie"
+    },
+    {
+      "name": "texte : égalité de texte",
+      "mapping": "texte",
+      "values": {
+        "mode": "AUTO"
+      },
+      "expected": "ok"
+    },
+    {
+      "name": "texte : autre texte",
+      "mapping": "texte",
+      "values": {
+        "mode": "MAINT"
+      },
+      "expected": "maint"
+    },
+    {
+      "name": "texte : état selon la cause sans causeStates, état de repli",
+      "mapping": "texte",
+      "values": {
+        "mode": "ARRET"
+      },
+      "cause": "planned",
+      "expected": "stop"
+    },
+    {
+      "name": "sans mapping : ok",
+      "mapping": null,
+      "values": {
+        "state": 0
+      },
+      "expected": "ok"
+    }
+  ]
+}

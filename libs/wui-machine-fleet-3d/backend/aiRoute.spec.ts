@@ -165,6 +165,16 @@ describe('/api/ai — the routes of machine-fleet-3d', () => {
     expect(body.stopCauses).toEqual([{ code: 'P1', description: 'Panne', classification: 'unplanned' }]);
   });
 
+  it('serves every stop-cause catalogue, one DP each, the single one of before as the default (#74)', async () => {
+    oa.dps.set('MachineFleet3D_StopCauses_inox', { type: 'MachineFleet3D_StopCauses', values: { name: 'Inox', json: JSON.stringify([{ code: 'X1' }]) } });
+    oa.dps.set('MachineFleet3D_StopCauses_x', { type: 'MachineFleet3D_Config', values: { name: 'pas un référentiel', json: '' } });
+    const { body } = await call('GET /fleet/workshops/:id', { id: 'usinage' });
+    expect(body.stopCatalogs).toEqual([
+      { id: 'default', name: '', causes: [{ code: 'P1', description: 'Panne', classification: 'unplanned' }] },
+      { id: 'inox', name: 'Inox', causes: [{ code: 'X1' }] }
+    ]);
+  });
+
   it('404 for an unknown id, a wildcard, an empty atelier, or a DP of another type', async () => {
     for (const id of ['nope', '*', 'usin*', 'vide', 'StopCauses', 'Kpi_m0_trs']) {
       const { status, body, reached } = await call('GET /fleet/workshops/:id', { id });

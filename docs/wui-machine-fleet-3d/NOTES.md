@@ -48,6 +48,20 @@ Tier: **hub** (central fleet page, default entry point at login). `three`
 - **States**: per-machine state mapping (`StateMapping`) with configurable colors
   (`StateMapping.colors`, `StateColorKey` = state | `disconnected`). Defaults:
   warn=red `#ef4444`, stop=yellow `#f59e0b`, maint=blue, disconnected=purple.
+- **Mappings with several inputs** (winccoa-fra-msp-stma#339): besides the state datapoint (input `state`), a
+  mapping names inputs (`StateMapping.inputs`) that each symbol binds (`MachineDef.inputDps`); a rule matches
+  when its `min` / `max` hold on the state code (rounded) and every condition of `when` holds (`=`, `≠`,
+  between, outside); a rule `@cause` gives `causeStates.planned` or `.unplanned` by the class of the stop
+  cause in progress, the first non-empty of `stopCauseDp` then `stopCauseDps`. A symbol with `declaredState`
+  also has the input `declared`: the state an operator declares from the machine dashboard (role `declare`,
+  reason traced). One computation, `wui-fleet-core/state-eval.ts`, for the live views; the `fleetState`
+  manager plays the same cases (`state-eval.cases.json`) and records the history.
+- **State history**: `MachineFleet3D_State_<symbol>` (`state` = a state key of the mapping, `cause`,
+  `declared`, archived in `_NGA_G_EVENT`, WinCC OA's standard value group, when it is active; otherwise in the
+  active value group of highest priority; never in the alarm group `_NGA_G_ALERT`, whose values `dpGetPeriod`
+  does not return), written by `fleetState` at each change. The Gantt, the stop
+  list, the Pareto, the stop and KPI analyses and `kpiCalc` read it; the live views compute the state from the
+  inputs and never wait for it.
 
 ## Data model (DPs)
 
@@ -64,6 +78,7 @@ DP and type provisioning/CRUD via the backend's **PARA REST API** (see Backend),
 | `MachineFleet3D_Billboard` | Struct (`name` String, `data` String base64) | 1 imported billboard image. Ref `dp:<dpName>`. |
 | `MachineFleet3D_Closures` | 1 JSON DP | Non-working days / closures (consumed by kpiCalc). |
 | `MachineFleet3D_Kpi` | See kpiCalc | One DP per computed KPI (1 per machine×KPI). |
+| `MachineFleet3D_State` | Struct String (`state`, `cause`, `machineName`, `atelier`, `updatedAt`, `declared`) | One DP per symbol, created by `fleetState`: the recorded state and cause (archived) and the declared state. |
 | `MachineSim` (1 per machine) | See [wui-machine-sim](../wui-machine-sim/NOTES.md) | Simulation DPs (state + cause + parameters) — only with the optional `machine-sim` module. |
 | `AI_Assistant_Config` | Struct String (`provider`, `model`, `token`, `mcpServers` JSON, `webSearch` `'true'`/`'false'`, `effort` `low…max`, `maxTokens`, `maxToolRounds`) | AI assistant config (token stored here, never shipped). The last four are opt-out: an empty element means web search ON, effort `medium`, budget 32768, 12 tool rounds. |
 

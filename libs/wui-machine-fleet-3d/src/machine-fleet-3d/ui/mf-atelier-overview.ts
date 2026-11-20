@@ -11,11 +11,15 @@
  * machines; an atelier with none is hidden. The selection is remembered in the browser.
  */
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
-import { LitElement, css, html, svg, type TemplateResult } from 'lit';
+import { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
+import { LitElement, css, html, svg, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import type { Subscription } from 'rxjs';
+import { firstValueFrom, type Subscription } from 'rxjs';
+import { container } from 'tsyringe';
+import { normDp } from '../data/dp-utils.js';
 import type { FleetStore } from '../data/fleet-store.js';
-import { MSG, localize, localizeDir } from '../i18n.js';
+import { hasRole$ } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
+import { MSG, localize, localizeDir, ml } from '../i18n.js';
 import {
   filterDimensions,
   isFilterActive,
@@ -27,13 +31,22 @@ import {
 } from '@visuelconcept-winccoa/wui-fleet-core/filters.js';
 import '@visuelconcept-winccoa/wui-fleet-core/fleet-settings-service.js';
 import { settingsCache } from '@visuelconcept-winccoa/wui-fleet-core/settings-cache.js';
-import { UNKNOWN_STATE_COLOR, atelierStates, type Atelier, type MachineDef, type MachineState } from '../types.js';
+import {
+  DEFAULT_STATE_MAPPINGS,
+  UNKNOWN_STATE_COLOR,
+  atelierStates,
+  type Atelier,
+  type MachineDef,
+  type MachineState,
+  type StopCauseCatalog
+} from '../types.js';
+import { liveTargets, machineLiveState } from '@visuelconcept-winccoa/wui-fleet-core/state-eval.js';
+import { causesFor } from '@visuelconcept-winccoa/wui-fleet-core/stop-catalogs.js';
 import './mf-ai-prompt.js';
 import './mf-atelier-create-dialog.js';
 import './mf-filter-bar.js';
 import './mf-graphics-catalog.js';
-import './mf-module-settings-dialog.js';
-import { parseModuleSettings, type FleetModuleSettings } from '@visuelconcept-winccoa/wui-fleet-core/opening-view.js';
+import { loadSettingsPages, type FleetSettingsPage } from '../settings-pages.js';
 
 /** Minimap rendered height (px) — must match the `.minimap { height }` CSS. */
 const MINIMAP_HEIGHT_PX = 110;
@@ -51,29 +64,135 @@ export class MfAtelierOverview extends LitElement {
   @property({ type: Boolean }) canEdit = true;
   /** Application-Security 'ai' grant — gates the AI-assistant affordance. */
   @property({ type: Boolean }) roleAi = true;
-  /** The module settings (#70) and the grant to change them (canPublish && role 'configure'). */
-  @property({ attribute: false }) moduleSettings: FleetModuleSettings = parseModuleSettings('');
-  @property({ type: Boolean }) canConfigure = false;
 
   @state() private createOpen = false;
   @state() private createTemplate = '';
   @state() private createDefaultName = '';
   @state() private resourcesOpen = false;
-  @state() private settingsOpen = false;
-  @state() private settingsError = false;
+  /** Settings pages the site adds to the fleet (menu entries marked `fleetSettings`). */
+  @state() private settingsPages: FleetSettingsPage[] = [];
+  /** Paths of the settings pages the user may open (one of their roles granted, or none asked). */
+  @state() private grantedPages: string[] = [];
+  /** The "Paramètres" menu (settings pages of the site) is open. */
+  @state() private settingsMenuOpen = false;
+  private pageRoleSubs: Subscription[] = [];
   /** Remembered machine filter (the user's settings, shared with the atelier views). */
   @state() private filter: FleetFilter = loadFleetFilter();
   private settingsSub: Subscription | null = null;
+  /** Live value of each machine's state datapoint (normalised name → raw value), for the cards' dots and counts. */
+  @state() private liveStates = new Map<string, unknown>();
+  /** Stop-cause catalogues: the class of a cause gives a state by cause (winccoa-fra-msp-stma#339). */
+  @state() private catalogs: StopCauseCatalog[] = [];
+  /** The state datapoints followed (sorted, joined): a new list of ateliers re-subscribes only when it changes. */
+  private liveKey = '';
+  private liveSub: Subscription | null = null;
 
   override connectedCallback(): void {
     super.connectedCallback();
     this.settingsSub = settingsCache.watch(['fleet-filter'], () => (this.filter = loadFleetFilter()));
+    void loadSettingsPages().then((pages) => this.watchPageRoles(pages));
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.settingsSub?.unsubscribe();
     this.settingsSub = null;
+    this.pageRoleSubs.forEach((s) => s.unsubscribe());
+    this.pageRoleSubs = [];
+    this.liveSub?.unsubscribe();
+    this.liveSub = null;
+    this.liveKey = '';
+  }
+
+  protected override updated(changed: PropertyValues): void {
+    if (changed.has('ateliers')) this.watchStates();
+    if (changed.has('store') && this.store) void this.store.listCatalogs().then((c) => (this.catalogs = c)).catch(() => undefined);
+  }
+
+  /**
+   * Follow the state inputs and stop-cause sources of every machine of the ateliers (winccoa-fra-msp-stma#339), so
+   * that the cards' dots and counts show the state the machines are in now, as the atelier view does, and not the
+   * state stored with each machine.
+   */
+  private watchStates(): void {
+    const dps = [...new Set(this.ateliers.flatMap((a) => a.machines.flatMap((m) => liveTargets(m).map((t) => t.dpe))))].sort();
+    const key = dps.join('|');
+    if (key === this.liveKey) return;
+    this.liveKey = key;
+    this.liveSub?.unsubscribe();
+    this.liveSub = null;
+    if (dps.length === 0) return;
+    let api: OaRxJsApi;
+    try {
+      api = container.resolve<OaRxJsApi>(OaRxJsApi);
+    } catch {
+      return; // No WinCC OA runtime (standalone / demo host): the stored states stay.
+    }
+    void this.connectStates(api, dps, key);
+  }
+
+  /** A one-shot read keeps the datapoints that exist (one missing would fail the whole block), then one dpConnect. */
+  private async connectStates(api: OaRxJsApi, dps: string[], key: string): Promise<void> {
+    const results = await Promise.allSettled(dps.map((dp) => firstValueFrom(api.dpGet(dp))));
+    if (key !== this.liveKey) return;
+    const live = new Map(this.liveStates);
+    const valid: string[] = [];
+    for (const [i, dp] of dps.entries()) {
+      const result = results[i];
+      if (result.status !== 'fulfilled') continue;
+      valid.push(dp);
+      live.set(normDp(dp), result.value);
+    }
+    this.liveStates = live;
+    if (valid.length === 0) return;
+    try {
+      this.liveSub = api.dpConnect(valid, true).subscribe({
+        next: (data: { dp: string[]; value: unknown[] }) => {
+          if (key !== this.liveKey) return;
+          const next = new Map(this.liveStates);
+          for (const [i, dp] of data.dp.entries()) next.set(normDp(dp), data.value[i]);
+          this.liveStates = next;
+        },
+        error: () => {
+          // Live channel dropped: keep the last values.
+        }
+      });
+    } catch {
+      // Backend not connected: keep the values read.
+    }
+  }
+
+  /** A machine's state now: its inputs read through its mapping (as the atelier view), else the state stored with it. */
+  private stateOf(a: Atelier, m: MachineDef): MachineState {
+    const mapping = a.mappings.find((mp) => mp.id === m.stateMappingId) ?? a.mappings[0] ?? DEFAULT_STATE_MAPPINGS[0];
+    const live = machineLiveState(m, mapping, (dpe) => this.liveStates.get(normDp(dpe)), causesFor(this.catalogs, m.stopCatalogId));
+    return live.state ?? m.state;
+  }
+
+  /** Follow the grants of each settings page: listed when one of its roles is granted, or none asked. */
+  private watchPageRoles(pages: FleetSettingsPage[]): void {
+    this.settingsPages = pages;
+    const granted = new Map<string, Set<string>>();
+    const update = (): void => {
+      this.grantedPages = pages
+        .filter((p) => p.roles.length === 0 || (granted.get(p.path)?.size ?? 0) > 0)
+        .map((p) => p.path);
+    };
+    for (const p of pages) {
+      for (const r of p.roles) {
+        const key = `${r.module}/${r.role}`;
+        this.pageRoleSubs.push(
+          hasRole$(r.module, r.role).subscribe((on) => {
+            const set = granted.get(p.path) ?? new Set<string>();
+            if (on) set.add(key);
+            else set.delete(key);
+            granted.set(p.path, set);
+            update();
+          })
+        );
+      }
+    }
+    update();
   }
 
   override render(): TemplateResult {
@@ -92,9 +211,7 @@ export class MfAtelierOverview extends LitElement {
         <ix-button variant="secondary" @click=${this.analyzeKpi}>
           <ix-icon name="barchart" slot="icon"></ix-icon>${localizeDir(MSG.overview.kpiAnalysis)}
         </ix-button>
-        <ix-button variant="secondary" @click=${() => ((this.settingsOpen = true), (this.settingsError = false))}>
-          <ix-icon name="cogwheel" slot="icon"></ix-icon>${localizeDir(MSG.opening.moduleButton)}
-        </ix-button>
+        ${this.renderSettingsButton()}
         ${this.canEdit
           ? html`<ix-button @click=${this.create}>
               <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.overview.newEllipsis)}
@@ -119,16 +236,6 @@ export class MfAtelierOverview extends LitElement {
             @wui:cancel=${() => (this.createOpen = false)}
           ></mf-atelier-create-dialog>`
         : ''}
-      ${this.settingsOpen
-        ? html`<mf-module-settings-dialog
-            .settings=${this.moduleSettings}
-            .ateliers=${this.ateliers}
-            .canConfigure=${this.canConfigure}
-            .error=${this.settingsError}
-            @wui:apply=${(e: CustomEvent<{ settings: FleetModuleSettings }>) => void this.saveModuleSettings(e.detail.settings)}
-            @wui:close=${() => (this.settingsOpen = false)}
-          ></mf-module-settings-dialog>`
-        : ''}
       ${this.resourcesOpen
         ? html`<mf-graphics-catalog
             .store=${this.store}
@@ -137,17 +244,6 @@ export class MfAtelierOverview extends LitElement {
           ></mf-graphics-catalog>`
         : ''}
     `;
-  }
-
-  /** Save the module settings (#70) — /api/fleet checks the role `configure` again. */
-  private async saveModuleSettings(settings: FleetModuleSettings): Promise<void> {
-    const ok = (await this.store?.saveModuleSettings(settings)) ?? false;
-    if (!ok) {
-      this.settingsError = true;
-      return;
-    }
-    this.settingsOpen = false;
-    this.dispatchEvent(new CustomEvent('wui:module-settings', { detail: { settings }, bubbles: true, composed: true }));
   }
 
   private renderEmpty(): TemplateResult {
@@ -220,7 +316,10 @@ export class MfAtelierOverview extends LitElement {
 
   private renderStateChips(a: Atelier, machines: MachineDef[]): TemplateResult {
     const counts = new Map<MachineState, number>();
-    for (const m of machines) counts.set(m.state, (counts.get(m.state) ?? 0) + 1);
+    for (const m of machines) {
+      const s = this.stateOf(a, m);
+      counts.set(s, (counts.get(s) ?? 0) + 1);
+    }
     // One chip per state of the atelier's mappings that has machines, in their display order.
     return html`
       ${atelierStates(a.mappings).filter((s) => counts.get(s.key)).map(
@@ -246,7 +345,7 @@ export class MfAtelierOverview extends LitElement {
               cx=${m.x + length / 2}
               cy=${m.z + width / 2}
               r=${r}
-              fill=${colors.get(m.state) ?? UNKNOWN_STATE_COLOR}
+              fill=${colors.get(this.stateOf(a, m)) ?? UNKNOWN_STATE_COLOR}
             ></circle>`
         )}
       </svg>
@@ -286,6 +385,49 @@ export class MfAtelierOverview extends LitElement {
     this.dispatchEvent(new CustomEvent('wui:kpi', { bubbles: true, composed: true }));
   };
 
+  /** A settings page of the site (`wui:page`, the host routes to it). */
+  /**
+   * One "Paramètres" button: the module's own settings (its opening view) and the settings pages of the
+   * site the user may open. With no such page, it opens the module's settings directly.
+   */
+  /**
+   * "Paramètres": the settings pages of the site the user may open — none: no button; one: the button opens
+   * it; several: a menu. (The default opening view of every atelier is no longer offered here.)
+   */
+  private renderSettingsButton(): TemplateResult {
+    const pages = this.settingsPages.filter((p) => this.grantedPages.includes(p.path));
+    if (pages.length === 0) return html``;
+    if (pages.length === 1) {
+      const [only] = pages;
+      return html`<ix-button variant="secondary" @click=${() => this.openPage(only.path)}>
+        <ix-icon name="cogwheel" slot="icon"></ix-icon>${localizeDir(MSG.overview.settings)}
+      </ix-button>`;
+    }
+    return html`<span class="settings-wrap">
+      <ix-button variant="secondary" aria-haspopup="menu" aria-expanded=${this.settingsMenuOpen ? 'true' : 'false'}
+        @click=${() => (this.settingsMenuOpen = !this.settingsMenuOpen)}>
+        <ix-icon name="cogwheel" slot="icon"></ix-icon>${localizeDir(MSG.overview.settings)}
+      </ix-button>
+      ${this.settingsMenuOpen
+        ? html`<div class="menu-backdrop" @click=${() => (this.settingsMenuOpen = false)}></div>
+            <div class="settings-menu" role="menu">
+              ${pages.map(
+                (p) => html`<button type="button" role="menuitem" @click=${() => {
+                  this.settingsMenuOpen = false;
+                  this.openPage(p.path);
+                }}>
+                  <ix-icon name=${p.icon} size="16"></ix-icon>${localize(ml(p.title.en, p.title.fr, p.title.de))}
+                </button>`
+              )}
+            </div>`
+        : ''}
+    </span>`;
+  }
+
+  private openPage(path: string): void {
+    this.dispatchEvent(new CustomEvent('wui:page', { detail: { path }, bubbles: true, composed: true }));
+  }
+
   private readonly manageClosures = (): void => {
     this.dispatchEvent(new CustomEvent('wui:closures', { bubbles: true, composed: true }));
   };
@@ -310,6 +452,44 @@ function overviewStyles() {
     }
     .spacer {
       flex: 1;
+    }
+    .settings-wrap {
+      position: relative;
+    }
+    .menu-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+    }
+    .settings-menu {
+      position: absolute;
+      top: calc(100% + 0.25rem);
+      right: 0;
+      z-index: 21;
+      display: flex;
+      flex-direction: column;
+      min-width: 14rem;
+      padding: 0.25rem;
+      background: var(--theme-color-2);
+      border: 1px solid var(--theme-color-soft-bdr);
+      border-radius: var(--theme-default-border-radius);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    }
+    .settings-menu button {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.45rem 0.6rem;
+      border: 0;
+      border-radius: 0.2rem;
+      background: transparent;
+      color: var(--theme-color-std-text);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .settings-menu button:hover {
+      background: var(--theme-color-ghost--hover);
     }
     .filters {
       margin-bottom: 1rem;

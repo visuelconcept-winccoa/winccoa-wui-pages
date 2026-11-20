@@ -17,6 +17,7 @@
  */
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { localize } from '@wincc-oa/wui-i18n-shared/localize-multilang.js';
+import { machineTypeText } from './machine-type-labels.js';
 
 export { localize, localizeDir } from '@wincc-oa/wui-i18n-shared/localize-multilang.js';
 
@@ -40,7 +41,7 @@ export const MSG = {
     title: ml('Placement markers', "Repères d'implantation", 'Platzierungsmarken'),
     hint: ml(
       'Placement markers of this view (axis, workstation, landmark…), placed with the pin button and moved in edit mode; a machine placed from one follows it',
-      "Repères d'implantation de cette vue (axe, poste, borne…), posés avec le bouton repère et déplacés en mode édition ; une machine placée à partir d'un repère le suit",
+      "Repères d'implantation (axe, poste, borne…) · pose : bouton repère · déplacement : mode édition · machine liée à un repère : le suit",
       'Platzierungsmarken dieser Ansicht (Achse, Arbeitsplatz, Orientierungspunkt…), mit der Marken-Schaltfläche gesetzt und im Bearbeitungsmodus verschoben; eine davon platzierte Maschine folgt ihr'
     ),
     label: ml('Marker', 'Repère', 'Marke'),
@@ -61,22 +62,34 @@ export const MSG = {
   },
   wizard: {
     title: ml('Add a symbol', 'Ajouter un symbole', 'Symbol hinzufügen'),
-    fromCatalog: ml('From the site', 'Depuis le site', 'Vom Standort'),
-    fromAtelier: ml('From another atelier', 'Depuis un autre atelier', 'Aus einer anderen Werkstatt'),
-    fromFile: ml('From a file (JSON)', 'Depuis un fichier (JSON)', 'Aus einer Datei (JSON)'),
+    fromExisting: ml('From the site or an atelier', 'Depuis le site ou un atelier', 'Vom Standort oder einer Werkstatt'),
+    importTab: ml('Import', 'Importer', 'Importieren'),
     create: ml('New symbol', 'Nouveau symbole', 'Neues Symbol'),
     search: ml('Search…', 'Rechercher…', 'Suchen…'),
     none: ml('Nothing to add.', 'Rien à ajouter.', 'Nichts hinzuzufügen.'),
-    chooseFile: ml('Choose a JSON file', 'Choisir un fichier JSON', 'JSON-Datei auswählen'),
-    badFile: ml('Not a symbol file.', "Ce fichier n'est pas un symbole.", 'Keine Symboldatei.'),
+    existingNone: ml(
+      'Neither the site nor another atelier offers a symbol to add.',
+      'Ni le site ni un autre atelier ne propose de symbole à ajouter.',
+      'Weder der Standort noch eine andere Werkstatt bietet ein Symbol an.'
+    ),
+    site: ml('Site', 'Site', 'Standort'),
+    pasteLabel: ml('JSON of one or several symbols', 'JSON d’un ou de plusieurs symboles', 'JSON eines oder mehrerer Symbole'),
+    pastePlaceholder: ml(
+      'Paste here the JSON exported by a symbol or a workcenter, or choose a file.',
+      'Collez ici le JSON exporté par un symbole ou un workcenter, ou choisissez un fichier.',
+      'Fügen Sie hier das von einem Symbol oder Arbeitsplatz exportierte JSON ein oder wählen Sie eine Datei.'
+    ),
+    chooseFile: ml('Choose a file…', 'Choisir un fichier…', 'Datei auswählen…'),
+    importButton: ml('Import', 'Importer', 'Importieren'),
+    replaceYes: ml('Yes, replace', 'Oui, remplacer', 'Ja, ersetzen'),
+    replaceNo: ml('No', 'Non', 'Nein'),
     name: ml('Name', 'Nom', 'Name'),
     type: ml('Representation', 'Représentation', 'Darstellung'),
-    stateDp: ml('State datapoint (optional)', 'Datapoint d’état (optionnel)', 'Zustands-Datenpunkt (optional)'),
     add: ml('Add', 'Ajouter', 'Hinzufügen'),
     cancel: ml('Cancel', 'Annuler', 'Abbrechen'),
     later: ml(
       'Everything else is set later in the symbol’s configuration.',
-      'Tout le reste se règle ensuite dans la configuration du symbole.',
+      'Autres réglages : configuration du symbole',
       'Alles Weitere wird danach in der Symbolkonfiguration eingestellt.'
     )
   },
@@ -97,7 +110,7 @@ export const MSG = {
     label: ml('To place', 'À placer', 'Zu platzieren'),
     hint: ml(
       'New in this atelier, or moved elsewhere in the plant: move it to its place in edit mode',
-      "Nouvelle dans cet atelier, ou réaffectée : déplacez-la à sa place en mode édition",
+      "Nouvelle ou réaffectée : à placer en mode édition",
       'Neu in dieser Werkstatt oder umgesetzt: im Bearbeitungsmodus an ihren Platz verschieben'
     )
   },
@@ -112,6 +125,7 @@ export const MSG = {
     )
   },
   overview: {
+    settings: ml('Settings', 'Paramètres', 'Einstellungen'),
     graphicsCatalog: ml('Graphics catalog', 'Catalogue graphiques', 'Grafikkatalog'),
     closures: ml('Non-working days', 'Jours non travaillés', 'Arbeitsfreie Tage'),
     stopAnalysis: ml(
@@ -229,8 +243,8 @@ export const MSG = {
     saveView: ml('Save the view', 'Enregistrer la vue', 'Ansicht speichern'),
     publicViews: ml('Public views', 'Vues publiques', 'Öffentliche Ansichten'),
     myViews: ml('My views', 'Mes vues', 'Meine Ansichten'),
-    myLanding: ml('My default page', 'Ma page par défaut', 'Meine Startseite'),
-    publicLanding: ml('Default page for everyone', 'Page par défaut pour tous', 'Startseite für alle'),
+    myLanding: ml('Welcome atelier: for me', 'Atelier d’accueil : pour moi', 'Start-Atelier: für mich'),
+    publicLanding: ml('Welcome atelier: for everyone', 'Atelier d’accueil : pour tous', 'Start-Atelier: für alle'),
     noViewpoints: ml(
       'No viewpoint saved',
       'Aucun point de vue enregistré',
@@ -268,6 +282,16 @@ export const MSG = {
     obsolescenceAli: ml('Obsolescence (ALI)', 'Obsolescence (ALI)', 'Obsoleszenz (ALI)'),
     confirmDeleteHeading: ml("Delete the atelier", "Supprimer l'atelier", 'Werkstatt löschen'),
     viewLabel: ml('View', 'Vue', 'Ansicht')
+  },
+  dpField: {
+    browse: ml('Choose a datapoint', 'Choisir un datapoint', 'Datenpunkt auswählen'),
+    clear: ml('Clear', 'Effacer', 'Leeren'),
+    missing: ml('Datapoint not found', 'Datapoint introuvable', 'Datenpunkt nicht gefunden')
+  },
+  reasonDialog: {
+    reason: ml('Reason (required)', 'Motif (obligatoire)', 'Grund (Pflichtfeld)'),
+    cancel: ml('Cancel', 'Annuler', 'Abbrechen'),
+    confirm: ml('Delete', 'Supprimer', 'Löschen')
   },
   create: {
     title: ml('New atelier', 'Nouvel atelier', 'Neue Werkstatt'),
@@ -361,7 +385,16 @@ export const MSG = {
     csvDowntimeSec: ml("Downtime (s)", "Temps d'arrêt (s)", 'Stillstandszeit (s)'),
     csvDowntime: ml("Downtime", "Temps d'arrêt", 'Stillstandszeit'),
     csvOccurrences: ml('Occurrences', 'Occurrences', 'Vorkommen'),
-    csvCumulPct: ml('Cumulative %', 'Cumul %', 'Kumuliert %')
+    csvCumulPct: ml('Cumulative %', 'Cumul %', 'Kumuliert %'),
+    declaredLabel: ml('Declared state', 'État déclaré', 'Gemeldeter Zustand'),
+    declaredNone: ml('None', 'Aucun', 'Keiner'),
+    declareHeading: ml("Declare the machine’s state", 'Déclarer l’état de la machine', 'Maschinenzustand melden'),
+    declareConfirm: ml('Declare', 'Déclarer', 'Melden'),
+    declareFailed: ml(
+      'The declared state could not be saved: the role "Declare a machine’s state" is needed, and the state manager (fleetState) must have created the machine’s datapoint.',
+      'L’état déclaré n’a pas pu être enregistré : il faut le rôle « Déclarer l’état d’une machine », et que le manager d’état (fleetState) ait créé le datapoint de la machine.',
+      'Der gemeldete Zustand konnte nicht gespeichert werden: Die Rolle „Maschinenzustand melden“ ist nötig, und der Zustandsmanager (fleetState) muss den Datenpunkt der Maschine angelegt haben.'
+    )
   },
   machineDialog: {
     importMachine: ml(
@@ -453,6 +486,8 @@ export const MSG = {
     kpiThresholdsLabel: ml('Thresholds (colours)', 'Seuils (couleurs)', 'Schwellenwerte (Farben)'),
     identity: ml('Identity', 'Identité', 'Identität'),
     fieldName: ml('Name', 'Nom', 'Name'),
+    nameRequired: ml('Name required', 'Nom obligatoire', 'Name erforderlich'),
+    nameTaken: ml('Name already used in this atelier', 'Nom déjà utilisé dans cet atelier', 'Name in diesem Atelier bereits vergeben'),
     fieldType: ml('Type', 'Type', 'Typ'),
     processLabel: ml(
       'Process (parameter set of the machine simulator)',
@@ -463,6 +498,8 @@ export const MSG = {
     fieldHeight: ml('Height', 'Hauteur', 'Höhe'),
     appearance: ml('Appearance', 'Apparence', 'Erscheinungsbild'),
     rotationLabel: ml('Rotation (vertical axis)', 'Rotation (axe vertical)', 'Drehung (vertikale Achse)'),
+    scaleLabel: ml('Scale (×)', 'Échelle (×)', 'Maßstab (×)'),
+    scaleHint: ml('1 = actual size · 0.1 to 10', '1 = taille d’origine · de 0,1 à 10', '1 = Originalgröße · 0,1 bis 10'),
     colour: ml('Colour', 'Couleur', 'Farbe'),
     defaultColour: ml('Default colour', 'Couleur par défaut', 'Standardfarbe'),
     showInScene: ml(
@@ -472,13 +509,19 @@ export const MSG = {
     ),
     displayTitle: ml('Display (bubble & popup)', 'Affichage (bulle & popup)', 'Anzeige (Blase & Popup)'),
     displayHint: ml(
-      "For each piece of information (state, production tracking, parameters and KPI), choose its visibility in the machine bubble and in the popup (on click), and set its display order with the arrows.",
-      "Pour chaque information (état, suivi de production, paramètres et KPI), choisissez sa visibilité dans la bulle machine et dans le popup (au clic), et réglez son ordre d'affichage avec les flèches.",
-      'Wählen Sie für jede Information (Zustand, Produktionsverfolgung, Parameter und KPI) ihre Sichtbarkeit in der Maschinenblase und im Popup (beim Klick) und stellen Sie die Anzeigereihenfolge mit den Pfeilen ein.'
+      "For each piece of information (state, production tracking, parameters and KPI), choose its visibility in the machine bubble and in the popup (on click), and set its display order with the arrows. \"Dashboard\": the process parameters shown as cards on the machine dashboard; the context (article, contract, identities, work order, operation) and the TRS are always shown there.",
+      "Pour chaque information (état, suivi de production, paramètres et KPI), choisissez sa visibilité dans la bulle machine et dans le popup (au clic), et réglez son ordre d'affichage avec les flèches. « Tableau de bord » : les paramètres process affichés en cartes dans le tableau de bord de la machine ; le contexte (article, contrat, identifiants, OF, opération) et le TRS y sont toujours affichés.",
+      'Wählen Sie für jede Information (Zustand, Produktionsverfolgung, Parameter und KPI) ihre Sichtbarkeit in der Maschinenblase und im Popup (beim Klick) und stellen Sie die Anzeigereihenfolge mit den Pfeilen ein. „Dashboard“: die Prozessparameter, die als Karten im Maschinen-Dashboard erscheinen; Kontext (Artikel, Vertrag, Kennungen, Auftrag, Vorgang) und OEE werden dort immer angezeigt.'
+    ),
+    displayFull: ml(
+      'At most 10 lines: untick another one first.',
+      "10 lignes au plus",
+      'Höchstens 10 Zeilen: zuerst eine andere abwählen.'
     ),
     colInformation: ml('Information', 'Information', 'Information'),
     colBubble: ml('Bubble', 'Bulle', 'Blase'),
     colPopup: ml('Popup', 'Popup', 'Popup'),
+    colDashboard: ml('Dashboard', 'Tableau de bord', 'Dashboard'),
     colOrder: ml('Order', 'Ordre', 'Reihenfolge'),
     moveUp: ml('Move up', 'Monter', 'Nach oben'),
     moveDown: ml('Move down', 'Descendre', 'Nach unten'),
@@ -541,6 +584,17 @@ export const MSG = {
     tiltAngleLabel: ml('Tilt angle', 'Angle basculement', 'Kippwinkel'),
     stateDpLabel: ml('State datapoint', "Datapoint d'état", 'Zustands-Datenpunkt'),
     stateMappingLabel: ml('State mapping', "Mapping d'état", 'Zustandszuordnung'),
+    declaredStateLabel: ml('State declared by an operator', 'État déclaré par l’opérateur', 'Vom Bediener gemeldeter Zustand'),
+    declaredStateHint: ml(
+      'An operator holding the role "Declare a machine’s state" sets it from the machine dashboard (with a reason, traced); the rules of the mapping test it as the input "State declared by an operator".',
+      'Un opérateur qui a le rôle « Déclarer l’état d’une machine » le choisit depuis le tableau de bord de la machine (avec un motif, tracé) ; les règles de la mapping le testent comme l’entrée « État déclaré par l’opérateur ».',
+      'Ein Bediener mit der Rolle „Maschinenzustand melden“ setzt ihn im Maschinen-Dashboard (mit Begründung, protokolliert); die Regeln der Zuordnung prüfen ihn als Eingang „Vom Bediener gemeldeter Zustand“.'
+    ),
+    mappingInputsHint: ml(
+      'The datapoint of each input of the chosen mapping (its rules test them).',
+      'Le datapoint de chaque entrée de la mapping choisie (ses règles les testent).',
+      'Der Datenpunkt jedes Eingangs der gewählten Zuordnung (ihre Regeln prüfen sie).'
+    ),
     manageStateMappings: ml(
       "Manage state mappings…",
       "Gérer les mappings d'état…",
@@ -569,13 +623,21 @@ export const MSG = {
     aliLinkedAsset: ml('Linked ALI asset', 'Asset ALI lié', 'Verknüpftes ALI-Asset'),
     production: ml('Production tracking', 'Suivi production', 'Produktionsverfolgung'),
     stopCauseDpLabel: ml('Stop-cause DP', "DP cause d'arrêt", 'Stillstandsursache-DP'),
+    causeSourcesLabel: ml('Other stop-cause DPs, by priority', "Autres DP de cause d'arrêt, par priorité", 'Weitere Stillstandsursache-DPs, nach Priorität'),
+    causeSourcesHint: ml(
+      'The cause in progress is the first one that is not empty: the DP above, then these in order.',
+      'La cause en cours est la première non vide : le DP ci-dessus, puis ceux-ci dans l’ordre.',
+      'Die laufende Ursache ist die erste nicht leere: der DP oben, dann diese der Reihe nach.'
+    ),
+    addCauseSource: ml('Add a cause DP', 'Ajouter un DP de cause', 'Ursachen-DP hinzufügen'),
+    removeCauseSource: ml('Remove this cause DP', 'Retirer ce DP de cause', 'Diesen Ursachen-DP entfernen'),
     workOrderDpLabel: ml('Current work order DP', "DP OF en cours", 'DP aktueller Fertigungsauftrag'),
     alarmCodeDpLabel: ml('Alarm code DP', 'DP code alarme', 'DP Alarmcode'),
     operationDpLabel: ml('Current operation DP', "DP opération en cours", 'DP aktueller Vorgang'),
     minStopLabel: ml('Minimum stop (s)', "Délai minimal d'arrêt (s)", 'Mindest-Stillstand (s)'),
     minStopHint: ml(
       'A shorter stop counts as production: not in the Gantt, the stops or the TRS',
-      'Un arrêt plus court compte comme de la production : ni dans le Gantt, ni dans les arrêts, ni dans le TRS',
+      'Arrêt plus court : compté en production, hors Gantt, arrêts et TRS',
       'Ein kürzerer Stillstand zählt als Produktion: weder im Gantt, noch bei den Stillständen, noch in der OEE'
     ),
     dashboardMachine: ml('Machine dashboard', 'Dashboard machine', 'Maschinen-Dashboard'),
@@ -631,20 +693,20 @@ export const MSG = {
     appLinks: ml('Links of the application', "Liens de l'application", 'Links der Anwendung'),
     appLinksHint: ml(
       'Up to 3 links to pages of the application appear as buttons in the machine card (popup); each opens in the application. Address: a route (#/…) or a path of this server (/…).',
-      "Jusqu'à 3 liens vers des pages de l'application s'affichent comme boutons dans la fiche machine (popup) ; chacun s'ouvre dans l'application. Adresse : une route (#/…) ou un chemin de ce serveur (/…).",
+      "3 liens au plus, en boutons de la fiche machine, ouverts dans l'application · adresse : route (#/…) ou chemin du serveur (/…)",
       'Bis zu 3 Links zu Seiten der Anwendung erscheinen als Schaltflächen in der Maschinenkarte (Popup); jeder öffnet sich in der Anwendung. Adresse: eine Route (#/…) oder ein Pfad dieses Servers (/…).'
     ),
     appUrlLabel: ml('Address (#/… or /…)', 'Adresse (#/… ou /…)', 'Adresse (#/… oder /…)'),
     appUrlPlaceholder: ml('#/alarmes', '#/alarmes', '#/alarmes'),
     appUrlInvalid: ml(
       'Not an address of the application: the link is not shown.',
-      "Ce n'est pas une adresse de l'application : le lien n'est pas affiché.",
+      "Adresse hors application : lien non affiché",
       'Keine Adresse der Anwendung: Der Link wird nicht angezeigt.'
     ),
     cardTags: ml('Tags in this atelier', 'Étiquettes dans cette carte', 'Tags in diesem Atelier'),
     cardTagsHint: ml(
       'Free tags put on the machine in this atelier, separated by commas; they are filters of the views.',
-      'Étiquettes libres posées sur la machine dans cette carte, séparées par des virgules ; elles servent de filtres des vues.',
+      'Étiquettes libres de la machine dans cet atelier, séparées par des virgules · filtres des vues',
       'Freie Tags der Maschine in diesem Atelier, durch Kommas getrennt; sie dienen als Filter der Ansichten.'
     ),
     paramsTitle: ml('Parameters', 'Paramètres', 'Parameter'),
@@ -652,6 +714,13 @@ export const MSG = {
     paramLabel: ml('Label', 'Libellé', 'Bezeichnung'),
     paramUnit: ml('Unit', 'Unité', 'Einheit'),
     defaultParamName: ml('Parameter', 'Paramètre', 'Parameter'),
+    paramFixed: ml('Fixed value', 'Valeur fixe', 'Fester Wert'),
+    paramFixedTitle: ml(
+      'This row shows a fixed value, not a datapoint',
+      "Cette ligne montre une valeur fixe, pas un datapoint",
+      'Diese Zeile zeigt einen festen Wert, keinen Datenpunkt'
+    ),
+    paramLiveTitle: ml('Current value', 'Valeur actuelle', 'Aktueller Wert'),
     delete: ml('Delete', 'Supprimer', 'Löschen'),
     editTitlePrefix: ml('Symbol', 'Symbole', 'Symbol')
   },
@@ -692,14 +761,6 @@ export const MSG = {
     sampleFull: ml('Example: full atelier', 'Exemple : atelier plein', 'Beispiel: volle Werkstatt'),
     symbols: ml('symbols', 'symboles', 'Symbole'),
     noWebgl: ml('Preview unavailable (WebGL).', 'Aperçu indisponible (WebGL).', 'Vorschau nicht verfügbar (WebGL).'),
-    moduleTitle: ml('Module settings — every atelier', 'Paramètres du module — tous les ateliers', 'Moduleinstellungen — alle Werkstätten'),
-    moduleButton: ml('Module settings', 'Paramètres du module', 'Moduleinstellungen'),
-    moduleDefault: ml('Default opening view', "Vue d'ouverture par défaut", 'Standard-Eröffnungsansicht'),
-    moduleHint: ml(
-      'Applies to every atelier that has no setting of its own. Role "Configure the module".',
-      'S’applique à chaque atelier qui n’a pas son propre réglage. Rôle « Configurer le module ».',
-      'Gilt für jede Werkstatt ohne eigene Einstellung. Rolle „Modul konfigurieren".'
-    ),
     atelierButton: ml("Opening view", "Vue d'ouverture", 'Eröffnungsansicht'),
     atelierTitle: ml("Opening view of this atelier", "Vue d'ouverture de cet atelier", 'Eröffnungsansicht dieser Werkstatt'),
     useModule: ml('Use the module’s setting', 'Utiliser le réglage du module', 'Einstellung des Moduls verwenden'),
@@ -750,7 +811,9 @@ export const MSG = {
     addMachine: ml('Add a symbol', 'Ajouter un symbole', 'Symbol hinzufügen'),
     edit: ml('Edit', 'Éditer', 'Bearbeiten'),
     viewOnly: ml('View', 'Visualiser', 'Anzeigen'),
-    delete: ml('Delete', 'Supprimer', 'Löschen')
+    delete: ml('Delete', 'Supprimer', 'Löschen'),
+    hidden: ml('Hidden in the scene', 'Masqué dans la scène', 'In der Szene ausgeblendet'),
+    showAgain: ml('Hidden in the scene · show', 'Masqué dans la scène · afficher', 'In der Szene ausgeblendet · anzeigen')
   },
   graphicsCatalog: {
     title: ml('Graphics catalog', 'Catalogue de graphiques', 'Grafikkatalog'),
@@ -837,7 +900,47 @@ export const MSG = {
       'Weder verfügbar noch Stillstand: aus der Öffnungszeit herausgenommen, wie eine arbeitsfreie Zeit (OEE)'
     ),
     addState: ml('Add a state', 'Ajouter un état', 'Zustand hinzufügen'),
-    deleteState: ml('Delete this state', 'Supprimer cet état', 'Diesen Zustand löschen')
+    deleteState: ml('Delete this state', 'Supprimer cet état', 'Diesen Zustand löschen'),
+    inputsHeading: ml('Inputs', 'Entrées', 'Eingänge'),
+    inputsHint: ml(
+      'Each symbol binds a datapoint to every input. The main input is its state datapoint; min / max of a rule apply to it, as a code rounded to the nearest integer.',
+      'Chaque symbole lie un datapoint à chaque entrée. L’entrée principale est son datapoint d’état ; le min / max d’une règle s’y applique, en code arrondi à l’entier.',
+      'Jedes Symbol bindet an jeden Eingang einen Datenpunkt. Der Haupteingang ist sein Zustands-Datenpunkt; Min / Max einer Regel gelten für ihn, auf eine ganze Zahl gerundet.'
+    ),
+    mainInput: ml('State datapoint (main input)', 'Datapoint d’état (entrée principale)', 'Zustands-Datenpunkt (Haupteingang)'),
+    declaredInput: ml('State declared by an operator', 'État déclaré par l’opérateur', 'Vom Bediener gemeldeter Zustand'),
+    inputKey: ml('Key', 'Clé', 'Schlüssel'),
+    inputLabel: ml('Label', 'Libellé', 'Bezeichnung'),
+    addInput: ml('Add an input', 'Ajouter une entrée', 'Eingang hinzufügen'),
+    newInputLabel: ml('Input', 'Entrée', 'Eingang'),
+    deleteInput: ml('Delete this input and the conditions on it', 'Supprimer cette entrée et les conditions qui la testent', 'Diesen Eingang und seine Bedingungen löschen'),
+    inputKeyInvalid: ml(
+      'A key: a letter, then letters, digits or _ ; unique, not "state".',
+      'Une clé : une lettre, puis lettres, chiffres ou _ ; unique, pas « state ».',
+      'Ein Schlüssel: ein Buchstabe, dann Buchstaben, Ziffern oder _; eindeutig, nicht „state“.'
+    ),
+    causeState: ml('By the cause', 'Selon la cause', 'Nach der Ursache'),
+    causeStatesHeading: ml('States by the cause', 'États selon la cause', 'Zustände nach der Ursache'),
+    causeStatesHint: ml(
+      'A rule "By the cause" gives one of these states, by the class of the stop cause in progress (its catalogue): planned, or any other (unplanned, unknown, none).',
+      'Une règle « Selon la cause » donne l’un de ces états, d’après la classe de la cause d’arrêt en cours (son référentiel) : planifiée, ou toute autre (non planifiée, inconnue, aucune).',
+      'Eine Regel „Nach der Ursache“ ergibt einen dieser Zustände, je nach Klasse der laufenden Stillstandsursache: geplant oder jede andere.'
+    ),
+    causePlanned: ml('Planned cause', 'Cause planifiée', 'Geplante Ursache'),
+    causeUnplanned: ml('Other cause or none', 'Autre cause ou aucune', 'Andere oder keine Ursache'),
+    boundsHint: ml('empty: no bound', 'vide : sans borne', 'leer: keine Grenze'),
+    addCondition: ml('Add a condition', 'Ajouter une condition', 'Bedingung hinzufügen'),
+    conditionInput: ml('Input', 'Entrée', 'Eingang'),
+    opEq: ml('=', '=', '='),
+    opNe: ml('≠', '≠', '≠'),
+    opIn: ml('between', 'entre', 'zwischen'),
+    opOut: ml('outside', 'hors de', 'außerhalb'),
+    conditionValue: ml('Value (number, text, true / false)', 'Valeur (nombre, texte, vrai / faux)', 'Wert (Zahl, Text, wahr / falsch)'),
+    deleteCondition: ml('Delete this condition', 'Supprimer cette condition', 'Diese Bedingung löschen'),
+    moveUp: ml('Move up', 'Monter', 'Nach oben'),
+    moveDown: ml('Move down', 'Descendre', 'Nach unten'),
+    deleteRule: ml('Delete this rule', 'Supprimer cette règle', 'Diese Regel löschen'),
+    ruleAll: ml('and', 'et', 'und')
   },
   trsThresholds: {
     title: ml('TRS thresholds', 'Seuils TRS', 'OEE-Schwellenwerte'),
@@ -864,6 +967,12 @@ export const MSG = {
     newConfigName: ml('New thresholds', 'Nouveaux seuils', 'Neue Schwellenwerte')
   }
 } as const;
+
+/** The label of a symbol's representation (MachineType); an unknown one as it is stored. */
+export function machineTypeLabel(type: string): string {
+  const label = machineTypeText(type);
+  return label ? localize(label) : type;
+}
 
 /** "from <start> to <end>" range label for the machine dashboard period. */
 export function rangeLabelMsg(start: string, end: string): string {
@@ -946,4 +1055,59 @@ export function confirmDeleteAtelierMsg(name: string): string {
       `Werkstatt « ${name} » und ihren Datapoint endgültig löschen?`
     )
   );
+}
+
+/** What an import text holds, before it is added (winccoa-fra-msp-stma#338). */
+export function importSummaryMsg(symbols: number, conflicts: number, mappings: number, source: string): string {
+  const fr = `${symbols} symbole${symbols > 1 ? 's' : ''}${source ? ` (${source})` : ''}`
+    + `${conflicts ? `, dont ${conflicts} déjà dans cet atelier` : ''}`
+    + `${mappings ? ` ; ${mappings} mapping${mappings > 1 ? 's' : ''} d’états` : ''}.`;
+  const en = `${symbols} symbol${symbols > 1 ? 's' : ''}${source ? ` (${source})` : ''}`
+    + `${conflicts ? `, ${conflicts} already in this atelier` : ''}`
+    + `${mappings ? `; ${mappings} state mapping${mappings > 1 ? 's' : ''}` : ''}.`;
+  const de = `${symbols} Symbol${symbols > 1 ? 'e' : ''}${source ? ` (${source})` : ''}`
+    + `${conflicts ? `, davon ${conflicts} bereits in dieser Werkstatt` : ''}`
+    + `${mappings ? `; ${mappings} Zustandszuordnung${mappings > 1 ? 'en' : ''}` : ''}.`;
+  return localize(ml(en, fr, de));
+}
+
+/** Why an import text is refused (symbol-import.ts `ImportError`). */
+export function importErrorMsg(e: { reason: string; detail?: string; index?: number; value?: string }): string {
+  const n = e.index ?? 0;
+  const v = e.value ?? '';
+  switch (e.reason) {
+    case 'empty':
+      return localize(ml('Paste the JSON of one or several symbols, or choose a file.', 'Collez le JSON d’un ou de plusieurs symboles, ou choisissez un fichier.', 'Fügen Sie das JSON eines oder mehrerer Symbole ein oder wählen Sie eine Datei.'));
+    case 'json':
+      return localize(ml(`Invalid JSON: ${e.detail ?? ''}`, `JSON invalide : ${e.detail ?? ''}`, `Ungültiges JSON: ${e.detail ?? ''}`));
+    case 'format':
+      return localize(ml(`Not a Machine Fleet symbol file (${e.detail ?? ''}).`, `Ce n’est pas un fichier de symboles Machine Fleet (${e.detail ?? ''}).`, `Keine Machine-Fleet-Symboldatei (${e.detail ?? ''}).`));
+    case 'version':
+      return localize(ml(`File version ${e.detail ?? ''} not supported (1 at most).`, `Version ${e.detail ?? ''} du fichier non prise en charge (1 au plus).`, `Dateiversion ${e.detail ?? ''} nicht unterstützt (höchstens 1).`));
+    case 'noSymbol':
+      return localize(ml('No symbol in this text.', 'Aucun symbole dans ce texte.', 'Kein Symbol in diesem Text.'));
+    default:
+      break;
+  }
+  if (e.detail === 'notObject') return localize(ml(`Symbol ${n}: not an object.`, `Symbole n° ${n} : ce n’est pas un objet.`, `Symbol ${n}: kein Objekt.`));
+  if (e.detail === 'name') return localize(ml(`Symbol ${n}: no name.`, `Symbole n° ${n} : nom manquant.`, `Symbol ${n}: kein Name.`));
+  if (e.detail === 'type') return localize(ml(`Symbol ${n}: unknown representation "${v}".`, `Symbole n° ${n} : représentation « ${v} » inconnue.`, `Symbol ${n}: unbekannte Darstellung „${v}“.`));
+  return localize(ml(`Symbol ${n}: id "${v}" twice in the text.`, `Symbole n° ${n} : identifiant « ${v} » en double dans le texte.`, `Symbol ${n}: Kennung „${v}“ doppelt im Text.`));
+}
+
+/** Replace a symbol already in the atelier? (winccoa-fra-msp-stma#338). */
+export function replaceSymbolMsg(name: string): string {
+  return localize(ml(`"${name}" already exists in this atelier. Replace it?`, `« ${name} » existe déjà dans cet atelier. Le remplacer ?`, `„${name}“ existiert bereits in dieser Werkstatt. Ersetzen?`));
+}
+
+/** The 3D model uploaded in the wizard, and its failure. */
+export function uploadGlbMsg(state: 'idle' | 'busy' | 'failed'): string {
+  if (state === 'busy') return localize(ml('Uploading…', 'Téléversement…', 'Hochladen…'));
+  if (state === 'failed') return localize(ml('Upload failed.', 'Le téléversement a échoué.', 'Hochladen fehlgeschlagen.'));
+  return localize(ml('Upload a GLB…', 'Téléverser un GLB…', 'GLB hochladen…'));
+}
+
+/** Confirmation of a declared state (winccoa-fra-msp-stma#339): the machine, the state before and after. */
+export function declareStateMsg(machine: string, before: string, after: string): string {
+  return localize(ml(`${machine}: declared state ${before} → ${after}.`, `${machine} : état déclaré ${before} → ${after}.`, `${machine}: gemeldeter Zustand ${before} → ${after}.`));
 }

@@ -30,8 +30,11 @@ import { container } from 'tsyringe';
 import { pageStyles } from '@visuelconcept-winccoa/wui-fleet-core/styles.js';
 import { FleetStore } from '@visuelconcept-winccoa/wui-fleet-core/data/fleet-store.js';
 import '@visuelconcept-winccoa/wui-fleet-core/fleet-settings-service.js';
+// The page requires fleet-closures: its writes go through /api/fleet.
+import '@visuelconcept-winccoa/wui-fleet-core/data/guarded-writes.js';
 import { PagePrefs, oneOf, restorePeriod, storePeriod } from '@visuelconcept-winccoa/wui-fleet-core/page-prefs.js';
 import { stringList } from '@visuelconcept-winccoa/wui-fleet-core/settings-cache.js';
+import { isAnalysable } from '@visuelconcept-winccoa/wui-fleet-core/state-eval.js';
 import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
 import appSecurityRoles from './app-security.roles.json';
 import { canEditFleet, canEditFleet$ } from '@visuelconcept-winccoa/wui-kit/data/permissions.js';
@@ -40,6 +43,7 @@ import {
   STOP_CLASSIFICATION_LABELS,
   type Atelier,
   type StopCause,
+  type StopCauseCatalog,
   type StopClassification
 } from '@visuelconcept-winccoa/wui-fleet-core/types.js';
 import {
@@ -61,6 +65,7 @@ import {
 } from '@visuelconcept-winccoa/wui-fleet-core/closures.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { MSG, localize, localizeDir, rawStopCountMsg } from './i18n.js';
+import { defaultCatalog } from '@visuelconcept-winccoa/wui-fleet-core/stop-catalogs.js';
 
 const TAB_TABLE = 'table';
 const TAB_CHART = 'chart';
@@ -126,6 +131,8 @@ export class WuiFleetStopAnalysis extends LitElement {
 
   @state() private ateliers: Atelier[] = [];
   @state() private catalog: StopCause[] = [];
+  /** Every stop-cause catalogue (#74): each machine is analysed with its own, else the default. */
+  private catalogs: StopCauseCatalog[] = [];
   @state() private selectedAteliers: string[] = [];
   @state() private selectedMachines: string[] = [];
   @state() private startStr = '';
@@ -593,7 +600,9 @@ export class WuiFleetStopAnalysis extends LitElement {
     return {
       backgroundColor: 'transparent',
       textStyle: { color: text },
+      // Kept inside the chart, never off screen near an edge (feedback of the 13/11/2026 demo).
       tooltip: {
+        confine: true,
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
         valueFormatter: (v: unknown) => `${Number(v).toLocaleString('fr-FR')} h`
@@ -621,7 +630,8 @@ export class WuiFleetStopAnalysis extends LitElement {
   private async bootstrap(): Promise<void> {
     this.loading = true;
     this.ateliers = await this.store.listAteliers();
-    this.catalog = await this.store.listStopCauses();
+    this.catalogs = await this.store.listCatalogs();
+    this.catalog = defaultCatalog(this.catalogs).causes;
     this.closures = normaliseClosures(await this.store.listClosures());
     this.offline = this.store.offline;
     // The user's last selection, unless a hand-off asks for a machine.
@@ -716,7 +726,8 @@ export class WuiFleetStopAnalysis extends LitElement {
     const machines = collectMachines(
       this.ateliers,
       new Set(this.selectedAteliers),
-      new Set(this.selectedMachines)
+      new Set(this.selectedMachines),
+      this.catalogs
     );
     const nonWorked = buildNonWorkedMap(this.closures, machines);
     this.result = await analyseStopCauses(this.api, machines, this.catalog, start, end, nonWorked);
@@ -729,7 +740,7 @@ export class WuiFleetStopAnalysis extends LitElement {
     for (const a of this.ateliers) {
       if (selected.size > 0 && !selected.has(a.id)) continue;
       for (const m of a.machines) {
-        if (!m.stateDp || !m.stopCauseDp) continue;
+        if (!isAnalysable(m)) continue;
         out.push({ id: m.id, label: this.ateliers.length > 1 ? `${m.name} · ${a.name}` : m.name });
       }
     }
@@ -786,7 +797,8 @@ export class WuiFleetStopAnalysis extends LitElement {
   };
 
   private async reloadCatalog(): Promise<void> {
-    this.catalog = await this.store.listStopCauses();
+    this.catalogs = await this.store.listCatalogs();
+    this.catalog = defaultCatalog(this.catalogs).causes;
     await this.recompute();
   }
 

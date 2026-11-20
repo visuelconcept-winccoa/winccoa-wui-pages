@@ -6,6 +6,11 @@
  * ordered list of rules (state + optional min/max bounds, first match wins) and
  * a fallback state. Machines reference a mapping by id to resolve their state
  * datapoint into a colour state.
+ *
+ * With several inputs (winccoa-fra-msp-stma#339): named inputs besides the state datapoint (each symbol binds
+ * a datapoint to them), conditions on them in each rule (=, ≠, between, outside; all must hold), rules moved up
+ * and down, and a rule "By the cause" giving the planned or the other state by the class of the cause in
+ * progress. Editing logic in mapping-edit.ts.
  */
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
@@ -24,8 +29,29 @@ import {
   type StateRule
 } from '../types.js';
 import { dialogStyles } from './dialog-styles.js';
+import {
+  CAUSE_STATE,
+  DECLARED_INPUT,
+  STATE_INPUT,
+  addInput,
+  boundText,
+  conditionInputs,
+  conditionOf,
+  conditionView,
+  inputKeyError,
+  moveRule,
+  relabelInput,
+  removeInput,
+  renameInput,
+  usesCause,
+  withBounds,
+  withWhen,
+  type ConditionOp,
+  type ConditionView
+} from '../mapping-edit.js';
 import { overlayClicked, overlayDown } from '@visuelconcept-winccoa/wui-fleet-core/ui/overlay-dismiss.js';
 import { MSG, localize, localizeDir } from '../i18n.js';
+import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 
 interface IxValueEvent {
   detail: string | number;
@@ -41,6 +67,8 @@ export class MfStateMappingDialog extends LitElement {
 
   @state() private working: StateMapping[] = [];
   @state() private selected = 0;
+  /** Input whose typed key is refused (index, -1 none): the key stays as it was. */
+  @state() private badInput = -1;
 
   override render(): TemplateResult {
     const mapping = this.working[this.selected];
@@ -122,11 +150,13 @@ export class MfStateMappingDialog extends LitElement {
         ${localizeDir(MSG.stateMapping.ownStates)}
       </label>
       ${mapping.states?.length ? this.renderStates(mapping.states) : ''}
+      ${this.renderInputs(mapping)}
       <div class="subhead">${localizeDir(MSG.stateMapping.rulesHeading)}</div>
-      <div class="rules">${mapping.rules.map((r, i) => this.renderRule(r, i))}</div>
-      <ix-button class="link" variant="secondary" @click=${this.addRule}>
+      <div class="rules">${mapping.rules.map((r, i) => this.renderRule(r, i, mapping.rules.length))}</div>
+      <ix-button class="link" variant="secondary" ?disabled=${!this.canEdit} @click=${this.addRule}>
         <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.stateMapping.addRule)}
       </ix-button>
+      ${usesCause(mapping) ? this.renderCauseStates(mapping) : ''}
       <div class="subhead">${localizeDir(MSG.stateMapping.colorsHeading)}</div>
       <div class="colors">${this.colorKeys(mapping).map((k) => this.renderColor(mapping, k))}</div>
     `;
@@ -225,11 +255,12 @@ export class MfStateMappingDialog extends LitElement {
     }
     // Back to the built-in four: rules and fallback naming another state fall back to 'ok'.
     const known = new Set(BUILTIN_STATES.map((s) => s.key));
-    const fix = (s: MachineState): MachineState => (known.has(s) ? s : 'ok');
+    const fix = (s: MachineState): MachineState => (known.has(s) || s === CAUSE_STATE ? s : 'ok');
     this.patch({
       states: undefined,
       fallback: fix(mapping.fallback),
-      rules: mapping.rules.map((r) => ({ ...r, state: fix(r.state) }))
+      rules: mapping.rules.map((r) => ({ ...r, state: fix(r.state) })),
+      ...(mapping.causeStates ? { causeStates: { planned: fix(mapping.causeStates.planned), unplanned: fix(mapping.causeStates.unplanned) } } : {})
     });
   }
 
@@ -246,10 +277,12 @@ export class MfStateMappingDialog extends LitElement {
     const states = mapping.states ?? [];
     const old = states[index]?.key;
     if (!key || key === old || states.some((s, i) => i !== index && s.key === key)) return;
+    const cs = mapping.causeStates;
     this.patch({
       states: states.map((s, i) => (i === index ? { ...s, key } : s)),
       fallback: mapping.fallback === old ? key : mapping.fallback,
-      rules: mapping.rules.map((r) => (r.state === old ? { ...r, state: key } : r))
+      rules: mapping.rules.map((r) => (r.state === old ? { ...r, state: key } : r)),
+      ...(cs ? { causeStates: { planned: cs.planned === old ? key : cs.planned, unplanned: cs.unplanned === old ? key : cs.unplanned } } : {})
     });
   }
 
@@ -266,10 +299,12 @@ export class MfStateMappingDialog extends LitElement {
     const removed = mapping.states?.[index]?.key;
     const states = (mapping.states ?? []).filter((_, i) => i !== index);
     const first = states[0]?.key ?? 'ok';
+    const cs = mapping.causeStates;
     this.patch({
       states,
       fallback: mapping.fallback === removed ? first : mapping.fallback,
-      rules: mapping.rules.map((r) => (r.state === removed ? { ...r, state: first } : r))
+      rules: mapping.rules.map((r) => (r.state === removed ? { ...r, state: first } : r)),
+      ...(cs ? { causeStates: { planned: cs.planned === removed ? first : cs.planned, unplanned: cs.unplanned === removed ? first : cs.unplanned } } : {})
     });
   }
 
@@ -293,32 +328,189 @@ export class MfStateMappingDialog extends LitElement {
     this.patch({ colors: { ...mapping.colors, [key]: value } });
   }
 
-  private renderRule(rule: StateRule, i: number): TemplateResult {
+  /** The inputs of the mapping: the state datapoint (main, fixed), then the named ones. */
+  private renderInputs(mapping: StateMapping): TemplateResult {
+    const inputs = mapping.inputs ?? [];
     return html`
-      <div class="rule-row">
+      <div class="subhead">${localizeDir(MSG.stateMapping.inputsHeading)}</div>
+      <div class="hint">${localizeDir(MSG.stateMapping.inputsHint)}</div>
+      <div class="inputs">
+        <div class="input-row">
+          <ix-input label=${localize(MSG.stateMapping.inputKey)} .value=${STATE_INPUT} readonly></ix-input>
+          <ix-input label=${localize(MSG.stateMapping.inputLabel)} .value=${localize(MSG.stateMapping.mainInput)} readonly></ix-input>
+          <span></span>
+        </div>
+        ${inputs.map(
+          (inp, i) => html`<div class="input-row">
+            <ix-input
+              label=${localize(MSG.stateMapping.inputKey)}
+              class=${this.badInput === i ? 'ix-invalid' : ''}
+              invalid-text=${localize(MSG.stateMapping.inputKeyInvalid)}
+              .value=${inp.key}
+              ?readonly=${!this.canEdit}
+              @valueChange=${(e: IxValueEvent) => this.renameInputAt(i, String(e.detail).trim())}
+            ></ix-input>
+            <ix-input
+              label=${localize(MSG.stateMapping.inputLabel)}
+              .value=${inp.label}
+              ?readonly=${!this.canEdit}
+              @valueChange=${(e: IxValueEvent) => this.patch(relabelInput(this.working[this.selected], i, String(e.detail)))}
+            ></ix-input>
+            <ix-icon-button
+              ghost
+              icon="trashcan"
+              title=${localize(MSG.stateMapping.deleteInput)}
+              ?disabled=${!this.canEdit}
+              @click=${() => this.patch(removeInput(this.working[this.selected], i))}
+            ></ix-icon-button>
+          </div>`
+        )}
+      </div>
+      ${this.badInput >= 0 ? html`<div class="error">${localizeDir(MSG.stateMapping.inputKeyInvalid)}</div>` : ''}
+      <ix-button class="link" variant="secondary" ?disabled=${!this.canEdit} @click=${() => this.patch(addInput(this.working[this.selected], localize(MSG.stateMapping.newInputLabel)))}>
+        <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.stateMapping.addInput)}
+      </ix-button>
+    `;
+  }
+
+  private renameInputAt(index: number, key: string): void {
+    const mapping = this.working[this.selected];
+    const inputs = mapping.inputs ?? [];
+    if (key === inputs[index]?.key) {
+      this.badInput = -1;
+      return;
+    }
+    if (inputKeyError(key, inputs.filter((_, i) => i !== index).map((i) => i.key))) {
+      this.badInput = index;
+      return;
+    }
+    this.badInput = -1;
+    this.patch(renameInput(mapping, index, key));
+  }
+
+  /** States a rule "By the cause" gives: for a planned cause, for any other. */
+  private renderCauseStates(mapping: StateMapping): TemplateResult {
+    const cs = mapping.causeStates ?? { planned: mapping.fallback, unplanned: mapping.fallback };
+    return html`
+      <div class="subhead">${localizeDir(MSG.stateMapping.causeStatesHeading)}</div>
+      <div class="hint">${localizeDir(MSG.stateMapping.causeStatesHint)}</div>
+      <div class="grid2">
         <ix-select
-          .value=${rule.state}
-          @valueChange=${(e: IxValueEvent) => this.patchRule(i, { state: e.detail as MachineState })}
+          label=${localize(MSG.stateMapping.causePlanned)}
+          .value=${cs.planned}
+          ?readonly=${!this.canEdit}
+          @valueChange=${(e: IxValueEvent) => this.patch({ causeStates: { ...cs, planned: e.detail as MachineState } })}
         >
-          ${this.stateOptions(this.working[this.selected])}
+          ${this.stateOptions(mapping)}
         </ix-select>
-        <ix-number-input
-          label=${localize(MSG.stateMapping.min)}
-          .value=${rule.min ?? 0}
-          @valueChange=${(e: IxValueEvent) => this.patchRule(i, { min: Number(e.detail) })}
-        ></ix-number-input>
-        <ix-number-input
-          label=${localize(MSG.stateMapping.max)}
-          .value=${rule.max ?? 0}
-          @valueChange=${(e: IxValueEvent) => this.patchRule(i, { max: Number(e.detail) })}
-        ></ix-number-input>
-        <ix-icon-button
-          ghost
-          icon="trashcan"
-          @click=${() => this.removeRule(i)}
-        ></ix-icon-button>
+        <ix-select
+          label=${localize(MSG.stateMapping.causeUnplanned)}
+          .value=${cs.unplanned}
+          ?readonly=${!this.canEdit}
+          @valueChange=${(e: IxValueEvent) => this.patch({ causeStates: { ...cs, unplanned: e.detail as MachineState } })}
+        >
+          ${this.stateOptions(mapping)}
+        </ix-select>
       </div>
     `;
+  }
+
+  /** A rule: its state (or "By the cause"), its bounds on the main input (empty: none), its conditions, its place. */
+  private renderRule(rule: StateRule, i: number, count: number): TemplateResult {
+    const mapping = this.working[this.selected];
+    return html`
+      <div class="rule">
+        <div class="rule-row">
+          <ix-select
+            .value=${rule.state}
+            ?readonly=${!this.canEdit}
+            @valueChange=${(e: IxValueEvent) => this.setRuleState(i, e.detail as MachineState)}
+          >
+            ${this.stateOptions(mapping)}
+            <ix-select-item label=${localize(MSG.stateMapping.causeState)} value=${CAUSE_STATE}></ix-select-item>
+          </ix-select>
+          <ix-input
+            label=${localize(MSG.stateMapping.min)}
+            placeholder=${localize(MSG.stateMapping.boundsHint)}
+            .value=${boundText(rule.min)}
+            ?readonly=${!this.canEdit}
+            @valueChange=${(e: IxValueEvent) => this.replaceRule(i, withBounds(this.ruleAt(i), String(e.detail), boundText(this.ruleAt(i).max)))}
+          ></ix-input>
+          <ix-input
+            label=${localize(MSG.stateMapping.max)}
+            placeholder=${localize(MSG.stateMapping.boundsHint)}
+            .value=${boundText(rule.max)}
+            ?readonly=${!this.canEdit}
+            @valueChange=${(e: IxValueEvent) => this.replaceRule(i, withBounds(this.ruleAt(i), boundText(this.ruleAt(i).min), String(e.detail)))}
+          ></ix-input>
+          <span class="rule-actions">
+            <ix-icon-button ghost icon="chevron-up" title=${localize(MSG.stateMapping.moveUp)} ?disabled=${!this.canEdit || i === 0} @click=${() => this.patch(moveRule(this.working[this.selected], i, -1))}></ix-icon-button>
+            <ix-icon-button ghost icon="chevron-down" title=${localize(MSG.stateMapping.moveDown)} ?disabled=${!this.canEdit || i === count - 1} @click=${() => this.patch(moveRule(this.working[this.selected], i, 1))}></ix-icon-button>
+            <ix-icon-button ghost icon="trashcan" title=${localize(MSG.stateMapping.deleteRule)} ?disabled=${!this.canEdit} @click=${() => this.removeRule(i)}></ix-icon-button>
+          </span>
+        </div>
+        ${(rule.when ?? []).map((c, ci) => this.renderCondition(mapping, i, ci, conditionView(c)))}
+        <ix-button class="cond-add" variant="secondary" ghost ?disabled=${!this.canEdit} @click=${() => this.addCondition(i)}>
+          <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.stateMapping.addCondition)}
+        </ix-button>
+      </div>
+    `;
+  }
+
+  private renderCondition(mapping: StateMapping, ruleIndex: number, index: number, v: ConditionView): TemplateResult {
+    const set = (patch: Partial<ConditionView>): void => this.setCondition(ruleIndex, index, { ...v, ...patch });
+    const ranged = v.op === 'in' || v.op === 'out';
+    const ops: [ConditionOp, MultiLangString][] = [['eq', MSG.stateMapping.opEq], ['ne', MSG.stateMapping.opNe], ['in', MSG.stateMapping.opIn], ['out', MSG.stateMapping.opOut]];
+    return html`
+      <div class="cond-row">
+        <span class="cond-and">${localizeDir(MSG.stateMapping.ruleAll)}</span>
+        <ix-select label=${localize(MSG.stateMapping.conditionInput)} .value=${v.input} ?readonly=${!this.canEdit} @valueChange=${(e: IxValueEvent) => set({ input: String(e.detail) })}>
+          ${conditionInputs(mapping).map((inp) => html`<ix-select-item label=${inputLabel(inp)} value=${inp.key}></ix-select-item>`)}
+        </ix-select>
+        <ix-select .value=${v.op} ?readonly=${!this.canEdit} @valueChange=${(e: IxValueEvent) => set({ op: e.detail as ConditionOp })}>
+          ${ops.map(([op, label]) => html`<ix-select-item label=${localize(label)} value=${op}></ix-select-item>`)}
+        </ix-select>
+        ${ranged
+          ? html`<span class="cond-bounds">
+              <ix-input label=${localize(MSG.stateMapping.min)} placeholder=${localize(MSG.stateMapping.boundsHint)} .value=${v.min} ?readonly=${!this.canEdit} @valueChange=${(e: IxValueEvent) => set({ min: String(e.detail) })}></ix-input>
+              <ix-input label=${localize(MSG.stateMapping.max)} placeholder=${localize(MSG.stateMapping.boundsHint)} .value=${v.max} ?readonly=${!this.canEdit} @valueChange=${(e: IxValueEvent) => set({ max: String(e.detail) })}></ix-input>
+            </span>`
+          : html`<ix-input label=${localize(MSG.stateMapping.conditionValue)} .value=${v.value} ?readonly=${!this.canEdit} @valueChange=${(e: IxValueEvent) => set({ value: String(e.detail) })}></ix-input>`}
+        <ix-icon-button ghost icon="trashcan" title=${localize(MSG.stateMapping.deleteCondition)} ?disabled=${!this.canEdit} @click=${() => this.removeCondition(ruleIndex, index)}></ix-icon-button>
+      </div>
+    `;
+  }
+
+  private ruleAt(index: number): StateRule {
+    return this.working[this.selected].rules[index];
+  }
+
+  private replaceRule(index: number, rule: StateRule): void {
+    const mapping = this.working[this.selected];
+    this.patch({ rules: mapping.rules.map((r, i) => (i === index ? rule : r)) });
+  }
+
+  /** A rule's state; "By the cause" for the first time sets the two states from the fallback. */
+  private setRuleState(index: number, state: MachineState): void {
+    const mapping = this.working[this.selected];
+    this.patchRule(index, { state });
+    if (state === CAUSE_STATE && !mapping.causeStates) this.patch({ causeStates: { planned: mapping.fallback, unplanned: mapping.fallback } });
+  }
+
+  private addCondition(ruleIndex: number): void {
+    const rule = this.ruleAt(ruleIndex);
+    const first = (this.working[this.selected].inputs ?? [])[0]?.key ?? STATE_INPUT;
+    this.replaceRule(ruleIndex, withWhen(rule, [...(rule.when ?? []), { input: first, equals: 1 }]));
+  }
+
+  private setCondition(ruleIndex: number, index: number, v: ConditionView): void {
+    const rule = this.ruleAt(ruleIndex);
+    this.replaceRule(ruleIndex, withWhen(rule, (rule.when ?? []).map((c, i) => (i === index ? conditionOf(v) : c))));
+  }
+
+  private removeCondition(ruleIndex: number, index: number): void {
+    const rule = this.ruleAt(ruleIndex);
+    this.replaceRule(ruleIndex, withWhen(rule, (rule.when ?? []).filter((_, i) => i !== index)));
   }
 
   private selectById(id: string): void {
@@ -376,6 +568,13 @@ export class MfStateMappingDialog extends LitElement {
   }
 }
 
+/** An input as a condition shows it: the main one and the declared state by name, the others by label (key). */
+function inputLabel(inp: { key: string; label: string }): string {
+  if (inp.key === STATE_INPUT) return localize(MSG.stateMapping.mainInput);
+  if (inp.key === DECLARED_INPUT) return localize(MSG.stateMapping.declaredInput);
+  return `${inp.label} (${inp.key})`;
+}
+
 function extraStyles(): ReturnType<typeof css> {
   return css`
     .selector {
@@ -392,11 +591,63 @@ function extraStyles(): ReturnType<typeof css> {
       flex-direction: column;
       gap: 0.4rem;
     }
+    .rule {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+      padding: 0.4rem;
+      border: 1px solid var(--theme-color-soft-bdr);
+      border-radius: var(--theme-default-border-radius);
+    }
     .rule-row {
       display: grid;
       grid-template-columns: 1.4fr 1fr 1fr auto;
       gap: 0.4rem;
-      align-items: center;
+      align-items: end;
+    }
+    .rule-actions {
+      display: flex;
+    }
+    .cond-row {
+      display: grid;
+      grid-template-columns: auto 1.3fr 0.7fr 1.6fr auto;
+      gap: 0.4rem;
+      align-items: end;
+      padding-left: 0.75rem;
+    }
+    .cond-and {
+      color: var(--theme-color-soft-text);
+      font-size: 0.8rem;
+      padding-bottom: 0.45rem;
+    }
+    .cond-bounds {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.4rem;
+    }
+    .cond-add {
+      align-self: flex-start;
+      margin-left: 0.75rem;
+    }
+    .inputs {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    .input-row {
+      display: grid;
+      grid-template-columns: 1fr 2fr auto;
+      gap: 0.4rem;
+      align-items: end;
+    }
+    .hint {
+      color: var(--theme-color-soft-text);
+      font-size: 0.8rem;
+      margin-bottom: 0.3rem;
+    }
+    .error {
+      color: var(--theme-color-alarm);
+      font-size: 0.8rem;
     }
     .link {
       margin-top: 0.5rem;

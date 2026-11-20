@@ -28,10 +28,23 @@ import {
   type GlbResource,
   type GraphicKind,
   type MachineDef,
-  type StopCause
+  type StopCause,
+  type StopCauseCatalog
 } from '../types.js';
+import {
+  DEFAULT_CATALOG_ID,
+  STOPCAUSE_DP,
+  STOPCAUSE_TYPE,
+  catalogDp,
+  catalogIdOfDp,
+  catalogsFromDps,
+  defaultCatalog,
+  normaliseCatalogs
+} from '../stop-catalogs.js';
 import { DEMO_ATELIER } from './demo-layout.js';
+import { guardedWritesBase, routedWriteUrl } from './write-routing.js';
 import { parseModuleSettings, type FleetModuleSettings } from '../opening-view.js';
+import { declaredStateDpe } from '../state-eval.js';
 
 const CONFIG_TYPE = 'MachineFleet3D_Config';
 const DP_PREFIX = 'MachineFleet3D_';
@@ -40,8 +53,11 @@ const RESOURCE_TYPES: Record<GraphicKind, { type: string; prefix: string }> = {
   glb: { type: 'MachineFleet3D_Glb', prefix: 'MachineFleet3D_Glb_' },
   billboard: { type: 'MachineFleet3D_Billboard', prefix: 'MachineFleet3D_Billboard_' }
 };
-const STOPCAUSE_TYPE = 'MachineFleet3D_StopCauses';
-const STOPCAUSE_DP = 'MachineFleet3D_StopCauses';
+/** Elements of a stop-cause catalogue's datapoint (#74: `name` added to the single catalogue's type). */
+const STOPCAUSE_ELEMENTS = [
+  { name: 'json', type: 'String', refName: '' },
+  { name: 'name', type: 'String', refName: '' }
+];
 /** Shared GxP audit DP for the whole fleet feature (atelier CRUD + the KPI / stop-cause sub-pages). */
 const AUDIT_DP = 'AuditTrail_Fleet';
 /**
@@ -61,15 +77,13 @@ const SETTINGS_DP = 'MachineFleet3D_Settings';
 const REF_SCHEME = 'dp:';
 const DATA_URL_SCHEME = 'data:';
 const CREATE_TYPE_URL = '/api/para/dptype/create';
+const CHANGE_TYPE_URL = '/api/para/dptype/change';
 const CREATE_DP_URL = '/api/para/dp/create';
 const DP_SET_URL = '/api/para/dp/set';
 const DELETE_DP_BASE = '/api/para/dp';
-/**
- * The Fleet's guarded writes (backend of wui-fleet-closures): the same endpoints, each checked on the server
- * against the role it needs. Used when deployed; otherwise the writes go to /api/para.
- */
-const FLEET_API = '/api/fleet';
-const PARA_API = '/api/para';
+// The Fleet's guarded writes (fleet-closures' backend) are turned on by `data/guarded-writes.js`, imported
+// only by the pages that declare fleet-closures (write-routing.ts): this file names no other module's backend.
+export { routeWritesThrough } from './write-routing.js';
 const ID_RADIX = 36;
 const HTTP_BAD_REQUEST = 400;
 
@@ -112,7 +126,9 @@ export class FleetStore {
   private memory: Atelier[] | null = null;
   /** The module settings while offline (no backend). */
   private moduleSettingsMem: FleetModuleSettings | null = null;
-  /** Whether /api/fleet answers (asked once, on the first write). */
+  /** The stop-cause catalogues while offline (no backend). */
+  private catalogsMem: StopCauseCatalog[] | null = null;
+  /** Whether the guarded writes answer (asked once, on the first write, when a page set them). */
   private fleetApi: Promise<boolean> | null = null;
   private typeReady = false;
   private readonly resourceReady = new Map<GraphicKind, boolean>();
@@ -316,33 +332,76 @@ export class FleetStore {
     }
   }
 
-  // --- stop-cause catalog (single app-level datapoint) -----------------------
+  // --- stop-cause catalogues (#74) ------------------------------------------------
 
-  async listStopCauses(): Promise<StopCause[]> {
-    const ok = await this.ensureType(STOPCAUSE_TYPE, [{ name: 'json', type: 'String', refName: '' }]);
+  /**
+   * The stop-cause catalogues, one datapoint each of type `MachineFleet3D_StopCauses`: the default one is
+   * `MachineFleet3D_StopCauses` (the single catalogue of before), the others `MachineFleet3D_StopCauses_<id>`.
+   */
+  async listCatalogs(): Promise<StopCauseCatalog[]> {
     const api = this.api;
-    if (!ok || !api) return [];
+    if (this.offline || !api) return this.catalogsMem ?? catalogsFromDps([]);
+    if (!(await this.ensureType(STOPCAUSE_TYPE, STOPCAUSE_ELEMENTS))) return catalogsFromDps([]);
+    let names: string[] = [];
     try {
-      const raw = await firstValueFrom(api.dpGet(`${STOPCAUSE_DP}.json`));
-      const json = this.extractString(raw);
-      return json ? (JSON.parse(json) as StopCause[]) : [];
+      names = ((await firstValueFrom(api.dpNames(`${STOPCAUSE_DP}*`, STOPCAUSE_TYPE))) as string[]) ?? [];
     } catch {
-      return [];
+      names = [];
     }
+    const read = async (dpe: string): Promise<string | undefined> => {
+      try {
+        return this.extractString(await firstValueFrom(api.dpGet(dpe)));
+      } catch {
+        return undefined;
+      }
+    };
+    const dps = names.map((n) => catalogIdOfDp(n)).filter((id): id is string => id !== null).map(catalogDp);
+    // `name` is missing on the type of before #74 until a first save adds it: read apart, may fail.
+    return catalogsFromDps(await Promise.all(dps.map(async (dp) => ({ dp, json: await read(`${dp}.json`), name: await read(`${dp}.name`) }))));
   }
 
-  async saveStopCauses(causes: StopCause[]): Promise<boolean> {
-    const ok = await this.ensureType(STOPCAUSE_TYPE, [{ name: 'json', type: 'String', refName: '' }]);
-    if (!ok) return false;
-    const before = this.offline ? null : await this.listStopCauses();
+  /**
+   * Save the catalogues (made valid: the default one always there, unique ids): each in its datapoint (its
+   * causes, a plain list, and its name), created when new; the datapoint of a catalogue no longer there is
+   * deleted. The type of before #74 is given the `name` element first. Traced in the audit trail.
+   */
+  async saveCatalogs(catalogs: StopCauseCatalog[]): Promise<boolean> {
+    const next = normaliseCatalogs(catalogs);
+    if (this.offline || !this.api) {
+      this.catalogsMem = next;
+      return true;
+    }
+    if (!(await this.ensureType(STOPCAUSE_TYPE, STOPCAUSE_ELEMENTS))) return false;
+    if (!(await this.addMissingElements(STOPCAUSE_TYPE, STOPCAUSE_ELEMENTS))) return false;
+    const before = await this.listCatalogs();
     try {
-      await this.ensureDp(STOPCAUSE_DP, STOPCAUSE_TYPE);
-      await this.send(DP_SET_URL, jsonPost({ dpeName: `${STOPCAUSE_DP}.json`, value: JSON.stringify(causes) }));
-      this.traceBlob('StopCauseCatalog', STOPCAUSE_DP, before, causes);
+      for (const c of next) {
+        const dp = catalogDp(c.id);
+        if (c.id === DEFAULT_CATALOG_ID || !before.some((b) => b.id === c.id)) await this.ensureDp(dp, STOPCAUSE_TYPE);
+        await this.send(DP_SET_URL, jsonPost({ dpeNames: [`${dp}.json`, `${dp}.name`], values: [JSON.stringify(c.causes), c.name] }));
+      }
+      for (const c of before) {
+        if (c.id === DEFAULT_CATALOG_ID || next.some((n) => n.id === c.id)) continue;
+        const url = `${DELETE_DP_BASE}/${encodeURIComponent(catalogDp(c.id))}?dpType=${encodeURIComponent(STOPCAUSE_TYPE)}`;
+        await this.send(url, { method: 'DELETE' });
+      }
+      this.traceBlob('StopCauseCatalogs', STOPCAUSE_DP, before, next);
       return true;
     } catch {
       return false;
     }
+  }
+
+  /** The default catalogue's causes (the single catalogue of before #74). */
+  async listStopCauses(): Promise<StopCause[]> {
+    return defaultCatalog(await this.listCatalogs()).causes;
+  }
+
+  /** Replace the default catalogue's causes, the other catalogues kept. */
+  async saveStopCauses(causes: StopCause[]): Promise<boolean> {
+    const catalogs = await this.listCatalogs();
+    const def = defaultCatalog(catalogs);
+    return this.saveCatalogs(catalogs.map((c) => (c.id === def.id ? { ...c, causes } : c)));
   }
 
   // --- catalogue of the plant's machines ---------------------------------------
@@ -436,6 +495,22 @@ export class FleetStore {
    * redundancy peers (`*_2`). A group is usable only when its `.active` flag is
    * set (the backend group is enabled) — inactive groups can't archive. Returns
    * bare group names (system prefix stripped). */
+  /**
+   * The state an operator declares for a machine (winccoa-fra-msp-stma#339): written in Machine Fleet's datapoint
+   * of its state (`declared`, created by the state manager; the write needs the role `declare`), traced in the
+   * audit trail with the previous value and the reason. False when it could not be written.
+   */
+  async declareState(machineId: string, machineName: string, before: string, after: string, reason: string): Promise<boolean> {
+    if (this.offline) return false;
+    try {
+      await this.send(DP_SET_URL, jsonPost({ dpeName: declaredStateDpe(machineId), value: after }));
+    } catch {
+      return false;
+    }
+    this.trace({ action: 'UPDATE', item: machineName, itemType: 'DeclaredState', oldval: before, newval: after, reason });
+    return true;
+  }
+
   async listArchiveGroups(): Promise<string[]> {
     const api = this.api;
     if (!api) return [];
@@ -585,6 +660,31 @@ export class FleetStore {
     }
   }
 
+  /**
+   * Add to an existing type the elements it lacks (`dptype/change` keeps its datapoints and their values),
+   * e.g. `name` on the stop-cause catalogue type of before #74. True when none lacks, or once added.
+   */
+  private async addMissingElements(
+    typeName: string,
+    children: { name: string; type: string; refName: string }[]
+  ): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/para/dptype/${encodeURIComponent(typeName)}`);
+      if (!res.ok) return false;
+      const body = (await res.json()) as { structure?: { children?: { name: string; type: string; refName?: string }[] } };
+      const have = body.structure?.children ?? [];
+      const missing = children.filter((c) => !have.some((h) => h.name === c.name));
+      if (missing.length === 0) return true;
+      const changed = await fetch(
+        await this.writeUrl(CHANGE_TYPE_URL),
+        jsonPost({ typeName, structure: { name: typeName, type: 'Struct', children: [...have, ...missing] } })
+      );
+      return changed.ok;
+    } catch {
+      return false;
+    }
+  }
+
   private async ensureDp(name: string, type: string): Promise<void> {
     try {
       await this.send(CREATE_DP_URL, jsonPost({ dpName: name, dpType: type }));
@@ -644,12 +744,14 @@ export class FleetStore {
     return undefined;
   }
 
-  /** A write's URL: through the Fleet's guarded writes when they are deployed, else PARA's. */
+  /** A write's URL: through the Fleet's guarded writes when a page set them and they answer, else PARA's. */
   private async writeUrl(url: string): Promise<string> {
-    this.fleetApi ??= fetch(`${FLEET_API}/health`)
+    const base = guardedWritesBase();
+    if (!base) return url;
+    this.fleetApi ??= fetch(`${base}/health`)
       .then((r) => r.ok)
       .catch(() => false);
-    return (await this.fleetApi) && url.startsWith(PARA_API) ? FLEET_API + url.slice(PARA_API.length) : url;
+    return routedWriteUrl(url, base, await this.fleetApi);
   }
 
   private async send(url: string, init: RequestInit): Promise<void> {

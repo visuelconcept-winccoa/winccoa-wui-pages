@@ -10,8 +10,10 @@
  * the overview and the atelier views.
  * The free tags the user puts on a machine of an atelier ({@link MachineDef.cardTags}) are one
  * more dimension, {@link CARD_TAGS_DIMENSION}.
- * The work-centre dimensions an integration may still write ("Îlot", "Workcenter") are not
- * offered nor filtered on: the fleet has no work-centre notion (#66).
+ * The work-centre dimension an integration may still write ("Workcenter") is not offered nor
+ * filtered on: the fleet has no work-centre notion (#66). The "Îlot" dimension is a filter again:
+ * the supervision's îlot (a location in the plant, SDS 2.2 SL-ORG-01 / SL-LOB-05) is one of the
+ * filters its acceptance requires, beside UAP and activity.
  */
 import { settingObject, settingsCache, stringList } from './settings-cache.js';
 import type { MachineDef } from './types.js';
@@ -20,7 +22,7 @@ import type { MachineDef } from './types.js';
 export const CARD_TAGS_DIMENSION = 'Étiquettes';
 
 /** Tag dimensions left out of the filters (compared without case, accents, spaces or dashes). */
-const EXCLUDED_DIMENSIONS = new Set(['ilot', 'workcenter', 'workcentre']);
+const EXCLUDED_DIMENSIONS = new Set(['workcenter', 'workcentre']);
 
 const normDimension = (key: string): string =>
   key

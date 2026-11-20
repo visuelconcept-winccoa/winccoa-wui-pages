@@ -51,7 +51,27 @@ export const MSG = {
     ),
     remove: ml('Delete', 'Supprimer', 'Löschen'),
     close: ml('Close', 'Fermer', 'Schließen'),
-    save: ml('Save', 'Enregistrer', 'Speichern')
+    save: ml('Save', 'Enregistrer', 'Speichern'),
+    catalog: ml('Catalogue', 'Référentiel', 'Katalog'),
+    catalogName: ml('Name of the catalogue', 'Nom du référentiel', 'Name des Katalogs'),
+    catalogDefaultHint: ml(
+      'Used by every machine that has no catalogue of its own',
+      'Utilisé par toute machine sans référentiel propre',
+      'Für jede Maschine ohne eigenen Katalog'
+    ),
+    newCatalog: ml('New', 'Nouveau', 'Neu'),
+    duplicateCatalog: ml('Duplicate', 'Dupliquer', 'Duplizieren'),
+    makeDefault: ml('Make it the default', 'Définir comme référentiel par défaut', 'Als Standard festlegen'),
+    confirmMakeDefault: ml('Confirm the swap with the default', 'Confirmer l’échange avec le référentiel par défaut', 'Tausch mit dem Standard bestätigen'),
+    makeDefaultHint: ml(
+      'The default catalogue takes the name and causes of this one, and this one those of the default: whoever had chosen it gets the former default.',
+      'Le référentiel par défaut prend le nom et les causes de celui-ci, et celui-ci ceux du référentiel par défaut : qui l’avait choisi reçoit l’ancien référentiel par défaut.',
+      'Der Standardkatalog übernimmt Name und Ursachen dieses Katalogs und umgekehrt: Wer ihn gewählt hatte, erhält den bisherigen Standard.'
+    ),
+    deleteCatalog: ml('Delete the catalogue', 'Supprimer le référentiel', 'Katalog löschen'),
+    confirmDeleteCatalog: ml('Confirm the deletion', 'Confirmer la suppression', 'Löschen bestätigen'),
+    newCatalogName: ml('New catalogue', 'Nouveau référentiel', 'Neuer Katalog'),
+    copyOf: ml('Copy of', 'Copie de', 'Kopie von')
   },
   classification: {
     unplanned: ml('Unplanned stop', 'Arrêt non planifié', 'Ungeplanter Stopp'),

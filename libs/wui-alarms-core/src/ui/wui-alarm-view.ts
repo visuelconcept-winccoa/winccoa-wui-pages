@@ -125,6 +125,9 @@ import './wui-alarm-table.js';
 const HOUR_MS = 3_600_000;
 /** How long a confirmation ("3 alarms acknowledged") stays on screen. */
 const FLASH_MS = 4000;
+/** First delay before subscribing the live alarms again after a failure, then doubled up to the cap. */
+const LIVE_RETRY_MS = 5_000;
+const LIVE_RETRY_MAX_MS = 60_000;
 
 /** Density preset. `panel` is the embedded variant. */
 export type AlarmViewLayout = 'page' | 'panel';
@@ -303,6 +306,8 @@ export class WuiAlarmView extends LitElement {
   @state() private flashText = '';
   @state() private truncated = false;
   @state() private updatedAt = 0;
+  /** The live stream failed: the last list stays, a new subscription is attempted (see {@link onLiveFailure}). */
+  @state() private stale = false;
   @state() private confirmation: Confirmation | null = null;
 
   /** WinCC OA write permission of the connected user (`dpSet`) — the kit's acknowledgement needs it. */
@@ -320,6 +325,9 @@ export class WuiAlarmView extends LitElement {
   /** Identity key of the classifiers and keep rules the store was built with. */
   private extensionsKey = '';
   private flashTimer = 0;
+  /** Pending re-subscription of the live stream after a failure, and the next delay (backs off to the cap). */
+  private retryTimer = 0;
+  private retryMs = LIVE_RETRY_MS;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -336,6 +344,7 @@ export class WuiAlarmView extends LitElement {
     this.sub.unsubscribe();
     this.permissionSub.unsubscribe();
     window.clearTimeout(this.flashTimer);
+    window.clearTimeout(this.retryTimer);
     this.confirmation?.resolve(false);
     this.confirmation = null;
   }
@@ -901,8 +910,10 @@ export class WuiAlarmView extends LitElement {
       this.updatedAt === 0 ? '--' : localizeDate(new Date(this.updatedAt), undefined, DatetimeFormat.TimeWithSeconds);
     return html`
       <span class="status">
-        <span class=${this.held === null ? 'dot' : 'dot held'}></span>
-        ${this.source === 'active' ? localizeDir(MSG.view.live) : nothing} ${localizeDir(MSG.view.updatedAt)} ${clock}
+        <span class=${this.stale ? 'dot stale' : this.held === null ? 'dot' : 'dot held'}></span>
+        ${this.source === 'active' ? localizeDir(MSG.view.live) : nothing} ${localizeDir(MSG.view.updatedAt)}
+        <span class="clock">${clock}</span>
+        ${this.stale ? html`<span class="retry">${localizeDir(MSG.view.liveRetry)}</span>` : nothing}
       </span>
       <ix-icon-button
         variant="tertiary"
@@ -1105,22 +1116,50 @@ export class WuiAlarmView extends LitElement {
     }
     const store = this.resolveStore();
     if (store === null) return;
-    this.sub.unsubscribe();
-    this.sub = new Subscription();
+    window.clearTimeout(this.retryTimer);
+    this.retryMs = LIVE_RETRY_MS;
+    this.stale = false;
     this.notice = '';
     if (this.source === 'active') {
       this.truncated = false;
       this.loading = this.snapshot.length === 0;
-      this.sub.add(
-        store.live$().subscribe({
-          next: (alarms) => this.onLive(alarms),
-          error: () => this.onFailure()
-        })
-      );
+      this.subscribeLive(store);
       void this.loadStatsWindow(store);
       return;
     }
+    this.sub.unsubscribe();
+    this.sub = new Subscription();
     await this.loadHistory(store);
+  }
+
+  /** (Re)subscribe the live alarms; the rows on screen stay until the first answer. */
+  private subscribeLive(store: AlarmStore): void {
+    this.sub.unsubscribe();
+    this.sub = new Subscription();
+    this.sub.add(
+      store.live$().subscribe({
+        next: (alarms) => this.onLive(alarms),
+        error: () => this.onLiveFailure(store)
+      })
+    );
+  }
+
+  /**
+   * The live stream failed (often a hiccup of the web server's alert service): a panel that already shows alarms
+   * keeps them, marks the update time as failed and subscribes again after a delay that backs off to a cap — rather
+   * than turning a short failure into an empty list behind a banner. Only a panel that never read anything says so.
+   */
+  private onLiveFailure(store: AlarmStore): void {
+    this.loading = false;
+    this.stale = true;
+    if (this.updatedAt === 0) this.notice = localize(MSG.view.loadFailed);
+    window.clearTimeout(this.retryTimer);
+    const delay = this.retryMs;
+    this.retryMs = Math.min(this.retryMs * 2, LIVE_RETRY_MAX_MS);
+    this.retryTimer = window.setTimeout(() => {
+      if (!this.isConnected || this.source !== 'active' || this.store !== store) return;
+      this.subscribeLive(store);
+    }, delay);
   }
 
   private async loadHistory(store: AlarmStore): Promise<void> {
@@ -1142,6 +1181,11 @@ export class WuiAlarmView extends LitElement {
   private onLive(alarms: readonly Alarm[]): void {
     this.loading = false;
     this.updatedAt = Date.now();
+    if (this.stale) {
+      this.stale = false;
+      this.retryMs = LIVE_RETRY_MS;
+      if (this.notice === localize(MSG.view.loadFailed)) this.notice = '';
+    }
     // Hold the update rather than re-order the table under an open selection.
     if (this.selection.size > 0) {
       this.held = alarms;

@@ -2,9 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Stop-cause catalog manager (single-level). Each entry has a code, a
- * description and a time classification (unplanned / planned / production).
- * Persisted as one app-level datapoint via {@link FleetStore}. Emits `wui:close`.
+ * Stop-cause catalogues manager (#74): several named catalogues, one datapoint each; the default one (the
+ * single catalogue of before, used by every machine without a catalogue of its own) is always there. Each
+ * has entries with a code, a description and a time classification (unplanned / planned). A catalogue is
+ * chosen, created, duplicated, renamed or deleted (not the default; deletion confirmed by a second click), or made
+ * the default one: its name and causes are swapped with the default's, on a second click. A catalogue not saved yet
+ * takes its id from its name as it is renamed (the id names its datapoint).
+ * All catalogues are saved together via {@link FleetStore.saveCatalogs}. Import / export (JSON) act on the
+ * catalogue shown.
+ * Emits `wui:close`.
  */
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
@@ -13,8 +19,10 @@ import { property, query, state } from 'lit/decorators.js';
 import type { FleetStore } from '../data/fleet-store.js';
 import {
   type StopCause,
+  type StopCauseCatalog,
   type StopClassification
 } from '../types.js';
+import { defaultCatalog, newCatalogId, normaliseCatalogs } from '../stop-catalogs.js';
 import { MSG, localize, localizeDir } from '../i18n.js';
 import { dialogStyles } from './dialog-styles.js';
 import { overlayClicked, overlayDown } from './overlay-dismiss.js';
@@ -48,8 +56,31 @@ export class MfStopCauses extends LitElement {
   /** When false, the catalog is view-only: editing/saving is disabled. */
   @property({ type: Boolean }) canEdit = true;
 
-  @state() private causes: StopCause[] = [];
+  @state() private catalogs: StopCauseCatalog[] = [];
+  /** The catalogue shown. */
+  @state() private currentId = '';
+  /** The catalogue waiting for a second click to be deleted. */
+  @state() private confirmDeleteId = '';
+  /** The catalogue waiting for a second click to become the default one. */
+  @state() private confirmDefaultId = '';
+  /** Ids of the catalogues as saved: one not saved yet takes its id from its name. */
+  private savedIds = new Set<string>();
   @state() private busy = false;
+
+  /** The catalogue shown (the default one when none chosen yet). */
+  private get current(): StopCauseCatalog {
+    return this.catalogs.find((c) => c.id === this.currentId) ?? defaultCatalog(this.catalogs);
+  }
+
+  /** The causes of the catalogue shown. */
+  private get causes(): StopCause[] {
+    return this.current.causes;
+  }
+
+  private set causes(causes: StopCause[]) {
+    const id = this.current.id;
+    this.catalogs = this.catalogs.map((c) => (c.id === id ? { ...c, causes } : c));
+  }
 
   @query('.import-input') private importInput!: HTMLInputElement;
 
@@ -63,14 +94,14 @@ export class MfStopCauses extends LitElement {
             ${this.canEdit
               ? html`<ix-icon-button
                   ghost
-                  icon="upload"
+                  icon="download"
                   title=${localize(MSG.causes.importJson)}
                   @click=${this.triggerImport}
                 ></ix-icon-button>`
               : ''}
             <ix-icon-button
               ghost
-              icon="download"
+              icon="upload"
               title=${localize(MSG.causes.exportJson)}
               ?disabled=${this.causes.length === 0}
               @click=${this.exportCauses}
@@ -84,6 +115,7 @@ export class MfStopCauses extends LitElement {
             @change=${this.onImportFile}
           />
           <div class="panel-body">
+            ${this.renderCatalogBar()}
             <div class="cause-row cause-head">
               <span>${localizeDir(MSG.causes.colCode)}</span><span>${localizeDir(MSG.causes.colDescription)}</span><span>${localizeDir(MSG.causes.colClassification)}</span><span>${localizeDir(MSG.causes.colDefault)}</span
               ><span></span>
@@ -110,6 +142,127 @@ export class MfStopCauses extends LitElement {
 
   protected override firstUpdated(_changed: PropertyValues): void {
     void this.reload();
+  }
+
+  /** Which catalogue (★ the default one) and its name; new, duplicate, make default, delete. */
+  private renderCatalogBar(): TemplateResult {
+    const ro = !this.canEdit;
+    const cur = this.current;
+    const isDefault = cur.isDefault === true;
+    return html`
+      <div class="catalog-bar">
+        <ix-select
+          label=${localize(MSG.causes.catalog)}
+          title=${localize(MSG.causes.catalogDefaultHint)}
+          .value=${cur.id}
+          @valueChange=${(e: IxValueEvent) => {
+            this.currentId = String(e.detail);
+            this.confirmDeleteId = '';
+            this.confirmDefaultId = '';
+          }}
+        >
+          ${this.catalogs.map(
+            (c) => html`<ix-select-item label=${c.isDefault ? `${c.name} ★` : c.name} value=${c.id}></ix-select-item>`
+          )}
+        </ix-select>
+        <ix-input
+          label=${localize(MSG.causes.catalogName)}
+          ?disabled=${ro}
+          .value=${cur.name}
+          @valueChange=${(e: IxValueEvent) => this.renameCurrent(String(e.detail))}
+        ></ix-input>
+        ${ro
+          ? ''
+          : html`<span class="catalog-actions">
+              <ix-button variant="secondary" @click=${() => this.addCatalog(false)}>
+                <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.causes.newCatalog)}
+              </ix-button>
+              <ix-button variant="secondary" @click=${() => this.addCatalog(true)}>
+                <ix-icon name="duplicate" slot="icon"></ix-icon>${localizeDir(MSG.causes.duplicateCatalog)}
+              </ix-button>
+              ${isDefault
+                ? ''
+                : html`<ix-button
+                    variant=${this.confirmDefaultId === cur.id ? 'primary' : 'secondary'}
+                    title=${localize(MSG.causes.makeDefaultHint)}
+                    @click=${() => this.makeDefault()}
+                  >
+                    <ix-icon name="star" slot="icon"></ix-icon>${localizeDir(
+                      this.confirmDefaultId === cur.id ? MSG.causes.confirmMakeDefault : MSG.causes.makeDefault
+                    )}
+                  </ix-button>`}
+              <ix-button
+                variant=${this.confirmDeleteId === cur.id ? 'primary' : 'secondary'}
+                ?disabled=${isDefault}
+                @click=${() => this.deleteCurrent()}
+              >
+                <ix-icon name="trashcan" slot="icon"></ix-icon>${localizeDir(
+                  this.confirmDeleteId === cur.id ? MSG.causes.confirmDeleteCatalog : MSG.causes.deleteCatalog
+                )}
+              </ix-button>
+            </span>`}
+      </div>
+    `;
+  }
+
+  /** Rename the catalogue shown; one not saved yet takes its id from the new name. */
+  private renameCurrent(name: string): void {
+    const id = this.current.id;
+    const fresh = !this.savedIds.has(id) && this.current.isDefault !== true;
+    const nextId = fresh ? newCatalogId(name, this.catalogs.filter((c) => c.id !== id).map((c) => c.id)) : id;
+    this.catalogs = this.catalogs.map((c) => (c.id === id ? { ...c, id: nextId, name } : c));
+    if (nextId !== id) {
+      this.currentId = nextId;
+      this.confirmDeleteId = '';
+      this.confirmDefaultId = '';
+    }
+  }
+
+  /**
+   * Make the catalogue shown the default one, on a second click: the default datapoint takes its name and causes,
+   * it takes the default's. Whoever had chosen it (a workcenter, a machine) then gets the former default's causes.
+   */
+  private makeDefault(): void {
+    const cur = this.current;
+    if (cur.isDefault) return;
+    if (this.confirmDefaultId !== cur.id) {
+      this.confirmDefaultId = cur.id;
+      this.confirmDeleteId = '';
+      return;
+    }
+    const def = defaultCatalog(this.catalogs);
+    this.catalogs = this.catalogs.map((c) => {
+      if (c.id === def.id) return { ...c, name: cur.name, causes: cur.causes };
+      if (c.id === cur.id) return { ...c, name: def.name, causes: def.causes };
+      return c;
+    });
+    this.currentId = def.id;
+    this.confirmDefaultId = '';
+  }
+
+  /** A new catalogue, empty or a copy of the one shown; shown at once. */
+  private addCatalog(copy: boolean): void {
+    const name = copy ? `${localize(MSG.causes.copyOf)} ${this.current.name}` : localize(MSG.causes.newCatalogName);
+    const id = newCatalogId(name, this.catalogs.map((c) => c.id));
+    const causes = copy ? this.current.causes.map((c) => ({ ...c })) : [];
+    this.catalogs = [...this.catalogs, { id, name, causes }];
+    this.currentId = id;
+    this.confirmDeleteId = '';
+    this.confirmDefaultId = '';
+  }
+
+  /** Delete the catalogue shown, on a second click; never the default. */
+  private deleteCurrent(): void {
+    const cur = this.current;
+    if (cur.isDefault) return;
+    if (this.confirmDeleteId !== cur.id) {
+      this.confirmDeleteId = cur.id;
+      this.confirmDefaultId = '';
+      return;
+    }
+    this.catalogs = this.catalogs.filter((c) => c.id !== cur.id);
+    this.currentId = defaultCatalog(this.catalogs).id;
+    this.confirmDeleteId = '';
   }
 
   private renderRow(c: StopCause, i: number): TemplateResult {
@@ -157,7 +310,10 @@ export class MfStopCauses extends LitElement {
   }
 
   private async reload(): Promise<void> {
-    if (this.store) this.causes = await this.store.listStopCauses();
+    if (!this.store) return;
+    this.catalogs = await this.store.listCatalogs();
+    this.savedIds = new Set(this.catalogs.map((c) => c.id));
+    this.currentId = defaultCatalog(this.catalogs).id;
   }
 
   private patch(index: number, patch: Partial<StopCause>): void {
@@ -180,7 +336,7 @@ export class MfStopCauses extends LitElement {
   private async save(): Promise<void> {
     if (!this.store || this.busy) return;
     this.busy = true;
-    const ok = await this.store.saveStopCauses(this.causes);
+    const ok = await this.store.saveCatalogs(normaliseCatalogs(this.catalogs));
     this.busy = false;
     if (ok) this.close();
   }
@@ -190,7 +346,7 @@ export class MfStopCauses extends LitElement {
     const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'causes-arret.json';
+    link.download = `causes-arret-${this.current.id}.json`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -249,6 +405,20 @@ function extraStyles(): ReturnType<typeof css> {
   return css`
     .panel.causes {
       width: 720px;
+    }
+    .catalog-bar {
+      display: grid;
+      grid-template-columns: 14rem 1fr;
+      gap: 0.5rem 0.75rem;
+      align-items: end;
+      padding-bottom: 0.75rem;
+      margin-bottom: 0.75rem;
+      border-bottom: 1px solid var(--theme-color-soft-bdr);
+    }
+    .catalog-actions {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: 0.5rem;
     }
     .cause-row {
       display: grid;

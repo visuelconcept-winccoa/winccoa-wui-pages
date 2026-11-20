@@ -44,9 +44,11 @@ import {
 import { AliAssetReader, type AliAssetInfo } from '../data/ali-assets.js';
 import { normDp, toNumber } from '../data/dp-utils.js';
 import type { FleetStore } from '../data/fleet-store.js';
-import { MSG, confirmDeleteAtelierMsg, localize, localizeDir } from '../i18n.js';
+import { MSG, confirmDeleteAtelierMsg, localize, localizeDir, machineTypeLabel } from '../i18n.js';
+import { uniqueName } from '../symbol-names.js';
 import { SceneController } from '../scene/scene-controller.js';
-import type { OtherSymbol } from './mf-symbol-wizard.js';
+import type { OtherSymbol, SymbolImport } from './mf-symbol-wizard.js';
+import { applyImport } from '../symbol-import.js';
 import {
   loadDefaultPage,
   loadUserViews,
@@ -58,6 +60,8 @@ import {
 /** Viewpoints of the atelier, for everyone (role `edit`), or the user's own (#60). */
 type VpScope = 'public' | 'mine';
 import './mf-symbol-wizard.js';
+import { causesFor } from '@visuelconcept-winccoa/wui-fleet-core/stop-catalogs.js';
+import { liveState, liveTargets } from '@visuelconcept-winccoa/wui-fleet-core/state-eval.js';
 import {
   DEFAULT_NAV_CORNER,
   DEFAULT_STATE_MAPPINGS,
@@ -78,8 +82,7 @@ import {
   placeMachine,
   resolveConnected,
   resolveDashboardMode,
-  resolveDisplaySlots,
-  resolveState,
+  shownSlots,
   resolveTrsColor,
   stateColor,
   stateLabel,
@@ -94,6 +97,7 @@ import {
   type PlacementMarker,
   type StateMapping,
   type StopCause,
+  type StopCauseCatalog,
   type TrsThresholds,
   type Viewpoint
 } from '../types.js';
@@ -127,6 +131,7 @@ import {
 } from '@visuelconcept-winccoa/wui-fleet-core/opening-view.js';
 import './mf-config-panel.js';
 import '@visuelconcept-winccoa/wui-kit/ui/wui-confirm-dialog.js';
+import './mf-reason-dialog.js';
 import './mf-graphics-catalog.js';
 import './mf-filter-bar.js';
 import './mf-machine-dashboard.js';
@@ -139,10 +144,10 @@ interface DpEmission {
   value: unknown[];
 }
 type DpKind =
-  | 'state'
+  | 'input'
   | 'kpi'
   | 'kpiCalc'
-  | 'stopCause'
+  | 'cause'
   | 'workOrder'
   | 'operation'
   | 'alarmCode'
@@ -154,6 +159,10 @@ interface DpTarget {
   kpiIndex?: number;
   /** For kind 'kpiCalc': the MachineKpi.id this server DP feeds. */
   kpiCalcId?: string;
+  /** For kind 'input': the input of the machine's mapping (winccoa-fra-msp-stma#339). */
+  input?: string;
+  /** For kind 'cause': the rank of the stop-cause source. */
+  cause?: number;
 }
 
 /** DP-name prefix used by the kpiCalc manager for its per-KPI datapoints. */
@@ -204,6 +213,8 @@ export class MfAtelierView extends LitElement {
   @property({ type: Boolean }) canEdit = true;
   /** Application-Security 'ai' grant — gates the AI-assistant affordance. */
   @property({ type: Boolean }) roleAi = true;
+  /** Grant to manage the public views and the welcome atelier for everyone (role `views`, #278). */
+  @property({ type: Boolean }) canPublicViews = false;
   /** Display only (the embeddable view): no edit, no management, no navigation away, no save. */
   @property({ type: Boolean, attribute: 'display-only' }) displayOnly = false;
   /** Hide the top bar (title + toolbar). */
@@ -214,8 +225,8 @@ export class MfAtelierView extends LitElement {
   @property({ type: Boolean, attribute: 'fullscreen-button' }) fullscreenButton = false;
   /** Whether the embedding element is full screen (icon of the toggle). */
   @property({ type: Boolean }) fullscreenActive = false;
-  /** Display only: the stop-cause catalog, given by the host (null = read through the store). */
-  @property({ attribute: false }) stopCauseCatalog: StopCause[] | null = null;
+  /** Display only: the stop-cause catalogues (#74), given by the host (null = read through the store). */
+  @property({ attribute: false }) stopCauseCatalogs: StopCauseCatalog[] | null = null;
   /** The module settings (#70): the default opening view of every atelier. */
   @property({ attribute: false }) moduleSettings: FleetModuleSettings = parseModuleSettings('');
 
@@ -278,7 +289,8 @@ export class MfAtelierView extends LitElement {
   @state() private resourcesOpen = false;
   @state() private editMode = false;
   @state() private dashboards: DashboardOption[] = [];
-  @state() private stopCauses: StopCause[] = [];
+  /** The stop-cause catalogues (#74): each machine names its own, else the default one. */
+  @state() private stopCatalogs: StopCauseCatalog[] = [];
   /** Assets from the Asset Lifecycle Intelligence module (machine link + obsolescence). */
   @state() private aliAssets: AliAssetInfo[] = [];
 
@@ -293,6 +305,9 @@ export class MfAtelierView extends LitElement {
   // One DP can drive several targets (e.g. the same DP bound to the state AND a
   // KPI of the same machine), so each key maps to a LIST of targets.
   private dpTargets = new Map<string, DpTarget[]>();
+  /** Values received for each machine's state (winccoa-fra-msp-stma#339): its inputs by key, its cause sources by rank. */
+  private liveInputs = new Map<string, Record<string, unknown>>();
+  private liveCauses = new Map<string, unknown[]>();
   /** Bumped each (re)subscribe so stale async validation results are ignored. */
   private subGen = 0;
   private saveTimer = 0;
@@ -354,7 +369,7 @@ export class MfAtelierView extends LitElement {
     if (changed.has('atelier') && this.atelier && !this.loaded) {
       this.loaded = true;
       // Display only: the catalog is the host's, known before the first live value.
-      if (this.displayOnly) this.stopCauses = this.stopCauseCatalog ?? [];
+      if (this.displayOnly) this.stopCatalogs = this.stopCauseCatalogs ?? [];
       this.atelierName = this.atelier.name;
       this.building = structuredClone(this.atelier.building);
       this.display = structuredClone(this.atelier.display);
@@ -396,6 +411,11 @@ export class MfAtelierView extends LitElement {
   /** Edit affordances: the combined grant, never in display-only mode. */
   private get editable(): boolean {
     return this.canEdit && !this.displayOnly;
+  }
+
+  /** Public views and the welcome atelier for everyone: their own role (#278), never in display-only mode. */
+  private get publicViewsWritable(): boolean {
+    return this.canPublicViews && !this.displayOnly;
   }
 
   /** Create the WebGL scene, its observers and the live datapoint subscription. */
@@ -566,9 +586,9 @@ export class MfAtelierView extends LitElement {
         <ix-icon-button icon="home" ghost title=${localize(MSG.opening.atelierButton)} @click=${() => (this.openingOpen = true)}></ix-icon-button>
         <ix-icon-button icon="configuration" ghost title=${localize(MSG.view.stateMappings)} @click=${() => (this.mappingOpen = true)}></ix-icon-button>
         ${this.editable
-          ? html`<ix-icon-button icon="upload" ghost title=${localize(MSG.view.importAtelier)} @click=${this.triggerImport}></ix-icon-button>`
+          ? html`<ix-icon-button icon="download" ghost title=${localize(MSG.view.importAtelier)} @click=${this.triggerImport}></ix-icon-button>`
           : ''}
-        <ix-icon-button icon="download" ghost title=${localize(MSG.view.exportAtelier)} @click=${this.exportAtelier}></ix-icon-button>
+        <ix-icon-button icon="upload" ghost title=${localize(MSG.view.exportAtelier)} @click=${this.exportAtelier}></ix-icon-button>
         <ix-icon-button icon="app-menu" ghost title=${localize(MSG.view.machines)} variant=${this.panelOpen ? 'primary' : 'secondary'} @click=${() => (this.panelOpen = !this.panelOpen)}></ix-icon-button>
         ${this.renderFullscreenButton()}
       </div>
@@ -740,7 +760,7 @@ export class MfAtelierView extends LitElement {
                 <input type="checkbox" .checked=${this.myLanding} @change=${(e: Event) => this.setMyLanding((e.target as HTMLInputElement).checked)} />
                 ${localizeDir(MSG.view.myLanding)}
               </label>
-              ${this.editable
+              ${this.publicViewsWritable
                 ? html`<label>
                     <input type="checkbox" .checked=${this.atelier.landing === true} @change=${(e: Event) => this.setPublicLanding((e.target as HTMLInputElement).checked)} />
                     ${localizeDir(MSG.view.publicLanding)}
@@ -753,7 +773,7 @@ export class MfAtelierView extends LitElement {
 
   private renderVpGroup(scope: VpScope): TemplateResult {
     const list = this.vpList(scope);
-    const canWrite = scope === 'mine' || this.editable;
+    const canWrite = scope === 'mine' || this.publicViewsWritable;
     return html`
       <div class="vp-head">
         <span>${localizeDir(scope === 'public' ? MSG.view.publicViews : MSG.view.myViews)}</span>
@@ -770,7 +790,7 @@ export class MfAtelierView extends LitElement {
   }
 
   private renderViewpointRow(vp: Viewpoint, scope: VpScope): TemplateResult {
-    const canWrite = scope === 'mine' || this.editable;
+    const canWrite = scope === 'mine' || this.publicViewsWritable;
     if (this.renamingVpId === vp.id) {
       return html`<div class="vp-row">
         <ix-input
@@ -817,6 +837,7 @@ export class MfAtelierView extends LitElement {
           @wui:focus=${(e: CustomEvent<{ id: string }>) => this.onFocus(e.detail.id)}
           @wui:edit=${(e: CustomEvent<{ id: string }>) => this.onEdit(e.detail.id)}
           @wui:delete=${(e: CustomEvent<{ id: string }>) => this.onDelete(e.detail.id)}
+          @wui:show=${(e: CustomEvent<{ id: string }>) => this.onShowMachine(e.detail.id)}
           @wui:add=${() => this.openWizard()}
         ></mf-config-panel>
       </div>
@@ -835,7 +856,7 @@ export class MfAtelierView extends LitElement {
         <div class="detail__head">
           <span class="dot" style="background:${headColor}"></span>
           <ix-typography class="name" format="h3" title=${m.name}>${m.name}</ix-typography>
-          <ix-chip outline>${m.loc ?? m.type}</ix-chip>
+          <ix-chip outline>${m.loc ?? machineTypeLabel(m.type)}</ix-chip>
           ${this.displayOnly
             ? nothing
             : html`<ix-icon-button ghost icon=${this.editable ? 'pen' : 'eye'} title=${this.editable ? localize(MSG.view.edit) : localize(MSG.view.viewOnly)} @click=${() => this.onEdit(m.id)}></ix-icon-button>`}
@@ -892,7 +913,7 @@ export class MfAtelierView extends LitElement {
 
   /** Popup info rows — ordered & filtered by the per-machine "Affichage" config. */
   private renderInfoRows(m: Machine): TemplateResult {
-    const rows = resolveDisplaySlots(m)
+    const rows = shownSlots(m)
       .filter((s) => s.inPopup)
       .map((s) => this.popupRow(s, m))
       .filter((r): r is TemplateResult => r !== null);
@@ -990,13 +1011,21 @@ export class MfAtelierView extends LitElement {
         ? html`<mf-symbol-wizard
             .catalog=${this.catalog.filter((c) => !this.machines.some((m) => m.id === c.id))}
             .others=${this.otherSymbols}
+            .existing=${this.machines}
+            .glbResources=${this.glbResources}
+            .billboardResources=${this.billboardResources}
+            .store=${this.store}
+            @wui:resources=${() => (this.resourcesOpen = true)}
             @wui:addsymbol=${(e: CustomEvent<{ def: MachineDef; keepId: boolean }>) => this.onAddSymbol(e.detail.def, e.detail.keepId)}
+            @wui:importsymbols=${(e: CustomEvent<SymbolImport>) => this.onImportSymbols(e.detail)}
+            @wui:resourceadded=${() => void this.loadResources()}
             @wui:close=${() => (this.wizardOpen = false)}
           ></mf-symbol-wizard>`
         : ''}
       ${this.editing
         ? html`<mf-machine-dialog
             .machine=${this.editing}
+            .siblings=${this.machines}
             .markers=${this.markers}
             .store=${this.store}
             .mappings=${this.mappings}
@@ -1006,6 +1035,7 @@ export class MfAtelierView extends LitElement {
             .dashboards=${this.dashboards}
             .aliAssets=${this.aliAssets}
             .canEdit=${this.editable}
+            .api=${this.api}
             @wui:apply=${(e: CustomEvent<{ machine: MachineDef }>) => this.onMachineApply(e.detail.machine)}
             @wui:mapping=${() => (this.mappingOpen = true)}
             @wui:thresholds=${() => (this.thresholdsOpen = true)}
@@ -1032,12 +1062,12 @@ export class MfAtelierView extends LitElement {
           ></mf-trs-thresholds-dialog>`
         : ''}
       ${this.confirmDeleteOpen
-        ? html`<wui-confirm-dialog
+        ? html`<mf-reason-dialog
             heading=${localize(MSG.view.confirmDeleteHeading)}
             message=${confirmDeleteAtelierMsg(this.atelierName)}
-            @wui:confirm=${this.confirmDelete}
+            @wui:confirm=${(e: CustomEvent<{ reason: string }>) => this.confirmDelete(e.detail.reason)}
             @wui:cancel=${() => (this.confirmDeleteOpen = false)}
-          ></wui-confirm-dialog>`
+          ></mf-reason-dialog>`
         : ''}
       ${this.resourcesOpen
         ? html`<mf-graphics-catalog
@@ -1058,8 +1088,9 @@ export class MfAtelierView extends LitElement {
     return html`<mf-machine-dashboard
       .machine=${m}
       .mapping=${this.mappingFor(m)}
-      .stopCauses=${this.stopCauses}
+      .stopCauses=${this.causesOf(m)}
       .api=${this.api}
+      .store=${this.store}
       atelierId=${this.atelier.id}
       atelierName=${this.atelierName}
       @wui:close=${() => (this.dashboardMachineId = null)}
@@ -1076,19 +1107,34 @@ export class MfAtelierView extends LitElement {
     if (this.store) this.catalog = await this.store.listCatalog();
   }
 
+  /**
+   * A machine's state and stop cause from the values received (fleet-core `liveState`): the state its mapping
+   * gives once an input has a value (until then the state it has), the cause in progress from its sources by
+   * priority, named from its catalogue.
+   */
+  private applyLiveState(machine: MachineDef): boolean {
+    const causes = this.causesOf(machine);
+    const live = liveState(this.mappingFor(machine), this.liveInputs.get(machine.id) ?? {}, this.liveCauses.get(machine.id) ?? [], causes);
+    if (live.state !== null) machine.state = live.state;
+    machine.stopCause = live.cause;
+    machine.stopCauseLabel = formatStopCause(causes, live.cause);
+    this.scene?.updateMachineLive(machine.id, { state: machine.state, stopCause: live.cause, stopCauseLabel: machine.stopCauseLabel });
+    return true;
+  }
+
+  /** The causes of a machine's catalogue (#74): the one it names, else the default. */
+  private causesOf(m: { stopCatalogId?: string }): StopCause[] {
+    return causesFor(this.stopCatalogs, m.stopCatalogId);
+  }
+
   private async loadStopCauses(): Promise<void> {
     if (!this.store) return;
-    this.stopCauses = await this.store.listStopCauses();
-    // Re-resolve any already-received stop-cause codes against the fresh catalog.
+    this.stopCatalogs = await this.store.listCatalogs();
+    // Re-resolve the causes received, and the states a cause's class gives, against the fresh catalogues.
     let touched = false;
     for (const m of this.machines) {
-      if (m.stopCause == null || m.stopCause === '') continue;
-      const label = formatStopCause(this.stopCauses, m.stopCause);
-      if (label !== m.stopCauseLabel) {
-        m.stopCauseLabel = label;
-        this.scene?.updateMachineLive(m.id, { stopCauseLabel: label });
-        touched = true;
-      }
+      if (!this.liveInputs.has(m.id) && !this.liveCauses.has(m.id)) continue;
+      if (this.applyLiveState(m)) touched = true;
     }
     if (touched) this.machines = [...this.machines];
   }
@@ -1357,13 +1403,29 @@ export class MfAtelierView extends LitElement {
   private onAddSymbol(source: MachineDef, keepId: boolean): void {
     if (!this.editable) return;
     if (keepId && this.machines.some((m) => m.id === source.id)) return;
-    const def: MachineDef = { ...source, id: keepId ? source.id : `machine-${Date.now()}`, x: 0, z: 0, toPlace: true };
+    // A symbol's name is unique in its atelier (#276): a taken one gets the first free « (n) ».
+    const name = uniqueName(source.name, this.machines);
+    const def: MachineDef = { ...source, name, id: keepId ? source.id : `machine-${Date.now()}`, x: 0, z: 0, toPlace: true };
     delete def.markerId;
     delete def.bubbleOffset;
     this.machines = [...this.machines, def];
     this.wizardOpen = false;
     this.rebuildMachines();
     this.onFocus(def.id);
+  }
+
+  /** Symbols imported by the wizard (winccoa-fra-msp-stma#338), added by `applyImport` (symbol-import.ts); one save. */
+  private onImportSymbols(imp: SymbolImport): void {
+    if (!this.editable) return;
+    const r = applyImport(this.machines, this.mappings, imp, Date.now());
+    if (r.mappingsAdded) {
+      this.mappings = r.mappings;
+      this.applyStateColors();
+    }
+    this.machines = r.machines;
+    this.wizardOpen = false;
+    this.rebuildMachines();
+    if (r.focus) this.onFocus(r.focus);
   }
 
   private onEdit(id: string): void {
@@ -1380,6 +1442,13 @@ export class MfAtelierView extends LitElement {
       return moved ? placeMachine(machine, machine.x, machine.z) : machine;
     });
     this.editing = null;
+    this.rebuildMachines();
+  }
+
+  /** A hidden machine shown again from the list (#280). */
+  private onShowMachine(id: string): void {
+    if (!this.editable) return;
+    this.machines = this.machines.map((m) => (m.id === id ? { ...m, hidden: undefined } : m));
     this.rebuildMachines();
   }
 
@@ -1483,9 +1552,10 @@ export class MfAtelierView extends LitElement {
     this.scheduleSave();
   }
 
-  private confirmDelete(): void {
+  /** Deletion confirmed with its reason, which goes to the audit trail. */
+  private confirmDelete(reason: string): void {
     this.confirmDeleteOpen = false;
-    this.dispatchEvent(new CustomEvent('wui:remove', { bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent('wui:remove', { detail: { reason }, bubbles: true, composed: true }));
   }
 
   private vpList(scope: VpScope): Viewpoint[] {
@@ -1500,6 +1570,7 @@ export class MfAtelierView extends LitElement {
   private setVps(scope: VpScope, list: Viewpoint[], defaultId: string): void {
     const def = list.some((v) => v.id === defaultId) ? defaultId : '';
     if (scope === 'public') {
+      if (!this.publicViewsWritable) return;
       this.viewpoints = list;
       this.defaultViewpointId = def;
       this.scheduleSave();
@@ -1644,6 +1715,7 @@ export class MfAtelierView extends LitElement {
 
   /** This atelier as the public default page (role `edit`); the shell clears it on the others. */
   private setPublicLanding(on: boolean): void {
+    if (!this.publicViewsWritable) return;
     this.atelier = { ...this.atelier, landing: on || undefined };
     this.scheduleSave();
   }
@@ -1730,14 +1802,16 @@ export class MfAtelierView extends LitElement {
     this.dpSubscription = new Subscription();
     this.dpTargets = new Map();
 
+    this.liveInputs = new Map();
+    this.liveCauses = new Map();
     const dps: string[] = [];
     for (const m of this.machines) {
-      if (m.stateDp) {
-        // Key by normalized name: the server echoes a canonical DP name
-        // (system prefix, :_original.._value, trailing dot) that won't match
-        // the raw bound string otherwise.
-        this.addTarget(m.stateDp, { machineId: m.id, kind: 'state' });
-        dps.push(m.stateDp);
+      // The state from the inputs of the machine's mapping and its stop-cause sources, computed here as the
+      // recorder does (winccoa-fra-msp-stma#339). Keyed by normalized name: the server echoes a canonical DP
+      // name (system prefix, :_original.._value, trailing dot) that won't match the raw bound string otherwise.
+      for (const t of liveTargets(m)) {
+        this.addTarget(t.dpe, t.input !== undefined ? { machineId: m.id, kind: 'input', input: t.input } : { machineId: m.id, kind: 'cause', cause: t.cause });
+        dps.push(t.dpe);
       }
       const kpis = m.kpis ?? [];
       for (const [kpiIndex, k] of kpis.entries()) {
@@ -1753,7 +1827,6 @@ export class MfAtelierView extends LitElement {
         dps.push(dp);
       }
       const infoDps: [string | undefined, DpKind][] = [
-        [m.stopCauseDp, 'stopCause'],
         [m.workOrderDp, 'workOrder'],
         [m.operationDp, 'operation'],
         [m.alarmCodeDp, 'alarmCode'],
@@ -1822,19 +1895,15 @@ export class MfAtelierView extends LitElement {
   private applyDpValue(target: DpTarget, raw: unknown): boolean {
     const machine = this.machines.find((m) => m.id === target.machineId);
     if (!machine) return false;
-    if (target.kind === 'state') {
-      // Fall back to the assigned mapping, else the atelier's first mapping,
-      // else the built-in default — never leave the value unmapped (which would
-      // always resolve to "ok").
-      const mapping =
-        this.mappings.find((mp) => mp.id === machine.stateMappingId) ??
-        this.mappings[0] ??
-        DEFAULT_STATE_MAPPINGS[0];
-      // State codes are discrete: cast float datapoints to the nearest integer
-      // so e.g. 2.0 (or 1.999…) matches the mapping rule for 2.
-      machine.state = resolveState(mapping, Math.round(toNumber(raw)));
-      this.scene?.updateMachineLive(machine.id, { state: machine.state });
-      return true;
+    if (target.kind === 'input' && target.input !== undefined) {
+      this.liveInputs.set(machine.id, { ...this.liveInputs.get(machine.id), [target.input]: raw });
+      return this.applyLiveState(machine);
+    }
+    if (target.kind === 'cause' && target.cause !== undefined) {
+      const causes = [...(this.liveCauses.get(machine.id) ?? [])];
+      causes[target.cause] = raw;
+      this.liveCauses.set(machine.id, causes);
+      return this.applyLiveState(machine);
     }
     if (target.kind === 'kpi') {
       const kpis = machine.kpis ?? [];
@@ -1874,16 +1943,9 @@ export class MfAtelierView extends LitElement {
       this.scene?.updateMachineLive(machine.id, { tiltAngle: effective });
       return true;
     }
-    // Production tracking DPs (stop cause, work order, operation).
+    // Production tracking DPs (work order, operation, alarm code).
     const value = scalarValue(raw);
-    if (target.kind === 'stopCause') {
-      machine.stopCause = value;
-      machine.stopCauseLabel = formatStopCause(this.stopCauses, value);
-      this.scene?.updateMachineLive(machine.id, {
-        stopCause: value,
-        stopCauseLabel: machine.stopCauseLabel
-      });
-    } else if (target.kind === 'workOrder') {
+    if (target.kind === 'workOrder') {
       machine.workOrder = value;
       this.scene?.updateMachineLive(machine.id, { workOrder: value });
     } else if (target.kind === 'alarmCode') {
@@ -2398,7 +2460,8 @@ function viewStyles() {
       border-radius: var(--theme-default-border-radius);
       padding: 0.625em 0.764em;
       /* One third larger than the first 0.72rem (#59); every size inside is in em, so a
-       * machine's own bubble scale (--mf-bubble-scale) enlarges the whole bubble. */
+       * machine's own bubble scale (--mf-bubble-scale) enlarges or reduces the whole bubble, its
+       * text with it, keeping its proportions (#275). */
       font-size: calc(0.96rem * var(--mf-bubble-scale, 1));
       line-height: 1.35;
       overflow: hidden;

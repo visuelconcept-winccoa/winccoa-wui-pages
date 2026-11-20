@@ -3,6 +3,109 @@
 
 # Changelog — @visuelconcept-winccoa/wui-machine-fleet-3d
 
+## 0.6.0 — 2026-11-09 (SDS 2.2)
+
+**Upgrade.** Requires wui-fleet-core and fleet-closures `^0.3.0`. New roles, open to all until
+assigned in Application Security: **`views`** ("Gérer les vues publiques", e.g. for sysadmin). The
+role **`qualify`** of the 0.5.0 previews is gone (#75): remove it from the groups it was given to. New manager
+**`fleetState`** (`node | always`, winccoa-fra-msp-stma#339): start it in the WinCC OA console; it records the state
+history from then on — the Gantt, the stops, the Pareto and the TRS start again from that moment (the archive of
+the bound state datapoints is no longer read). New role **`declare`** ("Déclarer l'état d'une machine"), open to all
+until assigned.
+
+- **Machine Fleet computes and records its states itself** (winccoa-fra-msp-stma#339). A state mapping may name
+  inputs besides the state datapoint, each symbol binding a datapoint to them (symbol dialog, "État & production");
+  its rules test them (=, ≠, between, outside, all of them, a rule's min / max on the state code as before) and a
+  rule "Selon la cause" gives the planned or the other state by the class of the stop cause in progress; the
+  symbol lists further stop-cause datapoints by priority. The mapping editor edits the inputs, the conditions,
+  the states by cause and the order of the rules (`mapping-edit.ts`). The live views — atelier, overview, machine
+  dashboard header — compute the state from the inputs (wui-fleet-core `state-eval.ts`), never waiting for a
+  manager; the new manager **`fleetState`** computes it the same way (shared cases, thousands of random cases
+  compared) and records the state and the cause at each change in `MachineFleet3D_State_<symbol>`, archived in
+  WinCC OA's standard value group `_NGA_G_EVENT` (otherwise the active value group of highest priority, never the
+  alarm group, whose values cannot be read back): the history the Gantt, the stop list and the Pareto read. A
+  datapoint archived in another group is moved to it, its state written again. A symbol may accept a **state declared by an
+  operator** (input `declared`), chosen from the machine dashboard with a reason traced in the audit trail
+  (role `declare`). The dashboard widgets read a recorded history (state keys) or a raw state datapoint as before.
+- **French title "Machine Fleet"** (menu, page header, Application Security, widget folder), instead of "Parc
+  machine": the site uses the module's name in French too (winccoa-fra-msp-stma, 13/11/2026 demo).
+- **The Parameters tab of the symbol dialog helps check the bindings**: each row shows its current value
+  (read while the tab is open; '—' when its datapoint cannot be read); a row with a fixed value and no
+  datapoint (machine, workcenter…) shows "Fixed value" instead of an empty datapoint field.
+- **"Add a symbol" reworked** (winccoa-fra-msp-stma#338): three sources. **From the site or an atelier**: one list,
+  the site's catalogue and the other ateliers' symbols, each with where it comes from. **Import**, as Node-RED
+  imports: choose a JSON file or paste the JSON; one symbol, a list, or a workcenter's `machine-fleet-symbols`
+  export (version 1, with its state mappings, added to the atelier when it has none of that id), checked before
+  anything is added (`symbol-import.ts`, the reason of a refusal shown); a symbol whose id is already in the
+  atelier is replaced or skipped, asked symbol by symbol, a replacement keeping its position; the others keep
+  the id of the file and are "à placer". **New symbol**: its name and representation only (no state datapoint
+  any more), and a 3D model can be uploaded on the spot ("Upload a GLB…", same 2 MB limit as the catalogue).
+- **The machine dashboard's Gantt tooltip stays on screen** (winccoa-fra-msp-stma#336): left of the pointer in
+  the right half of the screen, above it in the bottom third (`tip-place.ts`), instead of going off screen.
+- **Each machine's stop-cause catalogue** (#74, wui-fleet-core 0.3.0): the bubble, the card and the
+  machine dashboard name the causes from the machine's own catalogue (`stopCatalogId`), else the default;
+  the embedded view gets the catalogues from `GET /api/ai/fleet/workshops/:id` (`stopCatalogs`, one per
+  datapoint of type `MachineFleet3D_StopCauses`).
+- **Datapoint fields as in the dashboard's widget settings** (`mf-dp-field`, in place of wui-kit's
+  `wui-dp-input`): clear button, and the magnifier opens the platform's data selector (systems,
+  datapoint tree, CNS, details) in a modal; a datapoint that does not exist shows a red broken link.
+  New platform peers: `@siemens/ix`, `@wincc-oa/wui-data-selector-smart-ui` (in the shell's import map).
+- **The overview's cards follow the machines' live state**: the dots of each atelier's minimap and its state
+  counts read every machine's state datapoint through its mapping (one subscription for the whole page), as
+  the atelier view does, and no longer show the state stored with each machine (always "ok" for a machine of
+  the site).
+- **One "Paramètres" button in the overview**, for the settings pages a site adds — menu entries
+  marked `"fleetSettings": true`, or `{ "roles": ["<module>/<role>"] }` to list a page only for a user
+  granted one of these roles (usually hidden from the menu), titled and iconned from their entry: it opens
+  the only one directly, or a short menu; no button without any. A site adds its own fleet settings without
+  a menu entry of their own. The default opening view of every atelier (module settings of 0.5.0) is no
+  longer offered there: the setting saved stays in force, each atelier keeps its own opening view.
+- **Back to the overview stays on it**: the welcome atelier opens on arriving at the fleet only, no
+  longer again when coming back from an atelier (back arrow or browser back), the stop or KPI analysis,
+  the non-worked days or a settings page of the site.
+- **No cause given by hand to a stop** (#75): the workcenter gives it; the Gantt, the stop list and the
+  Pareto show the cause history the machine's cause datapoint holds.
+
+- **Public views and "welcome atelier for everyone" also need the `views` role**, on top of the
+  atelier edit right (the server saves the whole atelier under `edit`); "My views" and "welcome atelier for me" stay with each user. The two
+  checkboxes read "Atelier d'accueil : pour moi / pour tous".
+- **A symbol's name is unique in its atelier** (case, accents and spaces ignored): the symbol
+  window refuses a taken or empty name; a symbol added under a taken name gets " (2)", " (3)"…
+- **Symbol scale**: "Échelle (×)" in the symbol window, from 0.1 to 10, on the 3D model whatever
+  its kind (`symbolScale`, absent = 1).
+- **Resizing a bubble** follows the handle both ways (right or down, whichever moves most) and
+  scales the whole bubble, text included, keeping its proportions.
+- **Gantt dates without hovering**: under the machine-state Gantt, the start, the end and the
+  state changes are written (time, with the day past 24 h), a mark on each change; labels that
+  would overlap are skipped.
+- **Hidden symbol shown in the machine list**: a crossed eye on its row; in edit, a click shows it
+  again.
+- **Import / export icons the right way round**: import = arrow down, export = arrow up (atelier,
+  symbol window, graphics catalogue).
+- **Deleting an atelier asks for a reason** (mandatory), written with the deletion in the audit
+  trail (`AuditTrail_Fleet`, `reason`); new `mf-reason-dialog`.
+- **"Îlot" filter back** in the filter bar (wui-fleet-core 0.3.0), beside UAP, activity, tags and
+  state; "Workcenter" stays out (#66).
+- **"Affichage" tab**: at most **10 lines in the bubble and 10 in the popup**, counted per column
+  ("Bulle n / 10", "Popup n / 10"); a line not shown yet cannot be ticked once 10 are, until
+  another is unticked. Past 10 (defaults, older configurations), the last lines in display order
+  are hidden.
+- A machine carries **any number of parameters**: the "Paramètres" tab no longer stops at 10, so
+  the site's catalogue can propose all of a slot's and the atelier picks what it shows.
+- **Machine dashboard, "Paramètres Process"**: a context line on top (the `filterable`
+  parameters such as article and contract, the fixed-value ones such as machine or workcenter,
+  then the work order and the operation), always shown; under it, a card for each process
+  parameter ticked in the new **"Tableau de bord"** column of the "Affichage" tab (**at most 10**,
+  "Tableau de bord n / 10", in display order), then the TRS. Optional `inDashboard` on the
+  `display` entries; absent, the first 10 process parameters in display order are shown.
+- **"Add a symbol" wizard**: a new symbol of type "3D model (GLB)" or "Icon (2D)" gets its model or its
+  icon at once, from the same picker as the symbol dialog (`mf-graphic-picker`, with "Manage" to import
+  some); the wizard opens on "From the site" only when the site offers a machine, else on "New symbol",
+  and an empty site list says why (no machine declared, or all already in the atelier).
+- **Representations named**: "Armoire", "Icône (2D)", "Modèle 3D (GLB)"… instead of the stored codes
+  (`cabinet`, `billboard`, `glb`…), in the wizard, the symbol dialog, the machine list, the popup and the
+  dashboard (`machine-type-labels.ts`).
+
 ## 0.5.1 — 2026-11-05
 
 - The opening view (#70) is framed again when the view is resized — the machine list or a

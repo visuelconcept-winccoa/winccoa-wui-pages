@@ -31,6 +31,7 @@ import {
   confirmDeleteMachineMsg,
   localize,
   localizeDir,
+  machineTypeLabel,
   machinesCountMsg
 } from '../i18n.js';
 
@@ -123,15 +124,33 @@ export class MfConfigPanel extends LitElement {
         <span class="dot" style="background:${color}"></span>
         <span class="row-text">
           <span class="row-name">${m.name}</span>
-          <span class="row-sub">${m.type}${m.loc ? ` · ${m.loc}` : ''}</span>
+          <span class="row-sub">${machineTypeLabel(m.type)}${m.loc ? ` · ${m.loc}` : ''}</span>
         </span>
         ${m.toPlace
           ? html`<span class="to-place" title=${localize(MSG.toPlace.hint)}>${localize(MSG.toPlace.label)}</span>`
           : ''}
+        ${m.hidden ? this.renderHidden(m) : ''}
         <span class="badge" style="--c:${color}">${label}</span>
         ${this.listOnly ? '' : this.renderRowActions(m)}
       </div>
     `;
+  }
+
+  /** Crossed eye on a machine hidden from the scene; in edit, a click shows it again (#280). */
+  private renderHidden(m: MachineDef): TemplateResult {
+    if (!this.canEdit || this.listOnly) {
+      return html`<ix-icon class="hidden-mark" name="eye-cancelled" size="16" title=${localize(MSG.configPanel.hidden)}></ix-icon>`;
+    }
+    return html`<ix-icon-button
+      ghost
+      size="16"
+      icon="eye-cancelled"
+      title=${localize(MSG.configPanel.showAgain)}
+      @click=${(e: Event) => {
+        e.stopPropagation();
+        this.dispatchEvent(new CustomEvent('wui:show', { detail: { id: m.id }, bubbles: true, composed: true }));
+      }}
+    ></ix-icon-button>`;
   }
 
   private renderRowActions(m: MachineDef): TemplateResult {
@@ -159,7 +178,7 @@ export class MfConfigPanel extends LitElement {
     const q = this.query.trim().toLowerCase();
     const list = q
       ? this.machines.filter((m) =>
-          `${m.name} ${m.type} ${m.loc ?? ''}`.toLowerCase().includes(q)
+          `${m.name} ${machineTypeLabel(m.type)} ${m.loc ?? ''}`.toLowerCase().includes(q)
         )
       : this.machines;
     // Disconnected machines first (priority over every state), then by severity:
@@ -301,6 +320,10 @@ function panelStyles() {
       color: var(--c, var(--theme-color-primary));
       border: 1px solid var(--c, var(--theme-color-primary));
       background: color-mix(in srgb, var(--c) 16%, transparent);
+    }
+    .hidden-mark {
+      flex-shrink: 0;
+      color: var(--theme-color-weak-text);
     }
     .to-place {
       flex-shrink: 0;

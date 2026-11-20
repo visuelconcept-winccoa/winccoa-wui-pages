@@ -84,12 +84,22 @@ describe('remembered filter', () => {
   });
 });
 
-describe('work-centre dimensions (#66)', () => {
-  it('are neither offered nor filtered on', () => {
-    const m = { tags: { Îlot: ['I1'], Workcenter: ['WC1'], 'Work-Center': ['x'], Activité: ['Soudure'], UAP: ['U2'] } };
+describe('work-centre dimension (#66)', () => {
+  it('is neither offered nor filtered on', () => {
+    const m = { tags: { Workcenter: ['WC1'], 'Work-Center': ['x'], Activité: ['Soudure'], UAP: ['U2'] } };
     expect(filterDimensions([m]).map((d) => d.key)).toEqual(['Activité', 'UAP']);
-    expect(matchesFilter(m, { Îlot: ['other'] })).toBe(true);
-    expect(isFilterDimension('ilot')).toBe(false);
+    expect(matchesFilter(m, { Workcenter: ['other'] })).toBe(true);
+    expect(isFilterDimension('Work-Center')).toBe(false);
     expect(isFilterDimension('UAP')).toBe(true);
+  });
+});
+
+describe('îlot dimension (SDS 2.2 SL-LOB-05)', () => {
+  it('is offered and filtered on, like UAP and activity', () => {
+    const m = { tags: { Îlot: ['I1'], Workcenter: ['WC1'], Activité: ['Soudure'] } };
+    expect(filterDimensions([m]).map((d) => d.key)).toContain('Îlot');
+    expect(matchesFilter(m, { Îlot: ['other'] })).toBe(false);
+    expect(matchesFilter(m, { Îlot: ['I1'] })).toBe(true);
+    expect(isFilterDimension('ilot')).toBe(true);
   });
 });

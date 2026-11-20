@@ -26,7 +26,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
 import { templateSeed } from './machine-fleet-3d/data/atelier-templates.js';
-import { normDp, toNumber } from './machine-fleet-3d/data/dp-utils.js';
+import { normDp } from './machine-fleet-3d/data/dp-utils.js';
 import { MSG, localizeDir } from './machine-fleet-3d/i18n.js';
 import appSecurityRoles from './app-security.roles.json';
 import { hasRole$, registerModuleRoles, type AppModuleRoles } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
@@ -35,12 +35,16 @@ import { FleetStore } from '@visuelconcept-winccoa/wui-fleet-core/data/fleet-sto
 import { settingsCache } from '@visuelconcept-winccoa/wui-fleet-core/settings-cache.js';
 import { landingAtelier } from '@visuelconcept-winccoa/wui-fleet-core/user-views.js';
 import '@visuelconcept-winccoa/wui-fleet-core/fleet-settings-service.js';
+// The page requires fleet-closures: its writes go through /api/fleet (not the embeddable fleet-view).
+import '@visuelconcept-winccoa/wui-fleet-core/data/guarded-writes.js';
 import {
   DEFAULT_STATE_MAPPINGS,
-  resolveState,
   type Atelier,
-  type MachineDef
+  type MachineDef,
+  type StopCauseCatalog
 } from '@visuelconcept-winccoa/wui-fleet-core/types.js';
+import { liveTargets, machineLiveState } from '@visuelconcept-winccoa/wui-fleet-core/state-eval.js';
+import { causesFor } from '@visuelconcept-winccoa/wui-fleet-core/stop-catalogs.js';
 import {
   AuditTrailWriter,
   auditDiff,
@@ -64,7 +68,7 @@ const MODULE_ID = 'machine-fleet-3d';
 const HEADER_CONFIG = {
   headerTitle: {
     context: 'translate',
-    config: { 'en_US.utf8': 'Machine Fleet', 'fr.utf8': 'Parc machine', 'de_AT.utf8': 'Maschinenpark' }
+    config: { 'en_US.utf8': 'Machine Fleet', 'fr.utf8': 'Machine Fleet', 'de_AT.utf8': 'Maschinenpark' }
   }
 } as const;
 /**
@@ -124,6 +128,13 @@ function stripKpiValue(kpi: unknown): unknown {
 
 /** Longest wait (ms) for the user's settings before choosing the default page (#60). */
 const LANDING_WAIT_MS = 1500;
+/**
+ * The fleet was just left for a page of its own (an atelier, by the back arrow or the browser's; the
+ * stop or KPI analysis, the non-worked days, a settings page of the site): the router builds a new
+ * page element for the overview, so the "already landed" mark of the old one is lost. Kept here, it
+ * stops the overview reached back from them from opening the default atelier again.
+ */
+let leftForFleetPage = false;
 
 @customElement('wui-machine-fleet-3d')
 export class WuiMachineFleet3d extends LitElement {
@@ -142,8 +153,8 @@ export class WuiMachineFleet3d extends LitElement {
   @state() private canView = true;
   @state() private roleEdit = true;
   @state() private roleAi = true;
-  /** Role `configure`: the module settings, common to every atelier (#70). */
-  @state() private roleConfigure = true;
+  /** Public views and the welcome atelier for everyone (#278): a role of its own, e.g. for sysadmin. */
+  @state() private roleViews = true;
   /** The module settings (#70: the default opening view of every atelier). */
   @state() private moduleSettings: FleetModuleSettings = parseModuleSettings('');
 
@@ -156,8 +167,12 @@ export class WuiMachineFleet3d extends LitElement {
   private landed = false;
   /** canPublish + Application-Security grant subscriptions. */
   private permSub = new Subscription();
-  /** normalized stateDp → machines (across ateliers) it drives, for the overview. */
+  /** normalized input or cause DPE → machines (across ateliers) it drives, for the overview (winccoa-fra-msp-stma#339). */
   private overviewTargets = new Map<string, { atelier: Atelier; machineIndex: number }[]>();
+  /** Last value of each of those DPEs. */
+  private overviewValues = new Map<string, unknown>();
+  /** Stop-cause catalogues: the class of a cause gives a state by cause. */
+  private overviewCatalogs: StopCauseCatalog[] = [];
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -167,11 +182,12 @@ export class WuiMachineFleet3d extends LitElement {
     this.permSub.add(hasRole$(MODULE_ID, 'view').subscribe((granted) => (this.canView = granted)));
     this.permSub.add(hasRole$(MODULE_ID, 'edit').subscribe((granted) => (this.roleEdit = granted)));
     this.permSub.add(hasRole$(MODULE_ID, 'ai').subscribe((granted) => (this.roleAi = granted)));
-    this.permSub.add(hasRole$(MODULE_ID, 'configure').subscribe((granted) => (this.roleConfigure = granted)));
+    this.permSub.add(hasRole$(MODULE_ID, 'views').subscribe((granted) => (this.roleViews = granted)));
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
+    if (this.atelierId) leftForFleetPage = true;
     this.overviewSub.unsubscribe();
     this.permSub.unsubscribe();
   }
@@ -211,15 +227,13 @@ export class WuiMachineFleet3d extends LitElement {
           .store=${this.store}
           .canEdit=${this.canEdit && this.roleEdit}
           .roleAi=${this.roleAi}
-          .moduleSettings=${this.moduleSettings}
-          .canConfigure=${this.canEdit && this.roleConfigure}
           ?offline=${this.offline}
-          @wui:module-settings=${(e: CustomEvent<{ settings: FleetModuleSettings }>) => (this.moduleSettings = e.detail.settings)}
           @wui:open=${(e: CustomEvent<{ id: string }>) => this.navigate(e.detail.id)}
           @wui:create=${(e: CustomEvent<{ name: string; id?: string; seed?: string }>) => this.onCreate(e.detail)}
-          @wui:analyze=${() => this.dispatchEvent(new RouterEvent('/fleet-stops'))}
-          @wui:kpi=${() => this.dispatchEvent(new RouterEvent('/fleet-kpi'))}
-          @wui:closures=${() => this.dispatchEvent(new RouterEvent('/fleet-closures'))}
+          @wui:analyze=${() => this.goToFleetPage('/fleet-stops')}
+          @wui:kpi=${() => this.goToFleetPage('/fleet-kpi')}
+          @wui:closures=${() => this.goToFleetPage('/fleet-closures')}
+          @wui:page=${(e: CustomEvent<{ path: string }>) => this.goToFleetPage(e.detail.path)}
         ></mf-atelier-overview>
       </div>
     `;
@@ -239,9 +253,10 @@ export class WuiMachineFleet3d extends LitElement {
         .store=${this.store}
         .canEdit=${this.canEdit && this.roleEdit}
         .roleAi=${this.roleAi}
+        .canPublicViews=${this.canEdit && this.roleEdit && this.roleViews}
         .moduleSettings=${this.moduleSettings}
         @wui:save=${(e: CustomEvent<Atelier>) => this.onSave(e.detail)}
-        @wui:remove=${() => this.onRemoveActive()}
+        @wui:remove=${(e: CustomEvent<{ reason?: string }>) => this.onRemoveActive(e.detail?.reason ?? '')}
         @wui:back=${() => this.back()}
       ></mf-atelier-view>
     `;
@@ -259,7 +274,9 @@ export class WuiMachineFleet3d extends LitElement {
       this.active = this.ateliers.find((a) => a.id === this.atelierId) ?? null;
     } else {
       // Arriving at the fleet (not back from an atelier): the default page, if any (#60).
-      const landing = this.landed ? undefined : await this.landingPage();
+      const back = this.landed || leftForFleetPage;
+      leftForFleetPage = false;
+      const landing = back ? undefined : await this.landingPage();
       if (landing) {
         this.landed = true;
         this.loading = false;
@@ -299,28 +316,31 @@ export class WuiMachineFleet3d extends LitElement {
     }
   }
 
-  /** Live-bind every machine state datapoint across all ateliers (overview only). */
+  /** Live-bind every machine's state inputs and stop-cause sources across all ateliers (overview only). */
   private subscribeOverview(): void {
     this.overviewSub.unsubscribe();
     this.overviewSub = new Subscription();
     this.overviewTargets = new Map();
+    this.overviewValues = new Map();
+    void this.store.listCatalogs().then((c) => (this.overviewCatalogs = c)).catch(() => undefined);
 
     const dps: string[] = [];
     for (const atelier of this.ateliers) {
       for (const [machineIndex, m] of atelier.machines.entries()) {
-        if (!m.stateDp) continue;
-        const key = normDp(m.stateDp);
-        const list = this.overviewTargets.get(key) ?? [];
-        list.push({ atelier, machineIndex });
-        this.overviewTargets.set(key, list);
-        dps.push(m.stateDp);
+        for (const t of liveTargets(m)) {
+          const key = normDp(t.dpe);
+          const list = this.overviewTargets.get(key) ?? [];
+          list.push({ atelier, machineIndex });
+          this.overviewTargets.set(key, list);
+          dps.push(t.dpe);
+        }
       }
     }
     const api = this.api;
     if (!api || dps.length === 0) return;
     try {
       this.overviewSub.add(
-        api.dpConnect(dps, true).subscribe((data: DpEmission) => this.onOverviewDp(data))
+        api.dpConnect([...new Set(dps)], true).subscribe((data: DpEmission) => this.onOverviewDp(data))
       );
     } catch {
       // Backend not connected — keep persisted states.
@@ -328,20 +348,24 @@ export class WuiMachineFleet3d extends LitElement {
   }
 
   private onOverviewDp(data: DpEmission): void {
-    let touched = false;
+    const changed = new Set<{ atelier: Atelier; machineIndex: number }>();
     for (const [i, dp] of data.dp.entries()) {
-      const targets = this.overviewTargets.get(normDp(dp));
-      if (!targets) continue;
-      for (const t of targets) {
-        const machine = t.atelier.machines[t.machineIndex];
-        const mapping =
-          t.atelier.mappings.find((mp) => mp.id === machine.stateMappingId) ??
-          t.atelier.mappings[0] ??
-          DEFAULT_STATE_MAPPINGS[0];
-        // Cast float state datapoints to the nearest integer state code.
-        machine.state = resolveState(mapping, Math.round(toNumber(data.value[i])));
-        touched = true;
-      }
+      const key = normDp(dp);
+      this.overviewValues.set(key, data.value[i]);
+      for (const t of this.overviewTargets.get(key) ?? []) changed.add(t);
+    }
+    let touched = false;
+    for (const t of changed) {
+      const machine = t.atelier.machines[t.machineIndex];
+      const mapping =
+        t.atelier.mappings.find((mp) => mp.id === machine.stateMappingId) ??
+        t.atelier.mappings[0] ??
+        DEFAULT_STATE_MAPPINGS[0];
+      // The state from the machine's inputs through its mapping, as the atelier view and the recorder compute it.
+      const live = machineLiveState(machine, mapping, (dpe) => this.overviewValues.get(normDp(dpe)), causesFor(this.overviewCatalogs, machine.stopCatalogId));
+      if (live.state === null) continue;
+      machine.state = live.state;
+      touched = true;
     }
     if (touched) this.ateliers = [...this.ateliers];
   }
@@ -362,7 +386,8 @@ export class WuiMachineFleet3d extends LitElement {
     this.navigate(atelier.id);
   }
 
-  private async onRemoveActive(): Promise<void> {
+  /** Delete the open atelier; the reason typed in the confirmation goes to the audit trail. */
+  private async onRemoveActive(reason: string): Promise<void> {
     const active = this.active;
     if (!active) return;
     await this.store.deleteAtelier(active.id);
@@ -371,7 +396,8 @@ export class WuiMachineFleet3d extends LitElement {
     this.trace({
       action: 'DELETE',
       item: this.dpeOf(active),
-      oldval: auditSnapshot(projectAtelier(active), ATELIER_AUDIT_FIELDS)
+      oldval: auditSnapshot(projectAtelier(active), ATELIER_AUDIT_FIELDS),
+      reason
     });
     this.back();
   }
@@ -408,6 +434,12 @@ export class WuiMachineFleet3d extends LitElement {
 
   private navigate(id: string): void {
     this.dispatchEvent(new RouterEvent(`/fleet-3d/${id}`));
+  }
+
+  /** A page reached from the overview: coming back from it stays on the overview. */
+  private goToFleetPage(path: string): void {
+    leftForFleetPage = true;
+    this.dispatchEvent(new RouterEvent(path));
   }
 
   private back(): void {

@@ -3,14 +3,18 @@
 
 /**
  * Modal dialog to edit one machine: identity + geometry, the state-datapoint
- * binding (with a selectable state mapping), and up to MAX_PARAMS KPI
- * parameters, each bound to a datapoint, one of which can be highlighted in the
- * machine's floating bubble.
+ * binding (with a selectable state mapping), its parameters, each bound to a
+ * datapoint, and what its bubble and popup show (at most MAX_SHOWN lines each).
  */
+import type { OaRxJsApi } from '@etm-professional-control/oa-rx-js-api';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
+import { Subscription, firstValueFrom } from 'rxjs';
+import { normDp } from '../data/dp-utils.js';
 import {
+  formatParamValue,
+  DEFAULT_STATE_MAPPINGS,
   DEFAULT_TRS_REFRESH_MIN,
   DEFAULT_TRS_WINDOW,
   DASHBOARD_LINK_ICONS,
@@ -20,13 +24,14 @@ import {
   KPI_TYPE_INFO,
   MACHINE_PROCESS_LABEL,
   MAX_DASHBOARD_LINKS,
-  MAX_PARAMS,
+  MAX_SHOWN,
   PORTIQUE_SPANS,
   TRS_WINDOW_LABELS,
   appLinkHref,
   resolveDashboardMode,
-  resolveDisplaySlots,
+  shownSlots,
   resolveProcess,
+  shownCounts,
   type DashboardLink,
   type DashboardMode,
   type DashboardOption,
@@ -46,14 +51,17 @@ import {
   type TrsThresholds,
   type TrsWindow
 } from '../types.js';
-import '@visuelconcept-winccoa/wui-kit/ui/wui-dp-input.js';
-import { SEMIFAB_ICONS } from '../data/semifab-icons.js';
+import './mf-dp-field.js';
+import './mf-graphic-picker.js';
 import type { AliAssetInfo } from '../data/ali-assets.js';
 import type { FleetStore } from '../data/fleet-store.js';
 import { dialogStyles } from './dialog-styles.js';
 import { overlayClicked, overlayDown } from '@visuelconcept-winccoa/wui-fleet-core/ui/overlay-dismiss.js';
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
-import { MSG, localize, localizeDir, linkFallbackMsg, dashboardLinksHintMsg } from '../i18n.js';
+import { MSG, localize, localizeDir, linkFallbackMsg, dashboardLinksHintMsg, machineTypeLabel } from '../i18n.js';
+import { nameTaken } from '../symbol-names.js';
+import { dashboardTicks, isProcessSlot, type DashboardDisplayEntry } from '../dashboard-lines.js';
+import { SYMBOL_SCALE_MAX, SYMBOL_SCALE_MIN, storedScale, symbolScale, type ScaledMachineDef } from '../symbol-scale.js';
 
 interface IxValueEvent {
   detail: string | number;
@@ -97,9 +105,6 @@ const TAB_LABELS: MultiLangString[] = [
 ];
 const TRS_WINDOWS = Object.keys(TRS_WINDOW_LABELS) as TrsWindow[];
 const KPI_TYPES = Object.keys(KPI_TYPE_INFO) as KpiType[];
-/** Built-in SemiFab icon library + the "no library" bucket (billboard picker). */
-const SEMIFAB_LIB = 'SemiFab';
-const UNCLASSIFIED_LIB = '__none__';
 const TRS_REFRESH_MIN_BOUND = 1;
 const TRS_REFRESH_MAX_BOUND = 1440;
 const ROTATIONS = [0, 45, 90, 135, 180, 225, 270, 315];
@@ -114,6 +119,8 @@ export class MfMachineDialog extends LitElement {
   static override readonly styles = [IXCoreStyles, dialogStyles(), extraStyles()];
 
   @property({ attribute: false }) machine!: MachineDef;
+  /** The atelier's symbols, for the unique-name check (#276). */
+  @property({ attribute: false }) siblings: ReadonlyArray<{ id: string; name: string }> = [];
   @property({ attribute: false }) mappings: StateMapping[] = [];
   @property({ attribute: false }) thresholds: TrsThresholds[] = [];
   /** Placement markers of the atelier, to place the machine from one (SDS 2.2 SL-IMP-02). */
@@ -126,6 +133,8 @@ export class MfMachineDialog extends LitElement {
   @property({ attribute: false }) store: FleetStore | null = null;
   /** When false, the dialog is view-only: saving is disabled. */
   @property({ type: Boolean }) canEdit = true;
+  /** WinCC OA API, to show each parameter's current value in the Parameters tab; none → '—'. */
+  @property({ attribute: false }) api: OaRxJsApi | null = null;
 
   @query('.import-input') private importInput!: HTMLInputElement;
 
@@ -137,10 +146,75 @@ export class MfMachineDialog extends LitElement {
   @state() private iconPickerRow = -1;
   @state() private archiveGroups: string[] = [];
   @state() private archiveStatus = new Map<string, { enabled: boolean; group: string }>();
-  /** Selected billboard library filter ('' = SemiFab built-in, else a library). */
-  @state() private bbLibrary = '';
-  /** Resolved data URLs for imported billboard previews, keyed by resource id. */
-  @state() private bbPreviews: Record<string, string> = {};
+  /** Current values of the parameters' datapoints (Parameters tab), by normalised name. */
+  @state() private paramValues: Record<string, unknown> = {};
+  private paramSub = new Subscription();
+  /** The datapoints {@link paramSub} reads, joined; '' when none is read. */
+  private paramDps = '';
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.stopParamValues();
+  }
+
+  protected override updated(): void {
+    // Read the parameters' values while their tab is open, again when their datapoints change.
+    const dps = this.tab === 2 && this.api ? [...new Set((this.working?.kpis ?? []).map((k) => k.dp?.trim() ?? '').filter(Boolean))] : [];
+    const key = dps.join('\n');
+    if (key === this.paramDps) return;
+    this.stopParamValues();
+    this.paramDps = key;
+    if (dps.length > 0 && this.api) void this.readParamValues(this.api, dps, key);
+  }
+
+  private stopParamValues(): void {
+    this.paramSub.unsubscribe();
+    this.paramSub = new Subscription();
+    this.paramDps = '';
+  }
+
+  /**
+   * Each datapoint read once (a missing one is left out: `dpConnect` fails as a block), then the
+   * readable ones followed live. Results of a set of datapoints since replaced are dropped.
+   */
+  private async readParamValues(api: OaRxJsApi, dps: string[], key: string): Promise<void> {
+    const results = await Promise.allSettled(dps.map((dp) => firstValueFrom(api.dpGet(dp))));
+    if (key !== this.paramDps) return;
+    const values: Record<string, unknown> = {};
+    const valid: string[] = [];
+    for (const [i, dp] of dps.entries()) {
+      const r = results[i];
+      if (r.status !== 'fulfilled') continue;
+      valid.push(dp);
+      values[normDp(dp)] = r.value;
+    }
+    this.paramValues = values;
+    if (valid.length === 0) return;
+    try {
+      this.paramSub.add(
+        api.dpConnect(valid, false).subscribe({
+          next: (e: { dp: string[]; value: unknown[] }) => {
+            const next = { ...this.paramValues };
+            for (const [i, name] of e.dp.entries()) next[normDp(name)] = e.value[i];
+            this.paramValues = next;
+          },
+          error: () => {
+            // Live channel dropped: the values read stay shown.
+          }
+        })
+      );
+    } catch {
+      // Not connected: the values read stay shown.
+    }
+  }
+
+  /** A parameter's value as shown in the Parameters tab: its datapoint's, else its fixed value; '' if none. */
+  private paramValueText(p: Kpi): string {
+    const raw = p.dp ? this.paramValues[normDp(p.dp)] : p.value;
+    const v = Array.isArray(raw) ? raw[0] : raw;
+    if (v === undefined || v === null || v === '') return '';
+    return typeof v === 'number' ? formatParamValue(v, p.decimals) : String(v);
+  }
 
   override render(): TemplateResult {
     if (!this.working) return html``;
@@ -152,13 +226,13 @@ export class MfMachineDialog extends LitElement {
             <span class="head-spacer"></span>
             <ix-icon-button
               ghost
-              icon="upload"
+              icon="download"
               title=${localize(MSG.machineDialog.importMachine)}
               @click=${this.triggerImport}
             ></ix-icon-button>
             <ix-icon-button
               ghost
-              icon="download"
+              icon="upload"
               title=${localize(MSG.machineDialog.exportMachine)}
               @click=${this.exportMachine}
             ></ix-icon-button>
@@ -198,7 +272,8 @@ export class MfMachineDialog extends LitElement {
           <div class="panel-foot">
             <ix-button variant="secondary" @click=${this.close}>${this.canEdit ? localizeDir(MSG.machineDialog.cancel) : localizeDir(MSG.machineDialog.close)}</ix-button>
             ${this.canEdit
-              ? html`<ix-button @click=${this.apply}>${localizeDir(MSG.machineDialog.save)}</ix-button>`
+              ? html`${this.nameError ? html`<span class="foot-error">${this.nameError}</span>` : ''}
+                  <ix-button ?disabled=${this.nameError !== ''} @click=${this.apply}>${localizeDir(MSG.machineDialog.save)}</ix-button>`
               : ''}
           </div>
         </div>
@@ -212,28 +287,6 @@ export class MfMachineDialog extends LitElement {
       this.tab = 0;
       this.iconPickerRow = -1;
       this.archiveStatus = new Map();
-      this.bbLibrary = this.initialBbLibrary();
-    }
-    if (changed.has('billboardResources')) void this.loadBillboardPreviews();
-  }
-
-  /** Pick the library tab to open for the current billboard selection. */
-  private initialBbLibrary(): string {
-    const ref = this.machine?.billboardUrl ?? '';
-    const res = this.billboardResources.find((r) => r.ref === ref);
-    if (res) return res.library || UNCLASSIFIED_LIB;
-    return SEMIFAB_LIB;
-  }
-
-  /** Resolve imported billboards' data URLs for the picker thumbnails. */
-  private async loadBillboardPreviews(): Promise<void> {
-    const store = this.store;
-    if (!store) return;
-    for (const r of this.billboardResources) {
-      if (this.bbPreviews[r.id]) continue;
-      // eslint-disable-next-line no-await-in-loop -- a handful of resources
-      const url = await store.readResourceDataUrl(r.ref);
-      if (url) this.bbPreviews = { ...this.bbPreviews, [r.id]: url };
     }
   }
 
@@ -249,6 +302,8 @@ export class MfMachineDialog extends LitElement {
       { label: localize(MSG.machineDialog.machineState), dp: m.stateDp },
       { label: localize(MSG.machineDialog.commLabel), dp: m.commDp },
       { label: localize(MSG.machineDialog.stopCauseLabel), dp: m.stopCauseDp },
+      ...(m.stopCauseDps ?? []).map((dp) => ({ label: localize(MSG.machineDialog.stopCauseLabel), dp })),
+      ...Object.entries(m.inputDps ?? {}).map(([key, dp]) => ({ label: key, dp })),
       { label: localize(MSG.machineDialog.workOrderLabel), dp: m.workOrderDp },
       { label: localize(MSG.machineDialog.operationLabel), dp: m.operationDp },
       { label: localize(MSG.machineDialog.alarmCodeLabel), dp: m.alarmCodeDp },
@@ -500,6 +555,8 @@ export class MfMachineDialog extends LitElement {
       <div class="grid2">
         <ix-input
           label=${localize(MSG.machineDialog.fieldName)}
+          class=${this.nameError ? 'ix-invalid' : ''}
+          invalid-text=${this.nameError}
           .value=${m.name}
           @valueChange=${(e: IxValueEvent) => this.patch({ name: String(e.detail) })}
         ></ix-input>
@@ -508,7 +565,7 @@ export class MfMachineDialog extends LitElement {
           .value=${m.type}
           @valueChange=${(e: IxValueEvent) => this.patch({ type: e.detail as MachineType })}
         >
-          ${MACHINE_TYPES.map((t) => html`<ix-select-item label=${t} value=${t}></ix-select-item>`)}
+          ${MACHINE_TYPES.map((t) => html`<ix-select-item label=${machineTypeLabel(t)} value=${t}></ix-select-item>`)}
         </ix-select>
         <ix-select
           label=${localize(MSG.machineDialog.processLabel)}
@@ -572,6 +629,16 @@ export class MfMachineDialog extends LitElement {
         >
           ${ROTATIONS.map((r) => html`<ix-select-item label=${`${r}°`} value=${String(r)}></ix-select-item>`)}
         </ix-select>
+        <ix-number-input
+          label=${localize(MSG.machineDialog.scaleLabel)}
+          helper-text=${localize(MSG.machineDialog.scaleHint)}
+          min=${SYMBOL_SCALE_MIN}
+          max=${SYMBOL_SCALE_MAX}
+          step="0.1"
+          .value=${symbolScale(m as ScaledMachineDef)}
+          @valueChange=${(e: IxValueEvent) =>
+            this.patch({ symbolScale: storedScale(Number(e.detail)) } as Partial<ScaledMachineDef>)}
+        ></ix-number-input>
         <div class="color-field">
           <span class="color-label">${localizeDir(MSG.machineDialog.colour)}</span>
           <div class="color-controls">
@@ -616,7 +683,9 @@ export class MfMachineDialog extends LitElement {
 
   /** "Affichage" tab — visibility (bubble / popup) and order for every info item. */
   private renderDisplay(): TemplateResult {
-    const slots = resolveDisplaySlots(this.working);
+    const slots = shownSlots(this.working);
+    const ticks = dashboardTicks(this.working, slots);
+    const shown = { ...shownCounts(slots), dashboard: [...ticks.values()].filter(Boolean).length };
     return html`
       <div class="subhead">${localizeDir(MSG.machineDialog.displayTitle)}</div>
       <div class="hint">
@@ -624,15 +693,28 @@ export class MfMachineDialog extends LitElement {
       </div>
       <div class="disp-row disp-row--head">
         <span class="disp-label">${localizeDir(MSG.machineDialog.colInformation)}</span>
-        <span class="disp-tog">${localizeDir(MSG.machineDialog.colBubble)}</span>
-        <span class="disp-tog">${localizeDir(MSG.machineDialog.colPopup)}</span>
+        <span class="disp-tog">${localizeDir(MSG.machineDialog.colBubble)}<br />${shown.bubble} / ${MAX_SHOWN}</span>
+        <span class="disp-tog">${localizeDir(MSG.machineDialog.colPopup)}<br />${shown.popup} / ${MAX_SHOWN}</span>
+        <span class="disp-tog">${localizeDir(MSG.machineDialog.colDashboard)}<br />${shown.dashboard} / ${MAX_SHOWN}</span>
         <span class="disp-ord">${localizeDir(MSG.machineDialog.colOrder)}</span>
       </div>
-      <div class="disp-list">${slots.map((s, i) => this.renderDisplayRow(s, i, slots.length))}</div>
+      <div class="disp-list">${slots.map((s, i) => this.renderDisplayRow(s, i, slots.length, shown, ticks))}</div>
     `;
   }
 
-  private renderDisplayRow(slot: DisplaySlot, i: number, count: number): TemplateResult {
+  private renderDisplayRow(
+    slot: DisplaySlot,
+    i: number,
+    count: number,
+    shown: { bubble: number; popup: number; dashboard: number },
+    ticks: Map<string, boolean>
+  ): TemplateResult {
+    // A line not shown yet cannot be ticked once MAX_SHOWN lines are: untick another first.
+    const bubbleFull = !slot.inBubble && shown.bubble >= MAX_SHOWN;
+    const popupFull = !slot.inPopup && shown.popup >= MAX_SHOWN;
+    const inDashboard = ticks.get(slot.ref) === true;
+    const dashboardFull = !inDashboard && shown.dashboard >= MAX_SHOWN;
+    const fullTitle = localize(MSG.machineDialog.displayFull);
     return html`
       <div class="disp-row">
         <span class="disp-label">
@@ -642,14 +724,28 @@ export class MfMachineDialog extends LitElement {
           class="disp-tog"
           hide-text
           ?checked=${slot.inBubble}
+          ?disabled=${bubbleFull}
+          title=${bubbleFull ? fullTitle : ''}
           @checkedChange=${(e: IxCheckedEvent) => this.patchDisplay(slot.ref, { inBubble: e.detail })}
         ></ix-toggle>
         <ix-toggle
           class="disp-tog"
           hide-text
           ?checked=${slot.inPopup}
+          ?disabled=${popupFull}
+          title=${popupFull ? fullTitle : ''}
           @checkedChange=${(e: IxCheckedEvent) => this.patchDisplay(slot.ref, { inPopup: e.detail })}
         ></ix-toggle>
+        ${isProcessSlot(slot)
+          ? html`<ix-toggle
+              class="disp-tog"
+              hide-text
+              ?checked=${inDashboard}
+              ?disabled=${dashboardFull}
+              title=${dashboardFull ? fullTitle : ''}
+              @checkedChange=${(e: IxCheckedEvent) => this.patchDisplay(slot.ref, { inDashboard: e.detail })}
+            ></ix-toggle>`
+          : html`<span class="disp-tog disp-na">—</span>`}
         <span class="disp-ord">
           <ix-icon-button
             ghost
@@ -672,23 +768,30 @@ export class MfMachineDialog extends LitElement {
     `;
   }
 
-  /** Snapshot the resolved slots into `display`, overriding one item's visibility. */
-  private patchDisplay(ref: string, patch: Partial<DisplayEntry>): void {
-    const display: DisplayEntry[] = resolveDisplaySlots(this.working).map((s) => ({
+  /**
+   * The resolved slots as `display` entries, the dashboard tick of each process
+   * parameter included (taken as resolved, so a default becomes explicit).
+   */
+  private displaySnapshot(): DashboardDisplayEntry[] {
+    const slots = shownSlots(this.working);
+    const ticks = dashboardTicks(this.working, slots);
+    return slots.map((s) => ({
       ref: s.ref,
-      inBubble: s.ref === ref ? (patch.inBubble ?? s.inBubble) : s.inBubble,
-      inPopup: s.ref === ref ? (patch.inPopup ?? s.inPopup) : s.inPopup
+      inBubble: s.inBubble,
+      inPopup: s.inPopup,
+      ...(ticks.has(s.ref) ? { inDashboard: ticks.get(s.ref) } : {})
     }));
+  }
+
+  /** Snapshot the resolved slots into `display`, overriding one item's visibility. */
+  private patchDisplay(ref: string, patch: Partial<DashboardDisplayEntry>): void {
+    const display: DisplayEntry[] = this.displaySnapshot().map((e) => (e.ref === ref ? { ...e, ...patch } : e));
     this.patch({ display });
   }
 
   /** Move a display item up (dir = -1) or down (dir = +1). */
   private moveDisplay(i: number, dir: number): void {
-    const display: DisplayEntry[] = resolveDisplaySlots(this.working).map((s) => ({
-      ref: s.ref,
-      inBubble: s.inBubble,
-      inPopup: s.inPopup
-    }));
+    const display: DisplayEntry[] = this.displaySnapshot();
     const j = i + dir;
     if (j < 0 || j >= display.length) return;
     [display[i], display[j]] = [display[j], display[i]];
@@ -777,11 +880,11 @@ export class MfMachineDialog extends LitElement {
       ${this.dimSlider(localize(MSG.machineDialog.width), w, 2, 10, (v) => this.patch({ basculeurW: v }))}
       ${this.dimSlider(localize(MSG.machineDialog.height), h, 2, 8, (v) => this.patch({ basculeurH: v }))}
       ${this.dimSlider(localize(MSG.machineDialog.depth), d, 2, 8, (v) => this.patch({ basculeurD: v }))}
-      <wui-dp-input
+      <mf-dp-field
         label=${localize(MSG.machineDialog.tiltDpLabel)}
         .value=${this.working.tiltDp ?? ''}
         @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ tiltDp: e.detail.value })}
-      ></wui-dp-input>
+      ></mf-dp-field>
       ${this.labeledToggle(
         localize(MSG.machineDialog.tiltInvert),
         this.working.tiltInvert ?? false,
@@ -817,24 +920,13 @@ export class MfMachineDialog extends LitElement {
     const size = this.working.billboardW ?? 6;
     return html`
       <div class="subhead">${localizeDir(MSG.machineDialog.billboardTitle)}</div>
-      <div class="hint">
-        ${localizeDir(MSG.machineDialog.billboardHint)}
-      </div>
-      <div class="bb-toolbar">
-        <ix-select
-          label=${localize(MSG.machineDialog.library)}
-          .value=${this.bbLibrary}
-          @valueChange=${(e: IxValueEvent) => (this.bbLibrary = String(e.detail))}
-        >
-          ${this.billboardLibraryOptions().map(
-            (o) => html`<ix-select-item label=${o.label} value=${o.value}></ix-select-item>`
-          )}
-        </ix-select>
-        <ix-button class="link" variant="secondary" @click=${this.openResources}>
-          <ix-icon name="folder" slot="icon"></ix-icon>${localizeDir(MSG.machineDialog.manageCatalog)}
-        </ix-button>
-      </div>
-      ${this.renderBillboardGallery()}
+      <mf-graphic-picker
+        kind="billboard"
+        .value=${this.working.billboardUrl ?? ''}
+        .billboardResources=${this.billboardResources}
+        .store=${this.store}
+        @wui:change=${(e: CustomEvent<{ value?: string }>) => this.patch({ billboardUrl: e.detail.value })}
+      ></mf-graphic-picker>
       <div class="slider-field">
         <div class="slider-head"><span>${localizeDir(MSG.machineDialog.size)}</span><span class="slider-val">${size} m</span></div>
         <ix-slider
@@ -849,83 +941,17 @@ export class MfMachineDialog extends LitElement {
     `;
   }
 
-  /** Library options for the billboard picker: SemiFab built-in + imported. */
-  private billboardLibraryOptions(): { value: string; label: string }[] {
-    const opts = [{ value: SEMIFAB_LIB, label: localize(MSG.machineDialog.semifabBuiltin) }];
-    const libs = [...new Set(this.billboardResources.map((r) => r.library).filter(Boolean))].sort(
-      (a, b) => String(a).localeCompare(String(b))
-    );
-    for (const l of libs) opts.push({ value: String(l), label: String(l) });
-    if (this.billboardResources.some((r) => !r.library)) {
-      opts.push({ value: UNCLASSIFIED_LIB, label: localize(MSG.machineDialog.importedNoLibrary) });
-    }
-    return opts;
-  }
-
-  /** Icon cells for the selected library. */
-  private renderBillboardGallery(): TemplateResult {
-    const sel = this.working.billboardUrl ?? '';
-    if (this.bbLibrary === SEMIFAB_LIB) {
-      return html`<div class="icon-grid">
-        ${SEMIFAB_ICONS.map(
-          (url) => html`<button
-            type="button"
-            class="icon-cell ${sel === url ? 'icon-cell--active' : ''}"
-            title=${url.split('/').pop() ?? ''}
-            @click=${() => this.patch({ billboardUrl: url })}
-          >
-            <img src=${url} alt="" loading="lazy" />
-          </button>`
-        )}
-      </div>`;
-    }
-    const items = this.billboardResources.filter((r) =>
-      this.bbLibrary === UNCLASSIFIED_LIB ? !r.library : r.library === this.bbLibrary
-    );
-    if (items.length === 0) return html`<div class="hint">${localizeDir(MSG.machineDialog.noResourceInLibrary)}</div>`;
-    return html`<div class="icon-grid">
-      ${items.map((r) => {
-        const preview = this.bbPreviews[r.id];
-        return html`<button
-          type="button"
-          class="icon-cell ${sel === r.ref ? 'icon-cell--active' : ''}"
-          title=${r.name}
-          @click=${() => this.patch({ billboardUrl: r.ref })}
-        >
-          ${preview ? html`<img src=${preview} alt="" />` : html`<ix-icon name="image"></ix-icon>`}
-        </button>`;
-      })}
-    </div>`;
-  }
-
   private renderGlb(): TemplateResult {
     if (this.working.type !== 'glb') return html``;
     return html`
       <div class="subhead">${localizeDir(MSG.machineDialog.glbTitle)}</div>
-      <div class="glb-row">
-        <ix-select
-          class="glb-url"
-          label=${localize(MSG.machineDialog.glbResource)}
-          allow-clear
-          .value=${this.working.glbUrl ?? ''}
-          @valueChange=${(e: IxValueEvent) => this.patch({ glbUrl: e.detail ? String(e.detail) : undefined })}
-        >
-          ${this.glbResources.map(
-            (r) => html`<ix-select-item label=${r.name} value=${r.ref}></ix-select-item>`
-          )}
-        </ix-select>
-        <ix-button variant="secondary" @click=${this.openResources}>
-          <ix-icon name="folder" slot="icon"></ix-icon>${localizeDir(MSG.machineDialog.manage)}
-        </ix-button>
-      </div>
-      ${this.glbResources.length === 0
-        ? html`<div class="hint">${localizeDir(MSG.machineDialog.glbEmpty)}</div>`
-        : ''}
+      <mf-graphic-picker
+        kind="glb"
+        .value=${this.working.glbUrl ?? ''}
+        .glbResources=${this.glbResources}
+        @wui:change=${(e: CustomEvent<{ value?: string }>) => this.patch({ glbUrl: e.detail.value })}
+      ></mf-graphic-picker>
     `;
-  }
-
-  private openResources(): void {
-    this.dispatchEvent(new CustomEvent('wui:resources', { bubbles: true, composed: true }));
   }
 
   private renderState(): TemplateResult {
@@ -933,11 +959,11 @@ export class MfMachineDialog extends LitElement {
     return html`
       <div class="subhead">${localizeDir(MSG.machineDialog.machineState)}</div>
       <div class="grid2">
-        <wui-dp-input
+        <mf-dp-field
           label=${localize(MSG.machineDialog.stateDpLabel)}
           .value=${m.stateDp ?? ''}
           @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ stateDp: e.detail.value })}
-        ></wui-dp-input>
+        ></mf-dp-field>
         <ix-select
           label=${localize(MSG.machineDialog.stateMappingLabel)}
           .value=${m.stateMappingId ?? ''}
@@ -951,13 +977,64 @@ export class MfMachineDialog extends LitElement {
       <ix-button class="link" variant="secondary" @click=${this.openMappings}>
         <ix-icon name="cogwheel" slot="icon"></ix-icon>${localizeDir(MSG.machineDialog.manageStateMappings)}
       </ix-button>
-      <wui-dp-input
+      ${this.renderMappingInputs()}
+      <label class="declared">
+        <input
+          type="checkbox"
+          .checked=${Boolean(m.declaredState)}
+          @change=${(e: Event) => this.setDeclaredState((e.target as HTMLInputElement).checked)}
+        />
+        ${localizeDir(MSG.machineDialog.declaredStateLabel)}
+      </label>
+      <div class="hint">${localizeDir(MSG.machineDialog.declaredStateHint)}</div>
+      <mf-dp-field
         label=${localize(MSG.machineDialog.commDpLabel)}
         .value=${m.commDp ?? ''}
         @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ commDp: e.detail.value })}
-      ></wui-dp-input>
+      ></mf-dp-field>
       ${this.renderAliLink()}
     `;
+  }
+
+  /** The mapping the machine uses: the one it names, else the atelier's first one, else the default (as the views). */
+  private selectedMapping(): StateMapping {
+    return this.mappings.find((mp) => mp.id === this.working.stateMappingId) ?? this.mappings[0] ?? DEFAULT_STATE_MAPPINGS[0];
+  }
+
+  /** A datapoint for each named input of the chosen mapping (winccoa-fra-msp-stma#339). */
+  private renderMappingInputs(): TemplateResult {
+    const inputs = this.selectedMapping().inputs ?? [];
+    if (inputs.length === 0) return html``;
+    const bound = this.working.inputDps ?? {};
+    return html`
+      <div class="hint">${localizeDir(MSG.machineDialog.mappingInputsHint)}</div>
+      <div class="grid2">
+        ${inputs.map(
+          (inp) => html`<mf-dp-field
+            label=${`${inp.label} (${inp.key})`}
+            .value=${bound[inp.key] ?? ''}
+            @wui:change=${(e: CustomEvent<{ value: string }>) => this.patchInputDp(inp.key, e.detail.value)}
+          ></mf-dp-field>`
+        )}
+      </div>
+    `;
+  }
+
+  /** The machine accepts a declared state, or no more (winccoa-fra-msp-stma#339). */
+  private setDeclaredState(on: boolean): void {
+    const m: MachineDef = { ...this.working, declaredState: on };
+    if (!on) delete m.declaredState;
+    this.working = m;
+  }
+
+  /** The datapoint of a named input (empty: unbound, removed from `inputDps`). */
+  private patchInputDp(key: string, dp: string): void {
+    const next = { ...(this.working.inputDps ?? {}) };
+    if (dp.trim()) next[key] = dp.trim();
+    else delete next[key];
+    const m: MachineDef = { ...this.working, inputDps: next };
+    if (Object.keys(next).length === 0) delete m.inputDps;
+    this.working = m;
   }
 
   /** Link this machine to an Asset Lifecycle Intelligence (ALI) asset, so its
@@ -1049,26 +1126,26 @@ export class MfMachineDialog extends LitElement {
     return html`
       <div class="subhead">${localizeDir(MSG.machineDialog.production)}</div>
       <div class="grid2">
-        <wui-dp-input
+        <mf-dp-field
           label=${localize(MSG.machineDialog.stopCauseDpLabel)}
           .value=${m.stopCauseDp ?? ''}
           @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ stopCauseDp: e.detail.value })}
-        ></wui-dp-input>
-        <wui-dp-input
+        ></mf-dp-field>
+        <mf-dp-field
           label=${localize(MSG.machineDialog.workOrderDpLabel)}
           .value=${m.workOrderDp ?? ''}
           @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ workOrderDp: e.detail.value })}
-        ></wui-dp-input>
-        <wui-dp-input
+        ></mf-dp-field>
+        <mf-dp-field
           label=${localize(MSG.machineDialog.operationDpLabel)}
           .value=${m.operationDp ?? ''}
           @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ operationDp: e.detail.value })}
-        ></wui-dp-input>
-        <wui-dp-input
+        ></mf-dp-field>
+        <mf-dp-field
           label=${localize(MSG.machineDialog.alarmCodeDpLabel)}
           .value=${m.alarmCodeDp ?? ''}
           @wui:change=${(e: CustomEvent<{ value: string }>) => this.patch({ alarmCodeDp: e.detail.value })}
-        ></wui-dp-input>
+        ></mf-dp-field>
         <ix-number-input
           label=${localize(MSG.machineDialog.minStopLabel)}
           helper-text=${localize(MSG.machineDialog.minStopHint)}
@@ -1077,7 +1154,43 @@ export class MfMachineDialog extends LitElement {
           @valueChange=${(e: IxValueEvent) => this.patch({ minStopSec: Math.max(0, Number(e.detail) || 0) })}
         ></ix-number-input>
       </div>
+      ${this.renderCauseSources()}
     `;
+  }
+
+  /** Further stop-cause datapoints, by priority after the one above (winccoa-fra-msp-stma#339). */
+  private renderCauseSources(): TemplateResult {
+    const extra = this.working.stopCauseDps ?? [];
+    return html`
+      <div class="subhead">${localizeDir(MSG.machineDialog.causeSourcesLabel)}</div>
+      <div class="hint">${localizeDir(MSG.machineDialog.causeSourcesHint)}</div>
+      <div class="params">
+        ${extra.map(
+          (dp, i) => html`<div class="cause-row">
+            <mf-dp-field
+              .value=${dp}
+              @wui:change=${(e: CustomEvent<{ value: string }>) => this.setCauseSources(extra.map((d, j) => (j === i ? e.detail.value : d)))}
+            ></mf-dp-field>
+            <ix-icon-button
+              ghost
+              icon="trashcan"
+              title=${localize(MSG.machineDialog.removeCauseSource)}
+              @click=${() => this.setCauseSources(extra.filter((_, j) => j !== i))}
+            ></ix-icon-button>
+          </div>`
+        )}
+      </div>
+      <ix-button class="link" variant="secondary" @click=${() => this.setCauseSources([...extra, ''])}>
+        <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.machineDialog.addCauseSource)}
+      </ix-button>
+    `;
+  }
+
+  /** The further cause datapoints as listed (an empty row kept while edited, dropped at save). */
+  private setCauseSources(list: string[]): void {
+    const m: MachineDef = { ...this.working, stopCauseDps: list };
+    if (list.length === 0) delete m.stopCauseDps;
+    this.working = m;
   }
 
   private renderDashboard(): TemplateResult {
@@ -1277,12 +1390,11 @@ export class MfMachineDialog extends LitElement {
   private renderParams(): TemplateResult {
     const params = this.working.kpis ?? [];
     return html`
-      <div class="subhead">${localizeDir(MSG.machineDialog.paramsTitle)} (${params.length}/${MAX_PARAMS})</div>
+      <div class="subhead">${localizeDir(MSG.machineDialog.paramsTitle)} (${params.length})</div>
       <div class="params">${params.map((p, i) => this.renderParamRow(p, i))}</div>
       <ix-button
         class="link"
         variant="secondary"
-        ?disabled=${params.length >= MAX_PARAMS}
         @click=${this.addParam}
       >
         <ix-icon name="plus" slot="icon"></ix-icon>${localizeDir(MSG.machineDialog.addParam)}
@@ -1291,6 +1403,10 @@ export class MfMachineDialog extends LitElement {
   }
 
   private renderParamRow(p: Kpi, i: number): TemplateResult {
+    // A row with a value and no datapoint (machine, workcenter…) shows that value, fixed, instead
+    // of an empty datapoint field that reads as a forgotten binding.
+    const fixed = !p.dp && p.value !== undefined && p.value !== '';
+    const value = this.paramValueText(p);
     return html`
       <div class="param-row">
         <ix-input
@@ -1299,11 +1415,16 @@ export class MfMachineDialog extends LitElement {
           .value=${p.label}
           @valueChange=${(e: IxValueEvent) => this.patchParam(i, { label: String(e.detail) })}
         ></ix-input>
-        <wui-dp-input
-          class="p-dp"
-          .value=${p.dp ?? ''}
-          @wui:change=${(e: CustomEvent<{ value: string }>) => this.patchParam(i, { dp: e.detail.value })}
-        ></wui-dp-input>
+        ${fixed
+          ? html`<span class="p-fixed" title=${localize(MSG.machineDialog.paramFixedTitle)}>${localizeDir(MSG.machineDialog.paramFixed)}</span>`
+          : html`<mf-dp-field
+              class="p-dp"
+              .value=${p.dp ?? ''}
+              @wui:change=${(e: CustomEvent<{ value: string }>) => this.patchParam(i, { dp: e.detail.value })}
+            ></mf-dp-field>`}
+        <span class="p-value ${value === '' ? 'p-value--none' : ''}" title=${`${localize(MSG.machineDialog.paramLiveTitle)} — ${value || '—'}`}
+          >${value || '—'}</span
+        >
         <ix-input
           class="p-unit"
           placeholder=${localize(MSG.machineDialog.paramUnit)}
@@ -1331,7 +1452,6 @@ export class MfMachineDialog extends LitElement {
 
   private addParam(): void {
     const kpis = [...(this.working.kpis ?? [])];
-    if (kpis.length >= MAX_PARAMS) return;
     kpis.push({ key: `p${kpis.length + 1}`, label: localize(MSG.machineDialog.defaultParamName), showInCard: true });
     this.patch({ kpis });
   }
@@ -1345,10 +1465,23 @@ export class MfMachineDialog extends LitElement {
     this.dispatchEvent(new CustomEvent('wui:mapping', { bubbles: true, composed: true }));
   }
 
+  /** Empty, or the reason the name is refused: required, and unique in the atelier (#276). */
+  private get nameError(): string {
+    const name = this.working?.name ?? '';
+    if (name.trim() === '') return localize(MSG.machineDialog.nameRequired);
+    return nameTaken(name, this.working.id, this.siblings) ? localize(MSG.machineDialog.nameTaken) : '';
+  }
+
   private apply(): void {
+    if (this.nameError) return;
+    // The further cause datapoints left empty are dropped (winccoa-fra-msp-stma#339).
+    const machine = { ...this.working };
+    const causes = (machine.stopCauseDps ?? []).map((d) => d.trim()).filter(Boolean);
+    if (causes.length) machine.stopCauseDps = causes;
+    else delete machine.stopCauseDps;
     this.dispatchEvent(
       new CustomEvent('wui:apply', {
-        detail: { machine: this.working },
+        detail: { machine },
         bubbles: true,
         composed: true
       })
@@ -1390,6 +1523,11 @@ export class MfMachineDialog extends LitElement {
 
 function extraStyles(): ReturnType<typeof css> {
   return css`
+    .foot-error {
+      margin-right: auto;
+      color: var(--theme-color-alarm);
+      font-size: 0.8rem;
+    }
     .link {
       margin-top: 0.5rem;
     }
@@ -1419,7 +1557,7 @@ function extraStyles(): ReturnType<typeof css> {
     }
     .disp-row {
       display: grid;
-      grid-template-columns: 1fr 4rem 4rem 4.5rem;
+      grid-template-columns: 1fr 4rem 4rem 5.5rem 4.5rem;
       align-items: center;
       gap: 0.5rem;
       padding: 0.35rem 0.25rem;
@@ -1448,6 +1586,9 @@ function extraStyles(): ReturnType<typeof css> {
     .disp-tog {
       justify-self: center;
     }
+    .disp-na {
+      color: var(--theme-color-soft-text);
+    }
     .disp-ord {
       display: flex;
       justify-content: center;
@@ -1458,32 +1599,43 @@ function extraStyles(): ReturnType<typeof css> {
       flex-direction: column;
       gap: 0.4rem;
     }
-    .param-row {
+    .declared {
       display: flex;
       align-items: center;
       gap: 0.4rem;
+      margin-top: 0.5rem;
     }
-    .param-row .p-label {
-      flex: 2;
+    .cause-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.4rem;
+      align-items: center;
     }
-    .param-row .p-dp {
-      flex: 3;
+    .param-row {
+      display: grid;
+      grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) minmax(0, 1.2fr) minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 0.4rem;
     }
-    .param-row .p-unit {
-      flex: 1;
+    .p-fixed {
+      color: var(--theme-color-soft-text);
+      font-style: italic;
+      padding: 0 0.5rem;
+    }
+    .p-value {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .p-value--none {
+      color: var(--theme-color-soft-text);
     }
     .grid3 {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
       gap: 0.5rem;
-    }
-    .glb-row {
-      display: flex;
-      align-items: flex-end;
-      gap: 0.5rem;
-    }
-    .glb-row .glb-url {
-      flex: 1;
     }
     .glb-err {
       margin-top: 0.4rem;
@@ -1559,55 +1711,6 @@ function extraStyles(): ReturnType<typeof css> {
       color: var(--theme-color-primary);
       border-bottom-color: var(--theme-color-primary);
       font-weight: 600;
-    }
-    .icon-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, 64px);
-      gap: 0.4rem;
-      max-height: 240px;
-      overflow-y: auto;
-      padding: 0.25rem;
-      border: 1px solid var(--theme-color-soft-bdr);
-      border-radius: var(--theme-default-border-radius);
-    }
-    .icon-cell {
-      width: 64px;
-      height: 64px;
-      padding: 0.2rem;
-      background: var(--theme-color-2);
-      border: 2px solid transparent;
-      border-radius: var(--theme-default-border-radius);
-      cursor: pointer;
-    }
-    .icon-cell:hover {
-      border-color: var(--theme-color-soft-bdr);
-    }
-    .icon-cell--active {
-      border-color: var(--theme-color-primary);
-      background: color-mix(in srgb, var(--theme-color-primary) 14%, transparent);
-    }
-    .icon-cell img {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      pointer-events: none;
-    }
-    .bb-toolbar {
-      display: flex;
-      align-items: flex-end;
-      gap: 0.5rem;
-      margin-bottom: 0.5rem;
-    }
-    .bb-toolbar ix-select {
-      flex: 1;
-    }
-    .icon-cell ix-icon {
-      width: 100%;
-      height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--theme-color-soft-text);
     }
     .toggle-row {
       display: flex;

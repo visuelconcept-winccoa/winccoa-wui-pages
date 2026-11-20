@@ -32,8 +32,9 @@ interface IxValueEvent {
   detail: string;
 }
 
-const BYTES_PER_MB = 1_000_000;
-const MAX_BYTES = 2 * BYTES_PER_MB;
+export const BYTES_PER_MB = 1_000_000;
+/** Largest graphic file imported (catalogue, and the GLB uploaded from the "Add a symbol" wizard). */
+export const MAX_BYTES = 2 * BYTES_PER_MB;
 
 const KIND_CFG: Record<
   GraphicKind,
@@ -135,7 +136,7 @@ export class MfGraphicsCatalog extends LitElement {
           ?disabled=${this.busy || this.pendingData === '' || this.importName.trim() === ''}
           @click=${this.doImport}
         >
-          <ix-icon name="upload" slot="icon"></ix-icon>${localizeDir(MSG.graphicsCatalog.import)}
+          <ix-icon name="download" slot="icon"></ix-icon>${localizeDir(MSG.graphicsCatalog.import)}
         </ix-button>
       </div>
       <input class="res-file" type="file" accept=${cfg.accept} hidden @change=${this.onFile} />

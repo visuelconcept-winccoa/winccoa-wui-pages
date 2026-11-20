@@ -31,10 +31,14 @@ export interface AtelierSummary {
   machineCount: number;
 }
 
-/** What `GET /api/ai/fleet/workshops/:id` answers: the atelier and the stop-cause catalog. */
+/**
+ * What `GET /api/ai/fleet/workshops/:id` answers: the atelier, the default stop-cause catalog (the single
+ * catalogue of before #74) and every catalogue (`[{ id, name, causes }]`, the default one with id 'default').
+ */
 export interface AtelierPayload {
   atelier: Atelier;
   stopCauses: StopCause[];
+  stopCatalogs?: unknown;
 }
 
 /** How a call ended, in the terms the element shows. */

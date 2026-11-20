@@ -190,14 +190,26 @@ export function alarmViewStyles(): ReturnType<typeof css> {
       font-size: 0.75rem;
       color: var(--_text-soft);
       white-space: nowrap;
+      /* Same width at every refresh: the clock's digits change each second, and a status line whose width moves
+         makes the toolbar row wrap and unwrap — the panel then jumps up and down (wui-pages#76). */
+      font-variant-numeric: tabular-nums;
+    }
+    .clock {
+      display: inline-block;
+      min-width: 8ch;
+    }
+    .retry {
+      color: var(--_to-ack);
     }
     .dot {
+      flex: none;
       width: 0.5rem;
       height: 0.5rem;
       border-radius: 50%;
       background: var(--_acked);
     }
-    .dot.held {
+    .dot.held,
+    .dot.stale {
       background: var(--_to-ack);
     }
     .notice,

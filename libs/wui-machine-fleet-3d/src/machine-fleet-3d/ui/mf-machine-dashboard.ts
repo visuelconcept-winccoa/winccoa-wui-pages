@@ -28,6 +28,10 @@ import { LitElement, css, html, svg, type PropertyValues, type TemplateResult } 
 import { customElement, property, state } from 'lit/decorators.js';
 import { Subscription, firstValueFrom } from 'rxjs';
 import { normDp } from '../data/dp-utils.js';
+import { declaredStateDpe, liveTargets, machineLiveState, recordedState, recordsState, stateRecordDpes } from '@visuelconcept-winccoa/wui-fleet-core/state-eval.js';
+import { hasRole$ } from '@visuelconcept-winccoa/wui-kit/data/app-security.js';
+import type { FleetStore } from '../data/fleet-store.js';
+import './mf-reason-dialog.js';
 import {
   KPI_TYPE_INFO,
   TRS_WINDOW_LABELS,
@@ -35,7 +39,6 @@ import {
   formatStopCause,
   isRunningState,
   mappingStates as statesOf,
-  resolveState,
   stateColor,
   stateLabel,
   type Machine,
@@ -75,12 +78,17 @@ import type { AlarmViewProfile } from '@visuelconcept-winccoa/wui-alarms-core/pr
 import type { MultiLangString } from '@wincc-oa/wui-models/interfaces/multi-lang-string.js';
 import {
   MSG,
+  declareStateMsg,
   localize,
   localizeDir,
   ml,
+  machineTypeLabel,
   noStopOfClassMsg,
   rangeLabelMsg
 } from '../i18n.js';
+import { ganttTicks, tickLabel } from '../gantt-ticks.js';
+import { tipTransform } from '../tip-place.js';
+import { dashboardParams } from '../dashboard-lines.js';
 
 /**
  * The duration of each alarm in the dashboard's alarm panel: from its appearance to its
@@ -193,6 +201,14 @@ export class MfMachineDashboard extends LitElement {
   @property({ attribute: false }) api: OaRxJsApi | null = null;
   @property() atelierId = '';
   @property() atelierName = '';
+  /** Writes the state an operator declares (winccoa-fra-msp-stma#339). */
+  @property({ attribute: false }) store: FleetStore | null = null;
+  /** The viewer holds the role "Declare a machine's state". */
+  @state() private canDeclare = false;
+  /** A declared state chosen, waiting for its reason. */
+  @state() private declaring: { before: string; after: string } | null = null;
+  @state() private declareError = '';
+  private roleSub: Subscription | null = null;
 
   @state() private period: Period = '7d';
   /** How far back the window is shifted from "now" (ms); 0 = current period. */
@@ -232,9 +248,11 @@ export class MfMachineDashboard extends LitElement {
 
   private dpSub = new Subscription();
   private settingsSub: Subscription | null = null;
-  /** Normalised state-DP name (to detect state changes in the live stream). */
+  /**
+   * Normalised recorded state / cause DPE (winccoa-fra-msp-stma#339): a change the state manager records redraws
+   * the Gantt, the Pareto and the stop list, which read that history.
+   */
   private stateKey = '';
-  /** Normalised stop-cause-DP name (a cause assignment re-classifies a stop). */
   private causeKey = '';
   /** Last state/cause seen live — a rewrite of the same value is not a transition. */
   private lastState = '';
@@ -254,7 +272,8 @@ export class MfMachineDashboard extends LitElement {
           <div class="panel-head">
             <span class="dot" style="background:${stateColor(this.mapping, this.liveState())}"></span>
             <ix-typography format="h3">${m.name}</ix-typography>
-            <ix-chip outline>${m.loc ?? m.type}</ix-chip>
+            <ix-chip outline>${m.loc ?? machineTypeLabel(m.type)}</ix-chip>
+            ${this.renderDeclared()}
             <span class="grow"></span>
             ${m.ownerLink?.url
               ? html`<ix-button variant="secondary" @click=${() => window.location.assign(m.ownerLink?.url ?? '')}
@@ -282,7 +301,67 @@ export class MfMachineDashboard extends LitElement {
         </div>
       </div>
       ${this.renderTip()}
+      ${this.declaring
+        ? html`<mf-reason-dialog
+            heading=${localize(MSG.machineDash.declareHeading)}
+            message=${declareStateMsg(m.name, this.declaredLabel(this.declaring.before), this.declaredLabel(this.declaring.after))}
+            confirmLabel=${localize(MSG.machineDash.declareConfirm)}
+            @wui:confirm=${(e: CustomEvent<{ reason: string }>) => void this.confirmDeclare(e.detail.reason)}
+            @wui:cancel=${() => (this.declaring = null)}
+          ></mf-reason-dialog>`
+        : ''}
     `;
+  }
+
+  /** The state an operator declared (machines that accept one): shown, and chosen with the role `declare`. */
+  private renderDeclared(): TemplateResult {
+    if (!this.machine.declaredState) return html``;
+    const current = this.currentDeclared();
+    const states = statesOf(this.mapping);
+    return html`<span class="declared">
+      <label>${localizeDir(MSG.machineDash.declaredLabel)}</label>
+      <select
+        .value=${current}
+        ?disabled=${!this.canDeclare || !this.store}
+        @change=${(e: Event) => this.askDeclare(current, (e.target as HTMLSelectElement).value, e.target as HTMLSelectElement)}
+      >
+        <option value="" ?selected=${current === ''}>${localize(MSG.machineDash.declaredNone)}</option>
+        ${states.map((s) => html`<option value=${s.key} ?selected=${current === s.key}>${s.label}</option>`)}
+      </select>
+      ${this.declareError ? html`<span class="declare-error">${this.declareError}</span>` : ''}
+    </span>`;
+  }
+
+  /** The declared state as last read ('' none). */
+  private currentDeclared(): string {
+    const raw = extractScalar(this.liveValues[normDp(declaredStateDpe(this.machine.id))]);
+    return raw == null ? '' : String(raw);
+  }
+
+  private declaredLabel(key: string): string {
+    if (!key) return localize(MSG.machineDash.declaredNone);
+    return statesOf(this.mapping).find((s) => s.key === key)?.label ?? key;
+  }
+
+  /** A state chosen: the select goes back to the current one until the reason is given and the write done. */
+  private askDeclare(before: string, after: string, select: HTMLSelectElement): void {
+    select.value = before;
+    if (after === before) return;
+    this.declareError = '';
+    this.declaring = { before, after };
+  }
+
+  private async confirmDeclare(reason: string): Promise<void> {
+    const d = this.declaring;
+    this.declaring = null;
+    if (!d || !this.store) return;
+    const ok = await this.store.declareState(this.machine.id, this.machine.name, d.before, d.after, reason);
+    if (!ok) {
+      this.declareError = localize(MSG.machineDash.declareFailed);
+      return;
+    }
+    // Shown at once; the live stream confirms it.
+    this.liveValues = { ...this.liveValues, [normDp(declaredStateDpe(this.machine.id))]: d.after };
   }
 
   override connectedCallback(): void {
@@ -292,6 +371,7 @@ export class MfMachineDashboard extends LitElement {
     window.addEventListener('keydown', this.onKeyDown);
     // The filter is the user's (their settings), read again on every login.
     this.settingsSub = settingsCache.watch(['fleet-dashboard'], () => (this.filter = loadDashboardFilter()));
+    this.roleSub = hasRole$('machine-fleet-3d', 'declare').subscribe((granted) => (this.canDeclare = granted));
   }
 
   override disconnectedCallback(): void {
@@ -299,6 +379,8 @@ export class MfMachineDashboard extends LitElement {
     window.removeEventListener('keydown', this.onKeyDown);
     this.settingsSub?.unsubscribe();
     this.settingsSub = null;
+    this.roleSub?.unsubscribe();
+    this.roleSub = null;
     this.dpSub.unsubscribe();
     window.clearTimeout(this.historyDebounce);
     window.clearInterval(this.liveTimer);
@@ -337,11 +419,19 @@ export class MfMachineDashboard extends LitElement {
     const api = this.api;
     const m = this.machine;
     if (!api) return;
-    this.stateKey = m.stateDp ? normDp(m.stateDp) : '';
-    this.causeKey = m.stopCauseDp ? normDp(m.stopCauseDp) : '';
+    const record = recordsState(m) ? stateRecordDpes(m.id) : null;
+    this.stateKey = record ? normDp(record.state) : '';
+    this.causeKey = record ? normDp(record.cause) : '';
     const dps = [
       ...new Set(
-        [m.stateDp, m.stopCauseDp, ...(m.kpis ?? []).map((k) => k.dp)].filter(
+        [
+          ...liveTargets(m).map((t) => t.dpe),
+          record?.state,
+          record?.cause,
+          m.workOrderDp,
+          m.operationDp,
+          ...(m.kpis ?? []).map((k) => k.dp)
+        ].filter(
           (d): d is string => typeof d === 'string' && d !== ''
         )
       )
@@ -484,8 +574,10 @@ export class MfMachineDashboard extends LitElement {
     const m = this.machine;
     return scopeFromDpes([
       m.stateDp,
+      ...Object.values(m.inputDps ?? {}),
       m.commDp,
       m.stopCauseDp,
+      ...(m.stopCauseDps ?? []),
       m.workOrderDp,
       m.operationDp,
       ...(m.kpis ?? []).map((k) => k.dp),
@@ -645,22 +737,63 @@ export class MfMachineDashboard extends LitElement {
     return rangeLabelMsg(formatDateTime(start.getTime()), formatDateTime(end.getTime()));
   }
 
-  /** Top band: one card per bound parameter and per computed KPI, gauge included. */
+  /**
+   * Top band: the context line (production context, identities, work order and
+   * operation), then one card per process parameter and per computed KPI.
+   */
   private renderParams(): TemplateResult {
+    const context = this.contextItems();
     const cards = this.paramCards();
-    if (cards.length === 0) return html`<div class="muted">${localizeDir(MSG.machineDash.noProcessParams)}</div>`;
-    return html`<div class="cards">${cards.map((c) => this.renderCard(c))}</div>`;
+    return html`
+      ${context.length
+        ? html`<div class="context">
+            ${context.map(
+              (c) => html`<span class="ctx-item"
+                ><span class="ctx-label">${c.label}</span
+                ><span class="ctx-value" title=${c.value}>${c.value}</span></span
+              >`
+            )}
+          </div>`
+        : ''}
+      ${cards.length === 0
+        ? html`<div class="muted">${localizeDir(MSG.machineDash.noProcessParams)}</div>`
+        : html`<div class="cards">${cards.map((c) => this.renderCard(c))}</div>`}
+    `;
+  }
+
+  /** A live value as text, '—' when empty. */
+  private liveDisplay(dp: string | undefined, fallback?: number | string, decimals?: number): string {
+    const live = dp ? extractScalar(this.liveValues[normDp(dp)]) : undefined;
+    const v = live ?? fallback;
+    if (v == null || v === '') return '—';
+    return typeof v === 'number' ? formatParamValue(v, decimals) : String(v);
   }
 
   /**
-   * The cards of the top band: the machine's bound process parameters (live via
-   * `dpConnect`) followed by the KPIs the `kpiCalc` manager computes. The KPI
-   * values are read straight off the live machine object the 3D view keeps
-   * updated — they refresh with the next render, driven by the parameter stream.
+   * The context line, outside the process parameters' cap: the context parameters
+   * (article, contract, identities…), then the work order and the operation.
+   */
+  private contextItems(): { label: string; value: string }[] {
+    const m = this.machine;
+    const items = dashboardParams(m).context.map((k) => ({
+      label: k.label || k.key,
+      value: this.liveDisplay(k.dp, k.value, k.decimals)
+    }));
+    if (m.workOrderDp) items.push({ label: localize(MSG.view.workOrder), value: this.liveDisplay(m.workOrderDp) });
+    if (m.operationDp) items.push({ label: localize(MSG.view.operation), value: this.liveDisplay(m.operationDp) });
+    return items;
+  }
+
+  /**
+   * The cards of the top band: the process parameters ticked for the machine's
+   * popup, at most MAX_SHOWN (live via `dpConnect`), followed by the KPIs the
+   * `kpiCalc` manager computes. The KPI values are read straight off the live
+   * machine object the 3D view keeps updated — they refresh with the next render,
+   * driven by the parameter stream.
    */
   private paramCards(): ParamCard[] {
     const m = this.machine;
-    const cards: ParamCard[] = (m.kpis ?? []).map((k) => {
+    const cards: ParamCard[] = dashboardParams(m).process.map((k) => {
       // Prefer the live dpConnect value; fall back to the last known value.
       const live = k.dp ? extractScalar(this.liveValues[normDp(k.dp)]) : undefined;
       // Where the value comes from (automatic, manual…), when the integration tells it.
@@ -746,11 +879,10 @@ export class MfMachineDashboard extends LitElement {
     return niceScale(band.min, band.max);
   }
 
-  /** Current state from the live stream when available, else the machine's state. */
+  /** Current state from the machine's inputs through its mapping (as the atelier view), else the machine's state. */
   private liveState(): MachineState {
-    const raw = this.stateKey ? this.liveValues[this.stateKey] : undefined;
-    if (raw == null) return this.machine.state;
-    return resolveState(this.mapping, Math.round(Number(extractScalar(raw))));
+    const live = machineLiveState(this.machine, this.mapping, (dpe) => this.liveValues[normDp(dpe)], this.stopCauses);
+    return live.state ?? this.machine.state;
   }
 
   /** Machine-state Gantt: proportional, coloured timeline of the state history. */
@@ -776,6 +908,8 @@ export class MfMachineDashboard extends LitElement {
     }
     const start = segs[0].startMs;
     const total = segs.at(-1)!.endMs - start || 1;
+    // Dates of the start, the end and the state changes, readable without hovering (#279).
+    const ticks = ganttTicks([...segs.map((s) => s.startMs), segs.at(-1)!.endMs]);
     return html`
       ${head}
       <svg class="gantt" viewBox="0 0 100 10" preserveAspectRatio="none">
@@ -787,7 +921,15 @@ export class MfMachineDashboard extends LitElement {
             @pointermove=${(e: PointerEvent) => this.showTip(e, s)}
             @pointerleave=${() => (this.tip = null)}></rect>`;
         })}
+        ${ticks
+          .filter((t) => t.align === 'middle')
+          .map((t) => svg`<line class="gantt-mark" x1=${t.pct} x2=${t.pct} y1="0" y2="10"></line>`)}
       </svg>
+      <div class="gantt-axis">
+        ${ticks.map(
+          (t) => html`<span class="tick tick--${t.align}" style="left:${t.pct}%">${tickLabel(t.ms, total)}</span>`
+        )}
+      </div>
       <div class="legend">
         ${this.mappingStates().map(
           (st) => html`<span class="leg"
@@ -830,7 +972,7 @@ export class MfMachineDashboard extends LitElement {
     if (!tip) return html``;
     const s = tip.seg;
     return html`
-      <div class="gantt-tip" style="left:${tip.x}px;top:${tip.y}px">
+      <div class="gantt-tip" style="left:${tip.x}px;top:${tip.y}px;transform:${tipTransform(tip.x, tip.y, window.innerWidth, window.innerHeight)}">
         <div class="tip-state" style="color:${stateColor(this.mapping, s.state)}">${stateLabel(this.mapping, s.state)}</div>
         <div>${localizeDir(MSG.machineDash.tipStart)} ${formatDateTimeSec(s.startMs)}</div>
         <div>${localizeDir(MSG.machineDash.tipEnd)} ${formatDateTimeSec(s.endMs)}</div>
@@ -1131,7 +1273,7 @@ export class MfMachineDashboard extends LitElement {
   private async reload(silent = false): Promise<void> {
     const m = this.machine;
     const gen = ++this.reloadGen;
-    if (!this.api || !m.stateDp) {
+    if (!this.api || !recordsState(m)) {
       this.segmentsAll = [];
       this.paretoAll = [];
       this.stopsAll = [];
@@ -1185,11 +1327,11 @@ export class MfMachineDashboard extends LitElement {
   }
 
   private async buildSegments(m: Machine, start: Date, end: Date): Promise<StateSegment[]> {
-    const samples = await queryHistory(this.api, m.stateDp ?? '', start, end);
+    // The history the state manager records: the state its mapping gave, and the cause in progress.
+    const record = stateRecordDpes(m.id);
+    const samples = await queryHistory(this.api, record.state, start, end);
     if (samples.length === 0) return [];
-    const causeSamples: HistorySample[] = m.stopCauseDp
-      ? await queryHistory(this.api, m.stopCauseDp, start, end)
-      : [];
+    const causeSamples: HistorySample[] = await queryHistory(this.api, record.cause, start, end);
     const startMs = start.getTime();
     const endMs = end.getTime();
     const segs: StateSegment[] = [];
@@ -1197,8 +1339,9 @@ export class MfMachineDashboard extends LitElement {
       const segStart = Math.max(s.t, startMs);
       const segEnd = Math.min(samples[i + 1] ? samples[i + 1].t : endMs, endMs);
       if (segEnd <= segStart) continue;
-      const state = resolveState(this.mapping, Math.round(Number(s.v)));
-      const causeLabel = isRunningState(this.mapping, state) ? undefined : this.causeAt(causeSamples, segStart);
+      const state = recordedState(s.v);
+      const running = isRunningState(this.mapping, state);
+      const causeLabel = running ? undefined : this.causeAt(causeSamples, segStart);
       const last = segs.at(-1);
       if (last && last.state === state && last.causeLabel === causeLabel && last.endMs >= segStart) {
         last.endMs = segEnd;
@@ -1248,13 +1391,14 @@ export class MfMachineDashboard extends LitElement {
   }
 
   private async analyse(m: Machine, start: Date, end: Date): Promise<{ rows: CauseRow[]; stops: RawStop[] }> {
+    const record = stateRecordDpes(m.id);
     const target: AnalysisMachine = {
       atelierId: this.atelierId,
       atelierName: this.atelierName,
       machineId: m.id,
       machineName: m.name,
-      stateDp: m.stateDp ?? '',
-      stopCauseDp: m.stopCauseDp ?? '',
+      stateDp: record.state,
+      stopCauseDp: record.cause,
       mapping: this.mapping,
       minStopMs: (m.minStopSec ?? 0) * 1000
     };
@@ -1457,6 +1601,23 @@ function dashboardStyles() {
       height: 0.8rem;
       border-radius: 50%;
     }
+    .declared {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.85rem;
+    }
+    .declared select {
+      font: inherit;
+      color: var(--theme-color-std-text);
+      background: var(--theme-color-1);
+      border: 1px solid var(--theme-color-soft-bdr);
+      border-radius: var(--theme-default-border-radius);
+      padding: 0.15rem 0.4rem;
+    }
+    .declare-error {
+      color: var(--theme-color-alarm);
+    }
     .grow {
       flex: 1;
     }
@@ -1568,6 +1729,32 @@ function dashboardStyles() {
     .zone h4 {
       margin: 0 0 0.5rem;
       font-size: 0.95rem;
+    }
+    /* Context line above the cards: label over value, wrapping, outside the cap. */
+    .context {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem 1.5rem;
+      margin: 0 0 0.6rem;
+      padding: 0 0 0.5rem;
+      border-bottom: 1px solid var(--theme-color-soft-bdr);
+    }
+    .ctx-item {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      max-width: 18rem;
+    }
+    .ctx-label {
+      font-size: 0.72rem;
+      color: var(--theme-color-soft-text);
+    }
+    .ctx-value {
+      font-size: 0.95rem;
+      font-weight: 700;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     /*
      * Parameter band: cards wrap onto as many rows as needed, and the band
@@ -1722,6 +1909,32 @@ function dashboardStyles() {
     }
     .gantt rect {
       cursor: pointer;
+    }
+    .gantt-mark {
+      stroke: var(--theme-color-std-text);
+      stroke-width: 1;
+      stroke-opacity: 0.55;
+      vector-effect: non-scaling-stroke;
+      pointer-events: none;
+    }
+    .gantt-axis {
+      position: relative;
+      height: 1.1rem;
+      margin-top: 0.15rem;
+      font-size: 0.7rem;
+      color: var(--theme-color-soft-text);
+    }
+    .gantt-axis .tick {
+      position: absolute;
+      top: 0;
+      white-space: nowrap;
+      transform: translateX(-50%);
+    }
+    .gantt-axis .tick--start {
+      transform: none;
+    }
+    .gantt-axis .tick--end {
+      transform: translateX(-100%);
     }
     .gantt-tip {
       position: fixed;

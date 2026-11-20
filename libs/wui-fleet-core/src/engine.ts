@@ -29,15 +29,21 @@ import {
   DEFAULT_STATE_MAPPINGS,
   isRunningState,
   isOutsideOpening,
-  resolveState,
   type Atelier,
   type StateMapping,
   type StopCause,
+  type StopCauseCatalog,
   type StopClassification
 } from './types.js';
 import type { MsInterval } from './closures.js';
+import { catalogFor, defaultCatalog } from './stop-catalogs.js';
+import { isAnalysable, recordedState, stateRecordDpes } from './state-eval.js';
 
-/** A machine eligible for analysis (both histories bound). */
+/**
+ * A machine eligible for analysis: it binds an input of its mapping and a stop cause. Its histories are the ones
+ * Machine Fleet's state manager records (winccoa-fra-msp-stma#339): `stateDp` holds state keys of its mapping,
+ * `stopCauseDp` the cause in progress.
+ */
 export interface AnalysisMachine {
   atelierId: string;
   atelierName: string;
@@ -48,6 +54,12 @@ export interface AnalysisMachine {
   mapping: StateMapping | undefined;
   /** Shortest stop that counts, in ms (MachineDef.minStopSec); shorter ones are production. */
   minStopMs?: number;
+  /**
+   * The machine's own stop-cause catalogue (#74), when not the default: its causes, and its id and name
+   * to keep its causes apart from another catalogue's that reuse a code. Absent: the catalogue given to
+   * `analyseStopCauses`.
+   */
+  catalog?: { id: string; name: string; causes: StopCause[] };
 }
 
 /** One aggregated cause row of the result table. */
@@ -131,22 +143,29 @@ interface Sample {
 export function collectMachines(
   ateliers: Atelier[],
   selectedAtelierIds: Set<string>,
-  selectedMachineIds: Set<string>
+  selectedMachineIds: Set<string>,
+  catalogs: readonly StopCauseCatalog[] = []
 ): AnalysisMachine[] {
   const out: AnalysisMachine[] = [];
+  const def = catalogs.length ? defaultCatalog(catalogs) : null;
   for (const atelier of ateliers) {
     if (selectedAtelierIds.size > 0 && !selectedAtelierIds.has(atelier.id)) continue;
     for (const m of atelier.machines) {
       if (selectedMachineIds.size > 0 && !selectedMachineIds.has(m.id)) continue;
-      if (!m.stateDp || !m.stopCauseDp) continue;
+      if (!isAnalysable(m)) continue;
+      const record = stateRecordDpes(m.id);
       out.push({
         atelierId: atelier.id,
         atelierName: atelier.name,
         machineId: m.id,
         machineName: m.name,
-        stateDp: m.stateDp,
-        stopCauseDp: m.stopCauseDp,
+        stateDp: record.state,
+        stopCauseDp: record.cause,
         minStopMs: (m.minStopSec ?? 0) * 1000,
+        // A machine on a catalogue other than the default one (#74) is analysed with it.
+        ...(def && m.stopCatalogId && catalogFor(catalogs, m.stopCatalogId).id !== def.id
+          ? { catalog: catalogFor(catalogs, m.stopCatalogId) }
+          : {}),
         mapping:
           atelier.mappings.find((mp) => mp.id === m.stateMappingId) ??
           atelier.mappings[0] ??
@@ -333,7 +352,10 @@ export function shortStopIntervals(
   );
 }
 
-/** Merged non-producing periods, unclipped at their start (the look-back included). */
+/**
+ * Merged non-producing periods, unclipped at their start (the look-back included). The samples are recorded
+ * states: state keys of the mapping (winccoa-fra-msp-stma#339).
+ */
 function wholeNonProduction(
   samples: Sample[],
   mapping: StateMapping | undefined,
@@ -344,7 +366,7 @@ function wholeNonProduction(
     const segStart = sample.t;
     const segEnd = Math.min(samples[i + 1]?.t ?? windowEnd, windowEnd);
     if (segEnd <= segStart) continue;
-    const state = resolveState(mapping, Math.round(toNumber(sample.v)));
+    const state = recordedState(sample.v);
     if (isRunningState(mapping, state) || isOutsideOpening(mapping, state)) continue;
     const last = intervals.at(-1);
     if (last && last.e >= segStart) last.e = Math.max(last.e, segEnd);
@@ -373,7 +395,7 @@ export function offOpeningIntervals(
     const segStart = Math.max(sample.t, windowStart);
     const segEnd = Math.min(samples[i + 1]?.t ?? windowEnd, windowEnd);
     if (segEnd <= segStart) continue;
-    if (!isOutsideOpening(mapping, resolveState(mapping, Math.round(toNumber(sample.v))))) continue;
+    if (!isOutsideOpening(mapping, recordedState(sample.v))) continue;
     const last = intervals.at(-1);
     if (last && last.e >= segStart) last.e = Math.max(last.e, segEnd);
     else intervals.push({ s: segStart, e: segEnd });
@@ -430,8 +452,15 @@ function attributeStop(
 
   const partition = partitionByCause(stop, causeSamples);
   const perKey = new Map<string, number>();
+  const groups = new Map<string, { label: string; classification?: StopClassification }>();
+  // The machine's own catalogue (#74): its causes are told apart from another catalogue's reusing a code.
+  const own = machine.catalog;
   for (const seg of partition) {
-    const { key, label, classification } = resolveGroup(catalog, seg.code);
+    const group = resolveGroup(own ? own.causes : catalog, seg.code);
+    const key = own ? `${own.id}:${group.key}` : group.key;
+    const label = own ? `${group.label} · ${own.name}` : group.label;
+    const classification = group.classification;
+    groups.set(key, { label, classification });
     const countedMs = seg.end - seg.start - overlapLength(seg.start, seg.end, closed);
     perKey.set(key, (perKey.get(key) ?? 0) + Math.max(0, countedMs));
     rawStops.push({
@@ -450,7 +479,7 @@ function attributeStop(
   }
   for (const [key, ms] of perKey) {
     if (ms <= 0) continue;
-    const row = ensureRow(agg, catalog, key);
+    const row = ensureRow(agg, key, groups.get(key) ?? { label: key });
     row.assignedMs += ms;
     row.downtimeMs += workedStopMs;
     row.occurrences += 1;
@@ -520,11 +549,6 @@ function normCode(v: unknown): string {
   return v == null ? '' : String(v).trim();
 }
 
-function toNumber(v: unknown): number {
-  const n = typeof v === 'number' ? v : Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
-
 /** Resolve a raw code to its grouping key/label (unknown → catalog default). */
 export function resolveGroup(
   catalog: StopCause[],
@@ -548,10 +572,13 @@ export function resolveGroup(
   return { key: code, label: code };
 }
 
-function ensureRow(agg: Map<string, CauseRow>, catalog: StopCause[], key: string): CauseRow {
+function ensureRow(
+  agg: Map<string, CauseRow>,
+  key: string,
+  group: { label: string; classification?: StopClassification }
+): CauseRow {
   const existing = agg.get(key);
   if (existing) return existing;
-  const group = resolveGroup(catalog, key === NO_CAUSE_KEY ? '' : key);
   const row: CauseRow = {
     key,
     label: group.label,

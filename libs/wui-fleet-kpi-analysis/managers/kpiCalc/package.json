@@ -1,0 +1,8 @@
+{
+  "name": "kpi-calc",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Machine Fleet KPI calculator (WinCC OA JavaScript Manager): TRS, MTBF and MTTR of each machine over a sliding window, from the state and cause history recorded by fleetState. No dependency.",
+  "main": "index.js",
+  "type": "commonjs"
+}

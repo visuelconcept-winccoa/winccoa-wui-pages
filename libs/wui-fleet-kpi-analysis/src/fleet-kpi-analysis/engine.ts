@@ -113,7 +113,8 @@ export async function analyseKpi(
         // Only count downtime that falls within worked (open) time.
         const worked = seg.end - seg.start - overlapLength(seg.start, seg.end, closed);
         if (worked <= 0) continue;
-        const classification = resolveGroup(catalog, seg.code).classification;
+        // The machine's own stop-cause catalogue (#74), else the one given.
+        const classification = resolveGroup(machine.catalog?.causes ?? catalog, seg.code).classification;
         if (classification === 'planned') plannedMs += worked;
         else if (classification === 'production') continue; // available
         else unplannedMs += worked; // unplanned / unknown / no cause

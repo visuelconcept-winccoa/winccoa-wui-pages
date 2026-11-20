@@ -3,6 +3,41 @@
 
 # Changelog — @visuelconcept-winccoa/wui-fleet-core
 
+## 0.3.0 — 2026-11-05 (SDS 2.2)
+
+**Upgrade.** The fleet pages move to `^0.3.0` together (machine-fleet-3d 0.6.0, fleet-closures,
+fleet-kpi-analysis and fleet-stop-analysis 0.3.0). A page that declares fleet-closures imports
+`data/guarded-writes.js` for its writes to go through `/api/fleet`.
+
+- **States from several inputs, recorded by Machine Fleet** (winccoa-fra-msp-stma#339): `StateMapping.inputs`,
+  `StateRule.when` (conditions with `not`), `CAUSE_STATE` / `causeStates`, `MachineDef.inputDps`, `stopCauseDps`,
+  `declaredState`; `state-eval.ts` (`evaluateState`, `liveTargets`, `liveState`, `machineLiveState`,
+  `stateRecordDpes`, `isAnalysable`…) with its shared cases `state-eval.cases.json`. The stop analysis
+  (`collectMachines`, `nonProductionIntervals`…) reads the recorded history (`MachineFleet3D_State_<symbol>`, state
+  keys). `FleetStore.declareState`: the declared state written and traced with its reason.
+- **Several stop-cause catalogues** (#74): `StopCauseCatalog { id, name, causes, isDefault }`, one
+  datapoint each of type `MachineFleet3D_StopCauses` (`json`: the causes, a plain list; `name`, added to
+  the type at the first save through `dptype/change`). The default one is `MachineFleet3D_StopCauses`
+  itself, the single catalogue of before, unchanged for its readers; another is
+  `MachineFleet3D_StopCauses_<id>`. A machine names its own with `stopCatalogId`, else the default.
+  `FleetStore.listCatalogs` / `saveCatalogs` (a catalogue removed: its datapoint deleted);
+  `stop-catalogs.ts` (`catalogsFromDps`, `catalogFor`, `causesFor`…); the stop-causes window chooses,
+  creates, duplicates, renames and deletes catalogues (not the default one), and makes one the default (name and
+  causes swapped with the default's, on a second click); a catalogue not saved yet takes its id, which names its
+  datapoint, from its name as it is renamed; `collectMachines` / the stop
+  analysis give each machine its catalogue, its causes kept apart from another catalogue's (`<id>:<code>`).
+- **`FleetStore` no longer names `/api/fleet`**: its writes go to PARA unless a page imported
+  `data/guarded-writes.js` (the pages that declare fleet-closures), which routes them through `/api/fleet`
+  when it answers (`write-routing.ts`). A page embedding a fleet view without that module (the
+  workcenters' "Vue machine fleet") thus calls no fleet-closures backend, and wui-toolkit's
+  `wuiPage.requires` check passes without declaring it.
+- **No cause given by hand to a stop** (#75): the workcenter gives it, the fleet shows the cause
+  history it reads. `StopQualification`, `applyQualifications`, `qualificationAt` and
+  `FleetStore.listQualifications` / `saveQualification` are gone, with `MachineFleet3D_StopQualifications`.
+- **"Îlot" is a filter again**: the îlot (a location in the plant) is one of the filters the
+  SDS 2.2 acceptance requires, beside UAP and activity (SL-ORG-01, SL-LOB-05). Only the
+  "Workcenter" dimension stays out of the filters (#66).
+- Stop causes window: import with the arrow down, export with the arrow up, as in Machine Fleet.
 ## 0.2.1 — 2026-11-05
 
 - `opening-view.ts` (#70): opening view types and bounds, the module settings
