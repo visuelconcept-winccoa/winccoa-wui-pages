@@ -1,0 +1,100 @@
+{
+  "name": "@visuelconcept-winccoa/wui-rogue-line",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Rogue Line — standalone WinCC OA WebUI page: an original retro first-person game in a plant that is down. A maintenance technician (no weapons, nothing to fight) repairs 6-axis robots, CNC lathes and machining centres, a press and a conveyor with the right tool, keeps off the AGVs' lanes and gets the line running again. The machines follow datapoints; raycaster on a canvas, textures and sounds generated, no asset files. Ranking by nickname. Demo mode without a backend.",
+  "author": {
+    "name": "Visuel Concept"
+  },
+  "keywords": [
+    "OpenArchitecture",
+    "WinCCOA",
+    "dashboard",
+    "webcomponents",
+    "standalone-page",
+    "game",
+    "maintenance",
+    "raycaster"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0",
+    "@visuelconcept-winccoa/wui-para": "^0.1.0",
+    "@visuelconcept-winccoa/wui-app-security": "^0.1.0"
+  },
+  "peerDependencies": {
+    "lit": "*",
+    "rxjs": "*",
+    "tsyringe": "*",
+    "@etm-professional-control/oa-rx-js-api": "*",
+    "@wincc-oa/wui-i18n-shared": "*",
+    "@wincc-oa/wui-ix-wrappers": "*",
+    "@wincc-oa/wui-oarxjs-context": "*",
+    "@wincc-oa/wui-shared": "*"
+  },
+  "exports": {
+    "./*": {
+      "types": "./types/*",
+      "import": "./*"
+    }
+  },
+  "wuiPage": {
+    "requires": [
+      "para",
+      "app-security"
+    ],
+    "route": "/rogue-line",
+    "routes": [
+      "/rogue-line"
+    ],
+    "component": "wui-rogue-line",
+    "module": "/data/dashboard-wc/pages/rogue-line.js",
+    "permission": [
+      "connected"
+    ],
+    "icon": "maintenance",
+    "tier": 1
+  },
+  "peerDependenciesMeta": {
+    "lit": {
+      "optional": true
+    },
+    "rxjs": {
+      "optional": true
+    },
+    "tsyringe": {
+      "optional": true
+    },
+    "@etm-professional-control/oa-rx-js-api": {
+      "optional": true
+    },
+    "@wincc-oa/wui-i18n-shared": {
+      "optional": true
+    },
+    "@wincc-oa/wui-ix-wrappers": {
+      "optional": true
+    },
+    "@wincc-oa/wui-oarxjs-context": {
+      "optional": true
+    },
+    "@wincc-oa/wui-shared": {
+      "optional": true
+    }
+  },
+  "files": [
+    "CHANGELOG.md",
+    "src",
+    "menu.fragment.jsonc",
+    "!**/*.spec.ts",
+    "!**/*.test.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/visuelconcept-winccoa/winccoa-wui-pages.git",
+    "directory": "libs/wui-rogue-line"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  }
+}

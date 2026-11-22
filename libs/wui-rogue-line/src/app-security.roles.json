@@ -1,0 +1,24 @@
+{
+  "module": "rogue-line",
+  "title": { "en_US.utf8": "Rogue Line", "fr.utf8": "Rogue Line", "de.utf8": "Rogue Line" },
+  "roles": [
+    {
+      "id": "play",
+      "label": { "en_US.utf8": "Play", "fr.utf8": "Jouer", "de.utf8": "Spielen" },
+      "description": {
+        "en_US.utf8": "Open the game and add one's runs to the ranking (RogueLine_Results, nicknames only).",
+        "fr.utf8": "Ouvrir le jeu et ajouter ses parties au classement (RogueLine_Results, pseudos seulement).",
+        "de.utf8": "Das Spiel öffnen und die eigenen Läufe in die Rangliste eintragen (RogueLine_Results, nur Spitznamen)."
+      }
+    },
+    {
+      "id": "configure",
+      "label": { "en_US.utf8": "Configure the bindings", "fr.utf8": "Configurer les liaisons", "de.utf8": "Verknüpfungen konfigurieren" },
+      "description": {
+        "en_US.utf8": "Change which datapoints drive the game's machines (RogueLine_Config).",
+        "fr.utf8": "Choisir les datapoints qui pilotent les machines du jeu (RogueLine_Config).",
+        "de.utf8": "Festlegen, welche Datenpunkte die Maschinen des Spiels steuern (RogueLine_Config)."
+      }
+    }
+  ]
+}

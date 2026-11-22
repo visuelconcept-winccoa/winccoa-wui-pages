@@ -1,0 +1,13 @@
+// Menu fragment for @visuelconcept-winccoa/wui-rogue-line.
+// Merge these object(s) into the host dashboard's `entries` array. Idempotent by `routeId`.
+[
+  {
+    "title": { "en_US": "Rogue Line", "fr": "Rogue Line", "de_AT": "Rogue Line" },
+    "icon": "maintenance",
+    "path": "/rogue-line",
+    "module": "/data/dashboard-wc/pages/rogue-line.js",
+    "routeId": "rogue-line",
+    "component": "wui-rogue-line",
+    "permission": ["connected"]
+  }
+]
