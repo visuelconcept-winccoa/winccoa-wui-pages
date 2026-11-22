@@ -7,13 +7,14 @@
  * One character per cell (1 cell = 1 m):
  *
  * - walls: `#` steel panels · `%` rusted plates · `=` computer bank · `@` WinCC OA logo panel ·
- *   `V` Visuel Concept logo panel ·
+ *   `V` Visuel Concept logo panel · `S` WinCC OA screen (the level's machines, live) ·
  *   `~` pipes · `H` hazard stripes · `&` concrete (yard) · `x` exit switch (use it to leave);
  * - doors: `D` · key doors `B` blue, `Y` yellow, `R` red (a door slides open on "use");
  * - safety fences: `|` a fence (see-through, not crossable; panels run to the fences and walls
  *   around) · `!` its gate (a see-through door);
  * - floors: `.` tiles · `,` grating · `s` coolant pool (hurts) · `:` open yard (sky, no ceiling);
  * - lights: `l` ceiling lamp · `L` red alarm beacon (flickers);
+ * - `W`: the WinCC OA logo painted on the floor (on the floor of the cell to its left);
  * - floor markings, drawn on their own: a yellow safety line along the walls, a yellow and
  *   black hazard border around each machine, a yellow outline under each stack of pallets;
  * - things (on the floor of the cell to their left): `P` start · `g` AGV (shuttles along the
@@ -22,7 +23,7 @@
  *   `1`–`9` machine `n` (its kind and its fault in the level's `machines`; bound to a datapoint).
  */
 
-export type WallTex = 'steel' | 'rust' | 'computer' | 'logo' | 'vc' | 'pipes' | 'hazard' | 'concrete' | 'exit';
+export type WallTex = 'steel' | 'rust' | 'computer' | 'scada' | 'logo' | 'vc' | 'pipes' | 'hazard' | 'concrete' | 'exit';
 export type FloorTex = 'tiles' | 'grate' | 'coolant' | 'yard';
 export type KeyColor = 'blue' | 'yellow' | 'red';
 export type DecorKind = 'tank' | 'pallets';
@@ -88,7 +89,8 @@ export interface Level {
   fences: Uint8Array;
   /**
    * Floor markings per cell (bits): 1 / 2 / 4 / 8 a safety line along the north / east / south /
-   * west wall, 16 a hazard border (a machine), 32 a storage outline (pallets).
+   * west wall, 16 a hazard border (a machine), 32 a storage outline (pallets), 64 the WinCC OA
+   * logo painted on the floor.
    */
   marks: Uint8Array;
   /** Ceiling lamps (sprites hanging from the ceiling). */
@@ -101,6 +103,7 @@ const WALLS: Record<string, WallTex> = {
   '#': 'steel',
   '%': 'rust',
   '=': 'computer',
+  S: 'scada',
   '@': 'logo',
   V: 'vc',
   '~': 'pipes',
@@ -128,11 +131,11 @@ export const LEVELS: readonly LevelDef[] = [
       '#,P,,,,#.......l......k#.......#',
       '#,,,,,,D.....g.........D.......#',
       '#,,l,,,#.....|!|||.....#...l...#',
-      '#,,,,,,#.....|.1.|.....#.......#',
+      '#,,,,,,#..W..|.1.|.....#.......#',
       '####D###.....|...|.....###D#####',
       '#k.....#..3..|||||.....#.......#',
       '#..+...#k......l......k#.......#',
-      '#......####=====D====###.......#',
+      '#......####=S===D==S=###.......#',
       '#..l...#.......#.......#.......#',
       '#......D.......#...b...#..l....#',
       '#......#.......#...l...##BB#####',
@@ -142,7 +145,7 @@ export const LEVELS: readonly LevelDef[] = [
       '#.....L#########.......#,,,2,,,#',
       '#......#@@@V@@@#########,,,,,,,#',
       '#......D...l...B,,,,,,,,,,,,,,,#',
-      '#......#.......#,,,,,,,,,,L,,,,#',
+      '#......#.......#,,,,,,W,,,L,,,,#',
       '#......#.......#,,,g,,,,,,,,,,,#',
       '########HHHHHHH#######HHHHHHHxH#',
     ]
@@ -156,7 +159,7 @@ export const LEVELS: readonly LevelDef[] = [
       '#::::::::::::::&&&&&&&&&&&&&&&&&&&&#',
       '#::P:::::::::k:&,,,,,,,,#.........k#',
       '#::::::::::::::&,,,l,,,,D..........#',
-      '#::::o:::::g:::&,,,,,,,,#....l.....#',
+      '#::::o:W:::g:::&,,,,,,,,#....l.....#',
       '#::::::::::::::D,,,,,,,,#.........k#',
       '#:::::::::::::::,,,,,,,,####DD######',
       '#k:::::::::::::&,,,,,,,,#,,,,,,,,,,#',
@@ -168,8 +171,8 @@ export const LEVELS: readonly LevelDef[] = [
       '#ssssss.sssss#..y.#.....#,,,,,,,,,,#',
       '#sssss..sssssH#####DDDDD#####YY#####',
       '#ssss..+.sssssH...........H.......k#',
-      '#==============...l....L..H..l.....#',
-      '#.......g.....D...........Y........#',
+      '#===S=====S====...l....L..H..l.....#',
+      '#.......g.....D...........Y...W....#',
       '#..l..........=....6......H........#',
       '#=====VV=======HHHHHHHHHHHH%%%%x%%%#',
     ]
@@ -180,14 +183,14 @@ export const LEVELS: readonly LevelDef[] = [
     machines: { 7: { kind: 'robot', fault: 'mechanical' }, 8: { kind: 'lathe', fault: 'electrical' }, 9: { kind: 'mill', fault: 'software' } },
     rows: [
       '########################################',
-      '#~~~~~~~~~#==========#@@@@@@@VV@@@@@@@@#',
+      '#~~~~~~~~~#==S====S==#@@@@@@@VV@@@@@@@@#',
       '#k...l....#...l......#................k#',
-      '#..P......D.........D..g....l..........#',
+      '#..P..W...D.........D..g....l..........#',
       '#.........#..........#.....|!|||.......#',
-      '#....+....#==========#.....|.7.|.......#',
+      '#....+....#===S==S===#.....|.7.|.......#',
       '###DD######..........#.....|...|.......#',
       '#.........#..8....l..#....l|||||..l....#',
-      '#..l......D..........D.................#',
+      '#..l......D..........D..W..............#',
       '#k........#..........#................k#',
       '#.........##########D#####RR############',
       '#.........#%%%%%%%%%,,,,%#,,,,,,,,,,,,,#',
@@ -274,6 +277,7 @@ export function parseLevel(def: LevelDef): Level {
       if (solid(x - 1, y)) marks[i] |= 8;
     }
   }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (ch(x, y) === 'W') marks[y * w + x] = 64;
   for (const t of things) {
     const i = Math.floor(t.y) * w + Math.floor(t.x);
     if (t.type === 'machine') marks[i] = 16;

@@ -34,6 +34,13 @@ the machines are generic (no maker's name or logo).
 - **Doors** open on "use"; **key doors** (blue, yellow, red stripe) need their card.
 - **Robot cells** are fenced all round: a see-through safety fence (yellow posts, wire mesh), not
   crossable, entered through its **gate** — use it like a door, it slides open.
+- **WinCC OA in the plant**: the **alarm list** top left as WinCC OA shows it — a machine's alarm
+  *comes* (CAME, red row, the time of day) when it faults and *goes* (WENT) when it is repaired,
+  with the count of open alarms and the control room's gong at the start of a level; **WinCC OA
+  screens** on the walls (`S`) showing the level's machines live (lamp, FAULT / RUN / STOP, the
+  line's output trend, the alarms' count); the WinCC OA title bar on the computer banks; the
+  WinCC OA logo **painted on the floor** of the halls (`W`); the laptop reloading the WinCC OA
+  recipe; the status bar's **WINCC OA** panel with the machines' lamps.
 - **The decor**: stacks of pallets, a yellow safety line along
   the walls, a yellow and black hazard border around each machine, a storage outline under the
   pallets; WinCC OA and Visuel Concept panels on the walls, the Visuel Concept plate on the
@@ -61,11 +68,11 @@ the machines are generic (no maker's name or logo).
 | Tab · M | Back | Map |
 | Esc · P | Start | Pause (mouse sensitivity, turn speed, volume, sound) |
 
-**Touch screens** (phones, tablets; shown only there, while playing): a **joystick** bottom left
-(move and strafe, run when pushed to the edge), **drag** anywhere else on the view to turn
-(the mouse sensitivity setting applies), bottom right **REPAIR** (hold it), **USE** (doors, the
-exit switch) and the three tools, **MAP** and **PAUSE** above them. A phone upright shows the view
-at the top and the controls below it. `?touch` in the address shows them with a mouse.
+**Touch screens** (phones, tablets; shown only there, while playing): the controls keep their
+own strips so that nothing covers the view — below it on a phone upright, at its left and right
+on a wide screen. The **joystick** walks forward / back (up / down) and turns the view (left /
+right), running when pushed to the edge; **REPAIR** (hold it), **USE** (doors, the exit switch),
+the three tools, **MAP** and **PAUSE**. `?touch` in the address shows them with a mouse.
 
 ## The plant: machines bound to datapoints
 
@@ -123,3 +130,5 @@ assigns groups.
   and controls), `touch.ts` (the touch controls), `audio.ts`, `plant.ts` (bindings), `results.ts` (ranking, pure).
 
 ![A robot cell behind its fence and its gate](images/rogue-line-cell.png)
+
+![The WinCC OA alarm list and a live WinCC OA screen on the wall](images/rogue-line-scada.png)

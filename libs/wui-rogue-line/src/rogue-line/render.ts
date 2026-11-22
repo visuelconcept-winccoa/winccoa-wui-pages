@@ -300,9 +300,25 @@ const BLACK = pack(22, 19, 14);
 
 /**
  * The floor marking at (u, v) in a cell, or 0: a safety line 10–17 cm from a wall, the yellow and
- * black hazard border of a machine's cell, the yellow outline of a pallet's place.
+ * black hazard border of a machine's cell, the yellow outline of a pallet's place, the WinCC OA
+ * logo.
  */
+const LOGO_PACKED = [
+  [0x20b9d8, 0x10567d, 0x04646f, 0x20b9d8],
+  [0x10567d, 0xfdd731, 0x20b9d8, 0xfdd731],
+  [0xfdd731, 0x04646f, 0x10567d, 0x04646f],
+  [0x10567d, 0xfdd731, 0x04646f, 0x20b9d8]
+].map((row) => row.map((c) => pack(c >> 16, (c >> 8) & 255, c & 255)));
+
 export function markColor(mark: number, u: number, v: number): number {
+  if (mark & 64) {
+    // the WinCC OA logo painted on the floor: 4 × 4 squares, a dark gap between them
+    if (u < 0.1 || v < 0.1 || u > 0.9 || v > 0.9) return 0;
+    const fu = (u - 0.1) / 0.2;
+    const fv = (v - 0.1) / 0.2;
+    if (fu - Math.floor(fu) > 0.88 || fv - Math.floor(fv) > 0.88) return BLACK;
+    return LOGO_PACKED[Math.min(3, Math.floor(fv))][Math.min(3, Math.floor(fu))];
+  }
   if (mark & 16) {
     const edge = Math.min(u, v, 1 - u, 1 - v);
     if (edge > 0.12) return 0;

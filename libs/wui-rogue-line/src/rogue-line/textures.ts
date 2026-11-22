@@ -159,8 +159,14 @@ const WALL_DRAW: Record<WallTex, Draw> = {
     g.fillRect(6, 6, 30, 22);
     gl.fillStyle = '#fff';
     gl.fillRect(7, 7, 28, 20);
+    // the WinCC OA title bar
+    g.fillStyle = '#0f3a52';
+    g.fillRect(7, 7, 28, 3);
+    LOGO_GRID.forEach((row, r) => row.forEach((c, k) => ((g.fillStyle = c), g.fillRect(8 + k, 7 + Math.floor(r * 0.75), 1, 1))));
+    g.fillStyle = '#9fd6ee';
+    g.fillRect(14, 8, 14, 1);
     g.fillStyle = '#1e6b3c';
-    for (let y = 9; y < 26; y += 3) g.fillRect(8, y, 6 + Math.floor(rnd() * 22), 1);
+    for (let y = 12; y < 26; y += 3) g.fillRect(8, y, 6 + Math.floor(rnd() * 22), 1);
     g.fillStyle = '#58f08c';
     g.fillRect(8, 23, 14, 2);
     // trend line
@@ -288,6 +294,7 @@ const WALL_DRAW: Record<WallTex, Draw> = {
     streaks(g, rnd, 7);
   },
   vc: (g, gl, rnd) => drawVc(g, gl, rnd, null),
+  scada: (g, gl, rnd) => drawScada(g, gl, rnd, [], 0),
   exit: (g, gl, rnd) => drawExit(g, gl, rnd, false)
 };
 
@@ -302,6 +309,67 @@ function drawVc(g: CanvasRenderingContext2D, gl: CanvasRenderingContext2D, rnd: 
   g.textAlign = 'center';
   g.fillText('VISUEL CONCEPT', 32, 47, 44);
   g.textAlign = 'start';
+}
+
+export type ScadaState = 'run' | 'stop' | 'fault' | 'unknown';
+
+/**
+ * A WinCC OA screen on the wall: its title bar, the level's machines with their state (a lamp,
+ * the name, the state's word), the line's output trend and the alarms' count — live (redrawn by
+ * `paintScada` from the simulation).
+ */
+function drawScada(g: CanvasRenderingContext2D, gl: CanvasRenderingContext2D, rnd: () => number, machines: { id: number; state: ScadaState }[], t: number): void {
+  WALL_DRAW.steel(g, gl, rnd);
+  plate(g, 3, 3, 58, 46, '#202426', '#3a4044', '#0b0d0e');
+  g.fillStyle = '#071820';
+  g.fillRect(5, 5, 54, 42);
+  gl.fillRect(5, 5, 54, 42);
+  // the title bar: the logo and the product
+  g.fillStyle = '#0f3a52';
+  g.fillRect(5, 5, 54, 7);
+  LOGO_GRID.forEach((row, r) => row.forEach((c, k) => ((g.fillStyle = c), g.fillRect(6 + k * 1.5, 6 + r * 1.25, 1.5, 1.25))));
+  g.fillStyle = '#d9eef8';
+  g.font = 'bold 5px monospace';
+  g.fillText('WinCC OA', 14, 10.5);
+  const alarms = machines.filter((m) => m.state === 'fault').length;
+  g.fillStyle = alarms ? (Math.floor(t * 2) % 2 ? '#ff4030' : '#7a1810') : '#2aa84a';
+  g.fillRect(48, 6, 10, 5);
+  g.fillStyle = '#fff';
+  g.font = 'bold 4px monospace';
+  g.fillText(String(alarms), 52, 10);
+  // the machines
+  g.font = '4px monospace';
+  machines.slice(0, 3).forEach((m, k) => {
+    const y = 15 + k * 7;
+    const color = m.state === 'fault' ? (Math.floor(t * 2) % 2 ? '#ff4030' : '#a02016') : m.state === 'run' ? '#2aff5a' : m.state === 'stop' ? '#ffb000' : '#5a6468';
+    g.fillStyle = color;
+    g.fillRect(7, y, 4, 4);
+    g.fillStyle = '#b8d8e6';
+    g.fillText(`M${m.id}`, 13, y + 4);
+    g.fillStyle = color;
+    g.fillText(m.state === 'fault' ? 'FAULT' : m.state === 'run' ? 'RUN' : m.state === 'stop' ? 'STOP' : '---', 25, y + 4);
+  });
+  // the output trend: up as the line runs
+  const running = machines.filter((m) => m.state === 'run').length / Math.max(1, machines.length);
+  g.strokeStyle = '#2fb6ff';
+  g.lineWidth = 1;
+  g.beginPath();
+  for (let x = 0; x < 50; x++) {
+    const v = 0.35 + running * 0.45 + Math.sin((x + t * 12) * 0.5) * 0.06;
+    const y = 45 - v * 10;
+    if (x === 0) g.moveTo(7 + x, y);
+    else g.lineTo(7 + x, y);
+  }
+  g.stroke();
+  g.fillStyle = '#1e3a46';
+  g.fillRect(7, 45, 50, 1);
+}
+
+/** Redraws the WinCC OA screens with the machines' states (in place). */
+export function paintScada(set: TextureSet, machines: { id: number; state: ScadaState }[], t: number): void {
+  const tex = makeTexture(TEX, TEX, 18, (g, gl, rnd) => drawScada(g, gl, rnd, machines, t));
+  set.walls.scada.px.set(tex.px);
+  set.walls.scada.glow.set(tex.glow);
 }
 
 /** Draws the Visuel Concept symbol into the `V` panels once its image is loaded (in place). */

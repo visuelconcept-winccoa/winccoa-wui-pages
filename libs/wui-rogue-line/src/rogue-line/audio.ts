@@ -8,7 +8,7 @@
  */
 import type { ToolId } from './sim.js';
 
-export type Sfx = ToolId | 'denied' | 'bump' | 'agv' | 'splash' | 'pickup' | 'key' | 'door-open' | 'door-close' | 'repair' | 'exit';
+export type Sfx = ToolId | 'alarm' | 'denied' | 'bump' | 'agv' | 'splash' | 'pickup' | 'key' | 'door-open' | 'door-close' | 'repair' | 'exit';
 
 export class GameAudio {
   private ctx: AudioContext | null = null;
@@ -102,6 +102,13 @@ export class GameAudio {
         break;
       case 'denied':
         this.tone(t, 'square', 150, 150, 0.25, 0.18);
+        break;
+      case 'alarm':
+        // the control room's alarm gong: two tones, twice
+        [0, 0.5].forEach((d) => {
+          this.tone(t + d, 'triangle', 880, 880, 0.22, 0.2);
+          this.tone(t + d + 0.22, 'triangle', 660, 660, 0.26, 0.2);
+        });
         break;
       case 'bump':
         this.tone(t, 'sine', 110, 50, 0.25, 0.5);

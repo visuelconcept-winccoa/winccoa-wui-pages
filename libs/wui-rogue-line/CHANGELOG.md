@@ -21,8 +21,12 @@
 - Industrial decor: stacks of pallets, yellow safety lines
   along the walls, hazard borders around the machines, storage outlines under the pallets.
 - The plant: the machines follow datapoints (`RogueLine_Config`); demo plant without a backend.
+- WinCC OA in the plant: an alarm list as WinCC OA shows it (CAME / WENT rows with the time of
+  day, open alarms, a gong), live WinCC OA screens on the walls with the machines' states and the
+  line's trend, the WinCC OA title bar on the computer banks, the logo painted on the floor.
 - WinCC OA and Visuel Concept logos on the plant's walls, the Visuel Concept plate on the
   machines, the WinCC OA cube in the status bar; the end card "You just played on WinCC OA."
 - Ranking by nickname (`RogueLine_Results`), difficulty, pause settings (mouse, turn speed,
-  volume), keyboard, mouse (pointer lock), USB gamepad and touch screens (a joystick, drag to
-  turn, REPAIR / USE / tool / map / pause buttons). Roles `play` and `configure`.
+  volume), keyboard, mouse (pointer lock), USB gamepad and touch screens (a joystick that walks
+  and turns, REPAIR / USE / tool / map / pause buttons, in their own strips beside or below the
+  view). Roles `play` and `configure`.

@@ -108,7 +108,9 @@ export type SimEvent =
   | { type: 'bump' }
   | { type: 'agv-near'; distance: number }
   | { type: 'splash' }
-  | { type: 'exit' };
+  | { type: 'exit' }
+  /** A machine's alarm, as WinCC OA shows it: came (in fault) or went (running again). */
+  | { type: 'alarm'; id: number; kind: MachineKind; fault: FaultKind; came: boolean };
 
 export interface Stats {
   faults: number;
@@ -191,7 +193,10 @@ export class Sim {
   setMachineStates(state: (id: number) => MachineState): void {
     for (const m of this.machines) {
       const s = state(m.id);
-      if (s === 'fault' && m.state !== 'fault' && !m.repaired) this.stats.faults++;
+      if (s === 'fault' && m.state !== 'fault' && !m.repaired) {
+        this.stats.faults++;
+        this.events.push({ type: 'alarm', id: m.id, kind: m.kind, fault: m.fault, came: true });
+      }
       // a machine repaired here whose datapoint went back to normal can fault again later
       if (s !== 'fault' && m.repaired) {
         m.repaired = false;
@@ -345,6 +350,7 @@ export class Sim {
       this.score += REPAIR_SCORE;
       this.effects.push({ x: m.x, y: m.y, kind: 'done', t: 0 });
       this.events.push({ type: 'repair', id: m.id, kind: m.kind, score: REPAIR_SCORE });
+      this.events.push({ type: 'alarm', id: m.id, kind: m.kind, fault: m.fault, came: false });
     }
   }
 

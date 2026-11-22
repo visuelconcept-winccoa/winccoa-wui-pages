@@ -7,12 +7,12 @@
  * and the sounds. The page (rogue-line.ts) owns the menus and the results.
  */
 import { GameAudio } from './audio.js';
-import { drawAutomap, drawCrosshair, drawMessages, drawMinimap, drawStatusBar, drawTarget, drawTitle, drawTool, type Message } from './hud.js';
+import { drawAlarms, drawAutomap, drawCrosshair, drawMessages, drawMinimap, drawStatusBar, drawTarget, drawTitle, drawTool, type AlarmRow, type Message } from './hud.js';
 import { LEVELS, MACHINE_LABELS } from './maps.js';
 import { H, Raycaster, VIEW_H, W, type Sprite } from './render.js';
 import { NO_INPUT, Sim, TOOL_LABELS, TOOLS, type Difficulty, type Input, type MachineState, type ToolId } from './sim.js';
 import { makeSprites, setVcSymbol, type MachineFrame, type SpriteSet } from './sprites.js';
-import { makeTextures, paintVc, type TextureSet } from './textures.js';
+import { makeTextures, paintScada, paintVc, type TextureSet } from './textures.js';
 import { TouchControls } from './touch.js';
 import { VC_SYMBOL_SVG, loadSvg } from './vc-logo.js';
 
@@ -91,6 +91,11 @@ export class RogueGame {
   private toolPick: ToolId | null = null;
   private mapOn = false;
   private messages: Message[] = [];
+  /** The WinCC OA alarm list of the level. */
+  private alarms: AlarmRow[] = [];
+  private scadaAt = -1;
+  private cssW = 1;
+  private cssH = 1;
   private bumpFlash = 0;
   private pickFlash = 0;
   private padPrev: boolean[] = [];
@@ -146,6 +151,8 @@ export class RogueGame {
     const sim = new Sim(LEVELS[index], this.settings.difficulty);
     this.ray.seen = new Uint8Array(sim.level.w * sim.level.h);
     this.messages = [];
+    this.alarms = [];
+    this.scadaAt = -1;
     return sim;
   }
 
@@ -258,6 +265,7 @@ export class RogueGame {
     this.toolPick = null;
     this.mouseDx = 0;
     for (const m of this.messages) m.t += STEP;
+    for (const a of this.alarms) a.t += STEP;
     this.messages = this.messages.filter((m) => m.t < 3);
     this.bumpFlash = Math.max(0, this.bumpFlash - STEP * 2.5);
     this.pickFlash = Math.max(0, this.pickFlash - STEP * 3);
@@ -322,6 +330,21 @@ export class RogueGame {
           this.audio.play('exit');
           this.say('Exit open');
           break;
+        case 'alarm': {
+          const fresh = this.alarms.filter((a) => a.t < 0.5 && a.came).length;
+          if (e.came && fresh === 0) this.audio.play('alarm');
+          const d = new Date();
+          const two = (n: number): string => String(n).padStart(2, '0');
+          this.alarms.push({
+            stamp: `${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`,
+            id: e.id,
+            text: `${MACHINE_LABELS[e.kind].replace('CNC machining centre', 'Machining centre').replace('Hydraulic press', 'Press')} – ${e.came ? e.fault : 'running'}`,
+            came: e.came,
+            t: 0
+          });
+          this.alarms = this.alarms.slice(-12);
+          break;
+        }
       }
     }
   }
@@ -345,7 +368,7 @@ export class RogueGame {
       forward = forward || t.forward;
       strafe = strafe || t.strafe;
       run = run || t.run;
-      turn += t.turnPx * s.mouse * 0.0028;
+      turn += t.turn * s.turn * STEP;
       work = work || t.work;
       use = use || t.use;
       tool = tool ?? t.tool;
@@ -437,6 +460,8 @@ export class RogueGame {
   private fit(): void {
     const r = this.host.getBoundingClientRect();
     const dpr = Math.min(2, window.devicePixelRatio || 1);
+    this.cssW = Math.max(1, r.width);
+    this.cssH = Math.max(1, r.height);
     this.canvas.width = Math.max(1, Math.round(r.width * dpr));
     this.canvas.height = Math.max(1, Math.round(r.height * dpr));
   }
@@ -463,6 +488,15 @@ export class RogueGame {
 
   private draw(): void {
     const sim = this.sim;
+    // the WinCC OA screens on the walls follow the machines, twice a second
+    if (Math.floor(sim.time * 2) !== this.scadaAt) {
+      this.scadaAt = Math.floor(sim.time * 2);
+      paintScada(
+        this.tex,
+        sim.machines.map((m) => ({ id: m.id, state: m.state === 'fault' && m.repaired ? 'run' : m.state })),
+        sim.time
+      );
+    }
     const p = sim.player;
     const g = this.lowCtx;
     const bob = p.stagger > 0 ? Math.sin(sim.time * 30) * 4 : Math.sin(p.walked * 4.4) * 1.6;
@@ -484,6 +518,7 @@ export class RogueGame {
     else {
       drawTarget(g, sim);
       drawMinimap(g, sim, this.ray.seen);
+      drawAlarms(g, this.alarms, sim.faulted().length, sim.time);
     }
     drawMessages(g, this.messages);
     drawTitle(g, sim, this.levelIndex + 1);
@@ -494,10 +529,15 @@ export class RogueGame {
     const ch = this.canvas.height;
     c.fillStyle = '#000';
     c.fillRect(0, 0, cw, ch);
-    const k = Math.min(cw / W, ch / H);
+    // the touch controls keep their own strips (below on a tall screen, at the sides on a wide one)
+    const px = cw / this.cssW;
+    const res = this.touch ? this.touch.reserve(this.cssW, this.cssH) : { left: 0, right: 0, bottom: 0 };
+    const aw = cw - (res.left + res.right) * px;
+    const ah = ch - res.bottom * px;
+    const k = Math.min(aw / W, ah / H);
     c.imageSmoothingEnabled = false;
-    // a tall screen (a phone upright): the view at the top, the touch controls below it
-    const top = this.touch && ch > cw ? 0 : Math.floor((ch - H * k) / 2);
-    c.drawImage(this.low, Math.floor((cw - W * k) / 2), top, Math.floor(W * k), Math.floor(H * k));
+    const left = Math.floor(res.left * px + (aw - W * k) / 2);
+    const top = this.touch && ch > cw ? 0 : Math.floor((ah - H * k) / 2);
+    c.drawImage(this.low, left, top, Math.floor(W * k), Math.floor(H * k));
   }
 }

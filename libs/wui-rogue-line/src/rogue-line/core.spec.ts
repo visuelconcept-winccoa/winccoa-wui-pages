@@ -231,6 +231,25 @@ describe('safety fences', () => {
   });
 });
 
+describe('WinCC OA alarms', () => {
+  it('come when a machine faults and go when it is repaired', () => {
+    const sim = new Sim(tiny(['######', '#P1..#', '##x###']));
+    sim.setMachineStates(() => 'fault');
+    expect(sim.events).toContainEqual({ type: 'alarm', id: 1, kind: 'robot', fault: 'electrical', came: true });
+    sim.player.angle = 0;
+    sim.player.tool = 'multimeter';
+    step(sim, { work: true }, 4);
+    expect(sim.events).toContainEqual({ type: 'alarm', id: 1, kind: 'robot', fault: 'electrical', came: false });
+  });
+
+  it('paint the WinCC OA logo on the floor of the W cells', () => {
+    const level = parseLevel(tiny(['#####', '#PW.#', '##x##']));
+    expect(level.marks[1 * level.w + 2]).toBe(64);
+    expect(markColor(64, 0.2, 0.2)).not.toBe(0);
+    expect(markColor(64, 0.05, 0.5)).toBe(0);
+  });
+});
+
 describe('floor markings', () => {
   it('draws a safety line along the walls, the hazard border of a machine, a pallet outline', () => {
     const level = parseLevel(tiny(['######', '#P.1.#', '#..k.#', '###x##']));

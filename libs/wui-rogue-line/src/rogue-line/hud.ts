@@ -333,7 +333,7 @@ export function drawStatusBar(g: G, sim: Sim, levelNo: number): void {
     g.textAlign = 'center';
     g.fillText(`M${m.id}`, x + 4, VIEW_H + 20);
   });
-  label(g, 'PLANT', 158, 62);
+  label(g, 'WINCC OA', 158, 62);
   // spare parts
   panel(g, 220, 34);
   big(g, String(p.parts), 220, 34, p.parts > 0 ? AMBER : DIM);
@@ -357,6 +357,61 @@ export function drawStatusBar(g: G, sim: Sim, levelNo: number): void {
   g.textAlign = 'start';
 }
 
+// --- the WinCC OA alarm list ------------------------------------------------------------------------
+
+export interface AlarmRow {
+  /** hh:mm:ss, the time of day it came or went. */
+  stamp: string;
+  id: number;
+  text: string;
+  came: boolean;
+  /** Seconds since it was added. */
+  t: number;
+}
+
+/**
+ * The alarm list as WinCC OA shows it, top left: its title bar with the logo and the number of
+ * alarms open; the latest rows (time, machine, text, CAME in red / WENT in green) for a few
+ * seconds after a change, then only the title bar.
+ */
+export function drawAlarms(g: G, rows: readonly AlarmRow[], open: number, time: number): void {
+  const x = 4;
+  const y = 4;
+  const w = 186;
+  const fresh = rows.filter((r) => r.t < 7).slice(-3);
+  g.fillStyle = 'rgba(7,24,32,0.86)';
+  g.fillRect(x, y, w, 9 + fresh.length * 9);
+  g.fillStyle = '#0f3a52';
+  g.fillRect(x, y, w, 9);
+  LOGO_GRID.forEach((row, r) => row.forEach((c, k) => ((g.fillStyle = c), g.fillRect(x + 2 + k * 1.75, y + 1.5 + r * 1.5, 1.5, 1.25))));
+  g.font = FONT(7);
+  g.textAlign = 'start';
+  g.fillStyle = '#d9eef8';
+  g.fillText('WinCC OA · Alarms', x + 11, y + 7);
+  g.textAlign = 'right';
+  g.fillStyle = open > 0 ? (Math.floor(time * 2) % 2 ? '#ff5a48' : '#c02818') : '#4ee36a';
+  g.fillText(open > 0 ? `${open} open` : 'none', x + w - 3, y + 7);
+  g.textAlign = 'start';
+  g.font = FONT(6, false);
+  fresh.forEach((r, k) => {
+    const ry = y + 9 + k * 9;
+    if (r.came) {
+      g.fillStyle = 'rgba(160,24,16,0.55)';
+      g.fillRect(x, ry, w, 9);
+    }
+    g.fillStyle = '#b8d8e6';
+    g.fillText(r.stamp, x + 2, ry + 7);
+    g.fillStyle = '#f2ead8';
+    g.fillText(`M${r.id} ${r.text}`.slice(0, 32), x + 36, ry + 7);
+    g.textAlign = 'right';
+    g.fillStyle = r.came ? '#ff8a78' : '#5cf08e';
+    g.font = FONT(6);
+    g.fillText(r.came ? 'CAME' : 'WENT', x + w - 3, ry + 7);
+    g.font = FONT(6, false);
+    g.textAlign = 'start';
+  });
+}
+
 // --- messages and the title ------------------------------------------------------------------------
 
 export interface Message {
@@ -369,10 +424,11 @@ export function drawMessages(g: G, messages: readonly Message[]): void {
   g.textAlign = 'start';
   messages.slice(-3).forEach((m, k) => {
     const a = Math.max(0, Math.min(1, 3 - m.t));
+    const y = VIEW_H - 24 - (Math.min(3, messages.length) - 1 - k) * 10;
     g.fillStyle = `rgba(0,0,0,${0.8 * a})`;
-    g.fillText(m.text, 5, 11 + k * 10);
+    g.fillText(m.text, 5, y + 1);
     g.fillStyle = `rgba(255,220,150,${a})`;
-    g.fillText(m.text, 4, 10 + k * 10);
+    g.fillText(m.text, 4, y);
   });
 }
 
@@ -393,7 +449,7 @@ export function drawTitle(g: G, sim: Sim, levelNo: number): void {
   const n = sim.faulted().length;
   g.font = FONT(7);
   g.fillStyle = `rgba(255,220,150,${a})`;
-  g.fillText(n > 0 ? `${n} machine${n > 1 ? 's' : ''} down: repair the line, then reach the exit` : 'The line runs: reach the exit', W / 2, 78);
+  g.fillText(n > 0 ? `WinCC OA: ${n} alarm${n > 1 ? 's' : ''} came · repair the line, then reach the exit` : 'The line runs: reach the exit', W / 2, 78);
   g.textAlign = 'start';
 }
 
