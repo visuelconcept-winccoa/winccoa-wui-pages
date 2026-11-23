@@ -59,6 +59,13 @@ export const MSG = {
     'Les rôles Application Security qui font ce que ce tutoriel enseigne',
     'Die Application-Security-Rollen, die tun, was dieses Tutorial lehrt'
   ),
+  requires: ml('Needs the role: %s', 'Rôle requis : %s', 'Erfordert die Rolle: %s'),
+  lockedTitle: ml(
+    'You do not hold the role this tutorial needs: ask an administrator (Application Security)',
+    'Tu n’as pas le rôle que ce tutoriel demande : demande-le à un administrateur (Application Security)',
+    'Dir fehlt die Rolle, die dieses Tutorial braucht: Frag einen Administrator (Application Security)'
+  ),
+  tutorialCount: ml('%n tutorial(s)', '%n tutoriel(s)', '%n Tutorial(s)'),
   start: ml('Start', 'Commencer', 'Starten'),
   restart: ml('Restart', 'Recommencer', 'Neu starten'),
   again: ml('Do it again', 'Refaire', 'Wiederholen'),

@@ -32,11 +32,15 @@ A site selects it like any page: `npx wui use tutorials`, then `npx wui build`.
 - **The page** `/tutorials`: the tutorials, their roles, the badges earned, "Start".
 - **Resuming**: the tutorial being played and its step survive a reload (localStorage), as the
   badges do — the workstation's, not the user's.
-- **Roles**: a tutorial with `roles` (`<module>/<role>`) is listed for a user who holds one of
-  them (wui-kit `hasRole$`: open until an admin assigns groups to the role). The labels come from
-  `app-security-manifest.json`. `app-security` and `para` are `wuiPage.optional`: without them,
-  every tutorial is listed. The module declares no role of its own: it shows nothing a user
-  cannot open.
+- **Grouped by module**: one section per module, in the site's order, titled by the module's
+  menu title (`wui-modules.json`), else its Application Security title, else its id.
+- **Roles**: a tutorial with `roles` (`<module>/<role>`) can be played by a user who holds one of
+  them (wui-kit `hasRole$`: open until an admin assigns groups to the role). Otherwise its card
+  stays in its group, **greyed**, its "Start" disabled, saying the role it needs ("Needs the
+  role: Configure — Alarms") so the operator knows what to ask for; the badges count only the
+  tutorials the user may play. The labels come from `app-security-manifest.json`.
+  `app-security` and `para` are `wuiPage.optional`: without them, every tutorial can be played.
+  The module declares no role of its own: it shows nothing a user cannot open.
 - **Its own tutorial**: `tutorial/first-steps.json`, how to follow a tutorial (en, fr, de).
 
 ## How it finds a target
@@ -65,7 +69,8 @@ The iX theme's tokens. A site may set `--wui-tutorials-accent`, `--wui-tutorials
 
 | File | Role |
 | --- | --- |
-| `src/tutorials.ts` | The page: the list, the roles, the badges |
+| `src/tutorials.ts` | The page: the groups, the roles, the badges |
+| `src/catalog.ts` | Grouping by module, whether the user may play a tutorial |
 | `src/shell/boot.ts` | The boot script: the guide on every page |
 | `src/guide/guide-overlay.ts` | `<wui-tutorials-guide>`: the bubble, the lit target, the buttons |
 | `src/guide/mascot.ts` | `<wui-tutorials-mascot>`: Sigma in SVG, its moods (`idle`, `talk`, `happy`, `cheer`, `think`) |
