@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-tutorials",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tutorials for the operators: the guide that plays the modules' tutorials (tutorial/<id>.json, collected by wui-toolkit 0.30.0 or later into wui-tutorials.json) over the site — Sigma, a mascot, says each step, lights up its target and waits for the operator to do it: open a page, a menu entry, click, type; a hint when it is slow to come. The tutorials page (/tutorials) lists them with the roles they are for (hidden from a user who holds none, through Application Security), the badges earned, and starts one; a tutorial resumes after a reload. The guide is on every page through the module's shell boot script.",
   "author": {
     "name": "Visuel Concept"
