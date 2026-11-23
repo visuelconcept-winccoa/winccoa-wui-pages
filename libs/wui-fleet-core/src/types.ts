@@ -228,6 +228,14 @@ export const STATE_LABELS: Record<BuiltinState, string> = {
 export const DISCONNECTED_LABEL = 'Non connectée';
 export const DISCONNECTED_COLOR = '#8B5CF6';
 
+/**
+ * State of a symbol none of whose state inputs has a value (winccoa-fra-msp-stma#370): none bound, none readable, or nothing received yet.
+ * Shown and counted as not connected ({@link isDisconnected}), never as production: a new or imported symbol
+ * starts in it, and a live view puts its symbols back in it on opening until a value arrives. Its key is the
+ * one of the "not connected" colour, so that every colour map already knows it.
+ */
+export const NO_DATA_STATE = 'disconnected';
+
 /** Colour key: a machine state, or the "not connected" overlay. */
 export type StateColorKey = MachineState | 'disconnected';
 
@@ -272,7 +280,7 @@ export function stateDef(mapping: StateMapping | undefined, key: string): StateD
 
 /** Label of a state: the mapping's, else the built-in label, else the key itself. */
 export function stateLabel(mapping: StateMapping | undefined, key: string): string {
-  return stateDef(mapping, key)?.label ?? STATE_LABELS[key as BuiltinState] ?? key;
+  return stateDef(mapping, key)?.label ?? (key === NO_DATA_STATE ? DISCONNECTED_LABEL : undefined) ?? STATE_LABELS[key as BuiltinState] ?? key;
 }
 
 /** True when the machine counts as producing in that state ('ok' unless the mapping says otherwise). */
@@ -322,9 +330,9 @@ export function resolveConnected(raw: unknown): boolean {
   return Number.isFinite(n) ? n > 0 : Boolean(v);
 }
 
-/** True when a comm datapoint is bound and reports the machine as down. */
-export function isDisconnected(m: { commDp?: string; connected?: boolean }): boolean {
-  return m.commDp != null && m.commDp !== '' && m.connected === false;
+/** True when a comm datapoint is bound and reports the machine as down, or when its state has no value ({@link NO_DATA_STATE}). */
+export function isDisconnected(m: { commDp?: string; connected?: boolean; state?: MachineState }): boolean {
+  return m.state === NO_DATA_STATE || (m.commDp != null && m.commDp !== '' && m.connected === false);
 }
 
 export const STATE_HEX: Record<BuiltinState, number> = {
@@ -597,9 +605,15 @@ export interface DisplayConfig {
   bubblesOnHover?: boolean;
 }
 
-/** Bounds of a machine's bubble scale (#59). */
+/** Bounds of a machine's bubble scale (#59), the size of the bubbles resized before {@link MachineDef.bubbleSize}. */
 export const BUBBLE_SCALE_MIN = 0.6;
 export const BUBBLE_SCALE_MAX = 2.5;
+
+/** Bounds (px) of a bubble sized by hand ({@link MachineDef.bubbleSize}). */
+export const BUBBLE_WIDTH_MIN = 120;
+export const BUBBLE_WIDTH_MAX = 560;
+export const BUBBLE_HEIGHT_MIN = 36;
+export const BUBBLE_HEIGHT_MAX = 420;
 
 export const DEFAULT_DISPLAY: DisplayConfig = {
   roof: true,
@@ -707,8 +721,16 @@ export interface MachineDef {
    * the machine list; cleared as soon as the user moves it ({@link placeMachine}).
    */
   toPlace?: boolean;
-  /** The machine's bubble size, as a factor of the default one (#59). Absent = 1. */
+  /**
+   * Size of the machine's bubble before {@link bubbleSize}, as a factor of the default one (#59), text included:
+   * still read (the bubble's width, its text at the normal size), replaced by `bubbleSize` on the next resize.
+   */
   bubbleScale?: number;
+  /**
+   * The machine's bubble sized by hand (winccoa-fra-msp-stma#371): width and height (px). The text keeps its size; the box shows more or
+   * less of the lines. Absent = the default width, as high as its lines.
+   */
+  bubbleSize?: [number, number];
   /**
    * The machine's bubble placed by hand (#59): screen offset (px) from the machine's dot to the
    * bubble's bottom centre, kept at any zoom. Absent = laid out automatically above the machine.

@@ -3,6 +3,30 @@
 
 # Changelog — @visuelconcept-winccoa/wui-machine-fleet-3d
 
+## 0.7.0 — unreleased
+
+Requires wui-fleet-core `^0.3.1`.
+
+- **The atelier view remembers each viewer's last view** (winccoa-fra-msp-stma#367): the camera, its 2D / 3D mode and the machine panel are
+  found again on coming back to the atelier, in the viewer's WinCC OA user settings (`fleet-ateliers`), on any
+  workstation; "Default view" still goes to the default viewpoint or the opening view. Not in display-only mode
+  (a host's embedded view).
+- **All the filters on the line of the counters** (winccoa-fra-msp-stma#368): the tag and state filters sit beside the faults / stops /
+  production counts in the atelier's top bar instead of a line of their own (still a line of their own when the
+  host hides the top bar).
+- **Fix: the mouse wheel zooms with the pointer on a bubble** (winccoa-fra-msp-stma#369), a dot or a pin: the wheel was only listened to on
+  the canvas, under the layer of the bubbles.
+- **Fix: a symbol without any state value is no longer in production** (winccoa-fra-msp-stma#370): a symbol imported or created is not
+  connected until a value arrives, and a symbol none of whose state inputs is readable (none bound, none existing)
+  is shown and counted as not connected (atelier view, overview chips and minimap) instead of keeping the state
+  stored with it — production for a new one. The recorder (`fleetState`) already left such symbols out.
+- **Resizing a bubble changes its box, not its text** (winccoa-fra-msp-stma#371): the handle sets the bubble's width and height
+  (`bubbleSize`), the text keeps its size and a larger box shows the lines it cut off. A bubble resized before
+  keeps its width with its text at the normal size.
+- **The leader line of a moved bubble meets the edge that faces the machine** (winccoa-fra-msp-stma#372, `leader-end.ts`) — the side for a
+  bubble set beside it, the top for one below — instead of always the middle of the bottom edge, across the
+  bubble.
+
 ## 0.6.1 — 2026-11-20
 
 - **Fix**: the published package ships `managers/` again. 0.6.0 left the `fleetState` manager out of its

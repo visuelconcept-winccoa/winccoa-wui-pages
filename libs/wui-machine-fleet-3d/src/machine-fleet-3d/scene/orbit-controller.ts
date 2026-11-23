@@ -83,6 +83,8 @@ export class OrbitController {
   private dragButton = -1;
   private lastX = 0;
   private lastY = 0;
+  /** Elements laid over the canvas whose wheel zooms as the canvas's does (addWheelSurface). */
+  private readonly wheelSurfaces: HTMLElement[] = [];
 
   constructor(
     private readonly camera: PerspectiveCamera,
@@ -213,10 +215,20 @@ export class OrbitController {
     this.glideTo(GLIDE_VIEW);
   }
 
+  /**
+   * The wheel over `el`, laid over the canvas (the layer of the bubbles, dots and pins), zooms the camera as over
+   * the canvas: without it, the pointer resting on a bubble stops the wheel (winccoa-fra-msp-stma#369).
+   */
+  addWheelSurface(el: HTMLElement): void {
+    el.addEventListener('wheel', this.onWheel, { passive: false });
+    this.wheelSurfaces.push(el);
+  }
+
   dispose(): void {
     this.stopGlide();
     this.el.removeEventListener('pointerdown', this.onPointerDown);
     this.el.removeEventListener('wheel', this.onWheel);
+    for (const s of this.wheelSurfaces) s.removeEventListener('wheel', this.onWheel);
     this.el.removeEventListener('contextmenu', this.onContext);
     this.el.removeEventListener('keydown', this.onKey);
     window.removeEventListener('pointermove', this.onPointerMove);

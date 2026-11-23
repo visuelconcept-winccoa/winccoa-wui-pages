@@ -17,7 +17,7 @@
  * one in place.
  * No dependency (tested by symbol-import.spec.ts).
  */
-import type { MachineDef, StateMapping } from '@visuelconcept-winccoa/wui-fleet-core/types.js';
+import { NO_DATA_STATE, type MachineDef, type StateMapping } from '@visuelconcept-winccoa/wui-fleet-core/types.js';
 import { MACHINE_TYPE_LABEL } from './machine-type-labels.js';
 import { uniqueName } from './symbol-names.js';
 
@@ -62,7 +62,9 @@ function readSymbol(raw: unknown, index: number): MachineDef | ImportError {
     def.z = 0;
     def.toPlace = true;
   }
-  if (typeof def.state !== 'string') def.state = 'ok';
+  // The state a file carries is another moment's, or nothing: the atelier computes it from the symbol's inputs,
+  // and until a value arrives the symbol has none (shown as not connected, never as production).
+  def.state = NO_DATA_STATE;
   return def;
 }
 

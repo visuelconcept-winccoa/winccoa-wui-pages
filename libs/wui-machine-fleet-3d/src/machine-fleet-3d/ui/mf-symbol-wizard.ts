@@ -17,7 +17,7 @@
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import type { GlbResource, MachineDef, MachineType } from '../types.js';
+import { NO_DATA_STATE, type GlbResource, type MachineDef, type MachineType } from '../types.js';
 import type { FleetStore } from '../data/fleet-store.js';
 import { MSG, importErrorMsg, importSummaryMsg, localize, localizeDir, machineTypeLabel, replaceSymbolMsg } from '../i18n.js';
 import { conflictOf, parseSymbolImport, type ImportResult, type SymbolImportPlan } from '../symbol-import.js';
@@ -370,7 +370,7 @@ export class MfSymbolWizard extends LitElement {
   }
 
   private create(): void {
-    const def: MachineDef = { id: '', name: this.name.trim(), type: this.type, x: 0, z: 0, state: 'ok', kpis: [] };
+    const def: MachineDef = { id: '', name: this.name.trim(), type: this.type, x: 0, z: 0, state: NO_DATA_STATE, kpis: [] };
     if (this.type === 'glb' && this.glbUrl) def.glbUrl = this.glbUrl;
     if (this.type === 'billboard' && this.billboardUrl) def.billboardUrl = this.billboardUrl;
     this.emit(def, false);

@@ -6,7 +6,7 @@
  * (#337), checked before anything is added; conflicts by id, replacement keeping the position.
  */
 import { describe, expect, it } from 'vitest';
-import type { MachineDef, StateMapping } from '@visuelconcept-winccoa/wui-fleet-core/types.js';
+import { NO_DATA_STATE, type MachineDef, type StateMapping } from '@visuelconcept-winccoa/wui-fleet-core/types.js';
 import { IMPORT_FORMAT, applyImport, conflictOf, mergeMappings, parseSymbolImport, replacement } from './symbol-import.js';
 
 const MAPPING: StateMapping = { id: 'wc-categorie', name: 'États du MES', rules: [{ state: 'ok', min: 0, max: 0 }], fallback: 'stop' };
@@ -28,8 +28,8 @@ describe('symbol import — reading', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.symbols.map((s) => [s.id, s.name, s.type, s.x, s.z, s.toPlace, s.state])).toEqual([
-      ['', 'A', 'cabinet', 0, 0, true, 'ok'],
-      ['B', 'B', 'glb', 0, 0, true, 'ok']
+      ['', 'A', 'cabinet', 0, 0, true, NO_DATA_STATE],
+      ['B', 'B', 'glb', 0, 0, true, NO_DATA_STATE]
     ]);
   });
 

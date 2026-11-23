@@ -3,6 +3,16 @@
 
 # Changelog — @visuelconcept-winccoa/wui-fleet-core
 
+## 0.3.1 — unreleased
+
+- **A symbol without a state value is not connected, never in production** (winccoa-fra-msp-stma#370): `NO_DATA_STATE` (key `disconnected`,
+  the one of the "not connected" colour), counted and shown as not connected by `isDisconnected` and
+  `fleetStats`, labelled "Non connectée" by `stateLabel`.
+- **A viewer's last view of an atelier** (winccoa-fra-msp-stma#367, `bubble-prefs.ts`: `loadViewPrefs` / `saveViewPrefs`, user setting
+  `fleet-ateliers`, next to the display toggles): camera, 2D / 3D mode and machine panel.
+- **Bubbles sized by their box** (winccoa-fra-msp-stma#371): `MachineDef.bubbleSize` (width, height in px) and its bounds; `bubbleScale`
+  is kept for the bubbles resized before.
+
 ## 0.3.0 — 2026-11-05 (SDS 2.2)
 
 **Upgrade.** The fleet pages move to `^0.3.0` together (machine-fleet-3d 0.6.0, fleet-closures,

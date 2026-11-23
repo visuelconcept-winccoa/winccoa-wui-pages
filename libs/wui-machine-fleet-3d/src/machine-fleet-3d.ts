@@ -293,7 +293,8 @@ export class WuiMachineFleet3d extends LitElement {
   private async landingPage(): Promise<string | undefined> {
     // Never hold the page: settings unreachable or slow, the public default page applies.
     const timeout = new Promise<void>((resolve) => setTimeout(resolve, LANDING_WAIT_MS));
-    await Promise.race([settingsCache.load('fleet-views').catch(() => undefined), timeout]);
+    const views = Promise.all([settingsCache.load('fleet-views'), settingsCache.load('fleet-ateliers')]);
+    await Promise.race([views.catch(() => undefined), timeout]);
     return landingAtelier(this.ateliers);
   }
 

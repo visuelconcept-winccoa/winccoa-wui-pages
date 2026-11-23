@@ -11,9 +11,10 @@
  *
  * Each bubble sits right above its machine (#55); bubbles are decluttered every frame (a
  * greedy search of the nearest free spot, upward first, then sideways) so they never overlap,
- * and a leader is drawn only for a bubble moved away from its machine. Far machines collapse to
- * the dot only. In edit mode a bubble can be dragged to a spot of its own and resized (#59);
- * in hover mode a bubble shows only while the pointer is over its machine (#56).
+ * and a leader is drawn only for a bubble moved away from its machine, to the edge of the bubble that
+ * faces it (leader-end.ts). Far machines collapse to the dot only. In edit mode a bubble can be dragged to
+ * a spot of its own and resized (#59) — its box, not its text, which keeps its size; in hover mode a bubble
+ * shows only while the pointer is over its machine (#56).
  */
 import { Vector3, type Camera } from 'three';
 import {
@@ -22,8 +23,10 @@ import {
   BUILTIN_STATES,
   KPI_TYPE_INFO,
   UNKNOWN_STATE_COLOR,
-  BUBBLE_SCALE_MAX,
-  BUBBLE_SCALE_MIN,
+  BUBBLE_HEIGHT_MAX,
+  BUBBLE_HEIGHT_MIN,
+  BUBBLE_WIDTH_MAX,
+  BUBBLE_WIDTH_MIN,
   formatParamValue,
   isDisconnected,
   shownSlots,
@@ -34,6 +37,7 @@ import {
   type StateDef
 } from '../types.js';
 import { MSG, localize } from '../i18n.js';
+import { leaderEnd } from './leader-end.js';
 
 /** What the bubbles need to know about the atelier's states. */
 interface StateInfo {
@@ -70,11 +74,43 @@ const CLICK_SLOP_PX = 4;
 const HOVER_HIDE_MS = 300;
 const HIDDEN = 'none';
 const STATE_VAR = '--mf-state';
+/** Width and height of a bubble sized by hand (the stylesheet's defaults otherwise). */
+const WIDTH_VAR = '--mf-bubble-w';
+const HEIGHT_VAR = '--mf-bubble-h';
 /** CSS class for a numeric/value bubble line (parameters, KPIs, obsolescence). */
 const LINE_KPI_CLS = 'mf-label__kpi-line';
 /** CSS class of the "à placer" bubble line, and modifier of the dot of such a machine. */
 const TO_PLACE_CLS = 'mf-label__to-place';
 const DOT_TO_PLACE_CLS = 'mf-dot--to-place';
+
+/** A bubble moved or resized by hand, or back to automatic (null), as the atelier saves it (#59). */
+export interface BubblePatch {
+  bubbleOffset?: [number, number] | null;
+  bubbleSize?: [number, number] | null;
+  bubbleScale?: number | null;
+}
+
+/**
+ * The box of a bubble sized by hand: its `bubbleSize`, else the width of a bubble enlarged before it had one
+ * (`bubbleScale`: its text now at the normal size, as high as its lines); null for the default box.
+ */
+export function bubbleBox(m: Pick<Machine, 'bubbleSize' | 'bubbleScale'>): [number, number | null] | null {
+  const size = m.bubbleSize;
+  if (Array.isArray(size) && size.length === 2 && size.every((n) => typeof n === 'number' && Number.isFinite(n) && n > 0)) {
+    return [size[0], size[1]];
+  }
+  const scale = m.bubbleScale ?? 1;
+  return Number.isFinite(scale) && scale > 0 && scale !== 1 ? [Math.round(DEFAULT_BUBBLE_W * scale), null] : null;
+}
+
+/** Size a bubble's element from its machine: its own box, else the stylesheet's default. */
+function applyBubbleSize(el: HTMLElement, m: Pick<Machine, 'bubbleSize' | 'bubbleScale'>): void {
+  const box = bubbleBox(m);
+  if (box) el.style.setProperty(WIDTH_VAR, `${box[0]}px`);
+  else el.style.removeProperty(WIDTH_VAR);
+  if (box?.[1]) el.style.setProperty(HEIGHT_VAR, `${box[1]}px`);
+  else el.style.removeProperty(HEIGHT_VAR);
+}
 
 /** Axis-aligned world footprint of the building (centred at the origin). */
 interface BuildingBounds {
@@ -217,8 +253,7 @@ export class LabelManager {
   /** Fired when the pointer enters a machine's bubble or dot (its id), and leaves it (null). */
   onHover: ((id: string | null) => void) | null = null;
   /** A bubble was moved or resized by hand in edit mode; `null` = back to automatic (#59). */
-  onBubbleEdit: ((id: string, patch: { bubbleScale?: number | null; bubbleOffset?: [number, number] | null }) => void) | null =
-    null;
+  onBubbleEdit: ((id: string, patch: BubblePatch) => void) | null = null;
 
   private editMode = false;
   /** Hover mode (#56): a bubble shows only for the machine under the pointer. */
@@ -334,7 +369,7 @@ export class LabelManager {
     dotEl.addEventListener('pointerleave', onLeave);
     const el = document.createElement('div');
     el.className = this.editMode ? 'mf-label mf-label--editable' : 'mf-label';
-    el.style.setProperty('--mf-bubble-scale', String(machine.bubbleScale ?? 1));
+    applyBubbleSize(el, machine);
     el.addEventListener('pointerenter', onEnter);
     el.addEventListener('pointerleave', onLeave);
     const nameEl = document.createElement('div');
@@ -360,15 +395,16 @@ export class LabelManager {
       e.stopPropagation();
       entry.offset = null;
       delete machine.bubbleScale;
-      el.style.setProperty('--mf-bubble-scale', '1');
+      delete machine.bubbleSize;
+      applyBubbleSize(el, machine);
       el.classList.remove('mf-label--manual');
-      this.onBubbleEdit?.(machine.id, { bubbleOffset: null, bubbleScale: null });
+      this.onBubbleEdit?.(machine.id, { bubbleOffset: null, bubbleScale: null, bubbleSize: null });
     });
     return entry;
   }
 
   private isCustom(entry: LabelEntry): boolean {
-    return entry.offset !== null || (entry.machine.bubbleScale ?? 1) !== 1;
+    return entry.offset !== null || bubbleBox(entry.machine) !== null;
   }
 
   /** Edit mode: drag a bubble to a spot of its own (offset from its dot, kept at any zoom). */
@@ -402,32 +438,32 @@ export class LabelManager {
   }
 
   /**
-   * Edit mode: the corner handle enlarges or reduces the whole bubble, text included, keeping its
-   * proportions; dragging right or down enlarges it, whichever moves it most (#275).
+   * Edit mode: the corner handle resizes the bubble's box — dragging right widens it, down makes it higher —
+   * while its text keeps its size: a larger box shows the lines it cut off, a smaller one hides some (winccoa-fra-msp-stma#371).
    */
   private resizeBubble(entry: LabelEntry, down: PointerEvent): void {
     if (down.button !== 0) return;
     down.stopPropagation();
     down.preventDefault();
-    const startScale = entry.machine.bubbleScale ?? 1;
-    const startW = entry.el.offsetWidth || DEFAULT_BUBBLE_W * startScale;
-    const startH = entry.el.offsetHeight || DEFAULT_BUBBLE_H * startScale;
-    let scale = startScale;
+    const startW = entry.el.offsetWidth || DEFAULT_BUBBLE_W;
+    const startH = entry.el.offsetHeight || DEFAULT_BUBBLE_H;
+    let size: [number, number] = [startW, startH];
     const move = (e: PointerEvent): void => {
-      const fx = (startW + e.clientX - down.clientX) / startW;
-      const fy = (startH + e.clientY - down.clientY) / startH;
-      const f = Math.abs(fx - 1) >= Math.abs(fy - 1) ? fx : fy;
-      scale = Math.min(BUBBLE_SCALE_MAX, Math.max(BUBBLE_SCALE_MIN, startScale * f));
-      scale = Math.round(scale * 20) / 20;
-      entry.el.style.setProperty('--mf-bubble-scale', String(scale));
+      size = [
+        Math.round(Math.min(BUBBLE_WIDTH_MAX, Math.max(BUBBLE_WIDTH_MIN, startW + e.clientX - down.clientX))),
+        Math.round(Math.min(BUBBLE_HEIGHT_MAX, Math.max(BUBBLE_HEIGHT_MIN, startH + e.clientY - down.clientY)))
+      ];
+      entry.el.style.setProperty(WIDTH_VAR, `${size[0]}px`);
+      entry.el.style.setProperty(HEIGHT_VAR, `${size[1]}px`);
     };
     const up = (): void => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
-      if (scale === startScale) return;
-      entry.machine.bubbleScale = scale;
+      if (size[0] === startW && size[1] === startH) return;
+      entry.machine.bubbleSize = size;
+      delete entry.machine.bubbleScale;
       entry.el.classList.add('mf-label--manual');
-      this.onBubbleEdit?.(entry.machine.id, { bubbleScale: scale });
+      this.onBubbleEdit?.(entry.machine.id, { bubbleSize: size, bubbleScale: null });
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -582,10 +618,10 @@ export class LabelManager {
   }
 
   private size(entry: LabelEntry): { w: number; h: number } {
-    const scale = entry.machine.bubbleScale ?? 1;
+    const box = bubbleBox(entry.machine);
     return {
-      w: entry.el.offsetWidth || DEFAULT_BUBBLE_W * scale,
-      h: entry.el.offsetHeight || DEFAULT_BUBBLE_H * scale
+      w: entry.el.offsetWidth || box?.[0] || DEFAULT_BUBBLE_W,
+      h: entry.el.offsetHeight || box?.[1] || DEFAULT_BUBBLE_H
     };
   }
 
@@ -599,12 +635,13 @@ export class LabelManager {
     };
   }
 
-  /** Put the bubble at `r`; a leader from the dot to its bottom centre when `moved` away. */
+  /** Put the bubble at `r`; when `moved` away, a leader from the dot to the edge of the bubble that faces it. */
   private setBox(item: Placeable, r: Rect, moved: boolean): void {
     const { entry, ax, ay } = item;
     entry.el.style.transform = `translate(${r.x}px, ${r.y}px)`;
     entry.lastBox = { cx: r.x + r.w / 2, bottom: r.y + r.h, ax, ay };
-    if (moved) this.drawLeader(entry, ax, ay, r.x + r.w / 2, r.y + r.h);
+    const end = moved ? leaderEnd(r, ax, ay) : null;
+    if (end) this.drawLeader(entry, ax, ay, end[0], end[1]);
     else entry.leaderEl.style.display = HIDDEN;
   }
 

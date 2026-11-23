@@ -50,7 +50,7 @@ import {
 } from '../types.js';
 import { BuildingBuilder } from './building-builder.js';
 import { disposeObject } from './dispose.js';
-import { LabelManager } from './label-manager.js';
+import { LabelManager, type BubblePatch } from './label-manager.js';
 import { MarkerPins } from './marker-pins.js';
 import { MachineMaterials } from './machine-materials.js';
 import { BILLBOARD_CHILD, applyBillboardTexture, buildMachine } from './machine-factory.js';
@@ -145,6 +145,8 @@ export class SceneController {
     this.gltfLoader.setMeshoptDecoder(MeshoptDecoder);
 
     this.orbit = new OrbitController(this.camera, canvas);
+    // The wheel over a bubble, a dot or a pin zooms too.
+    this.orbit.addWheelSurface(overlay);
     this.labels = new LabelManager(overlay, onSelect);
     this.pins = new MarkerPins(overlay, { camera: () => this.activeCamera(), canvas: () => this.canvas });
 
@@ -194,7 +196,7 @@ export class SceneController {
   }
 
   /** A bubble moved or resized by hand in edit mode (`null`: back to automatic, #59). */
-  setOnBubbleEdit(fn: (id: string, patch: { bubbleScale?: number | null; bubbleOffset?: [number, number] | null }) => void): void {
+  setOnBubbleEdit(fn: (id: string, patch: BubblePatch) => void): void {
     this.labels.onBubbleEdit = fn;
   }
 
