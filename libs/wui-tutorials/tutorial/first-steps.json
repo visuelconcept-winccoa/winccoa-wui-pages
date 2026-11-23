@@ -1,0 +1,60 @@
+{
+  "$schema": "../../../node_modules/@visuelconcept-winccoa/wui-toolkit/schemas/wui-tutorial.schema.json",
+  "title": { "en": "First steps with Sigma", "fr": "Premiers pas avec Sigma", "de": "Erste Schritte mit Sigma" },
+  "summary": {
+    "en": "Meet your guide and learn how to follow a tutorial.",
+    "fr": "Fais connaissance avec ton guide et apprends à suivre un tutoriel.",
+    "de": "Lerne deinen Guide kennen und wie man einem Tutorial folgt."
+  },
+  "badge": { "en": "Apprentice", "fr": "Apprenti", "de": "Lehrling" },
+  "minutes": 1,
+  "order": 0,
+  "start": "/tutorials",
+  "steps": [
+    {
+      "say": {
+        "en": "Hi! I'm Sigma, your guide. I'll show you the application step by step — and you do the clicking.",
+        "fr": "Salut ! Moi c'est Sigma, ton guide. Je vais te faire découvrir l'application pas à pas, et c'est toi qui fais les manipulations.",
+        "de": "Hallo! Ich bin Sigma, dein Guide. Ich zeige dir die Anwendung Schritt für Schritt — und du klickst."
+      },
+      "mood": "happy",
+      "next": { "en": "Nice to meet you!", "fr": "Enchanté !", "de": "Freut mich!" }
+    },
+    {
+      "say": {
+        "en": "When I need you to do something, I light up where to act and wait. If you're stuck, I give you a hint, and “Skip” jumps the step.",
+        "fr": "Quand j'ai besoin que tu fasses quelque chose, j'éclaire l'endroit où agir et j'attends. Si tu bloques, je te donne un indice, et « Passer » saute l'étape.",
+        "de": "Wenn du etwas tun sollst, beleuchte ich die Stelle und warte. Hängst du fest, gebe ich dir einen Tipp, und „Überspringen“ lässt den Schritt aus."
+      }
+    },
+    {
+      "say": {
+        "en": "Let's try: open the Tutorials page from the menu.",
+        "fr": "Essayons : ouvre la page Tutoriels depuis le menu.",
+        "de": "Probieren wir es: Öffne die Seite Tutorials über das Menü."
+      },
+      "menu": { "en": "Tutorials", "fr": "Tutoriels", "de": "Tutorials" },
+      "route": "/tutorials",
+      "hint": {
+        "after": 10,
+        "say": { "en": "In the menu, the “Tutorials” entry: I've outlined it for you.", "fr": "Dans le menu, l'entrée « Tutoriels » : je l'ai encadrée pour toi.", "de": "Im Menü, der Eintrag „Tutorials“: Ich habe ihn markiert." }
+      }
+    },
+    {
+      "say": {
+        "en": "Here are the tutorials of this site's modules. Each one earns you a badge.",
+        "fr": "Voici les tutoriels des modules de ce site. Chacun te rapporte un badge.",
+        "de": "Hier sind die Tutorials der Module dieser Seite. Jedes bringt dir ein Abzeichen."
+      },
+      "point": ".tuto-cards"
+    },
+    {
+      "say": {
+        "en": "You can minimize me with “–” or send me away with “✕”: I remember where you were, even after a reload. Have fun!",
+        "fr": "Tu peux me réduire avec « – » ou me congédier avec « ✕ » : je retiens où tu en étais, même après un rechargement. Amuse-toi bien !",
+        "de": "Du kannst mich mit „–“ verkleinern oder mit „✕“ wegschicken: Ich merke mir, wo du warst, auch nach einem Neuladen. Viel Spaß!"
+      },
+      "mood": "cheer"
+    }
+  ]
+}

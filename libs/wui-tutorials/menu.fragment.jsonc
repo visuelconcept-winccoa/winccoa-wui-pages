@@ -1,0 +1,13 @@
+// The Tutorials page's menu entry, upserted by routeId into the target's menuconfig.json.
+// The guide itself is on every page (wuiPage.shell.boot), not in the menu.
+[
+  {
+    "title": { "en_US.utf8": "Tutorials", "fr_FR.utf8": "Tutoriels", "de_AT.utf8": "Tutorials" },
+    "icon": "bulb",
+    "path": "/tutorials",
+    "module": "/data/dashboard-wc/pages/tutorials.js",
+    "routeId": "tutorials",
+    "component": "wui-tutorials",
+    "permission": ["connected"]
+  }
+]
