@@ -41,6 +41,8 @@ import {
   mappingStates as statesOf,
   stateColor,
   stateLabel,
+  type Kpi,
+  type KpiLookup,
   type Machine,
   type MachineState,
   type StateMapping,
@@ -87,6 +89,8 @@ import {
   rangeLabelMsg
 } from '../i18n.js';
 import { ganttTicks, tickLabel } from '../gantt-ticks.js';
+import { historyGap, type HistoryGap } from '../history-gap.js';
+import { lineDps, lookupValue } from '@visuelconcept-winccoa/wui-fleet-core/lookup.js';
 import { tipTransform } from '../tip-place.js';
 import { dashboardParams } from '../dashboard-lines.js';
 
@@ -219,6 +223,8 @@ export class MfMachineDashboard extends LitElement {
   @state() private paretoMetric: ParetoMetric = 'downtime';
   @state() private paretoClass: ParetoClass = 'unplanned';
   @state() private segmentsAll: StateSegment[] = [];
+  /** Why the period has no history (#382): said by the Gantt and the Pareto instead of a bare « no data ». */
+  @state() private historyGap: HistoryGap = 'empty';
   /** Full sorted (desc) list of unplanned causes; sliced per `paretoTop` at render. */
   @state() private paretoAll: CauseRow[] = [];
   /** Stops of the period, most recent first, split by cause (SL-TDB-04). */
@@ -430,7 +436,8 @@ export class MfMachineDashboard extends LitElement {
           record?.cause,
           m.workOrderDp,
           m.operationDp,
-          ...(m.kpis ?? []).map((k) => k.dp)
+          // A line translated through a table (#373) follows the table too.
+          ...(m.kpis ?? []).flatMap((k) => lineDps(k))
         ].filter(
           (d): d is string => typeof d === 'string' && d !== ''
         )
@@ -644,13 +651,20 @@ export class MfMachineDashboard extends LitElement {
   /** Work order and the parameters marked filterable, each as value spans over the period. */
   private async buildContext(m: Machine, start: Date, end: Date): Promise<{ key: string; label: string; spans: ValueSpan[] }[]> {
     const lookback = new Date(start.getTime() - (end.getTime() - start.getTime()));
-    const dims: { key: string; label: string; dp: string }[] = [];
+    const dims: { key: string; label: string; dp: string; lookup?: KpiLookup }[] = [];
     if (m.workOrderDp) dims.push({ key: 'of', label: localize(MSG.machineDash.filterWorkOrder), dp: m.workOrderDp });
-    for (const k of m.kpis ?? []) if (k.filterable && k.dp) dims.push({ key: `param:${k.key}`, label: k.label || k.key, dp: k.dp });
+    for (const k of m.kpis ?? []) if (k.filterable && k.dp) dims.push({ key: `param:${k.key}`, label: k.label || k.key, dp: k.dp, lookup: k.lookup });
     const out: { key: string; label: string; spans: ValueSpan[] }[] = [];
     for (const d of dims) {
       // eslint-disable-next-line no-await-in-loop
-      const samples = await queryHistory(this.api, d.dp, lookback, end);
+      let samples = await queryHistory(this.api, d.dp, lookback, end);
+      // Translated through its table (#373): the history of the line's own value (the article), translated by the
+      // table as it is now (the contract of each article) — nothing else archived.
+      const lookup = d.lookup;
+      if (lookup) {
+        const table = this.liveValues[normDp(lookup.dp)];
+        samples = samples.map((s) => ({ ...s, v: lookupValue(s.v, table, lookup) }));
+      }
       out.push({ key: d.key, label: d.label, spans: valueSpans(samples, start.getTime(), end.getTime()) });
     }
     return out;
@@ -769,6 +783,13 @@ export class MfMachineDashboard extends LitElement {
     return typeof v === 'number' ? formatParamValue(v, decimals) : String(v);
   }
 
+  /** A line's live value as text: translated through its table when it has one (#373), '—' when empty. */
+  private lineDisplay(k: Kpi): string {
+    if (!k.lookup) return this.liveDisplay(k.dp, k.value, k.decimals);
+    const own = k.dp ? extractScalar(this.liveValues[normDp(k.dp)]) : undefined;
+    return lookupValue(own ?? k.value, this.liveValues[normDp(k.lookup.dp)], k.lookup) || '—';
+  }
+
   /**
    * The context line, outside the process parameters' cap: the context parameters
    * (article, contract, identities…), then the work order and the operation.
@@ -777,7 +798,7 @@ export class MfMachineDashboard extends LitElement {
     const m = this.machine;
     const items = dashboardParams(m).context.map((k) => ({
       label: k.label || k.key,
-      value: this.liveDisplay(k.dp, k.value, k.decimals)
+      value: this.lineDisplay(k)
     }));
     if (m.workOrderDp) items.push({ label: localize(MSG.view.workOrder), value: this.liveDisplay(m.workOrderDp) });
     if (m.operationDp) items.push({ label: localize(MSG.view.operation), value: this.liveDisplay(m.operationDp) });
@@ -794,8 +815,9 @@ export class MfMachineDashboard extends LitElement {
   private paramCards(): ParamCard[] {
     const m = this.machine;
     const cards: ParamCard[] = dashboardParams(m).process.map((k) => {
-      // Prefer the live dpConnect value; fall back to the last known value.
-      const live = k.dp ? extractScalar(this.liveValues[normDp(k.dp)]) : undefined;
+      // Prefer the live dpConnect value; fall back to the last known value. Translated through its table (#373).
+      const own = k.dp ? extractScalar(this.liveValues[normDp(k.dp)]) : undefined;
+      const live = k.lookup ? lookupValue(own ?? k.value, this.liveValues[normDp(k.lookup.dp)], k.lookup) : own;
       // Where the value comes from (automatic, manual…), when the integration tells it.
       return { key: `param:${k.key}`, label: k.label || k.key, value: live ?? k.value, unit: k.unit ?? '', hint: k.source, decimals: k.decimals };
     });
@@ -903,9 +925,7 @@ export class MfMachineDashboard extends LitElement {
       </div>
     `;
     if (this.loading) return html`${head}<div class="center"><ix-spinner></ix-spinner></div>`;
-    if (segs.length === 0) {
-      return html`${head}<div class="muted small">${localizeDir(MSG.machineDash.noHistory)}</div>`;
-    }
+    if (segs.length === 0) return html`${head}${this.noHistoryMsg()}`;
     const start = segs[0].startMs;
     const total = segs.at(-1)!.endMs - start || 1;
     // Dates of the start, the end and the state changes, readable without hovering (#279).
@@ -1128,6 +1148,8 @@ export class MfMachineDashboard extends LitElement {
       </div>
     `;
     if (this.loading) return html`${head}<div class="center"><ix-spinner></ix-spinner></div>`;
+    // No history at all for a reason (#382): the Pareto says it too, not « no stop ».
+    if (rows.length === 0 && this.segmentsAll.length === 0 && this.historyGap !== 'empty') return html`${head}${this.noHistoryMsg()}`;
     if (rows.length === 0) {
       const label = this.paretoClass === 'planned'
         ? localize(MSG.machineDash.classPlanned)
@@ -1274,6 +1296,7 @@ export class MfMachineDashboard extends LitElement {
     const m = this.machine;
     const gen = ++this.reloadGen;
     if (!this.api || !recordsState(m)) {
+      this.historyGap = historyGap({ recordsState: recordsState(m), recordExists: null, archived: null });
       this.segmentsAll = [];
       this.paretoAll = [];
       this.stopsAll = [];
@@ -1291,12 +1314,52 @@ export class MfMachineDashboard extends LitElement {
     const contextDims = await this.buildContext(m, start, end);
     // Stops without a cause datapoint still count: they are listed without a cause.
     const analysis = await this.analyse(m, start, end);
+    const gap = segments.length === 0 ? await this.whyNoHistory(m) : 'empty';
     if (gen !== this.reloadGen) return;
+    this.historyGap = gap;
     this.segmentsAll = segments;
     this.contextDims = contextDims;
     this.paretoAll = analysis.rows;
     this.stopsAll = analysis.stops;
     this.loading = false;
+  }
+
+  /**
+   * Why a period without history has none (#382): the record of the state manager exists or not, archived or not.
+   * Read only when the period is empty; an unreadable archive config is not called missing.
+   */
+  private async whyNoHistory(m: Machine): Promise<HistoryGap> {
+    const api = this.api;
+    if (!api) return 'empty';
+    const record = stateRecordDpes(m.id).state;
+    let recordExists: boolean | null = null;
+    let archived: boolean | null = null;
+    try {
+      await firstValueFrom(api.dpGet(record));
+      recordExists = true;
+    } catch {
+      recordExists = false;
+    }
+    if (recordExists) {
+      try {
+        const v = await firstValueFrom(api.dpGet(`${record}:_archive.._archive`));
+        archived = typeof v === 'boolean' ? v : typeof v === 'number' ? v !== 0 : null;
+      } catch {
+        archived = null;
+      }
+    }
+    return historyGap({ recordsState: true, recordExists, archived });
+  }
+
+  /** The message of a period without history (#382). */
+  private noHistoryMsg(): TemplateResult {
+    const msg = {
+      noInput: MSG.machineDash.historyNoInput,
+      notRecorded: MSG.machineDash.historyNotRecorded,
+      notArchived: MSG.machineDash.historyNotArchived,
+      empty: MSG.machineDash.noHistory
+    }[this.historyGap];
+    return html`<div class="muted small">${localizeDir(msg)}</div>`;
   }
 
   /** [start, end] for the selected period, shifted back by `offsetMs` (prev/next). */

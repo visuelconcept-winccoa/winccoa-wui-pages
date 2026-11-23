@@ -43,7 +43,7 @@ import {
   type MachineState,
   type StopCauseCatalog
 } from '../types.js';
-import { liveTargets, machineLiveState } from '@visuelconcept-winccoa/wui-fleet-core/state-eval.js';
+import { liveTargets, machineLiveState, refTargets, resolveMachine } from '@visuelconcept-winccoa/wui-fleet-core/state-eval.js';
 import { causesFor } from '@visuelconcept-winccoa/wui-fleet-core/stop-catalogs.js';
 import './mf-ai-prompt.js';
 import './mf-atelier-create-dialog.js';
@@ -110,7 +110,8 @@ export class MfAtelierOverview extends LitElement {
   }
 
   protected override updated(changed: PropertyValues): void {
-    if (changed.has('ateliers')) this.watchStates();
+    // A reference that names another datapoint (a machine reassigned, #376) changes what is followed.
+    if (changed.has('ateliers') || changed.has('liveStates')) this.watchStates();
     if (changed.has('store') && this.store) void this.store.listCatalogs().then((c) => (this.catalogs = c)).catch(() => undefined);
   }
 
@@ -120,7 +121,10 @@ export class MfAtelierOverview extends LitElement {
    * state stored with each machine.
    */
   private watchStates(): void {
-    const dps = [...new Set(this.ateliers.flatMap((a) => a.machines.flatMap((m) => liveTargets(m).map((t) => t.dpe))))].sort();
+    // Each machine's references too (#376), and its bindings as they name them now.
+    const read = (dpe: string): unknown => this.liveStates.get(normDp(dpe));
+    const followed = (m: MachineDef): string[] => [...refTargets(m), ...liveTargets(resolveMachine(m, read)).map((t) => t.dpe)];
+    const dps = [...new Set(this.ateliers.flatMap((a) => a.machines.flatMap(followed)))].sort();
     const key = dps.join('|');
     if (key === this.liveKey) return;
     this.liveKey = key;

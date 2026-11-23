@@ -14,7 +14,8 @@
  * and a leader is drawn only for a bubble moved away from its machine, to the edge of the bubble that
  * faces it (leader-end.ts). Far machines collapse to the dot only. In edit mode a bubble can be dragged to
  * a spot of its own and resized (#59) — its box, not its text, which keeps its size; in hover mode a bubble
- * shows only while the pointer is over its machine (#56).
+ * shows only while the pointer is over its machine (#56), also with the machine labels hidden
+ * (label-visibility.ts, winccoa-fra-msp-stma#378).
  */
 import { Vector3, type Camera } from 'three';
 import {
@@ -38,6 +39,7 @@ import {
 } from '../types.js';
 import { MSG, localize } from '../i18n.js';
 import { leaderEnd } from './leader-end.js';
+import { labelsActive, labelVisibility } from './label-visibility.js';
 
 /** What the bubbles need to know about the atelier's states. */
 interface StateInfo {
@@ -304,6 +306,8 @@ export class LabelManager {
 
   setHoverMode(on: boolean): void {
     this.hoverMode = on;
+    // Labels hidden: leaving hover mode hides the last hovered machine, the layout no longer runs.
+    if (!labelsActive(this.enabled, on)) this.hideAll();
   }
 
   /** The machine under the pointer on the canvas (hover mode), or null. */
@@ -322,7 +326,7 @@ export class LabelManager {
   }
 
   update(camera: Camera, width: number, height: number): void {
-    if (!this.enabled) return;
+    if (!labelsActive(this.enabled, this.hoverMode)) return;
     // Pass 1: project anchors, paint dots, fill bubble content.
     const placeable: Placeable[] = [];
     for (const entry of this.entries) {
@@ -502,20 +506,28 @@ export class LabelManager {
     dotEl.style.setProperty(STATE_VAR, color);
     leaderEl.style.setProperty(STATE_VAR, color);
 
-    // Dot is always shown (within the view frustum). A machine "à placer" is said on the dot
-    // too (ring + tooltip + accessible name), for when its bubble is collapsed or hidden.
+    // Labels shown: the dot always is (within the view frustum); hidden, only the hovered machine's in hover mode
+    // (#378). A machine "à placer" is said on the dot too (ring + tooltip + accessible name), for when its bubble is
+    // collapsed or hidden.
+    const hovered = machine.id === this.hoveredId || machine.id === this.overId;
+    const shown = labelVisibility({ labels: this.enabled, hoverMode: this.hoverMode, editMode: this.editMode, hovered });
+    if (!shown.dot) {
+      this.hideEntry(entry);
+      return null;
+    }
     this.markToPlace(entry);
     dotEl.style.display = 'block';
     dotEl.style.transform = `translate(-50%, -50%) translate(${ax}px, ${ay}px)`;
 
     // Hover mode (outside edit mode): only the machine under the pointer, at any distance.
-    if (this.hoverMode && !this.editMode) {
-      if (machine.id !== this.hoveredId && machine.id !== this.overId) {
-        el.style.display = HIDDEN;
-        leaderEl.style.display = HIDDEN;
-        return null;
-      }
-    } else if (dist > this.bubbleMaxDist()) {
+    if (!shown.bubble) {
+      el.style.display = HIDDEN;
+      leaderEl.style.display = HIDDEN;
+      return null;
+    }
+    // The hovered machine's bubble shows at any distance; the others (labels shown) only near enough.
+    const onlyHovered = this.hoverMode && (!this.editMode || !this.enabled);
+    if (!onlyHovered && dist > this.bubbleMaxDist()) {
       el.style.display = HIDDEN;
       leaderEl.style.display = HIDDEN;
       return null;

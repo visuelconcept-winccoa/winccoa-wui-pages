@@ -369,6 +369,22 @@ export interface Kpi {
   /** Decimals shown for a numeric value (0..{@link MAX_PARAM_DECIMALS}). When unset,
    * integers print as-is and other numbers with {@link DEFAULT_PARAM_DECIMALS}. */
   decimals?: number;
+  /**
+   * The value of `dp` translated through a table (lookup.ts, winccoa-fra-msp-stma#373): the line shows the field of
+   * the table's row whose key equals the value — e.g. the contract of the article in production, from the article
+   * catalogue. A filterable line is filtered on the translated history.
+   */
+  lookup?: KpiLookup;
+}
+
+/** A table a line's value is translated through (lookup.ts). */
+export interface KpiLookup {
+  /** Datapoint element holding the table: a JSON array of rows (e.g. the MSP article catalogue `stma/articles.`). */
+  dp: string;
+  /** Field of a row compared with the line's value (default `id`). */
+  key?: string;
+  /** Field of the row found that the line shows. */
+  field: string;
 }
 
 /** Decimals of a non-integer parameter value when the parameter sets none. */
@@ -621,6 +637,20 @@ export const DEFAULT_DISPLAY: DisplayConfig = {
   alertOnly: false
 };
 
+/**
+ * Where a machine's controller takes the stop-cause catalogue (winccoa-fra-msp-stma#375): one slot per cause, in
+ * the catalogue's order, each with the datapoint elements of its code, label and class; the slots left over are
+ * emptied ('' and 0), the causes left over are not sent.
+ */
+export interface StopCauseTargets {
+  slots: { code?: string; label?: string; class?: string }[];
+  /** Longest code and label the controller takes: longer ones are cut. Absent: not cut. */
+  codeMax?: number;
+  labelMax?: number;
+  /** Value written for the class of a cause; a cause of a class without a value is not sent. Absent: the class key. */
+  classValues?: Partial<Record<'planned' | 'unplanned', number | string>>;
+}
+
 /** Serialisable machine definition (config input). */
 export interface MachineDef {
   id: string;
@@ -668,6 +698,18 @@ export interface MachineDef {
   stopCauseDps?: string[];
   /** Datapoint of each named input of the machine's mapping (`StateMapping.inputs`), by input key. */
   inputDps?: Record<string, string>;
+  /**
+   * References (winccoa-fra-msp-stma#376): by name, a datapoint element whose value is the name of a datapoint. A
+   * binding of the symbol may write `{name}` in its datapoint (`{wc}.Context.OF`): it reads the datapoint the
+   * reference names now, and follows it when it changes — a mobile machine follows the workcenter it is assigned
+   * to. A reference without a value leaves the bindings that use it unbound (state-eval.ts `resolveMachine`).
+   */
+  refDps?: Record<string, string>;
+  /**
+   * Stop-cause slots of the machine's controller (winccoa-fra-msp-stma#375): Machine Fleet's state manager writes
+   * the causes of the symbol's catalogue there, in order, whenever they differ (cause-push.js of fleetState).
+   */
+  stopCauseTargets?: StopCauseTargets;
   /**
    * The machine accepts a state declared by an operator (winccoa-fra-msp-stma#339): input {@link DECLARED_INPUT}
    * of its mapping, bound to Machine Fleet's own datapoint, set from the machine dashboard (role `declare`).
@@ -798,6 +840,13 @@ export interface MachineDef {
    * its dashboard in the same tab. Usually written by the integration that places the machine.
    */
   ownerLink?: { label: string; url: string };
+  /**
+   * The site's workcenter the machine was exported from (its datapoint), as a workcenter's export gives it
+   * (winccoa-fra-msp-stma#337): what « Add a symbol › From the site » lists it under (#381). Informative only.
+   */
+  workcenter?: string;
+  /** The site's group of the machine (its îlot), as a workcenter's export gives it. Informative only. */
+  group?: string;
   /**
    * More datapoints whose alarms are the machine's, in its dashboard (e.g. the machine's own
    * datapoint when its state is read elsewhere). Usually written by the integration.

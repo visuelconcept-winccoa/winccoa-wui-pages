@@ -131,11 +131,46 @@ export function conflictOf(def: MachineDef, existing: readonly MachineDef[]): Ma
   return def.id ? (existing.find((m) => m.id === def.id) ?? null) : null;
 }
 
-/** Fields of the symbol in place that a replacement keeps: where it is, and whether it is still to place. */
-const POSITION_FIELDS = ['x', 'y', 'z', 'rotationY', 'markerId', 'bubbleOffset', 'toPlace'] as const;
+/**
+ * Fields of the symbol in place that a replacement keeps: where it is, whether it is still to place, and its
+ * bubble's place and size (winccoa-fra-msp-stma#371).
+ */
+const POSITION_FIELDS = ['x', 'y', 'z', 'rotationY', 'markerId', 'bubbleOffset', 'bubbleSize', 'bubbleScale', 'toPlace'] as const;
 
-/** The imported symbol replacing the one in place: its definition, at the position of the one it replaces. */
-export function replacement(current: MachineDef, incoming: MachineDef): MachineDef {
+/**
+ * Fields a workcenter's export defines (winccoa-fra-msp-stma#337): the machine's data — its state and the inputs of
+ * its mapping, its references, its stop causes and where they are sent, its work order, operation and alarms, its
+ * process lines, its computed KPIs, its site labels and links. A symbol replaced by an export takes these (and
+ * loses those the export no longer gives), and keeps everything else as set in the atelier: name, representation,
+ * colour, free tags, dashboards, minimum stop, bubble, position. Re-exporting a workcenter after an update changes
+ * the bindings, never what the atelier was made into (winccoa-fra-msp-stma#373).
+ */
+export const EXPORT_FIELDS = [
+  'stateDp', 'refDps', 'inputDps', 'stateMappingId', 'declaredState', 'commDp', 'stopCauseDp', 'stopCauseDps',
+  'stopCauseTargets', 'stopCatalogId', 'workOrderDp', 'operationDp', 'alarmCodeDp', 'alarmDps', 'kpis', 'tags',
+  'workcenter', 'group', 'ownerLink', 'appLinksOnly', 'familyGlbUrl', 'kpiCalcs'
+] as const;
+
+/** Whether an import's file is a workcenter's (or the site's) export: its symbols replace only their data. */
+export function isExportSource(source: ImportSource | null | undefined): boolean {
+  return source?.kind === 'workcenter' || source?.kind === 'site';
+}
+
+/**
+ * The imported symbol replacing the one in place. From a workcenter's export (`fromExport`): the symbol in place
+ * with the data of the export ({@link EXPORT_FIELDS}). Otherwise: the imported definition, at the position of the one
+ * it replaces.
+ */
+export function replacement(current: MachineDef, incoming: MachineDef, fromExport = false): MachineDef {
+  if (fromExport) {
+    const out: Record<string, unknown> = { ...current };
+    const src = incoming as unknown as Record<string, unknown>;
+    for (const f of EXPORT_FIELDS) {
+      if (src[f] === undefined) delete out[f];
+      else out[f] = structuredClone(src[f]);
+    }
+    return out as unknown as MachineDef;
+  }
   const out = { ...incoming, id: current.id } as MachineDef & Record<string, unknown>;
   for (const f of POSITION_FIELDS) {
     if (current[f] === undefined) delete out[f];
@@ -156,6 +191,8 @@ export interface SymbolImportPlan {
   add: MachineDef[];
   replace: MachineDef[];
   mappings: StateMapping[];
+  /** The file is a workcenter's (or the site's) export: a replaced symbol takes only its data ({@link replacement}). */
+  fromExport?: boolean;
 }
 
 /**
@@ -174,7 +211,7 @@ export function applyImport(
   const byId = new Map(imp.replace.map((d) => [d.id, d]));
   let out = machines.map((m) => {
     const incoming = byId.get(m.id);
-    return incoming ? replacement(m, incoming) : m;
+    return incoming ? replacement(m, incoming, imp.fromExport === true) : m;
   });
   // Each replaced symbol's name checked against all the others, one after the other.
   for (const id of byId.keys()) {

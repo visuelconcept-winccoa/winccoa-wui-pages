@@ -21,6 +21,7 @@
  * `settings.jsonFileName` points at the widget definition so the settings editor
  * can load its UI schema.
  */
+import { usesRef } from '@visuelconcept-winccoa/wui-fleet-core/state-eval.js';
 import type { WuiWidgetDatapointSettings } from '@wincc-oa/wui-models/interfaces/wui-widget.js';
 import type { MachineDef } from '../types.js';
 
@@ -70,7 +71,9 @@ export function buildMachineWidgets(
       ganttWidget(`${prefix}ganttstate`, "Historique d'état", machine.stateDp, 6, 4, 12, 8)
     );
   }
-  const params = (machine.kpis ?? []).filter((k) => k.dp);
+  // A parameter through a reference (#376) names its datapoint at runtime only, one translated through a table (#373)
+  // is not its datapoint's value: not exported.
+  const params = (machine.kpis ?? []).filter((k) => k.dp && !usesRef(k.dp) && !k.lookup);
   if (params.length > 0) {
     const items = params.map((k) => kpiSeriesItem(k.label || k.key, k.dp ?? '', k.unit));
     widgets.push(kpiWidget(`${prefix}kpiparams`, 'Paramètres', items, 0, 12, 12, 4));

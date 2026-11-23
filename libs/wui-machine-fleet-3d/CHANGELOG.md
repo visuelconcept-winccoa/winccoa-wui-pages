@@ -5,7 +5,26 @@
 
 ## 0.7.0 — unreleased
 
-Requires wui-fleet-core `^0.3.1`.
+Requires wui-fleet-core `^0.3.1`. Restart the `fleetState` manager after the update.
+
+- **States archived in the group the module settings name** (winccoa-fra-msp-stma#374): `stateArchiveGroup` in
+  `MachineFleet3D_Settings` (wui-fleet-core `FleetModuleSettings`), e.g. the group of a site's states history; the
+  `fleetState` manager takes it when it is usable (active, not an alarm group), otherwise the standard value group as
+  before, and says so in its log. It applies to the records not archived yet: a record already archived in a usable
+  group stays there (`keepsArchive`), as NGA reads an element in its current group only — moving it hid its whole
+  history from the Gantt, the stops and the TRS (checked on a WinCC OA 3.21 project, winccoa-fra-msp-stma#373).
+- **The stop-cause catalogue sent to the machines by Machine Fleet** (winccoa-fra-msp-stma#375): a symbol may declare its controller's
+  stop-cause slots (`stopCauseTargets`: the datapoint elements of each slot's code, label and class, the longest code
+  and label, the value of each class); `fleetState` writes the causes of the symbol's catalogue there, in order, the
+  slots left over emptied, whenever they differ: not while its communication (`commDp`) is down, never to an
+  input-only address (noted once in its log), checked again at each reading (a catalogue saved, every minute) and as
+  soon as the communication comes back (`managers/fleetState/cause-push.js`, tested).
+- **Bindings through a reference** (winccoa-fra-msp-stma#376): a symbol's references (`refDps`: by name, a datapoint element whose
+  value names a datapoint) may be used in its bindings, `{wc}.Context.OF`: a mobile machine follows the workcenter
+  it is assigned to. The atelier view, the overview, the machine dashboard and `fleetState` follow the references and
+  subscribe the bindings anew when one changes; a binding whose reference has no value is unbound (its value no
+  longer shown). The datapoint field does not show such a binding as broken; a parameter through a reference is not
+  exported to a WinCC OA dashboard (its datapoint is named at runtime only).
 
 - **The atelier view remembers each viewer's last view** (winccoa-fra-msp-stma#367): the camera, its 2D / 3D mode and the machine panel are
   found again on coming back to the atelier, in the viewer's WinCC OA user settings (`fleet-ateliers`), on any
@@ -26,6 +45,28 @@ Requires wui-fleet-core `^0.3.1`.
 - **The leader line of a moved bubble meets the edge that faces the machine** (winccoa-fra-msp-stma#372, `leader-end.ts`) — the side for a
   bubble set beside it, the top for one below — instead of always the middle of the bottom edge, across the
   bubble.
+
+- **"Bubbles on hover only" works with the machine labels hidden** (winccoa-fra-msp-stma#378, `label-visibility.ts`): labels hidden,
+  the machine under the pointer still shows its dot and bubble; leaving hover mode hides it again.
+- **Placement markers have their own button, apart from edit mode** (winccoa-fra-msp-stma#379): the markers button shows them —
+  dragged to move, clicked to rename or delete, its "+" button to place a new one — or hides them; edit mode moves
+  the machines and their bubbles only.
+- **« Add a symbol › From the site » lists the site's machines** (winccoa-fra-msp-stma#381, #380, `data/site-symbols.ts`): instead of the
+  site catalogue (`MachineFleet3D_Catalog`, emptied since winccoa-fra-msp-stma#349), the machines the site serves at the path its module
+  settings declare (`siteSymbolsUrl`), a `machine-fleet-symbols` file, listed by workcenter — one machine, or all those
+  of a workcenter — and added like a workcenter's export, with their state mappings. Without a declared path, the
+  other ateliers' symbols only, as before.
+- **A workcenter's re-export replaces a symbol's data only** (winccoa-fra-msp-stma#373, `symbol-import.ts` `EXPORT_FIELDS`): importing
+  a workcenter's (or the site's) export over symbols already in the atelier takes their bindings from it and keeps what
+  was set in the atelier — name, representation, colour, free tags, dashboards, minimum stop, bubble, position. Any
+  replacement now also keeps the bubble's size.
+- **A line translated through a table** (winccoa-fra-msp-stma#373, wui-fleet-core `lookup.ts`): a parameter line may show its value
+  looked up in a table held by another datapoint (`Kpi.lookup`) — the site's contract line is the article in production
+  translated by the MSP article catalogue. The atelier view, the machine dashboard (context line, cards) and its
+  filter (the line's history translated by the table as it is now) follow it; not exported to a WinCC OA dashboard.
+- **The machine dashboard says why it has no history** (winccoa-fra-msp-stma#382, `history-gap.ts`): no input of the state mapping bound,
+  the state not recorded by `fleetState` (stopped, not declared, or the symbol just added), or recorded but not archived,
+  instead of a bare "No history data" — in the Gantt and in the Pareto.
 
 ## 0.6.1 — 2026-11-20
 

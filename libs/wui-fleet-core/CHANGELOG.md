@@ -10,6 +10,16 @@
   `fleetStats`, labelled "Non connectée" by `stateLabel`.
 - **A viewer's last view of an atelier** (winccoa-fra-msp-stma#367, `bubble-prefs.ts`: `loadViewPrefs` / `saveViewPrefs`, user setting
   `fleet-ateliers`, next to the display toggles): camera, 2D / 3D mode and machine panel.
+- **References in a symbol's bindings** (winccoa-fra-msp-stma#376): `MachineDef.refDps`; `state-eval.ts` `refDpsOf`, `refTargets`,
+  `usesRef`, `refValue`, `resolveBinding`, `resolveMachine` (a copy of the symbol with its bindings as its references
+  name them now); `machineLiveState` resolves them through the cache it reads.
+- **Stop-cause slots of a machine's controller** (winccoa-fra-msp-stma#375): `MachineDef.stopCauseTargets` (`StopCauseTargets`).
+- **Archive group of the states** (winccoa-fra-msp-stma#374): `FleetModuleSettings.stateArchiveGroup`, kept by `parseModuleSettings`.
+- **Where the site serves its machines** (winccoa-fra-msp-stma#381): `FleetModuleSettings.siteSymbolsUrl`, a path of this web server
+  only (`sitePath`); `MachineDef.workcenter` and `group`, as a workcenter's export gives them.
+- **A line value translated through a table** (winccoa-fra-msp-stma#373, `lookup.ts`): `Kpi.lookup` (`KpiLookup`: the table's
+  datapoint, the key and the field), `lookupValue`, `lineDps`; tested on a real MSP article catalogue against the
+  contract the 2.2.0 supervision derived for each article.
 - **Bubbles sized by their box** (winccoa-fra-msp-stma#371): `MachineDef.bubbleSize` (width, height in px) and its bounds; `bubbleScale`
   is kept for the bubbles resized before.
 

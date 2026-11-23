@@ -52,6 +52,23 @@ export interface AtelierOpening {
 /** The module settings (`MachineFleet3D_Settings`): the default opening view of every atelier. */
 export interface FleetModuleSettings {
   openingView: OpeningViewSetting;
+  /**
+   * NGA group the state manager (fleetState) archives the states in (winccoa-fra-msp-stma#374), e.g. the group of a
+   * site's states history; absent: WinCC OA's standard value group. Never an alarm group.
+   */
+  stateArchiveGroup?: string;
+  /**
+   * Where the site serves its machines for « Add a symbol › From the site » (winccoa-fra-msp-stma#381): a path of
+   * this web server (`/api/…`) answering a GET with `{ ok, text, data: <machine-fleet-symbols>, groups? }`, declared by
+   * the site; absent: the wizard offers the other ateliers' symbols only.
+   */
+  siteSymbolsUrl?: string;
+}
+
+/** A path of this web server, nothing else (no scheme, no host, no `//`, no backslash): '' otherwise. */
+export function sitePath(v: unknown): string {
+  const s = typeof v === 'string' ? v.trim() : '';
+  return /^\/(?![/\\])[^\s\\]*$/.test(s) ? s : '';
 }
 
 export const TILT_MIN = 5;
@@ -91,7 +108,13 @@ export function parseModuleSettings(raw: unknown): FleetModuleSettings {
     }
   }
   const v = value && typeof value === 'object' ? (value as Partial<FleetModuleSettings>) : {};
-  return { openingView: normalizeOpeningView(v.openingView) };
+  const group = typeof v.stateArchiveGroup === 'string' ? v.stateArchiveGroup.trim() : '';
+  const site = sitePath(v.siteSymbolsUrl);
+  return {
+    openingView: normalizeOpeningView(v.openingView),
+    ...(group ? { stateArchiveGroup: group } : {}),
+    ...(site ? { siteSymbolsUrl: site } : {})
+  };
 }
 
 /** Where the opening pose of an atelier comes from (the first that exists). */

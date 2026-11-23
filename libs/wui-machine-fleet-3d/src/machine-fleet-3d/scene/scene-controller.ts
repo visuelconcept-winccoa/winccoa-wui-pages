@@ -357,12 +357,19 @@ export class SceneController {
     this.resourceResolver = fn;
   }
 
-  /** Toggle edit mode: drag machines on the floor plane instead of orbiting. */
+  /** Toggle edit mode: drag machines on the floor plane instead of orbiting. The markers are not part of it (#379). */
   setEditMode(on: boolean): void {
     this.editMode = on;
     this.canvas.style.cursor = on ? 'move' : '';
-    this.pins.setVisible(on);
     this.labels.setEditMode(on);
+  }
+
+  /**
+   * The view's markers button (winccoa-fra-msp-stma#379): on, the placement markers show and can be dragged, renamed,
+   * deleted and placed; off, they are hidden. Independent of edit mode.
+   */
+  setMarkersVisible(on: boolean): void {
+    this.pins.setVisible(on);
   }
 
   /** Callback invoked when a machine is dropped at a new (x, z) in edit mode. */
@@ -370,7 +377,7 @@ export class SceneController {
     this.onMachineMove = fn;
   }
 
-  /** Callback invoked when a placement marker is dropped at a new (x, z) in edit mode. */
+  /** Callback invoked when a placement marker is dropped at a new (x, z) (markers shown, #379). */
   setOnMarkerMove(fn: (id: string, x: number, z: number) => void): void {
     this.pins.onMove = fn;
   }

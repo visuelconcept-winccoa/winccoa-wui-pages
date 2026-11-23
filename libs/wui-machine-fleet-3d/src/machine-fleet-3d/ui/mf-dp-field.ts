@@ -9,6 +9,7 @@
  * Emits `wui:change` with { value } like `wui-dp-input` did, so it replaces it as is.
  */
 import { MissingDatapathList } from '@etm-professional-control/oa-rx-js-api';
+import { usesRef } from '@visuelconcept-winccoa/wui-fleet-core/state-eval.js';
 import { closeModal, showModal } from '@siemens/ix';
 import '@wincc-oa/wui-data-selector-smart-ui/components/wui-data-selector-container/wui-data-selector-container.js';
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
@@ -129,7 +130,8 @@ export class MfDpField extends LitElement {
     this.missingSub?.unsubscribe();
     this.missingSub = null;
     const value = (this.value ?? '').trim();
-    if (!value) {
+    // Empty, or through a reference (`{wc}.Context.OF`, winccoa-fra-msp-stma#376): the datapoint is named at runtime.
+    if (!value || usesRef(value)) {
       this.missing = false;
       return;
     }

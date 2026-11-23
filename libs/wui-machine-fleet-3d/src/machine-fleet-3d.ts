@@ -43,7 +43,7 @@ import {
   type MachineDef,
   type StopCauseCatalog
 } from '@visuelconcept-winccoa/wui-fleet-core/types.js';
-import { liveTargets, machineLiveState } from '@visuelconcept-winccoa/wui-fleet-core/state-eval.js';
+import { liveTargets, machineLiveState, refTargets, refValue, resolveMachine } from '@visuelconcept-winccoa/wui-fleet-core/state-eval.js';
 import { causesFor } from '@visuelconcept-winccoa/wui-fleet-core/stop-catalogs.js';
 import {
   AuditTrailWriter,
@@ -171,6 +171,9 @@ export class WuiMachineFleet3d extends LitElement {
   private overviewTargets = new Map<string, { atelier: Atelier; machineIndex: number }[]>();
   /** Last value of each of those DPEs. */
   private overviewValues = new Map<string, unknown>();
+  /** The references the overview follows (normalized DPE, #376): one that changes subscribes the bindings anew. */
+  private overviewRefs = new Set<string>();
+  private overviewResubscribe = 0;
   /** Stop-cause catalogues: the class of a cause gives a state by cause. */
   private overviewCatalogs: StopCauseCatalog[] = [];
 
@@ -322,12 +325,19 @@ export class WuiMachineFleet3d extends LitElement {
     this.overviewSub.unsubscribe();
     this.overviewSub = new Subscription();
     this.overviewTargets = new Map();
-    this.overviewValues = new Map();
+    this.overviewRefs = new Set();
     void this.store.listCatalogs().then((c) => (this.overviewCatalogs = c)).catch(() => undefined);
 
     const dps: string[] = [];
+    // The values read so far name the datapoints of the bindings through a reference (#376).
+    const read = (dpe: string): unknown => this.overviewValues.get(normDp(dpe));
     for (const atelier of this.ateliers) {
-      for (const [machineIndex, m] of atelier.machines.entries()) {
+      for (const [machineIndex, def] of atelier.machines.entries()) {
+        for (const dpe of refTargets(def)) {
+          this.overviewRefs.add(normDp(dpe));
+          dps.push(dpe);
+        }
+        const m = resolveMachine(def, read);
         for (const t of liveTargets(m)) {
           const key = normDp(t.dpe);
           const list = this.overviewTargets.get(key) ?? [];
@@ -350,8 +360,10 @@ export class WuiMachineFleet3d extends LitElement {
 
   private onOverviewDp(data: DpEmission): void {
     const changed = new Set<{ atelier: Atelier; machineIndex: number }>();
+    let refChanged = false;
     for (const [i, dp] of data.dp.entries()) {
       const key = normDp(dp);
+      if (this.overviewRefs.has(key) && refValue(this.overviewValues.get(key)) !== refValue(data.value[i])) refChanged = true;
       this.overviewValues.set(key, data.value[i]);
       for (const t of this.overviewTargets.get(key) ?? []) changed.add(t);
     }
@@ -369,6 +381,13 @@ export class WuiMachineFleet3d extends LitElement {
       touched = true;
     }
     if (touched) this.ateliers = [...this.ateliers];
+    // A machine reassigned (#376): its bindings subscribed anew, once the values received are handled.
+    if (refChanged && !this.overviewResubscribe) {
+      this.overviewResubscribe = window.setTimeout(() => {
+        this.overviewResubscribe = 0;
+        this.subscribeOverview();
+      }, 0);
+    }
   }
 
   private async onCreate(detail: { name: string; id?: string; seed?: string }): Promise<void> {

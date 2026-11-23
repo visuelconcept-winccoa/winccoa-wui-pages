@@ -44,6 +44,9 @@ import {
 import { AliAssetReader, type AliAssetInfo } from '../data/ali-assets.js';
 import { normDp, toNumber } from '../data/dp-utils.js';
 import type { FleetStore } from '../data/fleet-store.js';
+import { authHeaders } from '../data/fleet-api.js';
+import { loadSiteSymbols, type SiteSymbols } from '../data/site-symbols.js';
+import { lookupValue } from '@visuelconcept-winccoa/wui-fleet-core/lookup.js';
 import { MSG, confirmDeleteAtelierMsg, localize, localizeDir, machineTypeLabel } from '../i18n.js';
 import { uniqueName } from '../symbol-names.js';
 import { SceneController } from '../scene/scene-controller.js';
@@ -61,7 +64,7 @@ import {
 type VpScope = 'public' | 'mine';
 import './mf-symbol-wizard.js';
 import { causesFor } from '@visuelconcept-winccoa/wui-fleet-core/stop-catalogs.js';
-import { liveState, liveTargets } from '@visuelconcept-winccoa/wui-fleet-core/state-eval.js';
+import { liveState, liveTargets, refTargets, refValue, resolveMachine } from '@visuelconcept-winccoa/wui-fleet-core/state-eval.js';
 import {
   DEFAULT_NAV_CORNER,
   DEFAULT_STATE_MAPPINGS,
@@ -150,16 +153,20 @@ interface DpEmission {
 type DpKind =
   | 'input'
   | 'kpi'
+  | 'lookup'
   | 'kpiCalc'
   | 'cause'
   | 'workOrder'
   | 'operation'
   | 'alarmCode'
   | 'comm'
-  | 'tilt';
+  | 'tilt'
+  | 'ref';
 interface DpTarget {
   machineId: string;
   kind: DpKind;
+  /** For kind 'ref': the reference's datapoint element (normalized), whose value names a datapoint (#376). */
+  ref?: string;
   kpiIndex?: number;
   /** For kind 'kpiCalc': the MachineKpi.id this server DP feeds. */
   kpiCalcId?: string;
@@ -254,7 +261,12 @@ export class MfAtelierView extends LitElement {
   @state() private thresholds: TrsThresholds[] = [];
   @state() private markers: PlacementMarker[] = [];
   /** The plant's machines an integration offers to add (MachineFleet3D_Catalog). */
-  @state() private catalog: MachineDef[] = [];
+  /** « Add a symbol › From the site »: the site's machines (#381), read when the wizard opens. */
+  @state() private siteSymbols: SiteSymbols = { state: 'none' };
+  /** Lines translated through a table (#373): the line's own value, by machine and line (`<id>#<index>`). */
+  private lineSources = new Map<string, unknown>();
+  /** The tables those lines are translated through, by datapoint (normalized): one catalogue for every machine. */
+  private lookupTables = new Map<string, unknown>();
   @state() private thresholdsOpen = false;
   /** Right machine-list drawer — hidden by default; shown on demand, as the viewer last left it in this atelier. */
   @state() private panelOpen = false;
@@ -293,6 +305,8 @@ export class MfAtelierView extends LitElement {
   @state() private renamingVpId: string | null = null;
   /** A new placement pin follows the pointer until a click on the floor drops it (#63). */
   @state() private placingPin = false;
+  /** The markers button (#379): placement markers shown — dragged, renamed, deleted, placed — or hidden. */
+  @state() private markersShown = false;
   /** The pin being renamed / deleted, and where its editor opens (viewport px). */
   @state() private pinEdit: { id: string; x: number; y: number; label: string } | null = null;
   @state() private vpRenameValue = '';
@@ -317,6 +331,12 @@ export class MfAtelierView extends LitElement {
   // One DP can drive several targets (e.g. the same DP bound to the state AND a
   // KPI of the same machine), so each key maps to a LIST of targets.
   private dpTargets = new Map<string, DpTarget[]>();
+  /**
+   * Value of each reference of the symbols (normalized DPE → datapoint it names, winccoa-fra-msp-stma#376): their
+   * bindings are subscribed as the references name them now, and anew when one changes.
+   */
+  private refValues = new Map<string, string>();
+  private resubscribeTimer = 0;
   /** Values received for each machine's state (winccoa-fra-msp-stma#339): its inputs by key, its cause sources by rank. */
   private liveInputs = new Map<string, Record<string, unknown>>();
   private liveCauses = new Map<string, unknown[]>();
@@ -383,6 +403,10 @@ export class MfAtelierView extends LitElement {
     if ((changed.has('canEdit') || changed.has('displayOnly')) && !this.editable && this.editMode) {
       this.toggleEditMode();
     }
+    // The markers are edited where shown (#379): hidden with the edit grant.
+    if ((changed.has('canEdit') || changed.has('displayOnly')) && !this.editable && this.markersShown) {
+      this.toggleMarkers();
+    }
     if (changed.has('atelier') && this.atelier && !this.loaded) {
       this.loaded = true;
       // Display only: the catalog is the host's, known before the first live value.
@@ -413,7 +437,6 @@ export class MfAtelierView extends LitElement {
         void this.loadResources();
         void this.loadDashboards();
         void this.loadStopCauses();
-        void this.loadCatalog();
       }
       void this.loadAliAssets();
     }
@@ -456,6 +479,7 @@ export class MfAtelierView extends LitElement {
     this.scene.setOnMarkerPick((id, sx, sy) => this.openPinEdit(id, sx, sy));
     this.scene.setOnBubbleEdit((id, patch) => this.onBubbleEdit(id, patch));
     this.scene.setEditMode(this.editMode);
+    this.scene.setMarkersVisible(this.markersShown);
     this.scene.setOnRotate(this.onCameraRotate);
     this.scene.setOnUserMove(() => this.onUserMove());
     this.scene.setBuilding(this.building);
@@ -489,6 +513,8 @@ export class MfAtelierView extends LitElement {
     }
     clearTimeout(this.saveTimer);
     this.saveTimer = 0;
+    clearTimeout(this.resubscribeTimer);
+    this.resubscribeTimer = 0;
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     cancelAnimationFrame(this.reframeFrame);
@@ -600,7 +626,10 @@ export class MfAtelierView extends LitElement {
         ${this.editable
           ? html`<ix-icon-button icon="move" ghost title=${localize(MSG.view.editMode)} variant=${this.editMode ? 'primary' : 'secondary'} @click=${this.toggleEditMode}></ix-icon-button>
               <ix-icon-button icon="eye" ghost title=${localize(MSG.bubble.hoverMode)} variant=${this.display.bubblesOnHover ? 'primary' : 'secondary'} @click=${this.toggleBubblesOnHover}></ix-icon-button>
-              <ix-icon-button icon="location" ghost title=${localize(MSG.markers.place)} variant=${this.placingPin ? 'primary' : 'secondary'} @click=${this.placePin}></ix-icon-button>`
+              <ix-icon-button icon="location" ghost title=${localize(MSG.markers.toggle)} variant=${this.markersShown ? 'primary' : 'secondary'} @click=${this.toggleMarkers}></ix-icon-button>
+              ${this.markersShown
+                ? html`<ix-icon-button icon="plus" ghost title=${localize(MSG.markers.place)} variant=${this.placingPin ? 'primary' : 'secondary'} @click=${this.placePin}></ix-icon-button>`
+                : ''}`
           : ''}
         ${this.renderDisplayToggles()}
         <ix-icon-button icon="screenshot" ghost title=${localize(MSG.view.viewpoints)} variant=${this.viewpointsOpen ? 'primary' : 'secondary'} @click=${() => (this.viewpointsOpen = !this.viewpointsOpen)}></ix-icon-button>
@@ -1036,7 +1065,7 @@ export class MfAtelierView extends LitElement {
         : ''}
       ${this.wizardOpen
         ? html`<mf-symbol-wizard
-            .catalog=${this.catalog.filter((c) => !this.machines.some((m) => m.id === c.id))}
+            .site=${this.siteNotPlaced()}
             .others=${this.otherSymbols}
             .existing=${this.machines}
             .glbResources=${this.glbResources}
@@ -1110,8 +1139,10 @@ export class MfAtelierView extends LitElement {
 
   /** Built-in contextualised machine dashboard overlay (mode 'default'). */
   private renderMachineDashboard(): TemplateResult {
-    const m = this.dashboardMachineId ? this.scene?.getMachine(this.dashboardMachineId) : null;
-    if (!m) return html``;
+    const symbol = this.dashboardMachineId ? this.scene?.getMachine(this.dashboardMachineId) : null;
+    if (!symbol) return html``;
+    // Its bindings as its references name them now (#376): the dashboard reads the workcenter the machine is in.
+    const m = this.resolvedForView(symbol);
     return html`<mf-machine-dashboard
       .machine=${m}
       .mapping=${this.mappingFor(m)}
@@ -1130,8 +1161,17 @@ export class MfAtelierView extends LitElement {
     this.billboardResources = await this.store.listResources('billboard');
   }
 
-  private async loadCatalog(): Promise<void> {
-    if (this.store) this.catalog = await this.store.listCatalog();
+  /** The site's machines (#381) from the path the module settings declare; none declared: nothing asked. */
+  private async loadSiteSymbols(): Promise<void> {
+    const path = this.moduleSettings.siteSymbolsUrl;
+    this.siteSymbols = path ? { state: 'loading' } : { state: 'none' };
+    if (path) this.siteSymbols = await loadSiteSymbols(path, authHeaders());
+  }
+
+  /** The site's machines not yet in this atelier. */
+  private siteNotPlaced(): SiteSymbols {
+    const s = this.siteSymbols;
+    return s.state === 'ok' ? { ...s, symbols: s.symbols.filter((d) => !this.machines.some((m) => m.id === d.id)) } : s;
   }
 
   /**
@@ -1301,16 +1341,24 @@ export class MfAtelierView extends LitElement {
     this.scene?.focusMachine(id);
   }
 
+  /** Edit mode moves the machines and their bubbles; the markers have their own button (#379). */
   private toggleEditMode(): void {
     this.editMode = !this.editMode;
     this.scene?.setEditMode(this.editMode);
-    if (!this.editMode) {
+  }
+
+  /** Markers button (#379): shows the placement markers, or hides them (a placement in progress is dropped). */
+  private toggleMarkers(): void {
+    this.markersShown = !this.markersShown;
+    this.scene?.setMarkersVisible(this.markersShown);
+    if (!this.markersShown) {
+      this.scene?.cancelMarkerPlacement();
       this.placingPin = false;
       this.pinEdit = null;
     }
   }
 
-  /** Toolbar pin button: a new marker dropped by a click on the floor, then named (#63). */
+  /** The markers' + button: a new marker dropped by a click on the floor, then named (#63). */
   private placePin(): void {
     if (!this.scene) return;
     if (this.placingPin) {
@@ -1318,7 +1366,7 @@ export class MfAtelierView extends LitElement {
       this.placingPin = false;
       return;
     }
-    if (!this.editMode) this.toggleEditMode();
+    if (!this.markersShown) this.toggleMarkers();
     this.pinEdit = null;
     this.placingPin = true;
     this.scene.startMarkerPlacement((x, z) => {
@@ -1329,7 +1377,7 @@ export class MfAtelierView extends LitElement {
     });
   }
 
-  /** A pin clicked in edit mode: its editor (name, delete) opens beside it. */
+  /** A pin clicked (markers shown, #379): its editor (name, delete) opens beside it. */
   private openPinEdit(id: string, clientX: number, clientY: number): void {
     const marker = this.markers.find((k) => k.id === id);
     if (!marker) return;
@@ -1407,11 +1455,12 @@ export class MfAtelierView extends LitElement {
     this.scheduleSave();
   }
 
-  /** "Add a symbol": the wizard, with the other ateliers' symbols to copy (#67). */
+  /** "Add a symbol": the wizard, with the site's machines (#381) and the other ateliers' symbols to copy (#67). */
   private async openWizard(): Promise<void> {
     if (!this.editable) return;
     this.wizardOpen = true;
     this.otherSymbols = [];
+    void this.loadSiteSymbols();
     if (!this.store) return;
     try {
       const ateliers = await this.store.listAteliers();
@@ -1424,8 +1473,8 @@ export class MfAtelierView extends LitElement {
   }
 
   /**
-   * A symbol from the wizard: the site's catalogue keeps its id (the site's machine), the others
-   * get a new one; not bound to a marker, "à placer" at the centre of the floor, shown at once.
+   * A symbol from the wizard: a copy of another atelier's or a new one gets a new id (`keepId`: the id is the
+   * site's machine); not bound to a marker, "à placer" at the centre of the floor, shown at once.
    */
   private onAddSymbol(source: MachineDef, keepId: boolean): void {
     if (!this.editable) return;
@@ -1495,7 +1544,7 @@ export class MfAtelierView extends LitElement {
   }
 
   /**
-   * New markers, placed, renamed, deleted or dragged as pins in edit mode: the machines bound to a
+   * New markers, placed, renamed, deleted or dragged as pins (markers shown, #379): the machines bound to a
    * moved marker follow it (SDS 2.2 SL-IMP-02).
    */
   private onMarkers(markers: PlacementMarker[]): void {
@@ -1889,8 +1938,16 @@ export class MfAtelierView extends LitElement {
 
     this.liveInputs = new Map();
     this.liveCauses = new Map();
+    this.lineSources = new Map();
     const dps: string[] = [];
-    for (const m of this.machines) {
+    for (const def of this.machines) {
+      // Its references followed (#376); its bindings as they name them now — one without its reference's value is
+      // left out until it has one.
+      for (const dpe of refTargets(def)) {
+        this.addTarget(dpe, { machineId: def.id, kind: 'ref', ref: normDp(dpe) });
+        dps.push(dpe);
+      }
+      const m = resolveMachine(def, (dpe) => this.refValues.get(normDp(dpe)));
       // The state from the inputs of the machine's mapping and its stop-cause sources, computed here as the
       // recorder does (winccoa-fra-msp-stma#339). Keyed by normalized name: the server echoes a canonical DP
       // name (system prefix, :_original.._value, trailing dot) that won't match the raw bound string otherwise.
@@ -1903,6 +1960,15 @@ export class MfAtelierView extends LitElement {
         if (k.dp) {
           this.addTarget(k.dp, { machineId: m.id, kind: 'kpi', kpiIndex });
           dps.push(k.dp);
+          // A line translated through a table (the contract of the article, #373): the table followed too.
+          if (k.lookup?.dp) {
+            this.addTarget(k.lookup.dp, { machineId: m.id, kind: 'lookup', kpiIndex });
+            if (!dps.includes(k.lookup.dp)) dps.push(k.lookup.dp);
+          }
+        } else if (def.kpis?.[kpiIndex]?.dp) {
+          // Through a reference without a value: no value shown, rather than the last one of another datapoint.
+          const kpi = def.kpis[kpiIndex];
+          if (kpi.value !== undefined) delete kpi.value;
         }
       }
       // Server-computed KPIs: read the value the kpiCalc manager writes/archives.
@@ -1924,6 +1990,10 @@ export class MfAtelierView extends LitElement {
           dps.push(dp);
         }
       }
+      // OF, operation, alarm code through a reference without a value: none shown (#376).
+      if (def.workOrderDp && !m.workOrderDp) delete def.workOrder;
+      if (def.operationDp && !m.operationDp) delete def.operation;
+      if (def.alarmCodeDp && !m.alarmCodeDp) delete def.alarmCode;
     }
     const api = this.api;
     if (!api) return;
@@ -1933,6 +2003,26 @@ export class MfAtelierView extends LitElement {
       return;
     }
     void this.connectValidDps(api, [...new Set(dps)], ++this.subGen);
+  }
+
+  private resolvedCache: { src: Machine; key: string; out: Machine } | null = null;
+
+  /** A symbol as its references name its bindings now (#376), the same object while they do not change. */
+  private resolvedForView(m: Machine): Machine {
+    const key = refTargets(m).map((d) => `${d}=${this.refValues.get(normDp(d)) ?? ''}`).join('|');
+    if (this.resolvedCache?.src === m && this.resolvedCache.key === key) return this.resolvedCache.out;
+    const out = resolveMachine(m, (dpe) => this.refValues.get(normDp(dpe)));
+    this.resolvedCache = { src: m, key, out };
+    return out;
+  }
+
+  /** Subscribe again once the values being received are handled (a reference changed, #376). */
+  private scheduleResubscribe(): void {
+    if (this.resubscribeTimer) return;
+    this.resubscribeTimer = window.setTimeout(() => {
+      this.resubscribeTimer = 0;
+      if (this.scene) this.resubscribeDps();
+    }, 0);
   }
 
   /**
@@ -2004,6 +2094,15 @@ export class MfAtelierView extends LitElement {
   private applyDpValue(target: DpTarget, raw: unknown): boolean {
     const machine = this.machines.find((m) => m.id === target.machineId);
     if (!machine) return false;
+    if (target.kind === 'ref' && target.ref) {
+      // A reference names another datapoint (a machine reassigned): its bindings subscribed anew (#376).
+      const next = refValue(raw);
+      if (this.refValues.get(target.ref) !== next) {
+        this.refValues.set(target.ref, next);
+        this.scheduleResubscribe();
+      }
+      return false;
+    }
     if (target.kind === 'input' && target.input !== undefined) {
       this.liveInputs.set(machine.id, { ...this.liveInputs.get(machine.id), [target.input]: raw });
       return this.applyLiveState(machine);
@@ -2014,11 +2113,19 @@ export class MfAtelierView extends LitElement {
       this.liveCauses.set(machine.id, causes);
       return this.applyLiveState(machine);
     }
-    if (target.kind === 'kpi') {
+    if (target.kind === 'kpi' || target.kind === 'lookup') {
       const kpis = machine.kpis ?? [];
       const kpi = kpis[target.kpiIndex ?? -1];
       if (!kpi) return false;
-      kpi.value = scalarValue(raw);
+      if (!kpi.lookup) {
+        kpi.value = scalarValue(raw);
+      } else {
+        // Translated through its table (#373): the line's own value and the table's, whichever arrives first.
+        const key = `${machine.id}#${target.kpiIndex}`;
+        if (target.kind === 'kpi') this.lineSources.set(key, scalarValue(raw));
+        else this.lookupTables.set(normDp(kpi.lookup.dp), raw);
+        kpi.value = lookupValue(this.lineSources.get(key), this.lookupTables.get(normDp(kpi.lookup.dp)), kpi.lookup);
+      }
       this.scene?.updateMachineLive(machine.id, { kpis });
       return true;
     }

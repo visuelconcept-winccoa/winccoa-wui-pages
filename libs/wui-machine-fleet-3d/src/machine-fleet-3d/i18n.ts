@@ -40,9 +40,14 @@ export const MSG = {
   markers: {
     title: ml('Placement markers', "Repères d'implantation", 'Platzierungsmarken'),
     hint: ml(
-      'Placement markers of this view (axis, workstation, landmark…), placed with the pin button and moved in edit mode; a machine placed from one follows it',
-      "Repères d'implantation (axe, poste, borne…) · pose : bouton repère · déplacement : mode édition · machine liée à un repère : le suit",
-      'Platzierungsmarken dieser Ansicht (Achse, Arbeitsplatz, Orientierungspunkt…), mit der Marken-Schaltfläche gesetzt und im Bearbeitungsmodus verschoben; eine davon platzierte Maschine folgt ihr'
+      'Placement markers of this view (axis, workstation, landmark…), shown with the markers button, placed with its + button and dragged while shown; a machine placed from one follows it',
+      "Repères d'implantation (axe, poste, borne…) · affichage : bouton repères · pose : son bouton + · déplacement : glisser le repère affiché · machine liée à un repère : le suit",
+      'Platzierungsmarken dieser Ansicht (Achse, Arbeitsplatz, Orientierungspunkt…), mit der Marken-Schaltfläche angezeigt, mit ihrer +-Schaltfläche gesetzt und angezeigt verschoben; eine davon platzierte Maschine folgt ihr'
+    ),
+    toggle: ml(
+      'Placement markers: show (drag to move, click to rename or delete) / hide',
+      "Repères d'implantation : afficher (glisser pour déplacer, cliquer pour renommer ou supprimer) / masquer",
+      'Platzierungsmarken: anzeigen (ziehen zum Verschieben, klicken zum Umbenennen oder Löschen) / ausblenden'
     ),
     label: ml('Marker', 'Repère', 'Marke'),
     add: ml('Add a marker', 'Ajouter un repère', 'Marke hinzufügen'),
@@ -73,6 +78,8 @@ export const MSG = {
       'Weder der Standort noch eine andere Werkstatt bietet ein Symbol an.'
     ),
     site: ml('Site', 'Site', 'Standort'),
+    siteLoading: ml('Reading the site’s machines…', 'Lecture des machines du site…', 'Maschinen des Standorts werden gelesen…'),
+    siteNoGroup: ml('Site — no workcenter', 'Site — sans workcenter', 'Standort — ohne Arbeitsplatz'),
     pasteLabel: ml('JSON of one or several symbols', 'JSON d’un ou de plusieurs symboles', 'JSON eines oder mehrerer Symbole'),
     pastePlaceholder: ml(
       'Paste here the JSON exported by a symbol or a workcenter, or choose a file.',
@@ -329,6 +336,21 @@ export const MSG = {
     ),
     ganttTitle: ml('Machine state Gantt', 'Gantt état machine', 'Gantt-Diagramm Maschinenzustand'),
     exportGanttCsv: ml('Export the Gantt (CSV)', 'Exporter le Gantt (CSV)', 'Gantt exportieren (CSV)'),
+    historyNoInput: ml(
+      'This machine’s state is not recorded: no input of its state mapping is bound (symbol configuration, « Data »). Without a state there is no Gantt and no stop — a stop cause alone makes no stop.',
+      'L’état de cette machine n’est pas enregistré : aucune entrée de son mapping d’états n’est liée (configuration du symbole, « Données »). Sans état, ni Gantt ni arrêts : une cause seule ne fait pas un arrêt.',
+      'Der Zustand dieser Maschine wird nicht aufgezeichnet: kein Eingang ihrer Zustandszuordnung ist verknüpft (Symbolkonfiguration, « Daten »). Ohne Zustand weder Gantt noch Stillstände — ein Grund allein ist kein Stillstand.'
+    ),
+    historyNotRecorded: ml(
+      'This machine’s state is not recorded yet: Machine Fleet’s state manager (fleetState) does not follow it — stopped, not declared in the project, or the symbol was added less than a minute ago.',
+      'L’état de cette machine n’est pas encore enregistré : le manager d’états de Machine Fleet (fleetState) ne la suit pas — arrêté, absent du projet, ou symbole ajouté il y a moins d’une minute.',
+      'Der Zustand dieser Maschine wird noch nicht aufgezeichnet: der Zustandsmanager von Machine Fleet (fleetState) verfolgt sie nicht — gestoppt, nicht im Projekt oder Symbol vor weniger als einer Minute hinzugefügt.'
+    ),
+    historyNotArchived: ml(
+      'This machine’s state is recorded but not archived: the state manager (fleetState) found no archive group — see its log.',
+      'L’état de cette machine est enregistré mais pas archivé : le manager d’états (fleetState) n’a trouvé aucun groupe d’archive — voir son journal.',
+      'Der Zustand dieser Maschine wird aufgezeichnet, aber nicht archiviert: der Zustandsmanager (fleetState) hat keine Archivgruppe gefunden — siehe sein Protokoll.'
+    ),
     noHistory: ml(
       "No history data over the period.",
       "Aucune donnée d'historique sur la période.",
@@ -1055,6 +1077,16 @@ export function confirmDeleteAtelierMsg(name: string): string {
       `Werkstatt « ${name} » und ihren Datapoint endgültig löschen?`
     )
   );
+}
+
+/** The site's machines could not be read (winccoa-fra-msp-stma#381). */
+export function siteErrorMsg(text: string): string {
+  return localize(ml(`Site machines unavailable: ${text}.`, `Machines du site indisponibles : ${text}.`, `Maschinen des Standorts nicht verfügbar: ${text}.`));
+}
+
+/** Button adding every machine of a workcenter not yet in the atelier (winccoa-fra-msp-stma#381). */
+export function siteAddAllMsg(n: number): string {
+  return localize(ml(`Add all (${n})`, `Tout ajouter (${n})`, `Alle hinzufügen (${n})`));
 }
 
 /** What an import text holds, before it is added (winccoa-fra-msp-stma#338). */

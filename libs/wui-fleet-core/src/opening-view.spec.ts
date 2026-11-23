@@ -9,7 +9,8 @@ import {
   resolveOpeningView,
   symbolsBox,
   type Box3D,
-  type OpeningViewSetting
+  type OpeningViewSetting,
+  sitePath
 } from './opening-view.js';
 
 const FOV = 45;
@@ -105,5 +106,22 @@ describe('settings', () => {
     expect(resolveOpeningView({ atelier, module })).toEqual({ source: 'atelier', view: atelier.view, front: 90 });
     expect(resolveOpeningView({ atelier: { front: 180 }, module })).toEqual({ source: 'module', view: module.openingView, front: 180 });
     expect(resolveOpeningView({ module }).front).toBe(0);
+  });
+});
+
+describe('module settings declared by the site', () => {
+  it('keep the states archive group (#374) and the site symbols path (#381)', () => {
+    const s = parseModuleSettings(JSON.stringify({ stateArchiveGroup: ' _NGA_G_ETATS ', siteSymbolsUrl: ' /api/organisation/symbols ' }));
+    expect(s.stateArchiveGroup).toBe('_NGA_G_ETATS');
+    expect(s.siteSymbolsUrl).toBe('/api/organisation/symbols');
+    expect(parseModuleSettings('{}')).toEqual({ openingView: parseModuleSettings('').openingView });
+  });
+
+  it('take a path of this web server only as the site symbols source', () => {
+    expect(sitePath('/api/organisation/symbols?x=1')).toBe('/api/organisation/symbols?x=1');
+    for (const bad of ['https://evil.example/x', '//evil.example/x', 'api/x', String.raw`/\evil`, String.raw`/a\b`, '/a b', '', 3, null]) {
+      expect(sitePath(bad)).toBe('');
+    }
+    expect(parseModuleSettings(JSON.stringify({ siteSymbolsUrl: 'https://evil.example' })).siteSymbolsUrl).toBeUndefined();
   });
 });

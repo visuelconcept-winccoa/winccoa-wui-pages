@@ -6,10 +6,10 @@
  * point, the same size on screen whatever the zoom or the building's size (a 3D object sized in
  * metres was tiny on a large building seen whole, and read as one more column).
  *
- * The pins show in edit mode only (they are placement guides, #58). In edit mode a pin is dragged
- * on the floor; a click without moving asks to edit it (rename / delete, by the page). A new pin
- * is placed by `startPlacement`: a ghost pin follows the pointer over the floor until a click
- * drops it.
+ * The pins show only while the view's markers button is on (they are placement guides, #58), whatever edit mode
+ * (winccoa-fra-msp-stma#379). Shown, a pin is dragged on the floor; a click without moving asks to edit it (rename /
+ * delete, by the page). A new pin is placed by `startPlacement`: a ghost pin follows the pointer over the floor until
+ * a click drops it.
  */
 import { Plane, Raycaster, Vector2, Vector3, type Camera } from 'three';
 import type { PlacementMarker } from '../types.js';
@@ -57,7 +57,7 @@ export class MarkerPins {
     this.entries = markers.map((m) => this.createEntry(m));
   }
 
-  /** Shown in edit mode only. */
+  /** Shown while the view's markers button is on (#379). */
   setVisible(on: boolean): void {
     this.visible = on;
     if (!on) this.cancelPlacement();

@@ -11,12 +11,13 @@
  */
 import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
-import { evaluateState as evaluateTs, currentCause as currentCauseTs, causeClassOf as causeClassTs, stateRecordDp, inputDpsOf as inputDpsTs } from '../../wui-fleet-core/src/state-eval.ts';
+import { evaluateState as evaluateTs, currentCause as currentCauseTs, causeClassOf as causeClassTs, stateRecordDp, inputDpsOf as inputDpsTs, resolveBinding as resolveBindingTs } from '../../wui-fleet-core/src/state-eval.ts';
 import { DEFAULT_STATE_MAPPINGS } from '../../wui-fleet-core/src/types.ts';
 
 const require = createRequire(import.meta.url);
 const E = require('../managers/fleetState/state-eval.js');
 const R = require('../managers/fleetState/recorder.js');
+const P = require('../managers/fleetState/cause-push.js');
 const cases = require('../../wui-fleet-core/src/state-eval.cases.json');
 
 // ------------------------------------------------------------------ parity with the live views
@@ -153,7 +154,7 @@ function fakeWcc() {
 const CN = 'MachineFleet3D_State_CN_01';
 const records = (wcc, dp = CN) => wcc.writes.filter((w) => `${dp}.state` in w).map((w) => [w[`${dp}.state`], w[`${dp}.cause`]]);
 
-async function setup({ machine, mappings = [MES], active = () => true, archiveGroup = 'G_ETATS' } = {}) {
+async function setup({ machine, mappings = [MES], active = () => true, archiveGroup = 'G_ETATS', prepare } = {}) {
   const wcc = fakeWcc();
   wcc.put('CN_01.State', 0);
   wcc.put('CN_01.Comm', true);
@@ -166,6 +167,7 @@ async function setup({ machine, mappings = [MES], active = () => true, archiveGr
   wcc.catalogs.push('MachineFleet3D_StopCauses', 'MachineFleet3D_StopCauses_ilot');
   const m = machine ?? { id: 'CN_01', name: 'Centre CN 01', stateDp: 'CN_01.State', stateMappingId: 'mes',
     inputDps: { comm: 'CN_01.Comm', of: 'WC.Ctx', hs: 'CN_01.Hs' }, stopCauseDp: 'WC.Cause', stopCauseDps: ['CN_01.Cause'], stopCatalogId: 'ilot' };
+  prepare?.(wcc);
   wcc.put('MachineFleet3D_atelier.json', JSON.stringify({ id: 'atelier', mappings, machines: [m] }));
   wcc.ateliers.push('MachineFleet3D_atelier');
   const logs = [];
@@ -199,6 +201,161 @@ describe('archive group', () => {
     expect(R.pickArchiveGroup(PROJECT.map((g) => (g.name.endsWith('_NGA_G_EVENT') ? { ...g, active: false } : g)))).toBe('_NGA_G_ETATS');
     expect(R.pickArchiveGroup(PROJECT.filter((g) => g.isAlert || !g.active || g.name.endsWith('_2')))).toBe('');
     expect(R.pickArchiveGroup([])).toBe('');
+  });
+});
+
+describe('archive group named by the module settings (#374)', () => {
+  const GROUPS = [
+    { name: 'System1:_NGA_G_ALERT', active: true, isAlert: true },
+    { name: 'System1:_NGA_G_ETATS', active: true, isAlert: false, priority: 6 },
+    { name: 'System1:_NGA_G_EVENT', active: true, isAlert: false, priority: 1 },
+    { name: 'System1:_NGA_G_OFF', active: false, isAlert: false }
+  ];
+
+  it('the group named when it is usable, otherwise the default one and the refusal said', () => {
+    expect(R.chooseArchiveGroup(GROUPS, '_NGA_G_ETATS')).toEqual({ group: '_NGA_G_ETATS', refused: '' });
+    expect(R.chooseArchiveGroup(GROUPS, 'System1:_NGA_G_ETATS')).toEqual({ group: '_NGA_G_ETATS', refused: '' });
+    expect(R.chooseArchiveGroup(GROUPS, '')).toEqual({ group: '_NGA_G_EVENT', refused: '' });
+    for (const bad of ['_NGA_G_ALERT', '_NGA_G_OFF', '_NGA_G_NONE']) expect(R.chooseArchiveGroup(GROUPS, bad)).toEqual({ group: '_NGA_G_EVENT', refused: bad });
+  });
+
+  it('a new group never moves a record already archived in a usable group: its history stays readable (#373)', async () => {
+    // As on the project of 23/11/2026: states archived in _NGA_G_EVENT, the site's G4 group is _NGA_G_ETATS. NGA reads
+    // an element in its current group only — moved, its history before the move was no longer read back.
+    const { wcc, rec, logs } = await setup({ archiveGroup: '_NGA_G_EVENT' });
+    rec.usableGroups = new Set(['_NGA_G_EVENT', '_NGA_G_ETATS']);
+    const n = records(wcc).length;
+    const archiveWrites = () => wcc.writes.filter((w) => Object.keys(w).some((k) => k.includes(':_archive'))).length;
+    const before = archiveWrites();
+    expect(rec.setArchiveGroup('_NGA_G_ETATS')).toBe(true);
+    expect(rec.setArchiveGroup('_NGA_G_ETATS')).toBe(false);
+    await rec.reload();
+    await rec.queue;
+    for (const el of R.ARCHIVED_ELEMENTS) expect(wcc.db[`${CN}.${el}:_archive.1._class`]).toBe('_NGA_G_EVENT');
+    expect(archiveWrites()).toBe(before);
+    expect(records(wcc).length).toBe(n);
+    expect(logs.filter((l) => l.includes('gardés dans ce groupe')).length).toBe(1);
+  });
+
+  it('a record not archived yet goes to the new group', async () => {
+    const { wcc, rec } = await setup({ archiveGroup: '_NGA_G_EVENT' });
+    rec.usableGroups = new Set(['_NGA_G_EVENT', '_NGA_G_ETATS']);
+    for (const el of R.ARCHIVED_ELEMENTS) wcc.db[`${CN}.${el}:_archive.._archive`] = false;
+    rec.setArchiveGroup('_NGA_G_ETATS');
+    await rec.reload();
+    await rec.queue;
+    for (const el of R.ARCHIVED_ELEMENTS) expect(wcc.db[`${CN}.${el}:_archive.1._class`]).toBe('_NGA_G_ETATS');
+  });
+
+  it('keeps an active archive in the configured or a usable group, never in an alarm or unknown group', () => {
+    const usable = new Set(['_NGA_G_EVENT', '_NGA_G_ETATS']);
+    const on = (group) => ({ type: 45, on: true, group });
+    expect(R.keepsArchive(on('System1:_NGA_G_EVENT'), usable, '_NGA_G_ETATS')).toBe(true);
+    expect(R.keepsArchive(on('_NGA_G_ETATS'), usable, '_NGA_G_ETATS')).toBe(true);
+    expect(R.keepsArchive(on('System1:_NGA_G_ALERT'), usable, '_NGA_G_ETATS')).toBe(false);
+    expect(R.keepsArchive(on('_NGA_G_GONE'), usable, '_NGA_G_ETATS')).toBe(false);
+    expect(R.keepsArchive({ type: 45, on: false, group: '_NGA_G_EVENT' }, usable, '_NGA_G_ETATS')).toBe(false);
+    expect(R.keepsArchive({ type: 0, on: true, group: '_NGA_G_EVENT' }, usable, '_NGA_G_ETATS')).toBe(false);
+    // Usable groups not known: only the configured group is kept.
+    expect(R.keepsArchive(on('_NGA_G_EVENT'), new Set(), '_NGA_G_ETATS')).toBe(false);
+    expect(R.keepsArchive(on('_NGA_G_ETATS'), new Set(), '_NGA_G_ETATS')).toBe(true);
+    expect(R.usableGroupsOf([
+      { name: 'System1:_NGA_G_EVENT', active: true, isAlert: false }, { name: '_NGA_G_EVENT_2', active: true, isAlert: false },
+      { name: '_NGA_G_ALERT', active: true, isAlert: true }, { name: '_NGA_G_OFF', active: false, isAlert: false }
+    ]).map((g) => g.name)).toEqual(['_NGA_G_EVENT']);
+  });
+});
+
+describe('bindings through a reference (#376)', () => {
+  const MOBILE = { id: 'CN_01', name: 'Centre CN 01', stateDp: 'CN_01.State', stateMappingId: 'mes', refDps: { wc: 'CN_01.Wc' },
+    inputDps: { comm: 'CN_01.Comm', of: '{wc}.Ctx', hs: 'CN_01.Hs' }, stopCauseDp: '{wc}.Cause', stopCauseDps: ['CN_01.Cause'], stopCatalogId: 'ilot' };
+  const prepare = (wcc) => {
+    wcc.put('CN_01.Wc', 'System1:WC.');
+    wcc.put('WC2.Ctx', 0);
+    wcc.put('WC2.Cause', '');
+  };
+
+  it('same resolution as the live views', () => {
+    const refs = { wc: 'CN_01.Wc' };
+    for (const v of ['WC', 'System1:WC.', '', null, ['WC2']]) {
+      for (const b of ['{wc}.Ctx', 'A.B', '{x}.C', '{wc}.{wc}']) {
+        expect(E.resolveBinding(b, refs, () => v)).toBe(resolveBindingTs(b, refs, () => v));
+      }
+    }
+  });
+
+  it('records the state from the workcenter the machine is in now, and follows a reassignment', async () => {
+    const { wcc, rec } = await setup({ machine: MOBILE, prepare });
+    expect(records(wcc)).toEqual([['arret_non_planifie', '']]);
+    // Moved to WC2, no work order there: non charge; WC2 opens one: its state again; WC no longer followed.
+    wcc.set('CN_01.Wc', 'WC2');
+    await rec.queue;
+    expect(records(wcc).at(-1)).toEqual(['non_charge', '']);
+    wcc.set('WC2.Ctx', 2);
+    await rec.queue;
+    expect(records(wcc).at(-1)).toEqual(['arret_non_planifie', '']);
+    const n = records(wcc).length;
+    wcc.set('WC.Ctx', 0);
+    await rec.queue;
+    expect(records(wcc).length).toBe(n);
+    // The cause given in the workcenter it is in now.
+    wcc.set('WC2.Cause', 'AP01');
+    await rec.queue;
+    expect(records(wcc).at(-1)).toEqual(['arret_planifie', 'AP01']);
+  });
+});
+
+describe('stop causes sent to the controller (#375)', () => {
+  const TARGETS = {
+    slots: [{ code: 'CN_01.C1', label: 'CN_01.D1', class: 'CN_01.K1' }, { code: 'CN_01.C2', label: 'CN_01.D2', class: 'CN_01.K2' }],
+    codeMax: 4, labelMax: 64, classValues: { planned: 2, unplanned: 3 }
+  };
+  const machine = { id: 'CN_01', name: 'Centre CN 01', stateDp: 'CN_01.State', stateMappingId: 'mes', commDp: 'CN_01.Comm',
+    inputDps: { comm: 'CN_01.Comm', of: 'WC.Ctx', hs: 'CN_01.Hs' }, stopCatalogId: 'ilot', stopCauseTargets: TARGETS };
+  const prepare = (wcc) => {
+    for (const n of [1, 2]) { wcc.put(`CN_01.C${n}`, ''); wcc.put(`CN_01.D${n}`, ''); wcc.put(`CN_01.K${n}`, 0); }
+  };
+  const slots = (wcc) => [1, 2].map((n) => [wcc.db[`CN_01.C${n}`], wcc.db[`CN_01.K${n}`]]);
+
+  it('the causes of the catalogue, in order, cut, by class value', () => {
+    const w = P.causeWrites(P.targetsOf({ stopCauseTargets: TARGETS }), [
+      { code: 'AP01', description: 'Repas', classification: 'planned' }, { code: 'X', classification: 'production' },
+      { code: 'ANP04', description: 'Panne', classification: 'unplanned' }, { code: 'ANP05', classification: 'unplanned' }
+    ]);
+    expect([...w.values]).toEqual([['CN_01.C1', 'AP01'], ['CN_01.D1', 'Repas'], ['CN_01.K1', 2], ['CN_01.C2', 'ANP0'], ['CN_01.D2', 'Panne'], ['CN_01.K2', 3]]);
+    expect([w.skipped, w.truncated, w.overflow]).toEqual([['X'], ['ANP04', 'ANP05'], 1]);
+    expect(P.targetsOf({ stopCauseTargets: { slots: [{}] } })).toBeNull();
+    expect([P.isUp(true), P.isUp(0), P.isUp(2), P.isUp(undefined), P.isUp('true')]).toEqual([true, false, true, undefined, true]);
+  });
+
+  it('written when they differ and the machine is connected, again when the controller lost them, never to an input-only address', async () => {
+    const { wcc, rec } = await setup({ machine, prepare });
+    expect(slots(wcc)).toEqual([['AP01', 2], ['ANP0', 3]]);
+    // Communication lost: a new catalogue waits; back: sent at once.
+    wcc.set('CN_01.Comm', false);
+    await rec.queue;
+    wcc.put('MachineFleet3D_StopCauses_ilot.json', JSON.stringify([{ code: 'AP09', classification: 'planned' }]));
+    await rec.reload();
+    await rec.queue;
+    expect(slots(wcc)).toEqual([['AP01', 2], ['ANP0', 3]]);
+    wcc.set('CN_01.Comm', true);
+    await rec.queue;
+    expect(slots(wcc)).toEqual([['AP09', 2], ['', 0]]);
+    // The controller lost them (restart): written again at the next reading; nothing when they are right.
+    wcc.db['CN_01.C1'] = '';
+    await rec.reload();
+    await rec.queue;
+    expect(slots(wcc)[0]).toEqual(['AP09', 2]);
+    const before = wcc.writes.filter((w) => 'CN_01.C1' in w).length;
+    await rec.reload();
+    await rec.queue;
+    expect(wcc.writes.filter((w) => 'CN_01.C1' in w).length).toBe(before);
+    // An input-only address is never written.
+    wcc.db['CN_01.C1'] = 'XX';
+    wcc.db['CN_01.C1:_address.._direction'] = 4;
+    await rec.reload();
+    await rec.queue;
+    expect(wcc.db['CN_01.C1']).toBe('XX');
   });
 });
 
@@ -264,7 +421,7 @@ describe('recording the states', () => {
     // As WinCC OA answers: the group with the system name.
     for (const el of R.ARCHIVED_ELEMENTS) first.wcc.db[`${CN}.${el}:_archive.1._class`] = 'System1:G_ALERT';
     const from = first.wcc.writes.length;
-    const again = new R.FleetStateRecorder({ wcc: first.wcc, archiveGroup: 'G_ETATS', log: () => {} });
+    const again = new R.FleetStateRecorder({ wcc: first.wcc, archiveGroup: 'G_ETATS', usableGroups: ['G_ETATS'], log: () => {} });
     await again.reload();
     await again.queue;
     for (const el of R.ARCHIVED_ELEMENTS) {
@@ -367,5 +524,20 @@ describe('recording the states', () => {
     await rec.queue;
     expect(records(wcc).at(-1)).toEqual(['ok', '']);
     expect(wcc.db[`${CN}.declared:_archive.1._class`]).toBe('G_ETATS');
+  });
+});
+
+describe('stop causes sent as the 2.2.0 supervision did (winccoa-fra-msp-stma#373, #375)', () => {
+  // A real machine of a project in 2.2.0 (23/11/2026): the slots the site's 2.2.1 export declares, the causes of its
+  // catalogue, and the 48 values the former manager organisation_sync wrote to it (and the machine had).
+  const fixture = require('./fixtures/causes-2-2-0.json');
+
+  it('writes exactly the values the former manager wrote, in the same slots', () => {
+    expect(fixture.machines.length).toBeGreaterThan(0);
+    for (const m of fixture.machines) {
+      const w = P.causeWrites(m.targets, m.causes);
+      expect(Object.fromEntries(w.values), m.id).toEqual(m.expected);
+      expect(w.values.size, m.id).toBe(Object.keys(m.expected).length);
+    }
   });
 });
