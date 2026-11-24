@@ -5,23 +5,31 @@
 
 ## 0.7.0 — unreleased
 
-Requires wui-fleet-core `^0.3.1`. Restart the `fleetState` manager after the update.
+Requires wui-fleet-core `^0.3.1`. **One manager, `kpiCalc`**: stop `fleetState` and remove its line in the WinCC OA
+console (`wui build` leaves it, with `javascript/fleetState/`); `kpiCalc` (`node kpiCalc/index.js`, always) is
+appended to `config/progs` by `wui build` when missing, to be registered by hand after a deployment by ZIP.
+
+- **The state recorder and the KPI calculator are one manager, `kpiCalc`, deployed by Machine Fleet**
+  (winccoa-fra-msp-stma#373, `managers/kpiCalc`): `states.js` (formerly the `fleetState` manager) records the states and
+  sends the stop causes, `kpis.js` (formerly the `kpiCalc` manager of wui-fleet-kpi-analysis, which no longer deploys
+  one, 0.4.0) computes TRS / MTBF / MTTR from that history — two processes that could not work apart, now one
+  connection and one console line. Logs: `[kpiCalc/états]` and `[kpiCalc/KPI]`.
 
 - **States archived in the group the module settings name** (winccoa-fra-msp-stma#374): `stateArchiveGroup` in
   `MachineFleet3D_Settings` (wui-fleet-core `FleetModuleSettings`), e.g. the group of a site's states history; the
-  `fleetState` manager takes it when it is usable (active, not an alarm group), otherwise the standard value group as
+  `kpiCalc` manager takes it when it is usable (active, not an alarm group), otherwise the standard value group as
   before, and says so in its log. It applies to the records not archived yet: a record already archived in a usable
   group stays there (`keepsArchive`), as NGA reads an element in its current group only — moving it hid its whole
   history from the Gantt, the stops and the TRS (checked on a WinCC OA 3.21 project, winccoa-fra-msp-stma#373).
 - **The stop-cause catalogue sent to the machines by Machine Fleet** (winccoa-fra-msp-stma#375): a symbol may declare its controller's
   stop-cause slots (`stopCauseTargets`: the datapoint elements of each slot's code, label and class, the longest code
-  and label, the value of each class); `fleetState` writes the causes of the symbol's catalogue there, in order, the
+  and label, the value of each class); `kpiCalc` writes the causes of the symbol's catalogue there, in order, the
   slots left over emptied, whenever they differ: not while its communication (`commDp`) is down, never to an
   input-only address (noted once in its log), checked again at each reading (a catalogue saved, every minute) and as
-  soon as the communication comes back (`managers/fleetState/cause-push.js`, tested).
+  soon as the communication comes back (`managers/kpiCalc/cause-push.js`, tested).
 - **Bindings through a reference** (winccoa-fra-msp-stma#376): a symbol's references (`refDps`: by name, a datapoint element whose
   value names a datapoint) may be used in its bindings, `{wc}.Context.OF`: a mobile machine follows the workcenter
-  it is assigned to. The atelier view, the overview, the machine dashboard and `fleetState` follow the references and
+  it is assigned to. The atelier view, the overview, the machine dashboard and `kpiCalc` follow the references and
   subscribe the bindings anew when one changes; a binding whose reference has no value is unbound (its value no
   longer shown). The datapoint field does not show such a binding as broken; a parameter through a reference is not
   exported to a WinCC OA dashboard (its datapoint is named at runtime only).
@@ -38,7 +46,7 @@ Requires wui-fleet-core `^0.3.1`. Restart the `fleetState` manager after the upd
 - **Fix: a symbol without any state value is no longer in production** (winccoa-fra-msp-stma#370): a symbol imported or created is not
   connected until a value arrives, and a symbol none of whose state inputs is readable (none bound, none existing)
   is shown and counted as not connected (atelier view, overview chips and minimap) instead of keeping the state
-  stored with it — production for a new one. The recorder (`fleetState`) already left such symbols out.
+  stored with it — production for a new one. The recorder already left such symbols out.
 - **Resizing a bubble changes its box, not its text** (winccoa-fra-msp-stma#371): the handle sets the bubble's width and height
   (`bubbleSize`), the text keeps its size and a larger box shows the lines it cut off. A bubble resized before
   keeps its width with its text at the normal size.
@@ -65,7 +73,7 @@ Requires wui-fleet-core `^0.3.1`. Restart the `fleetState` manager after the upd
   translated by the MSP article catalogue. The atelier view, the machine dashboard (context line, cards) and its
   filter (the line's history translated by the table as it is now) follow it; not exported to a WinCC OA dashboard.
 - **The machine dashboard says why it has no history** (winccoa-fra-msp-stma#382, `history-gap.ts`): no input of the state mapping bound,
-  the state not recorded by `fleetState` (stopped, not declared, or the symbol just added), or recorded but not archived,
+  the state not recorded by `kpiCalc` (stopped, not declared, or the symbol just added), or recorded but not archived,
   instead of a bare "No history data" — in the Gantt and in the Pareto.
 
 ## 0.6.1 — 2026-11-20

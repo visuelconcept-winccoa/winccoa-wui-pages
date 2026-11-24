@@ -6,7 +6,7 @@
  * State of a machine from its mapping (winccoa-fra-msp-stma#339) — the manager's copy of wui-fleet-core
  * `state-eval.ts`, which the live views use. The two must give the same state for the same values: both play
  * `wui-fleet-core/src/state-eval.cases.json` (test/fleet-state.spec.mjs), a difference fails the tests.
- * A manager is deployed on its own (javascript/fleetState): it cannot import the page's TypeScript.
+ * A manager is deployed on its own (javascript/kpiCalc): it cannot import the page's TypeScript.
  */
 
 const STATE_INPUT = 'state';

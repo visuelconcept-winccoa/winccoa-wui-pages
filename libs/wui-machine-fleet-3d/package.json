@@ -81,7 +81,7 @@
       ],
       "managers": [
         "aiAssistant",
-        "fleetState"
+        "kpiCalc"
       ],
       "progs": [
         {
@@ -92,8 +92,7 @@
       "notes": [
         "/api/ai/chat (optional, AI assistant via wui-ai-kit's aiController; needs the aiAssistant manager, registered in config/progs as manual — start it when the assistant is enabled)",
         "/api/ai/fleet/workshops[/:id] (read only, role view: the ateliers for hosts that embed <wui-fleet-3d-view> — see docs/wui-machine-fleet-3d/EMBEDDING.md)",
-        "State history (Gantt, stops, Pareto, TRS): the fleetState manager, started with the project (config/progs, always) — it records each symbol's state and stop cause in MachineFleet3D_State_<symbol>, archived in the group of the module settings (stateArchiveGroup, else the standard value group; a record already archived keeps its group, where its history is), and sends the stop-cause catalogue to the symbols that declare stopCauseTargets; the live views do not depend on it",
-        "Live KPIs (TRS/MTBF/MTTR in the bubbles): the kpiCalc manager of wui-fleet-kpi-analysis — select that module",
+        "State history, stop causes and KPIs: the kpiCalc manager, started with the project (config/progs, always: node kpiCalc/index.js), one process since winccoa-fra-msp-stma#373 (formerly fleetState, and kpiCalc of wui-fleet-kpi-analysis) — it records each symbol's state and stop cause in MachineFleet3D_State_<symbol>, archived in the group of the module settings (stateArchiveGroup, else the standard value group; a record already archived keeps its group, where its history is), sends the stop-cause catalogue to the symbols that declare stopCauseTargets, and computes TRS / MTBF / MTTR (MachineFleet3D_Kpi_*); the live views do not depend on it. Updating from a version with fleetState: remove its line in the WinCC OA console (wui build leaves it)",
         "Simulated production: the machineSim manager of wui-machine-sim — select that module (demo/commissioning only)"
       ]
     },

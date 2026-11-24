@@ -53,7 +53,7 @@ export interface AtelierOpening {
 export interface FleetModuleSettings {
   openingView: OpeningViewSetting;
   /**
-   * NGA group the state manager (fleetState) archives the states in (winccoa-fra-msp-stma#374), e.g. the group of a
+   * NGA group Machine Fleet's manager (kpiCalc) archives the new states in (winccoa-fra-msp-stma#374), e.g. the group of a
    * site's states history; absent: WinCC OA's standard value group. Never an alarm group.
    */
   stateArchiveGroup?: string;

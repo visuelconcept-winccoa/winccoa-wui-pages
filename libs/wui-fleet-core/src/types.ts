@@ -707,7 +707,7 @@ export interface MachineDef {
   refDps?: Record<string, string>;
   /**
    * Stop-cause slots of the machine's controller (winccoa-fra-msp-stma#375): Machine Fleet's state manager writes
-   * the causes of the symbol's catalogue there, in order, whenever they differ (cause-push.js of fleetState).
+   * the causes of the symbol's catalogue there, in order, whenever they differ (cause-push.js of Machine Fleet's kpiCalc manager).
    */
   stopCauseTargets?: StopCauseTargets;
   /**

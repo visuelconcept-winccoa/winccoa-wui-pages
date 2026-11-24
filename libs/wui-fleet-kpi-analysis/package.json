@@ -1,7 +1,7 @@
 {
   "name": "@visuelconcept-winccoa/wui-fleet-kpi-analysis",
   "type": "module",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Fleet KPI Analysis — standalone WinCC OA WebUI page: per-machine availability-TRS over a period from archived histories, with closures (opening-time) handling and table + bar views.",
   "author": {
     "name": "Visuel Concept"
@@ -55,11 +55,8 @@
     "hidden": true,
     "tier": 1,
     "backend": {
-      "managers": [
-        "kpiCalc"
-      ],
       "notes": [
-        "kpiCalc (optional, server-computed TRS)"
+        "The TRS / MTBF / MTTR this page shows are computed by Machine Fleet's kpiCalc manager (wui-machine-fleet-3d ≥ 0.7.0, config/progs: node kpiCalc/index.js, always): this module no longer deploys a manager since winccoa-fra-msp-stma#373"
       ]
     }
   },

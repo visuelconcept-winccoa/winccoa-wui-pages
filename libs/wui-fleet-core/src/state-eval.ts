@@ -147,7 +147,7 @@ export function mappingInputKeys(mapping: StateMapping | undefined): string[] {
   return [STATE_INPUT, ...(mapping?.inputs ?? []).map((i) => i.key).filter((k) => k && k !== STATE_INPUT)];
 }
 
-/** Prefix of a symbol's recorded state datapoint (Machine Fleet's state manager, `fleetState`). */
+/** Prefix of a symbol's recorded state datapoint (Machine Fleet's manager, `kpiCalc`, formerly `fleetState`). */
 export const STATE_RECORD_PREFIX = 'MachineFleet3D_State_';
 
 /** Datapoint of a symbol's recorded state: its id, every character other than a letter, a digit or `_` as `_`. */
@@ -164,7 +164,7 @@ export function stateRecordDpes(id: string): { state: string; cause: string } {
   return { state: `${dp}.state`, cause: `${dp}.cause` };
 }
 
-/** The datapoint element of a symbol's declared state (fleetState records it with the state). */
+/** The datapoint element of a symbol's declared state (Machine Fleet's manager records it with the state). */
 export function declaredStateDpe(id: string): string {
   return `${stateRecordDp(id)}.declared`;
 }

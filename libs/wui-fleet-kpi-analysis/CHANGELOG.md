@@ -3,6 +3,13 @@
 
 # Changelog — @visuelconcept-winccoa/wui-fleet-kpi-analysis
 
+## 0.4.0 — unreleased
+
+- **The kpiCalc manager moves to Machine Fleet** (winccoa-fra-msp-stma#373): one manager records the states, sends the stop
+  causes and computes the KPIs — Machine Fleet's `kpiCalc` (wui-machine-fleet-3d ≥ 0.7.0, formerly also its
+  `fleetState`); this module keeps its page and deploys no manager. `kpi-math.js` and its tests move with it. Same
+  console line (`node kpiCalc/index.js`, always).
+
 ## 0.3.0 — 2026-11-05 (SDS 2.2)
 
 - **kpiCalc reads the history fleetState records** (winccoa-fra-msp-stma#339): `MachineFleet3D_State_<machine>.state`

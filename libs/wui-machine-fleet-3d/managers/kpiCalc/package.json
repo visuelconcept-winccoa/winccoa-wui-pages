@@ -1,0 +1,8 @@
+{
+  "name": "kpi-calc",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Machine Fleet manager (WinCC OA JavaScript Manager): records each symbol's state and stop cause (MachineFleet3D_State_<symbol>, the history of the Gantt, the stops and the TRS), sends the stop-cause catalogue to the machines, and computes TRS, MTBF and MTTR from that history. Formerly the fleetState and kpiCalc managers. No dependency.",
+  "main": "index.js",
+  "type": "commonjs"
+}

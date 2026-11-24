@@ -3,7 +3,8 @@
 'use strict';
 
 /**
- * Machine Fleet — state recorder (WinCC OA JavaScript Manager), winccoa-fra-msp-stma#339.
+ * Machine Fleet — state recorder (part of the kpiCalc manager since winccoa-fra-msp-stma#373, before the fleetState
+ * manager), winccoa-fra-msp-stma#339.
  *
  * Records, for every symbol of every atelier, the state its mapping gives and the stop cause in progress, in
  * `MachineFleet3D_State_<symbol>` (`state`, `cause`, archived in the standard NGA value group): the history the
@@ -13,12 +14,13 @@
  * Reads the ateliers and the stop-cause catalogues again when one is saved, and every minute (a new atelier).
  * In a redundant project, only the active server writes; becoming active, it reads the records again.
  *
- * Register in config/progs (wui build does):  node | always | 30 | 2 | 2 |fleetState/index.js
+ * Started by index.js (`start`), on the manager's connection.
  */
-const { WinccoaManager, WinccoaDpTypeNode } = require('winccoa-manager');
+const { WinccoaDpTypeNode } = require('winccoa-manager');
 const { FleetStateRecorder, STATE_TYPE, STATE_ELEMENTS, bare, chooseArchiveGroup, usableGroupsOf } = require('./recorder.js');
 
-const winccoa = new WinccoaManager();
+/** The manager's connection to WinCC OA, given by index.js. */
+let winccoa = null;
 const ELEM = { Struct: 1, String: 25 };
 const RELOAD_MS = 60_000;
 /** Module settings of Machine Fleet (wui-fleet-core opening-view.ts): `stateArchiveGroup` (#374). */
@@ -26,7 +28,7 @@ const SETTINGS_DP = 'MachineFleet3D_Settings';
 
 function log(msg) {
   // eslint-disable-next-line no-console
-  console.log(`[fleetState] ${msg}`);
+  console.log(`[kpiCalc/états] ${msg}`);
 }
 
 /** Active server, or not redundant (an unavailable API counts as active, not to block). */
@@ -126,4 +128,10 @@ async function main() {
   }, RELOAD_MS);
 }
 
-main().catch((e) => log(`Erreur fatale : ${e.stack || e}`));
+/** Starts the state recorder on the manager's connection. */
+function start(connection) {
+  winccoa = connection;
+  return main().catch((e) => log(`Erreur fatale : ${e.stack || e}`));
+}
+
+module.exports = { start };

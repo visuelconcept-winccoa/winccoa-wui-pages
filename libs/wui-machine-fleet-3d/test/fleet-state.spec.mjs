@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Machine Fleet's state recorder (managers/fleetState, winccoa-fra-msp-stma#339), on a fake WinCC OA:
+ * Machine Fleet's state recorder (managers/kpiCalc, formerly fleetState, winccoa-fra-msp-stma#339), on a fake WinCC OA:
  *  - its state computation gives exactly what the live views give (wui-fleet-core state-eval.ts): the shared
  *    cases, and thousands of random mappings and values;
  *  - the symbols recorded (mapping chosen, duplicates, symbols binding nothing);
@@ -15,9 +15,9 @@ import { evaluateState as evaluateTs, currentCause as currentCauseTs, causeClass
 import { DEFAULT_STATE_MAPPINGS } from '../../wui-fleet-core/src/types.ts';
 
 const require = createRequire(import.meta.url);
-const E = require('../managers/fleetState/state-eval.js');
-const R = require('../managers/fleetState/recorder.js');
-const P = require('../managers/fleetState/cause-push.js');
+const E = require('../managers/kpiCalc/state-eval.js');
+const R = require('../managers/kpiCalc/recorder.js');
+const P = require('../managers/kpiCalc/cause-push.js');
 const cases = require('../../wui-fleet-core/src/state-eval.cases.json');
 
 // ------------------------------------------------------------------ parity with the live views

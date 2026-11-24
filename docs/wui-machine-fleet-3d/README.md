@@ -4,15 +4,16 @@ The **Machine Fleet 3D** hub page (`/fleet-3d`): a **three.js** 3D fleet view wi
 per-machine **state/KPI bubbles**, a **stop-cause catalog**, a contextual machine
 dashboard (**gauge cards + Gantt + alarms + Pareto**), and an **AI assistant**
 (`/api/ai` bridge).
-Deploys two managers: **`fleetState`** (registered `always`), which records each symbol's state and stop
-cause — the history of the Gantt, the stops, the Pareto and the TRS — and `aiAssistant` (the AI assistant),
-registered `manual`. The assistant's MCP
+Deploys two managers: **`kpiCalc`** (registered `always`), which records each symbol's state and stop
+cause — the history of the Gantt, the stops, the Pareto and the TRS —, sends the stop-cause catalogue to the
+machines and computes TRS / MTBF / MTTR (one process since winccoa-fra-msp-stma#373, formerly `fleetState` and the
+`kpiCalc` of `fleet-kpi-analysis`), and `aiAssistant` (the AI assistant), registered `manual`. The assistant's MCP
 tools come from an **optional, external** WinCC OA MCP server (ETM
 `@etm-professional-control/winccoa-mcp-server`, ISC) — installed separately, **not shipped** here.
 
 Two complementary modules, never deployed with this page:
-- **live KPIs** (TRS / MTBF / MTTR in the bubbles and cards): the `kpiCalc` manager of
-  [`fleet-kpi-analysis`](../wui-fleet-kpi-analysis/README.md) — `npx wui use fleet-kpi-analysis`;
+- **KPI analysis page** (`/fleet-kpi`): [`fleet-kpi-analysis`](../wui-fleet-kpi-analysis/README.md) —
+  `npx wui use fleet-kpi-analysis` (the KPIs themselves are computed by this module's `kpiCalc`, since 0.7.0);
 - **simulated production** (demo, training, commissioning — not production): the `machineSim`
   manager of [`machine-sim`](../wui-machine-sim/README.md) — `npx wui use machine-sim`.
 
@@ -46,8 +47,10 @@ wui-toolkit does not write that file.
 
 ## After install (required)
 1. **Webserver:** restart the webserver manager (already rebuilt by `wui build`; it auto-mounts `/api/ai`).
-2. **Managers:** start **`fleetState`** in the WinCC OA console (registered `always`: it then comes back with the
-   project); without it the live views still work, but no state history is recorded. If you enable the AI
+2. **Managers:** start **`kpiCalc`** in the WinCC OA console (registered `always`: it then comes back with the
+   project); without it the live views still work, but no state history is recorded, no stop cause is sent and no
+   KPI is computed. Updating from 0.6 (which deployed `fleetState`): stop `fleetState` and remove its line — `wui build`
+   leaves it in place, with `javascript/fleetState/`. If you enable the AI
    assistant, start **`aiAssistant`** in the WinCC OA console (set it to `always` to have it come back with the project). (MCP tools need the optional external MCP server — see NOTES.)
 3. **Browser:** DevTools → Application → Storage → **`Clear site data`**, then reload (logged in).
    ⚠️ The service worker caches `menuconfig.json` — **`Ctrl+Shift+R` is NOT enough**; only `Clear site data` purges it.

@@ -342,14 +342,14 @@ export const MSG = {
       'Der Zustand dieser Maschine wird nicht aufgezeichnet: kein Eingang ihrer Zustandszuordnung ist verknüpft (Symbolkonfiguration, « Daten »). Ohne Zustand weder Gantt noch Stillstände — ein Grund allein ist kein Stillstand.'
     ),
     historyNotRecorded: ml(
-      'This machine’s state is not recorded yet: Machine Fleet’s state manager (fleetState) does not follow it — stopped, not declared in the project, or the symbol was added less than a minute ago.',
-      'L’état de cette machine n’est pas encore enregistré : le manager d’états de Machine Fleet (fleetState) ne la suit pas — arrêté, absent du projet, ou symbole ajouté il y a moins d’une minute.',
-      'Der Zustand dieser Maschine wird noch nicht aufgezeichnet: der Zustandsmanager von Machine Fleet (fleetState) verfolgt sie nicht — gestoppt, nicht im Projekt oder Symbol vor weniger als einer Minute hinzugefügt.'
+      'This machine’s state is not recorded yet: Machine Fleet’s manager (kpiCalc) does not follow it — stopped, not declared in the project, or the symbol was added less than a minute ago.',
+      'L’état de cette machine n’est pas encore enregistré : le manager de Machine Fleet (kpiCalc) ne la suit pas — arrêté, absent du projet, ou symbole ajouté il y a moins d’une minute.',
+      'Der Zustand dieser Maschine wird noch nicht aufgezeichnet: der Manager von Machine Fleet (kpiCalc) verfolgt sie nicht — gestoppt, nicht im Projekt oder Symbol vor weniger als einer Minute hinzugefügt.'
     ),
     historyNotArchived: ml(
-      'This machine’s state is recorded but not archived: the state manager (fleetState) found no archive group — see its log.',
-      'L’état de cette machine est enregistré mais pas archivé : le manager d’états (fleetState) n’a trouvé aucun groupe d’archive — voir son journal.',
-      'Der Zustand dieser Maschine wird aufgezeichnet, aber nicht archiviert: der Zustandsmanager (fleetState) hat keine Archivgruppe gefunden — siehe sein Protokoll.'
+      'This machine’s state is recorded but not archived: Machine Fleet’s manager (kpiCalc) found no archive group — see its log.',
+      'L’état de cette machine est enregistré mais pas archivé : le manager de Machine Fleet (kpiCalc) n’a trouvé aucun groupe d’archive — voir son journal.',
+      'Der Zustand dieser Maschine wird aufgezeichnet, aber nicht archiviert: der Manager von Machine Fleet (kpiCalc) hat keine Archivgruppe gefunden — siehe sein Protokoll.'
     ),
     noHistory: ml(
       "No history data over the period.",
@@ -413,9 +413,9 @@ export const MSG = {
     declareHeading: ml("Declare the machine’s state", 'Déclarer l’état de la machine', 'Maschinenzustand melden'),
     declareConfirm: ml('Declare', 'Déclarer', 'Melden'),
     declareFailed: ml(
-      'The declared state could not be saved: the role "Declare a machine’s state" is needed, and the state manager (fleetState) must have created the machine’s datapoint.',
-      'L’état déclaré n’a pas pu être enregistré : il faut le rôle « Déclarer l’état d’une machine », et que le manager d’état (fleetState) ait créé le datapoint de la machine.',
-      'Der gemeldete Zustand konnte nicht gespeichert werden: Die Rolle „Maschinenzustand melden“ ist nötig, und der Zustandsmanager (fleetState) muss den Datenpunkt der Maschine angelegt haben.'
+      'The declared state could not be saved: the role "Declare a machine’s state" is needed, and Machine Fleet’s manager (kpiCalc) must have created the machine’s datapoint.',
+      'L’état déclaré n’a pas pu être enregistré : il faut le rôle « Déclarer l’état d’une machine », et que le manager de Machine Fleet (kpiCalc) ait créé le datapoint de la machine.',
+      'Der gemeldete Zustand konnte nicht gespeichert werden: Die Rolle „Maschinenzustand melden“ ist nötig, und der Manager von Machine Fleet (kpiCalc) muss den Datenpunkt der Maschine angelegt haben.'
     )
   },
   machineDialog: {
