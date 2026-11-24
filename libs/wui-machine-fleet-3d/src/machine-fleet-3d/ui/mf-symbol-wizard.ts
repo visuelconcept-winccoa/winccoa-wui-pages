@@ -21,8 +21,8 @@ import { LitElement, css, html, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { NO_DATA_STATE, type GlbResource, type MachineDef, type MachineType } from '../types.js';
 import type { FleetStore } from '../data/fleet-store.js';
-import { MSG, importErrorMsg, importSummaryMsg, localize, localizeDir, machineTypeLabel, replaceSymbolMsg, siteAddAllMsg, siteErrorMsg } from '../i18n.js';
-import { mappingsOf, siteGroupOf, type SiteSymbols } from '../data/site-symbols.js';
+import { MSG, importErrorMsg, importSummaryMsg, localize, localizeDir, machineTypeLabel, replaceSymbolMsg, siteAddAllMsg, siteErrorMsg, siteUpdateAllMsg } from '../i18n.js';
+import { mappingsOf, siteGroupOf, sitePlan, type SiteSymbols } from '../data/site-symbols.js';
 import { conflictOf, isExportSource, parseSymbolImport, type ImportResult, type SymbolImportPlan } from '../symbol-import.js';
 import { dialogStyles } from './dialog-styles.js';
 import { MACHINE_TYPES } from './mf-machine-dialog.js';
@@ -78,6 +78,10 @@ export class MfSymbolWizard extends LitElement {
       }
       .item:hover {
         border-color: var(--theme-color-primary);
+      }
+      .site-update {
+        align-self: flex-start;
+        margin-bottom: 0.5rem;
       }
       .group-head {
         display: flex;
@@ -231,12 +235,16 @@ export class MfSymbolWizard extends LitElement {
   private renderExisting(): TemplateResult {
     const site = this.site.state === 'ok' ? this.site : null;
     const groupsOf = site?.groups ?? {};
-    const siteItems = (site?.symbols ?? []).map((m) => ({ label: m.name, hint: siteGroupOf(m, groupsOf) || localize(MSG.wizard.siteNoGroup), def: m }));
+    // Listed by workcenter: the site's machines not yet in the atelier; those in it are updated by one button (#373).
+    const inAtelier = (m: MachineDef): boolean => this.existing.some((e) => e.id === m.id);
+    const here = (site?.symbols ?? []).filter(inAtelier);
+    const siteItems = (site?.symbols ?? []).filter((m) => !inAtelier(m))
+      .map((m) => ({ label: m.name, hint: siteGroupOf(m, groupsOf) || localize(MSG.wizard.siteNoGroup), def: m }));
     const otherItems = this.others.map((o) => ({ label: o.machine.name, hint: o.atelier, def: o.machine }));
     let status: TemplateResult | string = '';
     if (this.site.state === 'loading') status = html`<div class="muted">${localizeDir(MSG.wizard.siteLoading)}</div>`;
     else if (this.site.state === 'error') status = html`<div class="muted error">${siteErrorMsg(this.site.text)}</div>`;
-    if (siteItems.length + otherItems.length === 0) {
+    if (siteItems.length + otherItems.length + here.length === 0) {
       return html`${status}${this.site.state === 'loading' ? '' : html`<div class="muted">${localizeDir(MSG.wizard.existingNone)}</div>`}`;
     }
     const q = this.query.trim().toLowerCase();
@@ -246,6 +254,9 @@ export class MfSymbolWizard extends LitElement {
     const others = otherItems.filter(match);
     return html`
       ${status}
+      ${here.length
+        ? html`<ix-button class="site-update" variant="primary" @click=${() => this.addFromSite(here)}>${siteUpdateAllMsg(here.length)}</ix-button>`
+        : ''}
       <ix-input
         placeholder=${localize(MSG.wizard.search)}
         .value=${this.query}
@@ -266,6 +277,7 @@ export class MfSymbolWizard extends LitElement {
               </button>`
             )}`
         )}
+        ${others.length ? html`<div class="group-head"><span>${localize(MSG.wizard.othersHead)}</span></div>` : ''}
         ${others.map(
           (it) => html`<button type="button" class="item" @click=${() => this.emit(it.def, false)}>
             <span>${it.label}</span><span class="muted">${it.hint}</span>
@@ -275,12 +287,16 @@ export class MfSymbolWizard extends LitElement {
     `;
   }
 
-  /** Site machines added like a workcenter's export (#381): their id (the site's machine), their state mappings. */
+  /**
+   * Site machines added like a workcenter's export (#381): their id (the site's machine), their state mappings; those
+   * already in the atelier updated in place (`sitePlan`).
+   */
   private addFromSite(defs: MachineDef[]): void {
     if (this.site.state !== 'ok' || defs.length === 0) return;
+    const plan = sitePlan(defs, this.existing);
     const detail: SymbolImport = {
-      add: structuredClone(defs),
-      replace: [],
+      add: structuredClone(plan.add),
+      replace: structuredClone(plan.replace),
       mappings: structuredClone(mappingsOf(defs, this.site.mappings)),
       fromExport: true
     };

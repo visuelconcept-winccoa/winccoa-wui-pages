@@ -285,7 +285,11 @@ export class LabelManager {
     this.clearEntries();
     for (const machine of machines) {
       if (machine.suppressLabel) continue;
-      this.entries.push(this.createEntry(machine));
+      // Hidden until a frame places it: labels and hover mode off, no frame does, and a rebuilt bubble (an atelier
+      // saved, a marker added) stayed in the top-left corner, empty (winccoa-fra-msp-stma#379).
+      const entry = this.createEntry(machine);
+      this.hideEntry(entry);
+      this.entries.push(entry);
     }
   }
 

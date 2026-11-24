@@ -303,8 +303,6 @@ export class MfAtelierView extends LitElement {
   @state() private myLanding = false;
   @state() private viewpointsOpen = false;
   @state() private renamingVpId: string | null = null;
-  /** A new placement pin follows the pointer until a click on the floor drops it (#63). */
-  @state() private placingPin = false;
   /** The markers button (#379): placement markers shown — dragged, renamed, deleted, placed — or hidden. */
   @state() private markersShown = false;
   /** The pin being renamed / deleted, and where its editor opens (viewport px). */
@@ -383,7 +381,7 @@ export class MfAtelierView extends LitElement {
     return html`
       <div class="page">
         ${this.renderTopbar()}
-        ${this.hideToolbar ? this.renderFilters() : nothing}
+        ${this.renderFilters()}
         <div class="stage">
           <div class="viewport">
             <canvas></canvas>
@@ -477,6 +475,7 @@ export class MfAtelierView extends LitElement {
     this.scene.setOnMachineMove((id, x, z) => this.onMachineMove(id, x, z));
     this.scene.setOnMarkerMove((id, x, z) => this.onMarkerMove(id, x, z));
     this.scene.setOnMarkerPick((id, sx, sy) => this.openPinEdit(id, sx, sy));
+    this.scene.setOnMarkerAdd((x, z) => this.addMarker(x, z));
     this.scene.setOnBubbleEdit((id, patch) => this.onBubbleEdit(id, patch));
     this.scene.setEditMode(this.editMode);
     this.scene.setMarkersVisible(this.markersShown);
@@ -553,7 +552,7 @@ export class MfAtelierView extends LitElement {
       return html`
         <div class="topbar">
           <ix-typography class="title" format="h3">${this.atelierName || localize(MSG.view.atelier)}</ix-typography>
-          ${this.renderStats()} ${this.renderFilters(true)}
+          ${this.renderStats()}
           <span class="topbar-spacer"></span>
           ${this.renderDisplayToolbar()}
         </div>
@@ -574,7 +573,7 @@ export class MfAtelierView extends LitElement {
               ${this.editable
                 ? html`<ix-icon-button ghost icon="pen" title=${localize(MSG.view.renameAtelier)} @click=${this.startRename}></ix-icon-button>`
                 : ''}`}
-        ${this.renderStats()} ${this.renderFilters(true)}
+        ${this.renderStats()}
         <span class="topbar-spacer"></span>
         ${this.renderToolbar()}
         ${this.editable
@@ -626,10 +625,7 @@ export class MfAtelierView extends LitElement {
         ${this.editable
           ? html`<ix-icon-button icon="move" ghost title=${localize(MSG.view.editMode)} variant=${this.editMode ? 'primary' : 'secondary'} @click=${this.toggleEditMode}></ix-icon-button>
               <ix-icon-button icon="eye" ghost title=${localize(MSG.bubble.hoverMode)} variant=${this.display.bubblesOnHover ? 'primary' : 'secondary'} @click=${this.toggleBubblesOnHover}></ix-icon-button>
-              <ix-icon-button icon="location" ghost title=${localize(MSG.markers.toggle)} variant=${this.markersShown ? 'primary' : 'secondary'} @click=${this.toggleMarkers}></ix-icon-button>
-              ${this.markersShown
-                ? html`<ix-icon-button icon="plus" ghost title=${localize(MSG.markers.place)} variant=${this.placingPin ? 'primary' : 'secondary'} @click=${this.placePin}></ix-icon-button>`
-                : ''}`
+              <ix-icon-button icon="location" ghost title=${localize(MSG.markers.toggle)} variant=${this.markersShown ? 'primary' : 'secondary'} @click=${this.toggleMarkers}></ix-icon-button>`
           : ''}
         ${this.renderDisplayToggles()}
         <ix-icon-button icon="screenshot" ghost title=${localize(MSG.view.viewpoints)} variant=${this.viewpointsOpen ? 'primary' : 'secondary'} @click=${() => (this.viewpointsOpen = !this.viewpointsOpen)}></ix-icon-button>
@@ -724,11 +720,8 @@ export class MfAtelierView extends LitElement {
     this.scene?.setView(preset);
   }
 
-  /**
-   * The filter bar over this atelier's machines (filter pruned to what still exists), plus their state: on the
-   * line of the counters (`inline`, winccoa-fra-msp-stma#368), or on its own line when the host hides the top bar.
-   */
-  private renderFilters(inline = false): TemplateResult {
+  /** The filter bar over this atelier's machines (filter pruned to what still exists), plus their state. */
+  private renderFilters(): TemplateResult {
     const dims = filterDimensions(this.machines);
     const states = this.stateValues();
     if (dims.length === 0 && states.length === 0) return html``;
@@ -737,7 +730,7 @@ export class MfAtelierView extends LitElement {
     const stateSelected = states.filter((s) => s.keys.some((k) => this.stateFilter.includes(k))).map((s) => s.label);
     if (stateSelected.length > 0) filter[stateDim] = stateSelected;
     return html`<mf-filter-bar
-      class=${inline ? 'filters filters--inline' : 'filters'}
+      class="filters"
       .dimensions=${[...dims, { key: stateDim, values: states.map((s) => s.label) }]}
       .filter=${filter}
       .shown=${this.machines.length - this.filteredOutIds().size}
@@ -1065,7 +1058,7 @@ export class MfAtelierView extends LitElement {
         : ''}
       ${this.wizardOpen
         ? html`<mf-symbol-wizard
-            .site=${this.siteNotPlaced()}
+            .site=${this.siteSymbols}
             .others=${this.otherSymbols}
             .existing=${this.machines}
             .glbResources=${this.glbResources}
@@ -1166,12 +1159,6 @@ export class MfAtelierView extends LitElement {
     const path = this.moduleSettings.siteSymbolsUrl;
     this.siteSymbols = path ? { state: 'loading' } : { state: 'none' };
     if (path) this.siteSymbols = await loadSiteSymbols(path, authHeaders());
-  }
-
-  /** The site's machines not yet in this atelier. */
-  private siteNotPlaced(): SiteSymbols {
-    const s = this.siteSymbols;
-    return s.state === 'ok' ? { ...s, symbols: s.symbols.filter((d) => !this.machines.some((m) => m.id === d.id)) } : s;
   }
 
   /**
@@ -1347,34 +1334,18 @@ export class MfAtelierView extends LitElement {
     this.scene?.setEditMode(this.editMode);
   }
 
-  /** Markers button (#379): shows the placement markers, or hides them (a placement in progress is dropped). */
+  /** Markers button (#379): shows the placement markers, a click on the floor adding one, or hides them. */
   private toggleMarkers(): void {
     this.markersShown = !this.markersShown;
     this.scene?.setMarkersVisible(this.markersShown);
-    if (!this.markersShown) {
-      this.scene?.cancelMarkerPlacement();
-      this.placingPin = false;
-      this.pinEdit = null;
-    }
+    if (!this.markersShown) this.pinEdit = null;
   }
 
-  /** The markers' + button: a new marker dropped by a click on the floor, then named (#63). */
-  private placePin(): void {
-    if (!this.scene) return;
-    if (this.placingPin) {
-      this.scene.cancelMarkerPlacement();
-      this.placingPin = false;
-      return;
-    }
-    if (!this.markersShown) this.toggleMarkers();
+  /** A click on the floor, markers shown (#379): a new marker there, numbered, renamed by clicking it (#63). */
+  private addMarker(x: number, z: number): void {
     this.pinEdit = null;
-    this.placingPin = true;
-    this.scene.startMarkerPlacement((x, z) => {
-      this.placingPin = false;
-      const label = `${localize(MSG.markers.newLabel)} ${nextMarkerNumber(this.markers)}`;
-      const marker = { id: `mk-${Date.now()}`, label, x, z };
-      this.onMarkers([...this.markers, marker]);
-    });
+    const label = `${localize(MSG.markers.newLabel)} ${nextMarkerNumber(this.markers)}`;
+    this.onMarkers([...this.markers, { id: `mk-${Date.now()}`, label, x, z }]);
   }
 
   /** A pin clicked (markers shown, #379): its editor (name, delete) opens beside it. */
@@ -2253,14 +2224,6 @@ function viewStyles() {
       padding: 0.4rem 0.75rem;
       border-bottom: 1px solid var(--theme-color-soft-bdr);
     }
-    /* On the line of the counters: the selects wrap inside it rather than pushing the toolbar away. */
-    .filters--inline {
-      flex: 0 1 auto;
-      min-width: 0;
-      margin-left: 0.75rem;
-      padding: 0;
-      border-bottom: none;
-    }
     .viewbar {
       position: absolute;
       bottom: 0.75rem;
@@ -2480,10 +2443,6 @@ function viewStyles() {
       background: var(--theme-color-2);
       border: 1px solid var(--theme-color-soft-bdr);
       border-radius: var(--theme-default-border-radius);
-    }
-    .mf-pin--ghost {
-      opacity: 0.7;
-      pointer-events: none;
     }
     .viewpoints {
       position: absolute;
@@ -2708,12 +2667,19 @@ function viewStyles() {
     .mf-label__lines {
       display: flex;
       flex-direction: column;
+      /* A bubble lower than its lines hides the last ones whole, never squashed nor cut in half (#371): a line that
+       * does not fit wraps into a next column, pushed out of sight by a column gap as wide as the bubble. */
+      flex-wrap: wrap;
       align-items: flex-start;
-      gap: 0.417em;
+      row-gap: 0.417em;
+      column-gap: 100%;
       width: 100%;
-      /* A bubble lower than its lines cuts the last ones (also in edit mode, where the bubble lets its handles out). */
       min-height: 0;
       overflow: hidden;
+    }
+    .mf-label__lines > * {
+      flex-shrink: 0;
+      max-width: 100%;
     }
     .mf-label__badge:not(:empty) {
       align-self: flex-start;

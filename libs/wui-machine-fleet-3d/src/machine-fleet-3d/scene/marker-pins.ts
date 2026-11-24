@@ -8,8 +8,8 @@
  *
  * The pins show only while the view's markers button is on (they are placement guides, #58), whatever edit mode
  * (winccoa-fra-msp-stma#379). Shown, a pin is dragged on the floor; a click without moving asks to edit it (rename /
- * delete, by the page). A new pin is placed by `startPlacement`: a ghost pin follows the pointer over the floor until
- * a click drops it.
+ * delete, by the page); a click on the floor away from any machine adds one there (`floorPointAt`, asked by the scene
+ * controller), as many as wanted while they are shown.
  */
 import { Plane, Raycaster, Vector2, Vector3, type Camera } from 'three';
 import type { PlacementMarker } from '../types.js';
@@ -43,9 +43,6 @@ export class MarkerPins {
   private readonly pointer = new Vector2();
   private readonly floor = new Plane(new Vector3(0, 1, 0), 0);
   private readonly hit = new Vector3();
-  /** The ghost pin of a placement in progress, and what to call with the floor point. */
-  private ghost: HTMLElement | null = null;
-  private placeDone: ((x: number, z: number) => void) | null = null;
 
   constructor(
     private readonly overlay: HTMLElement,
@@ -60,40 +57,17 @@ export class MarkerPins {
   /** Shown while the view's markers button is on (#379). */
   setVisible(on: boolean): void {
     this.visible = on;
-    if (!on) this.cancelPlacement();
     for (const e of this.entries) e.el.style.display = on ? '' : 'none';
   }
 
-  /** Ghost pin following the pointer over the floor; a click drops it and calls `done`. */
-  startPlacement(done: (x: number, z: number) => void): void {
-    this.cancelPlacement();
-    const ghost = pinElement('');
-    ghost.classList.add('mf-pin--ghost');
-    ghost.style.display = 'none';
-    this.overlay.appendChild(ghost);
-    this.ghost = ghost;
-    this.placeDone = done;
-    const canvas = this.host.canvas();
-    canvas.style.cursor = 'crosshair';
-    canvas.addEventListener('pointermove', this.onGhostMove);
-    canvas.addEventListener('pointerdown', this.onGhostDown, { capture: true });
-    window.addEventListener('keydown', this.onGhostKey);
+  get shown(): boolean {
+    return this.visible;
   }
 
-  cancelPlacement(): void {
-    if (!this.ghost) return;
-    this.ghost.remove();
-    this.ghost = null;
-    this.placeDone = null;
-    const canvas = this.host.canvas();
-    canvas.style.cursor = '';
-    canvas.removeEventListener('pointermove', this.onGhostMove);
-    canvas.removeEventListener('pointerdown', this.onGhostDown, { capture: true });
-    window.removeEventListener('keydown', this.onGhostKey);
-  }
-
-  get placing(): boolean {
-    return this.ghost !== null;
+  /** The floor point under a click, to the tenth of a metre, where a new marker goes (#379); none off the floor. */
+  floorPointAt(e: MouseEvent): { x: number; z: number } | null {
+    const p = this.floorAt(e);
+    return p ? { x: Math.round(p.x * 10) / 10, z: Math.round(p.z * 10) / 10 } : null;
   }
 
   /** Project every pin onto the screen (every frame). */
@@ -111,7 +85,6 @@ export class MarkerPins {
   }
 
   dispose(): void {
-    this.cancelPlacement();
     for (const e of this.entries) e.el.remove();
     this.entries = [];
   }
@@ -126,7 +99,7 @@ export class MarkerPins {
   }
 
   private startDrag(entry: PinEntry, down: PointerEvent): void {
-    if (down.button !== 0 || this.ghost) return;
+    if (down.button !== 0) return;
     down.stopPropagation();
     down.preventDefault();
     let moved = false;
@@ -149,33 +122,13 @@ export class MarkerPins {
   }
 
   /** The floor point (y = 0) under the pointer, if any. */
-  private floorAt(e: PointerEvent): Vector3 | null {
+  private floorAt(e: MouseEvent): Vector3 | null {
     const rect = this.host.canvas().getBoundingClientRect();
     this.pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(this.pointer, this.host.camera());
     return this.raycaster.ray.intersectPlane(this.floor, this.hit);
   }
 
-  private readonly onGhostMove = (e: PointerEvent): void => {
-    if (!this.ghost) return;
-    const rect = this.host.canvas().getBoundingClientRect();
-    this.ghost.style.display = '';
-    this.ghost.style.transform = `translate(${e.clientX - rect.left}px, ${e.clientY - rect.top}px)`;
-  };
-
-  private readonly onGhostDown = (e: PointerEvent): void => {
-    if (e.button !== 0) return;
-    e.stopImmediatePropagation();
-    e.preventDefault();
-    const p = this.floorAt(e);
-    const done = this.placeDone;
-    this.cancelPlacement();
-    if (p && done) done(Math.round(p.x * 10) / 10, Math.round(p.z * 10) / 10);
-  };
-
-  private readonly onGhostKey = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape') this.cancelPlacement();
-  };
 }
 
 /** A pin: the location icon, its tip on the anchor, and the marker's name beside it. */

@@ -75,6 +75,16 @@ export function siteGroupOf(def: MachineDef, groups: Readonly<Record<string, str
   return (wc && groups[wc]) || wc.replace(/^WC_/, '') || '';
 }
 
+/**
+ * Site machines chosen in « Add a symbol › From the site » (#381): those not in the atelier are added, those already
+ * there (same id: the site's machine) are updated in place like a workcenter's re-export — their bindings from the
+ * site, position, bubble and atelier settings kept — instead of a second copy under another id, without its history.
+ */
+export function sitePlan(defs: readonly MachineDef[], existing: readonly MachineDef[]): { add: MachineDef[]; replace: MachineDef[] } {
+  const here = new Set(existing.map((m) => m.id));
+  return { add: defs.filter((d) => !here.has(d.id)), replace: defs.filter((d) => here.has(d.id)) };
+}
+
 /** The state mappings the given symbols use, among those of the site's file. */
 export function mappingsOf(defs: readonly MachineDef[], mappings: readonly StateMapping[]): StateMapping[] {
   const used = new Set(defs.map((d) => d.stateMappingId).filter((id): id is string => !!id));

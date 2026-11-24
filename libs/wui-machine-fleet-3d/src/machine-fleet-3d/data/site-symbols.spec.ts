@@ -3,7 +3,7 @@
 
 /** « Add a symbol › From the site » reads the machines the site serves (winccoa-fra-msp-stma#381). */
 import { describe, expect, it } from 'vitest';
-import { loadSiteSymbols, mappingsOf, readSiteSymbols, siteGroupOf } from './site-symbols.js';
+import { loadSiteSymbols, mappingsOf, readSiteSymbols, siteGroupOf, sitePlan } from './site-symbols.js';
 import type { MachineDef } from '../types.js';
 
 const MAPPING = { id: 'mes-4', name: 'MES', inputs: [], rules: [], fallback: 'non_charge' };
@@ -56,6 +56,14 @@ describe('site symbols', () => {
       init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
     })) as unknown as typeof fetch;
     expect(await loadSiteSymbols('/x', {}, never, 20)).toEqual({ state: 'error', text: 'no answer in 0.02 s' });
+  });
+
+  it('updates in place a site machine already in the atelier, adds the others (#381)', () => {
+    const m1 = M1 as unknown as MachineDef;
+    const m2 = M2 as unknown as MachineDef;
+    const placed = { ...m1, name: 'Presse 1 (quai)', x: 12, z: -3 } as MachineDef;
+    expect(sitePlan([m1, m2], [placed])).toEqual({ add: [m2], replace: [m1] });
+    expect(sitePlan([m1], [])).toEqual({ add: [m1], replace: [] });
   });
 
   it('adds with a machine the state mappings it uses', () => {

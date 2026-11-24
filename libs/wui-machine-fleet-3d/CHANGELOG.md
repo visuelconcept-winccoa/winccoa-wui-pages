@@ -38,9 +38,6 @@ appended to `config/progs` by `wui build` when missing, to be registered by hand
   found again on coming back to the atelier, in the viewer's WinCC OA user settings (`fleet-ateliers`), on any
   workstation; "Default view" still goes to the default viewpoint or the opening view. Not in display-only mode
   (a host's embedded view).
-- **All the filters on the line of the counters** (winccoa-fra-msp-stma#368): the tag and state filters sit beside the faults / stops /
-  production counts in the atelier's top bar instead of a line of their own (still a line of their own when the
-  host hides the top bar).
 - **Fix: the mouse wheel zooms with the pointer on a bubble** (winccoa-fra-msp-stma#369), a dot or a pin: the wheel was only listened to on
   the canvas, under the layer of the bubbles.
 - **Fix: a symbol without any state value is no longer in production** (winccoa-fra-msp-stma#370): a symbol imported or created is not
@@ -48,8 +45,8 @@ appended to `config/progs` by `wui build` when missing, to be registered by hand
   is shown and counted as not connected (atelier view, overview chips and minimap) instead of keeping the state
   stored with it — production for a new one. The recorder already left such symbols out.
 - **Resizing a bubble changes its box, not its text** (winccoa-fra-msp-stma#371): the handle sets the bubble's width and height
-  (`bubbleSize`), the text keeps its size and a larger box shows the lines it cut off. A bubble resized before
-  keeps its width with its text at the normal size.
+  (`bubbleSize`), the text keeps its size; a smaller box hides its last lines whole (never squashed nor cut in half),
+  a larger one shows them again. A bubble resized before keeps its width with its text at the normal size.
 - **The leader line of a moved bubble meets the edge that faces the machine** (winccoa-fra-msp-stma#372, `leader-end.ts`) — the side for a
   bubble set beside it, the top for one below — instead of always the middle of the bottom edge, across the
   bubble.
@@ -57,13 +54,17 @@ appended to `config/progs` by `wui build` when missing, to be registered by hand
 - **"Bubbles on hover only" works with the machine labels hidden** (winccoa-fra-msp-stma#378, `label-visibility.ts`): labels hidden,
   the machine under the pointer still shows its dot and bubble; leaving hover mode hides it again.
 - **Placement markers have their own button, apart from edit mode** (winccoa-fra-msp-stma#379): the markers button shows them —
-  dragged to move, clicked to rename or delete, its "+" button to place a new one — or hides them; edit mode moves
-  the machines and their bubbles only.
+  a click on the floor away from the machines places one, as many as wanted, a marker is dragged to move it and
+  clicked to rename or delete it — or hides them; edit mode moves the machines and their bubbles only. Fix on the
+  way: with the labels hidden, a bubble rebuilt (an atelier saved) no longer stays empty in the top-left corner.
 - **« Add a symbol › From the site » lists the site's machines** (winccoa-fra-msp-stma#381, #380, `data/site-symbols.ts`): instead of the
   site catalogue (`MachineFleet3D_Catalog`, emptied since winccoa-fra-msp-stma#349), the machines the site serves at the path its module
   settings declare (`siteSymbolsUrl`), a `machine-fleet-symbols` file, listed by workcenter — one machine, or all those
-  of a workcenter — and added like a workcenter's export, with their state mappings. Without a declared path, the
-  other ateliers' symbols only, as before.
+  of a workcenter not yet in the atelier — and added like a workcenter's export, with their state mappings; the
+  other ateliers' symbols follow under their own heading. « Update the site machines of this atelier » updates in
+  place those already there, like a re-export (`sitePlan`: bindings from the site, position, bubble and atelier
+  settings kept) — the re-export of an atelier after the update to 2.2.1. Without a
+  declared path, the other ateliers' symbols only, as before.
 - **A workcenter's re-export replaces a symbol's data only** (winccoa-fra-msp-stma#373, `symbol-import.ts` `EXPORT_FIELDS`): importing
   a workcenter's (or the site's) export over symbols already in the atelier takes their bindings from it and keeps what
   was set in the atelier — name, representation, colour, free tags, dashboards, minimum stop, bubble, position. Any

@@ -100,6 +100,7 @@ export class SceneController {
   private cfg: BuildingConfig = { ...DEFAULT_BUILDING };
   private resourceResolver: ((ref: string) => Promise<string | undefined>) | null = null;
   private onMachineMove: ((id: string, x: number, z: number) => void) | null = null;
+  private onMarkerAdd: ((x: number, z: number) => void) | null = null;
 
   private raf = 0;
   private running = false;
@@ -186,13 +187,9 @@ export class SceneController {
     this.pins.setMarkers(markers);
   }
 
-  /** Place a new marker: a ghost pin follows the pointer until a click on the floor drops it. */
-  startMarkerPlacement(done: (x: number, z: number) => void): void {
-    this.pins.startPlacement(done);
-  }
-
-  cancelMarkerPlacement(): void {
-    this.pins.cancelPlacement();
+  /** Callback invoked when a click on the floor, markers shown and away from any machine, asks for a new marker (#379). */
+  setOnMarkerAdd(fn: (x: number, z: number) => void): void {
+    this.onMarkerAdd = fn;
   }
 
   /** A bubble moved or resized by hand in edit mode (`null`: back to automatic, #59). */
@@ -218,7 +215,7 @@ export class SceneController {
     }
   }
 
-  /** Callback invoked when a pin is clicked (not dragged) in edit mode, to rename / delete it. */
+  /** Callback invoked when a pin is clicked (not dragged), markers shown, to rename / delete it. */
   setOnMarkerPick(fn: (id: string, screenX: number, screenY: number) => void): void {
     this.pins.onPick = fn;
   }
@@ -366,7 +363,7 @@ export class SceneController {
 
   /**
    * The view's markers button (winccoa-fra-msp-stma#379): on, the placement markers show and can be dragged, renamed,
-   * deleted and placed; off, they are hidden. Independent of edit mode.
+   * deleted, and a click on the floor adds one; off, they are hidden. Independent of edit mode.
    */
   setMarkersVisible(on: boolean): void {
     this.pins.setVisible(on);
@@ -683,11 +680,17 @@ export class SceneController {
     }
   }
 
+  /** A click (not a drag): a machine is selected (not in edit mode); markers shown, the floor gets a new marker (#379). */
   private handleCanvasClick(e: MouseEvent): void {
-    if (this.editMode) return;
     if (Math.hypot(e.clientX - this.downX, e.clientY - this.downY) > DRAG_THRESHOLD_PX) return;
     const m = this.machineAt(e);
-    if (m) this.onSelect(m.id);
+    if (m) {
+      if (!this.editMode) this.onSelect(m.id);
+      return;
+    }
+    if (!this.pins.shown || !this.onMarkerAdd) return;
+    const p = this.pins.floorPointAt(e);
+    if (p) this.onMarkerAdd(p.x, p.z);
   }
 
   private setPointer(e: MouseEvent): void {

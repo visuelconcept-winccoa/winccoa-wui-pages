@@ -108,7 +108,7 @@ describe('symbol import — adding to an atelier', () => {
       stopCauseDp: '{wc}.Cause.Code', stopCauseTargets: { slots: [{ code: 'M1.Params.ARRET_1_CODE' }] },
       kpis: [{ key: 'ctx.contrat', label: 'Contrat', dp: '{wc}.Context.Contract' }] as never, workcenter: 'WC_A'
     });
-    const r = replacement(before, incoming, true) as Record<string, unknown>;
+    const r = replacement(before, incoming, true) as unknown as Record<string, unknown>;
     // Kept as set in the atelier.
     expect(r).toMatchObject({
       id: 'CN_01', name: 'Presse 1 (quai)', type: 'glb', glbUrl: 'dp:MachineFleet3D_Glb_a', color: '#123456', x: 12, z: -3,

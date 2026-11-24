@@ -40,25 +40,20 @@ export const MSG = {
   markers: {
     title: ml('Placement markers', "Repères d'implantation", 'Platzierungsmarken'),
     hint: ml(
-      'Placement markers of this view (axis, workstation, landmark…), shown with the markers button, placed with its + button and dragged while shown; a machine placed from one follows it',
-      "Repères d'implantation (axe, poste, borne…) · affichage : bouton repères · pose : son bouton + · déplacement : glisser le repère affiché · machine liée à un repère : le suit",
-      'Platzierungsmarken dieser Ansicht (Achse, Arbeitsplatz, Orientierungspunkt…), mit der Marken-Schaltfläche angezeigt, mit ihrer +-Schaltfläche gesetzt und angezeigt verschoben; eine davon platzierte Maschine folgt ihr'
+      'Placement markers of this view (axis, workstation, landmark…), shown with the markers button; shown, a click on the floor places one and a marker is dragged to move it; a machine placed from one follows it',
+      "Repères d'implantation (axe, poste, borne…) · affichage : bouton repères · pose : clic sur le sol, repères affichés · déplacement : glisser le repère affiché · machine liée à un repère : le suit",
+      'Platzierungsmarken dieser Ansicht (Achse, Arbeitsplatz, Orientierungspunkt…), mit der Marken-Schaltfläche angezeigt; angezeigt setzt ein Klick auf den Boden eine Marke, eine Marke wird zum Verschieben gezogen; eine davon platzierte Maschine folgt ihr'
     ),
     toggle: ml(
-      'Placement markers: show (drag to move, click to rename or delete) / hide',
-      "Repères d'implantation : afficher (glisser pour déplacer, cliquer pour renommer ou supprimer) / masquer",
-      'Platzierungsmarken: anzeigen (ziehen zum Verschieben, klicken zum Umbenennen oder Löschen) / ausblenden'
+      'Placement markers: show (click on the floor to add one, drag to move, click to rename or delete) / hide',
+      "Repères d'implantation : afficher (cliquer sur le sol pour en ajouter, glisser pour déplacer, cliquer pour renommer ou supprimer) / masquer",
+      'Platzierungsmarken: anzeigen (auf den Boden klicken zum Hinzufügen, ziehen zum Verschieben, klicken zum Umbenennen oder Löschen) / ausblenden'
     ),
     label: ml('Marker', 'Repère', 'Marke'),
     add: ml('Add a marker', 'Ajouter un repère', 'Marke hinzufügen'),
     none: ml('No marker yet.', 'Aucun repère.', 'Noch keine Marke.'),
     remove: ml('Delete this marker', 'Supprimer ce repère', 'Diese Marke löschen'),
     newLabel: ml('Marker', 'Repère', 'Marke'),
-    place: ml(
-      'Place a marker: click on the floor (Esc to cancel)',
-      'Poser un repère : cliquer sur le sol (Échap pour annuler)',
-      'Marke setzen: auf den Boden klicken (Esc zum Abbrechen)'
-    ),
     close: ml('Close', 'Fermer', 'Schließen'),
     placeFrom: ml('Placed from marker', 'Placée à partir du repère', 'Platziert von Marke'),
     noMarker: ml('— free position —', '— position libre —', '— freie Position —'),
@@ -80,6 +75,7 @@ export const MSG = {
     site: ml('Site', 'Site', 'Standort'),
     siteLoading: ml('Reading the site’s machines…', 'Lecture des machines du site…', 'Maschinen des Standorts werden gelesen…'),
     siteNoGroup: ml('Site — no workcenter', 'Site — sans workcenter', 'Standort — ohne Arbeitsplatz'),
+    othersHead: ml('In the other ateliers', 'Dans les autres ateliers', 'In den anderen Werkstätten'),
     pasteLabel: ml('JSON of one or several symbols', 'JSON d’un ou de plusieurs symboles', 'JSON eines oder mehrerer Symbole'),
     pastePlaceholder: ml(
       'Paste here the JSON exported by a symbol or a workcenter, or choose a file.',
@@ -1082,6 +1078,18 @@ export function confirmDeleteAtelierMsg(name: string): string {
 /** The site's machines could not be read (winccoa-fra-msp-stma#381). */
 export function siteErrorMsg(text: string): string {
   return localize(ml(`Site machines unavailable: ${text}.`, `Machines du site indisponibles : ${text}.`, `Maschinen des Standorts nicht verfügbar: ${text}.`));
+}
+
+/**
+ * Button updating from the site every symbol of the atelier that is a site machine — bindings from the site, position,
+ * bubble and atelier settings kept: the re-export of an atelier after the update to 2.2.1 (winccoa-fra-msp-stma#373).
+ */
+export function siteUpdateAllMsg(n: number): string {
+  return localize(ml(
+    `Update the ${n} site machine${n > 1 ? 's' : ''} of this atelier`,
+    `Mettre à jour ${n > 1 ? `les ${n} machines` : 'la machine'} du site de cet atelier`,
+    `${n} Standortmaschine${n > 1 ? 'n' : ''} dieser Werkstatt aktualisieren`
+  ));
 }
 
 /** Button adding every machine of a workcenter not yet in the atelier (winccoa-fra-msp-stma#381). */
