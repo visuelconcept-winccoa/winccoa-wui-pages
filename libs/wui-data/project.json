@@ -1,0 +1,12 @@
+{
+  "name": "wui-data",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/wui-data/src",
+  "projectType": "library",
+  "tags": ["package"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  }
+}

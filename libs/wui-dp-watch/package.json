@@ -1,8 +1,8 @@
 {
   "name": "@visuelconcept-winccoa/wui-dp-watch",
   "type": "module",
-  "version": "0.1.2",
-  "description": "DP Watch — standalone WinCC OA WebUI page and embeddable element: live values of every datapoint element matching a pattern (dpNames + dpConnect). Read-only; ships its own mock fixtures for `wui dev`.",
+  "version": "0.2.0",
+  "description": "DP Watch — standalone WinCC OA WebUI page and embeddable element: live values of every tag matching a pattern. Its data comes through wui-data: WinCC OA datapoint elements, or the IE Databus's tags in an Industrial Edge app (proof of concept). Read-only; ships its own mock fixtures for `wui dev`.",
   "author": {
     "name": "Visuel Concept"
   },
@@ -15,13 +15,13 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@visuelconcept-winccoa/wui-kit": "^0.1.0"
+    "@visuelconcept-winccoa/wui-kit": "^0.1.0",
+    "@visuelconcept-winccoa/wui-data": "^0.1.0"
   },
   "peerDependencies": {
     "lit": "*",
     "rxjs": "*",
-    "tsyringe": "*",
-    "@etm-professional-control/oa-rx-js-api": "*"
+    "tsyringe": "*"
   },
   "exports": {
     "./*": {
@@ -84,9 +84,6 @@
       "optional": true
     },
     "tsyringe": {
-      "optional": true
-    },
-    "@etm-professional-control/oa-rx-js-api": {
       "optional": true
     }
   },

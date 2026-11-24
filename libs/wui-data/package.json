@@ -1,0 +1,52 @@
+{
+  "name": "@visuelconcept-winccoa/wui-data",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "PROOF OF CONCEPT — a data source a page reads tags through without knowing where they come from: WinCC OA (OaRxJsApi, the default) or a socket the host serves (an Industrial Edge app bridging the Databus). The host picks it, never the page.",
+  "author": {
+    "name": "Visuel Concept"
+  },
+  "keywords": [
+    "OpenArchitecture",
+    "WinCCOA",
+    "IndustrialEdge",
+    "dashboard"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "rxjs": "*",
+    "tsyringe": "*",
+    "@etm-professional-control/oa-rx-js-api": "*"
+  },
+  "exports": {
+    "./*": {
+      "types": "./types/*",
+      "import": "./*"
+    }
+  },
+  "peerDependenciesMeta": {
+    "rxjs": {
+      "optional": true
+    },
+    "tsyringe": {
+      "optional": true
+    },
+    "@etm-professional-control/oa-rx-js-api": {
+      "optional": true
+    }
+  },
+  "files": [
+    "src",
+    "!**/*.spec.ts",
+    "!**/*.test.ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/visuelconcept-winccoa/winccoa-wui-pages.git",
+    "directory": "libs/wui-data"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  }
+}

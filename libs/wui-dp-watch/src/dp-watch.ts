@@ -4,19 +4,22 @@
 /**
  * DP Watch — standalone page (WinCC OA WebUI Runtime) AND embeddable element.
  *
- * Lists every datapoint element matching `pattern` (dpNames) with its live value
- * (one dpConnect over the whole list). Read-only: nothing here is worth an
- * Application-Security role. Another page can embed it:
+ * Lists every tag matching `pattern` with its live value (one watch over the
+ * whole list). Read-only: nothing here is worth an Application-Security role.
+ *
+ * Its data comes through wui-data (proof of concept): WinCC OA datapoint
+ * elements in the WebUI shell and `wui dev`, the IE Databus's tags in an
+ * Industrial Edge app — the host picks, the page does not know. Another page can
+ * embed it:
  *   <wui-dp-watch pattern="Line1_*" heading="Ligne 1"></wui-dp-watch>
  *
  * Its `mock/fixtures.json` feeds `wui dev` (wui-toolkit) with a few ExampleDP_*
  * elements, so the page runs without WinCC OA out of the box.
  */
-import { OaRxJsApi, type DpConnectData } from '@etm-professional-control/oa-rx-js-api';
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { Subscription, of, switchMap } from 'rxjs';
-import { container } from 'tsyringe';
+import { Subscription, map, switchMap } from 'rxjs';
+import { dataSource } from '@visuelconcept-winccoa/wui-data/data-source.js';
 import { localize, ml } from '@visuelconcept-winccoa/wui-kit/i18n.js';
 
 const MSG = {
@@ -72,7 +75,7 @@ export class WuiDpWatch extends LitElement {
 
   @state() private rows: { dp: string; value: unknown }[] = [];
 
-  private readonly api = container.resolve(OaRxJsApi);
+  private readonly data = dataSource();
   private subscription = new Subscription();
 
   override disconnectedCallback(): void {
@@ -113,15 +116,11 @@ export class WuiDpWatch extends LitElement {
   private watch(): void {
     this.subscription.unsubscribe();
     this.rows = [];
-    this.subscription = this.api
-      .dpNames(this.pattern, '')
-      .pipe(
-        switchMap((names) =>
-          names.length > 0 ? this.api.dpConnect(names, true) : of<DpConnectData>({ dp: [], value: [] })
-        )
-      )
-      .subscribe((data: DpConnectData) => {
-        this.rows = data.dp.map((dp, index) => ({ dp, value: data.value[index] }));
+    this.subscription = this.data
+      .names(this.pattern)
+      .pipe(switchMap((names) => this.data.watch(names).pipe(map((samples) => names.map((dp, index) => ({ dp, value: samples[index]?.value }))))))
+      .subscribe((rows) => {
+        this.rows = rows;
       });
   }
 }
