@@ -3,7 +3,7 @@
 
 # Changelog — @visuelconcept-winccoa/wui-fleet-kpi-analysis
 
-## 0.4.0 — unreleased
+## 0.4.0 — 2026-11-25
 
 - **The kpiCalc manager moves to Machine Fleet** (winccoa-fra-msp-stma#373): one manager records the states, sends the stop
   causes and computes the KPIs — Machine Fleet's `kpiCalc` (wui-machine-fleet-3d ≥ 0.7.0, formerly also its

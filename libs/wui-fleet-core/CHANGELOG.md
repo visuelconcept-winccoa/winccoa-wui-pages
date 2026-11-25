@@ -3,7 +3,7 @@
 
 # Changelog — @visuelconcept-winccoa/wui-fleet-core
 
-## 0.3.1 — unreleased
+## 0.3.1 — 2026-11-25
 
 - **A symbol without a state value is not connected, never in production** (winccoa-fra-msp-stma#370): `NO_DATA_STATE` (key `disconnected`,
   the one of the "not connected" colour), counted and shown as not connected by `isDisconnected` and

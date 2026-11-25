@@ -3,7 +3,7 @@
 
 # Changelog — @visuelconcept-winccoa/wui-machine-fleet-3d
 
-## 0.7.0 — unreleased
+## 0.7.0 — 2026-11-25
 
 Requires wui-fleet-core `^0.3.1`. **One manager, `kpiCalc`**: stop `fleetState` and remove its line in the WinCC OA
 console (`wui build` leaves it, with `javascript/fleetState/`); `kpiCalc` (`node kpiCalc/index.js`, always) is
