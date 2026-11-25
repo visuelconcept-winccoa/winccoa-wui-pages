@@ -33,14 +33,17 @@ import '@visuelconcept-winccoa/wui-fleet-core/fleet-settings-service.js';
 import { settingsCache } from '@visuelconcept-winccoa/wui-fleet-core/settings-cache.js';
 import {
   DEFAULT_STATE_MAPPINGS,
+  DISCONNECTED_LABEL,
+  NO_DATA_STATE,
   UNKNOWN_STATE_COLOR,
   atelierStates,
+  stateColor,
   type Atelier,
   type MachineDef,
   type MachineState,
   type StopCauseCatalog
 } from '../types.js';
-import { liveTargets, machineLiveState } from '@visuelconcept-winccoa/wui-fleet-core/state-eval.js';
+import { liveTargets, machineLiveState, refTargets, resolveMachine } from '@visuelconcept-winccoa/wui-fleet-core/state-eval.js';
 import { causesFor } from '@visuelconcept-winccoa/wui-fleet-core/stop-catalogs.js';
 import './mf-ai-prompt.js';
 import './mf-atelier-create-dialog.js';
@@ -85,6 +88,8 @@ export class MfAtelierOverview extends LitElement {
   @state() private catalogs: StopCauseCatalog[] = [];
   /** The state datapoints followed (sorted, joined): a new list of ateliers re-subscribes only when it changes. */
   private liveKey = '';
+  /** A WinCC OA runtime answers (null: not asked yet); without one (demo host), the stored states stay. */
+  private runtimeFound: boolean | null = null;
   private liveSub: Subscription | null = null;
 
   override connectedCallback(): void {
@@ -105,7 +110,8 @@ export class MfAtelierOverview extends LitElement {
   }
 
   protected override updated(changed: PropertyValues): void {
-    if (changed.has('ateliers')) this.watchStates();
+    // A reference that names another datapoint (a machine reassigned, #376) changes what is followed.
+    if (changed.has('ateliers') || changed.has('liveStates')) this.watchStates();
     if (changed.has('store') && this.store) void this.store.listCatalogs().then((c) => (this.catalogs = c)).catch(() => undefined);
   }
 
@@ -115,7 +121,10 @@ export class MfAtelierOverview extends LitElement {
    * state stored with each machine.
    */
   private watchStates(): void {
-    const dps = [...new Set(this.ateliers.flatMap((a) => a.machines.flatMap((m) => liveTargets(m).map((t) => t.dpe))))].sort();
+    // Each machine's references too (#376), and its bindings as they name them now.
+    const read = (dpe: string): unknown => this.liveStates.get(normDp(dpe));
+    const followed = (m: MachineDef): string[] => [...refTargets(m), ...liveTargets(resolveMachine(m, read)).map((t) => t.dpe)];
+    const dps = [...new Set(this.ateliers.flatMap((a) => a.machines.flatMap(followed)))].sort();
     const key = dps.join('|');
     if (key === this.liveKey) return;
     this.liveKey = key;
@@ -162,11 +171,27 @@ export class MfAtelierOverview extends LitElement {
     }
   }
 
-  /** A machine's state now: its inputs read through its mapping (as the atelier view), else the state stored with it. */
+  /**
+   * A machine's state now: its inputs read through its mapping (as the atelier view); without any value read, not
+   * connected ({@link NO_DATA_STATE}) — the state stored with it only without a WinCC OA runtime (demo host).
+   */
   private stateOf(a: Atelier, m: MachineDef): MachineState {
     const mapping = a.mappings.find((mp) => mp.id === m.stateMappingId) ?? a.mappings[0] ?? DEFAULT_STATE_MAPPINGS[0];
     const live = machineLiveState(m, mapping, (dpe) => this.liveStates.get(normDp(dpe)), causesFor(this.catalogs, m.stopCatalogId));
-    return live.state ?? m.state;
+    return live.state ?? (this.hasRuntime() ? NO_DATA_STATE : m.state);
+  }
+
+  /** Whether a WinCC OA runtime answers, asked once — also when no machine binds any datapoint. */
+  private hasRuntime(): boolean {
+    if (this.runtimeFound === null) {
+      try {
+        container.resolve<OaRxJsApi>(OaRxJsApi);
+        this.runtimeFound = true;
+      } catch {
+        this.runtimeFound = false;
+      }
+    }
+    return this.runtimeFound;
   }
 
   /** Follow the grants of each settings page: listed when one of its roles is granted, or none asked. */
@@ -320,11 +345,17 @@ export class MfAtelierOverview extends LitElement {
       const s = this.stateOf(a, m);
       counts.set(s, (counts.get(s) ?? 0) + 1);
     }
-    // One chip per state of the atelier's mappings that has machines, in their display order.
+    // One chip per state of the atelier's mappings that has machines, in their display order, then the machines
+    // not connected (no state value).
+    const offline = counts.get(NO_DATA_STATE) ?? 0;
+    const offlineColor = stateColor(a.mappings[0], 'disconnected');
     return html`
-      ${atelierStates(a.mappings).filter((s) => counts.get(s.key)).map(
+      ${atelierStates(a.mappings).filter((s) => s.key !== NO_DATA_STATE && counts.get(s.key)).map(
         (s) => html`<span class="chip" style="--c:${s.color}" title=${s.label} aria-label=${`${s.label} : ${counts.get(s.key)}`}>${counts.get(s.key)}</span>`
       )}
+      ${offline
+        ? html`<span class="chip" style="--c:${offlineColor}" title=${DISCONNECTED_LABEL} aria-label=${`${DISCONNECTED_LABEL} : ${offline}`}>${offline}</span>`
+        : ''}
     `;
   }
 
@@ -336,6 +367,7 @@ export class MfAtelierOverview extends LitElement {
     // identical across ateliers, without changing the framing.
     const r = (MINIMAP_DOT_RADIUS_PX * width) / MINIMAP_HEIGHT_PX;
     const colors = new Map(atelierStates(a.mappings).map((s) => [s.key, s.color]));
+    if (!colors.has(NO_DATA_STATE)) colors.set(NO_DATA_STATE, stateColor(a.mappings[0], 'disconnected'));
     return html`
       <svg class="minimap" viewBox="0 0 ${length} ${width}" preserveAspectRatio="xMidYMid meet">
         <rect x="0" y="0" width=${length} height=${width} class="minimap-bg"></rect>

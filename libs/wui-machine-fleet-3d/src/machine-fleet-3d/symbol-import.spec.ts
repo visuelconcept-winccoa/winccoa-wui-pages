@@ -6,8 +6,8 @@
  * (#337), checked before anything is added; conflicts by id, replacement keeping the position.
  */
 import { describe, expect, it } from 'vitest';
-import type { MachineDef, StateMapping } from '@visuelconcept-winccoa/wui-fleet-core/types.js';
-import { IMPORT_FORMAT, applyImport, conflictOf, mergeMappings, parseSymbolImport, replacement } from './symbol-import.js';
+import { NO_DATA_STATE, type MachineDef, type StateMapping } from '@visuelconcept-winccoa/wui-fleet-core/types.js';
+import { EXPORT_FIELDS, IMPORT_FORMAT, applyImport, conflictOf, isExportSource, mergeMappings, parseSymbolImport, replacement } from './symbol-import.js';
 
 const MAPPING: StateMapping = { id: 'wc-categorie', name: 'États du MES', rules: [{ state: 'ok', min: 0, max: 0 }], fallback: 'stop' };
 const sym = (over: Partial<MachineDef> = {}): MachineDef => ({ id: 'CN_01', name: 'CN 01', type: 'cabinet', x: 4, z: 7, state: 'ok', ...over });
@@ -28,8 +28,8 @@ describe('symbol import — reading', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.symbols.map((s) => [s.id, s.name, s.type, s.x, s.z, s.toPlace, s.state])).toEqual([
-      ['', 'A', 'cabinet', 0, 0, true, 'ok'],
-      ['B', 'B', 'glb', 0, 0, true, 'ok']
+      ['', 'A', 'cabinet', 0, 0, true, NO_DATA_STATE],
+      ['B', 'B', 'glb', 0, 0, true, NO_DATA_STATE]
     ]);
   });
 
@@ -82,6 +82,63 @@ describe('symbol import — adding to an atelier', () => {
     expect(r.type).toBe('cabinet');
     expect(r.glbUrl).toBeUndefined();
     expect(replacement(sym({ toPlace: true }), sym({ id: 'other' })).id).toBe('CN_01');
+  });
+
+  it('a replacement keeps the bubble size set in the atelier (#371)', () => {
+    const r = replacement(sym({ bubbleSize: [300, 160], bubbleScale: 1.4 }), sym({ name: 'Autre' }));
+    expect(r.bubbleSize).toEqual([300, 160]);
+    expect(r.bubbleScale).toBe(1.4);
+  });
+
+  it('a workcenter re-export replaces only the data of a symbol, the atelier keeps the rest (#373 migration)', () => {
+    // A symbol exported by the 2.2.0 supervision, then set up in the atelier.
+    const before = sym({
+      name: 'Presse 1 (quai)', type: 'glb', glbUrl: 'dp:MachineFleet3D_Glb_a', color: '#123456', x: 12, z: -3,
+      bubbleOffset: [5, -40], bubbleSize: [300, 160], cardTags: ['quai'], minStopSec: 120, dashboardId: 7,
+      dashboardMode: 'custom', stateDp: 'M1.Base.State.Status', stateMappingId: 'mes-4',
+      inputDps: { comm: 'M1.Base.Comm.Connected', of: 'WC_A.Context.State', hs: 'M1.Base.State.OutOfService' },
+      stopCauseDp: 'WC_A.Cause.Code', kpis: [{ key: 'ctx.contrat', label: 'Contrat', dp: 'SUP_WC_A.Contract' }] as never,
+      workOrderDp: 'WC_A.Context.OF', workcenter: 'WC_A'
+    } as never);
+    // The same machine exported by the 2.2.1 route: references, cause slots, no supervision copy any more.
+    const incoming = sym({
+      name: 'Presse 1', type: 'cabinet', x: 0, z: 0, toPlace: true, stateDp: 'M1.Base.State.Status', stateMappingId: 'mes-4',
+      refDps: { wc: 'M1.Base.Assignment.Workcenter' },
+      inputDps: { comm: 'M1.Base.Comm.Connected', wc: 'M1.Base.Assignment.Workcenter', of: '{wc}.Context.State', hs: 'M1.Base.State.OutOfService' },
+      stopCauseDp: '{wc}.Cause.Code', stopCauseTargets: { slots: [{ code: 'M1.Params.ARRET_1_CODE' }] },
+      kpis: [{ key: 'ctx.contrat', label: 'Contrat', dp: '{wc}.Context.Contract' }] as never, workcenter: 'WC_A'
+    });
+    const r = replacement(before, incoming, true) as unknown as Record<string, unknown>;
+    // Kept as set in the atelier.
+    expect(r).toMatchObject({
+      id: 'CN_01', name: 'Presse 1 (quai)', type: 'glb', glbUrl: 'dp:MachineFleet3D_Glb_a', color: '#123456', x: 12, z: -3,
+      bubbleOffset: [5, -40], bubbleSize: [300, 160], cardTags: ['quai'], minStopSec: 120, dashboardId: 7, dashboardMode: 'custom'
+    });
+    expect(r['toPlace']).toBeUndefined();
+    // Data of the export, the old one gone.
+    expect(r['refDps']).toEqual({ wc: 'M1.Base.Assignment.Workcenter' });
+    expect(r['inputDps']).toEqual(incoming.inputDps);
+    expect(r['stopCauseDp']).toBe('{wc}.Cause.Code');
+    expect(r['stopCauseTargets']).toEqual({ slots: [{ code: 'M1.Params.ARRET_1_CODE' }] });
+    expect(r['kpis']).toEqual([{ key: 'ctx.contrat', label: 'Contrat', dp: '{wc}.Context.Contract' }]);
+    expect(r['workOrderDp']).toBeUndefined();
+    expect(JSON.stringify(r)).not.toContain('SUP_');
+  });
+
+  it('only a workcenter or site export replaces data alone; every export field is a symbol field', () => {
+    expect(isExportSource({ kind: 'workcenter', code: 'A' })).toBe(true);
+    expect(isExportSource({ kind: 'site' })).toBe(true);
+    expect(isExportSource({ kind: 'symbol' })).toBe(false);
+    expect(isExportSource(null)).toBe(false);
+    expect(EXPORT_FIELDS).not.toContain('x');
+    expect(EXPORT_FIELDS).not.toContain('name');
+    expect(EXPORT_FIELDS).not.toContain('bubbleSize');
+  });
+
+  it('an import plan from an export replaces data alone', () => {
+    const atelier = [sym({ x: 9, z: 9, cardTags: ['quai'], stateDp: 'OLD.State' })];
+    const r = applyImport(atelier, [], { add: [], replace: [sym({ x: 0, z: 0, stateDp: 'NEW.State' })], mappings: [], fromExport: true }, 1);
+    expect(r.machines[0]).toMatchObject({ x: 9, z: 9, cardTags: ['quai'], stateDp: 'NEW.State' });
   });
 
   it('state mappings of the file added when the atelier has none of their id', () => {

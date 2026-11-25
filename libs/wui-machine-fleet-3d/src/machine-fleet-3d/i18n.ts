@@ -40,20 +40,20 @@ export const MSG = {
   markers: {
     title: ml('Placement markers', "Repères d'implantation", 'Platzierungsmarken'),
     hint: ml(
-      'Placement markers of this view (axis, workstation, landmark…), placed with the pin button and moved in edit mode; a machine placed from one follows it',
-      "Repères d'implantation (axe, poste, borne…) · pose : bouton repère · déplacement : mode édition · machine liée à un repère : le suit",
-      'Platzierungsmarken dieser Ansicht (Achse, Arbeitsplatz, Orientierungspunkt…), mit der Marken-Schaltfläche gesetzt und im Bearbeitungsmodus verschoben; eine davon platzierte Maschine folgt ihr'
+      'Placement markers of this view (axis, workstation, landmark…), shown with the markers button; shown, a click on the floor places one and a marker is dragged to move it; a machine placed from one follows it',
+      "Repères d'implantation (axe, poste, borne…) · affichage : bouton repères · pose : clic sur le sol, repères affichés · déplacement : glisser le repère affiché · machine liée à un repère : le suit",
+      'Platzierungsmarken dieser Ansicht (Achse, Arbeitsplatz, Orientierungspunkt…), mit der Marken-Schaltfläche angezeigt; angezeigt setzt ein Klick auf den Boden eine Marke, eine Marke wird zum Verschieben gezogen; eine davon platzierte Maschine folgt ihr'
+    ),
+    toggle: ml(
+      'Placement markers: show (click on the floor to add one, drag to move, click to rename or delete) / hide',
+      "Repères d'implantation : afficher (cliquer sur le sol pour en ajouter, glisser pour déplacer, cliquer pour renommer ou supprimer) / masquer",
+      'Platzierungsmarken: anzeigen (auf den Boden klicken zum Hinzufügen, ziehen zum Verschieben, klicken zum Umbenennen oder Löschen) / ausblenden'
     ),
     label: ml('Marker', 'Repère', 'Marke'),
     add: ml('Add a marker', 'Ajouter un repère', 'Marke hinzufügen'),
     none: ml('No marker yet.', 'Aucun repère.', 'Noch keine Marke.'),
     remove: ml('Delete this marker', 'Supprimer ce repère', 'Diese Marke löschen'),
     newLabel: ml('Marker', 'Repère', 'Marke'),
-    place: ml(
-      'Place a marker: click on the floor (Esc to cancel)',
-      'Poser un repère : cliquer sur le sol (Échap pour annuler)',
-      'Marke setzen: auf den Boden klicken (Esc zum Abbrechen)'
-    ),
     close: ml('Close', 'Fermer', 'Schließen'),
     placeFrom: ml('Placed from marker', 'Placée à partir du repère', 'Platziert von Marke'),
     noMarker: ml('— free position —', '— position libre —', '— freie Position —'),
@@ -73,6 +73,9 @@ export const MSG = {
       'Weder der Standort noch eine andere Werkstatt bietet ein Symbol an.'
     ),
     site: ml('Site', 'Site', 'Standort'),
+    siteLoading: ml('Reading the site’s machines…', 'Lecture des machines du site…', 'Maschinen des Standorts werden gelesen…'),
+    siteNoGroup: ml('Site — no workcenter', 'Site — sans workcenter', 'Standort — ohne Arbeitsplatz'),
+    othersHead: ml('In the other ateliers', 'Dans les autres ateliers', 'In den anderen Werkstätten'),
     pasteLabel: ml('JSON of one or several symbols', 'JSON d’un ou de plusieurs symboles', 'JSON eines oder mehrerer Symbole'),
     pastePlaceholder: ml(
       'Paste here the JSON exported by a symbol or a workcenter, or choose a file.',
@@ -329,6 +332,21 @@ export const MSG = {
     ),
     ganttTitle: ml('Machine state Gantt', 'Gantt état machine', 'Gantt-Diagramm Maschinenzustand'),
     exportGanttCsv: ml('Export the Gantt (CSV)', 'Exporter le Gantt (CSV)', 'Gantt exportieren (CSV)'),
+    historyNoInput: ml(
+      'This machine’s state is not recorded: no input of its state mapping is bound (symbol configuration, « Data »). Without a state there is no Gantt and no stop — a stop cause alone makes no stop.',
+      'L’état de cette machine n’est pas enregistré : aucune entrée de son mapping d’états n’est liée (configuration du symbole, « Données »). Sans état, ni Gantt ni arrêts : une cause seule ne fait pas un arrêt.',
+      'Der Zustand dieser Maschine wird nicht aufgezeichnet: kein Eingang ihrer Zustandszuordnung ist verknüpft (Symbolkonfiguration, « Daten »). Ohne Zustand weder Gantt noch Stillstände — ein Grund allein ist kein Stillstand.'
+    ),
+    historyNotRecorded: ml(
+      'This machine’s state is not recorded yet: Machine Fleet’s manager (kpiCalc) does not follow it — stopped, not declared in the project, or the symbol was added less than a minute ago.',
+      'L’état de cette machine n’est pas encore enregistré : le manager de Machine Fleet (kpiCalc) ne la suit pas — arrêté, absent du projet, ou symbole ajouté il y a moins d’une minute.',
+      'Der Zustand dieser Maschine wird noch nicht aufgezeichnet: der Manager von Machine Fleet (kpiCalc) verfolgt sie nicht — gestoppt, nicht im Projekt oder Symbol vor weniger als einer Minute hinzugefügt.'
+    ),
+    historyNotArchived: ml(
+      'This machine’s state is recorded but not archived: Machine Fleet’s manager (kpiCalc) found no archive group — see its log.',
+      'L’état de cette machine est enregistré mais pas archivé : le manager de Machine Fleet (kpiCalc) n’a trouvé aucun groupe d’archive — voir son journal.',
+      'Der Zustand dieser Maschine wird aufgezeichnet, aber nicht archiviert: der Manager von Machine Fleet (kpiCalc) hat keine Archivgruppe gefunden — siehe sein Protokoll.'
+    ),
     noHistory: ml(
       "No history data over the period.",
       "Aucune donnée d'historique sur la période.",
@@ -391,9 +409,9 @@ export const MSG = {
     declareHeading: ml("Declare the machine’s state", 'Déclarer l’état de la machine', 'Maschinenzustand melden'),
     declareConfirm: ml('Declare', 'Déclarer', 'Melden'),
     declareFailed: ml(
-      'The declared state could not be saved: the role "Declare a machine’s state" is needed, and the state manager (fleetState) must have created the machine’s datapoint.',
-      'L’état déclaré n’a pas pu être enregistré : il faut le rôle « Déclarer l’état d’une machine », et que le manager d’état (fleetState) ait créé le datapoint de la machine.',
-      'Der gemeldete Zustand konnte nicht gespeichert werden: Die Rolle „Maschinenzustand melden“ ist nötig, und der Zustandsmanager (fleetState) muss den Datenpunkt der Maschine angelegt haben.'
+      'The declared state could not be saved: the role "Declare a machine’s state" is needed, and Machine Fleet’s manager (kpiCalc) must have created the machine’s datapoint.',
+      'L’état déclaré n’a pas pu être enregistré : il faut le rôle « Déclarer l’état d’une machine », et que le manager de Machine Fleet (kpiCalc) ait créé le datapoint de la machine.',
+      'Der gemeldete Zustand konnte nicht gespeichert werden: Die Rolle „Maschinenzustand melden“ ist nötig, und der Manager von Machine Fleet (kpiCalc) muss den Datenpunkt der Maschine angelegt haben.'
     )
   },
   machineDialog: {
@@ -1055,6 +1073,28 @@ export function confirmDeleteAtelierMsg(name: string): string {
       `Werkstatt « ${name} » und ihren Datapoint endgültig löschen?`
     )
   );
+}
+
+/** The site's machines could not be read (winccoa-fra-msp-stma#381). */
+export function siteErrorMsg(text: string): string {
+  return localize(ml(`Site machines unavailable: ${text}.`, `Machines du site indisponibles : ${text}.`, `Maschinen des Standorts nicht verfügbar: ${text}.`));
+}
+
+/**
+ * Button updating from the site every symbol of the atelier that is a site machine — bindings from the site, position,
+ * bubble and atelier settings kept: the re-export of an atelier after the update to 2.2.1 (winccoa-fra-msp-stma#373).
+ */
+export function siteUpdateAllMsg(n: number): string {
+  return localize(ml(
+    `Update the ${n} site machine${n > 1 ? 's' : ''} of this atelier`,
+    `Mettre à jour ${n > 1 ? `les ${n} machines` : 'la machine'} du site de cet atelier`,
+    `${n} Standortmaschine${n > 1 ? 'n' : ''} dieser Werkstatt aktualisieren`
+  ));
+}
+
+/** Button adding every machine of a workcenter not yet in the atelier (winccoa-fra-msp-stma#381). */
+export function siteAddAllMsg(n: number): string {
+  return localize(ml(`Add all (${n})`, `Tout ajouter (${n})`, `Alle hinzufügen (${n})`));
 }
 
 /** What an import text holds, before it is added (winccoa-fra-msp-stma#338). */

@@ -50,7 +50,7 @@ import {
 } from '../types.js';
 import { BuildingBuilder } from './building-builder.js';
 import { disposeObject } from './dispose.js';
-import { LabelManager } from './label-manager.js';
+import { LabelManager, type BubblePatch } from './label-manager.js';
 import { MarkerPins } from './marker-pins.js';
 import { MachineMaterials } from './machine-materials.js';
 import { BILLBOARD_CHILD, applyBillboardTexture, buildMachine } from './machine-factory.js';
@@ -100,6 +100,7 @@ export class SceneController {
   private cfg: BuildingConfig = { ...DEFAULT_BUILDING };
   private resourceResolver: ((ref: string) => Promise<string | undefined>) | null = null;
   private onMachineMove: ((id: string, x: number, z: number) => void) | null = null;
+  private onMarkerAdd: ((x: number, z: number) => void) | null = null;
 
   private raf = 0;
   private running = false;
@@ -145,6 +146,8 @@ export class SceneController {
     this.gltfLoader.setMeshoptDecoder(MeshoptDecoder);
 
     this.orbit = new OrbitController(this.camera, canvas);
+    // The wheel over a bubble, a dot or a pin zooms too.
+    this.orbit.addWheelSurface(overlay);
     this.labels = new LabelManager(overlay, onSelect);
     this.pins = new MarkerPins(overlay, { camera: () => this.activeCamera(), canvas: () => this.canvas });
 
@@ -184,17 +187,13 @@ export class SceneController {
     this.pins.setMarkers(markers);
   }
 
-  /** Place a new marker: a ghost pin follows the pointer until a click on the floor drops it. */
-  startMarkerPlacement(done: (x: number, z: number) => void): void {
-    this.pins.startPlacement(done);
-  }
-
-  cancelMarkerPlacement(): void {
-    this.pins.cancelPlacement();
+  /** Callback invoked when a click on the floor, markers shown and away from any machine, asks for a new marker (#379). */
+  setOnMarkerAdd(fn: (x: number, z: number) => void): void {
+    this.onMarkerAdd = fn;
   }
 
   /** A bubble moved or resized by hand in edit mode (`null`: back to automatic, #59). */
-  setOnBubbleEdit(fn: (id: string, patch: { bubbleScale?: number | null; bubbleOffset?: [number, number] | null }) => void): void {
+  setOnBubbleEdit(fn: (id: string, patch: BubblePatch) => void): void {
     this.labels.onBubbleEdit = fn;
   }
 
@@ -216,7 +215,7 @@ export class SceneController {
     }
   }
 
-  /** Callback invoked when a pin is clicked (not dragged) in edit mode, to rename / delete it. */
+  /** Callback invoked when a pin is clicked (not dragged), markers shown, to rename / delete it. */
   setOnMarkerPick(fn: (id: string, screenX: number, screenY: number) => void): void {
     this.pins.onPick = fn;
   }
@@ -355,12 +354,19 @@ export class SceneController {
     this.resourceResolver = fn;
   }
 
-  /** Toggle edit mode: drag machines on the floor plane instead of orbiting. */
+  /** Toggle edit mode: drag machines on the floor plane instead of orbiting. The markers are not part of it (#379). */
   setEditMode(on: boolean): void {
     this.editMode = on;
     this.canvas.style.cursor = on ? 'move' : '';
-    this.pins.setVisible(on);
     this.labels.setEditMode(on);
+  }
+
+  /**
+   * The view's markers button (winccoa-fra-msp-stma#379): on, the placement markers show and can be dragged, renamed,
+   * deleted, and a click on the floor adds one; off, they are hidden. Independent of edit mode.
+   */
+  setMarkersVisible(on: boolean): void {
+    this.pins.setVisible(on);
   }
 
   /** Callback invoked when a machine is dropped at a new (x, z) in edit mode. */
@@ -368,7 +374,7 @@ export class SceneController {
     this.onMachineMove = fn;
   }
 
-  /** Callback invoked when a placement marker is dropped at a new (x, z) in edit mode. */
+  /** Callback invoked when a placement marker is dropped at a new (x, z) (markers shown, #379). */
   setOnMarkerMove(fn: (id: string, x: number, z: number) => void): void {
     this.pins.onMove = fn;
   }
@@ -674,11 +680,17 @@ export class SceneController {
     }
   }
 
+  /** A click (not a drag): a machine is selected (not in edit mode); markers shown, the floor gets a new marker (#379). */
   private handleCanvasClick(e: MouseEvent): void {
-    if (this.editMode) return;
     if (Math.hypot(e.clientX - this.downX, e.clientY - this.downY) > DRAG_THRESHOLD_PX) return;
     const m = this.machineAt(e);
-    if (m) this.onSelect(m.id);
+    if (m) {
+      if (!this.editMode) this.onSelect(m.id);
+      return;
+    }
+    if (!this.pins.shown || !this.onMarkerAdd) return;
+    const p = this.pins.floorPointAt(e);
+    if (p) this.onMarkerAdd(p.x, p.z);
   }
 
   private setPointer(e: MouseEvent): void {

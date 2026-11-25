@@ -51,7 +51,8 @@ export type FleetOutcome<T> =
   /** No usable answer: backend not deployed / not restarted, network down, 5xx. */
   | { kind: 'unavailable'; message: string };
 
-function authHeaders(): Record<string, string> {
+/** The logged-in user's WebUI token, for this module's calls to the web server's routes. */
+export function authHeaders(): Record<string, string> {
   try {
     const token = container.resolve(TokenService).getStoredToken();
     return token ? { Authorization: `Bearer ${token}` } : {};

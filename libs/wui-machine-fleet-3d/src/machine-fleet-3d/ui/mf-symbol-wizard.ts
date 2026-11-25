@@ -3,8 +3,10 @@
 
 /**
  * "Add a symbol" wizard (#67, reworked by winccoa-fra-msp-stma#338), three sources:
- *  - **From the site or an atelier**: one list, the site's catalogue (machines not yet in this atelier) and the
- *    symbols of the other ateliers, each with where it comes from;
+ *  - **From the site or an atelier**: one list, the site's machines not yet in this atelier, by workcenter, as the
+ *    site serves them (data/site-symbols.ts, winccoa-fra-msp-stma#381: added like a workcenter's export, with their
+ *    state mappings; one machine, or all those of a workcenter), and the symbols of the other ateliers, each with
+ *    where it comes from;
  *  - **Import**: one or several symbols from a JSON text, a file's content or pasted (as Node-RED imports):
  *    one symbol, a list, or a workcenter's export (#337) with its state mappings (symbol-import.ts). Checked
  *    before anything is added; a symbol already in the atelier (same id) is replaced or skipped, asked symbol by
@@ -17,10 +19,11 @@
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import type { GlbResource, MachineDef, MachineType } from '../types.js';
+import { NO_DATA_STATE, type GlbResource, type MachineDef, type MachineType } from '../types.js';
 import type { FleetStore } from '../data/fleet-store.js';
-import { MSG, importErrorMsg, importSummaryMsg, localize, localizeDir, machineTypeLabel, replaceSymbolMsg } from '../i18n.js';
-import { conflictOf, parseSymbolImport, type ImportResult, type SymbolImportPlan } from '../symbol-import.js';
+import { MSG, importErrorMsg, importSummaryMsg, localize, localizeDir, machineTypeLabel, replaceSymbolMsg, siteAddAllMsg, siteErrorMsg, siteUpdateAllMsg } from '../i18n.js';
+import { mappingsOf, siteGroupOf, sitePlan, type SiteSymbols } from '../data/site-symbols.js';
+import { conflictOf, isExportSource, parseSymbolImport, type ImportResult, type SymbolImportPlan } from '../symbol-import.js';
 import { dialogStyles } from './dialog-styles.js';
 import { MACHINE_TYPES } from './mf-machine-dialog.js';
 import { overlayClicked, overlayDown } from '@visuelconcept-winccoa/wui-fleet-core/ui/overlay-dismiss.js';
@@ -75,6 +78,19 @@ export class MfSymbolWizard extends LitElement {
       }
       .item:hover {
         border-color: var(--theme-color-primary);
+      }
+      .site-update {
+        align-self: flex-start;
+        margin-bottom: 0.5rem;
+      }
+      .group-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        margin-top: 0.35rem;
+        font-weight: 600;
+        color: var(--theme-color-std-text);
       }
       .muted {
         color: var(--theme-color-soft-text);
@@ -136,8 +152,8 @@ export class MfSymbolWizard extends LitElement {
     `
   ];
 
-  /** Machines of the site's catalogue not yet in this atelier. */
-  @property({ attribute: false }) catalog: MachineDef[] = [];
+  /** The site's machines not yet in this atelier (#381), as the page reads them when the wizard opens. */
+  @property({ attribute: false }) site: SiteSymbols = { state: 'none' };
   /** Symbols of the other ateliers (loaded by the page when the wizard opens). */
   @property({ attribute: false }) others: OtherSymbol[] = [];
   /** Symbols of this atelier: an imported one of the same id replaces one of them, if the user says so. */
@@ -161,10 +177,15 @@ export class MfSymbolWizard extends LitElement {
   @state() private conflicts: MachineDef[] = [];
   @state() private asked = 0;
   private answers = new Map<string, boolean>();
+  /** The user picked a source: the site's machines arriving later no longer change it. */
+  private picked = false;
 
   protected override willUpdate(): void {
-    // Opening source, chosen once: the list when it offers a symbol, the new symbol otherwise.
-    if (!this.hasUpdated) this.source = this.catalog.length + this.others.length > 0 ? 'existing' : 'create';
+    // Opening source: the list when it offers a symbol (or may, the site's machines being read), the new symbol
+    // otherwise — until the user picks one.
+    if (this.picked) return;
+    const site = this.site.state === 'ok' ? this.site.symbols.length : this.site.state === 'loading' ? 1 : 0;
+    this.source = site + this.others.length > 0 ? 'existing' : 'create';
   }
 
   override render(): TemplateResult {
@@ -198,6 +219,7 @@ export class MfSymbolWizard extends LitElement {
   }
 
   private setSource(s: Source): void {
+    this.picked = true;
     this.source = s;
     this.conflicts = [];
     this.asked = 0;
@@ -209,30 +231,76 @@ export class MfSymbolWizard extends LitElement {
     return this.renderCreate();
   }
 
-  /** The site's catalogue and the other ateliers' symbols, in one list. */
+  /** The site's machines by workcenter, then the other ateliers' symbols, in one list. */
   private renderExisting(): TemplateResult {
-    const items = [
-      ...this.catalog.map((m) => ({ key: `site:${m.id}`, label: m.name, hint: localize(MSG.wizard.site), def: m, keepId: true })),
-      ...this.others.map((o, i) => ({ key: `at:${i}`, label: o.machine.name, hint: o.atelier, def: o.machine, keepId: false }))
-    ];
-    if (items.length === 0) return html`<div class="muted">${localizeDir(MSG.wizard.existingNone)}</div>`;
+    const site = this.site.state === 'ok' ? this.site : null;
+    const groupsOf = site?.groups ?? {};
+    // Listed by workcenter: the site's machines not yet in the atelier; those in it are updated by one button (#373).
+    const inAtelier = (m: MachineDef): boolean => this.existing.some((e) => e.id === m.id);
+    const here = (site?.symbols ?? []).filter(inAtelier);
+    const siteItems = (site?.symbols ?? []).filter((m) => !inAtelier(m))
+      .map((m) => ({ label: m.name, hint: siteGroupOf(m, groupsOf) || localize(MSG.wizard.siteNoGroup), def: m }));
+    const otherItems = this.others.map((o) => ({ label: o.machine.name, hint: o.atelier, def: o.machine }));
+    let status: TemplateResult | string = '';
+    if (this.site.state === 'loading') status = html`<div class="muted">${localizeDir(MSG.wizard.siteLoading)}</div>`;
+    else if (this.site.state === 'error') status = html`<div class="muted error">${siteErrorMsg(this.site.text)}</div>`;
+    if (siteItems.length + otherItems.length + here.length === 0) {
+      return html`${status}${this.site.state === 'loading' ? '' : html`<div class="muted">${localizeDir(MSG.wizard.existingNone)}</div>`}`;
+    }
     const q = this.query.trim().toLowerCase();
-    const shown = q ? items.filter((it) => `${it.label} ${it.hint}`.toLowerCase().includes(q)) : items;
+    const match = (it: { label: string; hint: string }): boolean => !q || `${it.label} ${it.hint}`.toLowerCase().includes(q);
+    const groups = new Map<string, MachineDef[]>();
+    for (const it of siteItems.filter(match)) groups.set(it.hint, [...(groups.get(it.hint) ?? []), it.def]);
+    const others = otherItems.filter(match);
     return html`
+      ${status}
+      ${here.length
+        ? html`<ix-button class="site-update" variant="primary" @click=${() => this.addFromSite(here)}>${siteUpdateAllMsg(here.length)}</ix-button>`
+        : ''}
       <ix-input
         placeholder=${localize(MSG.wizard.search)}
         .value=${this.query}
         @valueChange=${(e: IxValueEvent) => (this.query = String(e.detail))}
       ></ix-input>
       <div class="list">
-        ${shown.length === 0 ? html`<div class="muted">${localizeDir(MSG.wizard.none)}</div>` : ''}
-        ${shown.map(
-          (it) => html`<button type="button" class="item" @click=${() => this.emit(it.def, it.keepId)}>
+        ${groups.size + others.length === 0 ? html`<div class="muted">${localizeDir(MSG.wizard.none)}</div>` : ''}
+        ${[...groups].map(
+          ([hint, defs]) => html`<div class="group-head">
+              <span>${hint}</span>
+              ${defs.length > 1
+                ? html`<ix-button variant="secondary" ghost @click=${() => this.addFromSite(defs)}>${siteAddAllMsg(defs.length)}</ix-button>`
+                : ''}
+            </div>
+            ${defs.map(
+              (def) => html`<button type="button" class="item" @click=${() => this.addFromSite([def])}>
+                <span>${def.name}</span><span class="muted">${localizeDir(MSG.wizard.site)}</span>
+              </button>`
+            )}`
+        )}
+        ${others.length ? html`<div class="group-head"><span>${localize(MSG.wizard.othersHead)}</span></div>` : ''}
+        ${others.map(
+          (it) => html`<button type="button" class="item" @click=${() => this.emit(it.def, false)}>
             <span>${it.label}</span><span class="muted">${it.hint}</span>
           </button>`
         )}
       </div>
     `;
+  }
+
+  /**
+   * Site machines added like a workcenter's export (#381): their id (the site's machine), their state mappings; those
+   * already in the atelier updated in place (`sitePlan`).
+   */
+  private addFromSite(defs: MachineDef[]): void {
+    if (this.site.state !== 'ok' || defs.length === 0) return;
+    const plan = sitePlan(defs, this.existing);
+    const detail: SymbolImport = {
+      add: structuredClone(plan.add),
+      replace: structuredClone(plan.replace),
+      mappings: structuredClone(mappingsOf(defs, this.site.mappings)),
+      fromExport: true
+    };
+    this.dispatchEvent(new CustomEvent('wui:importsymbols', { detail, bubbles: true, composed: true }));
   }
 
   /** The JSON text, pasted or read from a file, and what it holds or why it is refused. */
@@ -365,18 +433,23 @@ export class MfSymbolWizard extends LitElement {
     }
     this.conflicts = [];
     this.asked = 0;
-    const detail: SymbolImport = { add: structuredClone(add), replace: structuredClone(replace), mappings: structuredClone(r.mappings) };
+    const detail: SymbolImport = {
+      add: structuredClone(add),
+      replace: structuredClone(replace),
+      mappings: structuredClone(r.mappings),
+      fromExport: isExportSource(r.source)
+    };
     this.dispatchEvent(new CustomEvent('wui:importsymbols', { detail, bubbles: true, composed: true }));
   }
 
   private create(): void {
-    const def: MachineDef = { id: '', name: this.name.trim(), type: this.type, x: 0, z: 0, state: 'ok', kpis: [] };
+    const def: MachineDef = { id: '', name: this.name.trim(), type: this.type, x: 0, z: 0, state: NO_DATA_STATE, kpis: [] };
     if (this.type === 'glb' && this.glbUrl) def.glbUrl = this.glbUrl;
     if (this.type === 'billboard' && this.billboardUrl) def.billboardUrl = this.billboardUrl;
     this.emit(def, false);
   }
 
-  /** The new symbol's definition; `keepId` for a catalogue machine (its id is the site's). */
+  /** The new symbol's definition; `keepId` when its id is the site's machine. */
   private emit(def: MachineDef, keepId: boolean): void {
     this.dispatchEvent(
       new CustomEvent('wui:addsymbol', { detail: { def: structuredClone(def), keepId }, bubbles: true, composed: true })

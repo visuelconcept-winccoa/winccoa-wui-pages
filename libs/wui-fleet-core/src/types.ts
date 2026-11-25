@@ -228,6 +228,14 @@ export const STATE_LABELS: Record<BuiltinState, string> = {
 export const DISCONNECTED_LABEL = 'Non connectée';
 export const DISCONNECTED_COLOR = '#8B5CF6';
 
+/**
+ * State of a symbol none of whose state inputs has a value (winccoa-fra-msp-stma#370): none bound, none readable, or nothing received yet.
+ * Shown and counted as not connected ({@link isDisconnected}), never as production: a new or imported symbol
+ * starts in it, and a live view puts its symbols back in it on opening until a value arrives. Its key is the
+ * one of the "not connected" colour, so that every colour map already knows it.
+ */
+export const NO_DATA_STATE = 'disconnected';
+
 /** Colour key: a machine state, or the "not connected" overlay. */
 export type StateColorKey = MachineState | 'disconnected';
 
@@ -272,7 +280,7 @@ export function stateDef(mapping: StateMapping | undefined, key: string): StateD
 
 /** Label of a state: the mapping's, else the built-in label, else the key itself. */
 export function stateLabel(mapping: StateMapping | undefined, key: string): string {
-  return stateDef(mapping, key)?.label ?? STATE_LABELS[key as BuiltinState] ?? key;
+  return stateDef(mapping, key)?.label ?? (key === NO_DATA_STATE ? DISCONNECTED_LABEL : undefined) ?? STATE_LABELS[key as BuiltinState] ?? key;
 }
 
 /** True when the machine counts as producing in that state ('ok' unless the mapping says otherwise). */
@@ -322,9 +330,9 @@ export function resolveConnected(raw: unknown): boolean {
   return Number.isFinite(n) ? n > 0 : Boolean(v);
 }
 
-/** True when a comm datapoint is bound and reports the machine as down. */
-export function isDisconnected(m: { commDp?: string; connected?: boolean }): boolean {
-  return m.commDp != null && m.commDp !== '' && m.connected === false;
+/** True when a comm datapoint is bound and reports the machine as down, or when its state has no value ({@link NO_DATA_STATE}). */
+export function isDisconnected(m: { commDp?: string; connected?: boolean; state?: MachineState }): boolean {
+  return m.state === NO_DATA_STATE || (m.commDp != null && m.commDp !== '' && m.connected === false);
 }
 
 export const STATE_HEX: Record<BuiltinState, number> = {
@@ -361,6 +369,22 @@ export interface Kpi {
   /** Decimals shown for a numeric value (0..{@link MAX_PARAM_DECIMALS}). When unset,
    * integers print as-is and other numbers with {@link DEFAULT_PARAM_DECIMALS}. */
   decimals?: number;
+  /**
+   * The value of `dp` translated through a table (lookup.ts, winccoa-fra-msp-stma#373): the line shows the field of
+   * the table's row whose key equals the value — e.g. the contract of the article in production, from the article
+   * catalogue. A filterable line is filtered on the translated history.
+   */
+  lookup?: KpiLookup;
+}
+
+/** A table a line's value is translated through (lookup.ts). */
+export interface KpiLookup {
+  /** Datapoint element holding the table: a JSON array of rows (e.g. the MSP article catalogue `stma/articles.`). */
+  dp: string;
+  /** Field of a row compared with the line's value (default `id`). */
+  key?: string;
+  /** Field of the row found that the line shows. */
+  field: string;
 }
 
 /** Decimals of a non-integer parameter value when the parameter sets none. */
@@ -597,15 +621,35 @@ export interface DisplayConfig {
   bubblesOnHover?: boolean;
 }
 
-/** Bounds of a machine's bubble scale (#59). */
+/** Bounds of a machine's bubble scale (#59), the size of the bubbles resized before {@link MachineDef.bubbleSize}. */
 export const BUBBLE_SCALE_MIN = 0.6;
 export const BUBBLE_SCALE_MAX = 2.5;
+
+/** Bounds (px) of a bubble sized by hand ({@link MachineDef.bubbleSize}). */
+export const BUBBLE_WIDTH_MIN = 120;
+export const BUBBLE_WIDTH_MAX = 560;
+export const BUBBLE_HEIGHT_MIN = 36;
+export const BUBBLE_HEIGHT_MAX = 420;
 
 export const DEFAULT_DISPLAY: DisplayConfig = {
   roof: true,
   labels: true,
   alertOnly: false
 };
+
+/**
+ * Where a machine's controller takes the stop-cause catalogue (winccoa-fra-msp-stma#375): one slot per cause, in
+ * the catalogue's order, each with the datapoint elements of its code, label and class; the slots left over are
+ * emptied ('' and 0), the causes left over are not sent.
+ */
+export interface StopCauseTargets {
+  slots: { code?: string; label?: string; class?: string }[];
+  /** Longest code and label the controller takes: longer ones are cut. Absent: not cut. */
+  codeMax?: number;
+  labelMax?: number;
+  /** Value written for the class of a cause; a cause of a class without a value is not sent. Absent: the class key. */
+  classValues?: Partial<Record<'planned' | 'unplanned', number | string>>;
+}
 
 /** Serialisable machine definition (config input). */
 export interface MachineDef {
@@ -654,6 +698,18 @@ export interface MachineDef {
   stopCauseDps?: string[];
   /** Datapoint of each named input of the machine's mapping (`StateMapping.inputs`), by input key. */
   inputDps?: Record<string, string>;
+  /**
+   * References (winccoa-fra-msp-stma#376): by name, a datapoint element whose value is the name of a datapoint. A
+   * binding of the symbol may write `{name}` in its datapoint (`{wc}.Context.OF`): it reads the datapoint the
+   * reference names now, and follows it when it changes — a mobile machine follows the workcenter it is assigned
+   * to. A reference without a value leaves the bindings that use it unbound (state-eval.ts `resolveMachine`).
+   */
+  refDps?: Record<string, string>;
+  /**
+   * Stop-cause slots of the machine's controller (winccoa-fra-msp-stma#375): Machine Fleet's state manager writes
+   * the causes of the symbol's catalogue there, in order, whenever they differ (cause-push.js of Machine Fleet's kpiCalc manager).
+   */
+  stopCauseTargets?: StopCauseTargets;
   /**
    * The machine accepts a state declared by an operator (winccoa-fra-msp-stma#339): input {@link DECLARED_INPUT}
    * of its mapping, bound to Machine Fleet's own datapoint, set from the machine dashboard (role `declare`).
@@ -707,8 +763,16 @@ export interface MachineDef {
    * the machine list; cleared as soon as the user moves it ({@link placeMachine}).
    */
   toPlace?: boolean;
-  /** The machine's bubble size, as a factor of the default one (#59). Absent = 1. */
+  /**
+   * Size of the machine's bubble before {@link bubbleSize}, as a factor of the default one (#59), text included:
+   * still read (the bubble's width, its text at the normal size), replaced by `bubbleSize` on the next resize.
+   */
   bubbleScale?: number;
+  /**
+   * The machine's bubble sized by hand (winccoa-fra-msp-stma#371): width and height (px). The text keeps its size; the box shows more or
+   * less of the lines. Absent = the default width, as high as its lines.
+   */
+  bubbleSize?: [number, number];
   /**
    * The machine's bubble placed by hand (#59): screen offset (px) from the machine's dot to the
    * bubble's bottom centre, kept at any zoom. Absent = laid out automatically above the machine.
@@ -776,6 +840,13 @@ export interface MachineDef {
    * its dashboard in the same tab. Usually written by the integration that places the machine.
    */
   ownerLink?: { label: string; url: string };
+  /**
+   * The site's workcenter the machine was exported from (its datapoint), as a workcenter's export gives it
+   * (winccoa-fra-msp-stma#337): what « Add a symbol › From the site » lists it under (#381). Informative only.
+   */
+  workcenter?: string;
+  /** The site's group of the machine (its îlot), as a workcenter's export gives it. Informative only. */
+  group?: string;
   /**
    * More datapoints whose alarms are the machine's, in its dashboard (e.g. the machine's own
    * datapoint when its state is read elsewhere). Usually written by the integration.

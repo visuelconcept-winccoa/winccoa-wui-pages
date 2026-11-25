@@ -3,7 +3,7 @@
 
 /** The atelier's statistics: faults, stops, producing, not connected (#65). */
 import { describe, expect, it } from 'vitest';
-import { BUILTIN_STATES, fleetStats, isFaultState, type StateDef } from './types.js';
+import { BUILTIN_STATES, DISCONNECTED_LABEL, NO_DATA_STATE, fleetStats, isDisconnected, isFaultState, stateLabel, type StateDef } from './types.js';
 
 describe('fleet statistics', () => {
   it('count the built-in states: warn is a fault, stop and maintenance are stops', () => {
@@ -14,6 +14,13 @@ describe('fleet statistics', () => {
   it('count a machine not connected apart, whatever its state', () => {
     const machines = [{ state: 'ok', commDp: 'X.comm', connected: false }, { state: 'ok', commDp: 'Y.comm', connected: true }];
     expect(fleetStats(machines, BUILTIN_STATES)).toEqual({ fault: 0, stop: 0, production: 1, offline: 1 });
+  });
+
+  it('count a machine whose state has no value as not connected, never as production', () => {
+    const machines = [{ state: NO_DATA_STATE }, { state: NO_DATA_STATE, commDp: 'X.comm', connected: true }, { state: 'ok' }];
+    expect(fleetStats(machines, BUILTIN_STATES)).toEqual({ fault: 0, stop: 0, production: 1, offline: 2 });
+    expect(isDisconnected({ state: NO_DATA_STATE })).toBe(true);
+    expect(stateLabel(undefined, NO_DATA_STATE)).toBe(DISCONNECTED_LABEL);
   });
 
   it("follow a mapping's own fault flag", () => {

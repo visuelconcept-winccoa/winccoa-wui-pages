@@ -6,7 +6,7 @@
  * State of a machine from its mapping (winccoa-fra-msp-stma#339) — the manager's copy of wui-fleet-core
  * `state-eval.ts`, which the live views use. The two must give the same state for the same values: both play
  * `wui-fleet-core/src/state-eval.cases.json` (test/fleet-state.spec.mjs), a difference fails the tests.
- * A manager is deployed on its own (javascript/fleetState): it cannot import the page's TypeScript.
+ * A manager is deployed on its own (javascript/kpiCalc): it cannot import the page's TypeScript.
  */
 
 const STATE_INPUT = 'state';
@@ -122,4 +122,57 @@ function causeClassOf(code, causes) {
   return c && c.classification === 'planned' ? 'planned' : 'unplanned';
 }
 
-module.exports = { STATE_INPUT, CAUSE_STATE, DECLARED_INPUT, stateRecordDp, inputNumber, conditionMet, ruleMatches, evaluateState, inputDpsOf, causeDpsOf, currentCause, causeClassOf };
+// ---- references (winccoa-fra-msp-stma#376), as wui-fleet-core state-eval.ts ------------------------------------
+
+const REF_PATTERN = /\{([A-Za-z0-9_-]+)\}/g;
+
+/** The references of a symbol, by name: the datapoint elements whose value names a datapoint. */
+function refDpsOf(m) {
+  const out = {};
+  for (const [name, dpe] of Object.entries((m && m.refDps) || {})) if (/^[A-Za-z0-9_-]+$/.test(name) && dpe && String(dpe).trim()) out[name] = String(dpe).trim();
+  return out;
+}
+
+/** A binding written with a reference (`{name}`). */
+function usesRef(binding) {
+  return typeof binding === 'string' && /\{[A-Za-z0-9_-]+\}/.test(binding);
+}
+
+/** The datapoint a reference's value names: its system name and a trailing dot left out; '' without a value. */
+function refValue(v) {
+  const x = scalar(v);
+  if (x === undefined || x === null) return '';
+  return String(x).trim().replace(/^[^:.]*:/, '').replace(/\.$/, '');
+}
+
+/**
+ * A binding with its references replaced by the datapoints they name now (`read`: a reference's value); the binding
+ * itself when it uses none; undefined when one of them is unknown to the symbol or has no value.
+ */
+function resolveBinding(binding, refs, read) {
+  if (typeof binding !== 'string' || !usesRef(binding)) return binding;
+  let missing = false;
+  const out = binding.replace(REF_PATTERN, (_all, name) => {
+    const dpe = refs[name];
+    const value = dpe ? refValue(read(dpe)) : '';
+    if (!value) missing = true;
+    return value;
+  });
+  return missing ? undefined : out;
+}
+
+/** A symbol's inputs and causes with their references resolved (unresolved ones left out), as the views do. */
+function resolveSources(inputs, causes, refs, read) {
+  const outInputs = {};
+  for (const [key, dpe] of Object.entries(inputs)) {
+    const v = resolveBinding(dpe, refs, read);
+    if (v !== undefined) outInputs[key] = v;
+  }
+  const outCauses = causes.map((dpe) => resolveBinding(dpe, refs, read)).filter((v) => v !== undefined);
+  return { inputs: outInputs, causes: [...new Set(outCauses)] };
+}
+
+module.exports = {
+  STATE_INPUT, CAUSE_STATE, DECLARED_INPUT, stateRecordDp, inputNumber, conditionMet, ruleMatches, evaluateState, inputDpsOf, causeDpsOf,
+  currentCause, causeClassOf, refDpsOf, usesRef, refValue, resolveBinding, resolveSources
+};

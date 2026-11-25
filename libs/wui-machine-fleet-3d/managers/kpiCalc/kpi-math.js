@@ -4,7 +4,7 @@
 
 /**
  * kpiCalc's computation, without WinCC OA (tested by test/kpi-math.spec.mjs): the intervals of a recorded
- * state history (fleetState, winccoa-fra-msp-stma#339: state keys of the machine's mapping) and the KPI
+ * state history (states.js, winccoa-fra-msp-stma#339: state keys of the machine's mapping) and the KPI
  * over a window. `computeValue` classifies a cause code with the `classify` it is given (index.js: the
  * machine's catalogue).
  */
@@ -93,7 +93,7 @@ function recordedState(v) {
   return x == null ? '' : String(x);
 }
 
-/** Datapoint of a machine's recorded state (fleetState `stateDpName`, wui-fleet-core `stateRecordDp`). */
+/** Datapoint of a machine's recorded state (recorder.js `stateDpName`, wui-fleet-core `stateRecordDp`). */
 function stateRecordDp(id) {
   return `MachineFleet3D_State_${String(id).replace(/[^A-Za-z0-9_]/g, '_')}`;
 }

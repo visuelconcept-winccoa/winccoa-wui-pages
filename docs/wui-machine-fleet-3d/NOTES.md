@@ -54,12 +54,13 @@ Tier: **hub** (central fleet page, default entry point at login). `three`
   between, outside); a rule `@cause` gives `causeStates.planned` or `.unplanned` by the class of the stop
   cause in progress, the first non-empty of `stopCauseDp` then `stopCauseDps`. A symbol with `declaredState`
   also has the input `declared`: the state an operator declares from the machine dashboard (role `declare`,
-  reason traced). One computation, `wui-fleet-core/state-eval.ts`, for the live views; the `fleetState`
-  manager plays the same cases (`state-eval.cases.json`) and records the history.
+  reason traced). One computation, `wui-fleet-core/state-eval.ts`, for the live views; the `kpiCalc`
+  manager (formerly `fleetState`) plays the same cases (`state-eval.cases.json`) and records the history.
 - **State history**: `MachineFleet3D_State_<symbol>` (`state` = a state key of the mapping, `cause`,
   `declared`, archived in `_NGA_G_EVENT`, WinCC OA's standard value group, when it is active; otherwise in the
   active value group of highest priority; never in the alarm group `_NGA_G_ALERT`, whose values `dpGetPeriod`
-  does not return), written by `fleetState` at each change. The Gantt, the stop
+  does not return), written by `kpiCalc` (formerly `fleetState`) at each change; a record already archived keeps
+  its group (NGA reads an element in its current group only). The Gantt, the stop
   list, the Pareto, the stop and KPI analyses and `kpiCalc` read it; the live views compute the state from the
   inputs and never wait for it.
 

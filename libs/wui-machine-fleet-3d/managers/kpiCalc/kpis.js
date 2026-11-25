@@ -4,15 +4,16 @@
 'use strict';
 
 /**
- * Machine Fleet — real-time KPI calculator (WinCC OA JavaScript Manager).
+ * Machine Fleet — real-time KPI calculator, part of the kpiCalc manager (index.js; moved from wui-fleet-kpi-analysis
+ * with winccoa-fra-msp-stma#373).
  *
  * For every KPI configured on a machine (atelier config `kpiCalcs[]`: type
- * TRS/MTBF/MTTR, sliding `window`, `refreshMin`), this manager:
+ * TRS/MTBF/MTTR, sliding `window`, `refreshMin`), it:
  *   1. ensures a `MachineFleet3D_Kpi` datapoint exists (one per KPI),
  *   2. NGA-archives its `.value` element (so trends/curves can be drawn),
  *   3. recomputes the KPI over its sliding window from the archived `state`
  *      (+ `cause`) history every `refreshMin` minutes and writes `.value`. That history
- *      is the one Machine Fleet's state manager records (fleetState, winccoa-fra-msp-stma#339):
+ *      is the one the same manager records (states.js, winccoa-fra-msp-stma#339):
  *      `MachineFleet3D_State_<machine>.state` (state keys of the machine's mapping) and `.cause`.
  *
  * Formulas (sliding window W):
@@ -25,13 +26,13 @@
  *   - MTBF = production / max(#failures,1)              (minutes)
  *   - MTTR = unplanned / #failures                      (minutes, 0 if none)
  *
- * Register in config/progs:  node | always | 30 | 2 | 2 |kpiCalc/index.js
- * After editing this file, restart the kpiCalc manager.
+ * Started by index.js (`start`), on the manager's connection.
  */
-const { WinccoaManager, WinccoaDpTypeNode } = require('winccoa-manager');
+const { WinccoaDpTypeNode } = require('winccoa-manager');
 const { clipMerge, stateRecordDp, recordsState, computeValue } = require('./kpi-math.js');
 
-const winccoa = new WinccoaManager();
+/** The manager's connection to WinCC OA, given by index.js. */
+let winccoa = null;
 
 const KPI_TYPE = 'MachineFleet3D_Kpi';
 const KPI_PREFIX = 'MachineFleet3D_Kpi_';
@@ -79,7 +80,7 @@ let closures = { ateliers: {}, machines: {} };
 
 function log(msg) {
   // eslint-disable-next-line no-console
-  console.log(`[KpiCalc] ${msg}`);
+  console.log(`[kpiCalc/KPI] ${msg}`);
 }
 
 function sanitize(id) {
@@ -353,7 +354,7 @@ async function refreshKpi(entry) {
   const end = Date.now();
   const windowMs = WINDOW_MS[kpi.window] || WINDOW_MS['24h'];
   const start = end - windowMs;
-  // The history fleetState records: the state its mapping gave, and the cause in progress.
+  // The history states.js records: the state its mapping gave, and the cause in progress.
   const record = `${SYS}${stateRecordDp(machine.id)}`;
   const stateSamples = await queryHistory(`${record}.state`, start - windowMs, end);
   const causeSamples = await queryHistory(`${record}.cause`, start - windowMs, end);
@@ -409,4 +410,10 @@ async function main() {
   log(`Actif (tick ${BASE_TICK_MS / 1000}s).`);
 }
 
-main().catch((e) => log(`Erreur fatale : ${e}`));
+/** Starts the KPI calculator on the manager's connection. */
+function start(connection) {
+  winccoa = connection;
+  return main().catch((e) => log(`Erreur fatale : ${e}`));
+}
+
+module.exports = { start };

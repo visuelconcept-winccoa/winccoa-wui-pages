@@ -1,0 +1,233 @@
+{
+ "source": "winccoa-fra-msp-stma 2.2.1 export (CN_01, poste du 23/11/2026) et organisation_sync 2.2.0 (valeurs voulues)",
+ "machines": [
+  {
+   "id": "CN_01",
+   "stopCatalogId": "",
+   "catalog": "MachineFleet3D_StopCauses",
+   "targets": {
+    "slots": [
+     {
+      "code": "CN_01.Data.ARRET_CODE_01",
+      "label": "CN_01.Data.ARRET_DESC_01",
+      "class": "CN_01.Data.ARRET_CAT_01"
+     },
+     {
+      "code": "CN_01.Data.ARRET_CODE_02",
+      "label": "CN_01.Data.ARRET_DESC_02",
+      "class": "CN_01.Data.ARRET_CAT_02"
+     },
+     {
+      "code": "CN_01.Data.ARRET_CODE_03",
+      "label": "CN_01.Data.ARRET_DESC_03",
+      "class": "CN_01.Data.ARRET_CAT_03"
+     },
+     {
+      "code": "CN_01.Data.ARRET_CODE_04",
+      "label": "CN_01.Data.ARRET_DESC_04",
+      "class": "CN_01.Data.ARRET_CAT_04"
+     },
+     {
+      "code": "CN_01.Data.ARRET_CODE_05",
+      "label": "CN_01.Data.ARRET_DESC_05",
+      "class": "CN_01.Data.ARRET_CAT_05"
+     },
+     {
+      "code": "CN_01.Data.ARRET_CODE_06",
+      "label": "CN_01.Data.ARRET_DESC_06",
+      "class": "CN_01.Data.ARRET_CAT_06"
+     },
+     {
+      "code": "CN_01.Data.ARRET_CODE_07",
+      "label": "CN_01.Data.ARRET_DESC_07",
+      "class": "CN_01.Data.ARRET_CAT_07"
+     },
+     {
+      "code": "CN_01.Data.ARRET_CODE_08",
+      "label": "CN_01.Data.ARRET_DESC_08",
+      "class": "CN_01.Data.ARRET_CAT_08"
+     },
+     {
+      "code": "CN_01.Data.ARRET_CODE_09",
+      "label": "CN_01.Data.ARRET_DESC_09",
+      "class": "CN_01.Data.ARRET_CAT_09"
+     },
+     {
+      "code": "CN_01.Data.ARRET_CODE_10",
+      "label": "CN_01.Data.ARRET_DESC_10",
+      "class": "CN_01.Data.ARRET_CAT_10"
+     },
+     {
+      "code": "CN_01.Data.ARRET_CODE_11",
+      "label": "CN_01.Data.ARRET_DESC_11",
+      "class": "CN_01.Data.ARRET_CAT_11"
+     },
+     {
+      "code": "CN_01.Data.ARRET_CODE_12",
+      "label": "CN_01.Data.ARRET_DESC_12",
+      "class": "CN_01.Data.ARRET_CAT_12"
+     },
+     {
+      "code": "CN_01.Data.ARRET_CODE_13",
+      "label": "CN_01.Data.ARRET_DESC_13",
+      "class": "CN_01.Data.ARRET_CAT_13"
+     },
+     {
+      "code": "CN_01.Data.ARRET_CODE_14",
+      "label": "CN_01.Data.ARRET_DESC_14",
+      "class": "CN_01.Data.ARRET_CAT_14"
+     },
+     {
+      "code": "CN_01.Data.ARRET_CODE_15",
+      "label": "CN_01.Data.ARRET_DESC_15",
+      "class": "CN_01.Data.ARRET_CAT_15"
+     },
+     {
+      "code": "CN_01.Data.ARRET_CODE_16",
+      "label": "CN_01.Data.ARRET_DESC_16",
+      "class": "CN_01.Data.ARRET_CAT_16"
+     }
+    ],
+    "codeMax": 8,
+    "labelMax": 64,
+    "classValues": {
+     "planned": 2,
+     "unplanned": 3
+    }
+   },
+   "causes": [
+    {
+     "code": "AP01",
+     "description": "Repas - Pause",
+     "classification": "planned"
+    },
+    {
+     "code": "AP02",
+     "description": "Maintenance 1er niveau - Préventif",
+     "classification": "planned"
+    },
+    {
+     "code": "AP03",
+     "description": "Réunion planifiée / Workshop / OPEX",
+     "classification": "planned"
+    },
+    {
+     "code": "AP04",
+     "description": "Chantier 5S",
+     "classification": "planned"
+    },
+    {
+     "code": "AP05",
+     "description": "Nettoyage machine > 30 min",
+     "classification": "planned"
+    },
+    {
+     "code": "AP06",
+     "description": "Essais - développement",
+     "classification": "planned"
+    },
+    {
+     "code": "AP07",
+     "description": "Non engagé programmé",
+     "classification": "planned"
+    },
+    {
+     "code": "AP08",
+     "description": "Briefing début de poste",
+     "classification": "planned"
+    },
+    {
+     "code": "ANP01",
+     "description": "Changement de série / Réglages non gammés",
+     "classification": "unplanned"
+    },
+    {
+     "code": "ANP02",
+     "description": "Non qualité",
+     "classification": "unplanned"
+    },
+    {
+     "code": "ANP03",
+     "description": "Organisationnel - humain",
+     "classification": "unplanned"
+    },
+    {
+     "code": "ANP04",
+     "description": "Panne machine ou outillage",
+     "classification": "unplanned"
+    },
+    {
+     "code": "ANP05",
+     "description": "Matériel / outillage non disponible",
+     "classification": "unplanned"
+    },
+    {
+     "code": "ANP06",
+     "description": "Manque de consommable",
+     "classification": "unplanned"
+    },
+    {
+     "code": "ANP07",
+     "description": "Difficulté prescription technique",
+     "classification": "unplanned"
+    },
+    {
+     "code": "ANP08",
+     "description": "Manque approvisionnement pièce",
+     "classification": "unplanned",
+     "isDefault": true
+    }
+   ],
+   "expected": {
+    "CN_01.Data.ARRET_CODE_01": "AP01",
+    "CN_01.Data.ARRET_DESC_01": "Repas - Pause",
+    "CN_01.Data.ARRET_CAT_01": 2,
+    "CN_01.Data.ARRET_CODE_02": "AP02",
+    "CN_01.Data.ARRET_DESC_02": "Maintenance 1er niveau - Préventif",
+    "CN_01.Data.ARRET_CAT_02": 2,
+    "CN_01.Data.ARRET_CODE_03": "AP03",
+    "CN_01.Data.ARRET_DESC_03": "Réunion planifiée / Workshop / OPEX",
+    "CN_01.Data.ARRET_CAT_03": 2,
+    "CN_01.Data.ARRET_CODE_04": "AP04",
+    "CN_01.Data.ARRET_DESC_04": "Chantier 5S",
+    "CN_01.Data.ARRET_CAT_04": 2,
+    "CN_01.Data.ARRET_CODE_05": "AP05",
+    "CN_01.Data.ARRET_DESC_05": "Nettoyage machine > 30 min",
+    "CN_01.Data.ARRET_CAT_05": 2,
+    "CN_01.Data.ARRET_CODE_06": "AP06",
+    "CN_01.Data.ARRET_DESC_06": "Essais - développement",
+    "CN_01.Data.ARRET_CAT_06": 2,
+    "CN_01.Data.ARRET_CODE_07": "AP07",
+    "CN_01.Data.ARRET_DESC_07": "Non engagé programmé",
+    "CN_01.Data.ARRET_CAT_07": 2,
+    "CN_01.Data.ARRET_CODE_08": "AP08",
+    "CN_01.Data.ARRET_DESC_08": "Briefing début de poste",
+    "CN_01.Data.ARRET_CAT_08": 2,
+    "CN_01.Data.ARRET_CODE_09": "ANP01",
+    "CN_01.Data.ARRET_DESC_09": "Changement de série / Réglages non gammés",
+    "CN_01.Data.ARRET_CAT_09": 3,
+    "CN_01.Data.ARRET_CODE_10": "ANP02",
+    "CN_01.Data.ARRET_DESC_10": "Non qualité",
+    "CN_01.Data.ARRET_CAT_10": 3,
+    "CN_01.Data.ARRET_CODE_11": "ANP03",
+    "CN_01.Data.ARRET_DESC_11": "Organisationnel - humain",
+    "CN_01.Data.ARRET_CAT_11": 3,
+    "CN_01.Data.ARRET_CODE_12": "ANP04",
+    "CN_01.Data.ARRET_DESC_12": "Panne machine ou outillage",
+    "CN_01.Data.ARRET_CAT_12": 3,
+    "CN_01.Data.ARRET_CODE_13": "ANP05",
+    "CN_01.Data.ARRET_DESC_13": "Matériel / outillage non disponible",
+    "CN_01.Data.ARRET_CAT_13": 3,
+    "CN_01.Data.ARRET_CODE_14": "ANP06",
+    "CN_01.Data.ARRET_DESC_14": "Manque de consommable",
+    "CN_01.Data.ARRET_CAT_14": 3,
+    "CN_01.Data.ARRET_CODE_15": "ANP07",
+    "CN_01.Data.ARRET_DESC_15": "Difficulté prescription technique",
+    "CN_01.Data.ARRET_CAT_15": 3,
+    "CN_01.Data.ARRET_CODE_16": "ANP08",
+    "CN_01.Data.ARRET_DESC_16": "Manque approvisionnement pièce",
+    "CN_01.Data.ARRET_CAT_16": 3
+   }
+  }
+ ]
+}

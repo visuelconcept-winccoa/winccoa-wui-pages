@@ -26,14 +26,14 @@ own import map** (bundle = correct version).
 In the project's site (`<project>/web`):
 ```powershell
 npx wui use machine-fleet-3d   # npm-installs @visuelconcept-winccoa/wui-machine-fleet-3d (+ kits, three), selects it
-npx wui build prod             # pages + menu, /api/ai backend, the fleetState and aiAssistant managers
+npx wui build prod             # pages + menu, /api/ai backend, the kpiCalc and aiAssistant managers
 npx wui check prod
 ```
 `wui build`:
 1. compiles the page (`three` bundled) → `<project>/data/dashboard-wc/pages/`;
 2. upserts the **2 menu entries** into `menuconfig.json` (idempotent: `/fleet-3d` + `/fleet-3d/:atelier`);
 3. deploys the **backend module** `/api/ai` (the module's `aiRoute.ts` + `fleetAteliers.ts`, `wui-ai-kit`'s `aiController.ts`, `wui-app-security`'s `appSecurityGuard.ts`) → `<project>/javascript/customer-webserver/src/modules/machine-fleet-3d/` and rebuilds the webserver;
-4. deploys the **`fleetState` manager** → `<project>/javascript/fleetState/` (`node | always | … |fleetState/index.js` appended to `config/progs` when missing): it records each symbol's state and stop cause, the history of the Gantt, the stops and the TRS;
+4. deploys the **`kpiCalc` manager** → `<project>/javascript/kpiCalc/` (`node | always | … |kpiCalc/index.js` appended to `config/progs` when missing): it records each symbol's state and stop cause — the history of the Gantt, the stops and the TRS —, sends the stop-cause catalogue to the machines and computes TRS / MTBF / MTTR (one process since winccoa-fra-msp-stma#373, formerly `fleetState` and the `kpiCalc` of `fleet-kpi-analysis`). A deployment by ZIP does not touch `config/progs`: register it in the console;
 5. deploys the **`aiAssistant` manager** → `<project>/javascript/aiAssistant/`, and appends `node | manual | … |aiAssistant/index.js` to `config/progs` when missing (an existing line keeps its mode).
 
 Managers are resolved **by name** across the installed modules: `aiAssistant` lives in
@@ -41,7 +41,7 @@ Managers are resolved **by name** across the installed modules: `aiAssistant` li
 
 Optional companions, selected on their own:
 ```powershell
-npx wui use fleet-kpi-analysis   # kpiCalc manager: live TRS / MTBF / MTTR in the bubbles + the /fleet-kpi page
+npx wui use fleet-kpi-analysis   # the /fleet-kpi page (its KPIs computed by this module's kpiCalc manager)
 npx wui use machine-sim          # machineSim manager: simulated production — demo / commissioning only, never production
 ```
 
@@ -51,7 +51,7 @@ wui-toolkit does not write that file.
 
 ## After install (mandatory)
 1. **Webserver**: **restart** the webserver manager (already rebuilt by `wui build`; it auto-mounts `/api/ai`).
-2. **Managers**: start **`fleetState`** in the WinCC OA console (`always`); without it no state history is recorded (the live views still work). When the AI assistant is enabled, start **`aiAssistant`** in the WinCC OA console (registered `manual`; set it to `always` to have it come back with the project). Check the manager order/number. (For MCP tools, also run the optional external MCP server — see Notes.)
+2. **Managers**: start **`kpiCalc`** in the WinCC OA console (`always`); without it no state history is recorded, no stop cause is sent and no KPI is computed (the live views still work). Updating from a version with `fleetState`: stop it and remove its line (`wui build` leaves it, and `javascript/fleetState/`). When the AI assistant is enabled, start **`aiAssistant`** in the WinCC OA console (registered `manual`; set it to `always` to have it come back with the project). Check the manager order/number. (For MCP tools, also run the optional external MCP server — see Notes.)
 3. **Browser**: DevTools → Application → Storage → **`Clear site data`**, reload (**logged in**).
    ⚠️ The SW caches `menuconfig.json` → **`Ctrl+Shift+R` is not enough**.
 

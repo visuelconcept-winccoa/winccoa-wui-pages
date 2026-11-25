@@ -13,8 +13,8 @@
  */
 import { CAUSE_STATE, DECLARED_INPUT, STATE_INPUT, type MachineDef, type MachineState, type RuleCondition, type StateMapping, type StateRule } from './types.js';
 
-/** What a symbol's state comes from: its id (its declared state), its inputs, its stop-cause sources. */
-export type StateSource = Partial<Pick<MachineDef, 'id' | 'stateDp' | 'inputDps' | 'declaredState' | 'stopCauseDp' | 'stopCauseDps'>>;
+/** What a symbol's state comes from: its id (its declared state), its inputs, its stop-cause sources, its references. */
+export type StateSource = Partial<Pick<MachineDef, 'id' | 'stateDp' | 'inputDps' | 'declaredState' | 'stopCauseDp' | 'stopCauseDps' | 'refDps'>>;
 
 /** Values of a machine's inputs, by input key (a value not read yet is absent). */
 export type InputValues = Readonly<Record<string, unknown>>;
@@ -147,7 +147,7 @@ export function mappingInputKeys(mapping: StateMapping | undefined): string[] {
   return [STATE_INPUT, ...(mapping?.inputs ?? []).map((i) => i.key).filter((k) => k && k !== STATE_INPUT)];
 }
 
-/** Prefix of a symbol's recorded state datapoint (Machine Fleet's state manager, `fleetState`). */
+/** Prefix of a symbol's recorded state datapoint (Machine Fleet's manager, `kpiCalc`, formerly `fleetState`). */
 export const STATE_RECORD_PREFIX = 'MachineFleet3D_State_';
 
 /** Datapoint of a symbol's recorded state: its id, every character other than a letter, a digit or `_` as `_`. */
@@ -164,7 +164,7 @@ export function stateRecordDpes(id: string): { state: string; cause: string } {
   return { state: `${dp}.state`, cause: `${dp}.cause` };
 }
 
-/** The datapoint element of a symbol's declared state (fleetState records it with the state). */
+/** The datapoint element of a symbol's declared state (Machine Fleet's manager records it with the state). */
 export function declaredStateDpe(id: string): string {
   return `${stateRecordDp(id)}.declared`;
 }
@@ -229,11 +229,89 @@ export function machineLiveState(
 ): { state: MachineState | null; cause: string } {
   const inputs: Record<string, unknown> = {};
   const causes: unknown[] = [];
-  for (const t of liveTargets(m)) {
+  // Its references read from the same cache (#376): a binding through a reference without a value is left out.
+  for (const t of liveTargets(resolveMachine(m, read))) {
     const v = read(t.dpe);
     if (t.input !== undefined) {
       if (v !== undefined) inputs[t.input] = v;
     } else if (t.cause !== undefined) causes[t.cause] = v;
   }
   return liveState(mapping, inputs, causes, catalog);
+}
+
+// ---- references (winccoa-fra-msp-stma#376) ----------------------------------------------------------------------
+
+/** A reference in a binding: `{name}`. */
+const REF_PATTERN = /\{([A-Za-z0-9_-]+)\}/g;
+
+/** The references of a symbol, by name: the datapoint elements whose value names a datapoint ({@link MachineDef.refDps}). */
+export function refDpsOf(m: Partial<Pick<MachineDef, 'refDps'>>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [name, dpe] of Object.entries(m.refDps ?? {})) if (/^[A-Za-z0-9_-]+$/.test(name) && dpe?.trim()) out[name] = dpe.trim();
+  return out;
+}
+
+/** The datapoint elements of a symbol's references, each once: what a view follows besides its bindings. */
+export function refTargets(m: Partial<Pick<MachineDef, 'refDps'>>): string[] {
+  return [...new Set(Object.values(refDpsOf(m)))];
+}
+
+/** A binding written with a reference (`{name}`). */
+export function usesRef(binding: string | undefined): boolean {
+  return typeof binding === 'string' && /\{[A-Za-z0-9_-]+\}/.test(binding);
+}
+
+/** The datapoint a reference's value names: its system name and a trailing dot left out; '' without a value. */
+export function refValue(v: unknown): string {
+  const x = scalar(v);
+  if (x === undefined || x === null) return '';
+  return String(x).trim().replace(/^[^:.]*:/, '').replace(/\.$/, '');
+}
+
+/**
+ * A binding with its references replaced by the datapoints they name now (`read`: a reference's value); the binding
+ * itself when it uses none; undefined when one of them is unknown to the symbol or has no value.
+ */
+export function resolveBinding(binding: string | undefined, refs: Readonly<Record<string, string>>, read: (dpe: string) => unknown): string | undefined {
+  if (typeof binding !== 'string' || !usesRef(binding)) return binding;
+  let missing = false;
+  const out = binding.replace(REF_PATTERN, (_all, name: string) => {
+    const dpe = refs[name];
+    const value = dpe ? refValue(read(dpe)) : '';
+    if (!value) missing = true;
+    return value;
+  });
+  return missing ? undefined : out;
+}
+
+/** The bindings of a symbol a reference may be used in (#376). */
+type RefBound = Partial<Pick<MachineDef, 'stateDp' | 'inputDps' | 'stopCauseDp' | 'stopCauseDps' | 'workOrderDp' | 'operationDp' | 'alarmCodeDp' | 'commDp' | 'tiltDp' | 'kpis' | 'refDps'>>;
+
+/**
+ * A copy of the symbol whose bindings are those its references name now (`read`: a reference's value, from the
+ * view's cache): a binding through a reference without a value is unbound (absent; a parameter's datapoint ''). The
+ * symbol itself when it has no reference. Used by the live views and the dashboard, never saved.
+ */
+export function resolveMachine<T extends RefBound>(m: T, read: (dpe: string) => unknown): T {
+  const refs = refDpsOf(m);
+  if (Object.keys(refs).length === 0) return m;
+  const r = (b: string | undefined): string | undefined => resolveBinding(b, refs, read);
+  const out: T = { ...m };
+  for (const key of ['stateDp', 'stopCauseDp', 'workOrderDp', 'operationDp', 'alarmCodeDp', 'commDp', 'tiltDp'] as const) {
+    if (m[key] === undefined) continue;
+    const v = r(m[key]);
+    if (v === undefined) delete out[key];
+    else out[key] = v;
+  }
+  if (m.inputDps) {
+    const inputs: Record<string, string> = {};
+    for (const [k, dp] of Object.entries(m.inputDps)) {
+      const v = r(dp);
+      if (v !== undefined) inputs[k] = v;
+    }
+    out.inputDps = inputs;
+  }
+  if (m.stopCauseDps) out.stopCauseDps = m.stopCauseDps.map(r).filter((v): v is string => v !== undefined);
+  if (m.kpis) out.kpis = m.kpis.map((k) => (usesRef(k.dp) ? { ...k, dp: r(k.dp) ?? '' } : k));
+  return out;
 }
