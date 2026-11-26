@@ -455,6 +455,23 @@ class FleetStateRecorder {
   }
 
   /**
+   * The archive config of a datapoint element. Its type is always readable (0: no config); its other attributes only
+   * once a config exists — WinCC OA refuses to read them on an element never archived (error 97, grouped as 9399), as
+   * on every new record: they are read only then, and an unreadable attribute counts as no config
+   * (winccoa-fra-msp-stma#396).
+   */
+  async archiveConfig(dpe) {
+    const [type] = await this.wcc.dpGet([`${dpe}:_archive.._type`]);
+    if (Number(type) !== ARCHIVE_INFO) return { type, on: false, group: null };
+    try {
+      const [on, group] = await this.wcc.dpGet([`${dpe}:_archive.._archive`, `${dpe}:_archive.1._class`]);
+      return { type, on, group };
+    } catch {
+      return { type: 0, on: false, group: null };
+    }
+  }
+
+  /**
    * The symbol's state datapoint, created (once, whoever asks first), and its archiving checked once per run:
    * left as it is when already archived in a usable group — the configured one or another, its history stays readable
    * ({@link keepsArchive}) — otherwise (new datapoint, no archiving, group gone) set in the configured group, the
@@ -481,7 +498,7 @@ class FleetStateRecorder {
         for (const el of ARCHIVED_ELEMENTS) {
           const dpe = `${dp}.${el}`;
           /* eslint-disable no-await-in-loop */
-          const [type, on, group] = await this.wcc.dpGet([`${dpe}:_archive.._type`, `${dpe}:_archive.._archive`, `${dpe}:_archive.1._class`]);
+          const { type, on, group } = await this.archiveConfig(dpe);
           if (keepsArchive({ type, on, group }, this.usableGroups, this.archiveGroup)) {
             const kept = bare(group);
             if (el === 'state' && kept !== this.archiveGroup) {

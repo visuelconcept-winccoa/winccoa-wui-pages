@@ -3,6 +3,16 @@
 
 # Changelog — @visuelconcept-winccoa/wui-machine-fleet-3d
 
+## 0.7.1 — 2026-11-26
+
+- **Fix: a state record created by `kpiCalc` is archived** (winccoa-fra-msp-stma#396). `kpiCalc` read a new record's
+  whole archive config before setting it; WinCC OA refuses to read the attributes of an element never archived
+  (error 97 each, grouped as 9399), so every record created since `fleetState` 0.6.0 was left unarchived — its state
+  live, but no Gantt, no stops, no Pareto, no TRS (« archivage impossible (9399…) » in the log). It now reads the
+  config type alone, always readable, and the other attributes only when a config exists. On restart, the records
+  left unarchived are archived in the configured group, their history starting then (checked on a WinCC OA 3.21
+  project). The tests' WinCC OA now refuses those reads as WinCC OA does.
+
 ## 0.7.0 — 2026-11-25
 
 Requires wui-fleet-core `^0.3.1`. **One manager, `kpiCalc`**: stop `fleetState` and remove its line in the WinCC OA

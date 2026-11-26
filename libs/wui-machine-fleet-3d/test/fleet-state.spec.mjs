@@ -106,6 +106,9 @@ describe('symbols recorded', () => {
 
 // ------------------------------------------------------------------ recording, on a fake WinCC OA
 
+/** An archive attribute of a datapoint element: `<dpe>:_archive.._type`, `.._archive`, `.1._type`, `.1._class`. */
+const ARCHIVE_ATTRIBUTE = /^(.*):_archive\.(?:\.|1\.)_(?:archive|type|class)$/;
+
 function fakeWcc() {
   const db = {};
   const dps = new Set();
@@ -120,7 +123,22 @@ function fakeWcc() {
   const wcc = {
     db, dps, ateliers, catalogs, conns, writes,
     dpNames: (pattern, type) => (type === 'MachineFleet3D_Config' ? ateliers.map((a) => `System1:${a}.`) : type === 'MachineFleet3D_StopCauses' ? catalogs.map((c) => `System1:${c}.`) : []),
-    dpGet: async (names) => (Array.isArray(names) ? names.map((x) => db[x]) : db[names]),
+    // As WinCC OA (winccoa-fra-msp-stma#396): an element never archived reads 0 as its archive type, and refuses to
+    // read its other archive attributes (error 97 for each, grouped as 9399) — the case of every new record.
+    dpGet: async (names) => {
+      const list = Array.isArray(names) ? names : [names];
+      const refused = list.filter((x) => {
+        const m = ARCHIVE_ATTRIBUTE.exec(x);
+        return m && !x.endsWith(':_archive.._type') && !Number(db[`${m[1]}:_archive.._type`]);
+      });
+      if (refused.length) {
+        const e = new Error(`9399, multiple errors (${refused.length} errors total)`);
+        e.code = 9399;
+        throw e;
+      }
+      const values = list.map((x) => (x.endsWith(':_archive.._type') && db[x] === undefined ? 0 : db[x]));
+      return Array.isArray(names) ? values : values[0];
+    },
     dpSetWait: async (names, values) => {
       // As WinCC OA: as many values as datapoint elements, none empty.
       if (Array.isArray(names) !== Array.isArray(values) || (Array.isArray(names) && (names.length === 0 || names.length !== values.length))) {
@@ -245,6 +263,22 @@ describe('archive group named by the module settings (#374)', () => {
     await rec.reload();
     await rec.queue;
     for (const el of R.ARCHIVED_ELEMENTS) expect(wcc.db[`${CN}.${el}:_archive.1._class`]).toBe('_NGA_G_ETATS');
+  });
+
+  it('a brand-new record, whose archive attributes WinCC OA refuses to read, is archived in the group (#396)', async () => {
+    // As on the project of 24/11/2026: every record created since read its whole archive config at once, the read was
+    // refused (9399) and the record was never archived — no Gantt, no Pareto, no TRS on a site whose records are new.
+    const fresh = fakeWcc();
+    fresh.put('X.state', '');
+    await expect(fresh.dpGet(['X.state:_archive.._type', 'X.state:_archive.1._class'])).rejects.toThrow('9399');
+    expect(await fresh.dpGet(['X.state:_archive.._type'])).toEqual([0]);
+    const { wcc, logs } = await setup({ archiveGroup: '_NGA_G_ETATS' });
+    for (const el of R.ARCHIVED_ELEMENTS) {
+      expect([wcc.db[`${CN}.${el}:_archive.._type`], wcc.db[`${CN}.${el}:_archive.1._type`]]).toEqual([45, 15]);
+      expect([wcc.db[`${CN}.${el}:_archive.1._class`], wcc.db[`${CN}.${el}:_archive.._archive`]]).toEqual(['_NGA_G_ETATS', true]);
+    }
+    expect(logs.filter((l) => l.includes('archivage impossible'))).toEqual([]);
+    expect(records(wcc).length).toBeGreaterThan(0);
   });
 
   it('keeps an active archive in the configured or a usable group, never in an alarm or unknown group', () => {
