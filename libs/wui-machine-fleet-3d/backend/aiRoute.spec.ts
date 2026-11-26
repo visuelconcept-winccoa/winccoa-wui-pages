@@ -125,13 +125,18 @@ beforeEach(() => {
 });
 
 describe('/api/ai — the routes of machine-fleet-3d', () => {
-  it('guards the atelier routes with the view role of machine-fleet-3d, and only them', () => {
+  it('guards the atelier routes with the view role of machine-fleet-3d, and taking its edit lock with the edit role', () => {
     expect(oa.guarded).toEqual([
       ['machine-fleet-3d', 'view'],
-      ['machine-fleet-3d', 'view']
+      ['machine-fleet-3d', 'view'],
+      ['machine-fleet-3d', 'view'],
+      ['machine-fleet-3d', 'edit']
     ]);
     expect(routes.get('GET /fleet/workshops')).toHaveLength(2);
     expect(routes.get('GET /fleet/workshops/:id')).toHaveLength(2);
+    // Who edits an atelier (winccoa-fra-msp-stma#402): seen with view, taken with edit.
+    expect(routes.get('GET /fleet/workshops/:id/lock')).toHaveLength(2);
+    expect(routes.get('POST /fleet/workshops/:id/lock')).toHaveLength(2);
     // The AI bridge stays as in wui-ai-kit.
     expect(routes.get('GET /health')).toHaveLength(1);
     expect(routes.get('POST /chat')).toHaveLength(1);

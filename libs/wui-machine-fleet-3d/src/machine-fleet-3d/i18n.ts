@@ -98,6 +98,11 @@ export const MSG = {
   },
   bubble: {
     resize: ml('Resize the bubble', "Redimensionner l'encart", 'Infoblase skalieren'),
+    resetOwn: ml(
+      'Back to the bubble of the atelier (yours dropped)',
+      "Revenir à l'encart de l'atelier (le vôtre est retiré)",
+      'Zurück zur Infoblase der Werkstatt (Ihre entfernt)'
+    ),
     reset: ml(
       'Bubble back to its automatic place and size',
       "Remettre l'encart à sa place et à sa taille automatiques",
@@ -1151,3 +1156,51 @@ export function uploadGlbMsg(state: 'idle' | 'busy' | 'failed'): string {
 export function declareStateMsg(machine: string, before: string, after: string): string {
   return localize(ml(`${machine}: declared state ${before} → ${after}.`, `${machine} : état déclaré ${before} → ${after}.`, `${machine}: gemeldeter Zustand ${before} → ${after}.`));
 }
+
+/** Time of day of an ISO date, as the viewer reads it ('' when unreadable). */
+function timeOf(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+/** Someone else edits the atelier (winccoa-fra-msp-stma#402): who, since when. */
+export function lockHolderMsg(user: string, since: string): string {
+  const t = timeOf(since);
+  return localize(ml(
+    `${user || 'Someone'} is editing this atelier${t ? ` since ${t}` : ''}: edit mode and markers are theirs until they leave them.`,
+    `${user || 'Quelqu’un'} modifie cet atelier${t ? ` depuis le ${t}` : ''} : le mode édition et les repères lui sont réservés jusqu’à ce qu’il en sorte.`,
+    `${user || 'Jemand'} bearbeitet diese Werkstatt${t ? ` seit ${t}` : ''}: Bearbeitungsmodus und Marken bleiben ihm vorbehalten, bis er sie verlässt.`
+  ));
+}
+
+/** The atelier was saved by someone else since this view opened it (#402). */
+export function remoteSaveMsg(by: string, at: string): string {
+  const t = timeOf(at);
+  return localize(ml(
+    `This atelier was changed by ${by || 'someone else'}${t ? ` (${t})` : ''}. Reload it to see the changes; until then, nothing you change in it is saved.`,
+    `Cet atelier a été modifié par ${by || 'quelqu’un d’autre'}${t ? ` (le ${t})` : ''}. Rechargez-le pour voir ses modifications ; d’ici là, rien de ce que vous y changez n’est enregistré.`,
+    `Diese Werkstatt wurde von ${by || 'jemand anderem'}${t ? ` (${t})` : ''} geändert. Laden Sie sie neu, um die Änderungen zu sehen; bis dahin wird nichts gespeichert, was Sie ändern.`
+  ));
+}
+
+/** This view lost the atelier's edit lock (#402): edit mode left. */
+export function lockLostMsg(user: string): string {
+  return localize(ml(
+    `${user ? `${user} now edits this atelier` : 'The edit lock of this atelier was lost'}: edit mode left. What you changed until now is saved.`,
+    `${user ? `${user} modifie maintenant cet atelier` : 'Le verrou de modification de cet atelier a été perdu'} : mode édition quitté. Ce que vous aviez modifié jusque-là est enregistré.`,
+    `${user ? `${user} bearbeitet jetzt diese Werkstatt` : 'Die Bearbeitungssperre dieser Werkstatt ging verloren'}: Bearbeitungsmodus verlassen. Ihre bisherigen Änderungen sind gespeichert.`
+  ));
+}
+
+/** A change not saved, as someone else edits the atelier (#402). */
+export function notSavedMsg(user: string): string {
+  return localize(ml(
+    `Not saved: ${user || 'someone else'} is editing this atelier.`,
+    `Non enregistré : ${user || 'quelqu’un d’autre'} modifie cet atelier.`,
+    `Nicht gespeichert: ${user || 'jemand anderes'} bearbeitet diese Werkstatt.`
+  ));
+}
+
+/** The view's reload button (#402). */
+export const reloadAtelierLabel = ml('Reload', 'Recharger', 'Neu laden');
+

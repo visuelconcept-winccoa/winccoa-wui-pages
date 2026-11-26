@@ -47,7 +47,19 @@ import type { FleetStore } from '../data/fleet-store.js';
 import { authHeaders } from '../data/fleet-api.js';
 import { loadSiteSymbols, type SiteSymbols } from '../data/site-symbols.js';
 import { lookupValue } from '@visuelconcept-winccoa/wui-fleet-core/lookup.js';
-import { MSG, confirmDeleteAtelierMsg, localize, localizeDir, machineTypeLabel } from '../i18n.js';
+import {
+  MSG,
+  confirmDeleteAtelierMsg,
+  localize,
+  localizeDir,
+  lockHolderMsg,
+  lockLostMsg,
+  machineTypeLabel,
+  notSavedMsg,
+  reloadAtelierLabel,
+  remoteSaveMsg
+} from '../i18n.js';
+import { AtelierEditLock, remoteChange, stamped, type LockHolder } from '../data/atelier-lock.js';
 import { uniqueName } from '../symbol-names.js';
 import { SceneController } from '../scene/scene-controller.js';
 import type { OtherSymbol, SymbolImport } from './mf-symbol-wizard.js';
@@ -107,13 +119,15 @@ import {
 } from '../types.js';
 import {
   loadDisplayPrefs,
+  loadPersonalBubbles,
   loadViewPrefs,
   saveDisplayPrefs,
+  savePersonalBubble,
   saveViewPrefs,
   type AtelierDisplayPrefs
 } from '@visuelconcept-winccoa/wui-fleet-core/bubble-prefs.js';
 import type { BubblePatch } from '../scene/label-manager.js';
-import '@visuelconcept-winccoa/wui-fleet-core/fleet-settings-service.js';
+import { currentUserName } from '@visuelconcept-winccoa/wui-fleet-core/fleet-settings-service.js';
 import { settingsCache } from '@visuelconcept-winccoa/wui-fleet-core/settings-cache.js';
 import {
   filterDimensions,
@@ -346,6 +360,17 @@ export class MfAtelierView extends LitElement {
   private contextReleased = false;
   /** The scene was built once (by `updated`); later ones come from a reconnect. */
   private sceneBuilt = false;
+  /** This view's edit lock of the atelier (#402); null in a display-only view or without a backend. */
+  private editLock: AtelierEditLock | null = null;
+  /** Someone else edits the atelier (#402): edit mode and markers are theirs. */
+  @state() private lockHolder: LockHolder | null = null;
+  /** The revision of the atelier this view shows and saves on (#402). */
+  private baseRevision = 0;
+  /** The atelier saved by someone else since this view opened it (#402): said, and nothing saved over it. */
+  @state() private remoteSave: { by: string; at: string } | null = null;
+  /** A passing word on editing together (#402): lock refused or lost, change not saved. */
+  @state() private collabNotice = '';
+  private atelierSub: Subscription | null = null;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -372,6 +397,8 @@ export class MfAtelierView extends LitElement {
     if (this.displayOnly) return;
     const view = loadViewPrefs(this.atelier.id);
     if (view.panel !== undefined) this.panelOpen = view.panel;
+    // Their own bubbles (#400), loaded after the scene opened.
+    this.scene?.setPersonalBubbles(loadPersonalBubbles(this.atelier.id), true);
     // Loaded after the scene opened: their last camera, unless they have moved it since.
     if (!this.cameraMovedByUser) this.restoreLastView();
   }
@@ -381,6 +408,7 @@ export class MfAtelierView extends LitElement {
     return html`
       <div class="page">
         ${this.renderTopbar()}
+        ${this.renderCollab()}
         ${this.renderFilters()}
         <div class="stage">
           <div class="viewport">
@@ -422,6 +450,7 @@ export class MfAtelierView extends LitElement {
       this.myLanding = loadDefaultPage() === this.atelier.id;
         this.userDisplay = loadDisplayPrefs(this.atelier.id);
       if (!this.displayOnly) this.panelOpen = loadViewPrefs(this.atelier.id).panel ?? this.panelOpen;
+      this.baseRevision = this.atelier.revision ?? 0;
     }
   }
 
@@ -476,7 +505,7 @@ export class MfAtelierView extends LitElement {
     this.scene.setOnMarkerMove((id, x, z) => this.onMarkerMove(id, x, z));
     this.scene.setOnMarkerPick((id, sx, sy) => this.openPinEdit(id, sx, sy));
     this.scene.setOnMarkerAdd((x, z) => this.addMarker(x, z));
-    this.scene.setOnBubbleEdit((id, patch) => this.onBubbleEdit(id, patch));
+    this.scene.setOnBubbleEdit((id, patch, personal) => this.onBubbleEdit(id, patch, personal));
     this.scene.setEditMode(this.editMode);
     this.scene.setMarkersVisible(this.markersShown);
     this.scene.setOnRotate(this.onCameraRotate);
@@ -484,12 +513,15 @@ export class MfAtelierView extends LitElement {
     this.scene.setBuilding(this.building);
     this.scene.setMarkers(this.markers);
     this.scene.setMachines(this.machines);
+    // Outside edit mode, the viewer's own bubbles (#400): moved and resized by them, for them.
+    this.scene.setPersonalBubbles(this.displayOnly ? {} : loadPersonalBubbles(this.atelier.id), !this.displayOnly);
     this.applyStateColors();
     this.applyDisplay();
     this.scene.resize();
     this.scene.start();
     this.applyDefaultViewpoint();
     this.resubscribeDps();
+    this.startCollaboration();
 
     this.resizeObserver = new ResizeObserver(() => {
       this.scene?.resize();
@@ -524,6 +556,7 @@ export class MfAtelierView extends LitElement {
     this.subGen += 1;
     this.dpSubscription.unsubscribe();
     this.dpTargets = new Map();
+    this.stopCollaboration();
     if (this.scene) {
       this.scene.dispose();
       this.scene = null;
@@ -623,9 +656,9 @@ export class MfAtelierView extends LitElement {
       <div class="toolbar">
         <ix-icon-button icon="undo" ghost title=${localize(MSG.view.resetView)} @click=${() => this.resetView()}></ix-icon-button>
         ${this.editable
-          ? html`<ix-icon-button icon="move" ghost title=${localize(MSG.view.editMode)} variant=${this.editMode ? 'primary' : 'secondary'} @click=${this.toggleEditMode}></ix-icon-button>
+          ? html`<ix-icon-button icon="move" ghost ?disabled=${this.lockHolder !== null && !this.editMode} title=${this.lockHolder ? lockHolderMsg(this.lockHolder.user, this.lockHolder.since) : localize(MSG.view.editMode)} variant=${this.editMode ? 'primary' : 'secondary'} @click=${this.toggleEditMode}></ix-icon-button>
               <ix-icon-button icon="eye" ghost title=${localize(MSG.bubble.hoverMode)} variant=${this.display.bubblesOnHover ? 'primary' : 'secondary'} @click=${this.toggleBubblesOnHover}></ix-icon-button>
-              <ix-icon-button icon="location" ghost title=${localize(MSG.markers.toggle)} variant=${this.markersShown ? 'primary' : 'secondary'} @click=${this.toggleMarkers}></ix-icon-button>`
+              <ix-icon-button icon="location" ghost ?disabled=${this.lockHolder !== null && !this.markersShown} title=${this.lockHolder ? lockHolderMsg(this.lockHolder.user, this.lockHolder.since) : localize(MSG.markers.toggle)} variant=${this.markersShown ? 'primary' : 'secondary'} @click=${this.toggleMarkers}></ix-icon-button>`
           : ''}
         ${this.renderDisplayToggles()}
         <ix-icon-button icon="screenshot" ghost title=${localize(MSG.view.viewpoints)} variant=${this.viewpointsOpen ? 'primary' : 'secondary'} @click=${() => (this.viewpointsOpen = !this.viewpointsOpen)}></ix-icon-button>
@@ -1329,16 +1362,113 @@ export class MfAtelierView extends LitElement {
   }
 
   /** Edit mode moves the machines and their bubbles; the markers have their own button (#379). */
-  private toggleEditMode(): void {
+  private async toggleEditMode(): Promise<void> {
+    if (!this.editMode && !(await this.takeLock())) return;
     this.editMode = !this.editMode;
     this.scene?.setEditMode(this.editMode);
+    if (!this.editMode) void this.giveLockBackIfIdle();
   }
 
   /** Markers button (#379): shows the placement markers, a click on the floor adding one, or hides them. */
-  private toggleMarkers(): void {
+  private async toggleMarkers(): Promise<void> {
+    if (!this.markersShown && !(await this.takeLock())) return;
     this.markersShown = !this.markersShown;
     this.scene?.setMarkersVisible(this.markersShown);
-    if (!this.markersShown) this.pinEdit = null;
+    if (!this.markersShown) {
+      this.pinEdit = null;
+      void this.giveLockBackIfIdle();
+    }
+  }
+
+  // ------------------------------------------------------------------ several people on the atelier (#402)
+
+  /**
+   * Who edits the atelier and what others save (winccoa-fra-msp-stma#402): the edit lock watched, the atelier's own
+   * datapoint followed — a save by another view is said, and nothing saved over it until reloaded.
+   */
+  private startCollaboration(): void {
+    if (this.displayOnly || !this.atelier || this.store?.offline || this.editLock) return;
+    const lock = new AtelierEditLock(this.atelier.id);
+    lock.onChange = () => (this.lockHolder = lock.holder);
+    lock.onLost = (holder) => {
+      if (this.editMode) {
+        this.editMode = false;
+        this.scene?.setEditMode(false);
+      }
+      if (this.markersShown) {
+        this.markersShown = false;
+        this.scene?.setMarkersVisible(false);
+        this.pinEdit = null;
+      }
+      this.collabNotice = lockLostMsg(holder?.user ?? '');
+    };
+    lock.watch();
+    this.editLock = lock;
+    const api = this.api;
+    if (!api) return;
+    try {
+      this.atelierSub = api.dpConnect([`MachineFleet3D_${this.atelier.id}.json`], true).subscribe({
+        next: (data: DpEmission) => {
+          const change = remoteChange(data.value[0], this.baseRevision, lock.client);
+          if (change) this.remoteSave = { by: change.by, at: change.at };
+        },
+        error: () => {
+          // Live channel dropped: no word of others' saves until it is back.
+        }
+      });
+    } catch {
+      // Backend not connected.
+    }
+  }
+
+  private stopCollaboration(): void {
+    this.atelierSub?.unsubscribe();
+    this.atelierSub = null;
+    this.editLock?.dispose();
+    this.editLock = null;
+  }
+
+  /** Edit mode or the markers about to come on: the atelier's edit lock, unless someone else holds it. */
+  private async takeLock(): Promise<boolean> {
+    if (this.remoteSave) {
+      // Changed by someone else since opened: reload first, or the edit would erase their change.
+      this.collabNotice = remoteSaveMsg(this.remoteSave.by, this.remoteSave.at);
+      return false;
+    }
+    if (!this.editLock) return true;
+    const ok = await this.editLock.acquire();
+    if (!ok) this.collabNotice = lockHolderMsg(this.editLock.holder?.user ?? '', this.editLock.holder?.since ?? '');
+    return ok;
+  }
+
+  /** Edit mode and markers both off: the lock given back for the others. */
+  private async giveLockBackIfIdle(): Promise<void> {
+    if (!this.editMode && !this.markersShown) await this.editLock?.release();
+  }
+
+  /** The atelier reloaded as saved now (#402): the page opens it again. */
+  private reloadAtelier(): void {
+    this.dispatchEvent(new CustomEvent('wui:reload', { bubbles: true, composed: true }));
+  }
+
+  private renderCollab(): TemplateResult | typeof nothing {
+    if (this.displayOnly) return nothing;
+    const parts: TemplateResult[] = [];
+    if (this.remoteSave) {
+      parts.push(html`<div class="collab collab--warn" role="status">
+        <span>${remoteSaveMsg(this.remoteSave.by, this.remoteSave.at)}</span>
+        <ix-button variant="primary" @click=${() => this.reloadAtelier()}>${localize(reloadAtelierLabel)}</ix-button>
+      </div>`);
+    } else if (this.lockHolder && !this.editLock?.held) {
+      parts.push(html`<div class="collab" role="status"><span>${lockHolderMsg(this.lockHolder.user, this.lockHolder.since)}</span></div>`);
+    }
+    if (this.collabNotice && !this.remoteSave) {
+      parts.push(html`<div class="collab collab--warn" role="status">
+        <span>${this.collabNotice}</span>
+        <ix-icon-button icon="close" ghost size="16" @click=${() => (this.collabNotice = '')}></ix-icon-button>
+      </div>`);
+    }
+    return parts.length ? html`${parts}` : nothing;
   }
 
   /** A click on the floor, markers shown (#379): a new marker there, numbered, renamed by clicking it (#63). */
@@ -1544,8 +1674,15 @@ export class MfAtelierView extends LitElement {
     this.scene?.setBubblesOnHover(this.display.bubblesOnHover === true);
   }
 
-  /** A bubble moved / resized by hand in edit mode, or back to automatic (null): saved (#59). */
-  private onBubbleEdit(id: string, patch: BubblePatch): void {
+  /**
+   * A bubble moved / resized by hand in edit mode, or back to automatic (null): saved in the atelier (#59). Outside
+   * edit mode, `personal`: the viewer's own bubble, kept in their settings only (winccoa-fra-msp-stma#400).
+   */
+  private onBubbleEdit(id: string, patch: BubblePatch, personal = false): void {
+    if (personal) {
+      savePersonalBubble(this.atelier.id, id, { offset: patch.bubbleOffset, size: patch.bubbleSize });
+      return;
+    }
     this.machines = this.machines.map((m) => {
       if (m.id !== id) return m;
       const next = { ...m };
@@ -1845,8 +1982,20 @@ export class MfAtelierView extends LitElement {
     if (this.displayOnly) return;
     clearTimeout(this.saveTimer);
     this.saveTimer = window.setTimeout(() => {
+      // Several people on the atelier (#402): nothing saved over a save of someone else not reloaded yet, nor while
+      // someone else holds the edit lock.
+      if (this.remoteSave) {
+        this.collabNotice = remoteSaveMsg(this.remoteSave.by, this.remoteSave.at);
+        return;
+      }
+      if (this.lockHolder && !this.editLock?.held) {
+        this.collabNotice = notSavedMsg(this.lockHolder.user);
+        return;
+      }
+      const atelier = stamped(this.buildAtelier(), this.baseRevision, currentUserName(), this.editLock?.client ?? '');
+      this.baseRevision = atelier.revision ?? this.baseRevision;
       this.dispatchEvent(
-        new CustomEvent('wui:save', { detail: this.buildAtelier(), bubbles: true, composed: true })
+        new CustomEvent('wui:save', { detail: atelier, bubbles: true, composed: true })
       );
     }, SAVE_DEBOUNCE_MS);
   }
@@ -2220,6 +2369,20 @@ function viewStyles() {
     .import-input {
       display: none;
     }
+    .collab {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.4rem 0.75rem;
+      border-bottom: 1px solid var(--theme-color-soft-bdr);
+      background: color-mix(in srgb, var(--theme-color-info) 14%, transparent);
+    }
+    .collab--warn {
+      background: color-mix(in srgb, var(--theme-color-warning) 22%, transparent);
+    }
+    .collab span {
+      flex: 1;
+    }
     .filters {
       padding: 0.4rem 0.75rem;
       border-bottom: 1px solid var(--theme-color-soft-bdr);
@@ -2363,11 +2526,22 @@ function viewStyles() {
     .mf-label__reset {
       display: none;
     }
+    .mf-label,
+    .mf-dot,
+    .mf-pin {
+      /* The fingers drag a bubble, a dot or a pin, never the page under it (#399). */
+      touch-action: none;
+    }
     .mf-label--editable {
       cursor: move;
       overflow: visible;
     }
-    .mf-label--editable .mf-label__resize {
+    /* Outside edit mode, the viewer's own bubble (#400): its handles show under the pointer. */
+    .mf-label--personal:hover {
+      overflow: visible;
+    }
+    .mf-label--editable .mf-label__resize,
+    .mf-label--personal:hover .mf-label__resize {
       display: block;
       position: absolute;
       right: -0.3rem;
@@ -2378,7 +2552,8 @@ function viewStyles() {
       background: var(--theme-color-primary);
       border-radius: 2px;
     }
-    .mf-label--editable.mf-label--manual .mf-label__reset {
+    .mf-label--editable.mf-label--manual .mf-label__reset,
+    .mf-label--personal.mf-label--own:hover .mf-label__reset {
       display: block;
       position: absolute;
       top: -0.6rem;

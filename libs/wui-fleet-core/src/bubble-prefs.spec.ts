@@ -6,7 +6,7 @@
  * bubble choices of an earlier version are ignored.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { ATELIER_PREFS_SETTING, loadDisplayPrefs, loadViewPrefs, saveDisplayPrefs, saveViewPrefs } from './bubble-prefs.js';
+import { ATELIER_PREFS_SETTING, loadDisplayPrefs, loadPersonalBubbles, loadViewPrefs, saveDisplayPrefs, savePersonalBubble, saveViewPrefs } from './bubble-prefs.js';
 import { settingObject, settingsCache } from './settings-cache.js';
 
 describe('remembered display toggles', () => {
@@ -60,5 +60,40 @@ describe('remembered last view', () => {
     expect(loadViewPrefs('a1')).toEqual({});
     settingsCache.set(ATELIER_PREFS_SETTING, { a1: { view: { camera: { ...camera, mode: 'iso' } } } });
     expect(loadViewPrefs('a1')).toEqual({});
+  });
+});
+
+describe("a viewer's own bubbles (winccoa-fra-msp-stma#400)", () => {
+  afterEach(() => settingsCache.connect(null));
+
+  it("are kept per atelier and machine, to the pixel, a part set or taken back to the atelier's", () => {
+    savePersonalBubble('a1', 'M1', { offset: [12.4, -40.6] });
+    savePersonalBubble('a1', 'M1', { size: [300, 160] });
+    savePersonalBubble('a1', 'M2', { size: [200, 120] });
+    savePersonalBubble('a2', 'M1', { offset: [1, 2] });
+    expect(loadPersonalBubbles('a1')).toEqual({ M1: { offset: [12, -41], size: [300, 160] }, M2: { size: [200, 120] } });
+    expect(loadPersonalBubbles('a2')).toEqual({ M1: { offset: [1, 2] } });
+    savePersonalBubble('a1', 'M1', { offset: null });
+    expect(loadPersonalBubbles('a1').M1).toEqual({ size: [300, 160] });
+    savePersonalBubble('a1', 'M2', { size: null });
+    expect(loadPersonalBubbles('a1')).toEqual({ M1: { size: [300, 160] } });
+    expect(loadPersonalBubbles('a3')).toEqual({});
+  });
+
+  it('do not erase the display toggles nor the last view, nor are erased by them', () => {
+    saveDisplayPrefs('a1', { roof: false });
+    saveViewPrefs('a1', { panel: true });
+    savePersonalBubble('a1', 'M1', { offset: [5, 5] });
+    saveDisplayPrefs('a1', { labels: true });
+    saveViewPrefs('a1', { panel: false });
+    expect(loadPersonalBubbles('a1')).toEqual({ M1: { offset: [5, 5] } });
+    expect(loadDisplayPrefs('a1')).toEqual({ labels: true });
+    expect(loadViewPrefs('a1')).toEqual({ panel: false });
+    expect((settingObject(ATELIER_PREFS_SETTING) as Record<string, Record<string, unknown>>)['a1']['bubbles']).toEqual({ M1: { offset: [5, 5] } });
+  });
+
+  it('ignore a malformed entry', () => {
+    settingsCache.set(ATELIER_PREFS_SETTING, { a1: { bubbles: { M1: { offset: [1] }, M2: 'x', M3: { size: [10, 'a'] }, M4: { size: [100, 80] } } } });
+    expect(loadPersonalBubbles('a1')).toEqual({ M4: { size: [100, 80] } });
   });
 });

@@ -6,6 +6,9 @@
  * spirit from the prototype's hand-rolled `applyOrbit`. Left-drag orbits,
  * right-drag pans the target, wheel zooms. No external OrbitControls dependency.
  *
+ * On a touch screen (winccoa-fra-msp-stma#399): one finger does what the left button does (orbits; pans in the
+ * plan), two fingers pinch to zoom and move together to pan; the page itself neither scrolls nor zooms under them.
+ *
  * What the buttons ask — a preset, a machine to frame, a viewpoint, a step of
  * rotation or zoom — the camera glides to (eased), so the eye follows where it
  * goes; a drag or the wheel takes over at once. No glide when the user's system
@@ -39,6 +42,27 @@ const KEY_PAN_PX = 60;
 const KEY_ORBIT = 0.12;
 const KEY_ZOOM_IN = 0.85;
 const KEY_ZOOM_OUT = 1.18;
+
+/** A point on the screen (client pixels). */
+export interface ScreenPoint {
+  x: number;
+  y: number;
+}
+
+/**
+ * One step of a two-finger gesture (winccoa-fra-msp-stma#399): how much the fingers spread (`scale` > 1: apart, zoom in)
+ * and how far their midpoint moved (`dx`, `dy`, pixels: a pan), from their previous to their new positions.
+ */
+export function pinchStep(prev: readonly [ScreenPoint, ScreenPoint], next: readonly [ScreenPoint, ScreenPoint]): { scale: number; dx: number; dy: number } {
+  const dist = (a: ScreenPoint, b: ScreenPoint): number => Math.hypot(a.x - b.x, a.y - b.y);
+  const before = dist(prev[0], prev[1]);
+  const after = dist(next[0], next[1]);
+  return {
+    scale: before > 0 && after > 0 ? after / before : 1,
+    dx: (next[0].x + next[1].x - prev[0].x - prev[1].x) / 2,
+    dy: (next[0].y + next[1].y - prev[0].y - prev[1].y) / 2
+  };
+}
 
 const easeInOut = (t: number): number => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 /** The shortest way round from one azimuth to another. */
@@ -83,6 +107,8 @@ export class OrbitController {
   private dragButton = -1;
   private lastX = 0;
   private lastY = 0;
+  /** The fingers on the screen (touch pointers), by pointer id, at their last position (#399). */
+  private readonly touches = new Map<number, ScreenPoint>();
   /** Elements laid over the canvas whose wheel zooms as the canvas's does (addWheelSurface). */
   private readonly wheelSurfaces: HTMLElement[] = [];
 
@@ -94,6 +120,8 @@ export class OrbitController {
     this.homeTarget = this.target.clone();
     el.addEventListener('pointerdown', this.onPointerDown);
     el.addEventListener('wheel', this.onWheel, { passive: false });
+    // The fingers move the camera, never the page under it (#399).
+    el.style.touchAction = 'none';
     el.addEventListener('contextmenu', this.onContext);
     el.addEventListener('keydown', this.onKey);
     if (el.tabIndex < 0) el.tabIndex = 0;
@@ -233,6 +261,7 @@ export class OrbitController {
     this.el.removeEventListener('keydown', this.onKey);
     window.removeEventListener('pointermove', this.onPointerMove);
     window.removeEventListener('pointerup', this.onPointerUp);
+    window.removeEventListener('pointercancel', this.onPointerUp);
   }
 
   /** Keyboard (the canvas focused): arrows rotate in 3D and pan in the plan; + / - zoom. */
@@ -250,14 +279,52 @@ export class OrbitController {
 
   private handleDown(e: PointerEvent): void {
     this.takeOver();
-    this.dragButton = e.button;
-    this.lastX = e.clientX;
-    this.lastY = e.clientY;
+    if (e.pointerType === 'touch') {
+      // A finger: the first one orbits as the left button does; a second one turns the gesture into pinch and pan.
+      this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (this.touches.size === 1) {
+        this.dragButton = 0;
+        this.lastX = e.clientX;
+        this.lastY = e.clientY;
+      }
+    } else {
+      this.dragButton = e.button;
+      this.lastX = e.clientX;
+      this.lastY = e.clientY;
+    }
     window.addEventListener('pointermove', this.onPointerMove);
     window.addEventListener('pointerup', this.onPointerUp);
+    window.addEventListener('pointercancel', this.onPointerUp);
+  }
+
+  /** Two fingers: they pinch to zoom and move together to pan (#399). */
+  private handlePinch(e: PointerEvent): void {
+    const ids = [...this.touches.keys()].slice(0, 2);
+    if (!ids.includes(e.pointerId)) {
+      this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      return;
+    }
+    const prev = ids.map((id) => ({ ...(this.touches.get(id) as ScreenPoint) })) as [ScreenPoint, ScreenPoint];
+    this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const next = ids.map((id) => this.touches.get(id) as ScreenPoint) as [ScreenPoint, ScreenPoint];
+    const step = pinchStep(prev, next);
+    if (step.scale === 1 && step.dx === 0 && step.dy === 0) return;
+    this.onUserMove?.();
+    this.state.radius /= step.scale;
+    this.pan(step.dx, step.dy);
+    this.clamp();
+    this.apply();
   }
 
   private handleMove(e: PointerEvent): void {
+    if (e.pointerType === 'touch') {
+      if (!this.touches.has(e.pointerId)) return;
+      if (this.touches.size >= 2) {
+        this.handlePinch(e);
+        return;
+      }
+      this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
     const dx = e.clientX - this.lastX;
     const dy = e.clientY - this.lastY;
     this.lastX = e.clientX;
@@ -275,9 +342,23 @@ export class OrbitController {
   }
 
   private handleUp(e: PointerEvent): void {
-    if (e.button === this.dragButton) this.dragButton = -1;
+    if (e.pointerType === 'touch') {
+      this.touches.delete(e.pointerId);
+      // Back to one finger: it goes on orbiting from where it is, without a jump.
+      const [left] = [...this.touches.values()];
+      if (left) {
+        this.dragButton = 0;
+        this.lastX = left.x;
+        this.lastY = left.y;
+        return;
+      }
+      this.dragButton = -1;
+    } else if (e.button === this.dragButton) {
+      this.dragButton = -1;
+    }
     window.removeEventListener('pointermove', this.onPointerMove);
     window.removeEventListener('pointerup', this.onPointerUp);
+    window.removeEventListener('pointercancel', this.onPointerUp);
   }
 
   private handleWheel(e: WheelEvent): void {

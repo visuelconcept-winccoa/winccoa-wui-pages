@@ -3,6 +3,14 @@
 
 # Changelog — @visuelconcept-winccoa/wui-fleet-core
 
+## 0.3.2 — unreleased
+
+- **A viewer's own bubbles** (winccoa-fra-msp-stma#400, `bubble-prefs.ts`): `loadPersonalBubbles` / `savePersonalBubble`
+  keep, per atelier and machine, the offset and size of a bubble the viewer moved or resized outside edit mode, in their
+  WinCC OA user settings (`fleet-ateliers`, next to the display toggles and the last view, which they never erase).
+- **Who saved an atelier** (winccoa-fra-msp-stma#402): `Atelier.revision`, `updatedBy`, `updatedAt`, `updatedClient`, set at each
+  save by the atelier view; `currentUserName()` (`fleet-settings-service.ts`) gives the logged-in user's name.
+
 ## 0.3.1 — 2026-11-25
 
 - **A symbol without a state value is not connected, never in production** (winccoa-fra-msp-stma#370): `NO_DATA_STATE` (key `disconnected`,

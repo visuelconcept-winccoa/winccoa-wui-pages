@@ -35,6 +35,15 @@ function authHeaders(): Record<string, string> {
   }
 }
 
+/** The logged-in user's name, as the WebUI knows it ('' when unknown), shown to others as who saved an atelier (#402). */
+export function currentUserName(): string {
+  try {
+    return String(resolve(WuiUserService)?.name ?? '');
+  } catch {
+    return '';
+  }
+}
+
 function userKey(svc: WuiUserService | null): string {
   return svc ? `${svc.id ?? ''}|${svc.name ?? ''}` : '';
 }

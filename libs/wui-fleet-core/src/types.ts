@@ -1169,6 +1169,15 @@ export interface Atelier {
   /** Placement markers of this atelier (location pins), machines placed from them. */
   markers?: PlacementMarker[];
   /**
+   * Saved version of the atelier, one more at each save, with who saved it, when, and from which open view
+   * (winccoa-fra-msp-stma#402): a view sees that someone else saved the atelier since it opened it — it tells its
+   * viewer and does not save over it. Absent on an atelier saved before.
+   */
+  revision?: number;
+  updatedBy?: string;
+  updatedAt?: string;
+  updatedClient?: string;
+  /**
    * The opening view when no default viewpoint applies (#70): the building's front side and, when
    * set, this atelier's own view; absent = front south, the module's view (opening-view.ts).
    */

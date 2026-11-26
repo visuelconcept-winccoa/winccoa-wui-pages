@@ -51,6 +51,7 @@ import {
 import { BuildingBuilder } from './building-builder.js';
 import { disposeObject } from './dispose.js';
 import { LabelManager, type BubblePatch } from './label-manager.js';
+import type { PersonalBubble } from '@visuelconcept-winccoa/wui-fleet-core/bubble-prefs.js';
 import { MarkerPins } from './marker-pins.js';
 import { MachineMaterials } from './machine-materials.js';
 import { BILLBOARD_CHILD, applyBillboardTexture, buildMachine } from './machine-factory.js';
@@ -66,6 +67,8 @@ import {
 
 const ACCENT_POOL_SIZE = 6;
 const DRAG_THRESHOLD_PX = 5;
+/** A finger held this long on a machine, without moving, shows its bubble as the mouse pointer over it does (#399). */
+const LONG_PRESS_MS = 500;
 /** Margin (px) around a machine's on-screen box that still shows its bubble in hover mode (#56). */
 const HOVER_MARGIN_PX = 16;
 /** If the longest GLB dimension exceeds this (metres), assume mm → scale by 0.001. */
@@ -106,6 +109,8 @@ export class SceneController {
   private running = false;
   private downX = 0;
   private downY = 0;
+  /** A finger held on the canvas in hover mode: what it shows once held long enough (#399). */
+  private press: { timer: number; x: number; y: number; e: PointerEvent } | null = null;
 
   // --- edit-mode dragging ----------------------------------------------------
   private editMode = false;
@@ -193,8 +198,14 @@ export class SceneController {
   }
 
   /** A bubble moved or resized by hand in edit mode (`null`: back to automatic, #59). */
-  setOnBubbleEdit(fn: (id: string, patch: BubblePatch) => void): void {
+  /** A bubble moved or resized by hand: the atelier's (edit mode) or, `personal`, the viewer's own (#400). */
+  setOnBubbleEdit(fn: (id: string, patch: BubblePatch, personal: boolean) => void): void {
     this.labels.onBubbleEdit = fn;
+  }
+
+  /** The viewer's own bubbles (winccoa-fra-msp-stma#400), shown outside edit mode; `editable`: they may move them. */
+  setPersonalBubbles(bubbles: Readonly<Record<string, PersonalBubble>>, editable: boolean): void {
+    this.labels.setPersonalBubbles(bubbles, editable);
   }
 
   /**
@@ -449,6 +460,7 @@ export class SceneController {
   }
 
   dispose(): void {
+    this.endPress();
     this.stop();
     this.canvas.removeEventListener('pointerdown', this.onCanvasDown);
     this.canvas.removeEventListener('click', this.onCanvasClick);
@@ -688,6 +700,8 @@ export class SceneController {
       if (!this.editMode) this.onSelect(m.id);
       return;
     }
+    // A finger tapping the floor in hover mode puts away the bubble a long press showed (#399).
+    if (this.hoverMode && (e as PointerEvent).pointerType === 'touch') this.labels.setHovered(null);
     if (!this.pins.shown || !this.onMarkerAdd) return;
     const p = this.pins.floorPointAt(e);
     if (p) this.onMarkerAdd(p.x, p.z);
@@ -768,13 +782,46 @@ export class SceneController {
   private readonly onCanvasDown = (e: PointerEvent): void => {
     this.downX = e.clientX;
     this.downY = e.clientY;
+    if (this.hoverMode && e.pointerType === 'touch') this.startPress(e);
   };
+
+  /**
+   * Hover mode on a touch screen (winccoa-fra-msp-stma#399): there is no pointer over a machine, so a finger held on it
+   * — LONG_PRESS_MS without moving — shows its bubble, until a tap on the floor; a finger that moves orbits instead.
+   */
+  private startPress(e: PointerEvent): void {
+    this.endPress();
+    const timer = window.setTimeout(() => {
+      const press = this.press;
+      this.endPress();
+      if (press) this.labels.setHovered(this.machineNear(press.e));
+    }, LONG_PRESS_MS);
+    this.press = { timer, x: e.clientX, y: e.clientY, e };
+    window.addEventListener('pointermove', this.onPressMove);
+    window.addEventListener('pointerup', this.onPressEnd);
+    window.addEventListener('pointercancel', this.onPressEnd);
+  }
+
+  private endPress(): void {
+    if (this.press) clearTimeout(this.press.timer);
+    this.press = null;
+    window.removeEventListener('pointermove', this.onPressMove);
+    window.removeEventListener('pointerup', this.onPressEnd);
+    window.removeEventListener('pointercancel', this.onPressEnd);
+  }
+
+  private readonly onPressMove = (e: PointerEvent): void => {
+    if (this.press && Math.hypot(e.clientX - this.press.x, e.clientY - this.press.y) > DRAG_THRESHOLD_PX) this.endPress();
+  };
+
+  private readonly onPressEnd = (): void => this.endPress();
 
   private readonly onCanvasClick = (e: MouseEvent): void => this.handleCanvasClick(e);
 
   /** Hover mode: the machine under the pointer, picked at most once per frame. */
   private readonly onHoverMove = (e: PointerEvent): void => {
-    if (this.hoverPending) return;
+    // A finger moving orbits the camera: it is not a pointer over a machine (#399, long press instead).
+    if (e.pointerType === 'touch' || this.hoverPending) return;
     this.hoverPending = true;
     requestAnimationFrame(() => {
       this.hoverPending = false;
@@ -782,7 +829,10 @@ export class SceneController {
     });
   };
 
-  private readonly onHoverLeave = (): void => this.labels.setHovered(null);
+  private readonly onHoverLeave = (e: PointerEvent): void => {
+    // A finger lifted keeps the bubble its long press showed (#399).
+    if (e.pointerType !== 'touch') this.labels.setHovered(null);
+  };
 
   /**
    * The machine whose model, seen on screen, holds the pointer — its projected bounding box,

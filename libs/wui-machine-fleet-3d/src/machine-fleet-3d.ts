@@ -23,6 +23,7 @@ import '@wincc-oa/wui-oarxjs-context/components/wui-context-generator/wui-contex
 import { IXCoreStyles } from '@wincc-oa/wui-shared/styles/ix-core.js';
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { keyed } from 'lit/directives/keyed.js';
 import { Subscription } from 'rxjs';
 import { container } from 'tsyringe';
 import { templateSeed } from './machine-fleet-3d/data/atelier-templates.js';
@@ -145,6 +146,8 @@ export class WuiMachineFleet3d extends LitElement {
 
   @state() private ateliers: Atelier[] = [];
   @state() private active: Atelier | null = null;
+  /** Bumped to open the atelier view anew, on the atelier as saved now (#402, its « Reload »). */
+  @state() private viewKey = 0;
   @state() private loading = true;
   @state() private offline = false;
   /** Edit permission (canPublish); combined with the 'edit' role grant below. */
@@ -250,8 +253,9 @@ export class WuiMachineFleet3d extends LitElement {
         <ix-button @click=${() => this.back()}>${localizeDir(MSG.shell.back)}</ix-button>
       </div>`;
     }
-    return html`
-      <mf-atelier-view
+    return html`${keyed(
+      this.viewKey,
+      html`<mf-atelier-view
         .atelier=${this.active}
         .store=${this.store}
         .canEdit=${this.canEdit && this.roleEdit}
@@ -259,9 +263,11 @@ export class WuiMachineFleet3d extends LitElement {
         .canPublicViews=${this.canEdit && this.roleEdit && this.roleViews}
         .moduleSettings=${this.moduleSettings}
         @wui:save=${(e: CustomEvent<Atelier>) => this.onSave(e.detail)}
+        @wui:reload=${() => void this.reloadActive()}
         @wui:remove=${(e: CustomEvent<{ reason?: string }>) => this.onRemoveActive(e.detail?.reason ?? '')}
         @wui:back=${() => this.back()}
-      ></mf-atelier-view>
+      ></mf-atelier-view>`
+    )}
     `;
   }
 
@@ -422,6 +428,13 @@ export class WuiMachineFleet3d extends LitElement {
     this.back();
   }
 
+
+  /** The atelier view opened anew on the atelier as saved now (#402): someone else changed it. */
+  private async reloadActive(): Promise<void> {
+    this.ateliers = await this.store.listAteliers();
+    this.active = this.ateliers.find((a) => a.id === this.atelierId) ?? null;
+    this.viewKey += 1;
+  }
 
   private async onSave(atelier: Atelier): Promise<void> {
     // Capture the previous persisted atelier BEFORE the map() reassignment overwrites it.

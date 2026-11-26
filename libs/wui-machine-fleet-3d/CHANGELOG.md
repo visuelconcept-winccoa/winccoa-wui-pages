@@ -3,6 +3,28 @@
 
 # Changelog — @visuelconcept-winccoa/wui-machine-fleet-3d
 
+## 0.8.0 — unreleased
+
+Requires wui-fleet-core `^0.3.2`.
+
+- **Touch screens** (winccoa-fra-msp-stma#399): in the atelier view, one finger orbits (pans in 2D) as the left button does, two
+  fingers pinch to zoom and move together to pan (`OrbitController`, `pinchStep`, tested), a finger drags a bubble, a
+  dot or a pin, and the page neither scrolls nor zooms under them (`touch-action: none`). In "bubbles on hover only",
+  where there is no pointer over a machine, a finger held half a second on it shows its bubble until a tap on the
+  floor (long press, `SceneController`).
+- **Bubbles moved and resized outside edit mode, for oneself** (winccoa-fra-msp-stma#400): outside edit mode, dragging a bubble moves
+  it and its corner handle resizes it for the viewer only, kept in their user settings on any workstation (wui-fleet-core
+  `savePersonalBubble`); a click without moving still selects the machine. Their own bubble shows instead of the
+  atelier's, part by part; its ↺ button takes it back to the atelier's. Edit mode shows and changes the atelier's
+  bubbles, common to all, as before. Not in a display-only view.
+- **Several people on the same atelier** (winccoa-fra-msp-stma#402): one editor at a time — edit mode and the placement markers
+  take the atelier's edit lock from the new route `GET|POST /api/ai/fleet/workshops/:id/lock` (backend/fleetLocks.ts:
+  `edit` role to take it, held in the webserver's memory, renewed every 30 s, free again after 90 s without renewal, a
+  newer view of the same user takes it over); refused, the view says who edits since when, and their buttons wait.
+  Each save carries the atelier's next revision and who saved it: a view that sees a save by another view says so —
+  « changed by X, Reload » — and saves nothing over it until reloaded (`data/atelier-lock.ts`, tested). Without the
+  route (a webserver not updated), editing stays possible as before.
+
 ## 0.7.1 — 2026-11-26
 
 - **Fix: a state record created by `kpiCalc` is archived** (winccoa-fra-msp-stma#396). `kpiCalc` read a new record's

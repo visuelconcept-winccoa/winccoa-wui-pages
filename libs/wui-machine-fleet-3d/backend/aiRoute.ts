@@ -27,6 +27,7 @@ import { Router, json } from 'ultimate-express';
 import { AiController } from './aiController';
 import { FleetController } from './fleetAteliers';
 import { requireFleetRole } from './fleetGuard';
+import { FleetLocksController } from './fleetLocks';
 import { FleetSettingsController } from './fleetSettings';
 
 /**
@@ -35,6 +36,8 @@ import { FleetSettingsController } from './fleetSettings';
  *   POST /chat                  body { prompt, … } -> { text, provider, model }      (open, as in wui-ai-kit)
  *   GET  /fleet/workshops        -> { ok, ateliers: [{ id, name, machineCount }] }    view
  *   GET  /fleet/workshops/:id    -> { ok, atelier, stopCauses } | 404                  view
+ *   GET  /fleet/workshops/:id/lock -> { ok, holder } — who edits the atelier (#402)      view
+ *   POST /fleet/workshops/:id/lock body { action, client } -> { ok, granted, holder }   edit  (fleetLocks.ts)
  *   GET  /fleet/settings/:key    -> { ok, key, user, value } (the caller's own; 401 unidentified)
  *   PUT  /fleet/settings/:key    body { value } -> { ok, key, user }  (fleetSettings.ts)
  */
@@ -44,6 +47,7 @@ export class AiRoute {
     const ai = new AiController();
     const fleet = new FleetController();
     const settings = new FleetSettingsController();
+    const locks = new FleetLocksController();
 
     router.use(json({ limit: '1mb' }));
 
@@ -52,6 +56,9 @@ export class AiRoute {
 
     router.get('/fleet/workshops', requireFleetRole('view'), fleet.list);
     router.get('/fleet/workshops/:id', requireFleetRole('view'), fleet.get);
+    // One editor at a time per atelier (winccoa-fra-msp-stma#402).
+    router.get('/fleet/workshops/:id/lock', requireFleetRole('view'), locks.get);
+    router.post('/fleet/workshops/:id/lock', requireFleetRole('edit'), locks.post);
 
     // Each user's own choices: identified by the token, no role.
     router.get('/fleet/settings/:key', settings.get);

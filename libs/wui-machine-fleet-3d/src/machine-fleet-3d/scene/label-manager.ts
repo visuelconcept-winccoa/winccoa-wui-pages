@@ -40,6 +40,7 @@ import {
 import { MSG, localize } from '../i18n.js';
 import { leaderEnd } from './leader-end.js';
 import { labelsActive, labelVisibility } from './label-visibility.js';
+import type { PersonalBubble } from '@visuelconcept-winccoa/wui-fleet-core/bubble-prefs.js';
 
 /** What the bubbles need to know about the atelier's states. */
 interface StateInfo {
@@ -254,10 +255,17 @@ export class LabelManager {
 
   /** Fired when the pointer enters a machine's bubble or dot (its id), and leaves it (null). */
   onHover: ((id: string | null) => void) | null = null;
-  /** A bubble was moved or resized by hand in edit mode; `null` = back to automatic (#59). */
-  onBubbleEdit: ((id: string, patch: BubblePatch) => void) | null = null;
+  /**
+   * A bubble was moved or resized by hand; `null` = back to automatic (#59). `personal`: outside edit mode, the
+   * viewer's own bubble (winccoa-fra-msp-stma#400), not the atelier's.
+   */
+  onBubbleEdit: ((id: string, patch: BubblePatch, personal: boolean) => void) | null = null;
 
   private editMode = false;
+  /** The viewer's own bubbles by machine id (#400), shown instead of the atelier's outside edit mode. */
+  private personal = new Map<string, PersonalBubble>();
+  /** Outside edit mode, the viewer may move and resize their own bubbles (#400; not in a display-only view). */
+  private personalEdits = false;
   /** Hover mode (#56): a bubble shows only for the machine under the pointer. */
   private hoverMode = false;
   /** The machine under the pointer on the canvas (its 3D model and a margin around it). */
@@ -305,7 +313,37 @@ export class LabelManager {
   /** Edit mode: bubbles can be dragged and resized (#59), and all show in hover mode. */
   setEditMode(on: boolean): void {
     this.editMode = on;
-    for (const e of this.entries) e.el.classList.toggle('mf-label--editable', on);
+    for (const e of this.entries) {
+      e.el.classList.toggle('mf-label--editable', on);
+      this.applyBubble(e);
+    }
+  }
+
+  /**
+   * The viewer's own bubbles (winccoa-fra-msp-stma#400): shown instead of the atelier's outside edit mode, where
+   * `editable` lets them move and resize them; in edit mode, the atelier's bubbles, common to all, are shown.
+   */
+  setPersonalBubbles(bubbles: Readonly<Record<string, PersonalBubble>>, editable: boolean): void {
+    this.personal = new Map(Object.entries(bubbles));
+    this.personalEdits = editable;
+    for (const e of this.entries) this.applyBubble(e);
+  }
+
+  /** The viewer's own bubble of an entry's machine, when it is shown: outside edit mode only. */
+  private personalOf(entry: LabelEntry): PersonalBubble | undefined {
+    return this.editMode ? undefined : this.personal.get(entry.machine.id);
+  }
+
+  /** The bubble as shown (#400): in edit mode the atelier's; otherwise the viewer's own, part by part, where they set one. */
+  private applyBubble(entry: LabelEntry): void {
+    const own = this.personalOf(entry);
+    entry.offset = own?.offset ?? entry.machine.bubbleOffset ?? null;
+    applyBubbleSize(entry.el, own?.size ? { bubbleSize: own.size } : entry.machine);
+    entry.el.classList.toggle('mf-label--manual', this.isCustom(entry));
+    entry.el.classList.toggle('mf-label--personal', !this.editMode && this.personalEdits);
+    entry.el.classList.toggle('mf-label--own', own !== undefined);
+    const reset = entry.el.querySelector<HTMLElement>('.mf-label__reset');
+    if (reset) reset.title = localize(this.editMode ? MSG.bubble.reset : MSG.bubble.resetOwn);
   }
 
   setHoverMode(on: boolean): void {
@@ -395,24 +433,53 @@ export class LabelManager {
     el.append(nameEl, linesEl, resizeEl, resetEl);
     this.overlay.append(leaderEl, dotEl, el);
     const entry: LabelEntry = { machine, el, dotEl, leaderEl, nameEl, linesEl, offset: machine.bubbleOffset ?? null };
-    el.classList.toggle('mf-label--manual', this.isCustom(entry));
-    el.addEventListener('pointerdown', (e) => (this.editMode ? this.dragBubble(entry, e) : onPick(e)));
+    this.applyBubble(entry);
+    // Edit mode: the atelier's bubble; outside it, the viewer's own (#400) — a click without moving selects either way.
+    el.addEventListener('pointerdown', (e) => (this.editMode || this.personalEdits ? this.dragBubble(entry, e) : onPick(e)));
     resizeEl.addEventListener('pointerdown', (e) => this.resizeBubble(entry, e));
     resetEl.addEventListener('pointerdown', (e) => e.stopPropagation());
     resetEl.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (!this.editMode) {
+        // The viewer's own bubble dropped: the atelier's shows again (#400).
+        this.personal.delete(machine.id);
+        this.applyBubble(entry);
+        this.onBubbleEdit?.(machine.id, { bubbleOffset: null, bubbleSize: null }, true);
+        return;
+      }
       entry.offset = null;
+      delete machine.bubbleOffset;
       delete machine.bubbleScale;
       delete machine.bubbleSize;
-      applyBubbleSize(el, machine);
-      el.classList.remove('mf-label--manual');
-      this.onBubbleEdit?.(machine.id, { bubbleOffset: null, bubbleScale: null, bubbleSize: null });
+      this.applyBubble(entry);
+      this.onBubbleEdit?.(machine.id, { bubbleOffset: null, bubbleScale: null, bubbleSize: null }, false);
     });
     return entry;
   }
 
   private isCustom(entry: LabelEntry): boolean {
-    return entry.offset !== null || bubbleBox(entry.machine) !== null;
+    const own = this.personalOf(entry);
+    return entry.offset !== null || (own?.size ? own.size : bubbleBox(entry.machine)) !== null;
+  }
+
+  /** A bubble moved or resized: the atelier's in edit mode, else the viewer's own (#400), kept here and told. */
+  private bubbleEdited(entry: LabelEntry, patch: { bubbleOffset?: [number, number]; bubbleSize?: [number, number] }): void {
+    if (this.editMode) {
+      if (patch.bubbleOffset) entry.machine.bubbleOffset = patch.bubbleOffset;
+      if (patch.bubbleSize) {
+        entry.machine.bubbleSize = patch.bubbleSize;
+        delete entry.machine.bubbleScale;
+      }
+      this.applyBubble(entry);
+      this.onBubbleEdit?.(entry.machine.id, patch.bubbleSize ? { ...patch, bubbleScale: null } : patch, false);
+      return;
+    }
+    const own = { ...this.personal.get(entry.machine.id) };
+    if (patch.bubbleOffset) own.offset = patch.bubbleOffset;
+    if (patch.bubbleSize) own.size = patch.bubbleSize;
+    this.personal.set(entry.machine.id, own);
+    this.applyBubble(entry);
+    this.onBubbleEdit?.(entry.machine.id, patch, true);
   }
 
   /** Edit mode: drag a bubble to a spot of its own (offset from its dot, kept at any zoom). */
@@ -438,8 +505,7 @@ export class LabelManager {
         this.onSelect(entry.machine.id);
         return;
       }
-      entry.el.classList.add('mf-label--manual');
-      if (entry.offset) this.onBubbleEdit?.(entry.machine.id, { bubbleOffset: entry.offset });
+      if (entry.offset) this.bubbleEdited(entry, { bubbleOffset: entry.offset });
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -450,7 +516,7 @@ export class LabelManager {
    * while its text keeps its size: a larger box shows the lines it cut off, a smaller one hides some (winccoa-fra-msp-stma#371).
    */
   private resizeBubble(entry: LabelEntry, down: PointerEvent): void {
-    if (down.button !== 0) return;
+    if (down.button !== 0 || (!this.editMode && !this.personalEdits)) return;
     down.stopPropagation();
     down.preventDefault();
     const startW = entry.el.offsetWidth || DEFAULT_BUBBLE_W;
@@ -468,10 +534,7 @@ export class LabelManager {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       if (size[0] === startW && size[1] === startH) return;
-      entry.machine.bubbleSize = size;
-      delete entry.machine.bubbleScale;
-      entry.el.classList.add('mf-label--manual');
-      this.onBubbleEdit?.(entry.machine.id, { bubbleSize: size, bubbleScale: null });
+      this.bubbleEdited(entry, { bubbleSize: size });
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
